@@ -256,10 +256,12 @@ impl StaticGeometryBatch {
 
 const AUX_BATCH_LOC: u32 = 0;
 const AUX_BATCH_DOOR: u32 = 1;
+const AUX_BATCH_GROUND: u32 = 2;
 
 struct StaticMapResources {
     terrain_batch: StaticGeometryBatch,
     loc_batch: Option<StaticGeometryBatch>,
+    ground_batch: Option<StaticGeometryBatch>,
     door_batch: Option<StaticGeometryBatch>,
     height_map_texture: WebGlTexture,
     water_mask_texture: WebGlTexture,
@@ -275,6 +277,7 @@ impl StaticMapResources {
         Ok(Self {
             terrain_batch: StaticGeometryBatch::new(gl)?,
             loc_batch: None,
+            ground_batch: None,
             door_batch: None,
             height_map_texture,
             water_mask_texture,
@@ -286,12 +289,16 @@ impl StaticMapResources {
         self.state.is_none()
             && self.terrain_batch.index_count == 0
             && self.loc_batch.is_none()
+            && self.ground_batch.is_none()
             && self.door_batch.is_none()
     }
 
     fn delete(&mut self, gl: &Gl) {
         self.terrain_batch.delete(gl);
         if let Some(batch) = self.loc_batch.take() {
+            batch.delete(gl);
+        }
+        if let Some(batch) = self.ground_batch.take() {
             batch.delete(gl);
         }
         if let Some(batch) = self.door_batch.take() {
@@ -917,6 +924,7 @@ impl RustWebGlRenderer {
             let existing = match kind {
                 AUX_BATCH_LOC => self.static_map.loc_batch.take(),
                 AUX_BATCH_DOOR => self.static_map.door_batch.take(),
+                AUX_BATCH_GROUND => self.static_map.ground_batch.take(),
                 _ => return Err(JsValue::from_str("unknown auxiliary static batch kind")),
             };
             if let Some(batch) = existing {
@@ -928,6 +936,7 @@ impl RustWebGlRenderer {
         let mut batch = match kind {
             AUX_BATCH_LOC => self.static_map.loc_batch.take(),
             AUX_BATCH_DOOR => self.static_map.door_batch.take(),
+            AUX_BATCH_GROUND => self.static_map.ground_batch.take(),
             _ => return Err(JsValue::from_str("unknown auxiliary static batch kind")),
         }
         .unwrap_or(StaticGeometryBatch::new(&self.gl)?);
@@ -936,6 +945,7 @@ impl RustWebGlRenderer {
             match kind {
                 AUX_BATCH_LOC => self.static_map.loc_batch = Some(batch),
                 AUX_BATCH_DOOR => self.static_map.door_batch = Some(batch),
+                AUX_BATCH_GROUND => self.static_map.ground_batch = Some(batch),
                 _ => unreachable!(),
             }
             return Err(error);
@@ -944,6 +954,7 @@ impl RustWebGlRenderer {
         match kind {
             AUX_BATCH_LOC => self.static_map.loc_batch = Some(batch),
             AUX_BATCH_DOOR => self.static_map.door_batch = Some(batch),
+            AUX_BATCH_GROUND => self.static_map.ground_batch = Some(batch),
             _ => unreachable!(),
         }
         Ok(())
@@ -1021,6 +1032,11 @@ impl RustWebGlRenderer {
                 .door_batch
                 .as_mut()
                 .ok_or_else(|| JsValue::from_str("door geometry has not been uploaded"))?,
+            AUX_BATCH_GROUND => self
+                .static_map
+                .ground_batch
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("ground geometry has not been uploaded"))?,
             _ => return Err(JsValue::from_str("unknown auxiliary static batch kind")),
         };
 
@@ -1367,9 +1383,13 @@ impl RustWebGlRenderer {
             false,
         );
 
-        for batch in [&self.static_map.loc_batch, &self.static_map.door_batch]
-            .into_iter()
-            .flatten()
+        for batch in [
+            &self.static_map.loc_batch,
+            &self.static_map.ground_batch,
+            &self.static_map.door_batch,
+        ]
+        .into_iter()
+        .flatten()
         {
             let batch_pass = batch.pass(use_lod, discard_alpha);
             self.gl.bind_vertex_array(Some(&batch.vao));
@@ -1439,6 +1459,11 @@ impl RustWebGlRenderer {
                 .door_batch
                 .take()
                 .ok_or_else(|| JsValue::from_str("door geometry has not been uploaded"))?,
+            AUX_BATCH_GROUND => self
+                .static_map
+                .ground_batch
+                .take()
+                .ok_or_else(|| JsValue::from_str("ground geometry has not been uploaded"))?,
             _ => return Err(JsValue::from_str("unknown auxiliary static batch kind")),
         };
 
@@ -1456,6 +1481,7 @@ impl RustWebGlRenderer {
         match kind {
             AUX_BATCH_LOC => self.static_map.loc_batch = Some(batch),
             AUX_BATCH_DOOR => self.static_map.door_batch = Some(batch),
+            AUX_BATCH_GROUND => self.static_map.ground_batch = Some(batch),
             _ => unreachable!(),
         }
         result
