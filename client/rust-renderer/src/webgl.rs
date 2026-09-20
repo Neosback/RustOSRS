@@ -1,4 +1,5 @@
 use crate::draw::{DrawRange, DrawStats, parse_draw_ranges};
+use crate::packet::{validate_draw_ranges, validate_geometry};
 use wasm_bindgen::{JsCast, prelude::*};
 use web_sys::{
     HtmlCanvasElement, WebGl2RenderingContext as Gl, WebGlBuffer, WebGlProgram, WebGlShader,
@@ -99,11 +100,8 @@ impl RustWebGlRenderer {
         packed_vertices: &[u32],
         indices: &[u32],
     ) -> Result<(), JsValue> {
-        if packed_vertices.len() % 3 != 0 {
-            return Err(JsValue::from_str(
-                "packed vertex packet must contain groups of three u32 values",
-            ));
-        }
+        validate_geometry(packed_vertices, indices)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
         let vertices = js_sys::Uint32Array::from(packed_vertices);
         let index_data = js_sys::Uint32Array::from(indices);
@@ -131,7 +129,10 @@ impl RustWebGlRenderer {
     /// Existing TypeScript wire layout:
     /// [offsetBytes,elements,instances, ...].
     pub fn set_draw_ranges(&mut self, flat_ranges: &[u32]) -> Result<(), JsValue> {
-        self.draw_ranges = parse_draw_ranges(flat_ranges).map_err(JsValue::from_str)?;
+        let ranges = parse_draw_ranges(flat_ranges).map_err(JsValue::from_str)?;
+        validate_draw_ranges(&ranges, self.index_count as usize)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        self.draw_ranges = ranges;
         Ok(())
     }
 
