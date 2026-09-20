@@ -567,8 +567,19 @@ impl RustWebGlRenderer {
     pub fn new(canvas: HtmlCanvasElement) -> Result<RustWebGlRenderer, JsValue> {
         console_error_panic_hook::set_once();
 
+        // The renderer owns antialiasing explicitly through its offscreen
+        // MSAA target. Request a non-antialiased default framebuffer so the
+        // single-sample presentation target can be blitted to the canvas
+        // portably, including ANGLE/SwiftShader and browsers that otherwise
+        // expose a multisampled default framebuffer.
+        let context_options = js_sys::Object::new();
+        js_sys::Reflect::set(
+            &context_options,
+            &JsValue::from_str("antialias"),
+            &JsValue::FALSE,
+        )?;
         let gl = canvas
-            .get_context("webgl2")?
+            .get_context_with_context_options("webgl2", &context_options)?
             .ok_or_else(|| JsValue::from_str("WebGL2 is unavailable"))?
             .dyn_into::<Gl>()?;
 
