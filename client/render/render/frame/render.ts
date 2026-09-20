@@ -191,7 +191,10 @@ import {
     capturePicoStaticReference,
     shouldCaptureRustPixelParity,
 } from "../../rust/RustPixelParity";
-import { renderRustStaticShadowFrame } from "../../rust/RustShadowIntegration";
+import {
+    getRustRendererShadowDiagnostics,
+    renderRustStaticShadowFrame,
+} from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
 
@@ -738,9 +741,11 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
         profiler.startPhase("roof");
         host.roofPlaneLimit = host.computeFrameRoofPlaneLimit();
-        const rustPixelReference = shouldCaptureRustPixelParity(host)
-            ? capturePicoStaticReference(host, sceneFramebuffer)
-            : undefined;
+        const rustPixelReference =
+            getRustRendererShadowDiagnostics(host).enabled
+            && shouldCaptureRustPixelParity(host)
+                ? capturePicoStaticReference(host, sceneFramebuffer)
+                : undefined;
         renderRustStaticShadowFrame(
             host,
             {
