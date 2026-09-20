@@ -192,11 +192,12 @@ import {
     shouldCaptureRustPixelParity,
 } from "../../rust/RustPixelParity";
 import {
-    beginRustOpaqueNpcShadowPass,
-    completeRustOpaqueNpcShadowPass,
-    finishRustNpcShadowFrame,
+    beginRustOpaqueActorShadowPass,
+    completeRustOpaqueActorShadowPass,
+    finishRustActorShadowFrame,
     getRustRendererShadowDiagnostics,
     isRustNpcShadowEnabled,
+    isRustPlayerShadowEnabled,
     renderRustStaticShadowFrame,
 } from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
@@ -745,10 +746,11 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
         profiler.startPhase("roof");
         host.roofPlaneLimit = host.computeFrameRoofPlaneLimit();
-        const rustNpcParityEnabled = isRustNpcShadowEnabled();
+        const rustDynamicParityEnabled =
+            isRustNpcShadowEnabled() || isRustPlayerShadowEnabled();
         const rustPixelReference =
             getRustRendererShadowDiagnostics(host).enabled
-            && !rustNpcParityEnabled
+            && !rustDynamicParityEnabled
             && shouldCaptureRustPixelParity(host)
                 ? capturePicoStaticReference(host, sceneFramebuffer)
                 : undefined;
@@ -796,9 +798,9 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         profiler.startPhase("opaqueActor");
         passStartIndices = host._frameIndices;
         passStartBatches = host._frameBatches;
-        beginRustOpaqueNpcShadowPass(host);
+        beginRustOpaqueActorShadowPass(host);
         host.renderOpaqueActorPass(playerDataTextureIndex, playerDataTexture);
-        completeRustOpaqueNpcShadowPass(host);
+        completeRustOpaqueActorShadowPass(host);
         opaqueActorIndices = Math.max(0, host._frameIndices - passStartIndices);
         opaqueActorBatches = Math.max(0, host._frameBatches - passStartBatches);
         profiler.endPhase();
@@ -815,7 +817,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         passStartIndices = host._frameIndices;
         passStartBatches = host._frameBatches;
         host.renderTransparentNpcPass(npcDataTextureIndex, npcDataTexture);
-        finishRustNpcShadowFrame(host);
+        finishRustActorShadowFrame(host);
         transparentNpcIndices = Math.max(0, host._frameIndices - passStartIndices);
         transparentNpcBatches = Math.max(0, host._frameBatches - passStartBatches);
         profiler.endPhase();
