@@ -876,6 +876,7 @@ function finalizeRustShadowFrame(
         && !state.npcParityEnabled
         && !state.playerParityEnabled
         && !state.gfxParityEnabled
+        && !state.projectileParityEnabled
     ) {
         const rustPixels = readCanvasRgbaPixels(runtime.canvas);
         if (rustPixels) {
@@ -907,9 +908,11 @@ function finalizeRustShadowFrame(
         npcParityEnabled: state.npcParityEnabled,
         playerParityEnabled: state.playerParityEnabled,
         gfxParityEnabled: state.gfxParityEnabled,
+        projectileParityEnabled: state.projectileParityEnabled,
         mirroredNpcPasses: state.mirroredNpcPasses,
         mirroredPlayerPasses: state.mirroredPlayerPasses,
         mirroredGfxPasses: state.mirroredGfxPasses,
+        mirroredProjectilePasses: state.mirroredProjectilePasses,
         pixelParity,
     });
     activeShadowFrames.delete(host);
@@ -923,7 +926,8 @@ export function beginRustOpaqueActorShadowPass(
         !state
         || (!state.npcParityEnabled
             && !state.playerParityEnabled
-            && !state.gfxParityEnabled)
+            && !state.gfxParityEnabled
+            && !state.projectileParityEnabled)
         || state.phase !== "prepared"
     ) {
         return;
@@ -1195,7 +1199,8 @@ export function completeRustOpaqueActorShadowPass(
         !state
         || (!state.npcParityEnabled
             && !state.playerParityEnabled
-            && !state.gfxParityEnabled)
+            && !state.gfxParityEnabled
+            && !state.projectileParityEnabled)
         || state.phase !== "opaque-actors"
     ) {
         return;
@@ -1238,7 +1243,8 @@ export function finishRustActorShadowFrame(
         !state
         || (!state.npcParityEnabled
             && !state.playerParityEnabled
-            && !state.gfxParityEnabled)
+            && !state.gfxParityEnabled
+            && !state.projectileParityEnabled)
         || state.phase !== "transparent-actors"
     ) {
         return;
@@ -1294,9 +1300,11 @@ export function renderRustStaticShadowFrame(
                 npcParityEnabled: isRustNpcShadowEnabled(),
                 playerParityEnabled: isRustPlayerShadowEnabled(),
                 gfxParityEnabled: isRustGfxShadowEnabled(),
+                projectileParityEnabled: isRustProjectileShadowEnabled(),
                 mirroredNpcPasses: 0,
                 mirroredPlayerPasses: 0,
                 mirroredGfxPasses: 0,
+                mirroredProjectilePasses: 0,
             });
             return;
         }
@@ -1429,8 +1437,12 @@ export function renderRustStaticShadowFrame(
         const npcParityEnabled = isRustNpcShadowEnabled();
         const playerParityEnabled = isRustPlayerShadowEnabled();
         const gfxParityEnabled = isRustGfxShadowEnabled();
+        const projectileParityEnabled = isRustProjectileShadowEnabled();
         const dynamicParityEnabled =
-            npcParityEnabled || playerParityEnabled || gfxParityEnabled;
+            npcParityEnabled
+            || playerParityEnabled
+            || gfxParityEnabled
+            || projectileParityEnabled;
         const state: ActiveRustShadowFrame = {
             frames,
             framesByMapKey: new Map(
@@ -1448,9 +1460,11 @@ export function renderRustStaticShadowFrame(
             npcParityEnabled,
             playerParityEnabled,
             gfxParityEnabled,
+            projectileParityEnabled,
             mirroredNpcPasses: 0,
             mirroredPlayerPasses: 0,
             mirroredGfxPasses: 0,
+            mirroredProjectilePasses: 0,
             phase: "prepared",
         };
 
