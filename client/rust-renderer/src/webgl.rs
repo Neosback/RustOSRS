@@ -21,10 +21,8 @@ const PLAYER_FRAGMENT_SHADER: &str = include_str!("shaders/player.frag.glsl");
 const PROJECTILE_VERTEX_SHADER: &str = include_str!("shaders/projectile.vert.glsl");
 const PRESENT_VERTEX_SHADER: &str = include_str!("shaders/present.vert.glsl");
 const PRESENT_FXAA_FRAGMENT_SHADER: &str = include_str!("shaders/present-fxaa.frag.glsl");
-const SCENE_OVERLAY_VERTEX_SHADER: &str =
-    include_str!("shaders/scene-overlay.vert.glsl");
-const SCENE_OVERLAY_FRAGMENT_SHADER: &str =
-    include_str!("shaders/scene-overlay.frag.glsl");
+const SCENE_OVERLAY_VERTEX_SHADER: &str = include_str!("shaders/scene-overlay.vert.glsl");
+const SCENE_OVERLAY_FRAGMENT_SHADER: &str = include_str!("shaders/scene-overlay.frag.glsl");
 
 struct StaticProgram {
     program: WebGlProgram,
@@ -761,11 +759,7 @@ impl RustWebGlRenderer {
             program: present_program_raw,
         };
         let scene_overlay_program = SceneOverlayProgram {
-            view_matrix: required_uniform(
-                &gl,
-                &scene_overlay_program_raw,
-                "u_viewMatrix",
-            )?,
+            view_matrix: required_uniform(&gl, &scene_overlay_program_raw, "u_viewMatrix")?,
             projection_matrix: required_uniform(
                 &gl,
                 &scene_overlay_program_raw,
@@ -3101,8 +3095,7 @@ impl RustWebGlRenderer {
         self.gl.disable(Gl::CULL_FACE);
         if filled {
             self.gl.enable(Gl::BLEND);
-            self.gl
-                .blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+            self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
         } else {
             self.gl.disable(Gl::BLEND);
         }
@@ -3132,7 +3125,11 @@ impl RustWebGlRenderer {
         );
         self.gl.bind_vertex_array(Some(&self.scene_overlay_vao));
         self.gl.draw_arrays(
-            if filled { Gl::TRIANGLE_FAN } else { Gl::LINE_STRIP },
+            if filled {
+                Gl::TRIANGLE_FAN
+            } else {
+                Gl::LINE_STRIP
+            },
             0,
             vertex_count,
         );
