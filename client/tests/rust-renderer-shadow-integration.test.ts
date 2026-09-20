@@ -4,9 +4,11 @@ async function main(): Promise<void> {
     (globalThis as any).self = globalThis;
 
     const {
+        RUST_DRAW_HASH_OFFSET_BASIS,
         countExpectedDrawRanges,
         createAnimatedLocDrawRangePatches,
         getRustRendererShadowDiagnostics,
+        hashExpectedDrawRanges,
     } = await import("../render/rust/RustShadowIntegration");
 
     const fakeHost = {
@@ -25,6 +27,10 @@ async function main(): Promise<void> {
         expectedDrawCalls: 0,
         expectedSubmittedIndices: 0,
         drawStatsMatch: true,
+        drawHash: 0,
+        expectedDrawHash: 0,
+        drawSequenceMatch: true,
+        staticParityMatch: true,
     });
 
     const animatedMap = {
@@ -114,6 +120,32 @@ async function main(): Promise<void> {
             submittedIndices: 3,
         },
     );
+
+    let drawHash = hashExpectedDrawRanges(
+        RUST_DRAW_HASH_OFFSET_BASIS,
+        0x3232,
+        false,
+        false,
+        0,
+        [[0, 3, 1]],
+        new Uint8Array([0]),
+        3,
+    );
+    drawHash = hashExpectedDrawRanges(
+        drawHash,
+        0x3232,
+        true,
+        false,
+        1,
+        [
+            [0, 0, 1],
+            [0, 3, 1],
+            [48, 6, 1],
+        ],
+        new Uint8Array([0, 2, 1]),
+        1,
+    );
+    assert.equal(drawHash, 0xdceda6f5);
 
     console.log("rust renderer shadow integration smoke test passed");
 }
