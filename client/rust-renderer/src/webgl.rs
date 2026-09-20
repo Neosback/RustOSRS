@@ -1,4 +1,6 @@
-use crate::draw::{DrawRange, DrawStats, draw_range_is_visible, parse_draw_ranges};
+use crate::draw::{
+    DrawRange, DrawStats, draw_range_is_visible, parse_draw_range_patches, parse_draw_ranges,
+};
 use crate::packet::{validate_draw_ranges, validate_geometry};
 use crate::static_scene::StaticMapState;
 use std::collections::HashMap;
@@ -208,12 +210,6 @@ impl StaticGeometryBatch {
         alpha: bool,
         flat_patches: &[u32],
     ) -> Result<(), JsValue> {
-        if !flat_patches.len().is_multiple_of(4) {
-            return Err(JsValue::from_str(
-                "draw-range patch packet must contain quadruples",
-            ));
-        }
-
         let pass = match (lod, alpha) {
             (false, false) => &mut self.opaque_pass,
             (false, true) => &mut self.alpha_pass,
@@ -221,20 +217,15 @@ impl StaticGeometryBatch {
             (true, true) => &mut self.lod_alpha_pass,
         };
 
-        let mut updates = Vec::with_capacity(flat_patches.len() / 4);
-        for chunk in flat_patches.chunks_exact(4) {
-            let range_index = chunk[0] as usize;
-            if range_index >= pass.draw_ranges.len() {
-                return Err(JsValue::from_str(&format!(
-                    "draw-range patch index {range_index} is outside {} resident ranges",
-                    pass.draw_ranges.len()
-                )));
-            }
+        let updates = parse_draw_range_patches(
+            flat_patches,
+            pass.draw_ranges.len(),
+        )
+        .map_err(|error| JsValue::from_str(&error))?;
 
-            let candidate = DrawRange::new(chunk[1], chunk[2], chunk[3]);
-            validate_draw_ranges(&[candidate], self.index_count as usize)
+        for (_, candidate) in &updates {
+            validate_draw_ranges(&[*candidate], self.index_count as usize)
                 .map_err(|error| JsValue::from_str(&error.to_string()))?;
-            updates.push((range_index, candidate));
         }
 
         for (range_index, candidate) in updates {
