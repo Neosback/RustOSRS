@@ -729,6 +729,34 @@ function frame(): RustStaticFrameState {
 }
 
 {
+    const bridge = new RustRendererBridge(
+        {} as HTMLCanvasElement,
+        MockWasm,
+    );
+    const scene = packet();
+    scene.mapKey = 4001;
+    bridge.uploadStaticScene(scene, 1.0);
+
+    const ground = emptyGeometryPacket();
+    ground.packedVertexWords = new Uint32Array([1, 2, 3]);
+    ground.indices = new Uint32Array([0, 0, 0]);
+    ground.opaqueDrawRanges = new Uint32Array([0, 3, 1]);
+    ground.opaqueDrawRangePlanes = new Uint8Array([0]);
+    ground.opaqueLodDrawRanges = new Uint32Array([0, 3, 1]);
+    ground.opaqueLodDrawRangePlanes = new Uint8Array([0]);
+
+    assert.equal(bridge.updateGroundGeometry(4001, ground), true);
+    const wasm = MockWasm.last!;
+    assert.deepEqual(wasm.auxGeometryUploads, [0, 1, 2]);
+    assert.deepEqual(wasm.auxPassUploads, [2]);
+    assert.deepEqual(wasm.auxLodPassUploads, [2]);
+
+    assert.equal(bridge.updateGroundGeometry(4001), true);
+    assert.deepEqual(wasm.auxGeometryUploads, [0, 1, 2, 2]);
+    bridge.dispose();
+}
+
+{
     MockWasm.abiVersion = RUST_RENDERER_ABI_VERSION + 1;
     assert.throws(
         () => new RustRendererBridge({} as HTMLCanvasElement, MockWasm),
