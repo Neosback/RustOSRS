@@ -385,6 +385,14 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
     textureArray?: Texture;
     textureMaterials?: Texture;
     waterTextures?: Texture;
+
+    // CPU mirrors of renderer-global GPU resources. These stay numeric/POD so
+    // the Rust/WASM renderer can consume the exact same bytes without GPU
+    // readback or reconstructing cache textures a second time.
+    public textureArrayPixels?: Uint8Array;
+    public textureMaterialBytes?: Int8Array;
+    public waterTexturePixels?: Uint8Array;
+
     waterShadingUnavailable = false;
     waterOverlayColors = new Map<number, [number, number, number]>();
 
