@@ -110,6 +110,26 @@ export interface RustRendererWasm {
         colorBanding: number,
         transparent: boolean,
     ): void;
+    render_active_npc_pass(
+        drawRanges: Uint32Array,
+        viewMatrix: Float32Array,
+        projectionMatrix: Float32Array,
+        worldEntityTransform: Float32Array,
+        worldEntityOpacity: number,
+        skyRgba: Float32Array,
+        sceneHslOverride: Float32Array,
+        playerPos: Float32Array,
+        renderDistance: number,
+        fogDepth: number,
+        currentTime: number,
+        brightness: number,
+        isNewTextureAnim: boolean,
+        colorBanding: number,
+        npcDataOffset: number,
+        modelYOffset: number,
+        transparent: boolean,
+    ): void;
+
     render_active_static_terrain_ghost_pass(
         viewMatrix: Float32Array,
         projectionMatrix: Float32Array,
@@ -193,6 +213,14 @@ export interface RustStaticFrameState {
 export interface RustResidentMapFrameState extends RustStaticFrameState {
     mapKey: number;
     worldEntityGhostSceneHslOverride?: Float32Array;
+}
+
+export interface RustNpcPassState extends RustStaticFrameState {
+    mapKey: number;
+    drawRanges: Uint32Array;
+    npcDataOffset: number;
+    modelYOffset: number;
+    transparent: boolean;
 }
 
 /**
@@ -412,6 +440,48 @@ export class RustRendererBridge {
         if (!this.beginStaticFrame(frames)) return;
         this.renderOpaqueStaticMaps(frames);
         this.renderTransparentStaticMaps(frames);
+    }
+
+    renderNpcPass(pass: RustNpcPassState): void {
+        if (!this.uploadedMapKeys.has(pass.mapKey)) {
+            throw new Error(
+                `Rust static map ${pass.mapKey} has not been uploaded`,
+            );
+        }
+        if (pass.drawRanges.length % 3 !== 0) {
+            throw new Error(
+                "NPC draw-range packet must contain offset/element/instance triples",
+            );
+        }
+        if (
+            !Number.isInteger(pass.npcDataOffset)
+            || pass.npcDataOffset < 0
+        ) {
+            throw new Error(
+                `Invalid NPC actor-data offset: ${pass.npcDataOffset}`,
+            );
+        }
+
+        this.wasm.select_static_map(pass.mapKey);
+        this.wasm.render_active_npc_pass(
+            pass.drawRanges,
+            pass.viewMatrix,
+            pass.projectionMatrix,
+            pass.worldEntityTransform,
+            pass.worldEntityOpacity,
+            pass.skyRgba,
+            pass.sceneHslOverride,
+            pass.playerPos,
+            pass.renderDistance,
+            pass.fogDepth,
+            pass.currentTime,
+            pass.brightness,
+            pass.isNewTextureAnim,
+            pass.colorBanding,
+            pass.npcDataOffset,
+            pass.modelYOffset,
+            pass.transparent,
+        );
     }
 
     getLastStats(): { drawCalls: number; submittedIndices: number } {
