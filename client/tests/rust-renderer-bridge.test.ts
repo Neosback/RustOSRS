@@ -119,6 +119,7 @@ class MockWasm implements RustRendererWasm {
         modelYOffset: number;
         transparent: boolean;
         cullBackFace: boolean;
+        restoreCullBackFace: boolean;
         worldEntityTransform: Float32Array;
     }> = [];
     passSequence: Array<{
@@ -546,6 +547,7 @@ class MockWasm implements RustRendererWasm {
         modelYOffset: number,
         transparent: boolean,
         cullBackFace: boolean,
+        restoreCullBackFace: boolean,
     ): void {
         this.playerPassCalls.push({
             mapKey: this.selectedMapKey,
@@ -554,6 +556,7 @@ class MockWasm implements RustRendererWasm {
             modelYOffset,
             transparent,
             cullBackFace,
+            restoreCullBackFace,
             worldEntityTransform: new Float32Array(worldEntityTransform),
         });
     }
@@ -1263,6 +1266,7 @@ function frame(): RustStaticFrameState {
             modelYOffset: 2.5,
             transparent: false,
             cullBackFace: true,
+            restoreCullBackFace: true,
             worldEntityTransform: npcTransform,
         },
         playerVertices,
@@ -1287,6 +1291,7 @@ function frame(): RustStaticFrameState {
             modelYOffset: 2.5,
             transparent: false,
             cullBackFace: true,
+            restoreCullBackFace: true,
             worldEntityTransform: npcTransform,
         },
     );
@@ -1299,6 +1304,7 @@ function frame(): RustStaticFrameState {
             modelYOffset: 0.75,
             transparent: true,
             cullBackFace: false,
+            restoreCullBackFace: true,
             worldEntityTransform: npcTransform,
         },
         playerVertices,
@@ -1314,6 +1320,7 @@ function frame(): RustStaticFrameState {
             modelYOffset: 0.75,
             transparent: true,
             cullBackFace: false,
+            restoreCullBackFace: true,
             worldEntityTransform: npcTransform,
         },
     );
