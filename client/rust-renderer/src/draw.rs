@@ -95,10 +95,7 @@ pub fn parse_draw_range_patches(
             ));
         }
 
-        patches.push((
-            range_index,
-            DrawRange::new(chunk[1], chunk[2], chunk[3]),
-        ));
+        patches.push((range_index, DrawRange::new(chunk[1], chunk[2], chunk[3])));
     }
     Ok(patches)
 }
@@ -163,5 +160,4 @@ mod tests {
             "draw-range patch index 1 is outside 1 resident ranges"
         );
     }
-
 }
