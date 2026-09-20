@@ -187,6 +187,10 @@ import {
     createProjectileProgram,
 } from "../../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
+import {
+    capturePicoStaticReference,
+    shouldCaptureRustPixelParity,
+} from "../../rust/RustPixelParity";
 import { renderRustStaticShadowFrame } from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
@@ -734,6 +738,9 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
         profiler.startPhase("roof");
         host.roofPlaneLimit = host.computeFrameRoofPlaneLimit();
+        const rustPixelReference = shouldCaptureRustPixelParity(host)
+            ? capturePicoStaticReference(host, sceneFramebuffer)
+            : undefined;
         renderRustStaticShadowFrame(
             host,
             {
@@ -743,6 +750,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             renderDistance,
             fogDepth,
             timeSec,
+            rustPixelReference,
         );
         host.osrsClient.clientPlugins.beforeSceneRender(host, () => {
             host.renderOpaqueActorPass(playerDataTextureIndex, playerDataTexture);
