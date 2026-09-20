@@ -10,6 +10,7 @@ async function main(): Promise<void> {
         createWorldEntityGhostSceneHslOverride,
         getRustRendererShadowDiagnostics,
         hashExpectedDrawRanges,
+        isRustFullDynamicShadowEnabled,
         isRustGfxShadowEnabled,
         isRustNpcShadowEnabled,
         isRustPlayerShadowEnabled,
@@ -241,6 +242,23 @@ async function main(): Promise<void> {
     assert.equal(
         isRustProjectileShadowEnabled(
             "?rust-renderer=off&rust-projectile-parity=1",
+        ),
+        false,
+    );
+
+    const fullDynamicSearch =
+        "?rust-renderer=shadow"
+        + "&rust-npc-parity=1"
+        + "&rust-player-parity=1"
+        + "&rust-gfx-parity=1"
+        + "&rust-projectile-parity=1";
+    assert.equal(
+        isRustFullDynamicShadowEnabled(fullDynamicSearch),
+        true,
+    );
+    assert.equal(
+        isRustFullDynamicShadowEnabled(
+            fullDynamicSearch.replace("&rust-gfx-parity=1", ""),
         ),
         false,
     );
