@@ -38,6 +38,10 @@ export interface RustRendererShadowDiagnostics {
     expectedDrawCalls: number;
     expectedSubmittedIndices: number;
     drawStatsMatch: boolean;
+    drawHash: number;
+    expectedDrawHash: number;
+    drawSequenceMatch: boolean;
+    staticParityMatch: boolean;
 }
 
 const diagnostics = new WeakMap<
@@ -70,6 +74,10 @@ export function getRustRendererShadowDiagnostics(
         expectedDrawCalls: 0,
         expectedSubmittedIndices: 0,
         drawStatsMatch: true,
+        drawHash: 0,
+        expectedDrawHash: 0,
+        drawSequenceMatch: true,
+        staticParityMatch: true,
     };
 }
 
@@ -141,6 +149,10 @@ export async function initRustRendererShadow(
             expectedDrawCalls: 0,
             expectedSubmittedIndices: 0,
             drawStatsMatch: true,
+            drawHash: 0,
+            expectedDrawHash: 0,
+            drawSequenceMatch: true,
+            staticParityMatch: true,
         });
         console.info("[RustRenderer] shadow renderer enabled");
     } catch (error) {
@@ -279,6 +291,68 @@ export interface RustStaticDrawStats {
     submittedIndices: number;
 }
 
+export const RUST_DRAW_HASH_OFFSET_BASIS = 0x811c9dc5;
+const RUST_DRAW_HASH_PRIME = 0x01000193;
+
+export function hashRustDrawWord(hash: number, value: number): number {
+    return Math.imul(
+        (hash ^ (value >>> 0)) >>> 0,
+        RUST_DRAW_HASH_PRIME,
+    ) >>> 0;
+}
+
+export function hashExpectedDrawRanges(
+    hash: number,
+    mapKey: number,
+    transparent: boolean,
+    useLod: boolean,
+    batchKind: number,
+    ranges: readonly DrawRange[],
+    planes: Uint8Array | undefined,
+    roofPlaneLimit: number,
+    patches?: Uint32Array,
+): number {
+    const overrides = new Map<number, DrawRange>();
+    if (patches) {
+        for (let i = 0; i + 3 < patches.length; i += 4) {
+            overrides.set(patches[i] | 0, [
+                patches[i + 1] >>> 0,
+                patches[i + 2] >>> 0,
+                patches[i + 3] >>> 0,
+            ]);
+        }
+    }
+
+    const flags = (transparent ? 1 : 0) | (useLod ? 2 : 0);
+    const roofLimit = Math.max(0, Math.min(3, roofPlaneLimit | 0));
+
+    for (let index = 0; index < ranges.length; index++) {
+        const range = overrides.get(index) ?? ranges[index];
+        const offset = range?.[0] ?? 0;
+        const elements = range?.[1] ?? 0;
+        const instances = range?.[2] ?? 0;
+        if (elements <= 0 || instances <= 0) continue;
+
+        const plane = planes?.[index] ?? 0;
+        if (roofLimit < 3 && plane > roofLimit) continue;
+
+        for (const value of [
+            mapKey,
+            flags,
+            batchKind,
+            index,
+            offset,
+            elements,
+            instances,
+            plane,
+        ]) {
+            hash = hashRustDrawWord(hash, value);
+        }
+    }
+
+    return hash >>> 0;
+}
+
 export function countExpectedDrawRanges(
     ranges: readonly DrawRange[],
     planes: Uint8Array | undefined,
@@ -402,6 +476,88 @@ function countExpectedMapStaticDraws(
     return total;
 }
 
+function hashExpectedMapStaticPass(
+    hash: number,
+    map: WebGLMapSquare,
+    useLod: boolean,
+    transparent: boolean,
+    roofPlaneLimit: number,
+): number {
+    const mapKey = map.id >>> 0;
+    const terrain = map.getDrawCall(transparent, false, useLod);
+    hash = hashExpectedDrawRanges(
+        hash,
+        mapKey,
+        transparent,
+        useLod,
+        0,
+        terrain.drawRanges,
+        map.getDrawRangesPlanes(transparent, false, useLod),
+        roofPlaneLimit,
+    );
+
+    const loc = map.getLocDrawCall(transparent, false, useLod);
+    if (loc) {
+        hash = hashExpectedDrawRanges(
+            hash,
+            mapKey,
+            transparent,
+            useLod,
+            1,
+            loc.drawRanges,
+            map.getLocDrawRangesPlanes(transparent, false, useLod),
+            roofPlaneLimit,
+            createAnimatedLocDrawRangePatches(
+                map,
+                transparent,
+                useLod,
+            ),
+        );
+    }
+
+    const ground = map.getGroundItemDrawCall(
+        transparent,
+        false,
+        useLod,
+    );
+    if (ground) {
+        hash = hashExpectedDrawRanges(
+            hash,
+            mapKey,
+            transparent,
+            useLod,
+            2,
+            ground.drawRanges,
+            map.getGroundItemDrawRangesPlanes(
+                transparent,
+                false,
+                useLod,
+            ),
+            roofPlaneLimit,
+        );
+    }
+
+    const door = map.getDoorDrawCall(transparent, false, useLod);
+    if (door) {
+        hash = hashExpectedDrawRanges(
+            hash,
+            mapKey,
+            transparent,
+            useLod,
+            3,
+            door.drawRanges,
+            map.getDoorDrawRangesPlanes(
+                transparent,
+                false,
+                useLod,
+            ),
+            roofPlaneLimit,
+        );
+    }
+
+    return hash >>> 0;
+}
+
 export function createAnimatedLocDrawRangePatches(
     map: Pick<WebGLMapSquare, "locsAnimated">,
     transparent: boolean,
@@ -464,6 +620,10 @@ export function renderRustStaticShadowFrame(
                 expectedDrawCalls: 0,
                 expectedSubmittedIndices: 0,
                 drawStatsMatch: true,
+                drawHash: 0,
+                expectedDrawHash: 0,
+                drawSequenceMatch: true,
+                staticParityMatch: true,
             });
             return;
         }
@@ -480,6 +640,10 @@ export function renderRustStaticShadowFrame(
             drawCalls: 0,
             submittedIndices: 0,
         };
+        const mirroredStaticMaps: Array<{
+            map: WebGLMapSquare;
+            useLod: boolean;
+        }> = [];
         let eligibleMaps = 0;
 
         for (let i = 0; i < count; i++) {
@@ -541,6 +705,7 @@ export function renderRustStaticShadowFrame(
                 }
             }
 
+            mirroredStaticMaps.push({ map, useLod });
             frames.push({
                 mapKey,
                 viewMatrix: camera.viewMatrix,
@@ -561,11 +726,45 @@ export function renderRustStaticShadowFrame(
             });
         }
 
+        let expectedDrawHash = RUST_DRAW_HASH_OFFSET_BASIS;
+        for (const entry of mirroredStaticMaps) {
+            expectedDrawHash = hashExpectedMapStaticPass(
+                expectedDrawHash,
+                entry.map,
+                entry.useLod,
+                false,
+                roofPlaneLimit,
+            );
+        }
+        for (let i = mirroredStaticMaps.length - 1; i >= 0; i--) {
+            const entry = mirroredStaticMaps[i];
+            expectedDrawHash = hashExpectedMapStaticPass(
+                expectedDrawHash,
+                entry.map,
+                entry.useLod,
+                true,
+                roofPlaneLimit,
+            );
+        }
+
         runtime.bridge.renderStaticMaps(frames);
         const stats =
             frames.length > 0
                 ? runtime.bridge.getLastStats()
                 : { drawCalls: 0, submittedIndices: 0 };
+        const drawHash =
+            frames.length > 0
+                ? runtime.bridge.getLastDrawHash()
+                : 0;
+        if (frames.length === 0) {
+            expectedDrawHash = 0;
+        }
+        const drawStatsMatch =
+            stats.drawCalls === expectedStats.drawCalls
+            && stats.submittedIndices
+                === expectedStats.submittedIndices;
+        const drawSequenceMatch =
+            drawHash === (expectedDrawHash >>> 0);
         publishDiagnostics(host, {
             enabled: true,
             failed: false,
@@ -577,10 +776,11 @@ export function renderRustStaticShadowFrame(
             submittedIndices: stats.submittedIndices,
             expectedDrawCalls: expectedStats.drawCalls,
             expectedSubmittedIndices: expectedStats.submittedIndices,
-            drawStatsMatch:
-                stats.drawCalls === expectedStats.drawCalls
-                && stats.submittedIndices
-                    === expectedStats.submittedIndices,
+            drawStatsMatch,
+            drawHash,
+            expectedDrawHash: expectedDrawHash >>> 0,
+            drawSequenceMatch,
+            staticParityMatch: drawStatsMatch && drawSequenceMatch,
         });
     } catch (error) {
         disableShadow(host, "frame render", error);
