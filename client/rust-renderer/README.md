@@ -89,7 +89,7 @@ Move players, NPCs, projectiles, GFX, dynamic transparency and priority ordering
 
 ### Stage 3: renderer services
 
-Move renderer-owned picking data, LOD/render-distance filtering, GPU profiler counters, resize/MSAA/FXAA, texture animation and 3D overlay geometry.
+Move the remaining renderer-owned presentation services: primary scene framebuffer ownership, resize/MSAA/FXAA, final blit/presentation, GPU profiler counters and scene-space overlay/highlight geometry. World interaction itself is already CPU-side through `SceneRaycaster`, so a Rust GPU picking framebuffer is not a cutover requirement for the current client.
 
 ### Stage 4: delete PicoGL rendering
 
@@ -105,7 +105,6 @@ Port VertexBuffer, SceneBuffer, model face packing, model hashing, terrain/loc m
 The Rust renderer must not become the primary canvas until these renderer-owned services are present and parity-tested:
 
 - representative dynamic-scene parity acceptance across NPC/player/GFX/projectile overlap, transparency and priority cases
-- GPU picking/interaction framebuffer for object, NPC, player and tile hover/click semantics
 - final scene framebuffer ownership, resize/MSAA handling, FXAA and presentation/blit path
 - world-space interaction/highlight and 3D overlay geometry that currently depends on the PicoGL scene pipeline
 - removal of temporary GLSL duplication between the PicoGL and Rust trees, or a generated/shared shader-source path that prevents semantic drift
