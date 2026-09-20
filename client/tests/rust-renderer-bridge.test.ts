@@ -7,6 +7,7 @@ import {
 } from "../render/rust/RustRendererBridge";
 import {
     RUST_RENDERER_ABI_VERSION,
+    RustStaticGeometryPacket,
     RustStaticScenePacket,
 } from "../render/rust/RendererPacket";
 import { getRustRendererGlobalResourceSnapshot } from "../render/rust/LiveResourceAdapter";
@@ -24,6 +25,9 @@ class MockWasm implements RustRendererWasm {
     drawRangeUploads: Uint32Array[] = [];
     staticPassUploads = 0;
     staticLodPassUploads = 0;
+    auxGeometryUploads: number[] = [];
+    auxPassUploads: number[] = [];
+    auxLodPassUploads: number[] = [];
     textureResourceUploads = 0;
     materialResourceUploads = 0;
     waterResourceUploads = 0;
@@ -117,6 +121,38 @@ class MockWasm implements RustRendererWasm {
         this.alphaLodRanges = alphaRanges;
         this.opaqueLodRangePlanes = opaqueRangePlanes;
         this.alphaLodRangePlanes = alphaRangePlanes;
+    }
+
+    upload_aux_geometry(
+        kind: number,
+        _vertices: Uint32Array,
+        _indices: Uint32Array,
+    ): void {
+        this.auxGeometryUploads.push(kind);
+    }
+
+    upload_aux_passes(
+        kind: number,
+        _modelInfoOpaque: Uint16Array,
+        _opaqueRanges: Uint32Array,
+        _opaqueRangePlanes: Uint8Array,
+        _modelInfoAlpha: Uint16Array,
+        _alphaRanges: Uint32Array,
+        _alphaRangePlanes: Uint8Array,
+    ): void {
+        this.auxPassUploads.push(kind);
+    }
+
+    upload_aux_lod_passes(
+        kind: number,
+        _modelInfoOpaque: Uint16Array,
+        _opaqueRanges: Uint32Array,
+        _opaqueRangePlanes: Uint8Array,
+        _modelInfoAlpha: Uint16Array,
+        _alphaRanges: Uint32Array,
+        _alphaRangePlanes: Uint8Array,
+    ): void {
+        this.auxLodPassUploads.push(kind);
     }
 
     upload_texture_array(
@@ -225,6 +261,27 @@ class MockWasm implements RustRendererWasm {
         }
         return indices;
     }
+}
+
+function emptyGeometryPacket(): RustStaticGeometryPacket {
+    return {
+        packedVertexWords: new Uint32Array(),
+        indices: new Uint32Array(),
+        modelInfoOpaque: new Uint16Array(64),
+        modelInfoAlpha: new Uint16Array(64),
+        modelInfoOpaqueLod: new Uint16Array(64),
+        modelInfoAlphaLod: new Uint16Array(64),
+        opaqueDrawRanges: new Uint32Array(),
+        opaqueDrawRangePlanes: new Uint8Array(),
+        alphaDrawRanges: new Uint32Array(),
+        alphaDrawRangePlanes: new Uint8Array(),
+        opaqueLodDrawRanges: new Uint32Array(),
+        opaqueLodDrawRangePlanes: new Uint8Array(),
+        alphaLodDrawRanges: new Uint32Array(),
+        alphaLodDrawRangePlanes: new Uint8Array(),
+        locGeometry: emptyGeometryPacket(),
+        doorGeometry: emptyGeometryPacket(),
+    };
 }
 
 function packet(): RustStaticScenePacket {
@@ -358,6 +415,9 @@ function frame(): RustStaticFrameState {
     assert.equal(wasm.staticStateCalls, 1);
     assert.equal(wasm.staticPassUploads, 1);
     assert.equal(wasm.staticLodPassUploads, 1);
+    assert.deepEqual(wasm.auxGeometryUploads, [0, 1]);
+    assert.deepEqual(wasm.auxPassUploads, []);
+    assert.deepEqual(wasm.auxLodPassUploads, []);
     assert.equal(wasm.modelInfoUploads.length, 0);
     assert.equal(wasm.drawRangeUploads.length, 0);
     assert.equal(wasm.renderFrameCalls, 1);
@@ -450,6 +510,38 @@ function frame(): RustStaticFrameState {
         drawCalls: 1,
         submittedIndices: 6,
     });
+    bridge.dispose();
+}
+
+{
+    const withLoc = packet();
+    withLoc.locGeometry = {
+        packedVertexWords: new Uint32Array([1, 2, 3]),
+        indices: new Uint32Array([0, 0, 0]),
+        modelInfoOpaque: new Uint16Array(64),
+        modelInfoAlpha: new Uint16Array(64),
+        modelInfoOpaqueLod: new Uint16Array(64),
+        modelInfoAlphaLod: new Uint16Array(64),
+        opaqueDrawRanges: new Uint32Array([0, 3, 1]),
+        opaqueDrawRangePlanes: new Uint8Array([0]),
+        alphaDrawRanges: new Uint32Array(),
+        alphaDrawRangePlanes: new Uint8Array(),
+        opaqueLodDrawRanges: new Uint32Array([0, 3, 1]),
+        opaqueLodDrawRangePlanes: new Uint8Array([0]),
+        alphaLodDrawRanges: new Uint32Array(),
+        alphaLodDrawRangePlanes: new Uint8Array(),
+    };
+
+    const bridge = new RustRendererBridge(
+        {} as HTMLCanvasElement,
+        MockWasm,
+    );
+    bridge.uploadStaticScene(withLoc, 7.0);
+
+    const wasm = MockWasm.last!;
+    assert.deepEqual(wasm.auxGeometryUploads, [0, 1]);
+    assert.deepEqual(wasm.auxPassUploads, [0]);
+    assert.deepEqual(wasm.auxLodPassUploads, [0]);
     bridge.dispose();
 }
 
