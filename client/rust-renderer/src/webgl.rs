@@ -243,6 +243,77 @@ impl StaticGeometryBatch {
     }
 }
 
+
+struct IndexedGeometryBatch {
+    vertex_buffer: WebGlBuffer,
+    index_buffer: WebGlBuffer,
+    vao: WebGlVertexArrayObject,
+    index_count: u32,
+}
+
+impl IndexedGeometryBatch {
+    fn new(gl: &Gl) -> Result<Self, JsValue> {
+        let vertex_buffer = gl
+            .create_buffer()
+            .ok_or_else(|| JsValue::from_str("failed to create indexed vertex buffer"))?;
+        let index_buffer = gl
+            .create_buffer()
+            .ok_or_else(|| JsValue::from_str("failed to create indexed index buffer"))?;
+        let vao = gl
+            .create_vertex_array()
+            .ok_or_else(|| JsValue::from_str("failed to create indexed vertex array"))?;
+
+        gl.bind_vertex_array(Some(&vao));
+        gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&vertex_buffer));
+        gl.enable_vertex_attrib_array(0);
+        gl.vertex_attrib_i_pointer_with_i32(0, 3, Gl::UNSIGNED_INT, 12, 0);
+        gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
+        gl.bind_vertex_array(None);
+
+        Ok(Self {
+            vertex_buffer,
+            index_buffer,
+            vao,
+            index_count: 0,
+        })
+    }
+
+    fn upload_geometry(
+        &mut self,
+        gl: &Gl,
+        packed_vertices: &[u32],
+        indices: &[u32],
+    ) -> Result<(), JsValue> {
+        validate_geometry(packed_vertices, indices)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+        let vertices = js_sys::Uint32Array::from(packed_vertices);
+        let index_data = js_sys::Uint32Array::from(indices);
+
+        gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&self.vertex_buffer));
+        gl.buffer_data_with_opt_array_buffer(
+            Gl::ARRAY_BUFFER,
+            Some(&vertices.buffer()),
+            Gl::STATIC_DRAW,
+        );
+        gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
+        gl.buffer_data_with_opt_array_buffer(
+            Gl::ELEMENT_ARRAY_BUFFER,
+            Some(&index_data.buffer()),
+            Gl::STATIC_DRAW,
+        );
+
+        self.index_count = indices.len() as u32;
+        Ok(())
+    }
+
+    fn delete(&self, gl: &Gl) {
+        gl.delete_vertex_array(Some(&self.vao));
+        gl.delete_buffer(Some(&self.vertex_buffer));
+        gl.delete_buffer(Some(&self.index_buffer));
+    }
+}
+
 const AUX_BATCH_LOC: u32 = 0;
 const AUX_BATCH_DOOR: u32 = 1;
 const AUX_BATCH_GROUND: u32 = 2;
@@ -252,6 +323,7 @@ struct StaticMapResources {
     loc_batch: Option<StaticGeometryBatch>,
     ground_batch: Option<StaticGeometryBatch>,
     door_batch: Option<StaticGeometryBatch>,
+    npc_batch: Option<IndexedGeometryBatch>,
     height_map_texture: WebGlTexture,
     water_mask_texture: WebGlTexture,
     state: Option<StaticMapState>,
@@ -268,6 +340,7 @@ impl StaticMapResources {
             loc_batch: None,
             ground_batch: None,
             door_batch: None,
+            npc_batch: None,
             height_map_texture,
             water_mask_texture,
             state: None,
@@ -280,6 +353,7 @@ impl StaticMapResources {
             && self.loc_batch.is_none()
             && self.ground_batch.is_none()
             && self.door_batch.is_none()
+            && self.npc_batch.is_none()
     }
 
     fn delete(&mut self, gl: &Gl) {
@@ -291,6 +365,9 @@ impl StaticMapResources {
             batch.delete(gl);
         }
         if let Some(batch) = self.door_batch.take() {
+            batch.delete(gl);
+        }
+        if let Some(batch) = self.npc_batch.take() {
             batch.delete(gl);
         }
         gl.delete_texture(Some(&self.height_map_texture));
@@ -515,6 +592,36 @@ impl RustWebGlRenderer {
         self.static_map
             .terrain_batch
             .upload_geometry(&self.gl, packed_vertices, indices)
+    }
+
+    /// Uploads the current map's prebaked NPC packed geometry. The NPC shader
+    /// is not Rust-owned yet; Stage 2 mirrors GPU ownership first so draw
+    /// behavior can move independently in the next parity step.
+    pub fn upload_npc_geometry(
+        &mut self,
+        packed_vertices: &[u32],
+        indices: &[u32],
+    ) -> Result<(), JsValue> {
+        if packed_vertices.is_empty() && indices.is_empty() {
+            if let Some(batch) = self.static_map.npc_batch.take() {
+                batch.delete(&self.gl);
+            }
+            return Ok(());
+        }
+
+        let mut batch = self
+            .static_map
+            .npc_batch
+            .take()
+            .unwrap_or(IndexedGeometryBatch::new(&self.gl)?);
+
+        if let Err(error) = batch.upload_geometry(&self.gl, packed_vertices, indices) {
+            self.static_map.npc_batch = Some(batch);
+            return Err(error);
+        }
+
+        self.static_map.npc_batch = Some(batch);
+        Ok(())
     }
 
     /// Uploads one RGBA16UI model-info packet produced by SceneBuffer.
