@@ -40,7 +40,8 @@ type RustShadowFramePhase =
     | "prepared"
     | "opaque-actors"
     | "transparent-static"
-    | "transparent-actors";
+    | "transparent-actors"
+    | "scene-overlays";
 
 interface ActiveRustShadowFrame {
     frames: RustResidentMapFrameState[];
@@ -60,10 +61,12 @@ interface ActiveRustShadowFrame {
     playerParityEnabled: boolean;
     gfxParityEnabled: boolean;
     projectileParityEnabled: boolean;
+    overlayParityEnabled: boolean;
     mirroredNpcPasses: number;
     mirroredPlayerPasses: number;
     mirroredGfxPasses: number;
     mirroredProjectilePasses: number;
+    mirroredOverlayPasses: number;
     phase: RustShadowFramePhase;
 }
 
@@ -116,6 +119,17 @@ export function isRustProjectileShadowEnabled(search?: string): boolean {
     );
 }
 
+export function isRustSceneOverlayShadowEnabled(search?: string): boolean {
+    const query =
+        search
+        ?? (typeof window !== "undefined" ? window.location.search : "");
+    const params = new URLSearchParams(query);
+    return (
+        params.get("rust-renderer") === "shadow"
+        && params.get("rust-overlay-parity") === "1"
+    );
+}
+
 export function isRustPresentationShadowEnabled(search?: string): boolean {
     const query =
         search
@@ -159,10 +173,12 @@ export interface RustRendererShadowDiagnostics {
     playerParityEnabled: boolean;
     gfxParityEnabled: boolean;
     projectileParityEnabled: boolean;
+    overlayParityEnabled: boolean;
     mirroredNpcPasses: number;
     mirroredPlayerPasses: number;
     mirroredGfxPasses: number;
     mirroredProjectilePasses: number;
+    mirroredOverlayPasses: number;
     pixelParity?: RustPixelParityMetrics;
 }
 
