@@ -97,11 +97,7 @@ fn normalized(value: i8) -> f32 {
 }
 
 fn rgb(row: [i8; 4]) -> [f32; 3] {
-    [
-        normalized(row[0]),
-        normalized(row[1]),
-        normalized(row[2]),
-    ]
+    [normalized(row[0]), normalized(row[1]), normalized(row[2])]
 }
 
 #[cfg(test)]
