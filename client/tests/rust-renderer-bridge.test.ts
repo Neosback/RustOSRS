@@ -9,6 +9,7 @@ import {
     RUST_RENDERER_ABI_VERSION,
     RustStaticScenePacket,
 } from "../render/rust/RendererPacket";
+import { getRustRendererGlobalResourceSnapshot } from "../render/rust/LiveResourceAdapter";
 
 class MockWasm implements RustRendererWasm {
     static abiVersion = RUST_RENDERER_ABI_VERSION;
@@ -23,6 +24,9 @@ class MockWasm implements RustRendererWasm {
     drawRangeUploads: Uint32Array[] = [];
     staticPassUploads = 0;
     staticLodPassUploads = 0;
+    textureResourceUploads = 0;
+    materialResourceUploads = 0;
+    waterResourceUploads = 0;
     renderFrameCalls = 0;
     lastWorldEntityTransform?: Float32Array;
     lastWorldEntityOpacity = 1;
@@ -120,19 +124,25 @@ class MockWasm implements RustRendererWasm {
         _width: number,
         _height: number,
         _layers: number,
-    ): void {}
+    ): void {
+        this.textureResourceUploads++;
+    }
 
     upload_materials(
         _materials: Int8Array,
         _textureCount: number,
-    ): void {}
+    ): void {
+        this.materialResourceUploads++;
+    }
 
     upload_water_textures(
         _pixels: Uint8Array,
         _width: number,
         _height: number,
         _layers: number,
-    ): void {}
+    ): void {
+        this.waterResourceUploads++;
+    }
 
     render_static_frame(
         _viewMatrix: Float32Array,
@@ -267,6 +277,51 @@ function frame(): RustStaticFrameState {
         isNewTextureAnim: false,
         colorBanding: 255,
     };
+}
+
+{
+    const source = {
+        textureArrayPixels: new Uint8Array(128 * 128 * 2 * 4),
+        textureMaterialBytes: new Int8Array(2 * 6 * 4),
+        waterTexturePixels: new Uint8Array(128 * 128 * 5 * 4),
+        textureLayerCount: 2,
+        rustGlobalResourcesRevision: 7,
+    };
+    const snapshot = getRustRendererGlobalResourceSnapshot(source);
+    assert.ok(snapshot);
+    assert.equal(snapshot.revision, 7);
+    assert.equal(snapshot.resources.textureWidth, 128);
+    assert.equal(snapshot.resources.textureLayers, 2);
+    assert.equal(snapshot.resources.materialCount, 2);
+    assert.equal(snapshot.resources.waterLayers, 5);
+
+    const bridge = new RustRendererBridge(
+        {} as HTMLCanvasElement,
+        MockWasm,
+    );
+    bridge.uploadGlobalResources(snapshot.resources);
+    const wasm = MockWasm.last!;
+    assert.equal(wasm.textureResourceUploads, 1);
+    assert.equal(wasm.materialResourceUploads, 1);
+    assert.equal(wasm.waterResourceUploads, 1);
+    bridge.dispose();
+
+    assert.equal(
+        getRustRendererGlobalResourceSnapshot({
+            textureLayerCount: 0,
+            rustGlobalResourcesRevision: 0,
+        }),
+        undefined,
+    );
+
+    assert.throws(
+        () =>
+            getRustRendererGlobalResourceSnapshot({
+                ...source,
+                textureMaterialBytes: new Int8Array(1),
+            }),
+        /material table has 1 bytes/,
+    );
 }
 
 {
