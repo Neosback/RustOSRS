@@ -575,6 +575,7 @@ impl RustWebGlRenderer {
         is_new_texture_anim: bool,
         color_banding: f32,
         discard_alpha: bool,
+        clear_frame: bool,
     ) -> Result<(), JsValue> {
         require_matrix(view_matrix, "view_matrix")?;
         require_matrix(projection_matrix, "projection_matrix")?;
@@ -587,7 +588,11 @@ impl RustWebGlRenderer {
             .static_state
             .ok_or_else(|| JsValue::from_str("static map state has not been configured"))?;
 
-        self.prepare_default_frame(sky_rgba);
+        if clear_frame {
+            self.prepare_default_frame(sky_rgba);
+        } else {
+            self.prepare_viewport();
+        }
         self.gl.use_program(Some(&self.static_program.program));
 
         self.gl.uniform_matrix4fv_with_f32_array(
@@ -700,7 +705,12 @@ impl RustWebGlRenderer {
             Some(&self.static_program.draw_id),
         );
         self.gl.bind_vertex_array(None);
-        self.last_stats = stats;
+        if clear_frame {
+            self.last_stats = stats;
+        } else {
+            self.last_stats.draw_calls += stats.draw_calls;
+            self.last_stats.submitted_indices += stats.submitted_indices;
+        }
         Ok(())
     }
 
@@ -729,10 +739,14 @@ impl RustWebGlRenderer {
         self.static_state = None;
     }
 
-    fn prepare_default_frame(&self, clear_rgba: &[f32]) {
+    fn prepare_viewport(&self) {
         let width = self.canvas.width() as i32;
         let height = self.canvas.height() as i32;
         self.gl.viewport(0, 0, width.max(1), height.max(1));
+    }
+
+    fn prepare_default_frame(&self, clear_rgba: &[f32]) {
+        self.prepare_viewport();
         self.gl
             .clear_color(clear_rgba[0], clear_rgba[1], clear_rgba[2], clear_rgba[3]);
         self.gl.clear(Gl::COLOR_BUFFER_BIT | Gl::DEPTH_BUFFER_BIT);
