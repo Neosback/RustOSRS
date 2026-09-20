@@ -18,6 +18,7 @@ import {
 import type { RustResidentMapFrameState } from "./RustRendererBridge";
 import {
     createRustRendererShadowRuntime,
+    isRustPrimaryRuntime,
     syncRustShadowCanvasSize,
     type RustRendererShadowRuntime,
 } from "./RustRendererRuntime";
@@ -75,10 +76,20 @@ const activeShadowFrames = new WeakMap<
     ActiveRustShadowFrame
 >();
 
+export function isRustPrimaryRendererEnabled(
+    search?: string,
+): boolean {
+    const query =
+        search
+        ?? (typeof window !== "undefined" ? window.location.search : "");
+    return isRustPrimaryRuntime(query);
+}
+
 export function isRustNpcShadowEnabled(search?: string): boolean {
     const query =
         search
         ?? (typeof window !== "undefined" ? window.location.search : "");
+    if (isRustPrimaryRuntime(query)) return true;
     const params = new URLSearchParams(query);
     return (
         params.get("rust-renderer") === "shadow"
@@ -90,6 +101,7 @@ export function isRustPlayerShadowEnabled(search?: string): boolean {
     const query =
         search
         ?? (typeof window !== "undefined" ? window.location.search : "");
+    if (isRustPrimaryRuntime(query)) return true;
     const params = new URLSearchParams(query);
     return (
         params.get("rust-renderer") === "shadow"
@@ -101,6 +113,7 @@ export function isRustGfxShadowEnabled(search?: string): boolean {
     const query =
         search
         ?? (typeof window !== "undefined" ? window.location.search : "");
+    if (isRustPrimaryRuntime(query)) return true;
     const params = new URLSearchParams(query);
     return (
         params.get("rust-renderer") === "shadow"
@@ -112,6 +125,7 @@ export function isRustProjectileShadowEnabled(search?: string): boolean {
     const query =
         search
         ?? (typeof window !== "undefined" ? window.location.search : "");
+    if (isRustPrimaryRuntime(query)) return true;
     const params = new URLSearchParams(query);
     return (
         params.get("rust-renderer") === "shadow"
@@ -123,6 +137,7 @@ export function isRustSceneOverlayShadowEnabled(search?: string): boolean {
     const query =
         search
         ?? (typeof window !== "undefined" ? window.location.search : "");
+    if (isRustPrimaryRuntime(query)) return true;
     const params = new URLSearchParams(query);
     return (
         params.get("rust-renderer") === "shadow"
@@ -134,6 +149,7 @@ export function isRustPresentationShadowEnabled(search?: string): boolean {
     const query =
         search
         ?? (typeof window !== "undefined" ? window.location.search : "");
+    if (isRustPrimaryRuntime(query)) return true;
     const params = new URLSearchParams(query);
     return (
         params.get("rust-renderer") === "shadow"
@@ -252,6 +268,9 @@ function disableShadow(
         try {
             runtime.bridge.dispose();
         } catch {}
+        try {
+            runtime.disposeDom?.();
+        } catch {}
         runtimes.delete(host);
     }
     disposeRustPixelParity(host);
@@ -312,7 +331,8 @@ export async function initRustRendererShadow(
 
         runtimes.set(host, runtime);
         runtime.bridge.setPresentationEnabled(
-            isRustPresentationShadowEnabled(),
+            runtime.mode === "primary"
+            || isRustPresentationShadowEnabled(),
         );
         runtime.bridge.setPresentationMsaaEnabled(
             !!host.msaaEnabled,
@@ -362,6 +382,9 @@ export function disposeRustRendererShadow(
     if (runtime) {
         try {
             runtime.bridge.dispose();
+        } catch {}
+        try {
+            runtime.disposeDom?.();
         } catch {}
         runtimes.delete(host);
     }
