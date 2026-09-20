@@ -96,6 +96,7 @@ struct PlayerProgram {
     is_new_texture_anim: WebGlUniformLocation,
     color_banding: WebGlUniformLocation,
     player_data_offset: WebGlUniformLocation,
+    use_player_slot_attribute: WebGlUniformLocation,
     map_pos: WebGlUniformLocation,
     time_loaded: WebGlUniformLocation,
     scene_border_size: WebGlUniformLocation,
@@ -466,6 +467,7 @@ pub struct RustWebGlRenderer {
     dynamic_npc_batch: IndexedGeometryBatch,
     player_program: PlayerProgram,
     dynamic_player_batch: IndexedGeometryBatch,
+    player_slot_buffer: WebGlBuffer,
 
     static_map_key: u32,
     static_map: StaticMapResources,
@@ -502,6 +504,15 @@ impl RustWebGlRenderer {
         let static_map = StaticMapResources::new(&gl)?;
         let dynamic_npc_batch = IndexedGeometryBatch::new(&gl)?;
         let dynamic_player_batch = IndexedGeometryBatch::new(&gl)?;
+        let player_slot_buffer = gl
+            .create_buffer()
+            .ok_or_else(|| JsValue::from_str("failed to create player slot buffer"))?;
+        gl.bind_vertex_array(Some(&dynamic_player_batch.vao));
+        gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&player_slot_buffer));
+        gl.enable_vertex_attrib_array(1);
+        gl.vertex_attrib_i_pointer_with_i32(1, 1, Gl::INT, 4, 0);
+        gl.vertex_attrib_divisor(1, 1);
+        gl.bind_vertex_array(None);
         let texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         let material_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
         let water_texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
@@ -605,6 +616,11 @@ impl RustWebGlRenderer {
             is_new_texture_anim: required_uniform(&gl, &player_program_raw, "u_isNewTextureAnim")?,
             color_banding: required_uniform(&gl, &player_program_raw, "u_colorBanding")?,
             player_data_offset: required_uniform(&gl, &player_program_raw, "u_playerDataOffset")?,
+            use_player_slot_attribute: required_uniform(
+                &gl,
+                &player_program_raw,
+                "u_usePlayerSlotAttribute",
+            )?,
             map_pos: required_uniform(&gl, &player_program_raw, "u_mapPos")?,
             time_loaded: required_uniform(&gl, &player_program_raw, "u_timeLoaded")?,
             scene_border_size: required_uniform(&gl, &player_program_raw, "u_sceneBorderSize")?,
@@ -637,6 +653,7 @@ impl RustWebGlRenderer {
             dynamic_npc_batch,
             player_program,
             dynamic_player_batch,
+            player_slot_buffer,
             static_map_key: 0,
             static_map,
             parked_static_maps: HashMap::new(),
@@ -2150,6 +2167,7 @@ impl RustWebGlRenderer {
         is_new_texture_anim: bool,
         color_banding: f32,
         player_data_offset: i32,
+        player_slots: &[i32],
         model_y_offset: f32,
         transparent: bool,
         cull_back_face: bool,
@@ -2164,6 +2182,9 @@ impl RustWebGlRenderer {
         }
         if player_data_offset < 0 {
             return Err(JsValue::from_str("player_data_offset must be non-negative"));
+        }
+        if player_slots.iter().any(|slot| *slot < 0) {
+            return Err(JsValue::from_str("player slots must be non-negative"));
         }
 
         let state = self
@@ -2235,9 +2256,41 @@ impl RustWebGlRenderer {
             Some(&self.player_program.color_banding),
             color_banding.max(1.0),
         );
+        let (resolved_player_data_offset, use_player_slot_attribute, instance_count) =
+            match player_slots {
+                [] => (player_data_offset, false, 1),
+                [slot] => (
+                    player_data_offset.checked_add(*slot).ok_or_else(|| {
+                        JsValue::from_str("player actor-data offset overflow")
+                    })?,
+                    false,
+                    1,
+                ),
+                slots => {
+                    let slot_data = js_sys::Int32Array::from(slots);
+                    self.gl
+                        .bind_buffer(Gl::ARRAY_BUFFER, Some(&self.player_slot_buffer));
+                    self.gl.buffer_data_with_opt_array_buffer(
+                        Gl::ARRAY_BUFFER,
+                        Some(&slot_data.buffer()),
+                        Gl::DYNAMIC_DRAW,
+                    );
+                    (
+                        player_data_offset,
+                        true,
+                        u32::try_from(slots.len()).map_err(|_| {
+                            JsValue::from_str("too many player slots")
+                        })?,
+                    )
+                }
+            };
         self.gl.uniform1i(
             Some(&self.player_program.player_data_offset),
-            player_data_offset,
+            resolved_player_data_offset,
+        );
+        self.gl.uniform1i(
+            Some(&self.player_program.use_player_slot_attribute),
+            i32::from(use_player_slot_attribute),
         );
         self.gl
             .uniform2f(Some(&self.player_program.map_pos), state.map_x, state.map_y);
@@ -2286,7 +2339,7 @@ impl RustWebGlRenderer {
         self.gl
             .uniform1i(Some(&self.player_program.material_sampler), 3);
 
-        let range = [DrawRange::new(0, index_count, 1)];
+        let range = [DrawRange::new(0, index_count, instance_count)];
         let flags = u32::from(transparent);
         self.last_draw_hash = hash_visible_draw_ranges(
             self.last_draw_hash,
@@ -2331,6 +2384,7 @@ impl RustWebGlRenderer {
         self.gl.delete_texture(Some(&self.actor_data_texture));
         self.dynamic_npc_batch.delete(&self.gl);
         self.dynamic_player_batch.delete(&self.gl);
+        self.gl.delete_buffer(Some(&self.player_slot_buffer));
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
         self.gl.delete_program(Some(&self.npc_program.program));
