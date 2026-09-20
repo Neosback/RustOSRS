@@ -84,6 +84,11 @@ export interface RustRendererWasm {
         height: number,
         layers: number,
     ): void;
+    upload_actor_data(
+        values: Uint16Array,
+        width: number,
+        height: number,
+    ): void;
 
     begin_static_frame(skyRgba: Float32Array): void;
     render_active_static_map_pass(
@@ -235,6 +240,32 @@ export class RustRendererBridge {
             resources.waterHeight,
             resources.waterLayers,
         );
+    }
+
+    uploadActorData(
+        values: Uint16Array,
+        width: number,
+        height: number,
+    ): void {
+        if (
+            !Number.isInteger(width)
+            || !Number.isInteger(height)
+            || width <= 0
+            || height <= 0
+        ) {
+            throw new Error(
+                `Invalid actor-data texture dimensions: ${width}x${height}`,
+            );
+        }
+
+        const expected = width * height * 4;
+        if (values.length !== expected) {
+            throw new Error(
+                `Actor-data packet has ${values.length} u16 values; expected ${expected} for ${width}x${height} RGBA16UI`,
+            );
+        }
+
+        this.wasm.upload_actor_data(values, width, height);
     }
 
     /**
