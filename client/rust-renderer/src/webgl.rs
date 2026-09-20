@@ -63,6 +63,7 @@ pub struct RustWebGlRenderer {
     vao: WebGlVertexArrayObject,
 
     model_info_texture: WebGlTexture,
+    model_info_alpha_texture: WebGlTexture,
     height_map_texture: WebGlTexture,
     texture_array: WebGlTexture,
     material_texture: WebGlTexture,
@@ -73,6 +74,7 @@ pub struct RustWebGlRenderer {
     static_state: Option<StaticMapState>,
 
     draw_ranges: Vec<DrawRange>,
+    draw_ranges_alpha: Vec<DrawRange>,
     index_count: u32,
     last_stats: DrawStats,
 }
@@ -110,6 +112,7 @@ impl RustWebGlRenderer {
         gl.bind_vertex_array(None);
 
         let model_info_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
+        let model_info_alpha_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
         let height_map_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         let texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         let material_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
@@ -170,6 +173,7 @@ impl RustWebGlRenderer {
             index_buffer,
             vao,
             model_info_texture,
+            model_info_alpha_texture,
             height_map_texture,
             texture_array,
             material_texture,
@@ -179,6 +183,7 @@ impl RustWebGlRenderer {
             material_count: 1,
             static_state: None,
             draw_ranges: Vec::new(),
+            draw_ranges_alpha: Vec::new(),
             index_count: 0,
             last_stats: DrawStats::default(),
         })
@@ -240,6 +245,35 @@ impl RustWebGlRenderer {
         self.gl.active_texture(Gl::TEXTURE0);
         self.gl
             .bind_texture(Gl::TEXTURE_2D, Some(&self.model_info_texture));
+        self.gl
+            .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
+                Gl::TEXTURE_2D,
+                0,
+                Gl::RGBA16UI as i32,
+                16,
+                rows,
+                0,
+                Gl::RGBA_INTEGER,
+                Gl::UNSIGNED_SHORT,
+                Some(data.unchecked_ref()),
+            )?;
+        Ok(())
+    }
+
+    /// Uploads the RGBA16UI model-info packet for the alpha static pass.
+    pub fn upload_model_info_alpha(&mut self, model_info: &[u16]) -> Result<(), JsValue> {
+        if model_info.is_empty() || model_info.len() % (16 * 4) != 0 {
+            return Err(JsValue::from_str(
+                "alpha model-info packet must contain complete 16-wide RGBA16UI rows",
+            ));
+        }
+
+        let rows = (model_info.len() / (16 * 4)) as i32;
+        let data = js_sys::Uint16Array::from(model_info);
+
+        self.gl.active_texture(Gl::TEXTURE0);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D, Some(&self.model_info_alpha_texture));
         self.gl
             .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
                 Gl::TEXTURE_2D,
@@ -514,8 +548,39 @@ impl RustWebGlRenderer {
         Ok(())
     }
 
+    pub fn set_draw_ranges_alpha(&mut self, flat_ranges: &[u32]) -> Result<(), JsValue> {
+        let ranges = parse_draw_ranges(flat_ranges).map_err(JsValue::from_str)?;
+        validate_draw_ranges(&ranges, self.index_count as usize)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        self.draw_ranges_alpha = ranges;
+        Ok(())
+    }
+
+    /// Uploads both static map passes once so frame rendering stays Rust-owned.
+    pub fn upload_static_passes(
+        &mut self,
+        model_info_opaque: &[u16],
+        opaque_ranges: &[u32],
+        model_info_alpha: &[u16],
+        alpha_ranges: &[u32],
+    ) -> Result<(), JsValue> {
+        let opaque = parse_draw_ranges(opaque_ranges).map_err(JsValue::from_str)?;
+        validate_draw_ranges(&opaque, self.index_count as usize)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let alpha = parse_draw_ranges(alpha_ranges).map_err(JsValue::from_str)?;
+        validate_draw_ranges(&alpha, self.index_count as usize)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+        self.upload_model_info(model_info_opaque)?;
+        self.upload_model_info_alpha(model_info_alpha)?;
+        self.draw_ranges = opaque;
+        self.draw_ranges_alpha = alpha;
+        Ok(())
+    }
+
     pub fn clear_draw_ranges(&mut self) {
         self.draw_ranges.clear();
+        self.draw_ranges_alpha.clear();
     }
 
     /// Stage-0 geometry/HSL reference pass retained as an A/B diagnostic.
@@ -539,7 +604,13 @@ impl RustWebGlRenderer {
             .uniform1f(Some(&self.reference_brightness), brightness.max(0.0001));
         self.gl.bind_vertex_array(Some(&self.vao));
 
-        let stats = submit_draw_ranges(&self.gl, &self.draw_ranges, self.index_count, None);
+        let stats = submit_draw_ranges(
+            &self.gl,
+            &self.draw_ranges,
+            self.index_count,
+            None,
+            true,
+        );
         self.gl.bind_vertex_array(None);
         self.last_stats = stats;
         Ok(())
@@ -555,10 +626,77 @@ impl RustWebGlRenderer {
         self.render_reference(view_projection, clear_rgba, brightness)
     }
 
-    /// Stage-1 static-scene pass matching the current map-square transform path.
+    /// Renders the resident opaque and alpha static passes as one Rust-owned frame.
     ///
-    /// Textures/materials/water are intentionally not consumed yet. Textured
-    /// faces remain a light-intensity fallback until the material pass lands.
+    /// Opaque geometry uses alpha-test discard and clears the frame. The alpha
+    /// pass preserves the opaque color/depth buffers and does not fall back to
+    /// drawing the whole index buffer when its range list is empty.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_static_frame(
+        &mut self,
+        view_matrix: &[f32],
+        projection_matrix: &[f32],
+        sky_rgba: &[f32],
+        scene_hsl_override: &[f32],
+        player_pos: &[f32],
+        render_distance: f32,
+        fog_depth: f32,
+        current_time: f32,
+        brightness: f32,
+        roof_plane_limit: f32,
+        is_new_texture_anim: bool,
+        color_banding: f32,
+    ) -> Result<(), JsValue> {
+        self.render_static(
+            view_matrix,
+            projection_matrix,
+            sky_rgba,
+            scene_hsl_override,
+            player_pos,
+            render_distance,
+            fog_depth,
+            current_time,
+            brightness,
+            roof_plane_limit,
+            is_new_texture_anim,
+            color_banding,
+            true,
+            true,
+        )?;
+
+        std::mem::swap(
+            &mut self.model_info_texture,
+            &mut self.model_info_alpha_texture,
+        );
+        std::mem::swap(&mut self.draw_ranges, &mut self.draw_ranges_alpha);
+
+        let alpha_result = self.render_static(
+            view_matrix,
+            projection_matrix,
+            sky_rgba,
+            scene_hsl_override,
+            player_pos,
+            render_distance,
+            fog_depth,
+            current_time,
+            brightness,
+            roof_plane_limit,
+            is_new_texture_anim,
+            color_banding,
+            false,
+            false,
+        );
+
+        std::mem::swap(&mut self.draw_ranges, &mut self.draw_ranges_alpha);
+        std::mem::swap(
+            &mut self.model_info_texture,
+            &mut self.model_info_alpha_texture,
+        );
+
+        alpha_result
+    }
+
+    /// Stage-1 static-scene pass matching the current map-square transform path.
     #[allow(clippy::too_many_arguments)]
     pub fn render_static(
         &mut self,
@@ -703,6 +841,7 @@ impl RustWebGlRenderer {
             &self.draw_ranges,
             self.index_count,
             Some(&self.static_program.draw_id),
+            false,
         );
         self.gl.bind_vertex_array(None);
         if clear_frame {
@@ -727,6 +866,8 @@ impl RustWebGlRenderer {
         self.gl.delete_buffer(Some(&self.vertex_buffer));
         self.gl.delete_buffer(Some(&self.index_buffer));
         self.gl.delete_texture(Some(&self.model_info_texture));
+        self.gl
+            .delete_texture(Some(&self.model_info_alpha_texture));
         self.gl.delete_texture(Some(&self.height_map_texture));
         self.gl.delete_texture(Some(&self.texture_array));
         self.gl.delete_texture(Some(&self.material_texture));
@@ -735,6 +876,7 @@ impl RustWebGlRenderer {
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
         self.draw_ranges.clear();
+        self.draw_ranges_alpha.clear();
         self.index_count = 0;
         self.static_state = None;
     }
@@ -758,11 +900,12 @@ fn submit_draw_ranges(
     ranges: &[DrawRange],
     index_count: u32,
     draw_id: Option<&WebGlUniformLocation>,
+    draw_all_if_empty: bool,
 ) -> DrawStats {
     let mut stats = DrawStats::default();
 
     if ranges.is_empty() {
-        if index_count > 0 {
+        if draw_all_if_empty && index_count > 0 {
             if let Some(location) = draw_id {
                 gl.uniform1i(Some(location), 0);
             }
