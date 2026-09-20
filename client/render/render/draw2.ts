@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../../game/sync/PlayerSyncTypes";
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../game/utils/rotation";
 import { AnimationFrames } from "../AnimationFrames";
 import { ChatheadFactory } from "../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
 import { profiler } from "../PerformanceProfiler";
@@ -285,7 +284,7 @@ export function _accumulate(host: WebGLOsrsRendererHost, drawRanges: DrawRange[]
 
 export function configureDrawCall(host: WebGLOsrsRendererHost, drawCall: DrawCall): DrawCall {
         host.osrsClient.clientPlugins.configureSceneDrawCall(host, drawCall);
-        return host.drawBackend ? host.drawBackend.configureDrawCall(drawCall) : drawCall;
+        return drawCall.uniform("u_drawIdOverride", -1);
     
 }
 
@@ -308,11 +307,26 @@ export function draw(host: WebGLOsrsRendererHost, drawCall: DrawCall, drawRanges
             return;
         }
 
-        if (host.drawBackend) {
-            host.drawBackend.draw(drawCall, drawRanges, drawIndices);
+        drawCall.uniform("u_drawIdOverride", -1);
+        if (drawIndices && drawIndices.length > 0) {
+            for (let i = 0; i < drawIndices.length; i++) {
+                const originalIndex = drawIndices[i] | 0;
+                const range = drawRanges[originalIndex];
+                if (!range || (range[1] | 0) <= 0 || (range[2] | 0) <= 0) continue;
+                drawCall.uniform("u_drawIdOverride", originalIndex);
+                (drawCall as any).drawRanges(range);
+                drawCall.draw();
+            }
         } else {
-            drawCall.draw();
+            for (let i = 0; i < drawRanges.length; i++) {
+                const range = drawRanges[i];
+                if (!range || (range[1] | 0) <= 0 || (range[2] | 0) <= 0) continue;
+                drawCall.uniform("u_drawIdOverride", i);
+                (drawCall as any).drawRanges(range);
+                drawCall.draw();
+            }
         }
+        drawCall.uniform("u_drawIdOverride", -1);
     
 }
 

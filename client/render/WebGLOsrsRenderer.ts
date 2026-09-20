@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../game/sync/PlayerSyncTypes";
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../game/utils/rotation";
 import { AnimationFrames } from "./AnimationFrames";
 import { ChatheadFactory } from "./ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "./DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "./DrawRange";
 import { InteractType } from "./InteractType";
 import { profiler } from "./PerformanceProfiler";
@@ -332,7 +331,6 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
 
     timer!: Timer;
 
-    hasMultiDraw: boolean = false;
 
     quadPositions?: VertexBuffer;
     quadArray?: VertexArray;
@@ -408,7 +406,6 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
     public textureMipmapsLastGenAtMs: number = 0;
     public textureMipmapsDirtyUpdates: number = 0;
 
-    public drawBackend?: DrawBackend;
     // Reusable array for filtered draw ranges (avoids per-frame allocation)
     public drawSubsetBuffer: DrawRange[] = [];
     // Reusable arrays for tickPass (avoids per-frame allocation)

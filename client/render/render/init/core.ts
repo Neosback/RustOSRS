@@ -153,7 +153,6 @@ import type { PlayerSpotAnimationEvent } from "../../../game/sync/PlayerSyncType
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../../game/utils/rotation";
 import { AnimationFrames } from "../../AnimationFrames";
 import { ChatheadFactory } from "../../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../DrawRange";
 import { InteractType } from "../../InteractType";
 import { profiler } from "../../PerformanceProfiler";
@@ -230,27 +229,11 @@ export async function init(host: WebGLOsrsRendererHost, ): Promise<void> {
 
         host.timer = host.app.createTimer();
 
-        // Prefer the multi-draw extension when available; fall back to explicit single draws otherwise.
-        // Safari's Metal ANGLE advertises WEBGL_multi_draw but then fails at draw time with
-        // attribute-type mismatches in glMultiDrawArraysInstancedANGLE.
+        // Rust owns primary scene submission. The explicit Pico compatibility
+        // path uses deterministic single-range draws and no secondary backend.
         const state: any = host.app.state;
-        const ext = isSafari ? null : host.gl.getExtension("WEBGL_multi_draw");
-        PicoGL.WEBGL_INFO.MULTI_DRAW_INSTANCED = ext;
-        state.extensions.multiDrawInstanced = ext;
-
-        host.hasMultiDraw = !!ext;
-        host.drawBackend?.dispose();
-        host.drawBackend = createDrawBackend(host.hasMultiDraw);
-        host.drawBackend.init(host.app, host.gl);
-
-        if (!ext) {
-            console.warn(
-                isSafari
-                    ? "Disabling WEBGL_multi_draw on Safari/WebKit; using single-draw fallback."
-                    : "WEBGL_multi_draw extension not available! Rendering may not work correctly. " +
-                      "Falling back to single-draw rendering; this is slower but supported.",
-            );
-        }
+        PicoGL.WEBGL_INFO.MULTI_DRAW_INSTANCED = null;
+        state.extensions.multiDrawInstanced = null;
 
         host.osrsClient.workerPool.initLoader(host.dataLoader);
 

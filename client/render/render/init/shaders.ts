@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../../../game/sync/PlayerSyncType
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../../game/utils/rotation";
 import { AnimationFrames } from "../../AnimationFrames";
 import { ChatheadFactory } from "../../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../DrawRange";
 import { InteractType } from "../../InteractType";
 import { profiler } from "../../PerformanceProfiler";
@@ -211,7 +210,7 @@ function fitPortraitParams(model: any, params: any): any {
 
 export async function initShaders(host: WebGLOsrsRendererHost, ): Promise<Program[]> {
 
-        const supportsMultiDraw = host.drawBackend?.supportsMultiDraw ?? false;
+        const supportsMultiDraw = false;
         // Create FXAA separately so a Metal/ANGLE link failure on iOS Safari
         // cannot reject the entire program batch (player/NPC/etc.).
         const programs = await host.app.createPrograms(
