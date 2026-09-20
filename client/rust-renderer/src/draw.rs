@@ -232,15 +232,8 @@ mod tests {
     #[test]
     fn draw_sequence_hash_changes_with_order_and_range_values() {
         let ranges = [DrawRange::new(0, 3, 1), DrawRange::new(12, 6, 1)];
-        let forward = hash_visible_draw_ranges(
-            DRAW_HASH_OFFSET_BASIS,
-            7,
-            0,
-            0,
-            &ranges,
-            Some(&[0, 0]),
-            3,
-        );
+        let forward =
+            hash_visible_draw_ranges(DRAW_HASH_OFFSET_BASIS, 7, 0, 0, &ranges, Some(&[0, 0]), 3);
         let reversed = hash_visible_draw_ranges(
             DRAW_HASH_OFFSET_BASIS,
             7,
