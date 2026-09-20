@@ -112,6 +112,8 @@ export interface RustRendererWasm {
     set_presentation_msaa_enabled(enabled: boolean): void;
     presentation_msaa_enabled(): boolean;
     presentation_msaa_samples(): number;
+    set_presentation_fxaa_enabled(enabled: boolean): void;
+    presentation_fxaa_enabled(): boolean;
     present_frame(): void;
 
     begin_static_frame(skyRgba: Float32Array): void;
@@ -557,6 +559,14 @@ export class RustRendererBridge {
 
     getPresentationMsaaSamples(): number {
         return this.wasm.presentation_msaa_samples() | 0;
+    }
+
+    setPresentationFxaaEnabled(enabled: boolean): void {
+        this.wasm.set_presentation_fxaa_enabled(enabled);
+    }
+
+    isPresentationFxaaEnabled(): boolean {
+        return this.wasm.presentation_fxaa_enabled();
     }
 
     presentFrame(): void {
