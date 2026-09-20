@@ -299,11 +299,30 @@ function frame(): RustStaticFrameState {
         {} as HTMLCanvasElement,
         MockWasm,
     );
-    bridge.uploadGlobalResources(snapshot.resources);
+    assert.equal(
+        bridge.syncGlobalResources(snapshot.resources, snapshot.revision),
+        true,
+    );
     const wasm = MockWasm.last!;
     assert.equal(wasm.textureResourceUploads, 1);
     assert.equal(wasm.materialResourceUploads, 1);
     assert.equal(wasm.waterResourceUploads, 1);
+
+    assert.equal(
+        bridge.syncGlobalResources(snapshot.resources, snapshot.revision),
+        false,
+    );
+    assert.equal(wasm.textureResourceUploads, 1);
+    assert.equal(wasm.materialResourceUploads, 1);
+    assert.equal(wasm.waterResourceUploads, 1);
+
+    assert.equal(
+        bridge.syncGlobalResources(snapshot.resources, snapshot.revision + 1),
+        true,
+    );
+    assert.equal(wasm.textureResourceUploads, 2);
+    assert.equal(wasm.materialResourceUploads, 2);
+    assert.equal(wasm.waterResourceUploads, 2);
     bridge.dispose();
 
     assert.equal(
