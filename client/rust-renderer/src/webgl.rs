@@ -2217,8 +2217,7 @@ impl RustWebGlRenderer {
 
         if transparent {
             self.gl.enable(Gl::BLEND);
-            self.gl
-                .blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+            self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
             self.gl.depth_mask(false);
         } else {
             self.gl.disable(Gl::BLEND);
@@ -2257,14 +2256,10 @@ impl RustWebGlRenderer {
             Some(&self.projectile_program.render_distance),
             render_distance.max(0.0001),
         );
-        self.gl.uniform1f(
-            Some(&self.projectile_program.fog_depth),
-            fog_depth.max(0.0),
-        );
-        self.gl.uniform1f(
-            Some(&self.projectile_program.current_time),
-            current_time,
-        );
+        self.gl
+            .uniform1f(Some(&self.projectile_program.fog_depth), fog_depth.max(0.0));
+        self.gl
+            .uniform1f(Some(&self.projectile_program.current_time), current_time);
         self.gl.uniform1f(
             Some(&self.projectile_program.brightness),
             brightness.max(0.0001),
@@ -2310,14 +2305,10 @@ impl RustWebGlRenderer {
             Some(&self.projectile_program.discard_alpha),
             i32::from(transparent),
         );
-        self.gl.uniform4fv_with_f32_array(
-            Some(&self.projectile_program.sky_color),
-            sky_rgba,
-        );
-        self.gl.uniform1f(
-            Some(&self.projectile_program.world_entity_opacity),
-            1.0,
-        );
+        self.gl
+            .uniform4fv_with_f32_array(Some(&self.projectile_program.sky_color), sky_rgba);
+        self.gl
+            .uniform1f(Some(&self.projectile_program.world_entity_opacity), 1.0);
 
         self.gl.active_texture(Gl::TEXTURE6);
         self.gl
@@ -2348,10 +2339,8 @@ impl RustWebGlRenderer {
         self.gl.active_texture(Gl::TEXTURE4);
         self.gl
             .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.water_texture_array));
-        self.gl.uniform1i(
-            Some(&self.projectile_program.water_texture_sampler),
-            4,
-        );
+        self.gl
+            .uniform1i(Some(&self.projectile_program.water_texture_sampler), 4);
 
         self.gl.active_texture(Gl::TEXTURE5);
         self.gl.bind_texture(
@@ -2375,15 +2364,7 @@ impl RustWebGlRenderer {
 
         self.gl
             .bind_vertex_array(Some(&self.dynamic_projectile_batch.vao));
-        let stats = submit_draw_ranges(
-            &self.gl,
-            &ranges,
-            index_count,
-            None,
-            None,
-            3,
-            false,
-        );
+        let stats = submit_draw_ranges(&self.gl, &ranges, index_count, None, None, 3, false);
         self.gl.bind_vertex_array(None);
         self.gl.depth_mask(true);
 
