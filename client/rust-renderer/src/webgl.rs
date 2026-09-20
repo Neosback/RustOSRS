@@ -97,19 +97,13 @@ impl RustWebGlRenderer {
         let model_info_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
         let height_map_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
 
-        let reference_view_proj =
-            required_uniform(&gl, &reference_program, "u_viewProj")?;
-        let reference_brightness =
-            required_uniform(&gl, &reference_program, "u_brightness")?;
+        let reference_view_proj = required_uniform(&gl, &reference_program, "u_viewProj")?;
+        let reference_brightness = required_uniform(&gl, &reference_program, "u_brightness")?;
 
         let static_program = StaticProgram {
             view_matrix: required_uniform(&gl, &static_program_raw, "u_viewMatrix")?,
             projection_matrix: required_uniform(&gl, &static_program_raw, "u_projectionMatrix")?,
-            scene_hsl_override: required_uniform(
-                &gl,
-                &static_program_raw,
-                "u_sceneHslOverride",
-            )?,
+            scene_hsl_override: required_uniform(&gl, &static_program_raw, "u_sceneHslOverride")?,
             player_pos: required_uniform(&gl, &static_program_raw, "u_playerPos")?,
             render_distance: required_uniform(&gl, &static_program_raw, "u_renderDistance")?,
             fog_depth: required_uniform(&gl, &static_program_raw, "u_fogDepth")?,
@@ -118,21 +112,9 @@ impl RustWebGlRenderer {
             draw_id: required_uniform(&gl, &static_program_raw, "u_drawId")?,
             map_pos: required_uniform(&gl, &static_program_raw, "u_mapPos")?,
             time_loaded: required_uniform(&gl, &static_program_raw, "u_timeLoaded")?,
-            roof_plane_limit: required_uniform(
-                &gl,
-                &static_program_raw,
-                "u_roofPlaneLimit",
-            )?,
-            scene_border_size: required_uniform(
-                &gl,
-                &static_program_raw,
-                "u_sceneBorderSize",
-            )?,
-            model_info_sampler: required_uniform(
-                &gl,
-                &static_program_raw,
-                "u_modelInfoTexture",
-            )?,
+            roof_plane_limit: required_uniform(&gl, &static_program_raw, "u_roofPlaneLimit")?,
+            scene_border_size: required_uniform(&gl, &static_program_raw, "u_sceneBorderSize")?,
+            model_info_sampler: required_uniform(&gl, &static_program_raw, "u_modelInfoTexture")?,
             height_map_sampler: required_uniform(&gl, &static_program_raw, "u_heightMap")?,
             sky_color: required_uniform(&gl, &static_program_raw, "u_skyColor")?,
             program: static_program_raw,
@@ -241,9 +223,7 @@ impl RustWebGlRenderer {
         planes: u32,
     ) -> Result<(), JsValue> {
         if size == 0 || planes == 0 {
-            return Err(JsValue::from_str(
-                "height-map dimensions must be positive",
-            ));
+            return Err(JsValue::from_str("height-map dimensions must be positive"));
         }
         let expected = (size as usize)
             .checked_mul(size as usize)
@@ -414,23 +394,16 @@ impl RustWebGlRenderer {
         );
         self.gl
             .uniform1f(Some(&self.static_program.fog_depth), fog_depth.max(0.0));
-        self.gl.uniform1f(
-            Some(&self.static_program.current_time),
-            current_time,
-        );
+        self.gl
+            .uniform1f(Some(&self.static_program.current_time), current_time);
         self.gl.uniform1f(
             Some(&self.static_program.brightness),
             brightness.max(0.0001),
         );
-        self.gl.uniform2f(
-            Some(&self.static_program.map_pos),
-            state.map_x,
-            state.map_y,
-        );
-        self.gl.uniform1f(
-            Some(&self.static_program.time_loaded),
-            state.time_loaded,
-        );
+        self.gl
+            .uniform2f(Some(&self.static_program.map_pos), state.map_x, state.map_y);
+        self.gl
+            .uniform1f(Some(&self.static_program.time_loaded), state.time_loaded);
         self.gl.uniform1f(
             Some(&self.static_program.roof_plane_limit),
             roof_plane_limit,
@@ -510,24 +483,17 @@ fn submit_draw_ranges(
             if let Some(location) = draw_id {
                 gl.uniform1i(Some(location), 0);
             }
-            gl.draw_elements_with_i32(
-                Gl::TRIANGLES,
-                index_count as i32,
-                Gl::UNSIGNED_INT,
-                0,
-            );
+            gl.draw_elements_with_i32(Gl::TRIANGLES, index_count as i32, Gl::UNSIGNED_INT, 0);
             stats.draw_calls = 1;
             stats.submitted_indices = index_count as u64;
         }
         return stats;
     }
 
-    for (draw_index, range) in ranges
-        .iter()
-        .copied()
-        .filter(|range| !range.is_empty())
-        .enumerate()
-    {
+    for (draw_index, range) in ranges.iter().copied().enumerate() {
+        if range.is_empty() {
+            continue;
+        }
         if let Some(location) = draw_id {
             gl.uniform1i(Some(location), draw_index as i32);
         }
@@ -597,7 +563,11 @@ fn required_uniform(
         .ok_or_else(|| JsValue::from_str(&format!("{name} uniform was optimized out")))
 }
 
-fn create_program(gl: &Gl, vertex_source: &str, fragment_source: &str) -> Result<WebGlProgram, JsValue> {
+fn create_program(
+    gl: &Gl,
+    vertex_source: &str,
+    fragment_source: &str,
+) -> Result<WebGlProgram, JsValue> {
     let vertex = compile_shader(gl, Gl::VERTEX_SHADER, vertex_source)?;
     let fragment = compile_shader(gl, Gl::FRAGMENT_SHADER, fragment_source)?;
     link_program(gl, &vertex, &fragment)
