@@ -7,6 +7,7 @@ import { GfxCache } from "./GfxCache";
 import { GfxManager } from "./GfxManager";
 import type { GfxInstance } from "./GfxManager";
 import { SpotAnimGpuCache } from "./SpotAnimGpuCache";
+import { mirrorRustGfxGeometry } from "../rust/RustShadowIntegration";
 
 type Pass = "opaque" | "alpha";
 
@@ -174,6 +175,11 @@ export class GfxRenderer {
                     prog,
                 );
                 if (!vaoRec) continue;
+                const rustGeometry = this.cache.ensureFrameGeometry(
+                    spotId,
+                    frameIdx,
+                    transparent,
+                );
                 const dc: DrawCall = this.renderer
                     .configureDrawCall(vaoRec.drawCall)
                     .uniformBlock("SceneUniforms", (this.renderer as any).sceneUniformBuffer)
@@ -208,6 +214,17 @@ export class GfxRenderer {
                     for (const inst of groupInstances) {
                         dc.uniform("u_drawIdOverride", inst.slot | 0);
                         dc.draw();
+                        if (rustGeometry) {
+                            mirrorRustGfxGeometry(
+                                this.renderer,
+                                map,
+                                rustGeometry.vertices,
+                                rustGeometry.indices,
+                                (baseOffset + (inst.slot | 0)) | 0,
+                                yOff | 0,
+                                transparent,
+                            );
+                        }
                     }
                 }
 
