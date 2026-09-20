@@ -124,11 +124,7 @@ impl RustWebGlRenderer {
             fog_depth: required_uniform(&gl, &static_program_raw, "u_fogDepth")?,
             current_time: required_uniform(&gl, &static_program_raw, "u_currentTime")?,
             brightness: required_uniform(&gl, &static_program_raw, "u_brightness")?,
-            is_new_texture_anim: required_uniform(
-                &gl,
-                &static_program_raw,
-                "u_isNewTextureAnim",
-            )?,
+            is_new_texture_anim: required_uniform(&gl, &static_program_raw, "u_isNewTextureAnim")?,
             color_banding: required_uniform(&gl, &static_program_raw, "u_colorBanding")?,
             draw_id: required_uniform(&gl, &static_program_raw, "u_drawId")?,
             map_pos: required_uniform(&gl, &static_program_raw, "u_mapPos")?,
@@ -139,11 +135,7 @@ impl RustWebGlRenderer {
             height_map_sampler: required_uniform(&gl, &static_program_raw, "u_heightMap")?,
             texture_sampler: required_uniform(&gl, &static_program_raw, "u_textures")?,
             material_sampler: required_uniform(&gl, &static_program_raw, "u_textureMaterials")?,
-            texture_layer_count: required_uniform(
-                &gl,
-                &static_program_raw,
-                "u_textureLayerCount",
-            )?,
+            texture_layer_count: required_uniform(&gl, &static_program_raw, "u_textureLayerCount")?,
             material_count: required_uniform(&gl, &static_program_raw, "u_materialCount")?,
             discard_alpha: required_uniform(&gl, &static_program_raw, "u_discardAlpha")?,
             sky_color: required_uniform(&gl, &static_program_raw, "u_skyColor")?,
@@ -354,9 +346,7 @@ impl RustWebGlRenderer {
     ) -> Result<(), JsValue> {
         const ROWS: usize = crate::material::MATERIAL_TEXTURE_ROWS;
         if texture_count == 0 {
-            return Err(JsValue::from_str(
-                "material texture width must be positive",
-            ));
+            return Err(JsValue::from_str("material texture width must be positive"));
         }
         let expected = (texture_count as usize)
             .checked_mul(ROWS)
@@ -539,8 +529,10 @@ impl RustWebGlRenderer {
             Some(&self.static_program.color_banding),
             color_banding.max(1.0),
         );
-        self.gl
-            .uniform1i(Some(&self.static_program.discard_alpha), i32::from(discard_alpha));
+        self.gl.uniform1i(
+            Some(&self.static_program.discard_alpha),
+            i32::from(discard_alpha),
+        );
         self.gl.uniform1i(
             Some(&self.static_program.texture_layer_count),
             self.texture_layer_count.max(1),
@@ -700,10 +692,7 @@ fn create_nearest_texture(gl: &Gl, target: u32) -> Result<WebGlTexture, JsValue>
     Ok(texture)
 }
 
-fn initialize_fallback_texture_array(
-    gl: &Gl,
-    texture: &WebGlTexture,
-) -> Result<(), JsValue> {
+fn initialize_fallback_texture_array(gl: &Gl, texture: &WebGlTexture) -> Result<(), JsValue> {
     let pixels = js_sys::Uint8Array::from(&[255u8, 255, 255, 255][..]);
     gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(texture));
     gl.tex_image_3d_with_opt_array_buffer_view(
@@ -722,10 +711,7 @@ fn initialize_fallback_texture_array(
     Ok(())
 }
 
-fn initialize_fallback_materials(
-    gl: &Gl,
-    texture: &WebGlTexture,
-) -> Result<(), JsValue> {
+fn initialize_fallback_materials(gl: &Gl, texture: &WebGlTexture) -> Result<(), JsValue> {
     let mut values = [0i8; crate::material::MATERIAL_TEXTURE_ROWS * 4];
     values[3] = 1;
     let data = js_sys::Int8Array::from(&values[..]);
