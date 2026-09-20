@@ -26,6 +26,7 @@ class MockWasm implements RustRendererWasm {
     waterMaskUploads = 0;
     staticStateCalls = 0;
     drawRangeUploads: Uint32Array[] = [];
+    staticPassUploads = 0;
     renderCalls: RenderCall[] = [];
 
     constructor(_canvas: HTMLCanvasElement) {
@@ -75,6 +76,17 @@ class MockWasm implements RustRendererWasm {
         this.drawRangeUploads.push(flatRanges);
     }
 
+    upload_static_passes(
+        modelInfoOpaque: Uint16Array,
+        opaqueRanges: Uint32Array,
+        modelInfoAlpha: Uint16Array,
+        alphaRanges: Uint32Array,
+    ): void {
+        this.staticPassUploads++;
+        this.modelInfoUploads.push(modelInfoOpaque, modelInfoAlpha);
+        this.drawRangeUploads.push(opaqueRanges, alphaRanges);
+    }
+
     upload_texture_array(
         _pixels: Uint8Array,
         _width: number,
@@ -94,7 +106,7 @@ class MockWasm implements RustRendererWasm {
         _layers: number,
     ): void {}
 
-    render_static(
+    render_static_frame(
         _viewMatrix: Float32Array,
         _projectionMatrix: Float32Array,
         _skyRgba: Float32Array,
@@ -107,10 +119,11 @@ class MockWasm implements RustRendererWasm {
         _roofPlaneLimit: number,
         _isNewTextureAnim: boolean,
         _colorBanding: number,
-        discardAlpha: boolean,
-        clearFrame: boolean,
     ): void {
-        this.renderCalls.push({ discardAlpha, clearFrame });
+        this.renderCalls.push({
+            discardAlpha: true,
+            clearFrame: true,
+        });
     }
 
     last_draw_calls(): number {
@@ -176,15 +189,13 @@ function frame(): RustStaticFrameState {
     assert.equal(wasm.geometryUploads, 1);
     assert.equal(wasm.heightUploads, 1);
     assert.equal(wasm.waterMaskUploads, 1);
+    assert.equal(wasm.staticPassUploads, 1);
     assert.equal(wasm.modelInfoUploads.length, 2);
     assert.equal(wasm.drawRangeUploads.length, 2);
-    assert.deepEqual(wasm.renderCalls, [
-        { discardAlpha: false, clearFrame: true },
-        { discardAlpha: true, clearFrame: false },
-    ]);
+    assert.equal(wasm.renderCalls.length, 1);
     assert.deepEqual(bridge.getLastStats(), {
-        drawCalls: 2,
-        submittedIndices: 6,
+        drawCalls: 1,
+        submittedIndices: 3,
     });
 
     bridge.dispose();
