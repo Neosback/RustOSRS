@@ -773,6 +773,213 @@ export function createAnimatedLocDrawRangePatches(
 }
 
 
+function flattenRustDrawRanges(
+    ranges: readonly DrawRange[],
+): Uint32Array {
+    const flat = new Uint32Array(ranges.length * 3);
+    for (let i = 0; i < ranges.length; i++) {
+        const range = ranges[i];
+        const offset = i * 3;
+        flat[offset] = range?.[0] >>> 0;
+        flat[offset + 1] = range?.[1] >>> 0;
+        flat[offset + 2] = range?.[2] >>> 0;
+    }
+    return flat;
+}
+
+function finalizeRustShadowFrame(
+    host: WebGLOsrsRendererHost,
+    runtime: RustRendererShadowRuntime,
+    state: ActiveRustShadowFrame,
+): void {
+    const hasFrames = state.frames.length > 0;
+    const stats = hasFrames
+        ? runtime.bridge.getLastStats()
+        : { drawCalls: 0, submittedIndices: 0 };
+    const drawHash = hasFrames
+        ? runtime.bridge.getLastDrawHash()
+        : 0;
+    const expectedDrawHash = hasFrames
+        ? state.expectedDrawHash >>> 0
+        : 0;
+    const drawStatsMatch =
+        stats.drawCalls === state.expectedStats.drawCalls
+        && stats.submittedIndices === state.expectedStats.submittedIndices;
+    const drawSequenceMatch =
+        drawHash === expectedDrawHash;
+
+    const previousDiagnostics =
+        getRustRendererShadowDiagnostics(host);
+    let pixelParity = previousDiagnostics.pixelParity;
+    if (state.pixelReference && !state.npcParityEnabled) {
+        const rustPixels = readCanvasRgbaPixels(runtime.canvas);
+        if (rustPixels) {
+            pixelParity = compareRgbaFrames(
+                state.pixelReference,
+                rustPixels,
+            );
+        }
+    }
+
+    publishDiagnostics(host, {
+        enabled: true,
+        failed: false,
+        residentMaps: runtime.bridge.getResidentStaticMapCount(),
+        visibleMaps: state.visibleMaps,
+        eligibleMaps: state.eligibleMaps,
+        mirroredMaps: state.frames.length,
+        drawCalls: stats.drawCalls,
+        submittedIndices: stats.submittedIndices,
+        expectedDrawCalls: state.expectedStats.drawCalls,
+        expectedSubmittedIndices: state.expectedStats.submittedIndices,
+        drawStatsMatch,
+        drawHash,
+        expectedDrawHash,
+        drawSequenceMatch,
+        staticParityMatch: drawStatsMatch && drawSequenceMatch,
+        expectedWorldEntityGhostPasses:
+            state.expectedWorldEntityGhostPasses,
+        npcParityEnabled: state.npcParityEnabled,
+        mirroredNpcPasses: state.mirroredNpcPasses,
+        pixelParity,
+    });
+    activeShadowFrames.delete(host);
+}
+
+export function beginRustOpaqueNpcShadowPass(
+    host: WebGLOsrsRendererHost,
+): void {
+    const state = activeShadowFrames.get(host);
+    if (
+        !state?.npcParityEnabled
+        || state.phase !== "prepared"
+    ) {
+        return;
+    }
+    state.phase = "opaque-npc";
+}
+
+export function mirrorRustNpcDrawRanges(
+    host: WebGLOsrsRendererHost,
+    map: WebGLMapSquare,
+    ranges: readonly DrawRange[],
+    npcDataOffset: number,
+    modelYOffset: number,
+    worldEntityTransform: Float32Array,
+    transparent: boolean,
+): void {
+    const state = activeShadowFrames.get(host);
+    if (!state?.npcParityEnabled) return;
+
+    const expectedPhase: RustShadowFramePhase =
+        transparent ? "transparent-npc" : "opaque-npc";
+    if (state.phase !== expectedPhase) {
+        return;
+    }
+
+    const runtime = getRuntime(host);
+    if (!runtime) return;
+
+    const mapKey = map.id | 0;
+    const frame = state.framesByMapKey.get(mapKey);
+    if (!frame) return;
+
+    try {
+        const drawRanges = flattenRustDrawRanges(ranges);
+        runtime.bridge.renderNpcPass({
+            ...frame,
+            drawRanges,
+            npcDataOffset,
+            modelYOffset,
+            worldEntityTransform,
+            transparent,
+        });
+
+        addStats(
+            state.expectedStats,
+            countExpectedDrawRanges(
+                ranges,
+                undefined,
+                3,
+            ),
+        );
+        state.expectedDrawHash = hashExpectedDrawRanges(
+            state.expectedDrawHash,
+            mapKey,
+            transparent,
+            false,
+            5,
+            ranges,
+            undefined,
+            3,
+        );
+        state.mirroredNpcPasses++;
+    } catch (error) {
+        disableShadow(host, "NPC draw mirror", error);
+    }
+}
+
+export function completeRustOpaqueNpcShadowPass(
+    host: WebGLOsrsRendererHost,
+): void {
+    const state = activeShadowFrames.get(host);
+    if (
+        !state?.npcParityEnabled
+        || state.phase !== "opaque-npc"
+    ) {
+        return;
+    }
+
+    const runtime = getRuntime(host);
+    if (!runtime) return;
+
+    try {
+        state.phase = "transparent-static";
+        runtime.bridge.renderTransparentStaticMaps(state.frames);
+        const roofPlaneLimit =
+            state.frames[0]?.roofPlaneLimit ?? 3;
+        for (
+            let i = state.mirroredStaticMaps.length - 1;
+            i >= 0;
+            i--
+        ) {
+            const entry = state.mirroredStaticMaps[i];
+            state.expectedDrawHash = hashExpectedMapStaticPass(
+                state.expectedDrawHash,
+                entry.map,
+                entry.useLod,
+                true,
+                roofPlaneLimit,
+                entry.worldEntityGhostPass,
+            );
+        }
+        state.phase = "transparent-npc";
+    } catch (error) {
+        disableShadow(host, "transparent static phase", error);
+    }
+}
+
+export function finishRustNpcShadowFrame(
+    host: WebGLOsrsRendererHost,
+): void {
+    const state = activeShadowFrames.get(host);
+    if (
+        !state?.npcParityEnabled
+        || state.phase !== "transparent-npc"
+    ) {
+        return;
+    }
+
+    const runtime = getRuntime(host);
+    if (!runtime) return;
+
+    try {
+        finalizeRustShadowFrame(host, runtime, state);
+    } catch (error) {
+        disableShadow(host, "NPC frame finalize", error);
+    }
+}
+
 export function renderRustStaticShadowFrame(
     host: WebGLOsrsRendererHost,
     camera: ShadowCamera,
