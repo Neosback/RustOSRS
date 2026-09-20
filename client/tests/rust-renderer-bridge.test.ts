@@ -77,6 +77,11 @@ class MockWasm implements RustRendererWasm {
     presentationMsaaSamplesState = 0;
     presentationFxaaEnabledState = false;
     presentFrameCalls = 0;
+    sceneOverlayCalls: Array<{
+        vertices: Float32Array;
+        color: Float32Array;
+        filled: boolean;
+    }> = [];
     mapPassCalls: Array<{ mapKey: number; transparent: boolean }> = [];
     ghostPassCalls: Array<{
         mapKey: number;
@@ -411,6 +416,20 @@ class MockWasm implements RustRendererWasm {
 
     present_frame(): void {
         this.presentFrameCalls++;
+    }
+
+    render_scene_overlay(
+        vertices: Float32Array,
+        color: Float32Array,
+        _viewMatrix: Float32Array,
+        _projectionMatrix: Float32Array,
+        filled: boolean,
+    ): void {
+        this.sceneOverlayCalls.push({
+            vertices: new Float32Array(vertices),
+            color: new Float32Array(color),
+            filled,
+        });
     }
 
     begin_static_frame(_skyRgba: Float32Array): void {
@@ -878,6 +897,25 @@ function frame(): RustStaticFrameState {
     assert.equal(bridge.isPresentationFxaaEnabled(), true);
     bridge.presentFrame();
     assert.equal(wasm.presentFrameCalls, 1);
+
+    bridge.renderSceneOverlay(
+        new Float32Array([
+            10, 20, 30,
+            11, 20, 30,
+            11, 20, 31,
+            10, 20, 31,
+        ]),
+        new Float32Array([1, 0.5, 0, 0.25]),
+        identity,
+        identity,
+        true,
+    );
+    assert.equal(wasm.sceneOverlayCalls.length, 1);
+    assert.deepEqual(
+        Array.from(wasm.sceneOverlayCalls[0].color),
+        [1, 0.5, 0, 0.25],
+    );
+    assert.equal(wasm.sceneOverlayCalls[0].filled, true);
     bridge.setPresentationMsaaEnabled(false);
     assert.equal(bridge.isPresentationMsaaEnabled(), false);
     assert.equal(bridge.getPresentationMsaaSamples(), 0);
