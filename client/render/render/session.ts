@@ -186,6 +186,7 @@ import {
     createProjectileProgram,
 } from "../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
+import { disposeRustRendererShadow } from "../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
 import { RENDER_CONSTANTS } from "./constants";
 import { cleanUpRenderer } from "./handlers";
@@ -273,6 +274,7 @@ export function clearSessionCaches(host: WebGLOsrsRendererHost, ): void {
 export async function cleanUp(host: WebGLOsrsRendererHost, ): Promise<void> {
 
         cleanUpRenderer(host);
+        disposeRustRendererShadow(host);
         host.canvas.removeEventListener("touchstart", host.onCanvasTouchStart, true);
         if (isMobileMode && typeof window !== "undefined") {
             window.removeEventListener("resize", host.onMobileLoginViewportChange);
