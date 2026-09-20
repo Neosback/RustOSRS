@@ -1,7 +1,8 @@
+import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import type { DrawRange } from "../DrawRange";
 import type { SdMapData } from "../loader/SdMapData";
 
-export const RUST_RENDERER_ABI_VERSION = 6 as const;
+export const RUST_RENDERER_ABI_VERSION = 7 as const;
 
 /**
  * Numeric-only static map-square packet for the Rust/WASM renderer.
@@ -36,6 +37,7 @@ export interface RustStaticGeometryPacket {
 export interface RustStaticScenePacket {
     abiVersion: typeof RUST_RENDERER_ABI_VERSION;
 
+    mapKey: number;
     mapX: number;
     mapY: number;
     borderSize: number;
@@ -189,6 +191,7 @@ export function createRustStaticScenePacket(data: SdMapData): RustStaticScenePac
     return {
         abiVersion: RUST_RENDERER_ABI_VERSION,
 
+        mapKey: getMapSquareId(data.mapX, data.mapY),
         mapX: data.renderPosX ?? data.mapX,
         mapY: data.renderPosY ?? data.mapY,
         borderSize: data.borderSize,
