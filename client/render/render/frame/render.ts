@@ -192,7 +192,11 @@ import {
     shouldCaptureRustPixelParity,
 } from "../../rust/RustPixelParity";
 import {
+    beginRustOpaqueNpcShadowPass,
+    completeRustOpaqueNpcShadowPass,
+    finishRustNpcShadowFrame,
     getRustRendererShadowDiagnostics,
+    isRustNpcShadowEnabled,
     renderRustStaticShadowFrame,
 } from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
@@ -741,8 +745,10 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
         profiler.startPhase("roof");
         host.roofPlaneLimit = host.computeFrameRoofPlaneLimit();
+        const rustNpcParityEnabled = isRustNpcShadowEnabled();
         const rustPixelReference =
             getRustRendererShadowDiagnostics(host).enabled
+            && !rustNpcParityEnabled
             && shouldCaptureRustPixelParity(host)
                 ? capturePicoStaticReference(host, sceneFramebuffer)
                 : undefined;
@@ -790,7 +796,9 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         profiler.startPhase("opaqueActor");
         passStartIndices = host._frameIndices;
         passStartBatches = host._frameBatches;
+        beginRustOpaqueNpcShadowPass(host);
         host.renderOpaqueActorPass(playerDataTextureIndex, playerDataTexture);
+        completeRustOpaqueNpcShadowPass(host);
         opaqueActorIndices = Math.max(0, host._frameIndices - passStartIndices);
         opaqueActorBatches = Math.max(0, host._frameBatches - passStartBatches);
         profiler.endPhase();
@@ -807,6 +815,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         passStartIndices = host._frameIndices;
         passStartBatches = host._frameBatches;
         host.renderTransparentNpcPass(npcDataTextureIndex, npcDataTexture);
+        finishRustNpcShadowFrame(host);
         transparentNpcIndices = Math.max(0, host._frameIndices - passStartIndices);
         transparentNpcBatches = Math.max(0, host._frameBatches - passStartBatches);
         profiler.endPhase();
