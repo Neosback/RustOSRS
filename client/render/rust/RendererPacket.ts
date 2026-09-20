@@ -30,9 +30,6 @@ export interface RustStaticGeometryPacket {
     opaqueLodDrawRangePlanes: Uint8Array;
     alphaLodDrawRanges: Uint32Array;
     alphaLodDrawRangePlanes: Uint8Array;
-
-    locGeometry: RustStaticGeometryPacket;
-    doorGeometry: RustStaticGeometryPacket;
 }
 
 export interface RustStaticScenePacket {
@@ -66,6 +63,9 @@ export interface RustStaticScenePacket {
     opaqueLodDrawRangePlanes: Uint8Array;
     alphaLodDrawRanges: Uint32Array;
     alphaLodDrawRangePlanes: Uint8Array;
+
+    locGeometry: RustStaticGeometryPacket;
+    doorGeometry: RustStaticGeometryPacket;
 }
 
 /**
