@@ -2260,9 +2260,9 @@ impl RustWebGlRenderer {
             match player_slots {
                 [] => (player_data_offset, false, 1),
                 [slot] => (
-                    player_data_offset.checked_add(*slot).ok_or_else(|| {
-                        JsValue::from_str("player actor-data offset overflow")
-                    })?,
+                    player_data_offset
+                        .checked_add(*slot)
+                        .ok_or_else(|| JsValue::from_str("player actor-data offset overflow"))?,
                     false,
                     1,
                 ),
@@ -2278,9 +2278,8 @@ impl RustWebGlRenderer {
                     (
                         player_data_offset,
                         true,
-                        u32::try_from(slots.len()).map_err(|_| {
-                            JsValue::from_str("too many player slots")
-                        })?,
+                        u32::try_from(slots.len())
+                            .map_err(|_| JsValue::from_str("too many player slots"))?,
                     )
                 }
             };
