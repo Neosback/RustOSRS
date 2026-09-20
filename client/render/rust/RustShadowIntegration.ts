@@ -14,6 +14,7 @@ import {
     packedVertexWords,
     unsignedIndexWords,
     type RustStaticGeometryPacket,
+    type RustStaticScenePacket,
 } from "./RendererPacket";
 import type { RustResidentMapFrameState } from "./RustRendererBridge";
 import {
@@ -36,6 +37,34 @@ const pendingGroundGeometry = new WeakMap<
     WebGLOsrsRendererHost,
     Map<number, RustStaticGeometryPacket | null>
 >();
+
+interface RetainedRustStaticMap {
+    packet: RustStaticScenePacket;
+    timeLoaded: number;
+    groundGeometry?: RustStaticGeometryPacket | null;
+}
+
+const retainedStaticMaps = new WeakMap<
+    WebGLOsrsRendererHost,
+    Map<number, RetainedRustStaticMap>
+>();
+
+const recoveringHosts = new WeakSet<WebGLOsrsRendererHost>();
+const recoveryCleanup = new WeakMap<
+    RustRendererShadowRuntime,
+    () => void
+>();
+
+function getRetainedStaticMaps(
+    host: WebGLOsrsRendererHost,
+): Map<number, RetainedRustStaticMap> {
+    let maps = retainedStaticMaps.get(host);
+    if (!maps) {
+        maps = new Map<number, RetainedRustStaticMap>();
+        retainedStaticMaps.set(host, maps);
+    }
+    return maps;
+}
 
 type RustShadowFramePhase =
     | "prepared"
@@ -281,6 +310,50 @@ function getRuntime(
 ): RustRendererShadowRuntime | undefined {
     if (failedHosts.has(host)) return undefined;
     return runtimes.get(host);
+}
+
+export function isRustPrimaryRendererActive(
+    host: WebGLOsrsRendererHost,
+): boolean {
+    return getRuntime(host)?.mode === "primary";
+}
+
+function configureRustRuntime(
+    host: WebGLOsrsRendererHost,
+    runtime: RustRendererShadowRuntime,
+): void {
+    runtime.bridge.setPresentationEnabled(
+        runtime.mode === "primary"
+        || isRustPresentationShadowEnabled(),
+    );
+    runtime.bridge.setPresentationMsaaEnabled(
+        !!host.msaaEnabled,
+    );
+    runtime.bridge.setPresentationFxaaEnabled(
+        !!host.fxaaEnabled,
+    );
+}
+
+function replayRetainedRustState(
+    host: WebGLOsrsRendererHost,
+    runtime: RustRendererShadowRuntime,
+): void {
+    syncGlobalResources(host, runtime);
+
+    for (const [mapKey, retained] of getRetainedStaticMaps(host)) {
+        runtime.bridge.uploadStaticScene(
+            retained.packet,
+            retained.timeLoaded,
+        );
+        if (retained.groundGeometry !== undefined) {
+            runtime.bridge.updateGroundGeometry(
+                mapKey,
+                retained.groundGeometry ?? undefined,
+            );
+        }
+    }
+
+    syncCurrentActorData(host, runtime);
 }
 
 function syncGlobalResources(
