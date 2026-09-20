@@ -369,6 +369,120 @@ function syncGlobalResources(
     );
 }
 
+function cleanupRustRuntime(
+    runtime: RustRendererShadowRuntime,
+): void {
+    const cleanup = recoveryCleanup.get(runtime);
+    if (cleanup) {
+        try {
+            cleanup();
+        } catch {}
+        recoveryCleanup.delete(runtime);
+    }
+    try {
+        runtime.bridge.dispose();
+    } catch {}
+    try {
+        runtime.disposeDom?.();
+    } catch {}
+}
+
+async function recoverRustRenderer(
+    host: WebGLOsrsRendererHost,
+    lostRuntime: RustRendererShadowRuntime,
+): Promise<void> {
+    if (!recoveringHosts.has(host)) return;
+
+    const cleanup = recoveryCleanup.get(lostRuntime);
+    if (cleanup) {
+        try {
+            cleanup();
+        } catch {}
+        recoveryCleanup.delete(lostRuntime);
+    }
+    try {
+        lostRuntime.bridge.dispose();
+    } catch {}
+    try {
+        lostRuntime.disposeDom?.();
+    } catch {}
+
+    try {
+        const runtime = await createRustRendererShadowRuntime(host.canvas);
+        if (!runtime) {
+            throw new Error("Rust renderer mode was disabled during context recovery");
+        }
+
+        runtimes.set(host, runtime);
+        configureRustRuntime(host, runtime);
+        replayRetainedRustState(host, runtime);
+        attachRustContextRecovery(host, runtime);
+        recoveringHosts.delete(host);
+
+        publishDiagnostics(host, {
+            ...getRustRendererShadowDiagnostics(host),
+            enabled: true,
+            failed: false,
+            residentMaps: runtime.bridge.getResidentStaticMapCount(),
+        });
+        console.info("[RustRenderer] WebGL context recovered");
+    } catch (error) {
+        recoveringHosts.delete(host);
+        disableShadow(host, "context recovery", error);
+    }
+}
+
+function attachRustContextRecovery(
+    host: WebGLOsrsRendererHost,
+    runtime: RustRendererShadowRuntime,
+): void {
+    const onContextLost = (event: Event): void => {
+        const webglEvent = event as WebGLContextEvent;
+        webglEvent.preventDefault();
+
+        if (runtimes.get(host) !== runtime) return;
+
+        console.warn("[RustRenderer] WebGL context lost; falling back to PicoGL while recovering");
+        recoveringHosts.add(host);
+        activeShadowFrames.delete(host);
+        runtimes.delete(host);
+        publishDiagnostics(host, {
+            ...getRustRendererShadowDiagnostics(host),
+            enabled: false,
+            failed: false,
+        });
+    };
+
+    const onContextRestored = (): void => {
+        if (!recoveringHosts.has(host)) return;
+        void recoverRustRenderer(host, runtime);
+    };
+
+    runtime.canvas.addEventListener(
+        "webglcontextlost",
+        onContextLost,
+        false,
+    );
+    runtime.canvas.addEventListener(
+        "webglcontextrestored",
+        onContextRestored,
+        false,
+    );
+
+    recoveryCleanup.set(runtime, () => {
+        runtime.canvas.removeEventListener(
+            "webglcontextlost",
+            onContextLost,
+            false,
+        );
+        runtime.canvas.removeEventListener(
+            "webglcontextrestored",
+            onContextRestored,
+            false,
+        );
+    });
+}
+
 function syncCurrentActorData(
     host: WebGLOsrsRendererHost,
     runtime: RustRendererShadowRuntime,
@@ -403,18 +517,9 @@ export async function initRustRendererShadow(
         if (!runtime) return;
 
         runtimes.set(host, runtime);
-        runtime.bridge.setPresentationEnabled(
-            runtime.mode === "primary"
-            || isRustPresentationShadowEnabled(),
-        );
-        runtime.bridge.setPresentationMsaaEnabled(
-            !!host.msaaEnabled,
-        );
-        runtime.bridge.setPresentationFxaaEnabled(
-            !!host.fxaaEnabled,
-        );
-        syncGlobalResources(host, runtime);
-        syncCurrentActorData(host, runtime);
+        configureRustRuntime(host, runtime);
+        replayRetainedRustState(host, runtime);
+        attachRustContextRecovery(host, runtime);
         publishDiagnostics(host, {
             enabled: true,
             failed: false,
@@ -436,13 +541,16 @@ export async function initRustRendererShadow(
             playerParityEnabled: false,
             gfxParityEnabled: false,
             projectileParityEnabled: false,
+            overlayParityEnabled: false,
             mirroredNpcPasses: 0,
             mirroredPlayerPasses: 0,
             mirroredGfxPasses: 0,
             mirroredProjectilePasses: 0,
             mirroredOverlayPasses: 0,
         });
-        console.info("[RustRenderer] shadow renderer enabled");
+        console.info(
+            `[RustRenderer] ${runtime.mode} renderer enabled`,
+        );
     } catch (error) {
         disableShadow(host, "initialization", error);
     }
@@ -453,17 +561,14 @@ export function disposeRustRendererShadow(
 ): void {
     const runtime = runtimes.get(host);
     if (runtime) {
-        try {
-            runtime.bridge.dispose();
-        } catch {}
-        try {
-            runtime.disposeDom?.();
-        } catch {}
+        cleanupRustRuntime(runtime);
         runtimes.delete(host);
     }
+    recoveringHosts.delete(host);
     failedHosts.delete(host);
     diagnostics.delete(host);
     pendingGroundGeometry.delete(host);
+    retainedStaticMaps.delete(host);
     activeShadowFrames.delete(host);
     disposeRustPixelParity(host);
     delete (host.canvas as HTMLCanvasElement & {
