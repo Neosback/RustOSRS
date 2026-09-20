@@ -10,6 +10,12 @@ async function main(): Promise<void> {
         getRustRendererShadowDiagnostics,
         hashExpectedDrawRanges,
     } = await import("../render/rust/RustShadowIntegration");
+    const {
+        compareRgbaFrames,
+        getRustPixelParityInterval,
+        isRustPixelParityEnabled,
+        shouldCaptureRustPixelParity,
+    } = await import("../render/rust/RustPixelParity");
 
     const fakeHost = {
         canvas: {},
@@ -147,6 +153,69 @@ async function main(): Promise<void> {
         1,
     );
     assert.equal(drawHash, 0xdceda6f5);
+
+    assert.equal(
+        isRustPixelParityEnabled(
+            "?rust-renderer=shadow&rust-pixel-parity=1",
+        ),
+        true,
+    );
+    assert.equal(
+        isRustPixelParityEnabled(
+            "?rust-renderer=off&rust-pixel-parity=1",
+        ),
+        false,
+    );
+    assert.equal(getRustPixelParityInterval(""), 120);
+    assert.equal(
+        getRustPixelParityInterval("?rust-pixel-every=3"),
+        3,
+    );
+
+    const cadenceHost = {} as any;
+    const cadenceSearch =
+        "?rust-renderer=shadow&rust-pixel-parity=1&rust-pixel-every=3";
+    assert.equal(
+        shouldCaptureRustPixelParity(cadenceHost, cadenceSearch),
+        true,
+    );
+    assert.equal(
+        shouldCaptureRustPixelParity(cadenceHost, cadenceSearch),
+        false,
+    );
+    assert.equal(
+        shouldCaptureRustPixelParity(cadenceHost, cadenceSearch),
+        false,
+    );
+    assert.equal(
+        shouldCaptureRustPixelParity(cadenceHost, cadenceSearch),
+        true,
+    );
+
+    const pixelMetrics = compareRgbaFrames(
+        {
+            width: 2,
+            height: 1,
+            pixels: new Uint8Array([
+                0, 10, 20, 255,
+                50, 60, 70, 255,
+            ]),
+        },
+        {
+            width: 2,
+            height: 1,
+            pixels: new Uint8Array([
+                0, 10, 20, 255,
+                50, 65, 70, 255,
+            ]),
+        },
+    );
+    assert.equal(pixelMetrics.dimensionMatch, true);
+    assert.equal(pixelMetrics.totalPixels, 2);
+    assert.equal(pixelMetrics.differentPixels, 1);
+    assert.equal(pixelMetrics.mismatchRatio, 0.5);
+    assert.equal(pixelMetrics.maxChannelDelta, 5);
+    assert.equal(pixelMetrics.exactMatch, false);
 
     console.log("rust renderer shadow integration smoke test passed");
 }
