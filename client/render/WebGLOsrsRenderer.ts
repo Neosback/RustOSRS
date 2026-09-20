@@ -186,6 +186,7 @@ import {
     createProjectileProgram,
 } from "./shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "./water/WaterTextureIds";
+import { removeRustStaticMap } from "./rust/RustShadowIntegration";
 
 import * as render from "./render";
 import { RENDER_CONSTANTS, TextureFilterMode, HD_SKY_COLOR_VEC4, HD_AUTO_FOG_DEPTH_FACTOR } from "./render/constants";
@@ -793,6 +794,7 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
         const previousOnMapRemoved = this.mapManager.onMapRemoved;
         this.mapManager.onMapRemoved = (mapX: number, mapY: number) => {
             this.clearMinimapIconsForMap(mapX | 0, mapY | 0);
+            removeRustStaticMap(this, mapX | 0, mapY | 0);
             if (!previousOnMapRemoved) return;
             try {
                 previousOnMapRemoved(mapX | 0, mapY | 0);
