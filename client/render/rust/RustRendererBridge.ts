@@ -372,20 +372,22 @@ export class RustRendererBridge {
         );
     }
 
-    renderStaticMaps(frames: readonly RustResidentMapFrameState[]): void {
+    beginStaticFrame(
+        frames: readonly RustResidentMapFrameState[],
+    ): boolean {
         if (frames.length === 0) {
-            return;
+            return false;
         }
-
-        for (const frame of frames) {
-            if (!this.uploadedMapKeys.has(frame.mapKey)) {
-                throw new Error(
-                    `Rust static map ${frame.mapKey} has not been uploaded`,
-                );
-            }
-        }
-
+        this.assertResidentFramesUploaded(frames);
         this.wasm.begin_static_frame(frames[0].skyRgba);
+        return true;
+    }
+
+    renderOpaqueStaticMaps(
+        frames: readonly RustResidentMapFrameState[],
+    ): void {
+        if (frames.length === 0) return;
+        this.assertResidentFramesUploaded(frames);
 
         for (const frame of frames) {
             this.renderResidentMapPass(frame, false);
@@ -393,9 +395,23 @@ export class RustRendererBridge {
                 this.renderResidentTerrainGhostPass(frame);
             }
         }
+    }
+
+    renderTransparentStaticMaps(
+        frames: readonly RustResidentMapFrameState[],
+    ): void {
+        if (frames.length === 0) return;
+        this.assertResidentFramesUploaded(frames);
+
         for (let i = frames.length - 1; i >= 0; i--) {
             this.renderResidentMapPass(frames[i], true);
         }
+    }
+
+    renderStaticMaps(frames: readonly RustResidentMapFrameState[]): void {
+        if (!this.beginStaticFrame(frames)) return;
+        this.renderOpaqueStaticMaps(frames);
+        this.renderTransparentStaticMaps(frames);
     }
 
     getLastStats(): { drawCalls: number; submittedIndices: number } {
@@ -407,6 +423,18 @@ export class RustRendererBridge {
 
     getLastDrawHash(): number {
         return this.wasm.last_draw_hash() >>> 0;
+    }
+
+    private assertResidentFramesUploaded(
+        frames: readonly RustResidentMapFrameState[],
+    ): void {
+        for (const frame of frames) {
+            if (!this.uploadedMapKeys.has(frame.mapKey)) {
+                throw new Error(
+                    `Rust static map ${frame.mapKey} has not been uploaded`,
+                );
+            }
+        }
     }
 
     private renderResidentMapPass(
