@@ -13,6 +13,10 @@ import { resolveHeightSamplePlaneForLocal } from "../../game/scene/PlaneResolver
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { WebGLMapSquare } from "../WebGLMapSquare";
 import type { WebGLOsrsRenderer } from "../WebGLOsrsRenderer";
+import {
+    isRustPlayerShadowEnabled,
+    mirrorRustPlayerGeometry,
+} from "../rust/RustShadowIntegration";
 
 /**
  * PlayerRenderer encapsulates player-specific render passes and instance data handling.
@@ -67,12 +71,23 @@ type PlayerGpuPass = {
     ib: VertexBuffer;
     drawCall: DrawCall;
     count: number;
+    vertices: Uint8Array;
+    indices: Int32Array;
 };
 
 type PlayerGpuGeometry = {
     geometryKey: string;
     opaque?: PlayerGpuPass;
     alpha?: PlayerGpuPass;
+};
+
+type PlayerGeometryBuildResult = {
+    countOpaque: number;
+    countAlpha: number;
+    opaqueVertices?: Uint8Array;
+    opaqueIndices?: Int32Array;
+    alphaVertices?: Uint8Array;
+    alphaIndices?: Int32Array;
 };
 
 export class PlayerRenderer {
@@ -479,6 +494,8 @@ export class PlayerRenderer {
             if (vertices.byteLength > 0) pass.vb.data(vertices);
             if (indices.byteLength > 0) pass.ib.data(indices);
             pass.count = indices.length | 0;
+            pass.vertices = vertices;
+            pass.indices = indices;
             return pass;
         }
         if (pass) this.deletePlayerGpuPass(pass);
@@ -512,7 +529,15 @@ export class PlayerRenderer {
             .uniform("u_usePlayerSlotAttribute", false)
             .texture("u_textures", r.textureArray)
             .texture("u_textureMaterials", r.textureMaterials);
-        return { vao, vb, ib, drawCall, count: indices.length | 0 };
+        return {
+            vao,
+            vb,
+            ib,
+            drawCall,
+            count: indices.length | 0,
+            vertices,
+            indices,
+        };
     }
 
     private deletePlayerGpuPass(pass: PlayerGpuPass): void {
@@ -1247,10 +1272,11 @@ export class PlayerRenderer {
         overlaySeqId?: number,
         overlayFrameIdx?: number,
         uploadTarget: "both" | "opaqueOnly" | "alphaOnly" | "cacheOnly" = "both",
-    ): { countOpaque: number; countAlpha: number } {
+    ): PlayerGeometryBuildResult {
         const r: any = this.renderer as any;
         if (!r.playerInterleavedBuffer || !r.playerIndexBuffer)
             return { countOpaque: 0, countAlpha: 0 };
+        const captureRustGeometry = isRustPlayerShadowEnabled();
         const controlled = this.isControlledPid(pid);
         const uploadOpaque = uploadTarget === "both" || uploadTarget === "opaqueOnly";
         const uploadAlpha = uploadTarget === "both" || uploadTarget === "alphaOnly";
@@ -1297,6 +1323,10 @@ export class PlayerRenderer {
                 return {
                     countOpaque: cachedOpaqueCount,
                     countAlpha: cachedAlphaCount,
+                    opaqueVertices: captureRustGeometry ? c.verts : undefined,
+                    opaqueIndices: captureRustGeometry ? c.inds : undefined,
+                    alphaVertices: captureRustGeometry ? c.vertsA : undefined,
+                    alphaIndices: captureRustGeometry ? c.indsA : undefined,
                 };
             }
         }
@@ -1458,6 +1488,11 @@ export class PlayerRenderer {
             indices = new Int32Array(sceneBuf.indices);
         }
 
+        const rustOpaqueVertices =
+            captureRustGeometry ? new Uint8Array(vertices) : undefined;
+        const rustOpaqueIndices =
+            captureRustGeometry ? new Int32Array(indices) : undefined;
+
         // Ensure GPU buffers have enough capacity. Recreate and rebind VAO if needed.
         if (uploadOpaque) {
             this.ensurePlayerGpuCapacity(vertices, indices);
@@ -1544,9 +1579,19 @@ export class PlayerRenderer {
             this.dynamicIndicesCountAlpha = 0;
         }
 
-        const result = {
+        const result: PlayerGeometryBuildResult = {
             countOpaque: indices.length | 0,
             countAlpha: indicesAlpha.length | 0,
+            opaqueVertices: rustOpaqueVertices,
+            opaqueIndices: rustOpaqueIndices,
+            alphaVertices:
+                captureRustGeometry
+                    ? new Uint8Array(verticesAlpha)
+                    : undefined,
+            alphaIndices:
+                captureRustGeometry
+                    ? new Int32Array(indicesAlpha)
+                    : undefined,
         };
         try {
             if (cacheKey && (animationApplied || seqId < 0)) {
