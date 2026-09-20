@@ -26,6 +26,9 @@ class MockWasm implements RustRendererWasm {
 
     private opaqueRanges = new Uint32Array();
     private alphaRanges = new Uint32Array();
+    private opaqueRangePlanes = new Uint8Array();
+    private alphaRangePlanes = new Uint8Array();
+    private roofPlaneLimit = 3;
 
     constructor(_canvas: HTMLCanvasElement) {
         MockWasm.last = this;
@@ -77,12 +80,16 @@ class MockWasm implements RustRendererWasm {
     upload_static_passes(
         _modelInfoOpaque: Uint16Array,
         opaqueRanges: Uint32Array,
+        opaqueRangePlanes: Uint8Array,
         _modelInfoAlpha: Uint16Array,
         alphaRanges: Uint32Array,
+        alphaRangePlanes: Uint8Array,
     ): void {
         this.staticPassUploads++;
         this.opaqueRanges = opaqueRanges;
         this.alphaRanges = alphaRanges;
+        this.opaqueRangePlanes = opaqueRangePlanes;
+        this.alphaRangePlanes = alphaRangePlanes;
     }
 
     upload_texture_array(
@@ -114,23 +121,27 @@ class MockWasm implements RustRendererWasm {
         _fogDepth: number,
         _currentTime: number,
         _brightness: number,
-        _roofPlaneLimit: number,
+        roofPlaneLimit: number,
         _isNewTextureAnim: boolean,
         _colorBanding: number,
     ): void {
         this.renderFrameCalls++;
+        this.roofPlaneLimit = roofPlaneLimit;
     }
 
     last_draw_calls(): number {
         if (this.renderFrameCalls === 0) return 0;
-        return this.countDrawCalls(this.opaqueRanges) + this.countDrawCalls(this.alphaRanges);
+        return (
+            this.countDrawCalls(this.opaqueRanges, this.opaqueRangePlanes)
+            + this.countDrawCalls(this.alphaRanges, this.alphaRangePlanes)
+        );
     }
 
     last_submitted_indices(): number {
         if (this.renderFrameCalls === 0) return 0;
         return (
-            this.countSubmittedIndices(this.opaqueRanges)
-            + this.countSubmittedIndices(this.alphaRanges)
+            this.countSubmittedIndices(this.opaqueRanges, this.opaqueRangePlanes)
+            + this.countSubmittedIndices(this.alphaRanges, this.alphaRangePlanes)
         );
     }
 
@@ -138,18 +149,32 @@ class MockWasm implements RustRendererWasm {
         this.disposed = true;
     }
 
-    private countDrawCalls(ranges: Uint32Array): number {
+    private isVisible(rangeIndex: number, planes: Uint8Array): boolean {
+        return this.roofPlaneLimit >= 3 || (planes[rangeIndex] ?? 0) <= this.roofPlaneLimit;
+    }
+
+    private countDrawCalls(ranges: Uint32Array, planes: Uint8Array): number {
         let calls = 0;
         for (let i = 0; i + 2 < ranges.length; i += 3) {
-            if (ranges[i + 1] > 0 && ranges[i + 2] > 0) calls++;
+            const rangeIndex = i / 3;
+            if (
+                ranges[i + 1] > 0
+                && ranges[i + 2] > 0
+                && this.isVisible(rangeIndex, planes)
+            ) {
+                calls++;
+            }
         }
         return calls;
     }
 
-    private countSubmittedIndices(ranges: Uint32Array): number {
+    private countSubmittedIndices(ranges: Uint32Array, planes: Uint8Array): number {
         let indices = 0;
         for (let i = 0; i + 2 < ranges.length; i += 3) {
-            indices += ranges[i + 1] * ranges[i + 2];
+            const rangeIndex = i / 3;
+            if (this.isVisible(rangeIndex, planes)) {
+                indices += ranges[i + 1] * ranges[i + 2];
+            }
         }
         return indices;
     }
@@ -234,6 +259,26 @@ function frame(): RustStaticFrameState {
     );
     bridge.uploadStaticScene(noAlpha, 4.5);
     bridge.renderStatic(frame());
+
+    assert.deepEqual(bridge.getLastStats(), {
+        drawCalls: 1,
+        submittedIndices: 3,
+    });
+    bridge.dispose();
+}
+
+{
+    const roofFiltered = packet();
+    roofFiltered.alphaDrawRangePlanes = new Uint8Array([2]);
+
+    const bridge = new RustRendererBridge(
+        {} as HTMLCanvasElement,
+        MockWasm,
+    );
+    bridge.uploadStaticScene(roofFiltered, 5.5);
+    const roofFrame = frame();
+    roofFrame.roofPlaneLimit = 0;
+    bridge.renderStatic(roofFrame);
 
     assert.deepEqual(bridge.getLastStats(), {
         drawCalls: 1,
