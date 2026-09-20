@@ -497,8 +497,7 @@ impl RustWebGlRenderer {
             create_program(&gl, REFERENCE_VERTEX_SHADER, REFERENCE_FRAGMENT_SHADER)?;
         let static_program_raw = create_program(&gl, STATIC_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
         let npc_program_raw = create_program(&gl, NPC_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
-        let player_program_raw =
-            create_program(&gl, PLAYER_VERTEX_SHADER, PLAYER_FRAGMENT_SHADER)?;
+        let player_program_raw = create_program(&gl, PLAYER_VERTEX_SHADER, PLAYER_FRAGMENT_SHADER)?;
 
         let static_map = StaticMapResources::new(&gl)?;
         let dynamic_npc_batch = IndexedGeometryBatch::new(&gl)?;
@@ -597,47 +596,23 @@ impl RustWebGlRenderer {
                 &player_program_raw,
                 "u_worldEntityTransform",
             )?,
-            scene_hsl_override: required_uniform(
-                &gl,
-                &player_program_raw,
-                "u_sceneHslOverride",
-            )?,
+            scene_hsl_override: required_uniform(&gl, &player_program_raw, "u_sceneHslOverride")?,
             player_pos: required_uniform(&gl, &player_program_raw, "u_playerPos")?,
             render_distance: required_uniform(&gl, &player_program_raw, "u_renderDistance")?,
             fog_depth: required_uniform(&gl, &player_program_raw, "u_fogDepth")?,
             current_time: required_uniform(&gl, &player_program_raw, "u_currentTime")?,
             brightness: required_uniform(&gl, &player_program_raw, "u_brightness")?,
-            is_new_texture_anim: required_uniform(
-                &gl,
-                &player_program_raw,
-                "u_isNewTextureAnim",
-            )?,
+            is_new_texture_anim: required_uniform(&gl, &player_program_raw, "u_isNewTextureAnim")?,
             color_banding: required_uniform(&gl, &player_program_raw, "u_colorBanding")?,
-            player_data_offset: required_uniform(
-                &gl,
-                &player_program_raw,
-                "u_playerDataOffset",
-            )?,
+            player_data_offset: required_uniform(&gl, &player_program_raw, "u_playerDataOffset")?,
             map_pos: required_uniform(&gl, &player_program_raw, "u_mapPos")?,
             time_loaded: required_uniform(&gl, &player_program_raw, "u_timeLoaded")?,
-            scene_border_size: required_uniform(
-                &gl,
-                &player_program_raw,
-                "u_sceneBorderSize",
-            )?,
+            scene_border_size: required_uniform(&gl, &player_program_raw, "u_sceneBorderSize")?,
             model_y_offset: required_uniform(&gl, &player_program_raw, "u_modelYOffset")?,
-            actor_data_sampler: required_uniform(
-                &gl,
-                &player_program_raw,
-                "u_playerDataTexture",
-            )?,
+            actor_data_sampler: required_uniform(&gl, &player_program_raw, "u_playerDataTexture")?,
             height_map_sampler: required_uniform(&gl, &player_program_raw, "u_heightMap")?,
             texture_sampler: required_uniform(&gl, &player_program_raw, "u_textures")?,
-            material_sampler: required_uniform(
-                &gl,
-                &player_program_raw,
-                "u_textureMaterials",
-            )?,
+            material_sampler: required_uniform(&gl, &player_program_raw, "u_textureMaterials")?,
             material_count: required_uniform(&gl, &player_program_raw, "u_materialCount")?,
             discard_alpha: required_uniform(&gl, &player_program_raw, "u_discardAlpha")?,
             sky_color: required_uniform(&gl, &player_program_raw, "u_skyColor")?,
@@ -2188,9 +2163,7 @@ impl RustWebGlRenderer {
             return Err(JsValue::from_str("player_pos must contain two f32 values"));
         }
         if player_data_offset < 0 {
-            return Err(JsValue::from_str(
-                "player_data_offset must be non-negative",
-            ));
+            return Err(JsValue::from_str("player_data_offset must be non-negative"));
         }
 
         let state = self
@@ -2204,8 +2177,7 @@ impl RustWebGlRenderer {
 
         if transparent {
             self.gl.enable(Gl::BLEND);
-            self.gl
-                .blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+            self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
         } else {
             self.gl.disable(Gl::BLEND);
         }
@@ -2247,14 +2219,10 @@ impl RustWebGlRenderer {
             Some(&self.player_program.render_distance),
             render_distance.max(0.0001),
         );
-        self.gl.uniform1f(
-            Some(&self.player_program.fog_depth),
-            fog_depth.max(0.0),
-        );
-        self.gl.uniform1f(
-            Some(&self.player_program.current_time),
-            current_time,
-        );
+        self.gl
+            .uniform1f(Some(&self.player_program.fog_depth), fog_depth.max(0.0));
+        self.gl
+            .uniform1f(Some(&self.player_program.current_time), current_time);
         self.gl.uniform1f(
             Some(&self.player_program.brightness),
             brightness.max(0.0001),
@@ -2271,23 +2239,16 @@ impl RustWebGlRenderer {
             Some(&self.player_program.player_data_offset),
             player_data_offset,
         );
-        self.gl.uniform2f(
-            Some(&self.player_program.map_pos),
-            state.map_x,
-            state.map_y,
-        );
-        self.gl.uniform1f(
-            Some(&self.player_program.time_loaded),
-            state.time_loaded,
-        );
+        self.gl
+            .uniform2f(Some(&self.player_program.map_pos), state.map_x, state.map_y);
+        self.gl
+            .uniform1f(Some(&self.player_program.time_loaded), state.time_loaded);
         self.gl.uniform1i(
             Some(&self.player_program.scene_border_size),
             state.border_size,
         );
-        self.gl.uniform1f(
-            Some(&self.player_program.model_y_offset),
-            model_y_offset,
-        );
+        self.gl
+            .uniform1f(Some(&self.player_program.model_y_offset), model_y_offset);
         self.gl.uniform1i(
             Some(&self.player_program.material_count),
             self.material_count.max(1),
@@ -2296,10 +2257,8 @@ impl RustWebGlRenderer {
             Some(&self.player_program.discard_alpha),
             i32::from(transparent),
         );
-        self.gl.uniform4fv_with_f32_array(
-            Some(&self.player_program.sky_color),
-            sky_rgba,
-        );
+        self.gl
+            .uniform4fv_with_f32_array(Some(&self.player_program.sky_color), sky_rgba);
 
         self.gl.active_texture(Gl::TEXTURE6);
         self.gl
@@ -2341,15 +2300,7 @@ impl RustWebGlRenderer {
 
         self.gl
             .bind_vertex_array(Some(&self.dynamic_player_batch.vao));
-        let stats = submit_draw_ranges(
-            &self.gl,
-            &range,
-            index_count,
-            None,
-            None,
-            3,
-            false,
-        );
+        let stats = submit_draw_ranges(&self.gl, &range, index_count, None, None, 3, false);
         self.gl.bind_vertex_array(None);
 
         self.last_stats.draw_calls += stats.draw_calls;
