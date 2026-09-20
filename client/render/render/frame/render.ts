@@ -188,6 +188,7 @@ import {
 } from "../../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
 import {
+    capturePicoSceneReference,
     capturePicoStaticReference,
     shouldCaptureRustPixelParity,
 } from "../../rust/RustPixelParity";
@@ -748,17 +749,32 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
         profiler.startPhase("roof");
         host.roofPlaneLimit = host.computeFrameRoofPlaneLimit();
+        const rustNpcParityEnabled = isRustNpcShadowEnabled();
+        const rustPlayerParityEnabled = isRustPlayerShadowEnabled();
+        const rustGfxParityEnabled = isRustGfxShadowEnabled();
+        const rustProjectileParityEnabled =
+            isRustProjectileShadowEnabled();
         const rustDynamicParityEnabled =
-            isRustNpcShadowEnabled()
-            || isRustPlayerShadowEnabled()
-            || isRustGfxShadowEnabled()
-            || isRustProjectileShadowEnabled();
-        const rustPixelReference =
+            rustNpcParityEnabled
+            || rustPlayerParityEnabled
+            || rustGfxParityEnabled
+            || rustProjectileParityEnabled;
+        const rustFullDynamicParityEnabled =
+            rustNpcParityEnabled
+            && rustPlayerParityEnabled
+            && rustGfxParityEnabled
+            && rustProjectileParityEnabled;
+        const rustPixelCaptureRequested =
             getRustRendererShadowDiagnostics(host).enabled
+            && shouldCaptureRustPixelParity(host);
+        const rustPixelReference =
+            rustPixelCaptureRequested
             && !rustDynamicParityEnabled
-            && shouldCaptureRustPixelParity(host)
                 ? capturePicoStaticReference(host, sceneFramebuffer)
                 : undefined;
+        const rustDynamicPixelCaptureRequested =
+            rustPixelCaptureRequested
+            && rustFullDynamicParityEnabled;
         renderRustStaticShadowFrame(
             host,
             {
@@ -829,7 +845,11 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         passStartIndices = host._frameIndices;
         passStartBatches = host._frameBatches;
         host.renderTransparentPlayerPass(playerDataTextureIndex, playerDataTexture);
-        finishRustActorShadowFrame(host);
+        const rustDynamicPixelReference =
+            rustDynamicPixelCaptureRequested
+                ? capturePicoSceneReference(host, sceneFramebuffer)
+                : undefined;
+        finishRustActorShadowFrame(host, rustDynamicPixelReference);
         transparentPlayerIndices = Math.max(0, host._frameIndices - passStartIndices);
         transparentPlayerBatches = Math.max(0, host._frameBatches - passStartBatches);
         profiler.endPhase();
