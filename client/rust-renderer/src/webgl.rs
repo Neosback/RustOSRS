@@ -733,10 +733,8 @@ impl RustWebGlRenderer {
 
     /// Renders the resident opaque and alpha static passes as one Rust-owned frame.
     ///
-    /// The opaque pass matches mainProgram (no alpha-test define) and clears
-    /// the frame. The alpha pass matches mainAlphaProgram (alpha-test discard),
-    /// preserves the opaque color/depth buffers and does not fall back to
-    /// drawing the whole index buffer when its range list is empty.
+    /// Full-detail and LOD resources remain resident at the same time. Frame
+    /// selection is explicit and does not mutate or swap renderer ownership.
     #[allow(clippy::too_many_arguments)]
     pub fn render_static_frame(
         &mut self,
@@ -756,16 +754,8 @@ impl RustWebGlRenderer {
         is_new_texture_anim: bool,
         color_banding: f32,
     ) -> Result<(), JsValue> {
-        if use_lod {
-            std::mem::swap(
-                &mut self.static_opaque_pass,
-                &mut self.static_lod_opaque_pass,
-            );
-            std::mem::swap(&mut self.static_alpha_pass, &mut self.static_lod_alpha_pass);
-        }
-
         self.gl.disable(Gl::BLEND);
-        let opaque_result = self.render_static(
+        self.render_static(
             view_matrix,
             projection_matrix,
             world_entity_transform,
@@ -778,26 +768,16 @@ impl RustWebGlRenderer {
             current_time,
             brightness,
             roof_plane_limit,
+            use_lod,
             is_new_texture_anim,
             color_banding,
             false,
             true,
-        );
-
-        if let Err(error) = opaque_result {
-            if use_lod {
-                std::mem::swap(&mut self.static_alpha_pass, &mut self.static_lod_alpha_pass);
-                std::mem::swap(
-                    &mut self.static_opaque_pass,
-                    &mut self.static_lod_opaque_pass,
-                );
-            }
-            return Err(error);
-        }
+        )?;
 
         self.gl.enable(Gl::BLEND);
         self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
-        let alpha_result = self.render_static(
+        self.render_static(
             view_matrix,
             projection_matrix,
             world_entity_transform,
@@ -810,21 +790,12 @@ impl RustWebGlRenderer {
             current_time,
             brightness,
             roof_plane_limit,
+            use_lod,
             is_new_texture_anim,
             color_banding,
             true,
             false,
-        );
-
-        if use_lod {
-            std::mem::swap(&mut self.static_alpha_pass, &mut self.static_lod_alpha_pass);
-            std::mem::swap(
-                &mut self.static_opaque_pass,
-                &mut self.static_lod_opaque_pass,
-            );
-        }
-
-        alpha_result
+        )
     }
 
     /// Stage-1 static-scene pass matching the current map-square transform path.
@@ -843,6 +814,7 @@ impl RustWebGlRenderer {
         current_time: f32,
         brightness: f32,
         roof_plane_limit: f32,
+        use_lod: bool,
         is_new_texture_anim: bool,
         color_banding: f32,
         discard_alpha: bool,
@@ -859,10 +831,11 @@ impl RustWebGlRenderer {
         let state = self
             .static_state
             .ok_or_else(|| JsValue::from_str("static map state has not been configured"))?;
-        let pass = if discard_alpha {
-            &self.static_alpha_pass
-        } else {
-            &self.static_opaque_pass
+        let pass = match (use_lod, discard_alpha) {
+            (false, false) => &self.static_opaque_pass,
+            (false, true) => &self.static_alpha_pass,
+            (true, false) => &self.static_lod_opaque_pass,
+            (true, true) => &self.static_lod_alpha_pass,
         };
 
         if clear_frame {
