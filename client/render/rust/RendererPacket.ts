@@ -1,7 +1,7 @@
 import type { DrawRange } from "../DrawRange";
 import type { SdMapData } from "../loader/SdMapData";
 
-export const RUST_RENDERER_ABI_VERSION = 5 as const;
+export const RUST_RENDERER_ABI_VERSION = 6 as const;
 
 /**
  * Numeric-only static map-square packet for the Rust/WASM renderer.
@@ -10,6 +10,29 @@ export const RUST_RENDERER_ABI_VERSION = 5 as const;
  * PicoGL resources, TypeScript class instances, callbacks, loaders or React
  * state here.
  */
+export interface RustStaticGeometryPacket {
+    packedVertexWords: Uint32Array;
+    indices: Uint32Array;
+
+    modelInfoOpaque: Uint16Array;
+    modelInfoAlpha: Uint16Array;
+    modelInfoOpaqueLod: Uint16Array;
+    modelInfoAlphaLod: Uint16Array;
+
+    opaqueDrawRanges: Uint32Array;
+    opaqueDrawRangePlanes: Uint8Array;
+    alphaDrawRanges: Uint32Array;
+    alphaDrawRangePlanes: Uint8Array;
+
+    opaqueLodDrawRanges: Uint32Array;
+    opaqueLodDrawRangePlanes: Uint8Array;
+    alphaLodDrawRanges: Uint32Array;
+    alphaLodDrawRangePlanes: Uint8Array;
+
+    locGeometry: RustStaticGeometryPacket;
+    doorGeometry: RustStaticGeometryPacket;
+}
+
 export interface RustStaticScenePacket {
     abiVersion: typeof RUST_RENDERER_ABI_VERSION;
 
@@ -117,6 +140,40 @@ export function validateWaterMask(
     }
 }
 
+function createStaticGeometryPacket(input: {
+    vertices: Uint8Array;
+    indices: Int32Array;
+    modelInfoOpaque: Uint16Array;
+    modelInfoAlpha: Uint16Array;
+    modelInfoOpaqueLod: Uint16Array;
+    modelInfoAlphaLod: Uint16Array;
+    opaqueDrawRanges: readonly DrawRange[];
+    opaqueDrawRangePlanes: Uint8Array;
+    alphaDrawRanges: readonly DrawRange[];
+    alphaDrawRangePlanes: Uint8Array;
+    opaqueLodDrawRanges: readonly DrawRange[];
+    opaqueLodDrawRangePlanes: Uint8Array;
+    alphaLodDrawRanges: readonly DrawRange[];
+    alphaLodDrawRangePlanes: Uint8Array;
+}): RustStaticGeometryPacket {
+    return {
+        packedVertexWords: packedVertexWords(input.vertices),
+        indices: unsignedIndexWords(input.indices),
+        modelInfoOpaque: input.modelInfoOpaque,
+        modelInfoAlpha: input.modelInfoAlpha,
+        modelInfoOpaqueLod: input.modelInfoOpaqueLod,
+        modelInfoAlphaLod: input.modelInfoAlphaLod,
+        opaqueDrawRanges: flattenDrawRanges(input.opaqueDrawRanges),
+        opaqueDrawRangePlanes: input.opaqueDrawRangePlanes,
+        alphaDrawRanges: flattenDrawRanges(input.alphaDrawRanges),
+        alphaDrawRangePlanes: input.alphaDrawRangePlanes,
+        opaqueLodDrawRanges: flattenDrawRanges(input.opaqueLodDrawRanges),
+        opaqueLodDrawRangePlanes: input.opaqueLodDrawRangePlanes,
+        alphaLodDrawRanges: flattenDrawRanges(input.alphaLodDrawRanges),
+        alphaLodDrawRangePlanes: input.alphaLodDrawRangePlanes,
+    };
+}
+
 /**
  * Adapter for an already-decoded map square.
  *
@@ -157,5 +214,38 @@ export function createRustStaticScenePacket(data: SdMapData): RustStaticScenePac
         opaqueLodDrawRangePlanes: data.drawRangesLodPlanes,
         alphaLodDrawRanges: flattenDrawRanges(data.drawRangesLodAlpha),
         alphaLodDrawRangePlanes: data.drawRangesLodAlphaPlanes,
+
+        locGeometry: createStaticGeometryPacket({
+            vertices: data.loc.vertices,
+            indices: data.loc.indices,
+            modelInfoOpaque: data.loc.modelTextureData,
+            modelInfoAlpha: data.loc.modelTextureDataAlpha,
+            modelInfoOpaqueLod: data.loc.modelTextureDataLod,
+            modelInfoAlphaLod: data.loc.modelTextureDataLodAlpha,
+            opaqueDrawRanges: data.loc.drawRanges,
+            opaqueDrawRangePlanes: data.loc.drawRangesPlanes,
+            alphaDrawRanges: data.loc.drawRangesAlpha,
+            alphaDrawRangePlanes: data.loc.drawRangesAlphaPlanes,
+            opaqueLodDrawRanges: data.loc.drawRangesLod,
+            opaqueLodDrawRangePlanes: data.loc.drawRangesLodPlanes,
+            alphaLodDrawRanges: data.loc.drawRangesLodAlpha,
+            alphaLodDrawRangePlanes: data.loc.drawRangesLodAlphaPlanes,
+        }),
+        doorGeometry: createStaticGeometryPacket({
+            vertices: data.doorVertices,
+            indices: data.doorIndices,
+            modelInfoOpaque: data.doorModelTextureData,
+            modelInfoAlpha: data.doorModelTextureDataAlpha,
+            modelInfoOpaqueLod: data.doorModelTextureDataLod,
+            modelInfoAlphaLod: data.doorModelTextureDataLodAlpha,
+            opaqueDrawRanges: data.doorDrawRanges,
+            opaqueDrawRangePlanes: data.doorDrawRangesPlanes,
+            alphaDrawRanges: data.doorDrawRangesAlpha,
+            alphaDrawRangePlanes: data.doorDrawRangesAlphaPlanes,
+            opaqueLodDrawRanges: data.doorDrawRangesLod,
+            opaqueLodDrawRangePlanes: data.doorDrawRangesLodPlanes,
+            alphaLodDrawRanges: data.doorDrawRangesLodAlpha,
+            alphaLodDrawRangePlanes: data.doorDrawRangesLodAlphaPlanes,
+        }),
     };
 }
