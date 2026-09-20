@@ -30,6 +30,8 @@ Stage 0 is implemented, Stage 1 static-scene parity is near completion, and Stag
 - Rust-owned per-map prebaked NPC packed vertex/index buffers and VAOs, mirrored from the same `SdMapData` bytes
 - opt-in Rust NPC shadow draw submission for both prebaked map NPCs and current-frame dynamic fallback geometry, using the exact live TypeScript-selected animation state, actor-data offsets, world-entity transforms and deck/model offsets
 - Rust-owned player shader program, reusable finalized-player geometry batch and live opaque/transparent player shadow submission, including remote slot instancing, controlled-player geometry, first-person culling and world-entity transforms
+- live Rust spot-animation/GFX shadow submission through a reusable dynamic GPU batch using finalized TypeScript-selected frame geometry and actor offsets
+- Rust-owned projectile shader, reusable dynamic projectile batch and live opaque/transparent projectile shadow submission, including sub-tile position offsets, model height offsets and culling state
 - incremental loc and door geometry replacement for live object-state changes
 - per-frame animated-loc draw-range patching without re-uploading geometry
 - resident ground-item geometry with spawn, rebuild and despawn synchronization
@@ -44,9 +46,9 @@ The production client still presents the existing PicoGL renderer. With `?rust-r
 
 For image comparison, use `?rust-renderer=shadow&rust-pixel-parity=1`. The first eligible static frame is captured and comparison repeats every 120 frames by default. Add `&rust-pixel-every=N` to change that interval. The latest shadow diagnostics expose structural parity plus pixel mismatch ratio, maximum channel delta, mean absolute channel delta and RMSE.
 
-NPC rendering can be added to the detached Rust shadow with `?rust-renderer=shadow&rust-npc-parity=1`. Player rendering can be added with `?rust-renderer=shadow&rust-player-parity=1`; both flags can be enabled together. These modes deliberately reuse finalized TypeScript-selected animation state and packed geometry instead of duplicating actor simulation/model construction in Rust. Static-only pixel capture is disabled while either dynamic parity mode is enabled until the PicoGL reference capture includes the same dynamic subset.
+Dynamic actor classes can be added independently to the detached Rust shadow with `rust-npc-parity=1`, `rust-player-parity=1`, `rust-gfx-parity=1` and `rust-projectile-parity=1` alongside `?rust-renderer=shadow`. The flags can be combined. These modes deliberately reuse finalized TypeScript-selected simulation/animation state and packed geometry instead of duplicating game logic in Rust. Static-only pixel capture is disabled while any dynamic parity mode is enabled until the PicoGL reference capture includes the same dynamic subset.
 
-The previously identified Mode-1 overlapping world-entity ghost redraw is now mirrored in Rust as a terrain-only blended pass with the exact packed-HSL tint and opacity contract. Stage 2 now owns the live actor-data texture and Rust GPU draw submission for prebaked NPCs, dynamic fallback NPCs and players. TypeScript still owns actor simulation, animation-frame choice and current geometry construction; Rust consumes finalized packed geometry plus numeric renderer state. Projectiles and spot-animation/GFX remain the dynamic visual classes still to move before renderer services.
+The previously identified Mode-1 overlapping world-entity ghost redraw is now mirrored in Rust as a terrain-only blended pass with the exact packed-HSL tint and opacity contract. Stage 2 now owns the live actor-data texture and Rust GPU draw submission for prebaked NPCs, dynamic fallback NPCs, players, spot-animation/GFX and projectiles. TypeScript still owns simulation, animation-frame choice and current geometry construction; Rust consumes finalized packed geometry plus numeric renderer state. The remaining Stage 2 work is representative real-scene validation plus any cross-entity transparency/priority edge cases found by parity testing.
 
 ## Why WebGL2 first
 
@@ -83,7 +85,7 @@ Acceptance: identical static scene state + camera produces structurally matching
 
 ### Stage 2: dynamic scene
 
-Move players, NPCs, projectiles, GFX, dynamic transparency and priority ordering. Rust owns the exact live `RGBA16UI` actor-data texture, NPC/player shader programs and GPU draw submission for prebaked NPCs, dynamic fallback NPCs and players. With `rust-npc-parity=1` and/or `rust-player-parity=1`, the shadow path consumes the same finalized TypeScript-selected ranges/geometry and actor offsets in production opaque/transparent order. Player slot batching is preserved in Rust rather than expanded into per-player draws. Projectile and spot-animation/GFX draw submission are the remaining Stage 2 visual classes.
+Move players, NPCs, projectiles, GFX, dynamic transparency and priority ordering. Rust owns the exact live `RGBA16UI` actor-data texture plus GPU draw submission for prebaked NPCs, dynamic fallback NPCs, players, spot-animation/GFX and projectiles. The opt-in shadow flags consume the same finalized TypeScript-selected ranges/geometry, actor offsets and production opaque/transparent ordering. Player slot batching is preserved in Rust rather than expanded into per-player draws. Stage 2 is now implementation-complete at the shadow boundary; remaining work is parity acceptance and correction of any ordering/priority edge cases exposed by representative scenes.
 
 ### Stage 3: renderer services
 
@@ -102,7 +104,7 @@ Port VertexBuffer, SceneBuffer, model face packing, model hashing, terrain/loc m
 
 The Rust renderer must not become the primary canvas until these renderer-owned services are present and parity-tested:
 
-- projectiles and spot-animation/GFX passes
+- representative dynamic-scene parity acceptance across NPC/player/GFX/projectile overlap, transparency and priority cases
 - GPU picking/interaction framebuffer for object, NPC, player and tile hover/click semantics
 - final scene framebuffer ownership, resize/MSAA handling, FXAA and presentation/blit path
 - world-space interaction/highlight and 3D overlay geometry that currently depends on the PicoGL scene pipeline
