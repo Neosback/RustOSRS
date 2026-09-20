@@ -32,7 +32,7 @@ Stage 0 is implemented and Stage 1 static-scene parity is actively landing:
 - deterministic browser `wasm-bindgen` packaging through `yarn build:rust-renderer`
 - opt-in isolated shadow runtime through `?rust-renderer=shadow`
 - structural parity diagnostics for resident/visible/mirrored maps, draw-call totals, submitted indices and order-sensitive draw fingerprints
-- explicit detection of the remaining Mode-1 overlapping world-entity ghost redraw gap
+- Mode-1 overlapping world-entity ghost terrain redraw parity, including packed-HSL tint and low-opacity blending
 - opt-in static pixel parity capture against an isolated PicoGL reference framebuffer
 - native Rust tests, bridge tests, wasm32 compile checks, browser-WASM packaging and shadow-integration CI
 
@@ -40,7 +40,7 @@ The production client still presents the existing PicoGL renderer. With `?rust-r
 
 For image comparison, use `?rust-renderer=shadow&rust-pixel-parity=1`. The first eligible static frame is captured and comparison repeats every 120 frames by default. Add `&rust-pixel-every=N` to change that interval. The latest shadow diagnostics expose structural parity plus pixel mismatch ratio, maximum channel delta, mean absolute channel delta and RMSE.
 
-The main remaining static-scene exception is the live Mode-1 overlapping world-entity ghost redraw. The parity oracle intentionally reports that as a mismatch instead of masking it. Dynamic players, NPCs, projectiles, graphics effects, picking/interaction rendering and final framebuffer/post-processing remain later stages.
+The previously identified Mode-1 overlapping world-entity ghost redraw is now mirrored in Rust as a terrain-only blended pass with the exact packed-HSL tint and opacity contract. Dynamic players, NPCs, projectiles, graphics effects, picking/interaction rendering and final framebuffer/post-processing remain later stages.
 
 ## Why WebGL2 first
 
@@ -71,7 +71,7 @@ Port the current main map pass: scene uniforms, model-info packets, opaque/alpha
 
 Current status: terrain, locs, doors, animated-loc range changes and ground items are mirrored live across multiple resident map squares. Structural parity compares the exact draw totals and an order-sensitive draw fingerprint. An opt-in isolated PicoGL reference framebuffer provides pixel-level comparison against the Rust shadow output.
 
-Known exception: Mode-1 overlapping world entities receive an additional tinted, low-opacity terrain redraw in PicoGL that Rust does not render yet. Diagnostics count this explicitly so static parity cannot report a false green.
+Mode-1 overlapping world entities are included in the structural oracle and Rust now schedules the same terrain-only ghost redraw in the opaque map order.
 
 Acceptance: identical static scene state + camera produces structurally matching draw sequences and pixel-comparable output between PicoGL and Rust across representative map, roof, LOD, water, animation and world-entity scenes.
 
