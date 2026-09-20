@@ -900,7 +900,14 @@ export function renderRustStaticShadowFrame(
             );
         }
 
-        runtime.bridge.renderStaticMaps(frames);
+        if (runtime.bridge.beginStaticFrame(frames)) {
+            runtime.bridge.renderOpaqueStaticMaps(frames);
+
+            // Stage 2 actor passes will be inserted here so Rust preserves the
+            // production ordering: opaque static -> opaque actors ->
+            // transparent static -> transparent NPCs/players.
+            runtime.bridge.renderTransparentStaticMaps(frames);
+        }
         const stats =
             frames.length > 0
                 ? runtime.bridge.getLastStats()
