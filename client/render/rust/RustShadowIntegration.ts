@@ -212,6 +212,42 @@ interface ShadowCamera {
     projectionMatrix: Float32Array;
 }
 
+export function createAnimatedLocDrawRangePatches(
+    map: Pick<WebGLMapSquare, "locsAnimated">,
+    transparent: boolean,
+    useLod: boolean,
+): Uint32Array {
+    if (map.locsAnimated.length === 0) {
+        return new Uint32Array();
+    }
+
+    const values: number[] = [];
+    for (const loc of map.locsAnimated) {
+        const frames = transparent ? loc.anim.framesAlpha : loc.anim.frames;
+        if (!frames) continue;
+
+        const frame = frames[loc.frame | 0];
+        if (!frame) continue;
+
+        const rangeIndex = loc.getDrawRangeIndex(
+            transparent,
+            false,
+            useLod,
+        );
+        if (rangeIndex < 0) continue;
+
+        values.push(
+            rangeIndex >>> 0,
+            frame[0] >>> 0,
+            frame[1] >>> 0,
+            frame[2] >>> 0,
+        );
+    }
+
+    return new Uint32Array(values);
+}
+
+
 export function renderRustStaticShadowFrame(
     host: WebGLOsrsRendererHost,
     camera: ShadowCamera,
@@ -274,6 +310,20 @@ export function renderRustStaticShadowFrame(
                 cullTile.x,
                 cullTile.y,
             );
+            const useLod = tileDistance > lodThresholdTiles;
+
+            runtime.bridge.patchLocDrawRanges(
+                mapKey,
+                useLod,
+                false,
+                createAnimatedLocDrawRangePatches(map, false, useLod),
+            );
+            runtime.bridge.patchLocDrawRanges(
+                mapKey,
+                useLod,
+                true,
+                createAnimatedLocDrawRangePatches(map, true, useLod),
+            );
 
             let worldEntityTransform: Float32Array =
                 WebGLMapSquare.IDENTITY_MAT4;
@@ -300,7 +350,7 @@ export function renderRustStaticShadowFrame(
                 currentTime,
                 brightness: host.brightness,
                 roofPlaneLimit,
-                useLod: tileDistance > lodThresholdTiles,
+                useLod,
                 isNewTextureAnim: !!host.osrsClient.isNewTextureAnim,
                 colorBanding: host.colorBanding,
             });
