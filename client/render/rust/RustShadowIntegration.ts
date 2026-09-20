@@ -296,6 +296,9 @@ export async function initRustRendererShadow(
         runtime.bridge.setPresentationEnabled(
             isRustPresentationShadowEnabled(),
         );
+        runtime.bridge.setPresentationMsaaEnabled(
+            !!host.msaaEnabled,
+        );
         syncGlobalResources(host, runtime);
         syncCurrentActorData(host, runtime);
         publishDiagnostics(host, {
@@ -1372,6 +1375,11 @@ export function renderRustStaticShadowFrame(
             host.sceneRenderHeight,
         );
         syncGlobalResources(host, runtime);
+        if (runtime.bridge.isPresentationEnabled()) {
+            runtime.bridge.setPresentationMsaaEnabled(
+                !!host.msaaEnabled,
+            );
+        }
 
         const count = host.mapManager.visibleMapCount | 0;
         if (count <= 0) {
