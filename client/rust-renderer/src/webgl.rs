@@ -899,8 +899,7 @@ impl RustWebGlRenderer {
         self.gl.delete_buffer(Some(&self.vertex_buffer));
         self.gl.delete_buffer(Some(&self.index_buffer));
         self.gl.delete_texture(Some(&self.model_info_texture));
-        self.gl
-            .delete_texture(Some(&self.model_info_alpha_texture));
+        self.gl.delete_texture(Some(&self.model_info_alpha_texture));
         self.gl.delete_texture(Some(&self.height_map_texture));
         self.gl.delete_texture(Some(&self.texture_array));
         self.gl.delete_texture(Some(&self.material_texture));
