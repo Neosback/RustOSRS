@@ -215,6 +215,45 @@ impl StaticGeometryBatch {
 const AUX_BATCH_LOC: u32 = 0;
 const AUX_BATCH_DOOR: u32 = 1;
 
+struct StaticMapResources {
+    terrain_batch: StaticGeometryBatch,
+    loc_batch: Option<StaticGeometryBatch>,
+    door_batch: Option<StaticGeometryBatch>,
+    height_map_texture: WebGlTexture,
+    water_mask_texture: WebGlTexture,
+    state: Option<StaticMapState>,
+}
+
+impl StaticMapResources {
+    fn new(gl: &Gl) -> Result<Self, JsValue> {
+        let height_map_texture = create_nearest_texture(gl, Gl::TEXTURE_2D_ARRAY)?;
+        let water_mask_texture = create_nearest_texture(gl, Gl::TEXTURE_2D_ARRAY)?;
+        initialize_fallback_water_mask(gl, &water_mask_texture)?;
+
+        Ok(Self {
+            terrain_batch: StaticGeometryBatch::new(gl)?,
+            loc_batch: None,
+            door_batch: None,
+            height_map_texture,
+            water_mask_texture,
+            state: None,
+        })
+    }
+
+    fn delete(&mut self, gl: &Gl) {
+        self.terrain_batch.delete(gl);
+        if let Some(batch) = self.loc_batch.take() {
+            batch.delete(gl);
+        }
+        if let Some(batch) = self.door_batch.take() {
+            batch.delete(gl);
+        }
+        gl.delete_texture(Some(&self.height_map_texture));
+        gl.delete_texture(Some(&self.water_mask_texture));
+        self.state = None;
+    }
+}
+
 /// Rust/WASM rendering backend.
 ///
 /// Stage 0 remains available through `render_reference`. Stage 1 adds the
@@ -232,17 +271,12 @@ pub struct RustWebGlRenderer {
 
     static_program: StaticProgram,
 
-    terrain_batch: StaticGeometryBatch,
-    loc_batch: Option<StaticGeometryBatch>,
-    door_batch: Option<StaticGeometryBatch>,
-    height_map_texture: WebGlTexture,
+    static_map: StaticMapResources,
     texture_array: WebGlTexture,
     material_texture: WebGlTexture,
     water_texture_array: WebGlTexture,
-    water_mask_texture: WebGlTexture,
     texture_layer_count: i32,
     material_count: i32,
-    static_state: Option<StaticMapState>,
     last_stats: DrawStats,
 }
 
@@ -261,16 +295,13 @@ impl RustWebGlRenderer {
             create_program(&gl, REFERENCE_VERTEX_SHADER, REFERENCE_FRAGMENT_SHADER)?;
         let static_program_raw = create_program(&gl, STATIC_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
 
-        let terrain_batch = StaticGeometryBatch::new(&gl)?;
-        let height_map_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
+        let static_map = StaticMapResources::new(&gl)?;
         let texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         let material_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
         let water_texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
-        let water_mask_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         initialize_fallback_texture_array(&gl, &texture_array)?;
         initialize_fallback_materials(&gl, &material_texture)?;
         initialize_fallback_water_textures(&gl, &water_texture_array)?;
-        initialize_fallback_water_mask(&gl, &water_mask_texture)?;
 
         let reference_view_proj = required_uniform(&gl, &reference_program, "u_viewProj")?;
         let reference_brightness = required_uniform(&gl, &reference_program, "u_brightness")?;
@@ -328,17 +359,12 @@ impl RustWebGlRenderer {
             reference_view_proj,
             reference_brightness,
             static_program,
-            terrain_batch,
-            loc_batch: None,
-            door_batch: None,
-            height_map_texture,
+            static_map,
             texture_array,
             material_texture,
             water_texture_array,
-            water_mask_texture,
             texture_layer_count: 1,
             material_count: 1,
-            static_state: None,
             last_stats: DrawStats::default(),
         })
     }
@@ -355,7 +381,7 @@ impl RustWebGlRenderer {
         packed_vertices: &[u32],
         indices: &[u32],
     ) -> Result<(), JsValue> {
-        self.terrain_batch
+        self.static_map.terrain_batch
             .upload_geometry(&self.gl, packed_vertices, indices)
     }
 
@@ -366,7 +392,7 @@ impl RustWebGlRenderer {
     pub fn upload_model_info(&mut self, model_info: &[u16]) -> Result<(), JsValue> {
         upload_model_info_texture(
             &self.gl,
-            &self.terrain_batch.opaque_pass.model_info_texture,
+            &self.static_map.terrain_batch.opaque_pass.model_info_texture,
             model_info,
             "model-info",
         )
@@ -376,7 +402,7 @@ impl RustWebGlRenderer {
     pub fn upload_model_info_alpha(&mut self, model_info: &[u16]) -> Result<(), JsValue> {
         upload_model_info_texture(
             &self.gl,
-            &self.terrain_batch.alpha_pass.model_info_texture,
+            &self.static_map.terrain_batch.alpha_pass.model_info_texture,
             model_info,
             "alpha model-info",
         )
@@ -406,7 +432,7 @@ impl RustWebGlRenderer {
         let data = js_sys::Int16Array::from(height_map);
         self.gl.active_texture(Gl::TEXTURE1);
         self.gl
-            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.height_map_texture));
+            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.static_map.height_map_texture));
         self.gl.tex_image_3d_with_opt_array_buffer_view(
             Gl::TEXTURE_2D_ARRAY,
             0,
@@ -420,10 +446,10 @@ impl RustWebGlRenderer {
             Some(data.unchecked_ref()),
         )?;
 
-        if let Some(mut state) = self.static_state {
+        if let Some(mut state) = self.static_map.state {
             state.height_map_size = size;
             state.height_map_planes = planes;
-            self.static_state = Some(state);
+            self.static_map.state = Some(state);
         }
         Ok(())
     }
@@ -590,7 +616,7 @@ impl RustWebGlRenderer {
         let data = js_sys::Uint8Array::from(pixels);
         self.gl.active_texture(Gl::TEXTURE5);
         self.gl
-            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.water_mask_texture));
+            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.static_map.water_mask_texture));
         self.gl.tex_image_3d_with_opt_array_buffer_view(
             Gl::TEXTURE_2D_ARRAY,
             0,
@@ -627,7 +653,7 @@ impl RustWebGlRenderer {
         state
             .validate()
             .map_err(|message| JsValue::from_str(message))?;
-        self.static_state = Some(state);
+        self.static_map.state = Some(state);
         Ok(())
     }
 
@@ -635,19 +661,19 @@ impl RustWebGlRenderer {
     /// [offsetBytes,elements,instances, ...].
     pub fn set_draw_ranges(&mut self, flat_ranges: &[u32]) -> Result<(), JsValue> {
         let ranges = parse_draw_ranges(flat_ranges).map_err(JsValue::from_str)?;
-        validate_draw_ranges(&ranges, self.terrain_batch.index_count as usize)
+        validate_draw_ranges(&ranges, self.static_map.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        self.terrain_batch.opaque_pass.draw_ranges = ranges;
-        self.terrain_batch.opaque_pass.range_planes.clear();
+        self.static_map.terrain_batch.opaque_pass.draw_ranges = ranges;
+        self.static_map.terrain_batch.opaque_pass.range_planes.clear();
         Ok(())
     }
 
     pub fn set_draw_ranges_alpha(&mut self, flat_ranges: &[u32]) -> Result<(), JsValue> {
         let ranges = parse_draw_ranges(flat_ranges).map_err(JsValue::from_str)?;
-        validate_draw_ranges(&ranges, self.terrain_batch.index_count as usize)
+        validate_draw_ranges(&ranges, self.static_map.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        self.terrain_batch.alpha_pass.draw_ranges = ranges;
-        self.terrain_batch.alpha_pass.range_planes.clear();
+        self.static_map.terrain_batch.alpha_pass.draw_ranges = ranges;
+        self.static_map.terrain_batch.alpha_pass.range_planes.clear();
         Ok(())
     }
 
@@ -662,10 +688,10 @@ impl RustWebGlRenderer {
         alpha_range_planes: &[u8],
     ) -> Result<(), JsValue> {
         let opaque = parse_draw_ranges(opaque_ranges).map_err(JsValue::from_str)?;
-        validate_draw_ranges(&opaque, self.terrain_batch.index_count as usize)
+        validate_draw_ranges(&opaque, self.static_map.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let alpha = parse_draw_ranges(alpha_ranges).map_err(JsValue::from_str)?;
-        validate_draw_ranges(&alpha, self.terrain_batch.index_count as usize)
+        validate_draw_ranges(&alpha, self.static_map.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
         if !opaque.is_empty() {
@@ -675,10 +701,10 @@ impl RustWebGlRenderer {
             self.upload_model_info_alpha(model_info_alpha)?;
         }
 
-        self.terrain_batch.opaque_pass.draw_ranges = opaque;
-        self.terrain_batch.alpha_pass.draw_ranges = alpha;
-        self.terrain_batch.opaque_pass.range_planes = opaque_range_planes.to_vec();
-        self.terrain_batch.alpha_pass.range_planes = alpha_range_planes.to_vec();
+        self.static_map.terrain_batch.opaque_pass.draw_ranges = opaque;
+        self.static_map.terrain_batch.alpha_pass.draw_ranges = alpha;
+        self.static_map.terrain_batch.opaque_pass.range_planes = opaque_range_planes.to_vec();
+        self.static_map.terrain_batch.alpha_pass.range_planes = alpha_range_planes.to_vec();
         Ok(())
     }
 
@@ -693,16 +719,16 @@ impl RustWebGlRenderer {
         alpha_range_planes: &[u8],
     ) -> Result<(), JsValue> {
         let opaque = parse_draw_ranges(opaque_ranges).map_err(JsValue::from_str)?;
-        validate_draw_ranges(&opaque, self.terrain_batch.index_count as usize)
+        validate_draw_ranges(&opaque, self.static_map.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let alpha = parse_draw_ranges(alpha_ranges).map_err(JsValue::from_str)?;
-        validate_draw_ranges(&alpha, self.terrain_batch.index_count as usize)
+        validate_draw_ranges(&alpha, self.static_map.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
         if !opaque.is_empty() {
             upload_model_info_texture(
                 &self.gl,
-                &self.terrain_batch.lod_opaque_pass.model_info_texture,
+                &self.static_map.terrain_batch.lod_opaque_pass.model_info_texture,
                 model_info_opaque,
                 "static LOD opaque model-info",
             )?;
@@ -711,24 +737,24 @@ impl RustWebGlRenderer {
         if !alpha.is_empty() {
             upload_model_info_texture(
                 &self.gl,
-                &self.terrain_batch.lod_alpha_pass.model_info_texture,
+                &self.static_map.terrain_batch.lod_alpha_pass.model_info_texture,
                 model_info_alpha,
                 "static LOD alpha model-info",
             )?;
         }
 
-        self.terrain_batch.lod_opaque_pass.draw_ranges = opaque;
-        self.terrain_batch.lod_alpha_pass.draw_ranges = alpha;
-        self.terrain_batch.lod_opaque_pass.range_planes = opaque_range_planes.to_vec();
-        self.terrain_batch.lod_alpha_pass.range_planes = alpha_range_planes.to_vec();
+        self.static_map.terrain_batch.lod_opaque_pass.draw_ranges = opaque;
+        self.static_map.terrain_batch.lod_alpha_pass.draw_ranges = alpha;
+        self.static_map.terrain_batch.lod_opaque_pass.range_planes = opaque_range_planes.to_vec();
+        self.static_map.terrain_batch.lod_alpha_pass.range_planes = alpha_range_planes.to_vec();
         Ok(())
     }
 
     pub fn clear_draw_ranges(&mut self) {
-        self.terrain_batch.opaque_pass.clear();
-        self.terrain_batch.alpha_pass.clear();
-        self.terrain_batch.lod_opaque_pass.clear();
-        self.terrain_batch.lod_alpha_pass.clear();
+        self.static_map.terrain_batch.opaque_pass.clear();
+        self.static_map.terrain_batch.alpha_pass.clear();
+        self.static_map.terrain_batch.lod_opaque_pass.clear();
+        self.static_map.terrain_batch.lod_alpha_pass.clear();
     }
 
     /// Uploads geometry for an auxiliary static map batch.
@@ -742,8 +768,8 @@ impl RustWebGlRenderer {
     ) -> Result<(), JsValue> {
         if packed_vertices.is_empty() && indices.is_empty() {
             let existing = match kind {
-                AUX_BATCH_LOC => self.loc_batch.take(),
-                AUX_BATCH_DOOR => self.door_batch.take(),
+                AUX_BATCH_LOC => self.static_map.loc_batch.take(),
+                AUX_BATCH_DOOR => self.static_map.door_batch.take(),
                 _ => return Err(JsValue::from_str("unknown auxiliary static batch kind")),
             };
             if let Some(batch) = existing {
@@ -753,24 +779,24 @@ impl RustWebGlRenderer {
         }
 
         let mut batch = match kind {
-            AUX_BATCH_LOC => self.loc_batch.take(),
-            AUX_BATCH_DOOR => self.door_batch.take(),
+            AUX_BATCH_LOC => self.static_map.loc_batch.take(),
+            AUX_BATCH_DOOR => self.static_map.door_batch.take(),
             _ => return Err(JsValue::from_str("unknown auxiliary static batch kind")),
         }
         .unwrap_or(StaticGeometryBatch::new(&self.gl)?);
 
         if let Err(error) = batch.upload_geometry(&self.gl, packed_vertices, indices) {
             match kind {
-                AUX_BATCH_LOC => self.loc_batch = Some(batch),
-                AUX_BATCH_DOOR => self.door_batch = Some(batch),
+                AUX_BATCH_LOC => self.static_map.loc_batch = Some(batch),
+                AUX_BATCH_DOOR => self.static_map.door_batch = Some(batch),
                 _ => unreachable!(),
             }
             return Err(error);
         }
 
         match kind {
-            AUX_BATCH_LOC => self.loc_batch = Some(batch),
-            AUX_BATCH_DOOR => self.door_batch = Some(batch),
+            AUX_BATCH_LOC => self.static_map.loc_batch = Some(batch),
+            AUX_BATCH_DOOR => self.static_map.door_batch = Some(batch),
             _ => unreachable!(),
         }
         Ok(())
@@ -843,12 +869,12 @@ impl RustWebGlRenderer {
         );
         self.gl
             .uniform1f(Some(&self.reference_brightness), brightness.max(0.0001));
-        self.gl.bind_vertex_array(Some(&self.terrain_batch.vao));
+        self.gl.bind_vertex_array(Some(&self.static_map.terrain_batch.vao));
 
         let stats = submit_draw_ranges(
             &self.gl,
-            &self.terrain_batch.opaque_pass.draw_ranges,
-            self.terrain_batch.index_count,
+            &self.static_map.terrain_batch.opaque_pass.draw_ranges,
+            self.static_map.terrain_batch.index_count,
             None,
             None,
             3,
@@ -970,10 +996,10 @@ impl RustWebGlRenderer {
             .static_state
             .ok_or_else(|| JsValue::from_str("static map state has not been configured"))?;
         let pass = match (use_lod, discard_alpha) {
-            (false, false) => &self.terrain_batch.opaque_pass,
-            (false, true) => &self.terrain_batch.alpha_pass,
-            (true, false) => &self.terrain_batch.lod_opaque_pass,
-            (true, true) => &self.terrain_batch.lod_alpha_pass,
+            (false, false) => &self.static_map.terrain_batch.opaque_pass,
+            (false, true) => &self.static_map.terrain_batch.alpha_pass,
+            (true, false) => &self.static_map.terrain_batch.lod_opaque_pass,
+            (true, true) => &self.static_map.terrain_batch.lod_alpha_pass,
         };
 
         if clear_frame {
@@ -1066,7 +1092,7 @@ impl RustWebGlRenderer {
 
         self.gl.active_texture(Gl::TEXTURE1);
         self.gl
-            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.height_map_texture));
+            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.static_map.height_map_texture));
         self.gl
             .uniform1i(Some(&self.static_program.height_map_sampler), 1);
 
@@ -1090,24 +1116,24 @@ impl RustWebGlRenderer {
 
         self.gl.active_texture(Gl::TEXTURE5);
         self.gl
-            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.water_mask_texture));
+            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.static_map.water_mask_texture));
         self.gl
             .uniform1i(Some(&self.static_program.water_mask_sampler), 5);
 
         let roof_limit = roof_plane_limit.clamp(0.0, 3.0) as u8;
 
-        self.gl.bind_vertex_array(Some(&self.terrain_batch.vao));
+        self.gl.bind_vertex_array(Some(&self.static_map.terrain_batch.vao));
         let mut stats = submit_draw_ranges(
             &self.gl,
             &pass.draw_ranges,
-            self.terrain_batch.index_count,
+            self.static_map.terrain_batch.index_count,
             Some(&self.static_program.draw_id),
             Some(&pass.range_planes),
             roof_limit,
             false,
         );
 
-        for batch in [&self.loc_batch, &self.door_batch].into_iter().flatten() {
+        for batch in [&self.static_map.loc_batch, &self.static_map.door_batch].into_iter().flatten() {
             let batch_pass = batch.pass(use_lod, discard_alpha);
             self.gl.bind_vertex_array(Some(&batch.vao));
             let batch_stats = submit_draw_ranges(
@@ -1142,26 +1168,26 @@ impl RustWebGlRenderer {
     }
 
     pub fn dispose(&mut self) {
-        self.terrain_batch.delete(&self.gl);
-        if let Some(batch) = self.loc_batch.take() {
+        self.static_map.terrain_batch.delete(&self.gl);
+        if let Some(batch) = self.static_map.loc_batch.take() {
             batch.delete(&self.gl);
         }
-        if let Some(batch) = self.door_batch.take() {
+        if let Some(batch) = self.static_map.door_batch.take() {
             batch.delete(&self.gl);
         }
-        self.gl.delete_texture(Some(&self.height_map_texture));
+        self.gl.delete_texture(Some(&self.static_map.height_map_texture));
         self.gl.delete_texture(Some(&self.texture_array));
         self.gl.delete_texture(Some(&self.material_texture));
         self.gl.delete_texture(Some(&self.water_texture_array));
-        self.gl.delete_texture(Some(&self.water_mask_texture));
+        self.gl.delete_texture(Some(&self.static_map.water_mask_texture));
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
-        self.terrain_batch.opaque_pass.clear();
-        self.terrain_batch.alpha_pass.clear();
-        self.terrain_batch.lod_opaque_pass.clear();
-        self.terrain_batch.lod_alpha_pass.clear();
-        self.terrain_batch.index_count = 0;
-        self.static_state = None;
+        self.static_map.terrain_batch.opaque_pass.clear();
+        self.static_map.terrain_batch.alpha_pass.clear();
+        self.static_map.terrain_batch.lod_opaque_pass.clear();
+        self.static_map.terrain_batch.lod_alpha_pass.clear();
+        self.static_map.terrain_batch.index_count = 0;
+        self.static_map.state = None;
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1200,8 +1226,8 @@ impl RustWebGlRenderer {
         );
 
         match kind {
-            AUX_BATCH_LOC => self.loc_batch = Some(batch),
-            AUX_BATCH_DOOR => self.door_batch = Some(batch),
+            AUX_BATCH_LOC => self.static_map.loc_batch = Some(batch),
+            AUX_BATCH_DOOR => self.static_map.door_batch = Some(batch),
             _ => unreachable!(),
         }
         result
