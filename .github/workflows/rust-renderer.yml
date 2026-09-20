@@ -60,5 +60,5 @@ jobs:
         run: yarn install --immutable
       - name: Test TypeScript bridge
         run: yarn test:rust-renderer-bridge
-      - name: Build client
-        run: yarn build
+      - name: Test shadow integration module graph
+        run: yarn test:rust-renderer-shadow
