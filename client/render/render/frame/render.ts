@@ -196,12 +196,14 @@ import {
     beginRustOpaqueActorShadowPass,
     completeRustOpaqueActorShadowPass,
     finishRustActorShadowFrame,
+    finishRustSceneOverlayShadowFrame,
     getRustRendererShadowDiagnostics,
     isRustFullDynamicShadowEnabled,
     isRustGfxShadowEnabled,
     isRustNpcShadowEnabled,
     isRustPlayerShadowEnabled,
     isRustProjectileShadowEnabled,
+    isRustSceneOverlayShadowEnabled,
     renderRustStaticShadowFrame,
 } from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
@@ -762,17 +764,21 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             || rustProjectileParityEnabled;
         const rustFullDynamicParityEnabled =
             isRustFullDynamicShadowEnabled();
+        const rustOverlayParityEnabled =
+            isRustSceneOverlayShadowEnabled();
         const rustPixelCaptureRequested =
             getRustRendererShadowDiagnostics(host).enabled
             && shouldCaptureRustPixelParity(host);
         const rustPixelReference =
             rustPixelCaptureRequested
             && !rustDynamicParityEnabled
+            && !rustOverlayParityEnabled
                 ? capturePicoStaticReference(host, sceneFramebuffer)
                 : undefined;
         const rustDynamicPixelCaptureRequested =
             rustPixelCaptureRequested
-            && rustFullDynamicParityEnabled;
+            && rustFullDynamicParityEnabled
+            && !rustOverlayParityEnabled;
         renderRustStaticShadowFrame(
             host,
             {
@@ -855,6 +861,16 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         try {
             host.drawSceneTileOverlays(time, deltaTime);
         } catch {}
+        const rustOverlayPixelReference =
+            rustPixelCaptureRequested
+            && rustOverlayParityEnabled
+            && (!rustDynamicParityEnabled || rustFullDynamicParityEnabled)
+                ? capturePicoSceneReference(host, sceneFramebuffer)
+                : undefined;
+        finishRustSceneOverlayShadowFrame(
+            host,
+            rustOverlayPixelReference,
+        );
 
         // Can't sample from the scene renderbuffer, so only blit when the scene pass
         // didn't already render directly into the texture framebuffer.
