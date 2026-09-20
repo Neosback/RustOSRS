@@ -84,7 +84,7 @@ export function shouldCaptureRustPixelParity(
     const next = (captureCounters.get(host) ?? 0) + 1;
     captureCounters.set(host, next);
     const interval = getRustPixelParityInterval(search);
-    return next === 1 || next % interval === 0;
+    return (next - 1) % interval === 0;
 }
 
 function deleteReferenceTarget(
