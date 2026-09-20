@@ -11,6 +11,7 @@ async function main(): Promise<void> {
         getRustRendererShadowDiagnostics,
         hashExpectedDrawRanges,
         isRustFullDynamicShadowEnabled,
+        isRustFullDynamicStructuralParityMatch,
         isRustGfxShadowEnabled,
         isRustNpcShadowEnabled,
         isRustPlayerShadowEnabled,
@@ -62,6 +63,38 @@ async function main(): Promise<void> {
         mirroredProjectilePasses: 0,
         mirroredOverlayPasses: 0,
     });
+
+    const structuralBase = getRustRendererShadowDiagnostics(fakeHost);
+    assert.equal(
+        isRustFullDynamicStructuralParityMatch(structuralBase),
+        false,
+    );
+    assert.equal(
+        isRustFullDynamicStructuralParityMatch({
+            ...structuralBase,
+            enabled: true,
+            npcParityEnabled: true,
+            playerParityEnabled: true,
+            gfxParityEnabled: true,
+            projectileParityEnabled: true,
+            drawStatsMatch: true,
+            drawSequenceMatch: true,
+        }),
+        true,
+    );
+    assert.equal(
+        isRustFullDynamicStructuralParityMatch({
+            ...structuralBase,
+            enabled: true,
+            npcParityEnabled: true,
+            playerParityEnabled: true,
+            gfxParityEnabled: true,
+            projectileParityEnabled: true,
+            drawStatsMatch: true,
+            drawSequenceMatch: false,
+        }),
+        false,
+    );
 
     const animatedMap = {
         locsAnimated: [
