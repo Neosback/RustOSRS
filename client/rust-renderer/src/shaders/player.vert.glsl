@@ -6,6 +6,7 @@ precision highp isampler2D;
 precision highp isampler2DArray;
 
 layout(location = 0) in uvec3 a_packed;
+layout(location = 1) in int a_playerSlot;
 
 uniform mat4 u_viewMatrix;
 uniform mat4 u_projectionMatrix;
@@ -19,6 +20,7 @@ uniform float u_brightness;
 uniform float u_isNewTextureAnim;
 
 uniform int u_playerDataOffset;
+uniform int u_usePlayerSlotAttribute;
 uniform vec2 u_mapPos;
 uniform float u_timeLoaded;
 uniform int u_sceneBorderSize;
@@ -285,7 +287,9 @@ void applyPriorityDepthBias(inout vec4 viewPos, uint priority) {
 }
 
 void main() {
-    PlayerInfo playerInfo = decodePlayerInfo(u_playerDataOffset);
+    int actorOffset = u_playerDataOffset
+        + (u_usePlayerSlotAttribute != 0 ? a_playerSlot : 0);
+    PlayerInfo playerInfo = decodePlayerInfo(actorOffset);
     Vertex vertex = decodeVertex(a_packed, playerInfo.hslOverride);
 
     v_color = vertex.color;
