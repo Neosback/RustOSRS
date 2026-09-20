@@ -56,7 +56,7 @@ For image comparison, use `?rust-renderer=shadow&rust-pixel-parity=1`. The first
 
 Dynamic actor classes can be added independently to the detached Rust shadow with `rust-npc-parity=1`, `rust-player-parity=1`, `rust-gfx-parity=1` and `rust-projectile-parity=1` alongside `?rust-renderer=shadow`. The flags can be combined. These modes deliberately reuse finalized TypeScript-selected simulation/animation state and packed geometry instead of duplicating game logic in Rust. Partial dynamic parity combinations use structural diagnostics only. When all four dynamic flags are enabled together with `rust-pixel-parity=1`, the client resolves the completed PicoGL scene before overlays/post-processing and compares it directly with the detached Rust scene, including the MSAA scene path.
 
-The previously identified Mode-1 overlapping world-entity ghost redraw is now mirrored in Rust as a terrain-only blended pass with the exact packed-HSL tint and opacity contract. Stage 2 now owns the live actor-data texture and Rust GPU draw submission for prebaked NPCs, dynamic fallback NPCs, players, spot-animation/GFX and projectiles. TypeScript still owns simulation, animation-frame choice and current geometry construction; Rust consumes finalized packed geometry plus numeric renderer state. The remaining Stage 2 work is representative real-scene validation plus any cross-entity transparency/priority edge cases found by parity testing.
+The previously identified Mode-1 overlapping world-entity ghost redraw is now mirrored in Rust as a terrain-only blended pass with the exact packed-HSL tint and opacity contract. Stage 2 is complete at the renderer-ownership/parity boundary: Rust owns the live actor-data texture and GPU draw submission for prebaked NPCs, dynamic fallback NPCs, players, spot-animation/GFX and projectiles. TypeScript still owns simulation, animation-frame choice and current geometry construction; Rust consumes finalized packed geometry plus numeric renderer state. Representative crowded-scene captures now belong to the pre-cutover acceptance gate rather than Stage 2 implementation.
 
 ## Why WebGL2 first
 
@@ -91,9 +91,11 @@ Mode-1 overlapping world entities are included in the structural oracle and Rust
 
 Acceptance: identical static scene state + camera produces structurally matching draw sequences and pixel-comparable output between PicoGL and Rust across representative map, roof, LOD, water, animation and world-entity scenes.
 
-### Stage 2: dynamic scene
+### Stage 2: dynamic scene — COMPLETE
 
-Move players, NPCs, projectiles, GFX, dynamic transparency and priority ordering. Rust owns the exact live `RGBA16UI` actor-data texture plus GPU draw submission for prebaked NPCs, dynamic fallback NPCs, players, spot-animation/GFX and projectiles. The opt-in shadow flags consume the same finalized TypeScript-selected ranges/geometry, actor offsets and production opaque/transparent ordering. Player slot batching is preserved in Rust rather than expanded into per-player draws. Stage 2 is now implementation-complete at the shadow boundary. Structural parity is available for any individual dynamic class, and full dynamic pixel parity is available when NPC, player, GFX and projectile parity flags are all enabled together. Remaining Stage 2 work is representative-scene acceptance and correction of any ordering/priority edge cases exposed by those captures.
+Rust owns the exact live `RGBA16UI` actor-data texture plus GPU draw submission for prebaked NPCs, dynamic fallback NPCs, players, spot-animation/GFX and projectiles. The opt-in shadow flags consume the same finalized TypeScript-selected ranges/geometry, actor offsets and production opaque/transparent ordering. Player slot batching is preserved in Rust rather than expanded into per-player draws. Structural parity is available for any individual dynamic class, full-dynamic structural parity has a single combined acceptance signal, and full dynamic pixel parity is available when NPC, player, GFX and projectile parity flags are all enabled together.
+
+Representative overlap/transparency/priority captures remain required before the default renderer cutover, but they are now tracked as pre-cutover acceptance rather than unfinished Stage 2 implementation. Any mismatch found there is a parity defect to correct, not a missing renderer class.
 
 ### Stage 3: renderer services
 
