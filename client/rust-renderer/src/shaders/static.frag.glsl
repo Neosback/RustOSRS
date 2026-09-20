@@ -18,6 +18,7 @@ uniform int u_discardAlpha;
 uniform float u_currentTime;
 uniform float u_brightness;
 uniform float u_colorBanding;
+uniform float u_worldEntityOpacity;
 
 in vec4 v_color;
 in vec2 v_texCoord;
@@ -565,5 +566,5 @@ void main() {
         clamp(v_fogAmount, 0.0, 1.0)
     );
     vec3 rgb = mix(surface, u_skyColor.rgb, fog);
-    fragColor = vec4(clamp(rgb, 0.0, 1.0), alpha);
+    fragColor = vec4(clamp(rgb, 0.0, 1.0), alpha * u_worldEntityOpacity);
 }
