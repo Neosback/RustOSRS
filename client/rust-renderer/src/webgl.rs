@@ -243,7 +243,6 @@ impl StaticGeometryBatch {
     }
 }
 
-
 struct IndexedGeometryBatch {
     vertex_buffer: WebGlBuffer,
     index_buffer: WebGlBuffer,
