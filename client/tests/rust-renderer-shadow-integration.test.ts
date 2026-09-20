@@ -21,6 +21,9 @@ async function main(): Promise<void> {
         mirroredMaps: 0,
         drawCalls: 0,
         submittedIndices: 0,
+        expectedDrawCalls: 0,
+        expectedSubmittedIndices: 0,
+        drawStatsMatch: true,
     });
 
     const animatedMap = {
