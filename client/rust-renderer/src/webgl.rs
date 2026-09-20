@@ -43,6 +43,31 @@ struct StaticProgram {
     sky_color: WebGlUniformLocation,
 }
 
+struct StaticPass {
+    model_info_texture: WebGlTexture,
+    draw_ranges: Vec<DrawRange>,
+    range_planes: Vec<u8>,
+}
+
+impl StaticPass {
+    fn new(gl: &Gl) -> Result<Self, JsValue> {
+        Ok(Self {
+            model_info_texture: create_nearest_texture(gl, Gl::TEXTURE_2D)?,
+            draw_ranges: Vec::new(),
+            range_planes: Vec::new(),
+        })
+    }
+
+    fn clear(&mut self) {
+        self.draw_ranges.clear();
+        self.range_planes.clear();
+    }
+
+    fn delete(&self, gl: &Gl) {
+        gl.delete_texture(Some(&self.model_info_texture));
+    }
+}
+
 /// Rust/WASM rendering backend.
 ///
 /// Stage 0 remains available through `render_reference`. Stage 1 adds the
@@ -64,10 +89,10 @@ pub struct RustWebGlRenderer {
     index_buffer: WebGlBuffer,
     vao: WebGlVertexArrayObject,
 
-    model_info_texture: WebGlTexture,
-    model_info_alpha_texture: WebGlTexture,
-    model_info_lod_texture: WebGlTexture,
-    model_info_lod_alpha_texture: WebGlTexture,
+    static_opaque_pass: StaticPass,
+    static_alpha_pass: StaticPass,
+    static_lod_opaque_pass: StaticPass,
+    static_lod_alpha_pass: StaticPass,
     height_map_texture: WebGlTexture,
     texture_array: WebGlTexture,
     material_texture: WebGlTexture,
@@ -77,14 +102,6 @@ pub struct RustWebGlRenderer {
     material_count: i32,
     static_state: Option<StaticMapState>,
 
-    draw_ranges: Vec<DrawRange>,
-    draw_ranges_alpha: Vec<DrawRange>,
-    draw_range_planes: Vec<u8>,
-    draw_range_alpha_planes: Vec<u8>,
-    draw_ranges_lod: Vec<DrawRange>,
-    draw_ranges_lod_alpha: Vec<DrawRange>,
-    draw_range_lod_planes: Vec<u8>,
-    draw_range_lod_alpha_planes: Vec<u8>,
     index_count: u32,
     last_stats: DrawStats,
 }
@@ -121,10 +138,10 @@ impl RustWebGlRenderer {
         gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
         gl.bind_vertex_array(None);
 
-        let model_info_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
-        let model_info_alpha_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
-        let model_info_lod_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
-        let model_info_lod_alpha_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
+        let static_opaque_pass = StaticPass::new(&gl)?;
+        let static_alpha_pass = StaticPass::new(&gl)?;
+        let static_lod_opaque_pass = StaticPass::new(&gl)?;
+        let static_lod_alpha_pass = StaticPass::new(&gl)?;
         let height_map_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         let texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         let material_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
@@ -194,10 +211,10 @@ impl RustWebGlRenderer {
             vertex_buffer,
             index_buffer,
             vao,
-            model_info_texture,
-            model_info_alpha_texture,
-            model_info_lod_texture,
-            model_info_lod_alpha_texture,
+            static_opaque_pass,
+            static_alpha_pass,
+            static_lod_opaque_pass,
+            static_lod_alpha_pass,
             height_map_texture,
             texture_array,
             material_texture,
@@ -206,14 +223,6 @@ impl RustWebGlRenderer {
             texture_layer_count: 1,
             material_count: 1,
             static_state: None,
-            draw_ranges: Vec::new(),
-            draw_ranges_alpha: Vec::new(),
-            draw_range_planes: Vec::new(),
-            draw_range_alpha_planes: Vec::new(),
-            draw_ranges_lod: Vec::new(),
-            draw_ranges_lod_alpha: Vec::new(),
-            draw_range_lod_planes: Vec::new(),
-            draw_range_lod_alpha_planes: Vec::new(),
             index_count: 0,
             last_stats: DrawStats::default(),
         })
@@ -254,14 +263,10 @@ impl RustWebGlRenderer {
         );
 
         self.index_count = indices.len() as u32;
-        self.draw_ranges.clear();
-        self.draw_ranges_alpha.clear();
-        self.draw_range_planes.clear();
-        self.draw_range_alpha_planes.clear();
-        self.draw_ranges_lod.clear();
-        self.draw_ranges_lod_alpha.clear();
-        self.draw_range_lod_planes.clear();
-        self.draw_range_lod_alpha_planes.clear();
+        self.static_opaque_pass.clear();
+        self.static_alpha_pass.clear();
+        self.static_lod_opaque_pass.clear();
+        self.static_lod_alpha_pass.clear();
         Ok(())
     }
 
@@ -281,7 +286,10 @@ impl RustWebGlRenderer {
 
         self.gl.active_texture(Gl::TEXTURE0);
         self.gl
-            .bind_texture(Gl::TEXTURE_2D, Some(&self.model_info_texture));
+            .bind_texture(
+                Gl::TEXTURE_2D,
+                Some(&self.static_opaque_pass.model_info_texture),
+            );
         self.gl
             .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
                 Gl::TEXTURE_2D,
@@ -310,7 +318,10 @@ impl RustWebGlRenderer {
 
         self.gl.active_texture(Gl::TEXTURE0);
         self.gl
-            .bind_texture(Gl::TEXTURE_2D, Some(&self.model_info_alpha_texture));
+            .bind_texture(
+                Gl::TEXTURE_2D,
+                Some(&self.static_alpha_pass.model_info_texture),
+            );
         self.gl
             .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
                 Gl::TEXTURE_2D,
@@ -581,8 +592,8 @@ impl RustWebGlRenderer {
         let ranges = parse_draw_ranges(flat_ranges).map_err(JsValue::from_str)?;
         validate_draw_ranges(&ranges, self.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        self.draw_ranges = ranges;
-        self.draw_range_planes.clear();
+        self.static_opaque_pass.draw_ranges = ranges;
+        self.static_opaque_pass.range_planes.clear();
         Ok(())
     }
 
@@ -590,8 +601,8 @@ impl RustWebGlRenderer {
         let ranges = parse_draw_ranges(flat_ranges).map_err(JsValue::from_str)?;
         validate_draw_ranges(&ranges, self.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        self.draw_ranges_alpha = ranges;
-        self.draw_range_alpha_planes.clear();
+        self.static_alpha_pass.draw_ranges = ranges;
+        self.static_alpha_pass.range_planes.clear();
         Ok(())
     }
 
@@ -619,10 +630,10 @@ impl RustWebGlRenderer {
             self.upload_model_info_alpha(model_info_alpha)?;
         }
 
-        self.draw_ranges = opaque;
-        self.draw_ranges_alpha = alpha;
-        self.draw_range_planes = opaque_range_planes.to_vec();
-        self.draw_range_alpha_planes = alpha_range_planes.to_vec();
+        self.static_opaque_pass.draw_ranges = opaque;
+        self.static_alpha_pass.draw_ranges = alpha;
+        self.static_opaque_pass.range_planes = opaque_range_planes.to_vec();
+        self.static_alpha_pass.range_planes = alpha_range_planes.to_vec();
         Ok(())
     }
 
@@ -645,46 +656,42 @@ impl RustWebGlRenderer {
 
         if !opaque.is_empty() {
             std::mem::swap(
-                &mut self.model_info_texture,
-                &mut self.model_info_lod_texture,
+                &mut self.static_opaque_pass,
+                &mut self.static_lod_opaque_pass,
             );
             let upload_result = self.upload_model_info(model_info_opaque);
             std::mem::swap(
-                &mut self.model_info_texture,
-                &mut self.model_info_lod_texture,
+                &mut self.static_opaque_pass,
+                &mut self.static_lod_opaque_pass,
             );
             upload_result?;
         }
 
         if !alpha.is_empty() {
             std::mem::swap(
-                &mut self.model_info_alpha_texture,
-                &mut self.model_info_lod_alpha_texture,
+                &mut self.static_alpha_pass,
+                &mut self.static_lod_alpha_pass,
             );
             let upload_result = self.upload_model_info_alpha(model_info_alpha);
             std::mem::swap(
-                &mut self.model_info_alpha_texture,
-                &mut self.model_info_lod_alpha_texture,
+                &mut self.static_alpha_pass,
+                &mut self.static_lod_alpha_pass,
             );
             upload_result?;
         }
 
-        self.draw_ranges_lod = opaque;
-        self.draw_ranges_lod_alpha = alpha;
-        self.draw_range_lod_planes = opaque_range_planes.to_vec();
-        self.draw_range_lod_alpha_planes = alpha_range_planes.to_vec();
+        self.static_lod_opaque_pass.draw_ranges = opaque;
+        self.static_lod_alpha_pass.draw_ranges = alpha;
+        self.static_lod_opaque_pass.range_planes = opaque_range_planes.to_vec();
+        self.static_lod_alpha_pass.range_planes = alpha_range_planes.to_vec();
         Ok(())
     }
 
     pub fn clear_draw_ranges(&mut self) {
-        self.draw_ranges.clear();
-        self.draw_ranges_alpha.clear();
-        self.draw_range_planes.clear();
-        self.draw_range_alpha_planes.clear();
-        self.draw_ranges_lod.clear();
-        self.draw_ranges_lod_alpha.clear();
-        self.draw_range_lod_planes.clear();
-        self.draw_range_lod_alpha_planes.clear();
+        self.static_opaque_pass.clear();
+        self.static_alpha_pass.clear();
+        self.static_lod_opaque_pass.clear();
+        self.static_lod_alpha_pass.clear();
     }
 
     /// Stage-0 geometry/HSL reference pass retained as an A/B diagnostic.
@@ -710,7 +717,7 @@ impl RustWebGlRenderer {
 
         let stats = submit_draw_ranges(
             &self.gl,
-            &self.draw_ranges,
+            &self.static_opaque_pass.draw_ranges,
             self.index_count,
             None,
             None,
@@ -759,19 +766,12 @@ impl RustWebGlRenderer {
     ) -> Result<(), JsValue> {
         if use_lod {
             std::mem::swap(
-                &mut self.model_info_texture,
-                &mut self.model_info_lod_texture,
+                &mut self.static_opaque_pass,
+                &mut self.static_lod_opaque_pass,
             );
             std::mem::swap(
-                &mut self.model_info_alpha_texture,
-                &mut self.model_info_lod_alpha_texture,
-            );
-            std::mem::swap(&mut self.draw_ranges, &mut self.draw_ranges_lod);
-            std::mem::swap(&mut self.draw_ranges_alpha, &mut self.draw_ranges_lod_alpha);
-            std::mem::swap(&mut self.draw_range_planes, &mut self.draw_range_lod_planes);
-            std::mem::swap(
-                &mut self.draw_range_alpha_planes,
-                &mut self.draw_range_lod_alpha_planes,
+                &mut self.static_alpha_pass,
+                &mut self.static_lod_alpha_pass,
             );
         }
 
@@ -798,33 +798,16 @@ impl RustWebGlRenderer {
         if let Err(error) = opaque_result {
             if use_lod {
                 std::mem::swap(
-                    &mut self.draw_range_alpha_planes,
-                    &mut self.draw_range_lod_alpha_planes,
-                );
-                std::mem::swap(&mut self.draw_range_planes, &mut self.draw_range_lod_planes);
-                std::mem::swap(&mut self.draw_ranges_alpha, &mut self.draw_ranges_lod_alpha);
-                std::mem::swap(&mut self.draw_ranges, &mut self.draw_ranges_lod);
-                std::mem::swap(
-                    &mut self.model_info_alpha_texture,
-                    &mut self.model_info_lod_alpha_texture,
+                    &mut self.static_alpha_pass,
+                    &mut self.static_lod_alpha_pass,
                 );
                 std::mem::swap(
-                    &mut self.model_info_texture,
-                    &mut self.model_info_lod_texture,
+                    &mut self.static_opaque_pass,
+                    &mut self.static_lod_opaque_pass,
                 );
             }
             return Err(error);
         }
-
-        std::mem::swap(
-            &mut self.model_info_texture,
-            &mut self.model_info_alpha_texture,
-        );
-        std::mem::swap(&mut self.draw_ranges, &mut self.draw_ranges_alpha);
-        std::mem::swap(
-            &mut self.draw_range_planes,
-            &mut self.draw_range_alpha_planes,
-        );
 
         self.gl.enable(Gl::BLEND);
         self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
@@ -847,31 +830,14 @@ impl RustWebGlRenderer {
             false,
         );
 
-        std::mem::swap(&mut self.draw_ranges, &mut self.draw_ranges_alpha);
-        std::mem::swap(
-            &mut self.draw_range_planes,
-            &mut self.draw_range_alpha_planes,
-        );
-        std::mem::swap(
-            &mut self.model_info_texture,
-            &mut self.model_info_alpha_texture,
-        );
-
         if use_lod {
             std::mem::swap(
-                &mut self.draw_range_alpha_planes,
-                &mut self.draw_range_lod_alpha_planes,
-            );
-            std::mem::swap(&mut self.draw_range_planes, &mut self.draw_range_lod_planes);
-            std::mem::swap(&mut self.draw_ranges_alpha, &mut self.draw_ranges_lod_alpha);
-            std::mem::swap(&mut self.draw_ranges, &mut self.draw_ranges_lod);
-            std::mem::swap(
-                &mut self.model_info_alpha_texture,
-                &mut self.model_info_lod_alpha_texture,
+                &mut self.static_alpha_pass,
+                &mut self.static_lod_alpha_pass,
             );
             std::mem::swap(
-                &mut self.model_info_texture,
-                &mut self.model_info_lod_texture,
+                &mut self.static_opaque_pass,
+                &mut self.static_lod_opaque_pass,
             );
         }
 
@@ -910,6 +876,11 @@ impl RustWebGlRenderer {
         let state = self
             .static_state
             .ok_or_else(|| JsValue::from_str("static map state has not been configured"))?;
+        let pass = if discard_alpha {
+            &self.static_alpha_pass
+        } else {
+            &self.static_opaque_pass
+        };
 
         if clear_frame {
             self.prepare_default_frame(sky_rgba);
@@ -995,7 +966,7 @@ impl RustWebGlRenderer {
 
         self.gl.active_texture(Gl::TEXTURE0);
         self.gl
-            .bind_texture(Gl::TEXTURE_2D, Some(&self.model_info_texture));
+            .bind_texture(Gl::TEXTURE_2D, Some(&pass.model_info_texture));
         self.gl
             .uniform1i(Some(&self.static_program.model_info_sampler), 0);
 
@@ -1032,10 +1003,10 @@ impl RustWebGlRenderer {
         self.gl.bind_vertex_array(Some(&self.vao));
         let stats = submit_draw_ranges(
             &self.gl,
-            &self.draw_ranges,
+            &pass.draw_ranges,
             self.index_count,
             Some(&self.static_program.draw_id),
-            Some(&self.draw_range_planes),
+            Some(&pass.range_planes),
             roof_plane_limit.clamp(0.0, 3.0) as u8,
             false,
         );
@@ -1061,11 +1032,10 @@ impl RustWebGlRenderer {
         self.gl.delete_vertex_array(Some(&self.vao));
         self.gl.delete_buffer(Some(&self.vertex_buffer));
         self.gl.delete_buffer(Some(&self.index_buffer));
-        self.gl.delete_texture(Some(&self.model_info_texture));
-        self.gl.delete_texture(Some(&self.model_info_alpha_texture));
-        self.gl.delete_texture(Some(&self.model_info_lod_texture));
-        self.gl
-            .delete_texture(Some(&self.model_info_lod_alpha_texture));
+        self.static_opaque_pass.delete(&self.gl);
+        self.static_alpha_pass.delete(&self.gl);
+        self.static_lod_opaque_pass.delete(&self.gl);
+        self.static_lod_alpha_pass.delete(&self.gl);
         self.gl.delete_texture(Some(&self.height_map_texture));
         self.gl.delete_texture(Some(&self.texture_array));
         self.gl.delete_texture(Some(&self.material_texture));
@@ -1073,14 +1043,10 @@ impl RustWebGlRenderer {
         self.gl.delete_texture(Some(&self.water_mask_texture));
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
-        self.draw_ranges.clear();
-        self.draw_ranges_alpha.clear();
-        self.draw_range_planes.clear();
-        self.draw_range_alpha_planes.clear();
-        self.draw_ranges_lod.clear();
-        self.draw_ranges_lod_alpha.clear();
-        self.draw_range_lod_planes.clear();
-        self.draw_range_lod_alpha_planes.clear();
+        self.static_opaque_pass.clear();
+        self.static_alpha_pass.clear();
+        self.static_lod_opaque_pass.clear();
+        self.static_lod_alpha_pass.clear();
         self.index_count = 0;
         self.static_state = None;
     }
