@@ -291,18 +291,15 @@ export function compareRgbaFrames(
         }
     }
 
-    if (!dimensionMatch) {
-        differentPixels += Math.abs(
-            reference.width * reference.height
-            - candidate.width * candidate.height,
-        );
-    }
-
     const comparisonPixels = Math.max(
         reference.width * reference.height,
         candidate.width * candidate.height,
         1,
     );
+    if (!dimensionMatch) {
+        differentPixels = comparisonPixels;
+    }
+
     const denominator = Math.max(channelCount, 1);
     const mismatchRatio = Math.min(
         1,
