@@ -23,6 +23,8 @@ class MockWasm implements RustRendererWasm {
     drawRangeUploads: Uint32Array[] = [];
     staticPassUploads = 0;
     renderFrameCalls = 0;
+    lastWorldEntityTransform?: Float32Array;
+    lastWorldEntityOpacity = 1;
 
     private opaqueRanges = new Uint32Array();
     private alphaRanges = new Uint32Array();
@@ -114,6 +116,8 @@ class MockWasm implements RustRendererWasm {
     render_static_frame(
         _viewMatrix: Float32Array,
         _projectionMatrix: Float32Array,
+        worldEntityTransform: Float32Array,
+        worldEntityOpacity: number,
         _skyRgba: Float32Array,
         _sceneHslOverride: Float32Array,
         _playerPos: Float32Array,
@@ -127,6 +131,8 @@ class MockWasm implements RustRendererWasm {
     ): void {
         this.renderFrameCalls++;
         this.roofPlaneLimit = roofPlaneLimit;
+        this.lastWorldEntityTransform = worldEntityTransform;
+        this.lastWorldEntityOpacity = worldEntityOpacity;
     }
 
     last_draw_calls(): number {
@@ -205,6 +211,13 @@ function frame(): RustStaticFrameState {
     return {
         viewMatrix: new Float32Array(16),
         projectionMatrix: new Float32Array(16),
+        worldEntityTransform: new Float32Array([
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1,
+        ]),
+        worldEntityOpacity: 1,
         skyRgba: new Float32Array([0, 0, 0, 1]),
         sceneHslOverride: new Float32Array([-1, -1, -1, 0]),
         playerPos: new Float32Array([3200, 3200]),
@@ -235,6 +248,9 @@ function frame(): RustStaticFrameState {
     assert.equal(wasm.modelInfoUploads.length, 0);
     assert.equal(wasm.drawRangeUploads.length, 0);
     assert.equal(wasm.renderFrameCalls, 1);
+    assert.equal(wasm.lastWorldEntityOpacity, 1);
+    assert.equal(wasm.lastWorldEntityTransform?.[0], 1);
+    assert.equal(wasm.lastWorldEntityTransform?.[15], 1);
     assert.deepEqual(bridge.getLastStats(), {
         drawCalls: 2,
         submittedIndices: 6,
@@ -264,6 +280,25 @@ function frame(): RustStaticFrameState {
         drawCalls: 1,
         submittedIndices: 3,
     });
+    bridge.dispose();
+}
+
+{
+    const bridge = new RustRendererBridge(
+        {} as HTMLCanvasElement,
+        MockWasm,
+    );
+    bridge.uploadStaticScene(packet(), 5.0);
+    const worldFrame = frame();
+    worldFrame.worldEntityOpacity = 0.25;
+    worldFrame.worldEntityTransform[12] = 12;
+    worldFrame.worldEntityTransform[13] = -3;
+    bridge.renderStatic(worldFrame);
+
+    const wasm = MockWasm.last!;
+    assert.equal(wasm.lastWorldEntityOpacity, 0.25);
+    assert.equal(wasm.lastWorldEntityTransform?.[12], 12);
+    assert.equal(wasm.lastWorldEntityTransform?.[13], -3);
     bridge.dispose();
 }
 
