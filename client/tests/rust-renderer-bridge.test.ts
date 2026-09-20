@@ -898,6 +898,7 @@ function frame(): RustStaticFrameState {
     bridge.presentFrame();
     assert.equal(wasm.presentFrameCalls, 1);
 
+    const overlayFrame = frame();
     bridge.renderSceneOverlay(
         new Float32Array([
             10, 20, 30,
@@ -906,8 +907,8 @@ function frame(): RustStaticFrameState {
             10, 20, 31,
         ]),
         new Float32Array([1, 0.5, 0, 0.25]),
-        firstFrame.viewMatrix,
-        firstFrame.projectionMatrix,
+        overlayFrame.viewMatrix,
+        overlayFrame.projectionMatrix,
         true,
     );
     assert.equal(wasm.sceneOverlayCalls.length, 1);
