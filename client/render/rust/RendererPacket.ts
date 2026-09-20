@@ -1,7 +1,7 @@
 import type { DrawRange } from "../DrawRange";
 import type { SdMapData } from "../loader/SdMapData";
 
-export const RUST_RENDERER_ABI_VERSION = 4 as const;
+export const RUST_RENDERER_ABI_VERSION = 5 as const;
 
 /**
  * Numeric-only static map-square packet for the Rust/WASM renderer.
@@ -24,6 +24,8 @@ export interface RustStaticScenePacket {
 
     modelInfoOpaque: Uint16Array;
     modelInfoAlpha: Uint16Array;
+    modelInfoOpaqueLod: Uint16Array;
+    modelInfoAlphaLod: Uint16Array;
     heightMap: Int16Array;
     waterMask: Uint8Array;
 
@@ -31,6 +33,11 @@ export interface RustStaticScenePacket {
     opaqueDrawRangePlanes: Uint8Array;
     alphaDrawRanges: Uint32Array;
     alphaDrawRangePlanes: Uint8Array;
+
+    opaqueLodDrawRanges: Uint32Array;
+    opaqueLodDrawRangePlanes: Uint8Array;
+    alphaLodDrawRanges: Uint32Array;
+    alphaLodDrawRangePlanes: Uint8Array;
 }
 
 /**
@@ -136,6 +143,8 @@ export function createRustStaticScenePacket(data: SdMapData): RustStaticScenePac
 
         modelInfoOpaque: data.modelTextureData,
         modelInfoAlpha: data.modelTextureDataAlpha,
+        modelInfoOpaqueLod: data.modelTextureDataLod,
+        modelInfoAlphaLod: data.modelTextureDataLodAlpha,
         heightMap: data.heightMapTextureData,
         waterMask: data.waterMaskTextureData,
 
@@ -143,5 +152,10 @@ export function createRustStaticScenePacket(data: SdMapData): RustStaticScenePac
         opaqueDrawRangePlanes: data.drawRangesPlanes,
         alphaDrawRanges: flattenDrawRanges(data.drawRangesAlpha),
         alphaDrawRangePlanes: data.drawRangesAlphaPlanes,
+
+        opaqueLodDrawRanges: flattenDrawRanges(data.drawRangesLod),
+        opaqueLodDrawRangePlanes: data.drawRangesLodPlanes,
+        alphaLodDrawRanges: flattenDrawRanges(data.drawRangesLodAlpha),
+        alphaLodDrawRangePlanes: data.drawRangesLodAlphaPlanes,
     };
 }
