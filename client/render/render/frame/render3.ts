@@ -185,6 +185,7 @@ import {
     createPlayerProgram,
     createProjectileProgram,
 } from "../../shaders/Shaders";
+import { mirrorRustNpcDrawRanges } from "../../rust/RustShadowIntegration";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
@@ -356,6 +357,15 @@ export function renderTransparentNpcPass(host: WebGLOsrsRendererHost,
                 }
 
                 host.draw(drawCall, drawRanges);
+                mirrorRustNpcDrawRanges(
+                    host,
+                    map,
+                    drawRanges,
+                    dataOffset,
+                    host.getNpcModelYOffset(),
+                    WebGLMapSquare.IDENTITY_MAT4,
+                    true,
+                );
 
                 if (weNpcIndices.length > 0) {
                     const firstWeId = ids[weNpcIndices[0]] | 0;
@@ -396,6 +406,15 @@ export function renderTransparentNpcPass(host: WebGLOsrsRendererHost,
                         drawRanges[wj] = frame;
                     }
                     host.draw(drawCall, drawRanges);
+                    mirrorRustNpcDrawRanges(
+                        host,
+                        map,
+                        drawRanges,
+                        dataOffset,
+                        host.getNpcModelYOffset(weDeckH),
+                        weTransform,
+                        true,
+                    );
                 }
             }
 
