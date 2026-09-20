@@ -15,6 +15,7 @@ import { WebGLMapSquare } from "../WebGLMapSquare";
 import type { WebGLOsrsRenderer } from "../WebGLOsrsRenderer";
 import {
     isRustPlayerShadowEnabled,
+    isRustPrimaryRendererActive,
     mirrorRustPlayerGeometry,
 } from "../rust/RustShadowIntegration";
 
@@ -49,7 +50,9 @@ export function drawPlayerSlots(
     slotScratch: Int32Array,
     slots: number[],
     elementCount: number,
+    submitPico: boolean = true,
 ): void {
+    if (!submitPico) return;
     if (slots.length === 1) {
         draw.uniform("u_usePlayerSlotAttribute", false).uniform("u_drawIdOverride", slots[0] | 0);
         (draw as any).drawRanges([0, elementCount | 0, 1]);
@@ -989,7 +992,9 @@ export class PlayerRenderer {
 
                 for (let i = 0; i < group.slots.length; i++) {
                     dc.uniform("u_drawIdOverride", group.slots[i] | 0);
-                    dc.draw();
+                    if (!isRustPrimaryRendererActive(this.renderer)) {
+                        dc.draw();
+                    }
                 }
             }
             if (rAny.cullBackFace) rAny.app.enable(PicoGL.CULL_FACE);
@@ -2278,6 +2283,7 @@ export class PlayerRenderer {
                         this.playerSlotScratch,
                         slots,
                         counts.countOpaque | 0,
+                        !isRustPrimaryRendererActive(r),
                     );
                     if (counts.opaqueVertices && counts.opaqueIndices) {
                         mirrorRustPlayerGeometry(
@@ -2335,7 +2341,9 @@ export class PlayerRenderer {
                 // Use drawIdOverride since gl_DrawID will be 0 for single-range draws
                 draw.uniform("u_drawIdOverride", inst.slot | 0);
                 (draw as any).drawRanges([0, counts.countOpaque | 0, 1]);
-                draw.draw();
+                if (!isRustPrimaryRendererActive(r)) {
+                    draw.draw();
+                }
                 if (counts.opaqueVertices && counts.opaqueIndices) {
                     mirrorRustPlayerGeometry(
                         r,
@@ -2645,6 +2653,7 @@ export class PlayerRenderer {
                             this.playerSlotScratch,
                             slots,
                             counts.countAlpha | 0,
+                            !isRustPrimaryRendererActive(r),
                         );
                         if (counts.alphaVertices && counts.alphaIndices) {
                             mirrorRustPlayerGeometry(
@@ -2702,7 +2711,9 @@ export class PlayerRenderer {
                     // Use drawIdOverride since gl_DrawID will be 0 for single-range draws
                     draw.uniform("u_drawIdOverride", inst.slot | 0);
                     (draw as any).drawRanges([0, counts.countAlpha | 0, 1]);
-                    draw.draw();
+                    if (!isRustPrimaryRendererActive(r)) {
+                        draw.draw();
+                    }
                     if (counts.alphaVertices && counts.alphaIndices) {
                         mirrorRustPlayerGeometry(
                             r,
