@@ -202,6 +202,7 @@ import {
     isRustGfxShadowEnabled,
     isRustNpcShadowEnabled,
     isRustPlayerShadowEnabled,
+    isRustPrimaryRendererEnabled,
     isRustProjectileShadowEnabled,
     isRustSceneOverlayShadowEnabled,
     renderRustStaticShadowFrame,
@@ -752,6 +753,8 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
         profiler.startPhase("roof");
         host.roofPlaneLimit = host.computeFrameRoofPlaneLimit();
+        const rustPrimaryRendererEnabled =
+            isRustPrimaryRendererEnabled();
         const rustNpcParityEnabled = isRustNpcShadowEnabled();
         const rustPlayerParityEnabled = isRustPlayerShadowEnabled();
         const rustGfxParityEnabled = isRustGfxShadowEnabled();
@@ -1439,16 +1442,46 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
         profiler.startPhase("present");
         host.app.clearMask(PicoGL.COLOR_BUFFER_BIT | PicoGL.DEPTH_BUFFER_BIT);
-        host.app.clearColor(host.skyColor[0], host.skyColor[1], host.skyColor[2], host.skyColor[3]);
-        host.app.defaultDrawFramebuffer().clear();
+        host.app.defaultDrawFramebuffer();
 
-        if (host.frameFxaaDrawCall && host.fxaaEnabled) {
-            host.frameFxaaDrawCall.uniform("u_resolution", host.resolutionUni);
-            host.frameFxaaDrawCall.texture("u_frame", host.textureFramebuffer.colorAttachments[0]);
-            host.frameFxaaDrawCall.draw();
+        if (rustPrimaryRendererEnabled) {
+            // Rust owns the visible 3D scene in primary mode. Keep the PicoGL
+            // canvas as a transparent input/UI overlay until the UI renderer is
+            // migrated, so menus, hitsplats, interaction halos and other
+            // PostPresent overlays remain fully functional.
+            host.app.clearColor(0.0, 0.0, 0.0, 0.0);
+            host.app.clear();
+
+            // Overhead text normally targets the Pico frame texture before its
+            // scene presentation. Redraw the same phase onto the transparent
+            // overlay surface so it remains visible above the Rust canvas.
+            try {
+                host.overlayManager?.draw(RenderPhase.ToFrameTexture);
+            } catch {}
         } else {
-            host.frameDrawCall.texture("u_frame", host.textureFramebuffer.colorAttachments[0]);
-            host.frameDrawCall.draw();
+            host.app.clearColor(
+                host.skyColor[0],
+                host.skyColor[1],
+                host.skyColor[2],
+                host.skyColor[3],
+            );
+            host.app.clear();
+
+            if (host.frameFxaaDrawCall && host.fxaaEnabled) {
+                host.frameFxaaDrawCall.uniform("u_resolution", host.resolutionUni);
+                host.frameFxaaDrawCall.texture(
+                    "u_frame",
+                    host.textureFramebuffer.colorAttachments[0],
+                );
+                host.frameFxaaDrawCall.draw();
+            } else {
+                host.frameDrawCall
+                    .texture(
+                        "u_frame",
+                        host.textureFramebuffer.colorAttachments[0],
+                    )
+                    .draw();
+            }
         }
         profiler.endPhase();
 
