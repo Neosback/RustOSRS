@@ -12,6 +12,11 @@ import {
     RustStaticScenePacket,
 } from "../render/rust/RendererPacket";
 import { getRustRendererGlobalResourceSnapshot } from "../render/rust/LiveResourceAdapter";
+import { getRustRendererRuntimeMode } from "../render/rust/RustRendererRuntime";
+
+assert.equal(getRustRendererRuntimeMode(""), "off");
+assert.equal(getRustRendererRuntimeMode("?rust-renderer=off"), "off");
+assert.equal(getRustRendererRuntimeMode("?rust-renderer=shadow"), "shadow");
 
 class MockWasm implements RustRendererWasm {
     static abiVersion = RUST_RENDERER_ABI_VERSION;
