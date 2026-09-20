@@ -22,6 +22,10 @@ export interface RustRendererWasm {
         vertices: Uint32Array,
         indices: Uint32Array,
     ): void;
+    upload_dynamic_projectile_geometry(
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void;
     upload_dynamic_player_geometry(
         vertices: Uint32Array,
         indices: Uint32Array,
@@ -177,6 +181,26 @@ export interface RustRendererWasm {
         mapY: number,
         transparent: boolean,
     ): void;
+    render_active_projectile_pass(
+        viewMatrix: Float32Array,
+        projectionMatrix: Float32Array,
+        skyRgba: Float32Array,
+        sceneHslOverride: Float32Array,
+        playerPos: Float32Array,
+        renderDistance: number,
+        fogDepth: number,
+        currentTime: number,
+        brightness: number,
+        isNewTextureAnim: boolean,
+        colorBanding: number,
+        projectileDataOffset: number,
+        modelYOffset: number,
+        projectileSubOffset: Float32Array,
+        mapX: number,
+        mapY: number,
+        transparent: boolean,
+        cullBackFace: boolean,
+    ): void;
 
     render_active_player_pass(
         viewMatrix: Float32Array,
@@ -305,6 +329,17 @@ export interface RustGfxPassState extends RustStaticFrameState {
     mapX: number;
     mapY: number;
     transparent: boolean;
+}
+
+export interface RustProjectilePassState extends RustStaticFrameState {
+    mapKey: number;
+    projectileDataOffset: number;
+    modelYOffset: number;
+    projectileSubOffset: Float32Array;
+    mapX: number;
+    mapY: number;
+    transparent: boolean;
+    cullBackFace: boolean;
 }
 
 export interface RustPlayerPassState extends RustStaticFrameState {
@@ -662,6 +697,57 @@ export class RustRendererBridge {
             pass.mapX,
             pass.mapY,
             pass.transparent,
+        );
+    }
+
+    renderProjectilePass(
+        pass: RustProjectilePassState,
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void {
+        if (!this.uploadedMapKeys.has(pass.mapKey)) {
+            throw new Error(
+                `Rust static map ${pass.mapKey} has not been uploaded`,
+            );
+        }
+        if (
+            !Number.isInteger(pass.projectileDataOffset)
+            || pass.projectileDataOffset < 0
+        ) {
+            throw new Error(
+                `Invalid projectile actor-data offset: ${pass.projectileDataOffset}`,
+            );
+        }
+        if (pass.projectileSubOffset.length !== 2) {
+            throw new Error(
+                "Projectile sub-offset must contain exactly two values",
+            );
+        }
+        if (vertices.length === 0 || indices.length === 0) {
+            return;
+        }
+
+        this.wasm.select_static_map(pass.mapKey);
+        this.wasm.upload_dynamic_projectile_geometry(vertices, indices);
+        this.wasm.render_active_projectile_pass(
+            pass.viewMatrix,
+            pass.projectionMatrix,
+            pass.skyRgba,
+            pass.sceneHslOverride,
+            pass.playerPos,
+            pass.renderDistance,
+            pass.fogDepth,
+            pass.currentTime,
+            pass.brightness,
+            pass.isNewTextureAnim,
+            pass.colorBanding,
+            pass.projectileDataOffset,
+            pass.modelYOffset,
+            pass.projectileSubOffset,
+            pass.mapX,
+            pass.mapY,
+            pass.transparent,
+            pass.cullBackFace,
         );
     }
 
