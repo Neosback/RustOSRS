@@ -15,6 +15,7 @@ async function main(): Promise<void> {
         isRustNpcShadowEnabled,
         isRustPlayerShadowEnabled,
         isRustPresentationShadowEnabled,
+        isRustPrimaryRendererEnabled,
         isRustProjectileShadowEnabled,
         isRustSceneOverlayShadowEnabled,
     } = await import("../render/rust/RustShadowIntegration");
@@ -24,6 +25,10 @@ async function main(): Promise<void> {
         isRustPixelParityEnabled,
         shouldCaptureRustPixelParity,
     } = await import("../render/rust/RustPixelParity");
+    const {
+        getRustRendererRuntimeMode,
+        isRustPrimaryRuntime,
+    } = await import("../render/rust/RustRendererRuntime");
 
     const fakeHost = {
         canvas: {},
@@ -184,6 +189,36 @@ async function main(): Promise<void> {
         createWorldEntityGhostSceneHslOverride(0),
         undefined,
     );
+
+    assert.equal(
+        getRustRendererRuntimeMode("?rust-renderer=primary"),
+        "primary",
+    );
+    assert.equal(
+        getRustRendererRuntimeMode("?rust-renderer=shadow"),
+        "shadow",
+    );
+    assert.equal(
+        getRustRendererRuntimeMode("?rust-renderer=off"),
+        "off",
+    );
+    assert.equal(
+        isRustPrimaryRuntime("?rust-renderer=primary"),
+        true,
+    );
+    assert.equal(
+        isRustPrimaryRendererEnabled("?rust-renderer=primary"),
+        true,
+    );
+
+    const primarySearch = "?rust-renderer=primary";
+    assert.equal(isRustNpcShadowEnabled(primarySearch), true);
+    assert.equal(isRustPlayerShadowEnabled(primarySearch), true);
+    assert.equal(isRustGfxShadowEnabled(primarySearch), true);
+    assert.equal(isRustProjectileShadowEnabled(primarySearch), true);
+    assert.equal(isRustSceneOverlayShadowEnabled(primarySearch), true);
+    assert.equal(isRustPresentationShadowEnabled(primarySearch), true);
+    assert.equal(isRustFullDynamicShadowEnabled(primarySearch), true);
 
     assert.equal(
         isRustNpcShadowEnabled(
