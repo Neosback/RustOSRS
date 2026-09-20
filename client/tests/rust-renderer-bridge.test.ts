@@ -100,6 +100,7 @@ class MockWasm implements RustRendererWasm {
         mapX: number;
         mapY: number;
         transparent: boolean;
+        restoreCullBackFace: boolean;
     }> = [];
     projectilePassCalls: Array<{
         mapKey: number;
@@ -482,6 +483,7 @@ class MockWasm implements RustRendererWasm {
         mapX: number,
         mapY: number,
         transparent: boolean,
+        restoreCullBackFace: boolean,
     ): void {
         this.gfxPassCalls.push({
             mapKey: this.selectedMapKey,
@@ -490,6 +492,7 @@ class MockWasm implements RustRendererWasm {
             mapX,
             mapY,
             transparent,
+            restoreCullBackFace,
         });
     }
 
@@ -1192,6 +1195,7 @@ function frame(): RustStaticFrameState {
             mapX: 50,
             mapY: 51,
             transparent: true,
+            restoreCullBackFace: false,
         },
         gfxVertices,
         gfxIndices,
@@ -1210,6 +1214,7 @@ function frame(): RustStaticFrameState {
             mapX: 50,
             mapY: 51,
             transparent: true,
+            restoreCullBackFace: false,
         },
     );
 
