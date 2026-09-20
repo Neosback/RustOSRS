@@ -1168,8 +1168,7 @@ impl RustWebGlRenderer {
         color_banding: f32,
     ) -> Result<(), JsValue> {
         self.gl.enable(Gl::BLEND);
-        self.gl
-            .blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+        self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
 
         self.terrain_only_pass = true;
         self.terrain_batch_kind = 4;
