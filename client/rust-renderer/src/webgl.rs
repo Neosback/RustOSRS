@@ -2,9 +2,7 @@ use crate::draw::{
     DRAW_HASH_OFFSET_BASIS, DrawRange, DrawStats, draw_range_is_visible, hash_visible_draw_ranges,
     parse_draw_range_patches, parse_draw_ranges,
 };
-use crate::packet::{
-    validate_draw_range_planes, validate_draw_ranges, validate_geometry,
-};
+use crate::packet::{validate_draw_range_planes, validate_draw_ranges, validate_geometry};
 use crate::static_scene::StaticMapState;
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, prelude::*};
@@ -1604,10 +1602,8 @@ impl RustWebGlRenderer {
         require_vec4(sky_rgba, "sky_rgba")?;
         if self.presentation_enabled {
             self.ensure_presentation_target()?;
-            self.gl.bind_framebuffer(
-                Gl::FRAMEBUFFER,
-                Some(&self.presentation_framebuffer),
-            );
+            self.gl
+                .bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.presentation_framebuffer));
         } else {
             self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
         }
@@ -2867,10 +2863,8 @@ impl RustWebGlRenderer {
         let width = self.presentation_width.max(1);
         let height = self.presentation_height.max(1);
 
-        self.gl.bind_framebuffer(
-            Gl::READ_FRAMEBUFFER,
-            Some(&self.presentation_framebuffer),
-        );
+        self.gl
+            .bind_framebuffer(Gl::READ_FRAMEBUFFER, Some(&self.presentation_framebuffer));
         self.gl.bind_framebuffer(Gl::DRAW_FRAMEBUFFER, None);
         self.gl.blit_framebuffer(
             0,
@@ -3008,17 +3002,11 @@ impl RustWebGlRenderer {
             Gl::RENDERBUFFER,
             Some(&self.presentation_depth_renderbuffer),
         );
-        self.gl.renderbuffer_storage(
-            Gl::RENDERBUFFER,
-            Gl::DEPTH_COMPONENT24,
-            width,
-            height,
-        );
+        self.gl
+            .renderbuffer_storage(Gl::RENDERBUFFER, Gl::DEPTH_COMPONENT24, width, height);
 
-        self.gl.bind_framebuffer(
-            Gl::FRAMEBUFFER,
-            Some(&self.presentation_framebuffer),
-        );
+        self.gl
+            .bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.presentation_framebuffer));
         self.gl.framebuffer_texture_2d(
             Gl::FRAMEBUFFER,
             Gl::COLOR_ATTACHMENT0,
