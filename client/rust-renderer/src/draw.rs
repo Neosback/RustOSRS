@@ -142,10 +142,7 @@ mod tests {
     fn parses_animation_draw_range_patch_packet() {
         assert_eq!(
             parse_draw_range_patches(&[2, 48, 6, 1, 0, 0, 3, 2], 3).unwrap(),
-            vec![
-                (2, DrawRange::new(48, 6, 1)),
-                (0, DrawRange::new(0, 3, 2)),
-            ]
+            vec![(2, DrawRange::new(48, 6, 1)), (0, DrawRange::new(0, 3, 2)),]
         );
     }
 
