@@ -86,15 +86,17 @@ mod tests {
 
     #[test]
     fn validates_complete_static_packet() {
-        assert!(validate_static_scene_packet(
-            &[1, 2, 3],
-            &[0],
-            &[0; 64],
-            &[0; 4],
-            &[DrawRange::new(0, 1, 1)],
-            state(),
-        )
-        .is_ok());
+        assert!(
+            validate_static_scene_packet(
+                &[1, 2, 3],
+                &[0],
+                &[0; 64],
+                &[0; 4],
+                &[DrawRange::new(0, 1, 1)],
+                state(),
+            )
+            .is_ok()
+        );
     }
 
     #[test]
