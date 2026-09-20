@@ -17,6 +17,8 @@ class MockWasm implements RustRendererWasm {
     static last?: MockWasm;
 
     disposed = false;
+    selectedMapKey = 0;
+    residentMapKeys = new Set<number>();
     geometryUploads = 0;
     modelInfoUploads: Uint16Array[] = [];
     heightUploads = 0;
@@ -52,6 +54,31 @@ class MockWasm implements RustRendererWasm {
 
     abi_version(): number {
         return MockWasm.abiVersion;
+    }
+
+    select_static_map(mapKey: number): void {
+        this.selectedMapKey = mapKey;
+        this.residentMapKeys.add(mapKey);
+    }
+
+    active_static_map_key(): number {
+        return this.selectedMapKey;
+    }
+
+    resident_static_map_count(): number {
+        return this.residentMapKeys.size;
+    }
+
+    remove_static_map(mapKey: number): void {
+        this.residentMapKeys.delete(mapKey);
+        if (this.selectedMapKey === mapKey) {
+            this.selectedMapKey = this.residentMapKeys.values().next().value ?? 0;
+        }
+    }
+
+    clear_static_maps(): void {
+        this.residentMapKeys.clear();
+        this.selectedMapKey = 0;
     }
 
     upload_geometry(_vertices: Uint32Array, _indices: Uint32Array): void {
@@ -285,6 +312,7 @@ function emptyGeometryPacket(): RustStaticGeometryPacket {
 function packet(): RustStaticScenePacket {
     return {
         abiVersion: RUST_RENDERER_ABI_VERSION,
+        mapKey: (50 << 8) | 51,
         mapX: 50,
         mapY: 51,
         borderSize: 1,
@@ -409,6 +437,8 @@ function frame(): RustStaticFrameState {
     bridge.renderStatic(frame());
 
     const wasm = MockWasm.last!;
+    assert.equal(wasm.selectedMapKey, (50 << 8) | 51);
+    assert.equal(wasm.resident_static_map_count(), 1);
     assert.equal(wasm.geometryUploads, 1);
     assert.equal(wasm.heightUploads, 1);
     assert.equal(wasm.waterMaskUploads, 1);
@@ -542,6 +572,30 @@ function frame(): RustStaticFrameState {
     assert.deepEqual(wasm.auxGeometryUploads, [0, 1]);
     assert.deepEqual(wasm.auxPassUploads, [0]);
     assert.deepEqual(wasm.auxLodPassUploads, [0]);
+    bridge.dispose();
+}
+
+{
+    const bridge = new RustRendererBridge(
+        {} as HTMLCanvasElement,
+        MockWasm,
+    );
+    const first = packet();
+    first.mapKey = 1001;
+    const second = packet();
+    second.mapKey = 1002;
+
+    bridge.uploadStaticScene(first, 1.0);
+    bridge.uploadStaticScene(second, 2.0);
+
+    assert.equal(bridge.getResidentStaticMapCount(), 2);
+    assert.equal(MockWasm.last?.active_static_map_key(), 1002);
+
+    bridge.removeStaticMap(1001);
+    assert.equal(bridge.getResidentStaticMapCount(), 1);
+
+    bridge.clearStaticMaps();
+    assert.equal(bridge.getResidentStaticMapCount(), 0);
     bridge.dispose();
 }
 
