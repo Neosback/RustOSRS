@@ -241,6 +241,13 @@ impl StaticMapResources {
         })
     }
 
+    fn is_empty(&self) -> bool {
+        self.state.is_none()
+            && self.terrain_batch.index_count == 0
+            && self.loc_batch.is_none()
+            && self.door_batch.is_none()
+    }
+
     fn delete(&mut self, gl: &Gl) {
         self.terrain_batch.delete(gl);
         if let Some(batch) = self.loc_batch.take() {
@@ -382,6 +389,14 @@ impl RustWebGlRenderer {
     /// map's GPU resources for later reuse.
     pub fn select_static_map(&mut self, map_key: u32) -> Result<(), JsValue> {
         if self.static_map_key == map_key {
+            return Ok(());
+        }
+
+        if self.parked_static_maps.is_empty() && self.static_map.is_empty() {
+            let next = StaticMapResources::new(&self.gl)?;
+            let mut placeholder = std::mem::replace(&mut self.static_map, next);
+            placeholder.delete(&self.gl);
+            self.static_map_key = map_key;
             return Ok(());
         }
 
