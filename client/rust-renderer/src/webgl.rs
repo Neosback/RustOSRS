@@ -446,9 +446,7 @@ impl RustWebGlRenderer {
         planes: u32,
     ) -> Result<(), JsValue> {
         if size == 0 || planes == 0 {
-            return Err(JsValue::from_str(
-                "water-mask dimensions must be positive",
-            ));
+            return Err(JsValue::from_str("water-mask dimensions must be positive"));
         }
         let expected = (size as usize)
             .checked_mul(size as usize)
@@ -847,10 +845,7 @@ fn initialize_fallback_materials(gl: &Gl, texture: &WebGlTexture) -> Result<(), 
     Ok(())
 }
 
-fn initialize_fallback_water_textures(
-    gl: &Gl,
-    texture: &WebGlTexture,
-) -> Result<(), JsValue> {
+fn initialize_fallback_water_textures(gl: &Gl, texture: &WebGlTexture) -> Result<(), JsValue> {
     const LAYERS: usize = 5;
     let mut values = [0u8; LAYERS * 4];
     for layer in 0..LAYERS {
@@ -880,10 +875,7 @@ fn initialize_fallback_water_textures(
     Ok(())
 }
 
-fn initialize_fallback_water_mask(
-    gl: &Gl,
-    texture: &WebGlTexture,
-) -> Result<(), JsValue> {
+fn initialize_fallback_water_mask(gl: &Gl, texture: &WebGlTexture) -> Result<(), JsValue> {
     let values = js_sys::Uint8Array::from(&[0u8, 0, 0, 0][..]);
     gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(texture));
     gl.tex_image_3d_with_opt_array_buffer_view(
@@ -913,16 +905,8 @@ fn configure_water_texture_sampling(gl: &Gl) {
         Gl::TEXTURE_MAG_FILTER,
         Gl::LINEAR as i32,
     );
-    gl.tex_parameteri(
-        Gl::TEXTURE_2D_ARRAY,
-        Gl::TEXTURE_WRAP_S,
-        Gl::REPEAT as i32,
-    );
-    gl.tex_parameteri(
-        Gl::TEXTURE_2D_ARRAY,
-        Gl::TEXTURE_WRAP_T,
-        Gl::REPEAT as i32,
-    );
+    gl.tex_parameteri(Gl::TEXTURE_2D_ARRAY, Gl::TEXTURE_WRAP_S, Gl::REPEAT as i32);
+    gl.tex_parameteri(Gl::TEXTURE_2D_ARRAY, Gl::TEXTURE_WRAP_T, Gl::REPEAT as i32);
     gl.tex_parameteri(
         Gl::TEXTURE_2D_ARRAY,
         Gl::TEXTURE_WRAP_R,
