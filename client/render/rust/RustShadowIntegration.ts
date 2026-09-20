@@ -33,6 +33,47 @@ const pendingGroundGeometry = new WeakMap<
     Map<number, RustStaticGeometryPacket | null>
 >();
 
+type RustShadowFramePhase =
+    | "prepared"
+    | "opaque-npc"
+    | "transparent-static"
+    | "transparent-npc";
+
+interface ActiveRustShadowFrame {
+    frames: RustResidentMapFrameState[];
+    framesByMapKey: Map<number, RustResidentMapFrameState>;
+    mirroredStaticMaps: Array<{
+        map: WebGLMapSquare;
+        useLod: boolean;
+        worldEntityGhostPass: boolean;
+    }>;
+    expectedStats: RustStaticDrawStats;
+    expectedDrawHash: number;
+    visibleMaps: number;
+    eligibleMaps: number;
+    expectedWorldEntityGhostPasses: number;
+    pixelReference?: RustPixelFrame;
+    npcParityEnabled: boolean;
+    mirroredNpcPasses: number;
+    phase: RustShadowFramePhase;
+}
+
+const activeShadowFrames = new WeakMap<
+    WebGLOsrsRendererHost,
+    ActiveRustShadowFrame
+>();
+
+export function isRustNpcShadowEnabled(search?: string): boolean {
+    const query =
+        search
+        ?? (typeof window !== "undefined" ? window.location.search : "");
+    const params = new URLSearchParams(query);
+    return (
+        params.get("rust-renderer") === "shadow"
+        && params.get("rust-npc-parity") === "1"
+    );
+}
+
 export interface RustRendererShadowDiagnostics {
     enabled: boolean;
     failed: boolean;
@@ -106,6 +147,7 @@ function disableShadow(
         enabled: false,
         failed: true,
     });
+    activeShadowFrames.delete(host);
 
     const runtime = runtimes.get(host);
     if (runtime) {
@@ -210,6 +252,7 @@ export function disposeRustRendererShadow(
     failedHosts.delete(host);
     diagnostics.delete(host);
     pendingGroundGeometry.delete(host);
+    activeShadowFrames.delete(host);
     disposeRustPixelParity(host);
     delete (host.canvas as HTMLCanvasElement & {
         __rustRendererShadowDiagnostics?: RustRendererShadowDiagnostics;
