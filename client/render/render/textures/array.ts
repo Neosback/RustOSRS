@@ -234,9 +234,10 @@ export function initTextureArray(host: WebGLOsrsRendererHost, ) {
             host.loadedTextureIds.add(textureId);
         }
 
+        host.textureArrayPixels = new Uint8Array(pixels.buffer);
         host.textureArray = createTextureArray(
             host.app,
-            new Uint8Array(pixels.buffer),
+            host.textureArrayPixels,
             TEXTURE_SIZE,
             TEXTURE_SIZE,
             textureCount + 1,
@@ -322,6 +323,11 @@ export function updateTextureArray(host: WebGLOsrsRendererHost, textures: Map<nu
                 continue;
             }
 
+            const textureBytes = new Uint8Array(
+                pixels.buffer,
+                pixels.byteOffset,
+                pixels.byteLength,
+            );
             host.gl.texSubImage3D(
                 PicoGL.TEXTURE_2D_ARRAY,
                 0,
@@ -333,8 +339,18 @@ export function updateTextureArray(host: WebGLOsrsRendererHost, textures: Map<nu
                 1,
                 PicoGL.RGBA,
                 PicoGL.UNSIGNED_BYTE,
-                new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength),
+                textureBytes,
             );
+
+            const cpuMirror = host.textureArrayPixels;
+            if (cpuMirror) {
+                const bytesPerLayer = TEXTURE_SIZE * TEXTURE_SIZE * 4;
+                const byteOffset = index * bytesPerLayer;
+                if (byteOffset + textureBytes.byteLength <= cpuMirror.byteLength) {
+                    cpuMirror.set(textureBytes, byteOffset);
+                }
+            }
+
             host.loadedTextureIds.add(id);
             updatedCount++;
         }
