@@ -73,6 +73,8 @@ class MockWasm implements RustRendererWasm {
     renderFrameCalls = 0;
     beginFrameCalls = 0;
     presentationEnabledState = false;
+    presentationMsaaEnabledState = false;
+    presentationMsaaSamplesState = 0;
     presentFrameCalls = 0;
     mapPassCalls: Array<{ mapKey: number; transparent: boolean }> = [];
     ghostPassCalls: Array<{
@@ -383,6 +385,19 @@ class MockWasm implements RustRendererWasm {
 
     presentation_enabled(): boolean {
         return this.presentationEnabledState;
+    }
+
+    set_presentation_msaa_enabled(enabled: boolean): void {
+        this.presentationMsaaEnabledState = enabled;
+        this.presentationMsaaSamplesState = enabled ? 8 : 0;
+    }
+
+    presentation_msaa_enabled(): boolean {
+        return this.presentationMsaaEnabledState;
+    }
+
+    presentation_msaa_samples(): number {
+        return this.presentationMsaaSamplesState;
     }
 
     present_frame(): void {
@@ -844,8 +859,16 @@ function frame(): RustStaticFrameState {
     assert.equal(bridge.isPresentationEnabled(), false);
     bridge.setPresentationEnabled(true);
     assert.equal(bridge.isPresentationEnabled(), true);
+    assert.equal(bridge.isPresentationMsaaEnabled(), false);
+    assert.equal(bridge.getPresentationMsaaSamples(), 0);
+    bridge.setPresentationMsaaEnabled(true);
+    assert.equal(bridge.isPresentationMsaaEnabled(), true);
+    assert.equal(bridge.getPresentationMsaaSamples(), 8);
     bridge.presentFrame();
     assert.equal(wasm.presentFrameCalls, 1);
+    bridge.setPresentationMsaaEnabled(false);
+    assert.equal(bridge.isPresentationMsaaEnabled(), false);
+    assert.equal(bridge.getPresentationMsaaSamples(), 0);
 
     bridge.setPresentationEnabled(false);
     assert.equal(bridge.isPresentationEnabled(), false);
