@@ -1980,6 +1980,73 @@ impl RustWebGlRenderer {
         )
     }
 
+    /// Renders one finalized attached/world spot-animation geometry packet
+    /// using the NPC actor transform contract. Production GFX deliberately
+    /// disables map-load fade and back-face culling.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_active_gfx_pass(
+        &mut self,
+        view_matrix: &[f32],
+        projection_matrix: &[f32],
+        sky_rgba: &[f32],
+        scene_hsl_override: &[f32],
+        player_pos: &[f32],
+        render_distance: f32,
+        fog_depth: f32,
+        current_time: f32,
+        brightness: f32,
+        is_new_texture_anim: bool,
+        color_banding: f32,
+        actor_data_offset: i32,
+        model_y_offset: f32,
+        map_x: f32,
+        map_y: f32,
+        transparent: bool,
+    ) -> Result<(), JsValue> {
+        let index_count = self.dynamic_gfx_batch.index_count;
+        if index_count == 0 {
+            return Ok(());
+        }
+        let vao = self.dynamic_gfx_batch.vao.clone();
+        let range = [0, index_count, 1];
+        let identity = [
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ];
+
+        let result = self.render_npc_geometry_pass(
+            &range,
+            vao,
+            index_count,
+            DYNAMIC_GFX_BATCH_KIND,
+            view_matrix,
+            projection_matrix,
+            &identity,
+            1.0,
+            sky_rgba,
+            scene_hsl_override,
+            player_pos,
+            render_distance,
+            fog_depth,
+            current_time,
+            brightness,
+            is_new_texture_anim,
+            color_banding,
+            actor_data_offset,
+            model_y_offset,
+            transparent,
+            Some((map_x, map_y)),
+            Some(-1.0),
+            Some(false),
+        );
+
+        self.gl.enable(Gl::CULL_FACE);
+        self.gl.cull_face(Gl::BACK);
+        result
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn render_npc_geometry_pass(
         &mut self,
