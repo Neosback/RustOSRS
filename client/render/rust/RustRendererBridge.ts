@@ -115,6 +115,13 @@ export interface RustRendererWasm {
     set_presentation_fxaa_enabled(enabled: boolean): void;
     presentation_fxaa_enabled(): boolean;
     present_frame(): void;
+    render_scene_overlay(
+        vertices: Float32Array,
+        color: Float32Array,
+        viewMatrix: Float32Array,
+        projectionMatrix: Float32Array,
+        filled: boolean,
+    ): void;
 
     begin_static_frame(skyRgba: Float32Array): void;
     render_active_static_map_pass(
@@ -571,6 +578,28 @@ export class RustRendererBridge {
 
     presentFrame(): void {
         this.wasm.present_frame();
+    }
+
+    renderSceneOverlay(
+        vertices: Float32Array,
+        color: Float32Array,
+        viewMatrix: Float32Array,
+        projectionMatrix: Float32Array,
+        filled: boolean,
+    ): void {
+        if (vertices.length % 3 !== 0) {
+            throw new Error("Scene overlay vertices must contain xyz triples");
+        }
+        if (color.length !== 4) {
+            throw new Error("Scene overlay color must contain four floats");
+        }
+        this.wasm.render_scene_overlay(
+            vertices,
+            color,
+            viewMatrix,
+            projectionMatrix,
+            filled,
+        );
     }
 
     beginStaticFrame(
