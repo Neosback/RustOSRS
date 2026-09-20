@@ -217,6 +217,24 @@ async function main(): Promise<void> {
     assert.equal(pixelMetrics.maxChannelDelta, 5);
     assert.equal(pixelMetrics.exactMatch, false);
 
+    const shapeMismatch = compareRgbaFrames(
+        {
+            width: 2,
+            height: 2,
+            pixels: new Uint8Array(2 * 2 * 4),
+        },
+        {
+            width: 1,
+            height: 4,
+            pixels: new Uint8Array(1 * 4 * 4),
+        },
+    );
+    assert.equal(shapeMismatch.dimensionMatch, false);
+    assert.equal(shapeMismatch.totalPixels, 4);
+    assert.equal(shapeMismatch.differentPixels, 4);
+    assert.equal(shapeMismatch.mismatchRatio, 1);
+    assert.equal(shapeMismatch.exactMatch, false);
+
     console.log("rust renderer shadow integration smoke test passed");
 }
 
