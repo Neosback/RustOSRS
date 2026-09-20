@@ -1211,10 +1211,7 @@ impl RustWebGlRenderer {
             false,
         );
 
-        for batch in [&self.loc_batch, &self.door_batch]
-            .into_iter()
-            .flatten()
-        {
+        for batch in [&self.loc_batch, &self.door_batch].into_iter().flatten() {
             let batch_pass = batch.pass(use_lod, discard_alpha);
             self.gl.bind_vertex_array(Some(&batch.vao));
             let batch_stats = submit_draw_ranges(
