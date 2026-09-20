@@ -48,7 +48,6 @@ struct StaticProgram {
     sky_color: WebGlUniformLocation,
 }
 
-
 struct NpcProgram {
     program: WebGlProgram,
     view_matrix: WebGlUniformLocation,
@@ -518,11 +517,7 @@ impl RustWebGlRenderer {
                 &npc_program_raw,
                 "u_worldEntityTransform",
             )?,
-            world_entity_opacity: required_uniform(
-                &gl,
-                &npc_program_raw,
-                "u_worldEntityOpacity",
-            )?,
+            world_entity_opacity: required_uniform(&gl, &npc_program_raw, "u_worldEntityOpacity")?,
             scene_hsl_override: required_uniform(&gl, &npc_program_raw, "u_sceneHslOverride")?,
             player_pos: required_uniform(&gl, &npc_program_raw, "u_playerPos")?,
             render_distance: required_uniform(&gl, &npc_program_raw, "u_renderDistance")?,
@@ -1777,8 +1772,7 @@ impl RustWebGlRenderer {
 
         if transparent {
             self.gl.enable(Gl::BLEND);
-            self.gl
-                .blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+            self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
         } else {
             self.gl.disable(Gl::BLEND);
         }
@@ -1822,10 +1816,8 @@ impl RustWebGlRenderer {
             .uniform1f(Some(&self.npc_program.fog_depth), fog_depth.max(0.0));
         self.gl
             .uniform1f(Some(&self.npc_program.current_time), current_time);
-        self.gl.uniform1f(
-            Some(&self.npc_program.brightness),
-            brightness.max(0.0001),
-        );
+        self.gl
+            .uniform1f(Some(&self.npc_program.brightness), brightness.max(0.0001));
         self.gl.uniform1f(
             Some(&self.npc_program.is_new_texture_anim),
             if is_new_texture_anim { 1.0 } else { 0.0 },
@@ -1834,18 +1826,15 @@ impl RustWebGlRenderer {
             Some(&self.npc_program.color_banding),
             color_banding.max(1.0),
         );
-        self.gl
-            .uniform1i(Some(&self.npc_program.draw_id), 0);
+        self.gl.uniform1i(Some(&self.npc_program.draw_id), 0);
         self.gl
             .uniform1i(Some(&self.npc_program.npc_data_offset), npc_data_offset);
         self.gl
             .uniform2f(Some(&self.npc_program.map_pos), state.map_x, state.map_y);
         self.gl
             .uniform1f(Some(&self.npc_program.time_loaded), state.time_loaded);
-        self.gl.uniform1i(
-            Some(&self.npc_program.scene_border_size),
-            state.border_size,
-        );
+        self.gl
+            .uniform1i(Some(&self.npc_program.scene_border_size), state.border_size);
         self.gl
             .uniform1f(Some(&self.npc_program.model_y_offset), model_y_offset);
         self.gl.uniform1i(
@@ -1890,10 +1879,8 @@ impl RustWebGlRenderer {
             .uniform1i(Some(&self.npc_program.material_sampler), 3);
 
         self.gl.active_texture(Gl::TEXTURE4);
-        self.gl.bind_texture(
-            Gl::TEXTURE_2D_ARRAY,
-            Some(&self.water_texture_array),
-        );
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.water_texture_array));
         self.gl
             .uniform1i(Some(&self.npc_program.water_texture_sampler), 4);
 
