@@ -1013,6 +1013,75 @@ export function mirrorRustDynamicNpcGeometry(
     }
 }
 
+export function mirrorRustPlayerGeometry(
+    host: WebGLOsrsRendererHost,
+    map: WebGLMapSquare,
+    vertices: Uint8Array,
+    indices: Int32Array,
+    playerDataOffset: number,
+    playerSlots: readonly number[] | Int32Array,
+    modelYOffset: number,
+    worldEntityTransform: Float32Array,
+    transparent: boolean,
+    cullBackFace: boolean,
+): void {
+    const state = activeShadowFrames.get(host);
+    if (!state?.playerParityEnabled) return;
+
+    const expectedPhase: RustShadowFramePhase =
+        transparent ? "transparent-actors" : "opaque-actors";
+    if (state.phase !== expectedPhase) return;
+
+    const runtime = getRuntime(host);
+    if (!runtime) return;
+
+    const mapKey = map.id | 0;
+    const frame = state.framesByMapKey.get(mapKey);
+    if (!frame || vertices.length === 0 || indices.length === 0) {
+        return;
+    }
+
+    try {
+        const slots =
+            playerSlots instanceof Int32Array
+                ? playerSlots
+                : Int32Array.from(playerSlots);
+        runtime.bridge.renderDynamicPlayerPass(
+            {
+                ...frame,
+                playerDataOffset,
+                playerSlots: slots,
+                modelYOffset,
+                worldEntityTransform,
+                transparent,
+                cullBackFace,
+            },
+            packedVertexWords(vertices),
+            unsignedIndexWords(indices),
+        );
+
+        const instances = slots.length > 1 ? slots.length : 1;
+        const ranges: DrawRange[] = [[0, indices.length, instances]];
+        addStats(
+            state.expectedStats,
+            countExpectedDrawRanges(ranges, undefined, 3),
+        );
+        state.expectedDrawHash = hashExpectedDrawRanges(
+            state.expectedDrawHash,
+            mapKey,
+            transparent,
+            false,
+            7,
+            ranges,
+            undefined,
+            3,
+        );
+        state.mirroredPlayerPasses++;
+    } catch (error) {
+        disableShadow(host, "player draw mirror", error);
+    }
+}
+
 export function completeRustOpaqueActorShadowPass(
     host: WebGLOsrsRendererHost,
 ): void {
