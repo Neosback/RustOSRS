@@ -316,6 +316,21 @@ impl IndexedGeometryBatch {
         packed_vertices: &[u32],
         indices: &[u32],
     ) -> Result<(), JsValue> {
+        self.upload_geometry_with_usage(
+            gl,
+            packed_vertices,
+            indices,
+            Gl::STATIC_DRAW,
+        )
+    }
+
+    fn upload_geometry_with_usage(
+        &mut self,
+        gl: &Gl,
+        packed_vertices: &[u32],
+        indices: &[u32],
+        usage: u32,
+    ) -> Result<(), JsValue> {
         validate_geometry(packed_vertices, indices)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
@@ -326,13 +341,13 @@ impl IndexedGeometryBatch {
         gl.buffer_data_with_opt_array_buffer(
             Gl::ARRAY_BUFFER,
             Some(&vertices.buffer()),
-            Gl::STATIC_DRAW,
+            usage,
         );
         gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
         gl.buffer_data_with_opt_array_buffer(
             Gl::ELEMENT_ARRAY_BUFFER,
             Some(&index_data.buffer()),
-            Gl::STATIC_DRAW,
+            usage,
         );
 
         self.index_count = indices.len() as u32;
@@ -350,6 +365,7 @@ const AUX_BATCH_LOC: u32 = 0;
 const AUX_BATCH_DOOR: u32 = 1;
 const AUX_BATCH_GROUND: u32 = 2;
 const NPC_BATCH_KIND: u32 = 5;
+const DYNAMIC_NPC_BATCH_KIND: u32 = 6;
 
 struct StaticMapResources {
     terrain_batch: StaticGeometryBatch,
@@ -426,6 +442,7 @@ pub struct RustWebGlRenderer {
 
     static_program: StaticProgram,
     npc_program: NpcProgram,
+    dynamic_npc_batch: IndexedGeometryBatch,
 
     static_map_key: u32,
     static_map: StaticMapResources,
@@ -459,6 +476,7 @@ impl RustWebGlRenderer {
         let npc_program_raw = create_program(&gl, NPC_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
 
         let static_map = StaticMapResources::new(&gl)?;
+        let dynamic_npc_batch = IndexedGeometryBatch::new(&gl)?;
         let texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         let material_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
         let water_texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
@@ -560,6 +578,7 @@ impl RustWebGlRenderer {
             reference_brightness,
             static_program,
             npc_program,
+            dynamic_npc_batch,
             static_map_key: 0,
             static_map,
             parked_static_maps: HashMap::new(),
@@ -694,6 +713,21 @@ impl RustWebGlRenderer {
 
         self.static_map.npc_batch = Some(batch);
         Ok(())
+    }
+
+    /// Uploads one current-frame dynamic NPC geometry packet into a
+    /// reusable GPU batch. TypeScript still owns animation selection.
+    pub fn upload_dynamic_npc_geometry(
+        &mut self,
+        packed_vertices: &[u32],
+        indices: &[u32],
+    ) -> Result<(), JsValue> {
+        self.dynamic_npc_batch.upload_geometry_with_usage(
+            &self.gl,
+            packed_vertices,
+            indices,
+            Gl::DYNAMIC_DRAW,
+        )
     }
 
     /// Uploads one RGBA16UI model-info packet produced by SceneBuffer.
@@ -1940,6 +1974,7 @@ impl RustWebGlRenderer {
         self.gl.delete_texture(Some(&self.material_texture));
         self.gl.delete_texture(Some(&self.water_texture_array));
         self.gl.delete_texture(Some(&self.actor_data_texture));
+        self.dynamic_npc_batch.delete(&self.gl);
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
         self.gl.delete_program(Some(&self.npc_program.program));
