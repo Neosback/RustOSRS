@@ -116,6 +116,17 @@ export function isRustProjectileShadowEnabled(search?: string): boolean {
     );
 }
 
+export function isRustFullDynamicShadowEnabled(
+    search?: string,
+): boolean {
+    return (
+        isRustNpcShadowEnabled(search)
+        && isRustPlayerShadowEnabled(search)
+        && isRustGfxShadowEnabled(search)
+        && isRustProjectileShadowEnabled(search)
+    );
+}
+
 export interface RustRendererShadowDiagnostics {
     enabled: boolean;
     failed: boolean;
