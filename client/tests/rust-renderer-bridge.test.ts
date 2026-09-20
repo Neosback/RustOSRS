@@ -34,6 +34,10 @@ class MockWasm implements RustRendererWasm {
         vertices: Uint32Array;
         indices: Uint32Array;
     }> = [];
+    dynamicGfxGeometryUploads: Array<{
+        vertices: Uint32Array;
+        indices: Uint32Array;
+    }> = [];
     dynamicPlayerGeometryUploads: Array<{
         vertices: Uint32Array;
         indices: Uint32Array;
@@ -84,6 +88,14 @@ class MockWasm implements RustRendererWasm {
         modelYOffset: number;
         transparent: boolean;
         worldEntityTransform: Float32Array;
+    }> = [];
+    gfxPassCalls: Array<{
+        mapKey: number;
+        actorDataOffset: number;
+        modelYOffset: number;
+        mapX: number;
+        mapY: number;
+        transparent: boolean;
     }> = [];
     playerPassCalls: Array<{
         mapKey: number;
@@ -164,6 +176,16 @@ class MockWasm implements RustRendererWasm {
         indices: Uint32Array,
     ): void {
         this.dynamicNpcGeometryUploads.push({
+            vertices: new Uint32Array(vertices),
+            indices: new Uint32Array(indices),
+        });
+    }
+
+    upload_dynamic_gfx_geometry(
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void {
+        this.dynamicGfxGeometryUploads.push({
             vertices: new Uint32Array(vertices),
             indices: new Uint32Array(indices),
         });
@@ -416,6 +438,34 @@ class MockWasm implements RustRendererWasm {
             modelYOffset,
             transparent,
             worldEntityTransform: new Float32Array(worldEntityTransform),
+        });
+    }
+
+    render_active_gfx_pass(
+        _viewMatrix: Float32Array,
+        _projectionMatrix: Float32Array,
+        _skyRgba: Float32Array,
+        _sceneHslOverride: Float32Array,
+        _playerPos: Float32Array,
+        _renderDistance: number,
+        _fogDepth: number,
+        _currentTime: number,
+        _brightness: number,
+        _isNewTextureAnim: boolean,
+        _colorBanding: number,
+        actorDataOffset: number,
+        modelYOffset: number,
+        mapX: number,
+        mapY: number,
+        transparent: boolean,
+    ): void {
+        this.gfxPassCalls.push({
+            mapKey: this.selectedMapKey,
+            actorDataOffset,
+            modelYOffset,
+            mapX,
+            mapY,
+            transparent,
         });
     }
 
@@ -1073,6 +1123,37 @@ function frame(): RustStaticFrameState {
             modelYOffset: 1.25,
             transparent: true,
             worldEntityTransform: npcTransform,
+        },
+    );
+
+    const gfxVertices = new Uint32Array([15, 16, 17]);
+    const gfxIndices = new Uint32Array([0, 0, 0]);
+    bridge.renderGfxPass(
+        {
+            ...firstFrame,
+            actorDataOffset: 44,
+            modelYOffset: -96,
+            mapX: 50,
+            mapY: 51,
+            transparent: true,
+        },
+        gfxVertices,
+        gfxIndices,
+    );
+    assert.equal(wasm.dynamicGfxGeometryUploads.length, 1);
+    assert.deepEqual(
+        Array.from(wasm.dynamicGfxGeometryUploads[0].vertices),
+        [15, 16, 17],
+    );
+    assert.deepEqual(
+        wasm.gfxPassCalls[0],
+        {
+            mapKey: 2001,
+            actorDataOffset: 44,
+            modelYOffset: -96,
+            mapX: 50,
+            mapY: 51,
+            transparent: true,
         },
     );
 
