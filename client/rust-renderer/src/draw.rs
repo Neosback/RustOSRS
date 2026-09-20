@@ -31,11 +31,7 @@ pub struct DrawStats {
     pub submitted_indices: u64,
 }
 
-pub fn draw_range_is_visible(
-    range: DrawRange,
-    plane: Option<u8>,
-    roof_plane_limit: u8,
-) -> bool {
+pub fn draw_range_is_visible(range: DrawRange, plane: Option<u8>, roof_plane_limit: u8) -> bool {
     if range.is_empty() {
         return false;
     }
