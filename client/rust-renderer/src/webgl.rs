@@ -355,34 +355,8 @@ impl RustWebGlRenderer {
         packed_vertices: &[u32],
         indices: &[u32],
     ) -> Result<(), JsValue> {
-        validate_geometry(packed_vertices, indices)
-            .map_err(|error| JsValue::from_str(&error.to_string()))?;
-
-        let vertices = js_sys::Uint32Array::from(packed_vertices);
-        let index_data = js_sys::Uint32Array::from(indices);
-
-        self.gl
-            .bind_buffer(Gl::ARRAY_BUFFER, Some(&self.vertex_buffer));
-        self.gl.buffer_data_with_opt_array_buffer(
-            Gl::ARRAY_BUFFER,
-            Some(&vertices.buffer()),
-            Gl::STATIC_DRAW,
-        );
-
-        self.gl
-            .bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
-        self.gl.buffer_data_with_opt_array_buffer(
-            Gl::ELEMENT_ARRAY_BUFFER,
-            Some(&index_data.buffer()),
-            Gl::STATIC_DRAW,
-        );
-
-        self.index_count = indices.len() as u32;
-        self.static_opaque_pass.clear();
-        self.static_alpha_pass.clear();
-        self.static_lod_opaque_pass.clear();
-        self.static_lod_alpha_pass.clear();
-        Ok(())
+        self.terrain_batch
+            .upload_geometry(&self.gl, packed_vertices, indices)
     }
 
     /// Uploads one RGBA16UI model-info packet produced by SceneBuffer.
@@ -390,64 +364,22 @@ impl RustWebGlRenderer {
     /// The first texels hold per-draw instance offsets; remaining texels hold
     /// encoded ModelInfo instances. Width is fixed at 16 to match main.vert.
     pub fn upload_model_info(&mut self, model_info: &[u16]) -> Result<(), JsValue> {
-        if model_info.is_empty() || model_info.len() % (16 * 4) != 0 {
-            return Err(JsValue::from_str(
-                "model-info packet must contain complete 16-wide RGBA16UI rows",
-            ));
-        }
-
-        let rows = (model_info.len() / (16 * 4)) as i32;
-        let data = js_sys::Uint16Array::from(model_info);
-
-        self.gl.active_texture(Gl::TEXTURE0);
-        self.gl.bind_texture(
-            Gl::TEXTURE_2D,
-            Some(&self.static_opaque_pass.model_info_texture),
-        );
-        self.gl
-            .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
-                Gl::TEXTURE_2D,
-                0,
-                Gl::RGBA16UI as i32,
-                16,
-                rows,
-                0,
-                Gl::RGBA_INTEGER,
-                Gl::UNSIGNED_SHORT,
-                Some(data.unchecked_ref()),
-            )?;
-        Ok(())
+        upload_model_info_texture(
+            &self.gl,
+            &self.terrain_batch.opaque_pass.model_info_texture,
+            model_info,
+            "model-info",
+        )
     }
 
     /// Uploads the RGBA16UI model-info packet for the alpha static pass.
     pub fn upload_model_info_alpha(&mut self, model_info: &[u16]) -> Result<(), JsValue> {
-        if model_info.is_empty() || model_info.len() % (16 * 4) != 0 {
-            return Err(JsValue::from_str(
-                "alpha model-info packet must contain complete 16-wide RGBA16UI rows",
-            ));
-        }
-
-        let rows = (model_info.len() / (16 * 4)) as i32;
-        let data = js_sys::Uint16Array::from(model_info);
-
-        self.gl.active_texture(Gl::TEXTURE0);
-        self.gl.bind_texture(
-            Gl::TEXTURE_2D,
-            Some(&self.static_alpha_pass.model_info_texture),
-        );
-        self.gl
-            .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
-                Gl::TEXTURE_2D,
-                0,
-                Gl::RGBA16UI as i32,
-                16,
-                rows,
-                0,
-                Gl::RGBA_INTEGER,
-                Gl::UNSIGNED_SHORT,
-                Some(data.unchecked_ref()),
-            )?;
-        Ok(())
+        upload_model_info_texture(
+            &self.gl,
+            &self.terrain_batch.alpha_pass.model_info_texture,
+            model_info,
+            "alpha model-info",
+        )
     }
 
     /// Uploads the exact R16I height-map array used by the current main shader.
@@ -703,19 +635,19 @@ impl RustWebGlRenderer {
     /// [offsetBytes,elements,instances, ...].
     pub fn set_draw_ranges(&mut self, flat_ranges: &[u32]) -> Result<(), JsValue> {
         let ranges = parse_draw_ranges(flat_ranges).map_err(JsValue::from_str)?;
-        validate_draw_ranges(&ranges, self.index_count as usize)
+        validate_draw_ranges(&ranges, self.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        self.static_opaque_pass.draw_ranges = ranges;
-        self.static_opaque_pass.range_planes.clear();
+        self.terrain_batch.opaque_pass.draw_ranges = ranges;
+        self.terrain_batch.opaque_pass.range_planes.clear();
         Ok(())
     }
 
     pub fn set_draw_ranges_alpha(&mut self, flat_ranges: &[u32]) -> Result<(), JsValue> {
         let ranges = parse_draw_ranges(flat_ranges).map_err(JsValue::from_str)?;
-        validate_draw_ranges(&ranges, self.index_count as usize)
+        validate_draw_ranges(&ranges, self.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        self.static_alpha_pass.draw_ranges = ranges;
-        self.static_alpha_pass.range_planes.clear();
+        self.terrain_batch.alpha_pass.draw_ranges = ranges;
+        self.terrain_batch.alpha_pass.range_planes.clear();
         Ok(())
     }
 
@@ -730,10 +662,10 @@ impl RustWebGlRenderer {
         alpha_range_planes: &[u8],
     ) -> Result<(), JsValue> {
         let opaque = parse_draw_ranges(opaque_ranges).map_err(JsValue::from_str)?;
-        validate_draw_ranges(&opaque, self.index_count as usize)
+        validate_draw_ranges(&opaque, self.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let alpha = parse_draw_ranges(alpha_ranges).map_err(JsValue::from_str)?;
-        validate_draw_ranges(&alpha, self.index_count as usize)
+        validate_draw_ranges(&alpha, self.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
         if !opaque.is_empty() {
@@ -743,10 +675,10 @@ impl RustWebGlRenderer {
             self.upload_model_info_alpha(model_info_alpha)?;
         }
 
-        self.static_opaque_pass.draw_ranges = opaque;
-        self.static_alpha_pass.draw_ranges = alpha;
-        self.static_opaque_pass.range_planes = opaque_range_planes.to_vec();
-        self.static_alpha_pass.range_planes = alpha_range_planes.to_vec();
+        self.terrain_batch.opaque_pass.draw_ranges = opaque;
+        self.terrain_batch.alpha_pass.draw_ranges = alpha;
+        self.terrain_batch.opaque_pass.range_planes = opaque_range_planes.to_vec();
+        self.terrain_batch.alpha_pass.range_planes = alpha_range_planes.to_vec();
         Ok(())
     }
 
@@ -761,16 +693,16 @@ impl RustWebGlRenderer {
         alpha_range_planes: &[u8],
     ) -> Result<(), JsValue> {
         let opaque = parse_draw_ranges(opaque_ranges).map_err(JsValue::from_str)?;
-        validate_draw_ranges(&opaque, self.index_count as usize)
+        validate_draw_ranges(&opaque, self.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let alpha = parse_draw_ranges(alpha_ranges).map_err(JsValue::from_str)?;
-        validate_draw_ranges(&alpha, self.index_count as usize)
+        validate_draw_ranges(&alpha, self.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
         if !opaque.is_empty() {
             upload_model_info_texture(
                 &self.gl,
-                &self.static_lod_opaque_pass.model_info_texture,
+                &self.terrain_batch.lod_opaque_pass.model_info_texture,
                 model_info_opaque,
                 "static LOD opaque model-info",
             )?;
@@ -779,24 +711,24 @@ impl RustWebGlRenderer {
         if !alpha.is_empty() {
             upload_model_info_texture(
                 &self.gl,
-                &self.static_lod_alpha_pass.model_info_texture,
+                &self.terrain_batch.lod_alpha_pass.model_info_texture,
                 model_info_alpha,
                 "static LOD alpha model-info",
             )?;
         }
 
-        self.static_lod_opaque_pass.draw_ranges = opaque;
-        self.static_lod_alpha_pass.draw_ranges = alpha;
-        self.static_lod_opaque_pass.range_planes = opaque_range_planes.to_vec();
-        self.static_lod_alpha_pass.range_planes = alpha_range_planes.to_vec();
+        self.terrain_batch.lod_opaque_pass.draw_ranges = opaque;
+        self.terrain_batch.lod_alpha_pass.draw_ranges = alpha;
+        self.terrain_batch.lod_opaque_pass.range_planes = opaque_range_planes.to_vec();
+        self.terrain_batch.lod_alpha_pass.range_planes = alpha_range_planes.to_vec();
         Ok(())
     }
 
     pub fn clear_draw_ranges(&mut self) {
-        self.static_opaque_pass.clear();
-        self.static_alpha_pass.clear();
-        self.static_lod_opaque_pass.clear();
-        self.static_lod_alpha_pass.clear();
+        self.terrain_batch.opaque_pass.clear();
+        self.terrain_batch.alpha_pass.clear();
+        self.terrain_batch.lod_opaque_pass.clear();
+        self.terrain_batch.lod_alpha_pass.clear();
     }
 
     /// Uploads geometry for an auxiliary static map batch.
@@ -911,12 +843,12 @@ impl RustWebGlRenderer {
         );
         self.gl
             .uniform1f(Some(&self.reference_brightness), brightness.max(0.0001));
-        self.gl.bind_vertex_array(Some(&self.vao));
+        self.gl.bind_vertex_array(Some(&self.terrain_batch.vao));
 
         let stats = submit_draw_ranges(
             &self.gl,
-            &self.static_opaque_pass.draw_ranges,
-            self.index_count,
+            &self.terrain_batch.opaque_pass.draw_ranges,
+            self.terrain_batch.index_count,
             None,
             None,
             3,
@@ -1038,10 +970,10 @@ impl RustWebGlRenderer {
             .static_state
             .ok_or_else(|| JsValue::from_str("static map state has not been configured"))?;
         let pass = match (use_lod, discard_alpha) {
-            (false, false) => &self.static_opaque_pass,
-            (false, true) => &self.static_alpha_pass,
-            (true, false) => &self.static_lod_opaque_pass,
-            (true, true) => &self.static_lod_alpha_pass,
+            (false, false) => &self.terrain_batch.opaque_pass,
+            (false, true) => &self.terrain_batch.alpha_pass,
+            (true, false) => &self.terrain_batch.lod_opaque_pass,
+            (true, true) => &self.terrain_batch.lod_alpha_pass,
         };
 
         if clear_frame {
@@ -1164,11 +1096,11 @@ impl RustWebGlRenderer {
 
         let roof_limit = roof_plane_limit.clamp(0.0, 3.0) as u8;
 
-        self.gl.bind_vertex_array(Some(&self.vao));
+        self.gl.bind_vertex_array(Some(&self.terrain_batch.vao));
         let mut stats = submit_draw_ranges(
             &self.gl,
             &pass.draw_ranges,
-            self.index_count,
+            self.terrain_batch.index_count,
             Some(&self.static_program.draw_id),
             Some(&pass.range_planes),
             roof_limit,
@@ -1210,13 +1142,7 @@ impl RustWebGlRenderer {
     }
 
     pub fn dispose(&mut self) {
-        self.gl.delete_vertex_array(Some(&self.vao));
-        self.gl.delete_buffer(Some(&self.vertex_buffer));
-        self.gl.delete_buffer(Some(&self.index_buffer));
-        self.static_opaque_pass.delete(&self.gl);
-        self.static_alpha_pass.delete(&self.gl);
-        self.static_lod_opaque_pass.delete(&self.gl);
-        self.static_lod_alpha_pass.delete(&self.gl);
+        self.terrain_batch.delete(&self.gl);
         if let Some(batch) = self.loc_batch.take() {
             batch.delete(&self.gl);
         }
@@ -1230,11 +1156,11 @@ impl RustWebGlRenderer {
         self.gl.delete_texture(Some(&self.water_mask_texture));
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
-        self.static_opaque_pass.clear();
-        self.static_alpha_pass.clear();
-        self.static_lod_opaque_pass.clear();
-        self.static_lod_alpha_pass.clear();
-        self.index_count = 0;
+        self.terrain_batch.opaque_pass.clear();
+        self.terrain_batch.alpha_pass.clear();
+        self.terrain_batch.lod_opaque_pass.clear();
+        self.terrain_batch.lod_alpha_pass.clear();
+        self.terrain_batch.index_count = 0;
         self.static_state = None;
     }
 
