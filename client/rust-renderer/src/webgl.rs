@@ -350,6 +350,7 @@ impl IndexedGeometryBatch {
 const AUX_BATCH_LOC: u32 = 0;
 const AUX_BATCH_DOOR: u32 = 1;
 const AUX_BATCH_GROUND: u32 = 2;
+const NPC_BATCH_KIND: u32 = 5;
 
 struct StaticMapResources {
     terrain_batch: StaticGeometryBatch,
@@ -1718,6 +1719,216 @@ impl RustWebGlRenderer {
             self.last_stats.draw_calls += stats.draw_calls;
             self.last_stats.submitted_indices += stats.submitted_indices;
         }
+        Ok(())
+    }
+
+    /// Renders one prebaked NPC pass for the currently selected map.
+    ///
+    /// TypeScript remains responsible for simulation and animation-frame
+    /// selection. The ABI receives only the final draw ranges plus numeric
+    /// renderer state, keeping ECS objects out of Rust.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_active_npc_pass(
+        &mut self,
+        flat_ranges: &[u32],
+        view_matrix: &[f32],
+        projection_matrix: &[f32],
+        world_entity_transform: &[f32],
+        world_entity_opacity: f32,
+        sky_rgba: &[f32],
+        scene_hsl_override: &[f32],
+        player_pos: &[f32],
+        render_distance: f32,
+        fog_depth: f32,
+        current_time: f32,
+        brightness: f32,
+        is_new_texture_anim: bool,
+        color_banding: f32,
+        npc_data_offset: i32,
+        model_y_offset: f32,
+        transparent: bool,
+    ) -> Result<(), JsValue> {
+        require_matrix(view_matrix, "view_matrix")?;
+        require_matrix(projection_matrix, "projection_matrix")?;
+        require_matrix(world_entity_transform, "world_entity_transform")?;
+        require_vec4(sky_rgba, "sky_rgba")?;
+        require_vec4(scene_hsl_override, "scene_hsl_override")?;
+        if player_pos.len() != 2 {
+            return Err(JsValue::from_str("player_pos must contain two f32 values"));
+        }
+
+        let state = self
+            .static_map
+            .state
+            .ok_or_else(|| JsValue::from_str("static map state has not been configured"))?;
+        let (npc_vao, npc_index_count) = match self.static_map.npc_batch.as_ref() {
+            Some(batch) => (batch.vao.clone(), batch.index_count),
+            None if flat_ranges.is_empty() => return Ok(()),
+            None => {
+                return Err(JsValue::from_str(
+                    "NPC geometry has not been uploaded for the active map",
+                ));
+            }
+        };
+
+        let ranges = parse_draw_ranges(flat_ranges).map_err(JsValue::from_str)?;
+        validate_draw_ranges(&ranges, npc_index_count as usize)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+        if transparent {
+            self.gl.enable(Gl::BLEND);
+            self.gl
+                .blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+        } else {
+            self.gl.disable(Gl::BLEND);
+        }
+
+        self.prepare_viewport();
+        self.gl.use_program(Some(&self.npc_program.program));
+
+        self.gl.uniform_matrix4fv_with_f32_array(
+            Some(&self.npc_program.view_matrix),
+            false,
+            view_matrix,
+        );
+        self.gl.uniform_matrix4fv_with_f32_array(
+            Some(&self.npc_program.projection_matrix),
+            false,
+            projection_matrix,
+        );
+        self.gl.uniform_matrix4fv_with_f32_array(
+            Some(&self.npc_program.world_entity_transform),
+            false,
+            world_entity_transform,
+        );
+        self.gl.uniform1f(
+            Some(&self.npc_program.world_entity_opacity),
+            world_entity_opacity,
+        );
+        self.gl.uniform4fv_with_f32_array(
+            Some(&self.npc_program.scene_hsl_override),
+            scene_hsl_override,
+        );
+        self.gl.uniform2f(
+            Some(&self.npc_program.player_pos),
+            player_pos[0],
+            player_pos[1],
+        );
+        self.gl.uniform1f(
+            Some(&self.npc_program.render_distance),
+            render_distance.max(0.0001),
+        );
+        self.gl
+            .uniform1f(Some(&self.npc_program.fog_depth), fog_depth.max(0.0));
+        self.gl
+            .uniform1f(Some(&self.npc_program.current_time), current_time);
+        self.gl.uniform1f(
+            Some(&self.npc_program.brightness),
+            brightness.max(0.0001),
+        );
+        self.gl.uniform1f(
+            Some(&self.npc_program.is_new_texture_anim),
+            if is_new_texture_anim { 1.0 } else { 0.0 },
+        );
+        self.gl.uniform1f(
+            Some(&self.npc_program.color_banding),
+            color_banding.max(1.0),
+        );
+        self.gl
+            .uniform1i(Some(&self.npc_program.draw_id), 0);
+        self.gl
+            .uniform1i(Some(&self.npc_program.npc_data_offset), npc_data_offset);
+        self.gl
+            .uniform2f(Some(&self.npc_program.map_pos), state.map_x, state.map_y);
+        self.gl
+            .uniform1f(Some(&self.npc_program.time_loaded), state.time_loaded);
+        self.gl.uniform1i(
+            Some(&self.npc_program.scene_border_size),
+            state.border_size,
+        );
+        self.gl
+            .uniform1f(Some(&self.npc_program.model_y_offset), model_y_offset);
+        self.gl.uniform1i(
+            Some(&self.npc_program.texture_layer_count),
+            self.texture_layer_count.max(1),
+        );
+        self.gl.uniform1i(
+            Some(&self.npc_program.material_count),
+            self.material_count.max(1),
+        );
+        self.gl.uniform1i(
+            Some(&self.npc_program.discard_alpha),
+            i32::from(transparent),
+        );
+        self.gl
+            .uniform4fv_with_f32_array(Some(&self.npc_program.sky_color), sky_rgba);
+
+        self.gl.active_texture(Gl::TEXTURE6);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D, Some(&self.actor_data_texture));
+        self.gl
+            .uniform1i(Some(&self.npc_program.actor_data_sampler), 6);
+
+        self.gl.active_texture(Gl::TEXTURE1);
+        self.gl.bind_texture(
+            Gl::TEXTURE_2D_ARRAY,
+            Some(&self.static_map.height_map_texture),
+        );
+        self.gl
+            .uniform1i(Some(&self.npc_program.height_map_sampler), 1);
+
+        self.gl.active_texture(Gl::TEXTURE2);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.texture_array));
+        self.gl
+            .uniform1i(Some(&self.npc_program.texture_sampler), 2);
+
+        self.gl.active_texture(Gl::TEXTURE3);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D, Some(&self.material_texture));
+        self.gl
+            .uniform1i(Some(&self.npc_program.material_sampler), 3);
+
+        self.gl.active_texture(Gl::TEXTURE4);
+        self.gl.bind_texture(
+            Gl::TEXTURE_2D_ARRAY,
+            Some(&self.water_texture_array),
+        );
+        self.gl
+            .uniform1i(Some(&self.npc_program.water_texture_sampler), 4);
+
+        self.gl.active_texture(Gl::TEXTURE5);
+        self.gl.bind_texture(
+            Gl::TEXTURE_2D_ARRAY,
+            Some(&self.static_map.water_mask_texture),
+        );
+        self.gl
+            .uniform1i(Some(&self.npc_program.water_mask_sampler), 5);
+
+        let flags = u32::from(transparent);
+        self.last_draw_hash = hash_visible_draw_ranges(
+            self.last_draw_hash,
+            self.static_map_key,
+            flags,
+            NPC_BATCH_KIND,
+            &ranges,
+            None,
+            3,
+        );
+
+        self.gl.bind_vertex_array(Some(&npc_vao));
+        let stats = submit_draw_ranges(
+            &self.gl,
+            &ranges,
+            npc_index_count,
+            Some(&self.npc_program.draw_id),
+            None,
+            3,
+            false,
+        );
+        self.gl.bind_vertex_array(None);
+        self.last_stats.draw_calls += stats.draw_calls;
+        self.last_stats.submitted_indices += stats.submitted_indices;
         Ok(())
     }
 
