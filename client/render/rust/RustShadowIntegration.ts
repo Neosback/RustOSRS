@@ -1070,6 +1070,7 @@ export function mirrorRustGfxGeometry(
     actorDataOffset: number,
     modelYOffset: number,
     transparent: boolean,
+    restoreCullBackFace: boolean,
 ): void {
     const state = activeShadowFrames.get(host);
     if (!state?.gfxParityEnabled) return;
@@ -1096,6 +1097,7 @@ export function mirrorRustGfxGeometry(
                 mapX: map.mapX,
                 mapY: map.mapY,
                 transparent,
+                restoreCullBackFace,
             },
             packedVertexWords(vertices),
             unsignedIndexWords(indices),
