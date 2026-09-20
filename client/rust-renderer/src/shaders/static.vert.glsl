@@ -2,6 +2,7 @@
 precision highp float;
 precision highp int;
 precision highp usampler2D;
+precision highp isampler2D;
 precision highp isampler2DArray;
 
 layout(location = 0) in uvec3 a_packed;
@@ -14,19 +15,25 @@ uniform float u_renderDistance;
 uniform float u_fogDepth;
 uniform float u_currentTime;
 uniform float u_brightness;
+uniform float u_isNewTextureAnim;
 
 uniform int u_drawId;
 uniform vec2 u_mapPos;
 uniform float u_timeLoaded;
 uniform float u_roofPlaneLimit;
 uniform int u_sceneBorderSize;
+uniform int u_materialCount;
 
 uniform highp usampler2D u_modelInfoTexture;
 uniform mediump isampler2DArray u_heightMap;
+uniform highp isampler2D u_textureMaterials;
 
 out vec4 v_color;
+out vec2 v_texCoord;
 out float v_fogAmount;
 out vec3 v_worldPos;
+flat out uint v_texId;
+flat out float v_alphaCutOff;
 flat out float v_plane;
 
 const float CONTOUR_GROUND_CENTER_TILE = 0.0;
@@ -34,6 +41,7 @@ const float CONTOUR_GROUND_VERTEX = 1.0;
 const float CONTOUR_GROUND_NONE = 2.0;
 const int TILE_SIZE = 128;
 const int TILE_SIZE_SHIFT = 7;
+const float TEXTURE_ANIM_UNIT = 1.0 / 128.0;
 
 float whenEq(float x, float y) {
     return 1.0 - abs(sign(x - y));
@@ -127,6 +135,29 @@ Vertex decodeVertex(uvec3 packed) {
         : hslToRgb(hsl, u_brightness);
 
     return Vertex(vec3(x, y, z), vec4(rgb, alpha), vec2(u, v), textureId, priority);
+}
+
+struct Material {
+    int animU;
+    int animV;
+    float alphaCutOff;
+    int frameCount;
+    int animSpeed;
+};
+
+Material getMaterial(uint textureId) {
+    int maxMaterial = max(u_materialCount - 1, 0);
+    int materialId = clamp(int(textureId), 0, maxMaterial);
+    ivec4 row0 = texelFetch(u_textureMaterials, ivec2(materialId, 0), 0);
+    ivec4 row1 = texelFetch(u_textureMaterials, ivec2(materialId, 1), 0);
+
+    Material material;
+    material.animU = row0.r;
+    material.animV = row0.g;
+    material.alphaCutOff = float(row0.b & 0xff) / 255.0;
+    material.frameCount = max(row0.a & 0xff, 1);
+    material.animSpeed = row1.r & 0xff;
+    return material;
 }
 
 struct ModelInfo {
@@ -228,11 +259,26 @@ void main() {
 
     if (float(modelInfo.planeCullLevel) > u_roofPlaneLimit + 0.5) {
         v_color = vec4(0.0);
+        v_texCoord = vec2(0.0);
+        v_texId = 0u;
+        v_alphaCutOff = 1.0;
         v_fogAmount = 1.0;
         v_worldPos = vec3(0.0);
         gl_Position = vec4(0.0);
         return;
     }
+
+    Material material = getMaterial(vertex.textureId);
+    vec2 textureAnimation = vec2(material.animU, material.animV);
+    if (u_isNewTextureAnim > 0.5) {
+        v_texCoord = vertex.texCoord
+            + mod(mod(u_currentTime, 128.0) * textureAnimation / 64.0, 1.0);
+    } else {
+        v_texCoord = vertex.texCoord
+            + (u_currentTime / 0.02) * textureAnimation * TEXTURE_ANIM_UNIT;
+    }
+    v_texId = vertex.textureId;
+    v_alphaCutOff = material.alphaCutOff;
 
     vec3 localPos = vertex.pos + vec3(modelInfo.tilePos.x, 0.0, modelInfo.tilePos.y);
 
@@ -261,7 +307,6 @@ void main() {
 
     vec4 viewPos = u_viewMatrix * vec4(localPos, 1.0);
 
-    // Preserve the current renderer's static-scene depth layering.
     viewPos.z += float(modelInfo.plane) * 0.001;
     uint modelPriority = modelInfo.priority & 0x7u;
     if (modelPriority > 0u) {
