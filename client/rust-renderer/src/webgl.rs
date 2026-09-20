@@ -1917,6 +1917,9 @@ impl RustWebGlRenderer {
             npc_data_offset,
             model_y_offset,
             transparent,
+            None,
+            None,
+            None,
         )
     }
 
@@ -1971,6 +1974,9 @@ impl RustWebGlRenderer {
             npc_data_offset,
             model_y_offset,
             transparent,
+            None,
+            None,
+            None,
         )
     }
 
@@ -1997,6 +2003,9 @@ impl RustWebGlRenderer {
         npc_data_offset: i32,
         model_y_offset: f32,
         transparent: bool,
+        map_pos_override: Option<(f32, f32)>,
+        time_loaded_override: Option<f32>,
+        cull_back_face_override: Option<bool>,
     ) -> Result<(), JsValue> {
         require_matrix(view_matrix, "view_matrix")?;
         require_matrix(projection_matrix, "projection_matrix")?;
@@ -2020,6 +2029,14 @@ impl RustWebGlRenderer {
             self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
         } else {
             self.gl.disable(Gl::BLEND);
+        }
+        if let Some(cull_back_face) = cull_back_face_override {
+            if cull_back_face {
+                self.gl.enable(Gl::CULL_FACE);
+                self.gl.cull_face(Gl::BACK);
+            } else {
+                self.gl.disable(Gl::CULL_FACE);
+            }
         }
 
         self.prepare_viewport();
@@ -2074,10 +2091,14 @@ impl RustWebGlRenderer {
         self.gl.uniform1i(Some(&self.npc_program.draw_id), 0);
         self.gl
             .uniform1i(Some(&self.npc_program.npc_data_offset), npc_data_offset);
+        let (map_x, map_y) =
+            map_pos_override.unwrap_or((state.map_x, state.map_y));
         self.gl
-            .uniform2f(Some(&self.npc_program.map_pos), state.map_x, state.map_y);
-        self.gl
-            .uniform1f(Some(&self.npc_program.time_loaded), state.time_loaded);
+            .uniform2f(Some(&self.npc_program.map_pos), map_x, map_y);
+        self.gl.uniform1f(
+            Some(&self.npc_program.time_loaded),
+            time_loaded_override.unwrap_or(state.time_loaded),
+        );
         self.gl
             .uniform1i(Some(&self.npc_program.scene_border_size), state.border_size);
         self.gl
