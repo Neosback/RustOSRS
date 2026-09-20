@@ -191,6 +191,14 @@ async function main(): Promise<void> {
     );
 
     assert.equal(
+        getRustRendererRuntimeMode(""),
+        "primary",
+    );
+    assert.equal(
+        getRustRendererRuntimeMode("?unrelated=1"),
+        "primary",
+    );
+    assert.equal(
         getRustRendererRuntimeMode("?rust-renderer=primary"),
         "primary",
     );
