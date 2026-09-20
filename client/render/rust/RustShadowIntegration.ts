@@ -670,7 +670,11 @@ export function renderRustStaticShadowFrame(
     if (!runtime) return;
 
     try {
-        syncRustShadowCanvasSize(runtime.canvas, host.canvas);
+        syncRustShadowCanvasSize(
+            runtime.canvas,
+            host.sceneRenderWidth,
+            host.sceneRenderHeight,
+        );
         syncGlobalResources(host, runtime);
 
         const count = host.mapManager.visibleMapCount | 0;
