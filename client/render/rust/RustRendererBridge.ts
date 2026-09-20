@@ -437,6 +437,26 @@ export class RustRendererBridge {
         return true;
     }
 
+    updateGroundGeometry(
+        mapKey: number,
+        geometry?: RustStaticGeometryPacket,
+    ): boolean {
+        if (!this.uploadedMapKeys.has(mapKey)) return false;
+        this.wasm.select_static_map(mapKey);
+
+        if (!geometry) {
+            this.wasm.upload_aux_geometry(
+                2,
+                new Uint32Array(),
+                new Uint32Array(),
+            );
+            return true;
+        }
+
+        this.uploadAuxStaticGeometry(2, geometry);
+        return true;
+    }
+
     patchLocDrawRanges(
         mapKey: number,
         useLod: boolean,
