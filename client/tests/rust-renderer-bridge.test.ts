@@ -38,6 +38,10 @@ class MockWasm implements RustRendererWasm {
         vertices: Uint32Array;
         indices: Uint32Array;
     }> = [];
+    dynamicProjectileGeometryUploads: Array<{
+        vertices: Uint32Array;
+        indices: Uint32Array;
+    }> = [];
     dynamicPlayerGeometryUploads: Array<{
         vertices: Uint32Array;
         indices: Uint32Array;
@@ -96,6 +100,16 @@ class MockWasm implements RustRendererWasm {
         mapX: number;
         mapY: number;
         transparent: boolean;
+    }> = [];
+    projectilePassCalls: Array<{
+        mapKey: number;
+        projectileDataOffset: number;
+        modelYOffset: number;
+        projectileSubOffset: Float32Array;
+        mapX: number;
+        mapY: number;
+        transparent: boolean;
+        cullBackFace: boolean;
     }> = [];
     playerPassCalls: Array<{
         mapKey: number;
@@ -186,6 +200,16 @@ class MockWasm implements RustRendererWasm {
         indices: Uint32Array,
     ): void {
         this.dynamicGfxGeometryUploads.push({
+            vertices: new Uint32Array(vertices),
+            indices: new Uint32Array(indices),
+        });
+    }
+
+    upload_dynamic_projectile_geometry(
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void {
+        this.dynamicProjectileGeometryUploads.push({
             vertices: new Uint32Array(vertices),
             indices: new Uint32Array(indices),
         });
@@ -466,6 +490,38 @@ class MockWasm implements RustRendererWasm {
             mapX,
             mapY,
             transparent,
+        });
+    }
+
+    render_active_projectile_pass(
+        _viewMatrix: Float32Array,
+        _projectionMatrix: Float32Array,
+        _skyRgba: Float32Array,
+        _sceneHslOverride: Float32Array,
+        _playerPos: Float32Array,
+        _renderDistance: number,
+        _fogDepth: number,
+        _currentTime: number,
+        _brightness: number,
+        _isNewTextureAnim: boolean,
+        _colorBanding: number,
+        projectileDataOffset: number,
+        modelYOffset: number,
+        projectileSubOffset: Float32Array,
+        mapX: number,
+        mapY: number,
+        transparent: boolean,
+        cullBackFace: boolean,
+    ): void {
+        this.projectilePassCalls.push({
+            mapKey: this.selectedMapKey,
+            projectileDataOffset,
+            modelYOffset,
+            projectileSubOffset: new Float32Array(projectileSubOffset),
+            mapX,
+            mapY,
+            transparent,
+            cullBackFace,
         });
     }
 
@@ -1154,6 +1210,41 @@ function frame(): RustStaticFrameState {
             mapX: 50,
             mapY: 51,
             transparent: true,
+        },
+    );
+
+    const projectileVertices = new Uint32Array([18, 19, 20]);
+    const projectileIndices = new Uint32Array([0, 0, 0]);
+    bridge.renderProjectilePass(
+        {
+            ...firstFrame,
+            projectileDataOffset: 52,
+            modelYOffset: -144,
+            projectileSubOffset: new Float32Array([0.25, 0.75]),
+            mapX: 60,
+            mapY: 61,
+            transparent: true,
+            cullBackFace: false,
+        },
+        projectileVertices,
+        projectileIndices,
+    );
+    assert.equal(wasm.dynamicProjectileGeometryUploads.length, 1);
+    assert.deepEqual(
+        Array.from(wasm.dynamicProjectileGeometryUploads[0].vertices),
+        [18, 19, 20],
+    );
+    assert.deepEqual(
+        wasm.projectilePassCalls[0],
+        {
+            mapKey: 2001,
+            projectileDataOffset: 52,
+            modelYOffset: -144,
+            projectileSubOffset: new Float32Array([0.25, 0.75]),
+            mapX: 60,
+            mapY: 61,
+            transparent: true,
+            cullBackFace: false,
         },
     );
 
