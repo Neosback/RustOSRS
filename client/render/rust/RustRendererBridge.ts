@@ -22,8 +22,10 @@ export interface RustRendererWasm {
     upload_static_passes(
         modelInfoOpaque: Uint16Array,
         opaqueRanges: Uint32Array,
+        opaqueRangePlanes: Uint8Array,
         modelInfoAlpha: Uint16Array,
         alphaRanges: Uint32Array,
+        alphaRangePlanes: Uint8Array,
     ): void;
 
     upload_texture_array(
@@ -176,8 +178,10 @@ export class RustRendererBridge {
         this.wasm.upload_static_passes(
             packet.modelInfoOpaque,
             packet.opaqueDrawRanges,
+            packet.opaqueDrawRangePlanes,
             packet.modelInfoAlpha,
             packet.alphaDrawRanges,
+            packet.alphaDrawRangePlanes,
         );
         this.uploadedPacket = packet;
     }
