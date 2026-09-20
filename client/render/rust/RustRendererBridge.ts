@@ -79,6 +79,26 @@ export interface RustRendererWasm {
         layers: number,
     ): void;
 
+    begin_static_frame(skyRgba: Float32Array): void;
+    render_active_static_map_pass(
+        viewMatrix: Float32Array,
+        projectionMatrix: Float32Array,
+        worldEntityTransform: Float32Array,
+        worldEntityOpacity: number,
+        skyRgba: Float32Array,
+        sceneHslOverride: Float32Array,
+        playerPos: Float32Array,
+        renderDistance: number,
+        fogDepth: number,
+        currentTime: number,
+        brightness: number,
+        roofPlaneLimit: number,
+        useLod: boolean,
+        isNewTextureAnim: boolean,
+        colorBanding: number,
+        transparent: boolean,
+    ): void;
+
     render_static_frame(
         viewMatrix: Float32Array,
         projectionMatrix: Float32Array,
@@ -140,6 +160,10 @@ export interface RustStaticFrameState {
     colorBanding: number;
 }
 
+export interface RustResidentMapFrameState extends RustStaticFrameState {
+    mapKey: number;
+}
+
 /**
  * Thin TypeScript host for the Rust/WASM renderer.
  *
@@ -152,6 +176,7 @@ export class RustRendererBridge {
     readonly wasm: RustRendererWasm;
 
     private uploadedPacket?: RustStaticScenePacket;
+    private readonly uploadedMapKeys = new Set<number>();
     private globalResourcesRevision: number | undefined;
 
     constructor(
@@ -256,6 +281,7 @@ export class RustRendererBridge {
         );
         this.uploadAuxStaticGeometry(0, packet.locGeometry);
         this.uploadAuxStaticGeometry(1, packet.doorGeometry);
+        this.uploadedMapKeys.add(packet.mapKey);
         this.uploadedPacket = packet;
     }
 
@@ -265,6 +291,7 @@ export class RustRendererBridge {
             throw new Error("Rust static scene has not been uploaded");
         }
 
+        this.wasm.select_static_map(packet.mapKey);
         this.wasm.render_static_frame(
             frame.viewMatrix,
             frame.projectionMatrix,
@@ -284,11 +311,59 @@ export class RustRendererBridge {
         );
     }
 
+    renderStaticMaps(frames: readonly RustResidentMapFrameState[]): void {
+        if (frames.length === 0) {
+            return;
+        }
+
+        for (const frame of frames) {
+            if (!this.uploadedMapKeys.has(frame.mapKey)) {
+                throw new Error(
+                    `Rust static map ${frame.mapKey} has not been uploaded`,
+                );
+            }
+        }
+
+        this.wasm.begin_static_frame(frames[0].skyRgba);
+
+        for (const frame of frames) {
+            this.renderResidentMapPass(frame, false);
+        }
+        for (let i = frames.length - 1; i >= 0; i--) {
+            this.renderResidentMapPass(frames[i], true);
+        }
+    }
+
     getLastStats(): { drawCalls: number; submittedIndices: number } {
         return {
             drawCalls: this.wasm.last_draw_calls(),
             submittedIndices: this.wasm.last_submitted_indices(),
         };
+    }
+
+    private renderResidentMapPass(
+        frame: RustResidentMapFrameState,
+        transparent: boolean,
+    ): void {
+        this.wasm.select_static_map(frame.mapKey);
+        this.wasm.render_active_static_map_pass(
+            frame.viewMatrix,
+            frame.projectionMatrix,
+            frame.worldEntityTransform,
+            frame.worldEntityOpacity,
+            frame.skyRgba,
+            frame.sceneHslOverride,
+            frame.playerPos,
+            frame.renderDistance,
+            frame.fogDepth,
+            frame.currentTime,
+            frame.brightness,
+            frame.roofPlaneLimit,
+            frame.useLod,
+            frame.isNewTextureAnim,
+            frame.colorBanding,
+            transparent,
+        );
     }
 
     private uploadAuxStaticGeometry(
@@ -334,6 +409,7 @@ export class RustRendererBridge {
 
     removeStaticMap(mapKey: number): void {
         this.wasm.remove_static_map(mapKey);
+        this.uploadedMapKeys.delete(mapKey);
         if (this.uploadedPacket?.mapKey === mapKey) {
             this.uploadedPacket = undefined;
         }
@@ -341,10 +417,12 @@ export class RustRendererBridge {
 
     clearStaticMaps(): void {
         this.wasm.clear_static_maps();
+        this.uploadedMapKeys.clear();
         this.uploadedPacket = undefined;
     }
 
     dispose(): void {
+        this.uploadedMapKeys.clear();
         this.uploadedPacket = undefined;
         this.globalResourcesRevision = undefined;
         this.wasm.dispose();
