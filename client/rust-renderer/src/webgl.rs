@@ -16,6 +16,8 @@ struct StaticProgram {
     program: WebGlProgram,
     view_matrix: WebGlUniformLocation,
     projection_matrix: WebGlUniformLocation,
+    world_entity_transform: WebGlUniformLocation,
+    world_entity_opacity: WebGlUniformLocation,
     scene_hsl_override: WebGlUniformLocation,
     player_pos: WebGlUniformLocation,
     render_distance: WebGlUniformLocation,
@@ -131,6 +133,16 @@ impl RustWebGlRenderer {
         let static_program = StaticProgram {
             view_matrix: required_uniform(&gl, &static_program_raw, "u_viewMatrix")?,
             projection_matrix: required_uniform(&gl, &static_program_raw, "u_projectionMatrix")?,
+            world_entity_transform: required_uniform(
+                &gl,
+                &static_program_raw,
+                "u_worldEntityTransform",
+            )?,
+            world_entity_opacity: required_uniform(
+                &gl,
+                &static_program_raw,
+                "u_worldEntityOpacity",
+            )?,
             scene_hsl_override: required_uniform(&gl, &static_program_raw, "u_sceneHslOverride")?,
             player_pos: required_uniform(&gl, &static_program_raw, "u_playerPos")?,
             render_distance: required_uniform(&gl, &static_program_raw, "u_renderDistance")?,
@@ -659,6 +671,8 @@ impl RustWebGlRenderer {
         &mut self,
         view_matrix: &[f32],
         projection_matrix: &[f32],
+        world_entity_transform: &[f32],
+        world_entity_opacity: f32,
         sky_rgba: &[f32],
         scene_hsl_override: &[f32],
         player_pos: &[f32],
@@ -670,9 +684,12 @@ impl RustWebGlRenderer {
         is_new_texture_anim: bool,
         color_banding: f32,
     ) -> Result<(), JsValue> {
+        self.gl.disable(Gl::BLEND);
         self.render_static(
             view_matrix,
             projection_matrix,
+            world_entity_transform,
+            world_entity_opacity,
             sky_rgba,
             scene_hsl_override,
             player_pos,
@@ -697,9 +714,14 @@ impl RustWebGlRenderer {
             &mut self.draw_range_alpha_planes,
         );
 
+        self.gl.enable(Gl::BLEND);
+        self.gl
+            .blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
         let alpha_result = self.render_static(
             view_matrix,
             projection_matrix,
+            world_entity_transform,
+            world_entity_opacity,
             sky_rgba,
             scene_hsl_override,
             player_pos,
@@ -733,6 +755,8 @@ impl RustWebGlRenderer {
         &mut self,
         view_matrix: &[f32],
         projection_matrix: &[f32],
+        world_entity_transform: &[f32],
+        world_entity_opacity: f32,
         sky_rgba: &[f32],
         scene_hsl_override: &[f32],
         player_pos: &[f32],
@@ -748,6 +772,7 @@ impl RustWebGlRenderer {
     ) -> Result<(), JsValue> {
         require_matrix(view_matrix, "view_matrix")?;
         require_matrix(projection_matrix, "projection_matrix")?;
+        require_matrix(world_entity_transform, "world_entity_transform")?;
         require_vec4(sky_rgba, "sky_rgba")?;
         require_vec4(scene_hsl_override, "scene_hsl_override")?;
         if player_pos.len() != 2 {
@@ -773,6 +798,15 @@ impl RustWebGlRenderer {
             Some(&self.static_program.projection_matrix),
             false,
             projection_matrix,
+        );
+        self.gl.uniform_matrix4fv_with_f32_array(
+            Some(&self.static_program.world_entity_transform),
+            false,
+            world_entity_transform,
+        );
+        self.gl.uniform1f(
+            Some(&self.static_program.world_entity_opacity),
+            world_entity_opacity,
         );
         self.gl.uniform4fv_with_f32_array(
             Some(&self.static_program.scene_hsl_override),
