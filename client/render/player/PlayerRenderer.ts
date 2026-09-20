@@ -2192,8 +2192,9 @@ export class PlayerRenderer {
             // The first-person camera can look at the reverse side of an arm,
             // weapon, or shield face. Those pieces must be double-sided; normal
             // player models retain back-face culling to avoid visible internals.
-            if (group.appearance.firstPersonArmsOnly) r.app.disable(PicoGL.CULL_FACE);
-            else if (r.cullBackFace) r.app.enable(PicoGL.CULL_FACE);
+            const rustCullBackFace =
+                !group.appearance.firstPersonArmsOnly && !!r.cullBackFace;
+            if (rustCullBackFace) r.app.enable(PicoGL.CULL_FACE);
             else r.app.disable(PicoGL.CULL_FACE);
             if (group.instances.length === 0) continue;
 
@@ -2232,10 +2233,14 @@ export class PlayerRenderer {
                     );
                     gpuGeometry = this.getPlayerGpuGeometry(gpuOwnerKey, batchKey);
                 }
-                const counts = gpuGeometry
+                const counts: PlayerGeometryBuildResult = gpuGeometry
                     ? {
                           countOpaque: gpuGeometry.opaque?.count ?? 0,
                           countAlpha: gpuGeometry.alpha?.count ?? 0,
+                          opaqueVertices: gpuGeometry.opaque?.vertices,
+                          opaqueIndices: gpuGeometry.opaque?.indices,
+                          alphaVertices: gpuGeometry.alpha?.vertices,
+                          alphaIndices: gpuGeometry.alpha?.indices,
                       }
                     : this.dynamicUpdateBuffersFor(
                           baseRec.baseModel,
@@ -2274,6 +2279,20 @@ export class PlayerRenderer {
                         slots,
                         counts.countOpaque | 0,
                     );
+                    if (counts.opaqueVertices && counts.opaqueIndices) {
+                        mirrorRustPlayerGeometry(
+                            r,
+                            map,
+                            counts.opaqueVertices,
+                            counts.opaqueIndices,
+                            baseOffsetPlayer,
+                            slots,
+                            r.playerYOffset,
+                            WebGLMapSquare.IDENTITY_MAT4,
+                            false,
+                            rustCullBackFace,
+                        );
+                    }
                 }
             }
 
@@ -2299,12 +2318,16 @@ export class PlayerRenderer {
                 // Per-player WorldView: apply deck height + bobbing transform
                 // inst.pid is the ECS index directly (from playerIndices)
                 const wvId = playerEcs?.getWorldViewId?.(inst.pid) ?? -1;
+                let playerModelYOffset = r.playerYOffset;
+                let playerWorldEntityTransform = WebGLMapSquare.IDENTITY_MAT4;
                 if (wvId >= 0) {
-                    const weTransform =
-                        r.worldEntityAnimator?.getTransform(wvId) ?? WebGLMapSquare.IDENTITY_MAT4;
-                    draw.uniform("u_modelYOffset", r.playerYOffset + playerDeckH).uniform(
+                    playerModelYOffset = r.playerYOffset + playerDeckH;
+                    playerWorldEntityTransform =
+                        r.worldEntityAnimator?.getTransform(wvId)
+                        ?? WebGLMapSquare.IDENTITY_MAT4;
+                    draw.uniform("u_modelYOffset", playerModelYOffset).uniform(
                         "u_worldEntityTransform",
-                        weTransform,
+                        playerWorldEntityTransform,
                     );
                 }
 
@@ -2312,6 +2335,20 @@ export class PlayerRenderer {
                 draw.uniform("u_drawIdOverride", inst.slot | 0);
                 (draw as any).drawRanges([0, counts.countOpaque | 0, 1]);
                 draw.draw();
+                if (counts.opaqueVertices && counts.opaqueIndices) {
+                    mirrorRustPlayerGeometry(
+                        r,
+                        map,
+                        counts.opaqueVertices,
+                        counts.opaqueIndices,
+                        baseOffsetPlayer,
+                        [inst.slot | 0],
+                        playerModelYOffset,
+                        playerWorldEntityTransform,
+                        false,
+                        rustCullBackFace,
+                    );
+                }
 
                 // Restore overworld uniforms after WE player draw
                 if (wvId >= 0) {
