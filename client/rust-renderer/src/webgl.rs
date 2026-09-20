@@ -2248,12 +2248,11 @@ impl RustWebGlRenderer {
         Ok(())
     }
 
-    /// Renders the currently uploaded finalized player geometry as one actor.
+    /// Renders the currently uploaded finalized player geometry.
     ///
-    /// The initial parity boundary intentionally avoids the PicoGL slot-instance
-    /// attribute: TypeScript passes the exact actor-data slot directly and Rust
-    /// submits one player draw. Slot instancing can be restored later as an
-    /// optimization after visual parity is established.
+    /// Single-player draws resolve the actor slot directly. Remote batches use
+    /// the same instanced integer slot attribute contract as PicoGL so draw
+    /// structure and actor-data addressing remain parity-testable.
     #[allow(clippy::too_many_arguments)]
     pub fn render_active_player_pass(
         &mut self,
