@@ -19,6 +19,9 @@ const NPC_VERTEX_SHADER: &str = include_str!("shaders/npc.vert.glsl");
 const PLAYER_VERTEX_SHADER: &str = include_str!("shaders/player.vert.glsl");
 const PLAYER_FRAGMENT_SHADER: &str = include_str!("shaders/player.frag.glsl");
 const PROJECTILE_VERTEX_SHADER: &str = include_str!("shaders/projectile.vert.glsl");
+const PRESENT_VERTEX_SHADER: &str = include_str!("shaders/present.vert.glsl");
+const PRESENT_FXAA_FRAGMENT_SHADER: &str =
+    include_str!("shaders/present-fxaa.frag.glsl");
 
 struct StaticProgram {
     program: WebGlProgram,
@@ -140,6 +143,12 @@ struct ProjectileProgram {
     discard_alpha: WebGlUniformLocation,
     sky_color: WebGlUniformLocation,
     world_entity_opacity: WebGlUniformLocation,
+}
+
+struct PresentProgram {
+    program: WebGlProgram,
+    frame_sampler: WebGlUniformLocation,
+    resolution: WebGlUniformLocation,
 }
 
 struct StaticPass {
@@ -527,6 +536,9 @@ pub struct RustWebGlRenderer {
     presentation_msaa_color_renderbuffer: WebGlRenderbuffer,
     presentation_msaa_depth_renderbuffer: WebGlRenderbuffer,
     presentation_msaa_samples: i32,
+    presentation_fxaa_enabled: bool,
+    present_program: PresentProgram,
+    present_vao: WebGlVertexArrayObject,
     presentation_width: i32,
     presentation_height: i32,
 
@@ -556,6 +568,11 @@ impl RustWebGlRenderer {
         let player_program_raw = create_program(&gl, PLAYER_VERTEX_SHADER, PLAYER_FRAGMENT_SHADER)?;
         let projectile_program_raw =
             create_program(&gl, PROJECTILE_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
+        let present_program_raw =
+            create_program(&gl, PRESENT_VERTEX_SHADER, PRESENT_FXAA_FRAGMENT_SHADER)?;
+        let present_vao = gl
+            .create_vertex_array()
+            .ok_or_else(|| JsValue::from_str("failed to create presentation vertex array"))?;
 
         let static_map = StaticMapResources::new(&gl)?;
         let dynamic_npc_batch = IndexedGeometryBatch::new(&gl)?;
@@ -709,6 +726,12 @@ impl RustWebGlRenderer {
             program: player_program_raw,
         };
 
+        let present_program = PresentProgram {
+            frame_sampler: required_uniform(&gl, &present_program_raw, "u_frame")?,
+            resolution: required_uniform(&gl, &present_program_raw, "u_resolution")?,
+            program: present_program_raw,
+        };
+
         let projectile_program = ProjectileProgram {
             view_matrix: required_uniform(&gl, &projectile_program_raw, "u_viewMatrix")?,
             projection_matrix: required_uniform(
@@ -810,6 +833,9 @@ impl RustWebGlRenderer {
             presentation_msaa_color_renderbuffer,
             presentation_msaa_depth_renderbuffer,
             presentation_msaa_samples: 0,
+            presentation_fxaa_enabled: false,
+            present_program,
+            present_vao,
             presentation_width: 0,
             presentation_height: 0,
             texture_layer_count: 1,
@@ -2994,6 +3020,8 @@ impl RustWebGlRenderer {
         self.gl
             .delete_program(Some(&self.projectile_program.program));
         self.gl.delete_program(Some(&self.player_program.program));
+        self.gl.delete_program(Some(&self.present_program.program));
+        self.gl.delete_vertex_array(Some(&self.present_vao));
     }
 
     #[allow(clippy::too_many_arguments)]
