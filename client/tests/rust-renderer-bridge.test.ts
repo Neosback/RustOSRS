@@ -315,6 +315,10 @@ class MockWasm implements RustRendererWasm {
         );
     }
 
+    last_draw_hash(): number {
+        return 0;
+    }
+
     dispose(): void {
         this.disposed = true;
     }
@@ -518,6 +522,7 @@ function frame(): RustStaticFrameState {
         drawCalls: 2,
         submittedIndices: 6,
     });
+    assert.equal(bridge.getLastDrawHash(), 0);
 
     bridge.renderStatic(frame());
     assert.equal(wasm.staticPassUploads, 1);
