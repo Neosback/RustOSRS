@@ -269,6 +269,7 @@ export function initMaterialsTexture(host: WebGLOsrsRendererHost, ): void {
         }
 
         host.textureMaterialBytes = data;
+        host.rustGlobalResourcesRevision++;
         host.textureMaterials = host.app.createTexture2D(
             host.textureMaterialBytes,
             textureCount,
