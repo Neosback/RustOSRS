@@ -7,10 +7,18 @@ on:
       - feature/rust-renderer-core
     paths:
       - "client/rust-renderer/**"
+      - "client/render/rust/**"
+      - "client/tests/rust-renderer-bridge.test.ts"
+      - "client/package.json"
+      - "client/yarn.lock"
       - ".github/workflows/rust-renderer.yml"
   pull_request:
     paths:
       - "client/rust-renderer/**"
+      - "client/render/rust/**"
+      - "client/tests/rust-renderer-bridge.test.ts"
+      - "client/package.json"
+      - "client/yarn.lock"
       - ".github/workflows/rust-renderer.yml"
 
 jobs:
@@ -33,3 +41,20 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: WASM check
         run: cargo check --target wasm32-unknown-unknown
+
+  bridge:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install client dependencies
+        run: yarn install --immutable
+      - name: Test TypeScript bridge
+        run: yarn test:rust-renderer-bridge
