@@ -16,6 +16,8 @@ const REFERENCE_FRAGMENT_SHADER: &str = include_str!("shaders/reference.frag.gls
 const STATIC_VERTEX_SHADER: &str = include_str!("shaders/static.vert.glsl");
 const STATIC_FRAGMENT_SHADER: &str = include_str!("shaders/static.frag.glsl");
 const NPC_VERTEX_SHADER: &str = include_str!("shaders/npc.vert.glsl");
+const PLAYER_VERTEX_SHADER: &str = include_str!("shaders/player.vert.glsl");
+const PLAYER_FRAGMENT_SHADER: &str = include_str!("shaders/player.frag.glsl");
 
 struct StaticProgram {
     program: WebGlProgram,
@@ -75,6 +77,33 @@ struct NpcProgram {
     water_texture_sampler: WebGlUniformLocation,
     water_mask_sampler: WebGlUniformLocation,
     texture_layer_count: WebGlUniformLocation,
+    material_count: WebGlUniformLocation,
+    discard_alpha: WebGlUniformLocation,
+    sky_color: WebGlUniformLocation,
+}
+
+struct PlayerProgram {
+    program: WebGlProgram,
+    view_matrix: WebGlUniformLocation,
+    projection_matrix: WebGlUniformLocation,
+    world_entity_transform: WebGlUniformLocation,
+    scene_hsl_override: WebGlUniformLocation,
+    player_pos: WebGlUniformLocation,
+    render_distance: WebGlUniformLocation,
+    fog_depth: WebGlUniformLocation,
+    current_time: WebGlUniformLocation,
+    brightness: WebGlUniformLocation,
+    is_new_texture_anim: WebGlUniformLocation,
+    color_banding: WebGlUniformLocation,
+    player_data_offset: WebGlUniformLocation,
+    map_pos: WebGlUniformLocation,
+    time_loaded: WebGlUniformLocation,
+    scene_border_size: WebGlUniformLocation,
+    model_y_offset: WebGlUniformLocation,
+    actor_data_sampler: WebGlUniformLocation,
+    height_map_sampler: WebGlUniformLocation,
+    texture_sampler: WebGlUniformLocation,
+    material_sampler: WebGlUniformLocation,
     material_count: WebGlUniformLocation,
     discard_alpha: WebGlUniformLocation,
     sky_color: WebGlUniformLocation,
@@ -357,6 +386,7 @@ const AUX_BATCH_DOOR: u32 = 1;
 const AUX_BATCH_GROUND: u32 = 2;
 const NPC_BATCH_KIND: u32 = 5;
 const DYNAMIC_NPC_BATCH_KIND: u32 = 6;
+const DYNAMIC_PLAYER_BATCH_KIND: u32 = 7;
 
 struct StaticMapResources {
     terrain_batch: StaticGeometryBatch,
@@ -434,6 +464,8 @@ pub struct RustWebGlRenderer {
     static_program: StaticProgram,
     npc_program: NpcProgram,
     dynamic_npc_batch: IndexedGeometryBatch,
+    player_program: PlayerProgram,
+    dynamic_player_batch: IndexedGeometryBatch,
 
     static_map_key: u32,
     static_map: StaticMapResources,
@@ -465,9 +497,12 @@ impl RustWebGlRenderer {
             create_program(&gl, REFERENCE_VERTEX_SHADER, REFERENCE_FRAGMENT_SHADER)?;
         let static_program_raw = create_program(&gl, STATIC_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
         let npc_program_raw = create_program(&gl, NPC_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
+        let player_program_raw =
+            create_program(&gl, PLAYER_VERTEX_SHADER, PLAYER_FRAGMENT_SHADER)?;
 
         let static_map = StaticMapResources::new(&gl)?;
         let dynamic_npc_batch = IndexedGeometryBatch::new(&gl)?;
+        let dynamic_player_batch = IndexedGeometryBatch::new(&gl)?;
         let texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         let material_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
         let water_texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
@@ -554,6 +589,61 @@ impl RustWebGlRenderer {
             program: npc_program_raw,
         };
 
+        let player_program = PlayerProgram {
+            view_matrix: required_uniform(&gl, &player_program_raw, "u_viewMatrix")?,
+            projection_matrix: required_uniform(&gl, &player_program_raw, "u_projectionMatrix")?,
+            world_entity_transform: required_uniform(
+                &gl,
+                &player_program_raw,
+                "u_worldEntityTransform",
+            )?,
+            scene_hsl_override: required_uniform(
+                &gl,
+                &player_program_raw,
+                "u_sceneHslOverride",
+            )?,
+            player_pos: required_uniform(&gl, &player_program_raw, "u_playerPos")?,
+            render_distance: required_uniform(&gl, &player_program_raw, "u_renderDistance")?,
+            fog_depth: required_uniform(&gl, &player_program_raw, "u_fogDepth")?,
+            current_time: required_uniform(&gl, &player_program_raw, "u_currentTime")?,
+            brightness: required_uniform(&gl, &player_program_raw, "u_brightness")?,
+            is_new_texture_anim: required_uniform(
+                &gl,
+                &player_program_raw,
+                "u_isNewTextureAnim",
+            )?,
+            color_banding: required_uniform(&gl, &player_program_raw, "u_colorBanding")?,
+            player_data_offset: required_uniform(
+                &gl,
+                &player_program_raw,
+                "u_playerDataOffset",
+            )?,
+            map_pos: required_uniform(&gl, &player_program_raw, "u_mapPos")?,
+            time_loaded: required_uniform(&gl, &player_program_raw, "u_timeLoaded")?,
+            scene_border_size: required_uniform(
+                &gl,
+                &player_program_raw,
+                "u_sceneBorderSize",
+            )?,
+            model_y_offset: required_uniform(&gl, &player_program_raw, "u_modelYOffset")?,
+            actor_data_sampler: required_uniform(
+                &gl,
+                &player_program_raw,
+                "u_playerDataTexture",
+            )?,
+            height_map_sampler: required_uniform(&gl, &player_program_raw, "u_heightMap")?,
+            texture_sampler: required_uniform(&gl, &player_program_raw, "u_textures")?,
+            material_sampler: required_uniform(
+                &gl,
+                &player_program_raw,
+                "u_textureMaterials",
+            )?,
+            material_count: required_uniform(&gl, &player_program_raw, "u_materialCount")?,
+            discard_alpha: required_uniform(&gl, &player_program_raw, "u_discardAlpha")?,
+            sky_color: required_uniform(&gl, &player_program_raw, "u_skyColor")?,
+            program: player_program_raw,
+        };
+
         gl.enable(Gl::DEPTH_TEST);
         gl.depth_func(Gl::LEQUAL);
         gl.enable(Gl::CULL_FACE);
@@ -570,6 +660,8 @@ impl RustWebGlRenderer {
             static_program,
             npc_program,
             dynamic_npc_batch,
+            player_program,
+            dynamic_player_batch,
             static_map_key: 0,
             static_map,
             parked_static_maps: HashMap::new(),
@@ -2068,9 +2160,11 @@ impl RustWebGlRenderer {
         self.gl.delete_texture(Some(&self.water_texture_array));
         self.gl.delete_texture(Some(&self.actor_data_texture));
         self.dynamic_npc_batch.delete(&self.gl);
+        self.dynamic_player_batch.delete(&self.gl);
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
         self.gl.delete_program(Some(&self.npc_program.program));
+        self.gl.delete_program(Some(&self.player_program.program));
     }
 
     #[allow(clippy::too_many_arguments)]
