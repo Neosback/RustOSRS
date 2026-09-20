@@ -107,6 +107,10 @@ export interface RustRendererWasm {
         height: number,
     ): void;
 
+    set_presentation_enabled(enabled: boolean): void;
+    presentation_enabled(): boolean;
+    present_frame(): void;
+
     begin_static_frame(skyRgba: Float32Array): void;
     render_active_static_map_pass(
         viewMatrix: Float32Array,
@@ -530,6 +534,18 @@ export class RustRendererBridge {
             frame.isNewTextureAnim,
             frame.colorBanding,
         );
+    }
+
+    setPresentationEnabled(enabled: boolean): void {
+        this.wasm.set_presentation_enabled(enabled);
+    }
+
+    isPresentationEnabled(): boolean {
+        return this.wasm.presentation_enabled();
+    }
+
+    presentFrame(): void {
+        this.wasm.present_frame();
     }
 
     beginStaticFrame(
