@@ -2121,6 +2121,7 @@ impl RustWebGlRenderer {
         map_x: f32,
         map_y: f32,
         transparent: bool,
+        restore_cull_back_face: bool,
     ) -> Result<(), JsValue> {
         let index_count = self.dynamic_gfx_batch.index_count;
         if index_count == 0 {
@@ -2158,8 +2159,12 @@ impl RustWebGlRenderer {
             Some(false),
         );
 
-        self.gl.enable(Gl::CULL_FACE);
-        self.gl.cull_face(Gl::BACK);
+        if restore_cull_back_face {
+            self.gl.enable(Gl::CULL_FACE);
+            self.gl.cull_face(Gl::BACK);
+        } else {
+            self.gl.disable(Gl::CULL_FACE);
+        }
         result
     }
 
