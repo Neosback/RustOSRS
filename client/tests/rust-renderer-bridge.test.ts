@@ -14,7 +14,8 @@ import {
 import { getRustRendererGlobalResourceSnapshot } from "../render/rust/LiveResourceAdapter";
 import { getRustRendererRuntimeMode } from "../render/rust/RustRendererRuntime";
 
-assert.equal(getRustRendererRuntimeMode(""), "off");
+assert.equal(getRustRendererRuntimeMode(""), "primary");
+assert.equal(getRustRendererRuntimeMode("?rust-renderer=primary"), "primary");
 assert.equal(getRustRendererRuntimeMode("?rust-renderer=off"), "off");
 assert.equal(getRustRendererRuntimeMode("?rust-renderer=shadow"), "shadow");
 
