@@ -197,6 +197,7 @@ import {
     completeRustOpaqueActorShadowPass,
     finishRustActorShadowFrame,
     getRustRendererShadowDiagnostics,
+    isRustFullDynamicShadowEnabled,
     isRustGfxShadowEnabled,
     isRustNpcShadowEnabled,
     isRustPlayerShadowEnabled,
@@ -760,10 +761,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             || rustGfxParityEnabled
             || rustProjectileParityEnabled;
         const rustFullDynamicParityEnabled =
-            rustNpcParityEnabled
-            && rustPlayerParityEnabled
-            && rustGfxParityEnabled
-            && rustProjectileParityEnabled;
+            isRustFullDynamicShadowEnabled();
         const rustPixelCaptureRequested =
             getRustRendererShadowDiagnostics(host).enabled
             && shouldCaptureRustPixelParity(host);
