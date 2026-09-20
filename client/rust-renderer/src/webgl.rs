@@ -21,6 +21,10 @@ const PLAYER_FRAGMENT_SHADER: &str = include_str!("shaders/player.frag.glsl");
 const PROJECTILE_VERTEX_SHADER: &str = include_str!("shaders/projectile.vert.glsl");
 const PRESENT_VERTEX_SHADER: &str = include_str!("shaders/present.vert.glsl");
 const PRESENT_FXAA_FRAGMENT_SHADER: &str = include_str!("shaders/present-fxaa.frag.glsl");
+const SCENE_OVERLAY_VERTEX_SHADER: &str =
+    include_str!("shaders/scene-overlay.vert.glsl");
+const SCENE_OVERLAY_FRAGMENT_SHADER: &str =
+    include_str!("shaders/scene-overlay.frag.glsl");
 
 struct StaticProgram {
     program: WebGlProgram,
@@ -148,6 +152,13 @@ struct PresentProgram {
     program: WebGlProgram,
     frame_sampler: WebGlUniformLocation,
     resolution: WebGlUniformLocation,
+}
+
+struct SceneOverlayProgram {
+    program: WebGlProgram,
+    view_matrix: WebGlUniformLocation,
+    projection_matrix: WebGlUniformLocation,
+    color: WebGlUniformLocation,
 }
 
 struct StaticPass {
@@ -538,6 +549,9 @@ pub struct RustWebGlRenderer {
     presentation_fxaa_enabled: bool,
     present_program: PresentProgram,
     present_vao: WebGlVertexArrayObject,
+    scene_overlay_program: SceneOverlayProgram,
+    scene_overlay_vertex_buffer: WebGlBuffer,
+    scene_overlay_vao: WebGlVertexArrayObject,
     presentation_width: i32,
     presentation_height: i32,
 
@@ -572,6 +586,22 @@ impl RustWebGlRenderer {
         let present_vao = gl
             .create_vertex_array()
             .ok_or_else(|| JsValue::from_str("failed to create presentation vertex array"))?;
+        let scene_overlay_program_raw = create_program(
+            &gl,
+            SCENE_OVERLAY_VERTEX_SHADER,
+            SCENE_OVERLAY_FRAGMENT_SHADER,
+        )?;
+        let scene_overlay_vertex_buffer = gl
+            .create_buffer()
+            .ok_or_else(|| JsValue::from_str("failed to create scene overlay vertex buffer"))?;
+        let scene_overlay_vao = gl
+            .create_vertex_array()
+            .ok_or_else(|| JsValue::from_str("failed to create scene overlay vertex array"))?;
+        gl.bind_vertex_array(Some(&scene_overlay_vao));
+        gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&scene_overlay_vertex_buffer));
+        gl.enable_vertex_attrib_array(0);
+        gl.vertex_attrib_pointer_with_i32(0, 3, Gl::FLOAT, false, 12, 0);
+        gl.bind_vertex_array(None);
 
         let static_map = StaticMapResources::new(&gl)?;
         let dynamic_npc_batch = IndexedGeometryBatch::new(&gl)?;
@@ -730,6 +760,20 @@ impl RustWebGlRenderer {
             resolution: required_uniform(&gl, &present_program_raw, "u_resolution")?,
             program: present_program_raw,
         };
+        let scene_overlay_program = SceneOverlayProgram {
+            view_matrix: required_uniform(
+                &gl,
+                &scene_overlay_program_raw,
+                "u_viewMatrix",
+            )?,
+            projection_matrix: required_uniform(
+                &gl,
+                &scene_overlay_program_raw,
+                "u_projectionMatrix",
+            )?,
+            color: required_uniform(&gl, &scene_overlay_program_raw, "u_color")?,
+            program: scene_overlay_program_raw,
+        };
 
         let projectile_program = ProjectileProgram {
             view_matrix: required_uniform(&gl, &projectile_program_raw, "u_viewMatrix")?,
@@ -835,6 +879,9 @@ impl RustWebGlRenderer {
             presentation_fxaa_enabled: false,
             present_program,
             present_vao,
+            scene_overlay_program,
+            scene_overlay_vertex_buffer,
+            scene_overlay_vao,
             presentation_width: 0,
             presentation_height: 0,
             texture_layer_count: 1,
@@ -3064,6 +3111,11 @@ impl RustWebGlRenderer {
         self.gl.delete_program(Some(&self.player_program.program));
         self.gl.delete_program(Some(&self.present_program.program));
         self.gl.delete_vertex_array(Some(&self.present_vao));
+        self.gl
+            .delete_program(Some(&self.scene_overlay_program.program));
+        self.gl
+            .delete_buffer(Some(&self.scene_overlay_vertex_buffer));
+        self.gl.delete_vertex_array(Some(&self.scene_overlay_vao));
     }
 
     #[allow(clippy::too_many_arguments)]
