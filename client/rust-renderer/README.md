@@ -6,7 +6,7 @@ The migration is deliberately incremental. TypeScript can continue decoding cach
 
 ## Current scope
 
-Stage 0 is implemented, Stage 1 static-scene parity is near completion, and Stage 2 live actor rendering is actively landing:
+Stages 0-2 are implemented at the parity boundary, and Stage 3 primary presentation is now implemented behind an opt-in runtime mode:
 
 - exact 12-byte packed OSRS vertex codec
 - packed-vertex deduplication
@@ -40,9 +40,17 @@ Stage 0 is implemented, Stage 1 static-scene parity is near completion, and Stag
 - structural parity diagnostics for resident/visible/mirrored maps, draw-call totals, submitted indices and order-sensitive draw fingerprints
 - Mode-1 overlapping world-entity ghost terrain redraw parity, including packed-HSL tint and low-opacity blending
 - opt-in static pixel parity capture against an isolated PicoGL reference framebuffer
+- Rust-owned presentation framebuffer with resize-aware RGBA8/depth attachments
+- optional Rust MSAA using the same device `MAX_SAMPLES` policy as the PicoGL scene framebuffer
+- Rust FXAA/fullscreen presentation pass and raw resolved blit path
+- opt-in `?rust-renderer=primary` mode where Rust owns the visible 3D canvas and PicoGL remains only as a transparent compatibility/UI overlay
+- scene-space Rust overlay/highlight primitive used by the parity/primary path
+- WebGL context-loss recovery with replay of retained static maps, global resources, ground/loc/door state and live actor data
+- primary-mode PicoGL scene submissions suppressed across the central static/NPC draw helper plus player, GFX and projectile direct draw paths
+- source-level Rust/TypeScript ABI alignment check in CI
 - native Rust tests, bridge tests, wasm32 compile checks, browser-WASM packaging and shadow-integration CI
 
-The production client still presents the existing PicoGL renderer. With `?rust-renderer=shadow`, Rust runs on a detached canvas sized to the live scene render target and consumes the same decoded map data, global texture/material resources, camera matrices, fog inputs, roof state, render-distance culling, LOD decisions, animated loc state, ground items and world-entity transforms. Shadow failures are isolated and do not replace or corrupt the production rendering path.
+The default client still presents PicoGL. With `?rust-renderer=shadow`, Rust runs on a detached canvas sized to the live scene render target and consumes the same decoded state for parity. With `?rust-renderer=primary`, Rust owns the visible 3D scene/presentation canvas while PicoGL is retained as a transparent compatibility/input/UI overlay. Primary mode suppresses legacy PicoGL 3D GPU submission while still running the TypeScript traversal needed to finalize the numeric data consumed by Rust. Rust context loss falls back safely to the Pico canvas while a new WASM/WebGL2 runtime is created and retained renderer state is replayed.
 
 For image comparison, use `?rust-renderer=shadow&rust-pixel-parity=1`. The first eligible static frame is captured and comparison repeats every 120 frames by default. Add `&rust-pixel-every=N` to change that interval. The latest shadow diagnostics expose structural parity plus pixel mismatch ratio, maximum channel delta, mean absolute channel delta and RMSE.
 
@@ -89,27 +97,32 @@ Move players, NPCs, projectiles, GFX, dynamic transparency and priority ordering
 
 ### Stage 3: renderer services
 
-Move the remaining renderer-owned presentation services: primary scene framebuffer ownership, resize/MSAA/FXAA, final blit/presentation, GPU profiler counters and scene-space overlay/highlight geometry. World interaction itself is already CPU-side through `SceneRaycaster`, so a Rust GPU picking framebuffer is not a cutover requirement for the current client.
+Primary presentation is now implemented behind `?rust-renderer=primary`: Rust owns an offscreen color/depth scene target, optional MSAA resolve, FXAA/raw presentation, resize handling, the visible 3D canvas and a depth-aware scene-overlay primitive. The runtime also recreates itself after WebGL context loss and replays retained renderer state. World interaction remains CPU-side through `SceneRaycaster`, so a Rust GPU picking framebuffer is not a cutover requirement for the current client.
 
-### Stage 4: delete PicoGL rendering
+Remaining Stage 3 acceptance work is representative primary-mode testing across resize, MSAA/FXAA combinations, overlays and context-loss recovery. GPU profiling can move later and does not block visual cutover.
 
-Keep an A/B selector until parity fixtures pass. Then make Rust default and remove PicoGL scene resource ownership and DrawBackend.ts.
+### Stage 4: default Rust + remove PicoGL scene ownership
+
+The A/B selector and an opt-in Rust-primary path already exist. Static/NPC draws routed through `host.draw()` and direct player/GFX/projectile submissions are suppressed on the Pico context while primary mode is active, so Rust is the only 3D GPU submitter in that mode.
+
+After representative parity/recovery fixtures pass, make Rust-primary the default, remove PicoGL scene framebuffer/program/buffer ownership and `DrawBackend.ts`, and keep only whatever UI compatibility surface is still required.
 
 ### Stage 5: move geometry preparation
 
 Port VertexBuffer, SceneBuffer, model face packing, model hashing, terrain/loc mesh construction, culling and draw-list construction. At this point decoded renderer data can remain in Rust memory through GPU upload.
 
 
-## Known cutover blockers
+## Remaining cutover blockers
 
-The Rust renderer must not become the primary canvas until these renderer-owned services are present and parity-tested:
+The renderer is now far enough along that the blockers are acceptance and legacy removal rather than missing major draw classes:
 
-- representative dynamic-scene parity acceptance across NPC/player/GFX/projectile overlap, transparency and priority cases
-- final scene framebuffer ownership, resize/MSAA handling, FXAA and presentation/blit path
-- world-space interaction/highlight and 3D overlay geometry that currently depends on the PicoGL scene pipeline
-- removal of temporary GLSL duplication between the PicoGL and Rust trees, or a generated/shared shader-source path that prevents semantic drift
+- representative full-dynamic parity acceptance across NPC/player/GFX/projectile overlap, transparency, priorities, world entities, water, roofs and animated loc changes
+- representative `rust-renderer=primary` acceptance across resize, MSAA/FXAA combinations, scene overlays and forced WebGL context-loss/recovery
+- make Rust-primary the default only after those fixtures pass, then remove PicoGL scene framebuffer/program/buffer ownership and `DrawBackend.ts`
+- eliminate temporary GLSL semantic duplication with shared/generated shader sources or an equivalent drift-proof build contract
+- later move `SceneBuffer`, `VertexBuffer`, face packing and dynamic geometry construction into Rust/WASM memory to remove JS-to-WASM typed-array churn
 
-Player composition no longer blocks Stage 2 GPU ownership: the live Rust path consumes the finalized packed player geometry already produced by TypeScript. Equipment/identity-kit assembly, recoloring, animation transforms and other geometry preparation remain intentionally in TypeScript until Stage 5. Typed-array transfer overhead in shadow mode is accepted until `SceneBuffer`, `VertexBuffer` and face packing move into Rust memory.
+Player composition no longer blocks GPU cutover: Rust consumes finalized packed player geometry already produced by TypeScript. Equipment/identity-kit assembly, recoloring and animation transforms remain intentionally in TypeScript until Stage 5. World interaction is already CPU-side, so a GPU picking framebuffer is not required for the current cutover.
 
 ## Out of scope for now
 
