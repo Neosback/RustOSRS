@@ -297,6 +297,98 @@ impl RustWebGlRenderer {
         Ok(())
     }
 
+    /// Uploads the renderer's RGBA8 texture array.
+    ///
+    /// The byte order is intentionally unchanged from the TypeScript
+    /// Int32Array/Uint8Array packet. The static fragment shader performs the
+    /// same BGRA swizzle as main.frag.glsl.
+    pub fn upload_texture_array(
+        &mut self,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+        layers: u32,
+    ) -> Result<(), JsValue> {
+        if width == 0 || height == 0 || layers == 0 {
+            return Err(JsValue::from_str(
+                "texture-array dimensions must be positive",
+            ));
+        }
+        let expected = (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|value| value.checked_mul(layers as usize))
+            .and_then(|value| value.checked_mul(4))
+            .ok_or_else(|| JsValue::from_str("texture-array dimensions overflow"))?;
+        if pixels.len() != expected {
+            return Err(JsValue::from_str(&format!(
+                "texture-array packet has {} bytes, expected {expected}",
+                pixels.len()
+            )));
+        }
+
+        let data = js_sys::Uint8Array::from(pixels);
+        self.gl.active_texture(Gl::TEXTURE2);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.texture_array));
+        self.gl.tex_image_3d_with_opt_array_buffer_view(
+            Gl::TEXTURE_2D_ARRAY,
+            0,
+            Gl::RGBA8 as i32,
+            width as i32,
+            height as i32,
+            layers as i32,
+            0,
+            Gl::RGBA,
+            Gl::UNSIGNED_BYTE,
+            Some(data.unchecked_ref()),
+        )?;
+        self.texture_layer_count = layers as i32;
+        Ok(())
+    }
+
+    /// Uploads the six-row RGBA8I material table produced by initMaterialsTexture.
+    pub fn upload_materials(
+        &mut self,
+        materials: &[i8],
+        texture_count: u32,
+    ) -> Result<(), JsValue> {
+        const ROWS: usize = crate::material::MATERIAL_TEXTURE_ROWS;
+        if texture_count == 0 {
+            return Err(JsValue::from_str(
+                "material texture width must be positive",
+            ));
+        }
+        let expected = (texture_count as usize)
+            .checked_mul(ROWS)
+            .and_then(|value| value.checked_mul(4))
+            .ok_or_else(|| JsValue::from_str("material texture dimensions overflow"))?;
+        if materials.len() != expected {
+            return Err(JsValue::from_str(&format!(
+                "material packet has {} bytes, expected {expected}",
+                materials.len()
+            )));
+        }
+
+        let data = js_sys::Int8Array::from(materials);
+        self.gl.active_texture(Gl::TEXTURE3);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D, Some(&self.material_texture));
+        self.gl
+            .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
+                Gl::TEXTURE_2D,
+                0,
+                Gl::RGBA8I as i32,
+                texture_count as i32,
+                ROWS as i32,
+                0,
+                Gl::RGBA_INTEGER,
+                Gl::BYTE,
+                Some(data.unchecked_ref()),
+            )?;
+        self.material_count = texture_count as i32;
+        Ok(())
+    }
+
     /// Sets the static map-square placement and height-map metadata.
     pub fn set_static_map_state(
         &mut self,
@@ -390,6 +482,9 @@ impl RustWebGlRenderer {
         current_time: f32,
         brightness: f32,
         roof_plane_limit: f32,
+        is_new_texture_anim: bool,
+        color_banding: f32,
+        discard_alpha: bool,
     ) -> Result<(), JsValue> {
         require_matrix(view_matrix, "view_matrix")?;
         require_matrix(projection_matrix, "projection_matrix")?;
@@ -436,6 +531,24 @@ impl RustWebGlRenderer {
             Some(&self.static_program.brightness),
             brightness.max(0.0001),
         );
+        self.gl.uniform1f(
+            Some(&self.static_program.is_new_texture_anim),
+            if is_new_texture_anim { 1.0 } else { 0.0 },
+        );
+        self.gl.uniform1f(
+            Some(&self.static_program.color_banding),
+            color_banding.max(1.0),
+        );
+        self.gl
+            .uniform1i(Some(&self.static_program.discard_alpha), i32::from(discard_alpha));
+        self.gl.uniform1i(
+            Some(&self.static_program.texture_layer_count),
+            self.texture_layer_count.max(1),
+        );
+        self.gl.uniform1i(
+            Some(&self.static_program.material_count),
+            self.material_count.max(1),
+        );
         self.gl
             .uniform2f(Some(&self.static_program.map_pos), state.map_x, state.map_y);
         self.gl
@@ -463,6 +576,18 @@ impl RustWebGlRenderer {
         self.gl
             .uniform1i(Some(&self.static_program.height_map_sampler), 1);
 
+        self.gl.active_texture(Gl::TEXTURE2);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.texture_array));
+        self.gl
+            .uniform1i(Some(&self.static_program.texture_sampler), 2);
+
+        self.gl.active_texture(Gl::TEXTURE3);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D, Some(&self.material_texture));
+        self.gl
+            .uniform1i(Some(&self.static_program.material_sampler), 3);
+
         self.gl.bind_vertex_array(Some(&self.vao));
         let stats = submit_draw_ranges(
             &self.gl,
@@ -489,6 +614,8 @@ impl RustWebGlRenderer {
         self.gl.delete_buffer(Some(&self.index_buffer));
         self.gl.delete_texture(Some(&self.model_info_texture));
         self.gl.delete_texture(Some(&self.height_map_texture));
+        self.gl.delete_texture(Some(&self.texture_array));
+        self.gl.delete_texture(Some(&self.material_texture));
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
         self.draw_ranges.clear();
@@ -566,8 +693,56 @@ fn create_nearest_texture(gl: &Gl, target: u32) -> Result<WebGlTexture, JsValue>
     gl.tex_parameteri(target, Gl::TEXTURE_MAG_FILTER, Gl::NEAREST as i32);
     gl.tex_parameteri(target, Gl::TEXTURE_WRAP_S, Gl::CLAMP_TO_EDGE as i32);
     gl.tex_parameteri(target, Gl::TEXTURE_WRAP_T, Gl::CLAMP_TO_EDGE as i32);
+    if target == Gl::TEXTURE_2D_ARRAY {
+        gl.tex_parameteri(target, Gl::TEXTURE_WRAP_R, Gl::CLAMP_TO_EDGE as i32);
+    }
     gl.bind_texture(target, None);
     Ok(texture)
+}
+
+fn initialize_fallback_texture_array(
+    gl: &Gl,
+    texture: &WebGlTexture,
+) -> Result<(), JsValue> {
+    let pixels = js_sys::Uint8Array::from(&[255u8, 255, 255, 255][..]);
+    gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(texture));
+    gl.tex_image_3d_with_opt_array_buffer_view(
+        Gl::TEXTURE_2D_ARRAY,
+        0,
+        Gl::RGBA8 as i32,
+        1,
+        1,
+        1,
+        0,
+        Gl::RGBA,
+        Gl::UNSIGNED_BYTE,
+        Some(pixels.unchecked_ref()),
+    )?;
+    gl.bind_texture(Gl::TEXTURE_2D_ARRAY, None);
+    Ok(())
+}
+
+fn initialize_fallback_materials(
+    gl: &Gl,
+    texture: &WebGlTexture,
+) -> Result<(), JsValue> {
+    let mut values = [0i8; crate::material::MATERIAL_TEXTURE_ROWS * 4];
+    values[3] = 1;
+    let data = js_sys::Int8Array::from(&values[..]);
+    gl.bind_texture(Gl::TEXTURE_2D, Some(texture));
+    gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
+        Gl::TEXTURE_2D,
+        0,
+        Gl::RGBA8I as i32,
+        1,
+        crate::material::MATERIAL_TEXTURE_ROWS as i32,
+        0,
+        Gl::RGBA_INTEGER,
+        Gl::BYTE,
+        Some(data.unchecked_ref()),
+    )?;
+    gl.bind_texture(Gl::TEXTURE_2D, None);
+    Ok(())
 }
 
 fn require_matrix(value: &[f32], name: &str) -> Result<(), JsValue> {
