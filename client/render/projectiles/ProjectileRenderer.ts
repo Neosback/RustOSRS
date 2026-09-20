@@ -4,6 +4,7 @@ import { DrawCall, Texture } from "picogl";
 import type { WebGLMapSquare } from "../WebGLMapSquare";
 import type { WebGLOsrsRenderer } from "../WebGLOsrsRenderer";
 import type { GfxCache } from "../gfx/GfxCache";
+import { mirrorRustProjectileGeometry } from "../rust/RustShadowIntegration";
 import type { SpotAnimGpuCache, SpotAnimGpuRecord } from "../gfx/SpotAnimGpuCache";
 import { sampleBridgeHeightForWorldTile } from "../../game/scene/BridgeHeightSampler";
 import { BridgePlaneStrategy } from "../../game/scene/PlaneResolver";
@@ -211,6 +212,11 @@ export class ProjectileRenderer {
             if (!vaoRec) {
                 continue;
             }
+            const rustGeometry = this.gfxCache.ensureFrameGeometry(
+                group.spotId,
+                group.frameIdx,
+                transparent,
+            );
 
             const subOffset = vec2.create();
             const dc = this.configureProjectileDrawCall(
@@ -229,11 +235,26 @@ export class ProjectileRenderer {
                 const fracX = relativeXf - Math.floor(relativeXf);
                 const fracY = relativeYf - Math.floor(relativeYf);
 
+                const modelYOffset = this.resolveModelYOffset(proj, pos);
                 dc.uniform("u_drawIdOverride", slot | 0);
-                dc.uniform("u_modelYOffset", this.resolveModelYOffset(proj, pos));
+                dc.uniform("u_modelYOffset", modelYOffset);
                 vec2.set(subOffset, fracX, fracY);
                 dc.uniform("u_projectileSubOffset", subOffset);
                 dc.draw();
+
+                if (rustGeometry) {
+                    mirrorRustProjectileGeometry(
+                        this.renderer,
+                        map,
+                        rustGeometry.vertices,
+                        rustGeometry.indices,
+                        (baseOffset + slot) | 0,
+                        modelYOffset,
+                        subOffset as Float32Array,
+                        transparent,
+                        !!(this.renderer as any).cullBackFace,
+                    );
+                }
             }
 
             dc.uniform("u_drawIdOverride", -1);
