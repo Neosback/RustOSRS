@@ -13,6 +13,7 @@ async function main(): Promise<void> {
         isRustGfxShadowEnabled,
         isRustNpcShadowEnabled,
         isRustPlayerShadowEnabled,
+        isRustProjectileShadowEnabled,
     } = await import("../render/rust/RustShadowIntegration");
     const {
         compareRgbaFrames,
@@ -45,9 +46,11 @@ async function main(): Promise<void> {
         npcParityEnabled: false,
         playerParityEnabled: false,
         gfxParityEnabled: false,
+        projectileParityEnabled: false,
         mirroredNpcPasses: 0,
         mirroredPlayerPasses: 0,
         mirroredGfxPasses: 0,
+        mirroredProjectilePasses: 0,
     });
 
     const animatedMap = {
@@ -222,6 +225,22 @@ async function main(): Promise<void> {
     assert.equal(
         isRustGfxShadowEnabled(
             "?rust-renderer=off&rust-gfx-parity=1",
+        ),
+        false,
+    );
+    assert.equal(
+        isRustProjectileShadowEnabled(
+            "?rust-renderer=shadow&rust-projectile-parity=1",
+        ),
+        true,
+    );
+    assert.equal(
+        isRustProjectileShadowEnabled("?rust-renderer=shadow"),
+        false,
+    );
+    assert.equal(
+        isRustProjectileShadowEnabled(
+            "?rust-renderer=off&rust-projectile-parity=1",
         ),
         false,
     );
