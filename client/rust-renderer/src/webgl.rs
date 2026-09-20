@@ -2607,6 +2607,7 @@ impl RustWebGlRenderer {
         model_y_offset: f32,
         transparent: bool,
         cull_back_face: bool,
+        restore_cull_back_face: bool,
     ) -> Result<(), JsValue> {
         require_matrix(view_matrix, "view_matrix")?;
         require_matrix(projection_matrix, "projection_matrix")?;
@@ -2790,6 +2791,12 @@ impl RustWebGlRenderer {
             .bind_vertex_array(Some(&self.dynamic_player_batch.vao));
         let stats = submit_draw_ranges(&self.gl, &range, index_count, None, None, 3, false);
         self.gl.bind_vertex_array(None);
+        if restore_cull_back_face {
+            self.gl.enable(Gl::CULL_FACE);
+            self.gl.cull_face(Gl::BACK);
+        } else {
+            self.gl.disable(Gl::CULL_FACE);
+        }
 
         self.last_stats.draw_calls += stats.draw_calls;
         self.last_stats.submitted_indices += stats.submitted_indices;
