@@ -125,6 +125,7 @@ export interface RustRendererWasm {
 
     last_draw_calls(): number;
     last_submitted_indices(): number;
+    last_draw_hash(): number;
     dispose(): void;
 }
 
@@ -345,6 +346,10 @@ export class RustRendererBridge {
             drawCalls: this.wasm.last_draw_calls(),
             submittedIndices: this.wasm.last_submitted_indices(),
         };
+    }
+
+    getLastDrawHash(): number {
+        return this.wasm.last_draw_hash() >>> 0;
     }
 
     private renderResidentMapPass(
