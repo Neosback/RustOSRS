@@ -388,6 +388,7 @@ const AUX_BATCH_GROUND: u32 = 2;
 const NPC_BATCH_KIND: u32 = 5;
 const DYNAMIC_NPC_BATCH_KIND: u32 = 6;
 const DYNAMIC_PLAYER_BATCH_KIND: u32 = 7;
+const DYNAMIC_GFX_BATCH_KIND: u32 = 8;
 
 struct StaticMapResources {
     terrain_batch: StaticGeometryBatch,
@@ -465,6 +466,7 @@ pub struct RustWebGlRenderer {
     static_program: StaticProgram,
     npc_program: NpcProgram,
     dynamic_npc_batch: IndexedGeometryBatch,
+    dynamic_gfx_batch: IndexedGeometryBatch,
     player_program: PlayerProgram,
     dynamic_player_batch: IndexedGeometryBatch,
     player_slot_buffer: WebGlBuffer,
@@ -503,6 +505,7 @@ impl RustWebGlRenderer {
 
         let static_map = StaticMapResources::new(&gl)?;
         let dynamic_npc_batch = IndexedGeometryBatch::new(&gl)?;
+        let dynamic_gfx_batch = IndexedGeometryBatch::new(&gl)?;
         let dynamic_player_batch = IndexedGeometryBatch::new(&gl)?;
         let player_slot_buffer = gl
             .create_buffer()
@@ -651,6 +654,7 @@ impl RustWebGlRenderer {
             static_program,
             npc_program,
             dynamic_npc_batch,
+            dynamic_gfx_batch,
             player_program,
             dynamic_player_batch,
             player_slot_buffer,
@@ -798,6 +802,21 @@ impl RustWebGlRenderer {
         indices: &[u32],
     ) -> Result<(), JsValue> {
         self.dynamic_npc_batch.upload_geometry_with_usage(
+            &self.gl,
+            packed_vertices,
+            indices,
+            Gl::DYNAMIC_DRAW,
+        )
+    }
+
+    /// Uploads one finalized spot-animation/GFX geometry packet into a
+    /// reusable batch. TypeScript remains authoritative for effect frame choice.
+    pub fn upload_dynamic_gfx_geometry(
+        &mut self,
+        packed_vertices: &[u32],
+        indices: &[u32],
+    ) -> Result<(), JsValue> {
+        self.dynamic_gfx_batch.upload_geometry_with_usage(
             &self.gl,
             packed_vertices,
             indices,
@@ -2382,6 +2401,7 @@ impl RustWebGlRenderer {
         self.gl.delete_texture(Some(&self.water_texture_array));
         self.gl.delete_texture(Some(&self.actor_data_texture));
         self.dynamic_npc_batch.delete(&self.gl);
+        self.dynamic_gfx_batch.delete(&self.gl);
         self.dynamic_player_batch.delete(&self.gl);
         self.gl.delete_buffer(Some(&self.player_slot_buffer));
         self.gl.delete_program(Some(&self.reference_program));
