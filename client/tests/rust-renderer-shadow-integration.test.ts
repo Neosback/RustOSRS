@@ -11,6 +11,7 @@ async function main(): Promise<void> {
         getRustRendererShadowDiagnostics,
         hashExpectedDrawRanges,
         isRustNpcShadowEnabled,
+        isRustPlayerShadowEnabled,
     } = await import("../render/rust/RustShadowIntegration");
     const {
         compareRgbaFrames,
@@ -41,7 +42,9 @@ async function main(): Promise<void> {
         staticParityMatch: true,
         expectedWorldEntityGhostPasses: 0,
         npcParityEnabled: false,
+        playerParityEnabled: false,
         mirroredNpcPasses: 0,
+        mirroredPlayerPasses: 0,
     });
 
     const animatedMap = {
@@ -184,6 +187,22 @@ async function main(): Promise<void> {
     assert.equal(
         isRustNpcShadowEnabled(
             "?rust-renderer=off&rust-npc-parity=1",
+        ),
+        false,
+    );
+    assert.equal(
+        isRustPlayerShadowEnabled(
+            "?rust-renderer=shadow&rust-player-parity=1",
+        ),
+        true,
+    );
+    assert.equal(
+        isRustPlayerShadowEnabled("?rust-renderer=shadow"),
+        false,
+    );
+    assert.equal(
+        isRustPlayerShadowEnabled(
+            "?rust-renderer=off&rust-player-parity=1",
         ),
         false,
     );
