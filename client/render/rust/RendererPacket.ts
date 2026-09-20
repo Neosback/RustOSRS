@@ -3,7 +3,7 @@ import type { DrawRange } from "../DrawRange";
 import type { GroundItemGeometryBuildData } from "../ground/GroundItemMeshBuilder";
 import type { SdMapData } from "../loader/SdMapData";
 
-export const RUST_RENDERER_ABI_VERSION = 11 as const;
+export const RUST_RENDERER_ABI_VERSION = 12 as const;
 
 /**
  * Numeric-only static map-square packet for the Rust/WASM renderer.
@@ -47,6 +47,8 @@ export interface RustStaticScenePacket {
 
     packedVertexWords: Uint32Array;
     indices: Uint32Array;
+    npcPackedVertexWords: Uint32Array;
+    npcIndices: Uint32Array;
 
     modelInfoOpaque: Uint16Array;
     modelInfoAlpha: Uint16Array;
@@ -264,6 +266,8 @@ export function createRustStaticScenePacket(data: SdMapData): RustStaticScenePac
 
         packedVertexWords: packedVertexWords(data.vertices),
         indices: unsignedIndexWords(data.indices),
+        npcPackedVertexWords: packedVertexWords(data.npcVertices),
+        npcIndices: unsignedIndexWords(data.npcIndices),
 
         modelInfoOpaque: data.modelTextureData,
         modelInfoAlpha: data.modelTextureDataAlpha,
