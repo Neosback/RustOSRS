@@ -871,13 +871,7 @@ function finalizeRustShadowFrame(
     const previousDiagnostics =
         getRustRendererShadowDiagnostics(host);
     let pixelParity = previousDiagnostics.pixelParity;
-    if (
-        state.pixelReference
-        && !state.npcParityEnabled
-        && !state.playerParityEnabled
-        && !state.gfxParityEnabled
-        && !state.projectileParityEnabled
-    ) {
+    if (state.pixelReference) {
         const rustPixels = readCanvasRgbaPixels(runtime.canvas);
         if (rustPixels) {
             pixelParity = compareRgbaFrames(
@@ -1305,6 +1299,7 @@ export function completeRustOpaqueActorShadowPass(
 
 export function finishRustActorShadowFrame(
     host: WebGLOsrsRendererHost,
+    pixelReference?: RustPixelFrame,
 ): void {
     const state = activeShadowFrames.get(host);
     if (
@@ -1322,6 +1317,9 @@ export function finishRustActorShadowFrame(
     if (!runtime) return;
 
     try {
+        if (pixelReference) {
+            state.pixelReference = pixelReference;
+        }
         finalizeRustShadowFrame(host, runtime, state);
     } catch (error) {
         disableShadow(host, "actor frame finalize", error);
