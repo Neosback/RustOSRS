@@ -1777,6 +1777,118 @@ impl RustWebGlRenderer {
         model_y_offset: f32,
         transparent: bool,
     ) -> Result<(), JsValue> {
+        let (npc_vao, npc_index_count) = match self.static_map.npc_batch.as_ref() {
+            Some(batch) => (batch.vao.clone(), batch.index_count),
+            None if flat_ranges.is_empty() => return Ok(()),
+            None => {
+                return Err(JsValue::from_str(
+                    "NPC geometry has not been uploaded for the active map",
+                ));
+            }
+        };
+
+        self.render_npc_geometry_pass(
+            flat_ranges,
+            npc_vao,
+            npc_index_count,
+            NPC_BATCH_KIND,
+            view_matrix,
+            projection_matrix,
+            world_entity_transform,
+            world_entity_opacity,
+            sky_rgba,
+            scene_hsl_override,
+            player_pos,
+            render_distance,
+            fog_depth,
+            current_time,
+            brightness,
+            is_new_texture_anim,
+            color_banding,
+            npc_data_offset,
+            model_y_offset,
+            transparent,
+        )
+    }
+
+    /// Renders the currently uploaded dynamic NPC fallback geometry for the
+    /// selected map. The actor-data offset already points at the one actor
+    /// represented by this temporary geometry packet.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_active_dynamic_npc_pass(
+        &mut self,
+        view_matrix: &[f32],
+        projection_matrix: &[f32],
+        world_entity_transform: &[f32],
+        world_entity_opacity: f32,
+        sky_rgba: &[f32],
+        scene_hsl_override: &[f32],
+        player_pos: &[f32],
+        render_distance: f32,
+        fog_depth: f32,
+        current_time: f32,
+        brightness: f32,
+        is_new_texture_anim: bool,
+        color_banding: f32,
+        npc_data_offset: i32,
+        model_y_offset: f32,
+        transparent: bool,
+    ) -> Result<(), JsValue> {
+        let npc_index_count = self.dynamic_npc_batch.index_count;
+        if npc_index_count == 0 {
+            return Ok(());
+        }
+        let npc_vao = self.dynamic_npc_batch.vao.clone();
+        let range = [0, npc_index_count, 1];
+
+        self.render_npc_geometry_pass(
+            &range,
+            npc_vao,
+            npc_index_count,
+            DYNAMIC_NPC_BATCH_KIND,
+            view_matrix,
+            projection_matrix,
+            world_entity_transform,
+            world_entity_opacity,
+            sky_rgba,
+            scene_hsl_override,
+            player_pos,
+            render_distance,
+            fog_depth,
+            current_time,
+            brightness,
+            is_new_texture_anim,
+            color_banding,
+            npc_data_offset,
+            model_y_offset,
+            transparent,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_npc_geometry_pass(
+        &mut self,
+        flat_ranges: &[u32],
+        npc_vao: WebGlVertexArrayObject,
+        npc_index_count: u32,
+        batch_kind: u32,
+        view_matrix: &[f32],
+        projection_matrix: &[f32],
+        world_entity_transform: &[f32],
+        world_entity_opacity: f32,
+        sky_rgba: &[f32],
+        scene_hsl_override: &[f32],
+        player_pos: &[f32],
+        render_distance: f32,
+        fog_depth: f32,
+        current_time: f32,
+        brightness: f32,
+        is_new_texture_anim: bool,
+        color_banding: f32,
+        npc_data_offset: i32,
+        model_y_offset: f32,
+        transparent: bool,
+    ) -> Result<(), JsValue> {
         require_matrix(view_matrix, "view_matrix")?;
         require_matrix(projection_matrix, "projection_matrix")?;
         require_matrix(world_entity_transform, "world_entity_transform")?;
@@ -1790,16 +1902,6 @@ impl RustWebGlRenderer {
             .static_map
             .state
             .ok_or_else(|| JsValue::from_str("static map state has not been configured"))?;
-        let (npc_vao, npc_index_count) = match self.static_map.npc_batch.as_ref() {
-            Some(batch) => (batch.vao.clone(), batch.index_count),
-            None if flat_ranges.is_empty() => return Ok(()),
-            None => {
-                return Err(JsValue::from_str(
-                    "NPC geometry has not been uploaded for the active map",
-                ));
-            }
-        };
-
         let ranges = parse_draw_ranges(flat_ranges).map_err(JsValue::from_str)?;
         validate_draw_ranges(&ranges, npc_index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
@@ -1931,7 +2033,7 @@ impl RustWebGlRenderer {
             self.last_draw_hash,
             self.static_map_key,
             flags,
-            NPC_BATCH_KIND,
+            batch_kind,
             &ranges,
             None,
             3,
