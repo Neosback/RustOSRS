@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
     RustRendererBridge,
     RustRendererWasm,
+    RustResidentMapFrameState,
     RustStaticFrameState,
 } from "../render/rust/RustRendererBridge";
 import {
@@ -34,6 +35,8 @@ class MockWasm implements RustRendererWasm {
     materialResourceUploads = 0;
     waterResourceUploads = 0;
     renderFrameCalls = 0;
+    beginFrameCalls = 0;
+    mapPassCalls: Array<{ mapKey: number; transparent: boolean }> = [];
     lastWorldEntityTransform?: Float32Array;
     lastWorldEntityOpacity = 1;
 
@@ -205,6 +208,38 @@ class MockWasm implements RustRendererWasm {
         _layers: number,
     ): void {
         this.waterResourceUploads++;
+    }
+
+    begin_static_frame(_skyRgba: Float32Array): void {
+        this.beginFrameCalls++;
+    }
+
+    render_active_static_map_pass(
+        _viewMatrix: Float32Array,
+        _projectionMatrix: Float32Array,
+        worldEntityTransform: Float32Array,
+        worldEntityOpacity: number,
+        _skyRgba: Float32Array,
+        _sceneHslOverride: Float32Array,
+        _playerPos: Float32Array,
+        _renderDistance: number,
+        _fogDepth: number,
+        _currentTime: number,
+        _brightness: number,
+        roofPlaneLimit: number,
+        useLod: boolean,
+        _isNewTextureAnim: boolean,
+        _colorBanding: number,
+        transparent: boolean,
+    ): void {
+        this.roofPlaneLimit = roofPlaneLimit;
+        this.useLod = useLod;
+        this.lastWorldEntityTransform = worldEntityTransform;
+        this.lastWorldEntityOpacity = worldEntityOpacity;
+        this.mapPassCalls.push({
+            mapKey: this.selectedMapKey,
+            transparent,
+        });
     }
 
     render_static_frame(
@@ -596,6 +631,40 @@ function frame(): RustStaticFrameState {
 
     bridge.clearStaticMaps();
     assert.equal(bridge.getResidentStaticMapCount(), 0);
+    bridge.dispose();
+}
+
+{
+    const bridge = new RustRendererBridge(
+        {} as HTMLCanvasElement,
+        MockWasm,
+    );
+    const first = packet();
+    first.mapKey = 2001;
+    const second = packet();
+    second.mapKey = 2002;
+    bridge.uploadStaticScene(first, 1.0);
+    bridge.uploadStaticScene(second, 2.0);
+
+    const firstFrame: RustResidentMapFrameState = {
+        ...frame(),
+        mapKey: 2001,
+    };
+    const secondFrame: RustResidentMapFrameState = {
+        ...frame(),
+        mapKey: 2002,
+        useLod: true,
+    };
+    bridge.renderStaticMaps([firstFrame, secondFrame]);
+
+    const wasm = MockWasm.last!;
+    assert.equal(wasm.beginFrameCalls, 1);
+    assert.deepEqual(wasm.mapPassCalls, [
+        { mapKey: 2001, transparent: false },
+        { mapKey: 2002, transparent: false },
+        { mapKey: 2002, transparent: true },
+        { mapKey: 2001, transparent: true },
+    ]);
     bridge.dispose();
 }
 
