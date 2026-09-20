@@ -225,6 +225,7 @@ impl RustWebGlRenderer {
 
         self.index_count = indices.len() as u32;
         self.draw_ranges.clear();
+        self.draw_ranges_alpha.clear();
         Ok(())
     }
 
@@ -571,8 +572,13 @@ impl RustWebGlRenderer {
         validate_draw_ranges(&alpha, self.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-        self.upload_model_info(model_info_opaque)?;
-        self.upload_model_info_alpha(model_info_alpha)?;
+        if !opaque.is_empty() {
+            self.upload_model_info(model_info_opaque)?;
+        }
+        if !alpha.is_empty() {
+            self.upload_model_info_alpha(model_info_alpha)?;
+        }
+
         self.draw_ranges = opaque;
         self.draw_ranges_alpha = alpha;
         Ok(())
