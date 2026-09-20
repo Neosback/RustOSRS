@@ -689,11 +689,7 @@ impl RustWebGlRenderer {
                 "u_sceneHslOverride",
             )?,
             player_pos: required_uniform(&gl, &projectile_program_raw, "u_playerPos")?,
-            render_distance: required_uniform(
-                &gl,
-                &projectile_program_raw,
-                "u_renderDistance",
-            )?,
+            render_distance: required_uniform(&gl, &projectile_program_raw, "u_renderDistance")?,
             fog_depth: required_uniform(&gl, &projectile_program_raw, "u_fogDepth")?,
             current_time: required_uniform(&gl, &projectile_program_raw, "u_currentTime")?,
             brightness: required_uniform(&gl, &projectile_program_raw, "u_brightness")?,
@@ -702,11 +698,7 @@ impl RustWebGlRenderer {
                 &projectile_program_raw,
                 "u_isNewTextureAnim",
             )?,
-            color_banding: required_uniform(
-                &gl,
-                &projectile_program_raw,
-                "u_colorBanding",
-            )?,
+            color_banding: required_uniform(&gl, &projectile_program_raw, "u_colorBanding")?,
             projectile_data_offset: required_uniform(
                 &gl,
                 &projectile_program_raw,
@@ -714,62 +706,30 @@ impl RustWebGlRenderer {
             )?,
             map_pos: required_uniform(&gl, &projectile_program_raw, "u_mapPos")?,
             time_loaded: required_uniform(&gl, &projectile_program_raw, "u_timeLoaded")?,
-            scene_border_size: required_uniform(
-                &gl,
-                &projectile_program_raw,
-                "u_sceneBorderSize",
-            )?,
-            model_y_offset: required_uniform(
-                &gl,
-                &projectile_program_raw,
-                "u_modelYOffset",
-            )?,
+            scene_border_size: required_uniform(&gl, &projectile_program_raw, "u_sceneBorderSize")?,
+            model_y_offset: required_uniform(&gl, &projectile_program_raw, "u_modelYOffset")?,
             projectile_sub_offset: required_uniform(
                 &gl,
                 &projectile_program_raw,
                 "u_projectileSubOffset",
             )?,
-            actor_data_sampler: required_uniform(
-                &gl,
-                &projectile_program_raw,
-                "u_npcDataTexture",
-            )?,
-            height_map_sampler: required_uniform(
-                &gl,
-                &projectile_program_raw,
-                "u_heightMap",
-            )?,
+            actor_data_sampler: required_uniform(&gl, &projectile_program_raw, "u_npcDataTexture")?,
+            height_map_sampler: required_uniform(&gl, &projectile_program_raw, "u_heightMap")?,
             texture_sampler: required_uniform(&gl, &projectile_program_raw, "u_textures")?,
-            material_sampler: required_uniform(
-                &gl,
-                &projectile_program_raw,
-                "u_textureMaterials",
-            )?,
+            material_sampler: required_uniform(&gl, &projectile_program_raw, "u_textureMaterials")?,
             water_texture_sampler: required_uniform(
                 &gl,
                 &projectile_program_raw,
                 "u_waterTextures",
             )?,
-            water_mask_sampler: required_uniform(
-                &gl,
-                &projectile_program_raw,
-                "u_waterMask",
-            )?,
+            water_mask_sampler: required_uniform(&gl, &projectile_program_raw, "u_waterMask")?,
             texture_layer_count: required_uniform(
                 &gl,
                 &projectile_program_raw,
                 "u_textureLayerCount",
             )?,
-            material_count: required_uniform(
-                &gl,
-                &projectile_program_raw,
-                "u_materialCount",
-            )?,
-            discard_alpha: required_uniform(
-                &gl,
-                &projectile_program_raw,
-                "u_discardAlpha",
-            )?,
+            material_count: required_uniform(&gl, &projectile_program_raw, "u_materialCount")?,
+            discard_alpha: required_uniform(&gl, &projectile_program_raw, "u_discardAlpha")?,
             sky_color: required_uniform(&gl, &projectile_program_raw, "u_skyColor")?,
             world_entity_opacity: required_uniform(
                 &gl,
@@ -2650,7 +2610,8 @@ impl RustWebGlRenderer {
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
         self.gl.delete_program(Some(&self.npc_program.program));
-        self.gl.delete_program(Some(&self.projectile_program.program));
+        self.gl
+            .delete_program(Some(&self.projectile_program.program));
         self.gl.delete_program(Some(&self.player_program.program));
     }
 
