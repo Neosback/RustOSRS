@@ -3,7 +3,7 @@ import {
     type RustRendererWasmConstructor,
 } from "./RustRendererBridge";
 
-export type RustRendererRuntimeMode = "off" | "shadow";
+export type RustRendererRuntimeMode = "off" | "shadow" | "primary";
 
 interface RustRendererWebModule {
     default(input?: unknown): Promise<unknown>;
@@ -11,9 +11,10 @@ interface RustRendererWebModule {
 }
 
 export interface RustRendererShadowRuntime {
-    mode: "shadow";
+    mode: "shadow" | "primary";
     canvas: HTMLCanvasElement;
     bridge: RustRendererBridge;
+    disposeDom?: () => void;
 }
 
 let modulePromise: Promise<RustRendererWebModule> | undefined;
@@ -22,7 +23,14 @@ export function getRustRendererRuntimeMode(
     search: string = typeof window !== "undefined" ? window.location.search : "",
 ): RustRendererRuntimeMode {
     const raw = new URLSearchParams(search).get("rust-renderer");
+    if (raw === "primary") return "primary";
     return raw === "shadow" ? "shadow" : "off";
+}
+
+export function isRustPrimaryRuntime(
+    search: string = typeof window !== "undefined" ? window.location.search : "",
+): boolean {
+    return getRustRendererRuntimeMode(search) === "primary";
 }
 
 function getPublicBaseUrl(): string {
@@ -53,7 +61,7 @@ async function importRustRendererModule(): Promise<RustRendererWebModule> {
                 modulePromise = undefined;
                 throw new Error(
                     "Failed to load the Rust renderer web package. "
-                    + "Run 'yarn build:rust-renderer' before using ?rust-renderer=shadow.",
+                    + "Run 'yarn build:rust-renderer' before using the Rust renderer.",
                     { cause: error },
                 );
             });
@@ -73,25 +81,98 @@ export function syncRustShadowCanvasSize(
     if (shadowCanvas.height !== nextHeight) shadowCanvas.height = nextHeight;
 }
 
+function attachPrimaryCanvas(
+    sourceCanvas: HTMLCanvasElement,
+    rustCanvas: HTMLCanvasElement,
+): () => void {
+    const parent = sourceCanvas.parentElement;
+    if (!parent) {
+        throw new Error(
+            "Rust primary renderer requires the source canvas to have a parent element",
+        );
+    }
+
+    const sourceContext = sourceCanvas.getContext("webgl2");
+    const sourceHasAlpha =
+        sourceContext?.getContextAttributes()?.alpha !== false;
+    if (!sourceHasAlpha) {
+        throw new Error(
+            "Rust primary renderer requires an alpha-enabled Pico overlay canvas",
+        );
+    }
+
+    const previousParentPosition = parent.style.position;
+    const previousSourcePosition = sourceCanvas.style.position;
+    const previousSourceZIndex = sourceCanvas.style.zIndex;
+    const previousSourceBackground = sourceCanvas.style.backgroundColor;
+    const previousRustParent = rustCanvas.parentElement;
+
+    if (
+        typeof window !== "undefined"
+        && window.getComputedStyle(parent).position === "static"
+    ) {
+        parent.style.position = "relative";
+    }
+
+    rustCanvas.dataset.renderer = "rust-primary";
+    rustCanvas.style.position = "absolute";
+    rustCanvas.style.inset = "0";
+    rustCanvas.style.width = "100%";
+    rustCanvas.style.height = "100%";
+    rustCanvas.style.pointerEvents = "none";
+    rustCanvas.style.zIndex = "0";
+
+    sourceCanvas.style.position = "relative";
+    sourceCanvas.style.zIndex = "1";
+    sourceCanvas.style.backgroundColor = "transparent";
+
+    parent.insertBefore(rustCanvas, sourceCanvas);
+
+    return () => {
+        if (rustCanvas.parentElement === parent) {
+            parent.removeChild(rustCanvas);
+        } else if (previousRustParent) {
+            previousRustParent.appendChild(rustCanvas);
+        }
+        parent.style.position = previousParentPosition;
+        sourceCanvas.style.position = previousSourcePosition;
+        sourceCanvas.style.zIndex = previousSourceZIndex;
+        sourceCanvas.style.backgroundColor = previousSourceBackground;
+    };
+}
+
 export async function createRustRendererShadowRuntime(
     sourceCanvas: HTMLCanvasElement,
 ): Promise<RustRendererShadowRuntime | undefined> {
-    if (getRustRendererRuntimeMode() !== "shadow") {
+    const mode = getRustRendererRuntimeMode();
+    if (mode === "off") {
         return undefined;
     }
 
     const module = await importRustRendererModule();
     const canvas = document.createElement("canvas");
-    canvas.dataset.renderer = "rust-shadow";
+    canvas.dataset.renderer =
+        mode === "primary" ? "rust-primary" : "rust-shadow";
     syncRustShadowCanvasSize(
         canvas,
         sourceCanvas.width,
         sourceCanvas.height,
     );
 
-    return {
-        mode: "shadow",
-        canvas,
-        bridge: new RustRendererBridge(canvas, module.RustWebGlRenderer),
-    };
+    const disposeDom =
+        mode === "primary"
+            ? attachPrimaryCanvas(sourceCanvas, canvas)
+            : undefined;
+
+    try {
+        return {
+            mode,
+            canvas,
+            bridge: new RustRendererBridge(canvas, module.RustWebGlRenderer),
+            disposeDom,
+        };
+    } catch (error) {
+        disposeDom?.();
+        throw error;
+    }
 }
