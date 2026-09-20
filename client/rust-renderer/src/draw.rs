@@ -31,6 +31,46 @@ pub struct DrawStats {
     pub submitted_indices: u64,
 }
 
+pub const DRAW_HASH_OFFSET_BASIS: u32 = 0x811c9dc5;
+const DRAW_HASH_PRIME: u32 = 0x01000193;
+
+pub const fn hash_draw_word(hash: u32, value: u32) -> u32 {
+    (hash ^ value).wrapping_mul(DRAW_HASH_PRIME)
+}
+
+pub fn hash_visible_draw_ranges(
+    mut hash: u32,
+    map_key: u32,
+    flags: u32,
+    batch_kind: u32,
+    ranges: &[DrawRange],
+    range_planes: Option<&[u8]>,
+    roof_plane_limit: u8,
+) -> u32 {
+    for (draw_index, range) in ranges.iter().copied().enumerate() {
+        let plane = range_planes
+            .and_then(|planes| planes.get(draw_index).copied())
+            .unwrap_or(0);
+        if !draw_range_is_visible(range, Some(plane), roof_plane_limit) {
+            continue;
+        }
+
+        for value in [
+            map_key,
+            flags,
+            batch_kind,
+            draw_index as u32,
+            range.offset_bytes,
+            range.elements,
+            range.instances,
+            u32::from(plane),
+        ] {
+            hash = hash_draw_word(hash, value);
+        }
+    }
+    hash
+}
+
 pub fn draw_range_is_visible(range: DrawRange, plane: Option<u8>, roof_plane_limit: u8) -> bool {
     if range.is_empty() {
         return false;
@@ -158,5 +198,59 @@ mod tests {
             parse_draw_range_patches(&[1, 0, 3, 1], 1).unwrap_err(),
             "draw-range patch index 1 is outside 1 resident ranges"
         );
+    }
+
+    #[test]
+    fn hashes_submitted_draw_sequence_deterministically() {
+        let mut hash = DRAW_HASH_OFFSET_BASIS;
+        hash = hash_visible_draw_ranges(
+            hash,
+            0x3232,
+            0,
+            0,
+            &[DrawRange::new(0, 3, 1)],
+            Some(&[0]),
+            3,
+        );
+        hash = hash_visible_draw_ranges(
+            hash,
+            0x3232,
+            1,
+            1,
+            &[
+                DrawRange::new(0, 0, 1),
+                DrawRange::new(0, 3, 1),
+                DrawRange::new(48, 6, 1),
+            ],
+            Some(&[0, 2, 1]),
+            1,
+        );
+
+        assert_eq!(hash, 0xdceda6f5);
+    }
+
+    #[test]
+    fn draw_sequence_hash_changes_with_order_and_range_values() {
+        let ranges = [DrawRange::new(0, 3, 1), DrawRange::new(12, 6, 1)];
+        let forward = hash_visible_draw_ranges(
+            DRAW_HASH_OFFSET_BASIS,
+            7,
+            0,
+            0,
+            &ranges,
+            Some(&[0, 0]),
+            3,
+        );
+        let reversed = hash_visible_draw_ranges(
+            DRAW_HASH_OFFSET_BASIS,
+            7,
+            0,
+            0,
+            &[ranges[1], ranges[0]],
+            Some(&[0, 0]),
+            3,
+        );
+
+        assert_ne!(forward, reversed);
     }
 }
