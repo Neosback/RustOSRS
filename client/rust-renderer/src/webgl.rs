@@ -232,14 +232,7 @@ pub struct RustWebGlRenderer {
 
     static_program: StaticProgram,
 
-    vertex_buffer: WebGlBuffer,
-    index_buffer: WebGlBuffer,
-    vao: WebGlVertexArrayObject,
-
-    static_opaque_pass: StaticPass,
-    static_alpha_pass: StaticPass,
-    static_lod_opaque_pass: StaticPass,
-    static_lod_alpha_pass: StaticPass,
+    terrain_batch: StaticGeometryBatch,
     loc_batch: Option<StaticGeometryBatch>,
     door_batch: Option<StaticGeometryBatch>,
     height_map_texture: WebGlTexture,
@@ -250,8 +243,6 @@ pub struct RustWebGlRenderer {
     texture_layer_count: i32,
     material_count: i32,
     static_state: Option<StaticMapState>,
-
-    index_count: u32,
     last_stats: DrawStats,
 }
 
@@ -270,27 +261,7 @@ impl RustWebGlRenderer {
             create_program(&gl, REFERENCE_VERTEX_SHADER, REFERENCE_FRAGMENT_SHADER)?;
         let static_program_raw = create_program(&gl, STATIC_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
 
-        let vertex_buffer = gl
-            .create_buffer()
-            .ok_or_else(|| JsValue::from_str("failed to create renderer vertex buffer"))?;
-        let index_buffer = gl
-            .create_buffer()
-            .ok_or_else(|| JsValue::from_str("failed to create renderer index buffer"))?;
-        let vao = gl
-            .create_vertex_array()
-            .ok_or_else(|| JsValue::from_str("failed to create renderer vertex array"))?;
-
-        gl.bind_vertex_array(Some(&vao));
-        gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&vertex_buffer));
-        gl.enable_vertex_attrib_array(0);
-        gl.vertex_attrib_i_pointer_with_i32(0, 3, Gl::UNSIGNED_INT, 12, 0);
-        gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
-        gl.bind_vertex_array(None);
-
-        let static_opaque_pass = StaticPass::new(&gl)?;
-        let static_alpha_pass = StaticPass::new(&gl)?;
-        let static_lod_opaque_pass = StaticPass::new(&gl)?;
-        let static_lod_alpha_pass = StaticPass::new(&gl)?;
+        let terrain_batch = StaticGeometryBatch::new(&gl)?;
         let height_map_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         let texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         let material_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
@@ -357,13 +328,7 @@ impl RustWebGlRenderer {
             reference_view_proj,
             reference_brightness,
             static_program,
-            vertex_buffer,
-            index_buffer,
-            vao,
-            static_opaque_pass,
-            static_alpha_pass,
-            static_lod_opaque_pass,
-            static_lod_alpha_pass,
+            terrain_batch,
             loc_batch: None,
             door_batch: None,
             height_map_texture,
@@ -374,7 +339,6 @@ impl RustWebGlRenderer {
             texture_layer_count: 1,
             material_count: 1,
             static_state: None,
-            index_count: 0,
             last_stats: DrawStats::default(),
         })
     }
