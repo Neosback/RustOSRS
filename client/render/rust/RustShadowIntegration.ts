@@ -1,12 +1,15 @@
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { WebGLMapSquare } from "../WebGLMapSquare";
+import type { GroundItemGeometryBuildData } from "../ground/GroundItemMeshBuilder";
 import type { SdMapData } from "../loader/SdMapData";
 import type { WebGLOsrsRendererHost } from "../render/hostInterface";
 import { getRustRendererGlobalResourceSnapshot } from "./LiveResourceAdapter";
 import {
     createRustDoorGeometryPacket,
+    createRustGroundItemGeometryPacket,
     createRustLocGeometryPacket,
     createRustStaticScenePacket,
+    type RustStaticGeometryPacket,
 } from "./RendererPacket";
 import type { RustResidentMapFrameState } from "./RustRendererBridge";
 import {
@@ -17,6 +20,11 @@ import {
 
 const runtimes = new WeakMap<WebGLOsrsRendererHost, RustRendererShadowRuntime>();
 const failedHosts = new WeakSet<WebGLOsrsRendererHost>();
+const pendingGroundGeometry = new WeakMap<
+    WebGLOsrsRendererHost,
+    Map<number, RustStaticGeometryPacket | null>
+>();
+
 export interface RustRendererShadowDiagnostics {
     enabled: boolean;
     failed: boolean;
@@ -142,6 +150,7 @@ export function disposeRustRendererShadow(
     }
     failedHosts.delete(host);
     diagnostics.delete(host);
+    pendingGroundGeometry.delete(host);
     delete (host.canvas as HTMLCanvasElement & {
         __rustRendererShadowDiagnostics?: RustRendererShadowDiagnostics;
     }).__rustRendererShadowDiagnostics;
@@ -179,6 +188,17 @@ export function mirrorRustStaticMap(
             createRustStaticScenePacket(data),
             timeLoaded,
         );
+
+        const pendingGround = pendingGroundGeometry.get(host);
+        if (pendingGround?.has(mapKey)) {
+            const geometry = pendingGround.get(mapKey) ?? undefined;
+            runtime.bridge.updateGroundGeometry(mapKey, geometry);
+            pendingGround.delete(mapKey);
+            if (pendingGround.size === 0) {
+                pendingGroundGeometry.delete(host);
+            }
+        }
+
         publishDiagnostics(host, {
             ...getRustRendererShadowDiagnostics(host),
             residentMaps: runtime.bridge.getResidentStaticMapCount(),
@@ -197,13 +217,45 @@ export function removeRustStaticMap(
     if (!runtime) return;
 
     try {
-        runtime.bridge.removeStaticMap(getMapSquareId(mapX, mapY));
+        const mapKey = getMapSquareId(mapX, mapY);
+        runtime.bridge.removeStaticMap(mapKey);
+        pendingGroundGeometry.get(host)?.delete(mapKey);
         publishDiagnostics(host, {
             ...getRustRendererShadowDiagnostics(host),
             residentMaps: runtime.bridge.getResidentStaticMapCount(),
         });
     } catch (error) {
         disableShadow(host, "map removal", error);
+    }
+}
+
+export function mirrorRustGroundItemGeometry(
+    host: WebGLOsrsRendererHost,
+    mapKey: number,
+    data?: GroundItemGeometryBuildData,
+): void {
+    const runtime = getRuntime(host);
+    if (!runtime) return;
+
+    try {
+        syncGlobalResources(host, runtime);
+        const geometry = data
+            ? createRustGroundItemGeometryPacket(data)
+            : undefined;
+
+        if (runtime.bridge.updateGroundGeometry(mapKey, geometry)) {
+            pendingGroundGeometry.get(host)?.delete(mapKey);
+            return;
+        }
+
+        let pending = pendingGroundGeometry.get(host);
+        if (!pending) {
+            pending = new Map<number, RustStaticGeometryPacket | null>();
+            pendingGroundGeometry.set(host, pending);
+        }
+        pending.set(mapKey, geometry ?? null);
+    } catch (error) {
+        disableShadow(host, "ground-item mirror", error);
     }
 }
 
