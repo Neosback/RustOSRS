@@ -91,6 +91,8 @@ export interface RustRendererShadowDiagnostics {
     drawSequenceMatch: boolean;
     staticParityMatch: boolean;
     expectedWorldEntityGhostPasses: number;
+    npcParityEnabled: boolean;
+    mirroredNpcPasses: number;
     pixelParity?: RustPixelParityMetrics;
 }
 
@@ -129,6 +131,8 @@ export function getRustRendererShadowDiagnostics(
         drawSequenceMatch: true,
         staticParityMatch: true,
         expectedWorldEntityGhostPasses: 0,
+        npcParityEnabled: false,
+        mirroredNpcPasses: 0,
     };
 }
 
@@ -232,6 +236,8 @@ export async function initRustRendererShadow(
             drawSequenceMatch: true,
             staticParityMatch: true,
             expectedWorldEntityGhostPasses: 0,
+            npcParityEnabled: false,
+            mirroredNpcPasses: 0,
         });
         console.info("[RustRenderer] shadow renderer enabled");
     } catch (error) {
