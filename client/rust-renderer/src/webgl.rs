@@ -285,11 +285,10 @@ impl RustWebGlRenderer {
         let data = js_sys::Uint16Array::from(model_info);
 
         self.gl.active_texture(Gl::TEXTURE0);
-        self.gl
-            .bind_texture(
-                Gl::TEXTURE_2D,
-                Some(&self.static_opaque_pass.model_info_texture),
-            );
+        self.gl.bind_texture(
+            Gl::TEXTURE_2D,
+            Some(&self.static_opaque_pass.model_info_texture),
+        );
         self.gl
             .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
                 Gl::TEXTURE_2D,
@@ -317,11 +316,10 @@ impl RustWebGlRenderer {
         let data = js_sys::Uint16Array::from(model_info);
 
         self.gl.active_texture(Gl::TEXTURE0);
-        self.gl
-            .bind_texture(
-                Gl::TEXTURE_2D,
-                Some(&self.static_alpha_pass.model_info_texture),
-            );
+        self.gl.bind_texture(
+            Gl::TEXTURE_2D,
+            Some(&self.static_alpha_pass.model_info_texture),
+        );
         self.gl
             .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
                 Gl::TEXTURE_2D,
@@ -668,15 +666,9 @@ impl RustWebGlRenderer {
         }
 
         if !alpha.is_empty() {
-            std::mem::swap(
-                &mut self.static_alpha_pass,
-                &mut self.static_lod_alpha_pass,
-            );
+            std::mem::swap(&mut self.static_alpha_pass, &mut self.static_lod_alpha_pass);
             let upload_result = self.upload_model_info_alpha(model_info_alpha);
-            std::mem::swap(
-                &mut self.static_alpha_pass,
-                &mut self.static_lod_alpha_pass,
-            );
+            std::mem::swap(&mut self.static_alpha_pass, &mut self.static_lod_alpha_pass);
             upload_result?;
         }
 
@@ -769,10 +761,7 @@ impl RustWebGlRenderer {
                 &mut self.static_opaque_pass,
                 &mut self.static_lod_opaque_pass,
             );
-            std::mem::swap(
-                &mut self.static_alpha_pass,
-                &mut self.static_lod_alpha_pass,
-            );
+            std::mem::swap(&mut self.static_alpha_pass, &mut self.static_lod_alpha_pass);
         }
 
         self.gl.disable(Gl::BLEND);
@@ -797,10 +786,7 @@ impl RustWebGlRenderer {
 
         if let Err(error) = opaque_result {
             if use_lod {
-                std::mem::swap(
-                    &mut self.static_alpha_pass,
-                    &mut self.static_lod_alpha_pass,
-                );
+                std::mem::swap(&mut self.static_alpha_pass, &mut self.static_lod_alpha_pass);
                 std::mem::swap(
                     &mut self.static_opaque_pass,
                     &mut self.static_lod_opaque_pass,
@@ -831,10 +817,7 @@ impl RustWebGlRenderer {
         );
 
         if use_lod {
-            std::mem::swap(
-                &mut self.static_alpha_pass,
-                &mut self.static_lod_alpha_pass,
-            );
+            std::mem::swap(&mut self.static_alpha_pass, &mut self.static_lod_alpha_pass);
             std::mem::swap(
                 &mut self.static_opaque_pass,
                 &mut self.static_lod_opaque_pass,
