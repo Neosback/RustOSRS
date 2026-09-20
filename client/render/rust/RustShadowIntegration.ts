@@ -182,9 +182,11 @@ export function getRustRendererShadowDiagnostics(
         npcParityEnabled: false,
         playerParityEnabled: false,
         gfxParityEnabled: false,
+        projectileParityEnabled: false,
         mirroredNpcPasses: 0,
         mirroredPlayerPasses: 0,
         mirroredGfxPasses: 0,
+        mirroredProjectilePasses: 0,
     };
 }
 
@@ -289,7 +291,13 @@ export async function initRustRendererShadow(
             staticParityMatch: true,
             expectedWorldEntityGhostPasses: 0,
             npcParityEnabled: false,
+            playerParityEnabled: false,
+            gfxParityEnabled: false,
+            projectileParityEnabled: false,
             mirroredNpcPasses: 0,
+            mirroredPlayerPasses: 0,
+            mirroredGfxPasses: 0,
+            mirroredProjectilePasses: 0,
         });
         console.info("[RustRenderer] shadow renderer enabled");
     } catch (error) {
