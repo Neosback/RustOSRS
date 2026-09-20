@@ -14,6 +14,10 @@ export interface RustRendererWasm {
 
     upload_geometry(vertices: Uint32Array, indices: Uint32Array): void;
     upload_npc_geometry(vertices: Uint32Array, indices: Uint32Array): void;
+    upload_dynamic_npc_geometry(
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void;
     upload_model_info(modelInfo: Uint16Array): void;
     upload_height_map(heightMap: Int16Array, size: number, planes: number): void;
     upload_water_mask(waterMask: Uint8Array, size: number, planes: number): void;
@@ -129,6 +133,24 @@ export interface RustRendererWasm {
         modelYOffset: number,
         transparent: boolean,
     ): void;
+    render_active_dynamic_npc_pass(
+        viewMatrix: Float32Array,
+        projectionMatrix: Float32Array,
+        worldEntityTransform: Float32Array,
+        worldEntityOpacity: number,
+        skyRgba: Float32Array,
+        sceneHslOverride: Float32Array,
+        playerPos: Float32Array,
+        renderDistance: number,
+        fogDepth: number,
+        currentTime: number,
+        brightness: number,
+        isNewTextureAnim: boolean,
+        colorBanding: number,
+        npcDataOffset: number,
+        modelYOffset: number,
+        transparent: boolean,
+    ): void;
 
     render_active_static_terrain_ghost_pass(
         viewMatrix: Float32Array,
@@ -218,6 +240,13 @@ export interface RustResidentMapFrameState extends RustStaticFrameState {
 export interface RustNpcPassState extends RustStaticFrameState {
     mapKey: number;
     drawRanges: Uint32Array;
+    npcDataOffset: number;
+    modelYOffset: number;
+    transparent: boolean;
+}
+
+export interface RustDynamicNpcPassState extends RustStaticFrameState {
+    mapKey: number;
     npcDataOffset: number;
     modelYOffset: number;
     transparent: boolean;
@@ -465,6 +494,50 @@ export class RustRendererBridge {
         this.wasm.select_static_map(pass.mapKey);
         this.wasm.render_active_npc_pass(
             pass.drawRanges,
+            pass.viewMatrix,
+            pass.projectionMatrix,
+            pass.worldEntityTransform,
+            pass.worldEntityOpacity,
+            pass.skyRgba,
+            pass.sceneHslOverride,
+            pass.playerPos,
+            pass.renderDistance,
+            pass.fogDepth,
+            pass.currentTime,
+            pass.brightness,
+            pass.isNewTextureAnim,
+            pass.colorBanding,
+            pass.npcDataOffset,
+            pass.modelYOffset,
+            pass.transparent,
+        );
+    }
+
+    renderDynamicNpcPass(
+        pass: RustDynamicNpcPassState,
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void {
+        if (!this.uploadedMapKeys.has(pass.mapKey)) {
+            throw new Error(
+                `Rust static map ${pass.mapKey} has not been uploaded`,
+            );
+        }
+        if (
+            !Number.isInteger(pass.npcDataOffset)
+            || pass.npcDataOffset < 0
+        ) {
+            throw new Error(
+                `Invalid NPC actor-data offset: ${pass.npcDataOffset}`,
+            );
+        }
+        if (vertices.length === 0 || indices.length === 0) {
+            return;
+        }
+
+        this.wasm.select_static_map(pass.mapKey);
+        this.wasm.upload_dynamic_npc_geometry(vertices, indices);
+        this.wasm.render_active_dynamic_npc_pass(
             pass.viewMatrix,
             pass.projectionMatrix,
             pass.worldEntityTransform,
