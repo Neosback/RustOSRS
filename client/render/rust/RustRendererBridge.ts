@@ -64,6 +64,12 @@ export interface RustRendererWasm {
         alphaRanges: Uint32Array,
         alphaRangePlanes: Uint8Array,
     ): void;
+    patch_aux_draw_ranges(
+        kind: number,
+        lod: boolean,
+        alpha: boolean,
+        patches: Uint32Array,
+    ): void;
 
     upload_texture_array(
         pixels: Uint8Array,
@@ -428,6 +434,24 @@ export class RustRendererBridge {
         if (!this.uploadedMapKeys.has(mapKey)) return false;
         this.wasm.select_static_map(mapKey);
         this.uploadAuxStaticGeometry(1, geometry);
+        return true;
+    }
+
+    patchLocDrawRanges(
+        mapKey: number,
+        useLod: boolean,
+        transparent: boolean,
+        patches: Uint32Array,
+    ): boolean {
+        if (patches.length === 0) return true;
+        if (!this.uploadedMapKeys.has(mapKey)) return false;
+        this.wasm.select_static_map(mapKey);
+        this.wasm.patch_aux_draw_ranges(
+            0,
+            useLod,
+            transparent,
+            patches,
+        );
         return true;
     }
 
