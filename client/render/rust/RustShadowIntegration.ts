@@ -294,14 +294,10 @@ function disableShadow(
 
     const runtime = runtimes.get(host);
     if (runtime) {
-        try {
-            runtime.bridge.dispose();
-        } catch {}
-        try {
-            runtime.disposeDom?.();
-        } catch {}
+        cleanupRustRuntime(runtime);
         runtimes.delete(host);
     }
+    recoveringHosts.delete(host);
     disposeRustPixelParity(host);
 }
 
@@ -581,40 +577,62 @@ export function mirrorRustStaticMap(
     data: SdMapData,
     timeLoaded: number,
 ): void {
-    const runtime = getRuntime(host);
-    if (!runtime) return;
+    const mapKey = getMapSquareId(data.mapX, data.mapY);
+    const retainedMaps = getRetainedStaticMaps(host);
+    const retained = retainedMaps.get(mapKey);
 
     try {
-        syncGlobalResources(host, runtime);
-        const mapKey = getMapSquareId(data.mapX, data.mapY);
-
         if (data.doorOnly) {
-            runtime.bridge.updateDoorGeometry(
-                mapKey,
-                createRustDoorGeometryPacket(data),
-            );
+            const geometry = createRustDoorGeometryPacket(data);
+            if (retained) {
+                retained.packet.doorGeometry = geometry;
+            }
+            const runtime = getRuntime(host);
+            if (runtime) {
+                runtime.bridge.updateDoorGeometry(mapKey, geometry);
+            }
             return;
         }
 
         if (data.locOnly) {
-            runtime.bridge.updateLocGeometry(
-                mapKey,
-                createRustLocGeometryPacket(data),
-            );
+            const geometry = createRustLocGeometryPacket(data);
+            if (retained) {
+                retained.packet.locGeometry = geometry;
+            }
+            const runtime = getRuntime(host);
+            if (runtime) {
+                runtime.bridge.updateLocGeometry(mapKey, geometry);
+            }
             return;
         }
 
-        runtime.bridge.uploadStaticScene(
-            createRustStaticScenePacket(data),
+        const packet = createRustStaticScenePacket(data);
+        const nextRetained: RetainedRustStaticMap = {
+            packet,
             timeLoaded,
-        );
+            groundGeometry: retained?.groundGeometry,
+        };
+        retainedMaps.set(mapKey, nextRetained);
 
         const pendingGround = pendingGroundGeometry.get(host);
         if (pendingGround?.has(mapKey)) {
-            const geometry = pendingGround.get(mapKey) ?? undefined;
-            runtime.bridge.updateGroundGeometry(mapKey, geometry);
-            pendingGround.delete(mapKey);
-            if (pendingGround.size === 0) {
+            nextRetained.groundGeometry =
+                pendingGround.get(mapKey) ?? null;
+        }
+
+        const runtime = getRuntime(host);
+        if (!runtime) return;
+
+        syncGlobalResources(host, runtime);
+        runtime.bridge.uploadStaticScene(packet, timeLoaded);
+
+        if (nextRetained.groundGeometry !== undefined) {
+            runtime.bridge.updateGroundGeometry(
+                mapKey,
+                nextRetained.groundGeometry ?? undefined,
+            );
+            pendingGround?.delete(mapKey);
+            if (pendingGround?.size === 0) {
                 pendingGroundGeometry.delete(host);
             }
         }
@@ -633,13 +651,15 @@ export function removeRustStaticMap(
     mapX: number,
     mapY: number,
 ): void {
+    const mapKey = getMapSquareId(mapX, mapY);
+    retainedStaticMaps.get(host)?.delete(mapKey);
+    pendingGroundGeometry.get(host)?.delete(mapKey);
+
     const runtime = getRuntime(host);
     if (!runtime) return;
 
     try {
-        const mapKey = getMapSquareId(mapX, mapY);
         runtime.bridge.removeStaticMap(mapKey);
-        pendingGroundGeometry.get(host)?.delete(mapKey);
         publishDiagnostics(host, {
             ...getRustRendererShadowDiagnostics(host),
             residentMaps: runtime.bridge.getResidentStaticMapCount(),
@@ -670,18 +690,22 @@ export function mirrorRustGroundItemGeometry(
     mapKey: number,
     data?: GroundItemGeometryBuildData,
 ): void {
-    const runtime = getRuntime(host);
-    if (!runtime) return;
-
     try {
-        syncGlobalResources(host, runtime);
         const geometry = data
             ? createRustGroundItemGeometryPacket(data)
             : undefined;
+        const retained = retainedStaticMaps.get(host)?.get(mapKey);
+        if (retained) {
+            retained.groundGeometry = geometry ?? null;
+        }
 
-        if (runtime.bridge.updateGroundGeometry(mapKey, geometry)) {
-            pendingGroundGeometry.get(host)?.delete(mapKey);
-            return;
+        const runtime = getRuntime(host);
+        if (runtime) {
+            syncGlobalResources(host, runtime);
+            if (runtime.bridge.updateGroundGeometry(mapKey, geometry)) {
+                pendingGroundGeometry.get(host)?.delete(mapKey);
+                return;
+            }
         }
 
         let pending = pendingGroundGeometry.get(host);
