@@ -26,6 +26,10 @@ class MockWasm implements RustRendererWasm {
     selectedMapKey = 0;
     residentMapKeys = new Set<number>();
     geometryUploads = 0;
+    npcGeometryUploads: Array<{
+        vertices: Uint32Array;
+        indices: Uint32Array;
+    }> = [];
     modelInfoUploads: Uint16Array[] = [];
     heightUploads = 0;
     waterMaskUploads = 0;
@@ -111,6 +115,16 @@ class MockWasm implements RustRendererWasm {
 
     upload_geometry(_vertices: Uint32Array, _indices: Uint32Array): void {
         this.geometryUploads++;
+    }
+
+    upload_npc_geometry(
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void {
+        this.npcGeometryUploads.push({
+            vertices: new Uint32Array(vertices),
+            indices: new Uint32Array(indices),
+        });
     }
 
     upload_model_info(modelInfo: Uint16Array): void {
@@ -446,6 +460,8 @@ function packet(): RustStaticScenePacket {
         heightMapPlanes: 1,
         packedVertexWords: new Uint32Array([1, 2, 3]),
         indices: new Uint32Array([0, 0, 0, 0, 0, 0]),
+        npcPackedVertexWords: new Uint32Array([7, 8, 9]),
+        npcIndices: new Uint32Array([0, 0, 0]),
         modelInfoOpaque: new Uint16Array(64),
         modelInfoAlpha: new Uint16Array(64),
         modelInfoOpaqueLod: new Uint16Array(64),
@@ -600,6 +616,15 @@ function frame(): RustStaticFrameState {
     assert.equal(wasm.selectedMapKey, (50 << 8) | 51);
     assert.equal(wasm.resident_static_map_count(), 1);
     assert.equal(wasm.geometryUploads, 1);
+    assert.equal(wasm.npcGeometryUploads.length, 1);
+    assert.deepEqual(
+        Array.from(wasm.npcGeometryUploads[0].vertices),
+        [7, 8, 9],
+    );
+    assert.deepEqual(
+        Array.from(wasm.npcGeometryUploads[0].indices),
+        [0, 0, 0],
+    );
     assert.equal(wasm.heightUploads, 1);
     assert.equal(wasm.waterMaskUploads, 1);
     assert.equal(wasm.staticStateCalls, 1);
