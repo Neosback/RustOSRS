@@ -50,6 +50,10 @@ const retainedStaticMaps = new WeakMap<
 >();
 
 const recoveringHosts = new WeakSet<WebGLOsrsRendererHost>();
+const recoveringRuntimes = new WeakMap<
+    WebGLOsrsRendererHost,
+    RustRendererShadowRuntime
+>();
 const recoveryCleanup = new WeakMap<
     RustRendererShadowRuntime,
     () => void
@@ -292,10 +296,13 @@ function disableShadow(
     });
     activeShadowFrames.delete(host);
 
-    const runtime = runtimes.get(host);
+    const runtime =
+        runtimes.get(host)
+        ?? recoveringRuntimes.get(host);
     if (runtime) {
         cleanupRustRuntime(runtime);
         runtimes.delete(host);
+        recoveringRuntimes.delete(host);
     }
     recoveringHosts.delete(host);
     disposeRustPixelParity(host);
@@ -387,7 +394,12 @@ async function recoverRustRenderer(
     host: WebGLOsrsRendererHost,
     lostRuntime: RustRendererShadowRuntime,
 ): Promise<void> {
-    if (!recoveringHosts.has(host)) return;
+    if (
+        !recoveringHosts.has(host)
+        || recoveringRuntimes.get(host) !== lostRuntime
+    ) {
+        return;
+    }
 
     const cleanup = recoveryCleanup.get(lostRuntime);
     if (cleanup) {
@@ -402,6 +414,7 @@ async function recoverRustRenderer(
     try {
         lostRuntime.disposeDom?.();
     } catch {}
+    recoveringRuntimes.delete(host);
 
     try {
         const runtime = await createRustRendererShadowRuntime(host.canvas);
@@ -414,6 +427,7 @@ async function recoverRustRenderer(
         replayRetainedRustState(host, runtime);
         attachRustContextRecovery(host, runtime);
         recoveringHosts.delete(host);
+        recoveringRuntimes.delete(host);
 
         publishDiagnostics(host, {
             ...getRustRendererShadowDiagnostics(host),
@@ -424,6 +438,7 @@ async function recoverRustRenderer(
         console.info("[RustRenderer] WebGL context recovered");
     } catch (error) {
         recoveringHosts.delete(host);
+        recoveringRuntimes.delete(host);
         disableShadow(host, "context recovery", error);
     }
 }
@@ -440,6 +455,7 @@ function attachRustContextRecovery(
 
         console.warn("[RustRenderer] WebGL context lost; falling back to PicoGL while recovering");
         recoveringHosts.add(host);
+        recoveringRuntimes.set(host, runtime);
         activeShadowFrames.delete(host);
         runtimes.delete(host);
         publishDiagnostics(host, {
@@ -555,10 +571,13 @@ export async function initRustRendererShadow(
 export function disposeRustRendererShadow(
     host: WebGLOsrsRendererHost,
 ): void {
-    const runtime = runtimes.get(host);
+    const runtime =
+        runtimes.get(host)
+        ?? recoveringRuntimes.get(host);
     if (runtime) {
         cleanupRustRuntime(runtime);
         runtimes.delete(host);
+        recoveringRuntimes.delete(host);
     }
     recoveringHosts.delete(host);
     failedHosts.delete(host);
