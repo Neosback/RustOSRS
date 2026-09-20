@@ -1,4 +1,5 @@
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
+import type { DrawRange } from "../DrawRange";
 import { WebGLMapSquare } from "../WebGLMapSquare";
 import type { GroundItemGeometryBuildData } from "../ground/GroundItemMeshBuilder";
 import type { SdMapData } from "../loader/SdMapData";
@@ -34,6 +35,9 @@ export interface RustRendererShadowDiagnostics {
     mirroredMaps: number;
     drawCalls: number;
     submittedIndices: number;
+    expectedDrawCalls: number;
+    expectedSubmittedIndices: number;
+    drawStatsMatch: boolean;
 }
 
 const diagnostics = new WeakMap<
@@ -63,6 +67,9 @@ export function getRustRendererShadowDiagnostics(
         mirroredMaps: 0,
         drawCalls: 0,
         submittedIndices: 0,
+        expectedDrawCalls: 0,
+        expectedSubmittedIndices: 0,
+        drawStatsMatch: true,
     };
 }
 
@@ -131,6 +138,9 @@ export async function initRustRendererShadow(
             mirroredMaps: 0,
             drawCalls: 0,
             submittedIndices: 0,
+            expectedDrawCalls: 0,
+            expectedSubmittedIndices: 0,
+            drawStatsMatch: true,
         });
         console.info("[RustRenderer] shadow renderer enabled");
     } catch (error) {
@@ -264,6 +274,134 @@ interface ShadowCamera {
     projectionMatrix: Float32Array;
 }
 
+export interface RustStaticDrawStats {
+    drawCalls: number;
+    submittedIndices: number;
+}
+
+export function countExpectedDrawRanges(
+    ranges: readonly DrawRange[],
+    planes: Uint8Array | undefined,
+    roofPlaneLimit: number,
+    patches?: Uint32Array,
+): RustStaticDrawStats {
+    const overrides = new Map<number, DrawRange>();
+    if (patches) {
+        for (let i = 0; i + 3 < patches.length; i += 4) {
+            overrides.set(patches[i] | 0, [
+                patches[i + 1] >>> 0,
+                patches[i + 2] >>> 0,
+                patches[i + 3] >>> 0,
+            ]);
+        }
+    }
+
+    const roofLimit = Math.max(0, Math.min(3, roofPlaneLimit | 0));
+    let drawCalls = 0;
+    let submittedIndices = 0;
+
+    for (let index = 0; index < ranges.length; index++) {
+        const range = overrides.get(index) ?? ranges[index];
+        const elements = range?.[1] ?? 0;
+        const instances = range?.[2] ?? 0;
+        if (elements <= 0 || instances <= 0) continue;
+
+        const plane = planes?.[index] ?? 0;
+        if (roofLimit < 3 && plane > roofLimit) continue;
+
+        drawCalls++;
+        submittedIndices += elements * instances;
+    }
+
+    return { drawCalls, submittedIndices };
+}
+
+function addStats(
+    target: RustStaticDrawStats,
+    source: RustStaticDrawStats,
+): void {
+    target.drawCalls += source.drawCalls;
+    target.submittedIndices += source.submittedIndices;
+}
+
+function countExpectedMapStaticDraws(
+    map: WebGLMapSquare,
+    useLod: boolean,
+    roofPlaneLimit: number,
+): RustStaticDrawStats {
+    const total: RustStaticDrawStats = {
+        drawCalls: 0,
+        submittedIndices: 0,
+    };
+
+    for (const transparent of [false, true]) {
+        const terrain = map.getDrawCall(transparent, false, useLod);
+        addStats(
+            total,
+            countExpectedDrawRanges(
+                terrain.drawRanges,
+                map.getDrawRangesPlanes(transparent, false, useLod),
+                roofPlaneLimit,
+            ),
+        );
+
+        const loc = map.getLocDrawCall(transparent, false, useLod);
+        if (loc) {
+            addStats(
+                total,
+                countExpectedDrawRanges(
+                    loc.drawRanges,
+                    map.getLocDrawRangesPlanes(transparent, false, useLod),
+                    roofPlaneLimit,
+                    createAnimatedLocDrawRangePatches(
+                        map,
+                        transparent,
+                        useLod,
+                    ),
+                ),
+            );
+        }
+
+        const ground = map.getGroundItemDrawCall(
+            transparent,
+            false,
+            useLod,
+        );
+        if (ground) {
+            addStats(
+                total,
+                countExpectedDrawRanges(
+                    ground.drawRanges,
+                    map.getGroundItemDrawRangesPlanes(
+                        transparent,
+                        false,
+                        useLod,
+                    ),
+                    roofPlaneLimit,
+                ),
+            );
+        }
+
+        const door = map.getDoorDrawCall(transparent, false, useLod);
+        if (door) {
+            addStats(
+                total,
+                countExpectedDrawRanges(
+                    door.drawRanges,
+                    map.getDoorDrawRangesPlanes(
+                        transparent,
+                        false,
+                        useLod,
+                    ),
+                    roofPlaneLimit,
+                ),
+            );
+        }
+    }
+
+    return total;
+}
+
 export function createAnimatedLocDrawRangePatches(
     map: Pick<WebGLMapSquare, "locsAnimated">,
     transparent: boolean,
@@ -323,6 +461,9 @@ export function renderRustStaticShadowFrame(
                 mirroredMaps: 0,
                 drawCalls: 0,
                 submittedIndices: 0,
+                expectedDrawCalls: 0,
+                expectedSubmittedIndices: 0,
+                drawStatsMatch: true,
             });
             return;
         }
@@ -335,6 +476,10 @@ export function renderRustStaticShadowFrame(
         );
         const roofPlaneLimit = host.getRoofPlaneLimit();
         const frames: RustResidentMapFrameState[] = [];
+        const expectedStats: RustStaticDrawStats = {
+            drawCalls: 0,
+            submittedIndices: 0,
+        };
         let eligibleMaps = 0;
 
         for (let i = 0; i < count; i++) {
@@ -375,6 +520,14 @@ export function renderRustStaticShadowFrame(
                 useLod,
                 true,
                 createAnimatedLocDrawRangePatches(map, true, useLod),
+            );
+            addStats(
+                expectedStats,
+                countExpectedMapStaticDraws(
+                    map,
+                    useLod,
+                    roofPlaneLimit,
+                ),
             );
 
             let worldEntityTransform: Float32Array =
@@ -422,6 +575,12 @@ export function renderRustStaticShadowFrame(
             mirroredMaps: frames.length,
             drawCalls: stats.drawCalls,
             submittedIndices: stats.submittedIndices,
+            expectedDrawCalls: expectedStats.drawCalls,
+            expectedSubmittedIndices: expectedStats.submittedIndices,
+            drawStatsMatch:
+                stats.drawCalls === expectedStats.drawCalls
+                && stats.submittedIndices
+                    === expectedStats.submittedIndices,
         });
     } catch (error) {
         disableShadow(host, "frame render", error);
