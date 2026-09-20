@@ -116,9 +116,6 @@ function attachPrimaryCanvas(
 
     rustCanvas.dataset.renderer = "rust-primary";
     rustCanvas.style.position = "absolute";
-    rustCanvas.style.inset = "0";
-    rustCanvas.style.width = "100%";
-    rustCanvas.style.height = "100%";
     rustCanvas.style.pointerEvents = "none";
     rustCanvas.style.zIndex = "0";
 
@@ -128,7 +125,26 @@ function attachPrimaryCanvas(
 
     parent.insertBefore(rustCanvas, sourceCanvas);
 
+    const syncPrimaryCanvasBox = (): void => {
+        rustCanvas.style.left = `${sourceCanvas.offsetLeft}px`;
+        rustCanvas.style.top = `${sourceCanvas.offsetTop}px`;
+        rustCanvas.style.width = `${Math.max(1, sourceCanvas.offsetWidth)}px`;
+        rustCanvas.style.height = `${Math.max(1, sourceCanvas.offsetHeight)}px`;
+    };
+    syncPrimaryCanvasBox();
+
+    const resizeObserver =
+        typeof ResizeObserver !== "undefined"
+            ? new ResizeObserver(syncPrimaryCanvasBox)
+            : undefined;
+    resizeObserver?.observe(sourceCanvas);
+    resizeObserver?.observe(parent);
+    window.addEventListener("resize", syncPrimaryCanvasBox);
+
     return () => {
+        resizeObserver?.disconnect();
+        window.removeEventListener("resize", syncPrimaryCanvasBox);
+
         if (rustCanvas.parentElement === parent) {
             parent.removeChild(rustCanvas);
         } else if (previousRustParent) {
