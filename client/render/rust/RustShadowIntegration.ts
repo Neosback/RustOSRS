@@ -116,6 +116,17 @@ export function isRustProjectileShadowEnabled(search?: string): boolean {
     );
 }
 
+export function isRustPresentationShadowEnabled(search?: string): boolean {
+    const query =
+        search
+        ?? (typeof window !== "undefined" ? window.location.search : "");
+    const params = new URLSearchParams(query);
+    return (
+        params.get("rust-renderer") === "shadow"
+        && params.get("rust-presentation") === "1"
+    );
+}
+
 export function isRustFullDynamicShadowEnabled(
     search?: string,
 ): boolean {
@@ -282,6 +293,9 @@ export async function initRustRendererShadow(
         if (!runtime) return;
 
         runtimes.set(host, runtime);
+        runtime.bridge.setPresentationEnabled(
+            isRustPresentationShadowEnabled(),
+        );
         syncGlobalResources(host, runtime);
         syncCurrentActorData(host, runtime);
         publishDiagnostics(host, {
@@ -878,6 +892,8 @@ function finalizeRustShadowFrame(
         && stats.submittedIndices === state.expectedStats.submittedIndices;
     const drawSequenceMatch =
         drawHash === expectedDrawHash;
+
+    runtime.bridge.presentFrame();
 
     const previousDiagnostics =
         getRustRendererShadowDiagnostics(host);
