@@ -48,6 +48,15 @@ class MockWasm implements RustRendererWasm {
     renderFrameCalls = 0;
     beginFrameCalls = 0;
     mapPassCalls: Array<{ mapKey: number; transparent: boolean }> = [];
+    ghostPassCalls: Array<{
+        mapKey: number;
+        opacity: number;
+        hsl: number[];
+    }> = [];
+    passSequence: Array<{
+        mapKey: number;
+        pass: "opaque" | "ghost" | "transparent";
+    }> = [];
     lastWorldEntityTransform?: Float32Array;
     lastWorldEntityOpacity = 1;
 
@@ -264,6 +273,42 @@ class MockWasm implements RustRendererWasm {
         this.mapPassCalls.push({
             mapKey: this.selectedMapKey,
             transparent,
+        });
+        this.passSequence.push({
+            mapKey: this.selectedMapKey,
+            pass: transparent ? "transparent" : "opaque",
+        });
+    }
+
+    render_active_static_terrain_ghost_pass(
+        _viewMatrix: Float32Array,
+        _projectionMatrix: Float32Array,
+        worldEntityTransform: Float32Array,
+        worldEntityOpacity: number,
+        _skyRgba: Float32Array,
+        sceneHslOverride: Float32Array,
+        _playerPos: Float32Array,
+        _renderDistance: number,
+        _fogDepth: number,
+        _currentTime: number,
+        _brightness: number,
+        roofPlaneLimit: number,
+        useLod: boolean,
+        _isNewTextureAnim: boolean,
+        _colorBanding: number,
+    ): void {
+        this.roofPlaneLimit = roofPlaneLimit;
+        this.useLod = useLod;
+        this.lastWorldEntityTransform = worldEntityTransform;
+        this.lastWorldEntityOpacity = worldEntityOpacity;
+        this.ghostPassCalls.push({
+            mapKey: this.selectedMapKey,
+            opacity: worldEntityOpacity,
+            hsl: Array.from(sceneHslOverride),
+        });
+        this.passSequence.push({
+            mapKey: this.selectedMapKey,
+            pass: "ghost",
         });
     }
 
@@ -679,6 +724,9 @@ function frame(): RustStaticFrameState {
     const firstFrame: RustResidentMapFrameState = {
         ...frame(),
         mapKey: 2001,
+        worldEntityGhostSceneHslOverride: new Float32Array([
+            12, 3, 64, 127,
+        ]),
     };
     const secondFrame: RustResidentMapFrameState = {
         ...frame(),
@@ -694,6 +742,20 @@ function frame(): RustStaticFrameState {
         { mapKey: 2002, transparent: false },
         { mapKey: 2002, transparent: true },
         { mapKey: 2001, transparent: true },
+    ]);
+    assert.deepEqual(wasm.ghostPassCalls, [
+        {
+            mapKey: 2001,
+            opacity: 0.01,
+            hsl: [12, 3, 64, 127],
+        },
+    ]);
+    assert.deepEqual(wasm.passSequence, [
+        { mapKey: 2001, pass: "opaque" },
+        { mapKey: 2001, pass: "ghost" },
+        { mapKey: 2002, pass: "opaque" },
+        { mapKey: 2002, pass: "transparent" },
+        { mapKey: 2001, pass: "transparent" },
     ]);
     bridge.dispose();
 }
