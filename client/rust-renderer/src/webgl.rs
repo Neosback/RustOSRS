@@ -522,6 +522,11 @@ pub struct RustWebGlRenderer {
     presentation_framebuffer: WebGlFramebuffer,
     presentation_color_texture: WebGlTexture,
     presentation_depth_renderbuffer: WebGlRenderbuffer,
+    presentation_msaa_enabled: bool,
+    presentation_msaa_framebuffer: WebGlFramebuffer,
+    presentation_msaa_color_renderbuffer: WebGlRenderbuffer,
+    presentation_msaa_depth_renderbuffer: WebGlRenderbuffer,
+    presentation_msaa_samples: i32,
     presentation_width: i32,
     presentation_height: i32,
 
@@ -577,6 +582,15 @@ impl RustWebGlRenderer {
         let presentation_depth_renderbuffer = gl
             .create_renderbuffer()
             .ok_or_else(|| JsValue::from_str("failed to create presentation depth renderbuffer"))?;
+        let presentation_msaa_framebuffer = gl
+            .create_framebuffer()
+            .ok_or_else(|| JsValue::from_str("failed to create presentation MSAA framebuffer"))?;
+        let presentation_msaa_color_renderbuffer = gl
+            .create_renderbuffer()
+            .ok_or_else(|| JsValue::from_str("failed to create presentation MSAA color renderbuffer"))?;
+        let presentation_msaa_depth_renderbuffer = gl
+            .create_renderbuffer()
+            .ok_or_else(|| JsValue::from_str("failed to create presentation MSAA depth renderbuffer"))?;
         initialize_fallback_texture_array(&gl, &texture_array)?;
         initialize_fallback_materials(&gl, &material_texture)?;
         initialize_fallback_water_textures(&gl, &water_texture_array)?;
@@ -791,6 +805,11 @@ impl RustWebGlRenderer {
             presentation_framebuffer,
             presentation_color_texture,
             presentation_depth_renderbuffer,
+            presentation_msaa_enabled: false,
+            presentation_msaa_framebuffer,
+            presentation_msaa_color_renderbuffer,
+            presentation_msaa_depth_renderbuffer,
+            presentation_msaa_samples: 0,
             presentation_width: 0,
             presentation_height: 0,
             texture_layer_count: 1,
@@ -1602,8 +1621,13 @@ impl RustWebGlRenderer {
         require_vec4(sky_rgba, "sky_rgba")?;
         if self.presentation_enabled {
             self.ensure_presentation_target()?;
+            let framebuffer = if self.presentation_msaa_enabled {
+                &self.presentation_msaa_framebuffer
+            } else {
+                &self.presentation_framebuffer
+            };
             self.gl
-                .bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.presentation_framebuffer));
+                .bind_framebuffer(Gl::FRAMEBUFFER, Some(framebuffer));
         } else {
             self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
         }
@@ -2852,6 +2876,27 @@ impl RustWebGlRenderer {
         self.presentation_enabled
     }
 
+    pub fn set_presentation_msaa_enabled(&mut self, enabled: bool) -> Result<(), JsValue> {
+        if self.presentation_msaa_enabled == enabled {
+            return Ok(());
+        }
+        self.presentation_msaa_enabled = enabled;
+        self.presentation_width = 0;
+        self.presentation_height = 0;
+        if self.presentation_enabled {
+            self.ensure_presentation_target()?;
+        }
+        Ok(())
+    }
+
+    pub fn presentation_msaa_enabled(&self) -> bool {
+        self.presentation_msaa_enabled
+    }
+
+    pub fn presentation_msaa_samples(&self) -> i32 {
+        self.presentation_msaa_samples
+    }
+
     /// Presents the Rust-owned scene target to the canvas without
     /// post-processing. FXAA/MSAA are layered on top in later Stage-3 steps.
     pub fn present_frame(&mut self) -> Result<(), JsValue> {
@@ -2862,6 +2907,29 @@ impl RustWebGlRenderer {
         self.ensure_presentation_target()?;
         let width = self.presentation_width.max(1);
         let height = self.presentation_height.max(1);
+
+        if self.presentation_msaa_enabled {
+            self.gl.bind_framebuffer(
+                Gl::READ_FRAMEBUFFER,
+                Some(&self.presentation_msaa_framebuffer),
+            );
+            self.gl.bind_framebuffer(
+                Gl::DRAW_FRAMEBUFFER,
+                Some(&self.presentation_framebuffer),
+            );
+            self.gl.blit_framebuffer(
+                0,
+                0,
+                width,
+                height,
+                0,
+                0,
+                width,
+                height,
+                Gl::COLOR_BUFFER_BIT,
+                Gl::NEAREST,
+            );
+        }
 
         self.gl
             .bind_framebuffer(Gl::READ_FRAMEBUFFER, Some(&self.presentation_framebuffer));
@@ -2912,6 +2980,12 @@ impl RustWebGlRenderer {
             .delete_texture(Some(&self.presentation_color_texture));
         self.gl
             .delete_renderbuffer(Some(&self.presentation_depth_renderbuffer));
+        self.gl
+            .delete_framebuffer(Some(&self.presentation_msaa_framebuffer));
+        self.gl
+            .delete_renderbuffer(Some(&self.presentation_msaa_color_renderbuffer));
+        self.gl
+            .delete_renderbuffer(Some(&self.presentation_msaa_depth_renderbuffer));
         self.dynamic_npc_batch.delete(&self.gl);
         self.dynamic_gfx_batch.delete(&self.gl);
         self.dynamic_projectile_batch.delete(&self.gl);
@@ -3022,15 +3096,80 @@ impl RustWebGlRenderer {
         );
 
         let status = self.gl.check_framebuffer_status(Gl::FRAMEBUFFER);
-        self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
-        self.gl.bind_renderbuffer(Gl::RENDERBUFFER, None);
-        self.gl.bind_texture(Gl::TEXTURE_2D, None);
-
         if status != Gl::FRAMEBUFFER_COMPLETE {
+            self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
+            self.gl.bind_renderbuffer(Gl::RENDERBUFFER, None);
+            self.gl.bind_texture(Gl::TEXTURE_2D, None);
             return Err(JsValue::from_str(&format!(
                 "presentation framebuffer incomplete: 0x{status:04x}",
             )));
         }
+
+        self.presentation_msaa_samples = 0;
+        if self.presentation_msaa_enabled {
+            let max_samples = self
+                .gl
+                .get_parameter(Gl::MAX_SAMPLES)?
+                .as_f64()
+                .unwrap_or(1.0)
+                .floor() as i32;
+            let samples = max_samples.max(1);
+
+            self.gl.bind_renderbuffer(
+                Gl::RENDERBUFFER,
+                Some(&self.presentation_msaa_color_renderbuffer),
+            );
+            self.gl.renderbuffer_storage_multisample(
+                Gl::RENDERBUFFER,
+                samples,
+                Gl::RGBA8,
+                width,
+                height,
+            );
+            self.gl.bind_renderbuffer(
+                Gl::RENDERBUFFER,
+                Some(&self.presentation_msaa_depth_renderbuffer),
+            );
+            self.gl.renderbuffer_storage_multisample(
+                Gl::RENDERBUFFER,
+                samples,
+                Gl::DEPTH_COMPONENT24,
+                width,
+                height,
+            );
+
+            self.gl.bind_framebuffer(
+                Gl::FRAMEBUFFER,
+                Some(&self.presentation_msaa_framebuffer),
+            );
+            self.gl.framebuffer_renderbuffer(
+                Gl::FRAMEBUFFER,
+                Gl::COLOR_ATTACHMENT0,
+                Gl::RENDERBUFFER,
+                Some(&self.presentation_msaa_color_renderbuffer),
+            );
+            self.gl.framebuffer_renderbuffer(
+                Gl::FRAMEBUFFER,
+                Gl::DEPTH_ATTACHMENT,
+                Gl::RENDERBUFFER,
+                Some(&self.presentation_msaa_depth_renderbuffer),
+            );
+
+            let msaa_status = self.gl.check_framebuffer_status(Gl::FRAMEBUFFER);
+            if msaa_status != Gl::FRAMEBUFFER_COMPLETE {
+                self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
+                self.gl.bind_renderbuffer(Gl::RENDERBUFFER, None);
+                self.gl.bind_texture(Gl::TEXTURE_2D, None);
+                return Err(JsValue::from_str(&format!(
+                    "presentation MSAA framebuffer incomplete: 0x{msaa_status:04x}",
+                )));
+            }
+            self.presentation_msaa_samples = samples;
+        }
+
+        self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
+        self.gl.bind_renderbuffer(Gl::RENDERBUFFER, None);
+        self.gl.bind_texture(Gl::TEXTURE_2D, None);
 
         self.presentation_width = width;
         self.presentation_height = height;
