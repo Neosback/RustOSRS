@@ -1000,10 +1000,65 @@ impl RustWebGlRenderer {
         self.render_reference(view_projection, clear_rgba, brightness)
     }
 
-    /// Renders the resident opaque and alpha static passes as one Rust-owned frame.
-    ///
-    /// Full-detail and LOD resources remain resident at the same time. Frame
-    /// selection is explicit and does not mutate or swap renderer ownership.
+    pub fn begin_static_frame(&mut self, sky_rgba: &[f32]) -> Result<(), JsValue> {
+        require_vec4(sky_rgba, "sky_rgba")?;
+        self.prepare_default_frame(sky_rgba);
+        self.last_stats = DrawStats::default();
+        Ok(())
+    }
+
+    /// Renders one pass for the currently selected resident map without
+    /// clearing the framebuffer. This is the building block for a visible-map
+    /// frame that draws all opaque maps first and transparent maps in reverse.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_active_static_map_pass(
+        &mut self,
+        view_matrix: &[f32],
+        projection_matrix: &[f32],
+        world_entity_transform: &[f32],
+        world_entity_opacity: f32,
+        sky_rgba: &[f32],
+        scene_hsl_override: &[f32],
+        player_pos: &[f32],
+        render_distance: f32,
+        fog_depth: f32,
+        current_time: f32,
+        brightness: f32,
+        roof_plane_limit: f32,
+        use_lod: bool,
+        is_new_texture_anim: bool,
+        color_banding: f32,
+        transparent: bool,
+    ) -> Result<(), JsValue> {
+        if transparent {
+            self.gl.enable(Gl::BLEND);
+            self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+        } else {
+            self.gl.disable(Gl::BLEND);
+        }
+
+        self.render_static(
+            view_matrix,
+            projection_matrix,
+            world_entity_transform,
+            world_entity_opacity,
+            sky_rgba,
+            scene_hsl_override,
+            player_pos,
+            render_distance,
+            fog_depth,
+            current_time,
+            brightness,
+            roof_plane_limit,
+            use_lod,
+            is_new_texture_anim,
+            color_banding,
+            transparent,
+            false,
+        )
+    }
+
+    /// Backwards-compatible one-map frame wrapper.
     #[allow(clippy::too_many_arguments)]
     pub fn render_static_frame(
         &mut self,
@@ -1023,8 +1078,8 @@ impl RustWebGlRenderer {
         is_new_texture_anim: bool,
         color_banding: f32,
     ) -> Result<(), JsValue> {
-        self.gl.disable(Gl::BLEND);
-        self.render_static(
+        self.begin_static_frame(sky_rgba)?;
+        self.render_active_static_map_pass(
             view_matrix,
             projection_matrix,
             world_entity_transform,
@@ -1041,12 +1096,8 @@ impl RustWebGlRenderer {
             is_new_texture_anim,
             color_banding,
             false,
-            true,
         )?;
-
-        self.gl.enable(Gl::BLEND);
-        self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
-        self.render_static(
+        self.render_active_static_map_pass(
             view_matrix,
             projection_matrix,
             world_entity_transform,
@@ -1063,7 +1114,6 @@ impl RustWebGlRenderer {
             is_new_texture_anim,
             color_banding,
             true,
-            false,
         )
     }
 
