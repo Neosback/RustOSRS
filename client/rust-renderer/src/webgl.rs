@@ -1200,16 +1200,38 @@ impl RustWebGlRenderer {
         self.gl
             .uniform1i(Some(&self.static_program.water_mask_sampler), 5);
 
+        let roof_limit = roof_plane_limit.clamp(0.0, 3.0) as u8;
+
         self.gl.bind_vertex_array(Some(&self.vao));
-        let stats = submit_draw_ranges(
+        let mut stats = submit_draw_ranges(
             &self.gl,
             &pass.draw_ranges,
             self.index_count,
             Some(&self.static_program.draw_id),
             Some(&pass.range_planes),
-            roof_plane_limit.clamp(0.0, 3.0) as u8,
+            roof_limit,
             false,
         );
+
+        for batch in [&self.loc_batch, &self.door_batch]
+            .into_iter()
+            .flatten()
+        {
+            let batch_pass = batch.pass(use_lod, discard_alpha);
+            self.gl.bind_vertex_array(Some(&batch.vao));
+            let batch_stats = submit_draw_ranges(
+                &self.gl,
+                &batch_pass.draw_ranges,
+                batch.index_count,
+                Some(&self.static_program.draw_id),
+                Some(&batch_pass.range_planes),
+                roof_limit,
+                false,
+            );
+            stats.draw_calls += batch_stats.draw_calls;
+            stats.submitted_indices += batch_stats.submitted_indices;
+        }
+
         self.gl.bind_vertex_array(None);
         if clear_frame {
             self.last_stats = stats;
