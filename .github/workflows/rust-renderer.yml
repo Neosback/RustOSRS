@@ -8,6 +8,7 @@ on:
     paths:
       - "client/rust-renderer/**"
       - "client/render/rust/**"
+      - "client/render/shaders/**"
       - "client/render/WebGLOsrsRenderer.ts"
       - "client/render/gfx/GfxRenderer.ts"
       - "client/render/player/PlayerRenderer.ts"
@@ -20,6 +21,7 @@ on:
       - "client/tests/rust-renderer-shadow-integration.test.ts"
       - "client/tests/rust-renderer-bridge.test.ts"
       - "client/scripts/check-rust-renderer-abi.mjs"
+      - "client/scripts/check-rust-renderer-shader-reference.mjs"
       - "client/package.json"
       - "client/yarn.lock"
       - ".github/workflows/rust-renderer.yml"
@@ -27,6 +29,7 @@ on:
     paths:
       - "client/rust-renderer/**"
       - "client/render/rust/**"
+      - "client/render/shaders/**"
       - "client/render/WebGLOsrsRenderer.ts"
       - "client/render/gfx/GfxRenderer.ts"
       - "client/render/player/PlayerRenderer.ts"
@@ -39,6 +42,7 @@ on:
       - "client/tests/rust-renderer-shadow-integration.test.ts"
       - "client/tests/rust-renderer-bridge.test.ts"
       - "client/scripts/check-rust-renderer-abi.mjs"
+      - "client/scripts/check-rust-renderer-shader-reference.mjs"
       - "client/package.json"
       - "client/yarn.lock"
       - ".github/workflows/rust-renderer.yml"
@@ -82,6 +86,8 @@ jobs:
         run: yarn install --immutable
       - name: Check renderer ABI alignment
         run: yarn check:rust-renderer-abi
+      - name: Guard legacy shader parity reference
+        run: yarn check:rust-renderer-shaders
       - name: Test TypeScript bridge
         run: yarn test:rust-renderer-bridge
       - name: Test shadow integration module graph
