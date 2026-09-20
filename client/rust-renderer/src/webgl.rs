@@ -2010,10 +2010,7 @@ impl RustWebGlRenderer {
         let vao = self.dynamic_gfx_batch.vao.clone();
         let range = [0, index_count, 1];
         let identity = [
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 1.0,
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ];
 
         let result = self.render_npc_geometry_pass(
@@ -2158,8 +2155,7 @@ impl RustWebGlRenderer {
         self.gl.uniform1i(Some(&self.npc_program.draw_id), 0);
         self.gl
             .uniform1i(Some(&self.npc_program.npc_data_offset), npc_data_offset);
-        let (map_x, map_y) =
-            map_pos_override.unwrap_or((state.map_x, state.map_y));
+        let (map_x, map_y) = map_pos_override.unwrap_or((state.map_x, state.map_y));
         self.gl
             .uniform2f(Some(&self.npc_program.map_pos), map_x, map_y);
         self.gl.uniform1f(
