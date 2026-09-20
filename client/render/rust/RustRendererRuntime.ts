@@ -64,12 +64,13 @@ async function importRustRendererModule(): Promise<RustRendererWebModule> {
 
 export function syncRustShadowCanvasSize(
     shadowCanvas: HTMLCanvasElement,
-    sourceCanvas: HTMLCanvasElement,
+    width: number,
+    height: number,
 ): void {
-    const width = Math.max(1, sourceCanvas.width | 0);
-    const height = Math.max(1, sourceCanvas.height | 0);
-    if (shadowCanvas.width !== width) shadowCanvas.width = width;
-    if (shadowCanvas.height !== height) shadowCanvas.height = height;
+    const nextWidth = Math.max(1, width | 0);
+    const nextHeight = Math.max(1, height | 0);
+    if (shadowCanvas.width !== nextWidth) shadowCanvas.width = nextWidth;
+    if (shadowCanvas.height !== nextHeight) shadowCanvas.height = nextHeight;
 }
 
 export async function createRustRendererShadowRuntime(
@@ -82,7 +83,11 @@ export async function createRustRendererShadowRuntime(
     const module = await importRustRendererModule();
     const canvas = document.createElement("canvas");
     canvas.dataset.renderer = "rust-shadow";
-    syncRustShadowCanvasSize(canvas, sourceCanvas);
+    syncRustShadowCanvasSize(
+        canvas,
+        sourceCanvas.width,
+        sourceCanvas.height,
+    );
 
     return {
         mode: "shadow",
