@@ -392,6 +392,7 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
     public textureArrayPixels?: Uint8Array;
     public textureMaterialBytes?: Int8Array;
     public waterTexturePixels?: Uint8Array;
+    public rustGlobalResourcesRevision: number = 0;
 
     waterShadingUnavailable = false;
     waterOverlayColors = new Map<number, [number, number, number]>();
