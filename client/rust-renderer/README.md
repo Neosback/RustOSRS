@@ -6,20 +6,22 @@ The migration is deliberately incremental. TypeScript can continue decoding cach
 
 ## Current scope
 
-Stage 0 is now implemented:
+Stage 0 is implemented and Stage 1 static-scene parity is actively landing:
 
 - exact 12-byte packed OSRS vertex codec
 - packed-vertex deduplication
-- draw-range parsing
-- roof-plane filtering primitives
-- Rust-owned WebGL2 context
-- Rust-owned shader compile/link lifecycle
-- Rust-owned VAO, vertex buffer and index buffer
-- geometry upload
+- versioned numeric TypeScript/WASM scene packets
+- Rust-owned WebGL2 context and shader lifecycle
+- Rust-owned VAO, vertex buffer, index buffer and texture resources
 - indexed and instanced draw submission
-- native Rust tests and WASM compile CI
+- static model-info, height-map, material, texture-array, water-texture and water-mask uploads
+- resident opaque and alpha static passes uploaded once per map packet
+- Rust-owned opaque/alpha frame scheduling
+- roof-plane draw-range filtering that preserves original draw IDs
+- empty alpha passes do not fall back to drawing the full index buffer
+- native Rust tests, bridge tests and WASM compile CI
 
-The production client still uses the existing renderer. Do not switch the default until parity is established.
+The production client still uses the existing renderer. The next integration milestone is an A/B runtime path that can feed the same decoded map data and camera state to PicoGL and Rust without changing scene construction.
 
 ## Why WebGL2 first
 
