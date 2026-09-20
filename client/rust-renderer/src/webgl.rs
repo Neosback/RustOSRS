@@ -322,6 +322,7 @@ pub struct RustWebGlRenderer {
     texture_array: WebGlTexture,
     material_texture: WebGlTexture,
     water_texture_array: WebGlTexture,
+    actor_data_texture: WebGlTexture,
     texture_layer_count: i32,
     material_count: i32,
     last_stats: DrawStats,
@@ -349,6 +350,7 @@ impl RustWebGlRenderer {
         let texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         let material_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
         let water_texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
+        let actor_data_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
         initialize_fallback_texture_array(&gl, &texture_array)?;
         initialize_fallback_materials(&gl, &material_texture)?;
         initialize_fallback_water_textures(&gl, &water_texture_array)?;
@@ -415,6 +417,7 @@ impl RustWebGlRenderer {
             texture_array,
             material_texture,
             water_texture_array,
+            actor_data_texture,
             texture_layer_count: 1,
             material_count: 1,
             last_stats: DrawStats::default(),
@@ -719,6 +722,51 @@ impl RustWebGlRenderer {
             Some(data.unchecked_ref()),
         )?;
         self.gl.generate_mipmap(Gl::TEXTURE_2D_ARRAY);
+        Ok(())
+    }
+
+    /// Uploads the live 16-wide RGBA16UI actor-data texture produced by
+    /// TypeScript. Stage 2 initially mirrors this resource without changing
+    /// player/NPC draw ownership.
+    pub fn upload_actor_data(
+        &mut self,
+        values: &[u16],
+        width: u32,
+        height: u32,
+    ) -> Result<(), JsValue> {
+        if width == 0 || height == 0 {
+            return Err(JsValue::from_str(
+                "actor-data texture dimensions must be positive",
+            ));
+        }
+
+        let expected = (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|value| value.checked_mul(4))
+            .ok_or_else(|| JsValue::from_str("actor-data texture dimensions overflow"))?;
+        if values.len() != expected {
+            return Err(JsValue::from_str(&format!(
+                "actor-data packet has {} u16 values, expected {expected}",
+                values.len()
+            )));
+        }
+
+        let data = js_sys::Uint16Array::from(values);
+        self.gl.active_texture(Gl::TEXTURE6);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D, Some(&self.actor_data_texture));
+        self.gl
+            .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
+                Gl::TEXTURE_2D,
+                0,
+                Gl::RGBA16UI as i32,
+                width as i32,
+                height as i32,
+                0,
+                Gl::RGBA_INTEGER,
+                Gl::UNSIGNED_SHORT,
+                Some(data.unchecked_ref()),
+            )?;
         Ok(())
     }
 
@@ -1510,6 +1558,7 @@ impl RustWebGlRenderer {
         self.gl.delete_texture(Some(&self.texture_array));
         self.gl.delete_texture(Some(&self.material_texture));
         self.gl.delete_texture(Some(&self.water_texture_array));
+        self.gl.delete_texture(Some(&self.actor_data_texture));
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
     }
