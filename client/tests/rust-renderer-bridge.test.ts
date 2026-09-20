@@ -22,6 +22,7 @@ class MockWasm implements RustRendererWasm {
     staticStateCalls = 0;
     drawRangeUploads: Uint32Array[] = [];
     staticPassUploads = 0;
+    staticLodPassUploads = 0;
     renderFrameCalls = 0;
     lastWorldEntityTransform?: Float32Array;
     lastWorldEntityOpacity = 1;
@@ -30,7 +31,12 @@ class MockWasm implements RustRendererWasm {
     private alphaRanges = new Uint32Array();
     private opaqueRangePlanes = new Uint8Array();
     private alphaRangePlanes = new Uint8Array();
+    private opaqueLodRanges = new Uint32Array();
+    private alphaLodRanges = new Uint32Array();
+    private opaqueLodRangePlanes = new Uint8Array();
+    private alphaLodRangePlanes = new Uint8Array();
     private roofPlaneLimit = 3;
+    private useLod = false;
 
     constructor(_canvas: HTMLCanvasElement) {
         MockWasm.last = this;
@@ -94,6 +100,21 @@ class MockWasm implements RustRendererWasm {
         this.alphaRangePlanes = alphaRangePlanes;
     }
 
+    upload_static_lod_passes(
+        _modelInfoOpaque: Uint16Array,
+        opaqueRanges: Uint32Array,
+        opaqueRangePlanes: Uint8Array,
+        _modelInfoAlpha: Uint16Array,
+        alphaRanges: Uint32Array,
+        alphaRangePlanes: Uint8Array,
+    ): void {
+        this.staticLodPassUploads++;
+        this.opaqueLodRanges = opaqueRanges;
+        this.alphaLodRanges = alphaRanges;
+        this.opaqueLodRangePlanes = opaqueRangePlanes;
+        this.alphaLodRangePlanes = alphaRangePlanes;
+    }
+
     upload_texture_array(
         _pixels: Uint8Array,
         _width: number,
@@ -126,28 +147,38 @@ class MockWasm implements RustRendererWasm {
         _currentTime: number,
         _brightness: number,
         roofPlaneLimit: number,
+        useLod: boolean,
         _isNewTextureAnim: boolean,
         _colorBanding: number,
     ): void {
         this.renderFrameCalls++;
         this.roofPlaneLimit = roofPlaneLimit;
+        this.useLod = useLod;
         this.lastWorldEntityTransform = worldEntityTransform;
         this.lastWorldEntityOpacity = worldEntityOpacity;
     }
 
     last_draw_calls(): number {
         if (this.renderFrameCalls === 0) return 0;
+        const opaqueRanges = this.useLod ? this.opaqueLodRanges : this.opaqueRanges;
+        const alphaRanges = this.useLod ? this.alphaLodRanges : this.alphaRanges;
+        const opaquePlanes = this.useLod ? this.opaqueLodRangePlanes : this.opaqueRangePlanes;
+        const alphaPlanes = this.useLod ? this.alphaLodRangePlanes : this.alphaRangePlanes;
         return (
-            this.countDrawCalls(this.opaqueRanges, this.opaqueRangePlanes)
-            + this.countDrawCalls(this.alphaRanges, this.alphaRangePlanes)
+            this.countDrawCalls(opaqueRanges, opaquePlanes)
+            + this.countDrawCalls(alphaRanges, alphaPlanes)
         );
     }
 
     last_submitted_indices(): number {
         if (this.renderFrameCalls === 0) return 0;
+        const opaqueRanges = this.useLod ? this.opaqueLodRanges : this.opaqueRanges;
+        const alphaRanges = this.useLod ? this.alphaLodRanges : this.alphaRanges;
+        const opaquePlanes = this.useLod ? this.opaqueLodRangePlanes : this.opaqueRangePlanes;
+        const alphaPlanes = this.useLod ? this.alphaLodRangePlanes : this.alphaRangePlanes;
         return (
-            this.countSubmittedIndices(this.opaqueRanges, this.opaqueRangePlanes)
-            + this.countSubmittedIndices(this.alphaRanges, this.alphaRangePlanes)
+            this.countSubmittedIndices(opaqueRanges, opaquePlanes)
+            + this.countSubmittedIndices(alphaRanges, alphaPlanes)
         );
     }
 
@@ -195,15 +226,21 @@ function packet(): RustStaticScenePacket {
         heightMapSize: 2,
         heightMapPlanes: 1,
         packedVertexWords: new Uint32Array([1, 2, 3]),
-        indices: new Uint32Array([0, 0, 0]),
+        indices: new Uint32Array([0, 0, 0, 0, 0, 0]),
         modelInfoOpaque: new Uint16Array(64),
         modelInfoAlpha: new Uint16Array(64),
+        modelInfoOpaqueLod: new Uint16Array(64),
+        modelInfoAlphaLod: new Uint16Array(64),
         heightMap: new Int16Array(4),
         waterMask: new Uint8Array(16),
         opaqueDrawRanges: new Uint32Array([0, 3, 1]),
         opaqueDrawRangePlanes: new Uint8Array([0]),
         alphaDrawRanges: new Uint32Array([0, 3, 1]),
         alphaDrawRangePlanes: new Uint8Array([0]),
+        opaqueLodDrawRanges: new Uint32Array([0, 6, 1]),
+        opaqueLodDrawRangePlanes: new Uint8Array([0]),
+        alphaLodDrawRanges: new Uint32Array(),
+        alphaLodDrawRangePlanes: new Uint8Array(),
     };
 }
 
@@ -226,6 +263,7 @@ function frame(): RustStaticFrameState {
         currentTime: 1,
         brightness: 0.8,
         roofPlaneLimit: 3,
+        useLod: false,
         isNewTextureAnim: false,
         colorBanding: 255,
     };
@@ -245,6 +283,7 @@ function frame(): RustStaticFrameState {
     assert.equal(wasm.waterMaskUploads, 1);
     assert.equal(wasm.staticStateCalls, 1);
     assert.equal(wasm.staticPassUploads, 1);
+    assert.equal(wasm.staticLodPassUploads, 1);
     assert.equal(wasm.modelInfoUploads.length, 0);
     assert.equal(wasm.drawRangeUploads.length, 0);
     assert.equal(wasm.renderFrameCalls, 1);
@@ -258,6 +297,7 @@ function frame(): RustStaticFrameState {
 
     bridge.renderStatic(frame());
     assert.equal(wasm.staticPassUploads, 1);
+    assert.equal(wasm.staticLodPassUploads, 1);
     assert.equal(wasm.renderFrameCalls, 2);
 
     bridge.dispose();
@@ -318,6 +358,23 @@ function frame(): RustStaticFrameState {
     assert.deepEqual(bridge.getLastStats(), {
         drawCalls: 1,
         submittedIndices: 3,
+    });
+    bridge.dispose();
+}
+
+{
+    const bridge = new RustRendererBridge(
+        {} as HTMLCanvasElement,
+        MockWasm,
+    );
+    bridge.uploadStaticScene(packet(), 6.0);
+    const lodFrame = frame();
+    lodFrame.useLod = true;
+    bridge.renderStatic(lodFrame);
+
+    assert.deepEqual(bridge.getLastStats(), {
+        drawCalls: 1,
+        submittedIndices: 6,
     });
     bridge.dispose();
 }
