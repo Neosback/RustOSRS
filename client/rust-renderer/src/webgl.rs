@@ -7,8 +7,8 @@ use crate::static_scene::StaticMapState;
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, prelude::*};
 use web_sys::{
-    HtmlCanvasElement, WebGl2RenderingContext as Gl, WebGlBuffer, WebGlProgram, WebGlShader,
-    WebGlTexture, WebGlUniformLocation, WebGlVertexArrayObject,
+    HtmlCanvasElement, WebGl2RenderingContext as Gl, WebGlBuffer, WebGlFramebuffer, WebGlProgram,
+    WebGlRenderbuffer, WebGlShader, WebGlTexture, WebGlUniformLocation, WebGlVertexArrayObject,
 };
 
 const REFERENCE_VERTEX_SHADER: &str = include_str!("shaders/reference.vert.glsl");
@@ -513,6 +513,14 @@ pub struct RustWebGlRenderer {
     material_texture: WebGlTexture,
     water_texture_array: WebGlTexture,
     actor_data_texture: WebGlTexture,
+
+    presentation_enabled: bool,
+    presentation_framebuffer: WebGlFramebuffer,
+    presentation_color_texture: WebGlTexture,
+    presentation_depth_renderbuffer: WebGlRenderbuffer,
+    presentation_width: i32,
+    presentation_height: i32,
+
     texture_layer_count: i32,
     material_count: i32,
     last_stats: DrawStats,
@@ -558,6 +566,13 @@ impl RustWebGlRenderer {
         let material_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
         let water_texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
         let actor_data_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
+        let presentation_framebuffer = gl
+            .create_framebuffer()
+            .ok_or_else(|| JsValue::from_str("failed to create presentation framebuffer"))?;
+        let presentation_color_texture = create_linear_texture(&gl, Gl::TEXTURE_2D)?;
+        let presentation_depth_renderbuffer = gl
+            .create_renderbuffer()
+            .ok_or_else(|| JsValue::from_str("failed to create presentation depth renderbuffer"))?;
         initialize_fallback_texture_array(&gl, &texture_array)?;
         initialize_fallback_materials(&gl, &material_texture)?;
         initialize_fallback_water_textures(&gl, &water_texture_array)?;
@@ -768,6 +783,12 @@ impl RustWebGlRenderer {
             material_texture,
             water_texture_array,
             actor_data_texture,
+            presentation_enabled: false,
+            presentation_framebuffer,
+            presentation_color_texture,
+            presentation_depth_renderbuffer,
+            presentation_width: 0,
+            presentation_height: 0,
             texture_layer_count: 1,
             material_count: 1,
             last_stats: DrawStats::default(),
@@ -1575,6 +1596,15 @@ impl RustWebGlRenderer {
 
     pub fn begin_static_frame(&mut self, sky_rgba: &[f32]) -> Result<(), JsValue> {
         require_vec4(sky_rgba, "sky_rgba")?;
+        if self.presentation_enabled {
+            self.ensure_presentation_target()?;
+            self.gl.bind_framebuffer(
+                Gl::FRAMEBUFFER,
+                Some(&self.presentation_framebuffer),
+            );
+        } else {
+            self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
+        }
         self.prepare_default_frame(sky_rgba);
         self.last_stats = DrawStats::default();
         self.last_draw_hash = DRAW_HASH_OFFSET_BASIS;
@@ -2803,6 +2833,58 @@ impl RustWebGlRenderer {
         Ok(())
     }
 
+    /// Enables the Stage-3 offscreen scene target. When enabled, subsequent
+    /// frames render into a Rust-owned RGBA8 + depth framebuffer until
+    /// `present_frame` resolves that image to the detached canvas.
+    pub fn set_presentation_enabled(&mut self, enabled: bool) -> Result<(), JsValue> {
+        self.presentation_enabled = enabled;
+        if enabled {
+            self.ensure_presentation_target()?;
+        } else {
+            self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
+        }
+        Ok(())
+    }
+
+    pub fn presentation_enabled(&self) -> bool {
+        self.presentation_enabled
+    }
+
+    /// Presents the Rust-owned scene target to the canvas without
+    /// post-processing. FXAA/MSAA are layered on top in later Stage-3 steps.
+    pub fn present_frame(&mut self) -> Result<(), JsValue> {
+        if !self.presentation_enabled {
+            return Ok(());
+        }
+
+        self.ensure_presentation_target()?;
+        let width = self.presentation_width.max(1);
+        let height = self.presentation_height.max(1);
+
+        self.gl.bind_framebuffer(
+            Gl::READ_FRAMEBUFFER,
+            Some(&self.presentation_framebuffer),
+        );
+        self.gl.bind_framebuffer(Gl::DRAW_FRAMEBUFFER, None);
+        self.gl.blit_framebuffer(
+            0,
+            0,
+            width,
+            height,
+            0,
+            0,
+            width,
+            height,
+            Gl::COLOR_BUFFER_BIT,
+            Gl::NEAREST,
+        );
+        self.gl.bind_framebuffer(Gl::READ_FRAMEBUFFER, None);
+        self.gl.bind_framebuffer(Gl::DRAW_FRAMEBUFFER, None);
+        self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
+        self.prepare_viewport();
+        Ok(())
+    }
+
     pub fn last_draw_calls(&self) -> u32 {
         self.last_stats.draw_calls
     }
@@ -2824,6 +2906,12 @@ impl RustWebGlRenderer {
         self.gl.delete_texture(Some(&self.material_texture));
         self.gl.delete_texture(Some(&self.water_texture_array));
         self.gl.delete_texture(Some(&self.actor_data_texture));
+        self.gl
+            .delete_framebuffer(Some(&self.presentation_framebuffer));
+        self.gl
+            .delete_texture(Some(&self.presentation_color_texture));
+        self.gl
+            .delete_renderbuffer(Some(&self.presentation_depth_renderbuffer));
         self.dynamic_npc_batch.delete(&self.gl);
         self.dynamic_gfx_batch.delete(&self.gl);
         self.dynamic_projectile_batch.delete(&self.gl);
@@ -2886,6 +2974,73 @@ impl RustWebGlRenderer {
             _ => unreachable!(),
         }
         result
+    }
+
+    fn ensure_presentation_target(&mut self) -> Result<(), JsValue> {
+        let width = (self.canvas.width() as i32).max(1);
+        let height = (self.canvas.height() as i32).max(1);
+        if self.presentation_width == width && self.presentation_height == height {
+            return Ok(());
+        }
+
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D, Some(&self.presentation_color_texture));
+        self.gl
+            .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
+                Gl::TEXTURE_2D,
+                0,
+                Gl::RGBA8 as i32,
+                width,
+                height,
+                0,
+                Gl::RGBA,
+                Gl::UNSIGNED_BYTE,
+                None,
+            )?;
+
+        self.gl.bind_renderbuffer(
+            Gl::RENDERBUFFER,
+            Some(&self.presentation_depth_renderbuffer),
+        );
+        self.gl.renderbuffer_storage(
+            Gl::RENDERBUFFER,
+            Gl::DEPTH_COMPONENT24,
+            width,
+            height,
+        );
+
+        self.gl.bind_framebuffer(
+            Gl::FRAMEBUFFER,
+            Some(&self.presentation_framebuffer),
+        );
+        self.gl.framebuffer_texture_2d(
+            Gl::FRAMEBUFFER,
+            Gl::COLOR_ATTACHMENT0,
+            Gl::TEXTURE_2D,
+            Some(&self.presentation_color_texture),
+            0,
+        );
+        self.gl.framebuffer_renderbuffer(
+            Gl::FRAMEBUFFER,
+            Gl::DEPTH_ATTACHMENT,
+            Gl::RENDERBUFFER,
+            Some(&self.presentation_depth_renderbuffer),
+        );
+
+        let status = self.gl.check_framebuffer_status(Gl::FRAMEBUFFER);
+        self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
+        self.gl.bind_renderbuffer(Gl::RENDERBUFFER, None);
+        self.gl.bind_texture(Gl::TEXTURE_2D, None);
+
+        if status != Gl::FRAMEBUFFER_COMPLETE {
+            return Err(JsValue::from_str(&format!(
+                "presentation framebuffer incomplete: 0x{status:04x}",
+            )));
+        }
+
+        self.presentation_width = width;
+        self.presentation_height = height;
+        Ok(())
     }
 
     fn prepare_viewport(&self) {
@@ -3000,6 +3155,19 @@ fn create_nearest_texture(gl: &Gl, target: u32) -> Result<WebGlTexture, JsValue>
     if target == Gl::TEXTURE_2D_ARRAY {
         gl.tex_parameteri(target, Gl::TEXTURE_WRAP_R, Gl::CLAMP_TO_EDGE as i32);
     }
+    gl.bind_texture(target, None);
+    Ok(texture)
+}
+
+fn create_linear_texture(gl: &Gl, target: u32) -> Result<WebGlTexture, JsValue> {
+    let texture = gl
+        .create_texture()
+        .ok_or_else(|| JsValue::from_str("failed to create WebGL texture"))?;
+    gl.bind_texture(target, Some(&texture));
+    gl.tex_parameteri(target, Gl::TEXTURE_MIN_FILTER, Gl::LINEAR as i32);
+    gl.tex_parameteri(target, Gl::TEXTURE_MAG_FILTER, Gl::LINEAR as i32);
+    gl.tex_parameteri(target, Gl::TEXTURE_WRAP_S, Gl::CLAMP_TO_EDGE as i32);
+    gl.tex_parameteri(target, Gl::TEXTURE_WRAP_T, Gl::CLAMP_TO_EDGE as i32);
     gl.bind_texture(target, None);
     Ok(texture)
 }
