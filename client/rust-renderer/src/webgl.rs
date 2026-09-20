@@ -20,8 +20,7 @@ const PLAYER_VERTEX_SHADER: &str = include_str!("shaders/player.vert.glsl");
 const PLAYER_FRAGMENT_SHADER: &str = include_str!("shaders/player.frag.glsl");
 const PROJECTILE_VERTEX_SHADER: &str = include_str!("shaders/projectile.vert.glsl");
 const PRESENT_VERTEX_SHADER: &str = include_str!("shaders/present.vert.glsl");
-const PRESENT_FXAA_FRAGMENT_SHADER: &str =
-    include_str!("shaders/present-fxaa.frag.glsl");
+const PRESENT_FXAA_FRAGMENT_SHADER: &str = include_str!("shaders/present-fxaa.frag.glsl");
 
 struct StaticProgram {
     program: WebGlProgram,
