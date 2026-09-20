@@ -23,8 +23,9 @@ export function getRustRendererRuntimeMode(
     search: string = typeof window !== "undefined" ? window.location.search : "",
 ): RustRendererRuntimeMode {
     const raw = new URLSearchParams(search).get("rust-renderer");
-    if (raw === "primary") return "primary";
-    return raw === "shadow" ? "shadow" : "off";
+    if (raw === "off") return "off";
+    if (raw === "shadow") return "shadow";
+    return "primary";
 }
 
 export function isRustPrimaryRuntime(
