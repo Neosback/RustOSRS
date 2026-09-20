@@ -25,6 +25,7 @@ export interface RustStaticScenePacket {
     modelInfoOpaque: Uint16Array;
     modelInfoAlpha: Uint16Array;
     heightMap: Int16Array;
+    waterMask: Uint8Array;
 
     opaqueDrawRanges: Uint32Array;
     opaqueDrawRangePlanes: Uint8Array;
@@ -96,6 +97,19 @@ export function inferHeightMapPlanes(heightMap: Int16Array, size: number): numbe
     return heightMap.length / planeSamples;
 }
 
+export function validateWaterMask(
+    waterMask: Uint8Array,
+    size: number,
+    planes: number,
+): void {
+    const expected = size * size * planes * 4;
+    if (waterMask.length !== expected) {
+        throw new Error(
+            `Water-mask packet has ${waterMask.length} bytes; expected ${expected}`,
+        );
+    }
+}
+
 /**
  * Adapter for an already-decoded map square.
  *
@@ -106,6 +120,7 @@ export function inferHeightMapPlanes(heightMap: Int16Array, size: number): numbe
 export function createRustStaticScenePacket(data: SdMapData): RustStaticScenePacket {
     const heightMapSize = data.heightMapSize;
     const heightMapPlanes = inferHeightMapPlanes(data.heightMapTextureData, heightMapSize);
+    validateWaterMask(data.waterMaskTextureData, heightMapSize, heightMapPlanes);
 
     return {
         abiVersion: RUST_RENDERER_ABI_VERSION,
@@ -122,6 +137,7 @@ export function createRustStaticScenePacket(data: SdMapData): RustStaticScenePac
         modelInfoOpaque: data.modelTextureData,
         modelInfoAlpha: data.modelTextureDataAlpha,
         heightMap: data.heightMapTextureData,
+        waterMask: data.waterMaskTextureData,
 
         opaqueDrawRanges: flattenDrawRanges(data.drawRanges),
         opaqueDrawRangePlanes: data.drawRangesPlanes,
