@@ -967,6 +967,22 @@ impl RustWebGlRenderer {
         )
     }
 
+    /// Uploads one finalized projectile frame geometry packet into a
+    /// reusable batch. TypeScript remains authoritative for trajectory and
+    /// animation-frame selection.
+    pub fn upload_dynamic_projectile_geometry(
+        &mut self,
+        packed_vertices: &[u32],
+        indices: &[u32],
+    ) -> Result<(), JsValue> {
+        self.dynamic_projectile_batch.upload_geometry_with_usage(
+            &self.gl,
+            packed_vertices,
+            indices,
+            Gl::DYNAMIC_DRAW,
+        )
+    }
+
     /// Uploads one finalized player geometry packet into a reusable
     /// dynamic batch. Appearance construction and animation remain in TypeScript.
     pub fn upload_dynamic_player_geometry(
