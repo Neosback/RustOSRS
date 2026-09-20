@@ -234,6 +234,7 @@ export async function initWaterTextures(host: WebGLOsrsRendererHost, ): Promise<
         }
 
         host.waterTexturePixels = data;
+        host.rustGlobalResourcesRevision++;
         host.waterTextures?.delete();
         host.waterTextures = createTextureArray(
             host.app,
