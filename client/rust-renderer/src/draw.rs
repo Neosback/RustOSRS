@@ -78,6 +78,31 @@ pub fn parse_draw_ranges(flat: &[u32]) -> Result<Vec<DrawRange>, &'static str> {
         .collect())
 }
 
+pub fn parse_draw_range_patches(
+    flat: &[u32],
+    range_count: usize,
+) -> Result<Vec<(usize, DrawRange)>, String> {
+    if !flat.len().is_multiple_of(4) {
+        return Err("draw-range patch packet must contain quadruples".to_string());
+    }
+
+    let mut patches = Vec::with_capacity(flat.len() / 4);
+    for chunk in flat.chunks_exact(4) {
+        let range_index = chunk[0] as usize;
+        if range_index >= range_count {
+            return Err(format!(
+                "draw-range patch index {range_index} is outside {range_count} resident ranges"
+            ));
+        }
+
+        patches.push((
+            range_index,
+            DrawRange::new(chunk[1], chunk[2], chunk[3]),
+        ));
+    }
+    Ok(patches)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,4 +140,28 @@ mod tests {
             vec![DrawRange::new(0, 6, 1), DrawRange::new(24, 12, 2)]
         );
     }
+
+    #[test]
+    fn parses_animation_draw_range_patch_packet() {
+        assert_eq!(
+            parse_draw_range_patches(&[2, 48, 6, 1, 0, 0, 3, 2], 3).unwrap(),
+            vec![
+                (2, DrawRange::new(48, 6, 1)),
+                (0, DrawRange::new(0, 3, 2)),
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_animation_draw_range_patches() {
+        assert_eq!(
+            parse_draw_range_patches(&[0, 12, 3], 1).unwrap_err(),
+            "draw-range patch packet must contain quadruples"
+        );
+        assert_eq!(
+            parse_draw_range_patches(&[1, 0, 3, 1], 1).unwrap_err(),
+            "draw-range patch index 1 is outside 1 resident ranges"
+        );
+    }
+
 }
