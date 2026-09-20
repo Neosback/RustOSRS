@@ -407,6 +407,30 @@ export class RustRendererBridge {
         return this.wasm.resident_static_map_count();
     }
 
+    hasStaticMap(mapKey: number): boolean {
+        return this.uploadedMapKeys.has(mapKey);
+    }
+
+    updateLocGeometry(
+        mapKey: number,
+        geometry: RustStaticGeometryPacket,
+    ): boolean {
+        if (!this.uploadedMapKeys.has(mapKey)) return false;
+        this.wasm.select_static_map(mapKey);
+        this.uploadAuxStaticGeometry(0, geometry);
+        return true;
+    }
+
+    updateDoorGeometry(
+        mapKey: number,
+        geometry: RustStaticGeometryPacket,
+    ): boolean {
+        if (!this.uploadedMapKeys.has(mapKey)) return false;
+        this.wasm.select_static_map(mapKey);
+        this.uploadAuxStaticGeometry(1, geometry);
+        return true;
+    }
+
     removeStaticMap(mapKey: number): void {
         this.wasm.remove_static_map(mapKey);
         this.uploadedMapKeys.delete(mapKey);
