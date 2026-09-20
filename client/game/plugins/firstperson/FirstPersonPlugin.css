@@ -1,0 +1,20 @@
+.first-person-reticle {
+    --first-person-reticle-x: 50%;
+    --first-person-reticle-y: 50%;
+}
+
+.first-person-reticle::after {
+    content: "";
+    position: absolute;
+    left: var(--first-person-reticle-x);
+    top: var(--first-person-reticle-y);
+    width: 14px;
+    height: 14px;
+    transform: translate(-50%, -50%);
+    background:
+        linear-gradient(to right, transparent 6px, white 6px 8px, transparent 8px),
+        linear-gradient(to bottom, transparent 6px, white 6px 8px, transparent 8px);
+    filter: drop-shadow(0 0 1px black);
+    pointer-events: none;
+    z-index: 1;
+}

@@ -1,0 +1,144 @@
+{
+  "name": "@xrsps/client",
+  "version": "0.1.0",
+  "private": true,
+  "homepage": "/play",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "@foxglove/wasm-bz2": "^0.3.0",
+    "@types/node": "^25.9.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@wasm-audio-decoders/ogg-vorbis": "^0.1.20",
+    "bzip2": "^0.1.1",
+    "denque": "^2.1.0",
+    "fast-memoize": "^2.5.2",
+    "file-saver": "^2.0.5",
+    "gl-matrix": "^3.4.4",
+    "java-random": "^0.4.0",
+    "js-xxhash": "^5.0.1",
+    "jszip": "^3.10.1",
+    "leva": "^0.10.1",
+    "pako": "^2.1.0",
+    "picogl": "^0.17.9",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-modal": "^3.16.3",
+    "react-router-dom": "^7.17.0",
+    "react-scripts": "5.0.1",
+    "react-select": "^5.10.2",
+    "threads": "^1.7.0",
+    "typescript": "6.0.3",
+    "usehooks-ts": "^3.1.1",
+    "wasm-gzip": "^2.1.0",
+    "web-vitals": "^5.3.0",
+    "webfontloader": "^1.6.28",
+    "xxhash-wasm": "^1.1.0"
+  },
+  "scripts": {
+    "start": "tsx ../server/scripts/ensure-cache.ts && node ../scripts/run-with-env.mjs development ./node_modules/@craco/craco/dist/bin/craco.js start",
+    "dev": "yarn start",
+    "build": "node ../scripts/run-with-env.mjs production ./node_modules/@craco/craco/dist/bin/craco.js build",
+    "test": "tsx tests/direction-orientation.test.ts && tsx tests/player-run-path-reconstruction.test.ts && tsx tests/npc-instance-flush-controller.test.ts && tsx tests/cache-streaming.test.ts && tsx tests/cache-manifest-sparse.test.ts && tsx tests/cache-prefetch.test.ts && tsx tests/js5-coordinator.test.ts && tsx tests/js5-range-batching.test.ts && tsx tests/map-loading-regression.test.ts && tsx tests/browser-host-world-definition.test.ts && tsx tests/emote-shortcut-gate.test.ts && tsx tests/wilderness-hud-layout.test.ts && tsx tests/custom-interface-runtime.test.ts && tsx tests/pending-interface-updates.test.ts && tsx tests/widget-script-inventory.test.ts && tsx tests/market-ops.test.ts && tsx tests/chat-channel-prefix.test.ts && tsx tests/camera-controls.test.ts && tsx tests/scene-viewport-rect.test.ts && tsx tests/renderer-lifecycle.test.ts && tsx tests/projectile-timing.test.ts && tsx tests/player-equipment-arms.test.ts && tsx tests/player-draw-batching.test.ts && tsx tests/player-spot-animation-targeting.test.ts && tsx tests/player-spot-animation-targeting.test.ts && tsx tests/player-spot-animation-targeting.test.ts && tsx tests/cs2-script-parse.test.ts && tsx tests/widget-query-opcodes.test.ts && tsx tests/viewport-effective-size-scale.test.ts && tsx tests/mouseover-text-hidpi-scale.test.ts && tsx tests/trade-amount-overlay-hidpi.test.ts && tsx tests/viewport-effective-size-scale.test.ts && tsx tests/widget-if3-decode.test.ts && tsx tests/widget-root-onload-race.test.ts && tsx tests/remember-login-plugin.test.ts && tsx tests/vengeance-timer-plugin.test.ts && tsx tests/split-private-chat-plugin.test.ts && tsx tests/menu-click-consumption.test.ts && tsx tests/widget-menu-use.test.ts && tsx tests/widget-primary-op-context.test.ts && tsx tests/player-head-icons.test.ts && tsx tests/webrtc-world-list.test.ts && tsx tests/revert-item-drop-action.test.ts",
+    "test:vengeance-timer": "tsx tests/vengeance-timer-plugin.test.ts",
+    "test:status-timer": "tsx tests/status-timer-plugin.test.ts",
+    "test:head-icons": "tsx tests/player-head-icons.test.ts",
+    "test:fire-cape-texture": "tsx tests/fire-cape-texture.test.ts",
+    "test:appearance-transform": "tsx tests/appearance-npc-transform.test.ts",
+    "test:first-person-reticle": "tsx tests/first-person-reticle-input.test.ts",
+    "test:spell-quest-gate": "tsx tests/spell-quest-gate.test.ts",
+    "test:webrtc-world-list": "tsx tests/webrtc-world-list.test.ts",
+    "test:content-api": "tsx tests/content-api.test.ts",
+    "test:hd": "tsx tests/hd-plugin.test.ts",
+    "test:editor-objects": "tsx tests/edit-mode-object-spawns.test.ts && tsx tests/edit-mode-settings.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "export-textures": "tsx scripts/cache/export-textures.ts",
+    "export-height-map": "tsx scripts/cache/export-height-map.ts",
+    "export-items": "tsx scripts/cache/export-items.ts",
+    "deploy": "node scripts/deploy.mjs"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ],
+    "overrides": [
+      {
+        "files": [
+          "rs/**/*.{ts,js}"
+        ],
+        "rules": {
+          "@typescript-eslint/no-unused-vars": "off",
+          "eqeqeq": "off",
+          "strict": "off"
+        }
+      },
+      {
+        "files": [
+          "game/OsrsClient.ts"
+        ],
+        "rules": {
+          "@typescript-eslint/no-unused-vars": "off",
+          "no-useless-escape": "off"
+        }
+      },
+      {
+        "files": [
+          "game/audio/**/*.{ts,tsx}",
+          "game/login/**/*.{ts,tsx}",
+          "game/menu/**/*.{ts,tsx}",
+          "game/movement/**/*.{ts,tsx}",
+          "game/roof/**/*.{ts,tsx}",
+          "game/sync/**/*.{ts,tsx}",
+          "render/**/*.{ts,tsx}",
+          "widgets/gl/**/*.{ts,tsx}",
+          "ui/item/**/*.{ts,tsx}",
+          "ui/model/**/*.{ts,tsx}",
+          "network/serverConnection/**/*.{ts,tsx}"
+        ],
+        "rules": {
+          "@typescript-eslint/no-unused-vars": "off"
+        }
+      },
+      {
+        "files": [
+          "common/utils/*.js"
+        ],
+        "rules": {
+          "strict": "off"
+        }
+      }
+    ]
+  },
+  "browserslist": {
+    "production": [
+      "chrome >= 67",
+      "edge >= 79",
+      "firefox >= 68",
+      "opera >= 54",
+      "safari >= 14"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "@craco/craco": "^7.1.0",
+    "@types/file-saver": "^2.0.7",
+    "@types/gzip-js": "^0.3.5",
+    "@types/pako": "^2.0.4",
+    "@types/react-modal": "^3.16.3",
+    "@types/webfontloader": "^1.6.38",
+    "basic-ftp": "^6.2.1",
+    "json-minimizer-webpack-plugin": "^5.0.1",
+    "path": "^0.12.7",
+    "threads-plugin": "^1.4.0",
+    "ts-shader-loader": "^2.1.0",
+    "tsx": "^4.22.4"
+  },
+  "packageManager": "yarn@4.12.0+sha512.f45ab632439a67f8bc759bf32ead036a1f413287b9042726b7cc4818b7b49e14e9423ba49b18f9e06ea4941c1ad062385b1d8760a8d5091a1a31e5f6219afca8"
+}
