@@ -10,6 +10,7 @@ async function main(): Promise<void> {
         createWorldEntityGhostSceneHslOverride,
         getRustRendererShadowDiagnostics,
         hashExpectedDrawRanges,
+        isRustGfxShadowEnabled,
         isRustNpcShadowEnabled,
         isRustPlayerShadowEnabled,
     } = await import("../render/rust/RustShadowIntegration");
@@ -43,8 +44,10 @@ async function main(): Promise<void> {
         expectedWorldEntityGhostPasses: 0,
         npcParityEnabled: false,
         playerParityEnabled: false,
+        gfxParityEnabled: false,
         mirroredNpcPasses: 0,
         mirroredPlayerPasses: 0,
+        mirroredGfxPasses: 0,
     });
 
     const animatedMap = {
@@ -203,6 +206,22 @@ async function main(): Promise<void> {
     assert.equal(
         isRustPlayerShadowEnabled(
             "?rust-renderer=off&rust-player-parity=1",
+        ),
+        false,
+    );
+    assert.equal(
+        isRustGfxShadowEnabled(
+            "?rust-renderer=shadow&rust-gfx-parity=1",
+        ),
+        true,
+    );
+    assert.equal(
+        isRustGfxShadowEnabled("?rust-renderer=shadow"),
+        false,
+    );
+    assert.equal(
+        isRustGfxShadowEnabled(
+            "?rust-renderer=off&rust-gfx-parity=1",
         ),
         false,
     );
