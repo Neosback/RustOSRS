@@ -157,11 +157,8 @@ mod tests {
             .is_ok()
         );
         assert_eq!(
-            validate_draw_range_planes(
-                &[DrawRange::new(0, 3, 1), DrawRange::new(12, 6, 1)],
-                &[0],
-            )
-            .unwrap_err(),
+            validate_draw_range_planes(&[DrawRange::new(0, 3, 1), DrawRange::new(12, 6, 1)], &[0],)
+                .unwrap_err(),
             RendererPacketError::DrawRangePlaneCount {
                 range_count: 2,
                 plane_count: 1,
