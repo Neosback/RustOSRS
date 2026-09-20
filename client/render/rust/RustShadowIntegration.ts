@@ -1568,6 +1568,7 @@ export function renderRustStaticShadowFrame(
         const playerParityEnabled = isRustPlayerShadowEnabled();
         const gfxParityEnabled = isRustGfxShadowEnabled();
         const projectileParityEnabled = isRustProjectileShadowEnabled();
+        const overlayParityEnabled = isRustSceneOverlayShadowEnabled();
         const dynamicParityEnabled =
             npcParityEnabled
             || playerParityEnabled
@@ -1586,15 +1587,19 @@ export function renderRustStaticShadowFrame(
             eligibleMaps,
             expectedWorldEntityGhostPasses,
             pixelReference:
-                dynamicParityEnabled ? undefined : pixelReference,
+                dynamicParityEnabled || overlayParityEnabled
+                    ? undefined
+                    : pixelReference,
             npcParityEnabled,
             playerParityEnabled,
             gfxParityEnabled,
             projectileParityEnabled,
+            overlayParityEnabled,
             mirroredNpcPasses: 0,
             mirroredPlayerPasses: 0,
             mirroredGfxPasses: 0,
             mirroredProjectilePasses: 0,
+            mirroredOverlayPasses: 0,
             phase: "prepared",
         };
 
@@ -1624,7 +1629,13 @@ export function renderRustStaticShadowFrame(
                 entry.worldEntityGhostPass,
             );
         }
-        state.phase = "transparent-actors";
+        state.phase = overlayParityEnabled
+            ? "scene-overlays"
+            : "transparent-actors";
+        if (overlayParityEnabled) {
+            activeShadowFrames.set(host, state);
+            return;
+        }
         finalizeRustShadowFrame(host, runtime, state);
     } catch (error) {
         disableShadow(host, "frame render", error);
