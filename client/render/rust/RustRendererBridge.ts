@@ -1,5 +1,6 @@
 import {
     RUST_RENDERER_ABI_VERSION,
+    RustStaticGeometryPacket,
     RustStaticScenePacket,
 } from "./RendererPacket";
 
@@ -28,6 +29,29 @@ export interface RustRendererWasm {
         alphaRangePlanes: Uint8Array,
     ): void;
     upload_static_lod_passes(
+        modelInfoOpaque: Uint16Array,
+        opaqueRanges: Uint32Array,
+        opaqueRangePlanes: Uint8Array,
+        modelInfoAlpha: Uint16Array,
+        alphaRanges: Uint32Array,
+        alphaRangePlanes: Uint8Array,
+    ): void;
+    upload_aux_geometry(
+        kind: number,
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void;
+    upload_aux_passes(
+        kind: number,
+        modelInfoOpaque: Uint16Array,
+        opaqueRanges: Uint32Array,
+        opaqueRangePlanes: Uint8Array,
+        modelInfoAlpha: Uint16Array,
+        alphaRanges: Uint32Array,
+        alphaRangePlanes: Uint8Array,
+    ): void;
+    upload_aux_lod_passes(
+        kind: number,
         modelInfoOpaque: Uint16Array,
         opaqueRanges: Uint32Array,
         opaqueRangePlanes: Uint8Array,
@@ -224,6 +248,8 @@ export class RustRendererBridge {
             packet.alphaLodDrawRanges,
             packet.alphaLodDrawRangePlanes,
         );
+        this.uploadAuxStaticGeometry(0, packet.locGeometry);
+        this.uploadAuxStaticGeometry(1, packet.doorGeometry);
         this.uploadedPacket = packet;
     }
 
@@ -257,6 +283,43 @@ export class RustRendererBridge {
             drawCalls: this.wasm.last_draw_calls(),
             submittedIndices: this.wasm.last_submitted_indices(),
         };
+    }
+
+    private uploadAuxStaticGeometry(
+        kind: number,
+        geometry: RustStaticGeometryPacket,
+    ): void {
+        this.wasm.upload_aux_geometry(
+            kind,
+            geometry.packedVertexWords,
+            geometry.indices,
+        );
+
+        if (
+            geometry.packedVertexWords.length === 0
+            || geometry.indices.length === 0
+        ) {
+            return;
+        }
+
+        this.wasm.upload_aux_passes(
+            kind,
+            geometry.modelInfoOpaque,
+            geometry.opaqueDrawRanges,
+            geometry.opaqueDrawRangePlanes,
+            geometry.modelInfoAlpha,
+            geometry.alphaDrawRanges,
+            geometry.alphaDrawRangePlanes,
+        );
+        this.wasm.upload_aux_lod_passes(
+            kind,
+            geometry.modelInfoOpaqueLod,
+            geometry.opaqueLodDrawRanges,
+            geometry.opaqueLodDrawRangePlanes,
+            geometry.modelInfoAlphaLod,
+            geometry.alphaLodDrawRanges,
+            geometry.alphaLodDrawRangePlanes,
+        );
     }
 
     dispose(): void {
