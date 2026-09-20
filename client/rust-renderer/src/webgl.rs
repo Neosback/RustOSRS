@@ -3065,6 +3065,94 @@ impl RustWebGlRenderer {
         Ok(())
     }
 
+    /// Draws one depth-aware world-space overlay primitive after the scene
+    /// geometry/actors and before presentation. Overlay draws intentionally do
+    /// not participate in the static/dynamic structural draw fingerprint.
+    pub fn render_scene_overlay(
+        &mut self,
+        vertices: &[f32],
+        color: &[f32],
+        view_matrix: &[f32],
+        projection_matrix: &[f32],
+        filled: bool,
+    ) -> Result<(), JsValue> {
+        require_matrix(view_matrix, "view_matrix")?;
+        require_matrix(projection_matrix, "projection_matrix")?;
+        require_vec4(color, "color")?;
+        if vertices.len() % 3 != 0 {
+            return Err(JsValue::from_str(
+                "scene overlay vertices must contain xyz triples",
+            ));
+        }
+        let vertex_count = vertices.len() / 3;
+        let minimum = if filled { 3 } else { 2 };
+        if vertex_count < minimum {
+            return Ok(());
+        }
+        let vertex_count = i32::try_from(vertex_count)
+            .map_err(|_| JsValue::from_str("scene overlay vertex count overflow"))?;
+
+        let cull_was_enabled = self.gl.is_enabled(Gl::CULL_FACE);
+        let blend_was_enabled = self.gl.is_enabled(Gl::BLEND);
+
+        self.prepare_viewport();
+        self.gl.enable(Gl::DEPTH_TEST);
+        self.gl.depth_mask(false);
+        self.gl.disable(Gl::CULL_FACE);
+        if filled {
+            self.gl.enable(Gl::BLEND);
+            self.gl
+                .blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+        } else {
+            self.gl.disable(Gl::BLEND);
+        }
+
+        self.gl
+            .use_program(Some(&self.scene_overlay_program.program));
+        self.gl.uniform_matrix4fv_with_f32_array(
+            Some(&self.scene_overlay_program.view_matrix),
+            false,
+            view_matrix,
+        );
+        self.gl.uniform_matrix4fv_with_f32_array(
+            Some(&self.scene_overlay_program.projection_matrix),
+            false,
+            projection_matrix,
+        );
+        self.gl
+            .uniform4fv_with_f32_array(Some(&self.scene_overlay_program.color), color);
+
+        let vertex_data = js_sys::Float32Array::from(vertices);
+        self.gl
+            .bind_buffer(Gl::ARRAY_BUFFER, Some(&self.scene_overlay_vertex_buffer));
+        self.gl.buffer_data_with_opt_array_buffer(
+            Gl::ARRAY_BUFFER,
+            Some(&vertex_data.buffer()),
+            Gl::DYNAMIC_DRAW,
+        );
+        self.gl.bind_vertex_array(Some(&self.scene_overlay_vao));
+        self.gl.draw_arrays(
+            if filled { Gl::TRIANGLE_FAN } else { Gl::LINE_STRIP },
+            0,
+            vertex_count,
+        );
+        self.gl.bind_vertex_array(None);
+        self.gl.use_program(None);
+
+        self.gl.depth_mask(true);
+        if cull_was_enabled {
+            self.gl.enable(Gl::CULL_FACE);
+        } else {
+            self.gl.disable(Gl::CULL_FACE);
+        }
+        if blend_was_enabled {
+            self.gl.enable(Gl::BLEND);
+        } else {
+            self.gl.disable(Gl::BLEND);
+        }
+        Ok(())
+    }
+
     pub fn last_draw_calls(&self) -> u32 {
         self.last_stats.draw_calls
     }
