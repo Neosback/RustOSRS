@@ -833,6 +833,35 @@ function frame(): RustStaticFrameState {
         { mapKey: 2002, pass: "transparent" },
         { mapKey: 2001, pass: "transparent" },
     ]);
+
+    wasm.passSequence.length = 0;
+    wasm.mapPassCalls.length = 0;
+    wasm.ghostPassCalls.length = 0;
+    const beginCallsBeforeSplit = wasm.beginFrameCalls;
+
+    assert.equal(
+        bridge.beginStaticFrame([firstFrame, secondFrame]),
+        true,
+    );
+    assert.equal(wasm.beginFrameCalls, beginCallsBeforeSplit + 1);
+    assert.deepEqual(wasm.passSequence, []);
+
+    bridge.renderOpaqueStaticMaps([firstFrame, secondFrame]);
+    assert.deepEqual(wasm.passSequence, [
+        { mapKey: 2001, pass: "opaque" },
+        { mapKey: 2001, pass: "ghost" },
+        { mapKey: 2002, pass: "opaque" },
+    ]);
+
+    bridge.renderTransparentStaticMaps([firstFrame, secondFrame]);
+    assert.deepEqual(wasm.passSequence, [
+        { mapKey: 2001, pass: "opaque" },
+        { mapKey: 2001, pass: "ghost" },
+        { mapKey: 2002, pass: "opaque" },
+        { mapKey: 2002, pass: "transparent" },
+        { mapKey: 2001, pass: "transparent" },
+    ]);
+    assert.equal(bridge.beginStaticFrame([]), false);
     bridge.dispose();
 }
 
