@@ -187,6 +187,7 @@ import {
     createProjectileProgram,
 } from "../../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
+import { renderRustStaticShadowFrame } from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
 
@@ -691,6 +692,17 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             .set(12, host.osrsClient.isNewTextureAnim as any)
             .update();
         profiler.endPhase();
+
+        renderRustStaticShadowFrame(
+            host,
+            {
+                viewMatrix: camera.viewMatrix as Float32Array,
+                projectionMatrix: camera.projectionMatrix as Float32Array,
+            },
+            renderDistance,
+            fogDepth,
+            timeSec,
+        );
 
         // CPU-side interactions with latest camera
         profiler.startPhase("interact");
