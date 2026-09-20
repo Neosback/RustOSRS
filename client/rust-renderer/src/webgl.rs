@@ -767,14 +767,8 @@ impl RustWebGlRenderer {
                 &mut self.model_info_lod_alpha_texture,
             );
             std::mem::swap(&mut self.draw_ranges, &mut self.draw_ranges_lod);
-            std::mem::swap(
-                &mut self.draw_ranges_alpha,
-                &mut self.draw_ranges_lod_alpha,
-            );
-            std::mem::swap(
-                &mut self.draw_range_planes,
-                &mut self.draw_range_lod_planes,
-            );
+            std::mem::swap(&mut self.draw_ranges_alpha, &mut self.draw_ranges_lod_alpha);
+            std::mem::swap(&mut self.draw_range_planes, &mut self.draw_range_lod_planes);
             std::mem::swap(
                 &mut self.draw_range_alpha_planes,
                 &mut self.draw_range_lod_alpha_planes,
@@ -807,14 +801,8 @@ impl RustWebGlRenderer {
                     &mut self.draw_range_alpha_planes,
                     &mut self.draw_range_lod_alpha_planes,
                 );
-                std::mem::swap(
-                    &mut self.draw_range_planes,
-                    &mut self.draw_range_lod_planes,
-                );
-                std::mem::swap(
-                    &mut self.draw_ranges_alpha,
-                    &mut self.draw_ranges_lod_alpha,
-                );
+                std::mem::swap(&mut self.draw_range_planes, &mut self.draw_range_lod_planes);
+                std::mem::swap(&mut self.draw_ranges_alpha, &mut self.draw_ranges_lod_alpha);
                 std::mem::swap(&mut self.draw_ranges, &mut self.draw_ranges_lod);
                 std::mem::swap(
                     &mut self.model_info_alpha_texture,
@@ -874,14 +862,8 @@ impl RustWebGlRenderer {
                 &mut self.draw_range_alpha_planes,
                 &mut self.draw_range_lod_alpha_planes,
             );
-            std::mem::swap(
-                &mut self.draw_range_planes,
-                &mut self.draw_range_lod_planes,
-            );
-            std::mem::swap(
-                &mut self.draw_ranges_alpha,
-                &mut self.draw_ranges_lod_alpha,
-            );
+            std::mem::swap(&mut self.draw_range_planes, &mut self.draw_range_lod_planes);
+            std::mem::swap(&mut self.draw_ranges_alpha, &mut self.draw_ranges_lod_alpha);
             std::mem::swap(&mut self.draw_ranges, &mut self.draw_ranges_lod);
             std::mem::swap(
                 &mut self.model_info_alpha_texture,
