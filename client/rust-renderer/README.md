@@ -27,14 +27,20 @@ Stage 0 is implemented and Stage 1 static-scene parity is actively landing:
 - live PicoGL texture/material/water bytes retained as synchronized CPU mirrors for zero-readback WASM upload
 - revisioned TypeScript adapter for uploading those exact live global resources into Rust
 - incremental loc and door geometry replacement for live object-state changes
+- per-frame animated-loc draw-range patching without re-uploading geometry
+- resident ground-item geometry with spawn, rebuild and despawn synchronization
 - deterministic browser `wasm-bindgen` packaging through `yarn build:rust-renderer`
 - opt-in isolated shadow runtime through `?rust-renderer=shadow`
-- shadow diagnostics for resident, visible and mirrored map counts plus Rust draw statistics
+- structural parity diagnostics for resident/visible/mirrored maps, draw-call totals, submitted indices and order-sensitive draw fingerprints
+- explicit detection of the remaining Mode-1 overlapping world-entity ghost redraw gap
+- opt-in static pixel parity capture against an isolated PicoGL reference framebuffer
 - native Rust tests, bridge tests, wasm32 compile checks, browser-WASM packaging and shadow-integration CI
 
-The production client still presents the existing PicoGL renderer. With `?rust-renderer=shadow`, Rust now runs on a detached canvas and consumes the same live decoded map data, global texture/material resources, camera matrices, fog inputs, roof state, render-distance culling, LOD decisions and world-entity transforms. Shadow failures are isolated and do not replace or corrupt the production rendering path.
+The production client still presents the existing PicoGL renderer. With `?rust-renderer=shadow`, Rust runs on a detached canvas sized to the live scene render target and consumes the same decoded map data, global texture/material resources, camera matrices, fog inputs, roof state, render-distance culling, LOD decisions, animated loc state, ground items and world-entity transforms. Shadow failures are isolated and do not replace or corrupt the production rendering path.
 
-The next parity work is no longer basic bridge scaffolding. Static-scene gaps are animated-loc per-frame range changes, ground-item geometry, and a controlled static-only pixel-diff harness. Dynamic players, NPCs, projectiles, graphics effects, picking/interaction rendering and final framebuffer/post-processing remain later stages.
+For image comparison, use `?rust-renderer=shadow&rust-pixel-parity=1`. The first eligible static frame is captured and comparison repeats every 120 frames by default. Add `&rust-pixel-every=N` to change that interval. The latest shadow diagnostics expose structural parity plus pixel mismatch ratio, maximum channel delta, mean absolute channel delta and RMSE.
+
+The main remaining static-scene exception is the live Mode-1 overlapping world-entity ghost redraw. The parity oracle intentionally reports that as a mismatch instead of masking it. Dynamic players, NPCs, projectiles, graphics effects, picking/interaction rendering and final framebuffer/post-processing remain later stages.
 
 ## Why WebGL2 first
 
@@ -63,13 +69,15 @@ No PicoGL object, React object, loader instance, game socket or TypeScript class
 
 Port the current main map pass: scene uniforms, model-info packets, opaque/alpha passes, roof filtering, textures, materials, height maps, water masks, current main GLSL semantics, framebuffers and presentation.
 
-Current status: the static terrain/loc/door scene can be mirrored live into an isolated Rust canvas across multiple resident map squares. Animated loc mutations, ground items and controlled pixel-diff validation are the remaining major static-scene acceptance gaps.
+Current status: terrain, locs, doors, animated-loc range changes and ground items are mirrored live across multiple resident map squares. Structural parity compares the exact draw totals and an order-sensitive draw fingerprint. An opt-in isolated PicoGL reference framebuffer provides pixel-level comparison against the Rust shadow output.
 
-Acceptance: identical static scene state + camera produces pixel-comparable output between PicoGL and Rust.
+Known exception: Mode-1 overlapping world entities receive an additional tinted, low-opacity terrain redraw in PicoGL that Rust does not render yet. Diagnostics count this explicitly so static parity cannot report a false green.
+
+Acceptance: identical static scene state + camera produces structurally matching draw sequences and pixel-comparable output between PicoGL and Rust across representative map, roof, LOD, water, animation and world-entity scenes.
 
 ### Stage 2: dynamic scene
 
-Move players, NPCs, projectiles, GFX, ground items, animated locs, actor data, transparency and priority ordering.
+Move players, NPCs, projectiles, GFX, actor data, dynamic transparency and priority ordering. Ground items and animated loc draw-range changes already participate in the Stage 1 shadow path.
 
 ### Stage 3: renderer services
 
