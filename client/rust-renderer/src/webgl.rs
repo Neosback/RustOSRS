@@ -628,8 +628,9 @@ impl RustWebGlRenderer {
 
     /// Renders the resident opaque and alpha static passes as one Rust-owned frame.
     ///
-    /// Opaque geometry uses alpha-test discard and clears the frame. The alpha
-    /// pass preserves the opaque color/depth buffers and does not fall back to
+    /// The opaque pass matches mainProgram (no alpha-test define) and clears
+    /// the frame. The alpha pass matches mainAlphaProgram (alpha-test discard),
+    /// preserves the opaque color/depth buffers and does not fall back to
     /// drawing the whole index buffer when its range list is empty.
     #[allow(clippy::too_many_arguments)]
     pub fn render_static_frame(
@@ -660,7 +661,7 @@ impl RustWebGlRenderer {
             roof_plane_limit,
             is_new_texture_anim,
             color_banding,
-            true,
+            false,
             true,
         )?;
 
@@ -683,7 +684,7 @@ impl RustWebGlRenderer {
             roof_plane_limit,
             is_new_texture_anim,
             color_banding,
-            false,
+            true,
             false,
         );
 
