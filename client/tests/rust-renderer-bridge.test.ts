@@ -45,6 +45,11 @@ class MockWasm implements RustRendererWasm {
     textureResourceUploads = 0;
     materialResourceUploads = 0;
     waterResourceUploads = 0;
+    actorDataUploads: Array<{
+        values: Uint16Array;
+        width: number;
+        height: number;
+    }> = [];
     renderFrameCalls = 0;
     beginFrameCalls = 0;
     mapPassCalls: Array<{ mapKey: number; transparent: boolean }> = [];
@@ -242,6 +247,18 @@ class MockWasm implements RustRendererWasm {
         _layers: number,
     ): void {
         this.waterResourceUploads++;
+    }
+
+    upload_actor_data(
+        values: Uint16Array,
+        width: number,
+        height: number,
+    ): void {
+        this.actorDataUploads.push({
+            values: new Uint16Array(values),
+            width,
+            height,
+        });
     }
 
     begin_static_frame(_skyRgba: Float32Array): void {
@@ -535,6 +552,40 @@ function frame(): RustStaticFrameState {
             }),
         /material table has 1 bytes/,
     );
+}
+
+{
+    const bridge = new RustRendererBridge(
+        {} as HTMLCanvasElement,
+        MockWasm,
+    );
+    const actorData = new Uint16Array(16 * 1 * 4);
+    actorData[0] = 3200;
+    actorData[1] = 3210;
+    actorData[7] = 127;
+
+    bridge.uploadActorData(actorData, 16, 1);
+    const wasm = MockWasm.last!;
+    assert.equal(wasm.actorDataUploads.length, 1);
+    assert.equal(wasm.actorDataUploads[0].width, 16);
+    assert.equal(wasm.actorDataUploads[0].height, 1);
+    assert.deepEqual(
+        Array.from(wasm.actorDataUploads[0].values),
+        Array.from(actorData),
+    );
+
+    actorData[0] = 9999;
+    assert.equal(wasm.actorDataUploads[0].values[0], 3200);
+
+    assert.throws(
+        () => bridge.uploadActorData(new Uint16Array(3), 16, 1),
+        /Actor-data packet has 3 u16 values; expected 64/,
+    );
+    assert.throws(
+        () => bridge.uploadActorData(new Uint16Array(), 0, 1),
+        /Invalid actor-data texture dimensions/,
+    );
+    bridge.dispose();
 }
 
 {
