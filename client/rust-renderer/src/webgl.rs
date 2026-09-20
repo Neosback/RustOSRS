@@ -515,8 +515,10 @@ impl RustWebGlRenderer {
 
         let data = js_sys::Int16Array::from(height_map);
         self.gl.active_texture(Gl::TEXTURE1);
-        self.gl
-            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.static_map.height_map_texture));
+        self.gl.bind_texture(
+            Gl::TEXTURE_2D_ARRAY,
+            Some(&self.static_map.height_map_texture),
+        );
         self.gl.tex_image_3d_with_opt_array_buffer_view(
             Gl::TEXTURE_2D_ARRAY,
             0,
@@ -699,8 +701,10 @@ impl RustWebGlRenderer {
 
         let data = js_sys::Uint8Array::from(pixels);
         self.gl.active_texture(Gl::TEXTURE5);
-        self.gl
-            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.static_map.water_mask_texture));
+        self.gl.bind_texture(
+            Gl::TEXTURE_2D_ARRAY,
+            Some(&self.static_map.water_mask_texture),
+        );
         self.gl.tex_image_3d_with_opt_array_buffer_view(
             Gl::TEXTURE_2D_ARRAY,
             0,
@@ -748,7 +752,11 @@ impl RustWebGlRenderer {
         validate_draw_ranges(&ranges, self.static_map.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         self.static_map.terrain_batch.opaque_pass.draw_ranges = ranges;
-        self.static_map.terrain_batch.opaque_pass.range_planes.clear();
+        self.static_map
+            .terrain_batch
+            .opaque_pass
+            .range_planes
+            .clear();
         Ok(())
     }
 
@@ -757,7 +765,11 @@ impl RustWebGlRenderer {
         validate_draw_ranges(&ranges, self.static_map.terrain_batch.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         self.static_map.terrain_batch.alpha_pass.draw_ranges = ranges;
-        self.static_map.terrain_batch.alpha_pass.range_planes.clear();
+        self.static_map
+            .terrain_batch
+            .alpha_pass
+            .range_planes
+            .clear();
         Ok(())
     }
 
@@ -812,7 +824,11 @@ impl RustWebGlRenderer {
         if !opaque.is_empty() {
             upload_model_info_texture(
                 &self.gl,
-                &self.static_map.terrain_batch.lod_opaque_pass.model_info_texture,
+                &self
+                    .static_map
+                    .terrain_batch
+                    .lod_opaque_pass
+                    .model_info_texture,
                 model_info_opaque,
                 "static LOD opaque model-info",
             )?;
@@ -821,7 +837,11 @@ impl RustWebGlRenderer {
         if !alpha.is_empty() {
             upload_model_info_texture(
                 &self.gl,
-                &self.static_map.terrain_batch.lod_alpha_pass.model_info_texture,
+                &self
+                    .static_map
+                    .terrain_batch
+                    .lod_alpha_pass
+                    .model_info_texture,
                 model_info_alpha,
                 "static LOD alpha model-info",
             )?;
@@ -953,7 +973,8 @@ impl RustWebGlRenderer {
         );
         self.gl
             .uniform1f(Some(&self.reference_brightness), brightness.max(0.0001));
-        self.gl.bind_vertex_array(Some(&self.static_map.terrain_batch.vao));
+        self.gl
+            .bind_vertex_array(Some(&self.static_map.terrain_batch.vao));
 
         let stats = submit_draw_ranges(
             &self.gl,
@@ -1175,8 +1196,10 @@ impl RustWebGlRenderer {
             .uniform1i(Some(&self.static_program.model_info_sampler), 0);
 
         self.gl.active_texture(Gl::TEXTURE1);
-        self.gl
-            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.static_map.height_map_texture));
+        self.gl.bind_texture(
+            Gl::TEXTURE_2D_ARRAY,
+            Some(&self.static_map.height_map_texture),
+        );
         self.gl
             .uniform1i(Some(&self.static_program.height_map_sampler), 1);
 
@@ -1199,14 +1222,17 @@ impl RustWebGlRenderer {
             .uniform1i(Some(&self.static_program.water_texture_sampler), 4);
 
         self.gl.active_texture(Gl::TEXTURE5);
-        self.gl
-            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.static_map.water_mask_texture));
+        self.gl.bind_texture(
+            Gl::TEXTURE_2D_ARRAY,
+            Some(&self.static_map.water_mask_texture),
+        );
         self.gl
             .uniform1i(Some(&self.static_program.water_mask_sampler), 5);
 
         let roof_limit = roof_plane_limit.clamp(0.0, 3.0) as u8;
 
-        self.gl.bind_vertex_array(Some(&self.static_map.terrain_batch.vao));
+        self.gl
+            .bind_vertex_array(Some(&self.static_map.terrain_batch.vao));
         let mut stats = submit_draw_ranges(
             &self.gl,
             &pass.draw_ranges,
@@ -1217,7 +1243,10 @@ impl RustWebGlRenderer {
             false,
         );
 
-        for batch in [&self.static_map.loc_batch, &self.static_map.door_batch].into_iter().flatten() {
+        for batch in [&self.static_map.loc_batch, &self.static_map.door_batch]
+            .into_iter()
+            .flatten()
+        {
             let batch_pass = batch.pass(use_lod, discard_alpha);
             self.gl.bind_vertex_array(Some(&batch.vao));
             let batch_stats = submit_draw_ranges(
