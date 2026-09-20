@@ -44,6 +44,7 @@ const float TEXTURE_ANIM_UNIT = 1.0 / 128.0;
 const float RS_TO_RADIANS = 0.00306796157;
 const float PRIORITY_LAYER_EPSILON = 0.015;
 const float TOP_PRIORITY_EXTRA_BIAS = 0.01;
+const float FOG_CORNER_ROUNDING = 0.0;
 
 int applyHslOverride(int hsl, vec4 overrideValue) {
     if (overrideValue.w <= 0.0) {
@@ -201,11 +202,22 @@ float getHeightInterp(vec2 pos, uint plane) {
     return float(max(h0, h1));
 }
 
+float sdRoundedBox(vec2 p, vec2 b, float r) {
+    vec2 q = abs(p) - b + r;
+    return min(max(q.x, q.y), 0.0)
+        + length(max(q, 0.0))
+        - r;
+}
+
 float fogFactorOsrs(vec2 playerOffset) {
     float fogStart = min(u_fogDepth, u_renderDistance);
     float fogEnd = max(u_renderDistance, fogStart + 0.0001);
-    vec2 distanceToEdge = abs(playerOffset) - vec2(fogEnd);
-    float distance = max(distanceToEdge.x, distanceToEdge.y);
+    float rounding = min(FOG_CORNER_ROUNDING, fogEnd);
+    float distance = sdRoundedBox(
+        playerOffset,
+        vec2(fogEnd),
+        rounding
+    );
     return clamp(distance / (fogEnd - fogStart) + 1.0, 0.0, 1.0);
 }
 
