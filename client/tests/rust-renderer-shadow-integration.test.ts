@@ -14,6 +14,7 @@ async function main(): Promise<void> {
         isRustGfxShadowEnabled,
         isRustNpcShadowEnabled,
         isRustPlayerShadowEnabled,
+        isRustPresentationShadowEnabled,
         isRustProjectileShadowEnabled,
     } = await import("../render/rust/RustShadowIntegration");
     const {
@@ -242,6 +243,23 @@ async function main(): Promise<void> {
     assert.equal(
         isRustProjectileShadowEnabled(
             "?rust-renderer=off&rust-projectile-parity=1",
+        ),
+        false,
+    );
+
+    assert.equal(
+        isRustPresentationShadowEnabled(
+            "?rust-renderer=shadow&rust-presentation=1",
+        ),
+        true,
+    );
+    assert.equal(
+        isRustPresentationShadowEnabled("?rust-renderer=shadow"),
+        false,
+    );
+    assert.equal(
+        isRustPresentationShadowEnabled(
+            "?rust-renderer=off&rust-presentation=1",
         ),
         false,
     );
