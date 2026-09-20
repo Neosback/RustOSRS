@@ -1,5 +1,6 @@
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import type { DrawRange } from "../DrawRange";
+import type { GroundItemGeometryBuildData } from "../ground/GroundItemMeshBuilder";
 import type { SdMapData } from "../loader/SdMapData";
 
 export const RUST_RENDERER_ABI_VERSION = 8 as const;
@@ -215,6 +216,27 @@ export function createRustDoorGeometryPacket(
         opaqueLodDrawRangePlanes: data.doorDrawRangesLodPlanes,
         alphaLodDrawRanges: data.doorDrawRangesLodAlpha,
         alphaLodDrawRangePlanes: data.doorDrawRangesLodAlphaPlanes,
+    });
+}
+
+export function createRustGroundItemGeometryPacket(
+    data: GroundItemGeometryBuildData,
+): RustStaticGeometryPacket {
+    return createRustStaticGeometryPacket({
+        vertices: data.vertices,
+        indices: data.indices,
+        modelInfoOpaque: data.modelTextureData,
+        modelInfoAlpha: data.modelTextureDataAlpha,
+        modelInfoOpaqueLod: data.modelTextureDataLod,
+        modelInfoAlphaLod: data.modelTextureDataLodAlpha,
+        opaqueDrawRanges: data.drawRanges,
+        opaqueDrawRangePlanes: data.planes.main,
+        alphaDrawRanges: data.drawRangesAlpha,
+        alphaDrawRangePlanes: data.planes.alpha,
+        opaqueLodDrawRanges: data.drawRangesLod,
+        opaqueLodDrawRangePlanes: data.planes.lod,
+        alphaLodDrawRanges: data.drawRangesLodAlpha,
+        alphaLodDrawRangePlanes: data.planes.lodAlpha,
     });
 }
 
