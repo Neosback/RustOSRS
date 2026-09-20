@@ -7,7 +7,10 @@ import { GfxCache } from "./GfxCache";
 import { GfxManager } from "./GfxManager";
 import type { GfxInstance } from "./GfxManager";
 import { SpotAnimGpuCache } from "./SpotAnimGpuCache";
-import { mirrorRustGfxGeometry } from "../rust/RustShadowIntegration";
+import {
+    isRustPrimaryRendererActive,
+    mirrorRustGfxGeometry,
+} from "../rust/RustShadowIntegration";
 
 type Pass = "opaque" | "alpha";
 
@@ -213,7 +216,9 @@ export class GfxRenderer {
                     dc.uniform("u_modelYOffset", yOff | 0);
                     for (const inst of groupInstances) {
                         dc.uniform("u_drawIdOverride", inst.slot | 0);
-                        dc.draw();
+                        if (!isRustPrimaryRendererActive(this.renderer)) {
+                            dc.draw();
+                        }
                         if (rustGeometry) {
                             mirrorRustGfxGeometry(
                                 this.renderer,
