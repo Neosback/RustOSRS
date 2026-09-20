@@ -299,6 +299,9 @@ export async function initRustRendererShadow(
         runtime.bridge.setPresentationMsaaEnabled(
             !!host.msaaEnabled,
         );
+        runtime.bridge.setPresentationFxaaEnabled(
+            !!host.fxaaEnabled,
+        );
         syncGlobalResources(host, runtime);
         syncCurrentActorData(host, runtime);
         publishDiagnostics(host, {
@@ -1378,6 +1381,9 @@ export function renderRustStaticShadowFrame(
         if (runtime.bridge.isPresentationEnabled()) {
             runtime.bridge.setPresentationMsaaEnabled(
                 !!host.msaaEnabled,
+            );
+            runtime.bridge.setPresentationFxaaEnabled(
+                !!host.fxaaEnabled,
             );
         }
 
