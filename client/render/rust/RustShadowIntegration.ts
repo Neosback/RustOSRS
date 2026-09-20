@@ -3,6 +3,7 @@ import type { DrawRange } from "../DrawRange";
 import { WebGLMapSquare } from "../WebGLMapSquare";
 import type { GroundItemGeometryBuildData } from "../ground/GroundItemMeshBuilder";
 import type { SdMapData } from "../loader/SdMapData";
+import type { DynamicNpcFrameGeometry } from "../npc/DynamicNpcAnimLoader";
 import type { WebGLOsrsRendererHost } from "../render/hostInterface";
 import { getRustRendererGlobalResourceSnapshot } from "./LiveResourceAdapter";
 import {
@@ -10,6 +11,8 @@ import {
     createRustGroundItemGeometryPacket,
     createRustLocGeometryPacket,
     createRustStaticScenePacket,
+    packedVertexWords,
+    unsignedIndexWords,
     type RustStaticGeometryPacket,
 } from "./RendererPacket";
 import type { RustResidentMapFrameState } from "./RustRendererBridge";
@@ -916,6 +919,73 @@ export function mirrorRustNpcDrawRanges(
         state.mirroredNpcPasses++;
     } catch (error) {
         disableShadow(host, "NPC draw mirror", error);
+    }
+}
+
+export function mirrorRustDynamicNpcGeometry(
+    host: WebGLOsrsRendererHost,
+    map: WebGLMapSquare,
+    geometry: DynamicNpcFrameGeometry,
+    npcDataOffset: number,
+    modelYOffset: number,
+    worldEntityTransform: Float32Array,
+    transparent: boolean,
+): void {
+    const state = activeShadowFrames.get(host);
+    if (!state?.npcParityEnabled) return;
+
+    const expectedPhase: RustShadowFramePhase =
+        transparent ? "transparent-npc" : "opaque-npc";
+    if (state.phase !== expectedPhase) {
+        return;
+    }
+
+    const runtime = getRuntime(host);
+    if (!runtime) return;
+
+    const mapKey = map.id | 0;
+    const frame = state.framesByMapKey.get(mapKey);
+    if (!frame) return;
+
+    const vertices =
+        transparent ? geometry.alphaVertices : geometry.opaqueVertices;
+    const indices =
+        transparent ? geometry.alphaIndices : geometry.opaqueIndices;
+    if (vertices.length === 0 || indices.length === 0) {
+        return;
+    }
+
+    try {
+        runtime.bridge.renderDynamicNpcPass(
+            {
+                ...frame,
+                npcDataOffset,
+                modelYOffset,
+                worldEntityTransform,
+                transparent,
+            },
+            packedVertexWords(vertices),
+            unsignedIndexWords(indices),
+        );
+
+        const ranges: DrawRange[] = [[0, indices.length, 1]];
+        addStats(
+            state.expectedStats,
+            countExpectedDrawRanges(ranges, undefined, 3),
+        );
+        state.expectedDrawHash = hashExpectedDrawRanges(
+            state.expectedDrawHash,
+            mapKey,
+            transparent,
+            false,
+            6,
+            ranges,
+            undefined,
+            3,
+        );
+        state.mirroredNpcPasses++;
+    } catch (error) {
+        disableShadow(host, "dynamic NPC draw mirror", error);
     }
 }
 
