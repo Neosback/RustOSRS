@@ -22,6 +22,8 @@ struct StaticProgram {
     fog_depth: WebGlUniformLocation,
     current_time: WebGlUniformLocation,
     brightness: WebGlUniformLocation,
+    is_new_texture_anim: WebGlUniformLocation,
+    color_banding: WebGlUniformLocation,
     draw_id: WebGlUniformLocation,
     map_pos: WebGlUniformLocation,
     time_loaded: WebGlUniformLocation,
@@ -29,6 +31,11 @@ struct StaticProgram {
     scene_border_size: WebGlUniformLocation,
     model_info_sampler: WebGlUniformLocation,
     height_map_sampler: WebGlUniformLocation,
+    texture_sampler: WebGlUniformLocation,
+    material_sampler: WebGlUniformLocation,
+    texture_layer_count: WebGlUniformLocation,
+    material_count: WebGlUniformLocation,
+    discard_alpha: WebGlUniformLocation,
     sky_color: WebGlUniformLocation,
 }
 
@@ -55,6 +62,10 @@ pub struct RustWebGlRenderer {
 
     model_info_texture: WebGlTexture,
     height_map_texture: WebGlTexture,
+    texture_array: WebGlTexture,
+    material_texture: WebGlTexture,
+    texture_layer_count: i32,
+    material_count: i32,
     static_state: Option<StaticMapState>,
 
     draw_ranges: Vec<DrawRange>,
@@ -96,6 +107,10 @@ impl RustWebGlRenderer {
 
         let model_info_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
         let height_map_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
+        let texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
+        let material_texture = create_nearest_texture(&gl, Gl::TEXTURE_2D)?;
+        initialize_fallback_texture_array(&gl, &texture_array)?;
+        initialize_fallback_materials(&gl, &material_texture)?;
 
         let reference_view_proj = required_uniform(&gl, &reference_program, "u_viewProj")?;
         let reference_brightness = required_uniform(&gl, &reference_program, "u_brightness")?;
@@ -109,6 +124,12 @@ impl RustWebGlRenderer {
             fog_depth: required_uniform(&gl, &static_program_raw, "u_fogDepth")?,
             current_time: required_uniform(&gl, &static_program_raw, "u_currentTime")?,
             brightness: required_uniform(&gl, &static_program_raw, "u_brightness")?,
+            is_new_texture_anim: required_uniform(
+                &gl,
+                &static_program_raw,
+                "u_isNewTextureAnim",
+            )?,
+            color_banding: required_uniform(&gl, &static_program_raw, "u_colorBanding")?,
             draw_id: required_uniform(&gl, &static_program_raw, "u_drawId")?,
             map_pos: required_uniform(&gl, &static_program_raw, "u_mapPos")?,
             time_loaded: required_uniform(&gl, &static_program_raw, "u_timeLoaded")?,
@@ -116,6 +137,15 @@ impl RustWebGlRenderer {
             scene_border_size: required_uniform(&gl, &static_program_raw, "u_sceneBorderSize")?,
             model_info_sampler: required_uniform(&gl, &static_program_raw, "u_modelInfoTexture")?,
             height_map_sampler: required_uniform(&gl, &static_program_raw, "u_heightMap")?,
+            texture_sampler: required_uniform(&gl, &static_program_raw, "u_textures")?,
+            material_sampler: required_uniform(&gl, &static_program_raw, "u_textureMaterials")?,
+            texture_layer_count: required_uniform(
+                &gl,
+                &static_program_raw,
+                "u_textureLayerCount",
+            )?,
+            material_count: required_uniform(&gl, &static_program_raw, "u_materialCount")?,
+            discard_alpha: required_uniform(&gl, &static_program_raw, "u_discardAlpha")?,
             sky_color: required_uniform(&gl, &static_program_raw, "u_skyColor")?,
             program: static_program_raw,
         };
@@ -124,6 +154,8 @@ impl RustWebGlRenderer {
         gl.depth_func(Gl::LEQUAL);
         gl.enable(Gl::CULL_FACE);
         gl.cull_face(Gl::BACK);
+        gl.enable(Gl::BLEND);
+        gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
 
         Ok(Self {
             canvas,
@@ -137,6 +169,10 @@ impl RustWebGlRenderer {
             vao,
             model_info_texture,
             height_map_texture,
+            texture_array,
+            material_texture,
+            texture_layer_count: 1,
+            material_count: 1,
             static_state: None,
             draw_ranges: Vec::new(),
             index_count: 0,
