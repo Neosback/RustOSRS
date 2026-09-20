@@ -187,6 +187,7 @@ import {
     createProjectileProgram,
 } from "../../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
+import { initRustRendererShadow } from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS, optimizeAssumingFlatsHaveSameFirstAndLastData } from "../constants";
 import { initRenderer } from "../handlers";
@@ -292,6 +293,7 @@ export async function init(host: WebGLOsrsRendererHost, ): Promise<void> {
         await host.initWaterTextures();
 
         host.initTextures();
+        await initRustRendererShadow(host);
 
         console.log("Renderer init");
 
