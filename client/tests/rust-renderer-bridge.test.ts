@@ -30,6 +30,10 @@ class MockWasm implements RustRendererWasm {
         vertices: Uint32Array;
         indices: Uint32Array;
     }> = [];
+    dynamicNpcGeometryUploads: Array<{
+        vertices: Uint32Array;
+        indices: Uint32Array;
+    }> = [];
     modelInfoUploads: Uint16Array[] = [];
     heightUploads = 0;
     waterMaskUploads = 0;
@@ -65,6 +69,13 @@ class MockWasm implements RustRendererWasm {
     npcPassCalls: Array<{
         mapKey: number;
         ranges: Uint32Array;
+        npcDataOffset: number;
+        modelYOffset: number;
+        transparent: boolean;
+        worldEntityTransform: Float32Array;
+    }> = [];
+    dynamicNpcPassCalls: Array<{
+        mapKey: number;
         npcDataOffset: number;
         modelYOffset: number;
         transparent: boolean;
@@ -130,6 +141,16 @@ class MockWasm implements RustRendererWasm {
         indices: Uint32Array,
     ): void {
         this.npcGeometryUploads.push({
+            vertices: new Uint32Array(vertices),
+            indices: new Uint32Array(indices),
+        });
+    }
+
+    upload_dynamic_npc_geometry(
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void {
+        this.dynamicNpcGeometryUploads.push({
             vertices: new Uint32Array(vertices),
             indices: new Uint32Array(indices),
         });
@@ -341,6 +362,33 @@ class MockWasm implements RustRendererWasm {
         this.npcPassCalls.push({
             mapKey: this.selectedMapKey,
             ranges: new Uint32Array(drawRanges),
+            npcDataOffset,
+            modelYOffset,
+            transparent,
+            worldEntityTransform: new Float32Array(worldEntityTransform),
+        });
+    }
+
+    render_active_dynamic_npc_pass(
+        _viewMatrix: Float32Array,
+        _projectionMatrix: Float32Array,
+        worldEntityTransform: Float32Array,
+        _worldEntityOpacity: number,
+        _skyRgba: Float32Array,
+        _sceneHslOverride: Float32Array,
+        _playerPos: Float32Array,
+        _renderDistance: number,
+        _fogDepth: number,
+        _currentTime: number,
+        _brightness: number,
+        _isNewTextureAnim: boolean,
+        _colorBanding: number,
+        npcDataOffset: number,
+        modelYOffset: number,
+        transparent: boolean,
+    ): void {
+        this.dynamicNpcPassCalls.push({
+            mapKey: this.selectedMapKey,
             npcDataOffset,
             modelYOffset,
             transparent,
@@ -940,6 +988,41 @@ function frame(): RustStaticFrameState {
         }),
         /offset\/element\/instance triples/,
     );
+
+    const dynamicVertices = new Uint32Array([11, 12, 13]);
+    const dynamicIndices = new Uint32Array([0, 0, 0]);
+    bridge.renderDynamicNpcPass(
+        {
+            ...firstFrame,
+            npcDataOffset: 31,
+            modelYOffset: 1.25,
+            transparent: true,
+            worldEntityTransform: npcTransform,
+        },
+        dynamicVertices,
+        dynamicIndices,
+    );
+    assert.equal(wasm.dynamicNpcGeometryUploads.length, 1);
+    assert.deepEqual(
+        Array.from(wasm.dynamicNpcGeometryUploads[0].vertices),
+        [11, 12, 13],
+    );
+    assert.deepEqual(
+        Array.from(wasm.dynamicNpcGeometryUploads[0].indices),
+        [0, 0, 0],
+    );
+    assert.equal(wasm.dynamicNpcPassCalls.length, 1);
+    assert.deepEqual(
+        wasm.dynamicNpcPassCalls[0],
+        {
+            mapKey: 2001,
+            npcDataOffset: 31,
+            modelYOffset: 1.25,
+            transparent: true,
+            worldEntityTransform: npcTransform,
+        },
+    );
+
     bridge.dispose();
 }
 
