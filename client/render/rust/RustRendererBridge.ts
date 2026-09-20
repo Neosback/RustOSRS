@@ -45,6 +45,8 @@ export interface RustRendererWasm {
     render_static_frame(
         viewMatrix: Float32Array,
         projectionMatrix: Float32Array,
+        worldEntityTransform: Float32Array,
+        worldEntityOpacity: number,
         skyRgba: Float32Array,
         sceneHslOverride: Float32Array,
         playerPos: Float32Array,
@@ -84,6 +86,8 @@ export interface RustRendererGlobalResources {
 export interface RustStaticFrameState {
     viewMatrix: Float32Array;
     projectionMatrix: Float32Array;
+    worldEntityTransform: Float32Array;
+    worldEntityOpacity: number;
     skyRgba: Float32Array;
     sceneHslOverride: Float32Array;
     playerPos: Float32Array;
@@ -195,6 +199,8 @@ export class RustRendererBridge {
         this.wasm.render_static_frame(
             frame.viewMatrix,
             frame.projectionMatrix,
+            frame.worldEntityTransform,
+            frame.worldEntityOpacity,
             frame.skyRgba,
             frame.sceneHslOverride,
             frame.playerPos,
