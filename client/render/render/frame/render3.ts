@@ -185,7 +185,10 @@ import {
     createPlayerProgram,
     createProjectileProgram,
 } from "../../shaders/Shaders";
-import { mirrorRustNpcDrawRanges } from "../../rust/RustShadowIntegration";
+import {
+    mirrorRustDynamicNpcGeometry,
+    mirrorRustNpcDrawRanges,
+} from "../../rust/RustShadowIntegration";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
@@ -477,21 +480,28 @@ export function renderTransparentNpcPass(host: WebGLOsrsRendererHost,
                 dynDrawCall.uniform("u_npcDataOffset", npcDataOffset);
                 dynDrawCall.uniform("u_mapPos", [dyn.map.renderPosX, dyn.map.renderPosY]);
                 dynDrawCall.uniform("u_timeLoaded", dyn.map.timeLoaded);
-                {
-                    const dynWvId = host.osrsClient.npcEcs.getWorldViewId(dyn.ecsId);
-                    if (dynWvId >= 0) {
-                        const dynDeckH = host.getWorldEntityDeckHeight(0, 0);
-                        dynDrawCall.uniform("u_modelYOffset", host.getNpcModelYOffset(dynDeckH));
-                        dynDrawCall.uniform(
-                            "u_worldEntityTransform",
-                            host.worldEntityAnimator?.getTransform(dynWvId) ??
-                            WebGLMapSquare.IDENTITY_MAT4,
-                        );
-                    } else {
-                        dynDrawCall.uniform("u_modelYOffset", host.getNpcModelYOffset());
-                        dynDrawCall.uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4);
-                    }
+                const dynWvId =
+                    host.osrsClient.npcEcs.getWorldViewId(dyn.ecsId);
+                let dynamicModelYOffset: number;
+                let dynamicWorldEntityTransform: Float32Array;
+                if (dynWvId >= 0) {
+                    const dynDeckH = host.getWorldEntityDeckHeight(0, 0);
+                    dynamicModelYOffset =
+                        host.getNpcModelYOffset(dynDeckH);
+                    dynamicWorldEntityTransform =
+                        host.worldEntityAnimator?.getTransform(dynWvId)
+                        ?? WebGLMapSquare.IDENTITY_MAT4;
+                } else {
+                    dynamicModelYOffset = host.getNpcModelYOffset();
+                    dynamicWorldEntityTransform =
+                        WebGLMapSquare.IDENTITY_MAT4;
                 }
+                dynDrawCall
+                    .uniform("u_modelYOffset", dynamicModelYOffset)
+                    .uniform(
+                        "u_worldEntityTransform",
+                        dynamicWorldEntityTransform,
+                    );
 
                 // Set height map texture from the map
                 const heightMapTex = (dyn.map as any).heightMapTexture;
@@ -510,6 +520,15 @@ export function renderTransparentNpcPass(host: WebGLOsrsRendererHost,
                 (dynDrawCall as any).offsets[0] = 0;
                 (dynDrawCall as any).numElements[0] = indexCount | 0;
                 host.draw(dynDrawCall, host.dynamicNpcSingleDrawRanges);
+                mirrorRustDynamicNpcGeometry(
+                    host,
+                    dyn.map,
+                    dyn.geometry,
+                    npcDataOffset,
+                    dynamicModelYOffset,
+                    dynamicWorldEntityTransform,
+                    true,
+                );
             }
         }
     
