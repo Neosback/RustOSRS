@@ -28,7 +28,7 @@ Stage 0 is implemented, Stage 1 static-scene parity is actively landing, and Sta
 - revisioned TypeScript adapter for uploading those exact live global resources into Rust
 - Rust-owned live actor-data `RGBA16UI` texture, backfilled on shadow startup and updated only when the existing PicoGL actor checksum/size gate changes
 - Rust-owned per-map prebaked NPC packed vertex/index buffers and VAOs, mirrored from the same `SdMapData` bytes
-- opt-in Rust prebaked-NPC shadow draw submission using the exact live PicoGL-selected animation draw ranges, actor-data offsets, world-entity transforms and deck/model offsets
+- opt-in Rust NPC shadow draw submission for both prebaked map NPCs and current-frame dynamic fallback geometry, using the exact live TypeScript-selected animation state, actor-data offsets, world-entity transforms and deck/model offsets
 - incremental loc and door geometry replacement for live object-state changes
 - per-frame animated-loc draw-range patching without re-uploading geometry
 - resident ground-item geometry with spawn, rebuild and despawn synchronization
@@ -45,7 +45,7 @@ For image comparison, use `?rust-renderer=shadow&rust-pixel-parity=1`. The first
 
 Prebaked NPC rendering can be added to the detached Rust shadow with `?rust-renderer=shadow&rust-npc-parity=1`. This mode deliberately reuses the draw ranges that TypeScript already selected for the live NPC animation frame instead of duplicating actor simulation in Rust. Static-only pixel capture is disabled while NPC parity is enabled until the PicoGL reference capture includes the same dynamic entity subset.
 
-The previously identified Mode-1 overlapping world-entity ghost redraw is now mirrored in Rust as a terrain-only blended pass with the exact packed-HSL tint and opacity contract. Stage 2 now owns the live actor-data texture, per-map prebaked NPC packed geometry, the NPC shader program and an opt-in live shadow draw path. TypeScript still owns actor simulation and animation-frame choice; Rust consumes only the finalized numeric draw ranges and renderer state. Dynamic NPC fallback meshes, players, projectiles, graphics effects, picking/interaction rendering and final framebuffer/post-processing remain later stages.
+The previously identified Mode-1 overlapping world-entity ghost redraw is now mirrored in Rust as a terrain-only blended pass with the exact packed-HSL tint and opacity contract. Stage 2 now owns the live actor-data texture, per-map prebaked NPC packed geometry, a reusable dynamic-NPC fallback GPU batch, the NPC shader program and an opt-in live shadow draw path. TypeScript still owns actor simulation, animation-frame choice and dynamic frame construction; Rust consumes only finalized packed geometry plus numeric renderer state. Players, projectiles, graphics effects, picking/interaction rendering and final framebuffer/post-processing remain later stages.
 
 ## Why WebGL2 first
 
@@ -82,7 +82,7 @@ Acceptance: identical static scene state + camera produces structurally matching
 
 ### Stage 2: dynamic scene
 
-Move players, NPCs, projectiles, GFX, dynamic transparency and priority ordering. Rust now owns an exact `RGBA16UI` mirror of the live 16-wide actor-data texture, per-map prebaked NPC packed vertex/index buffers and VAOs, and an NPC WebGL2 shader/draw primitive. With `rust-npc-parity=1`, the live shadow path consumes the exact TypeScript-selected prebaked NPC ranges in opaque and transparent production order, including world-entity transforms. Dynamic fallback NPC geometry and all player/projectile/GFX draw ownership remain on PicoGL. Ground items and animated loc draw-range changes already participate in the Stage 1 shadow path.
+Move players, NPCs, projectiles, GFX, dynamic transparency and priority ordering. Rust now owns an exact `RGBA16UI` mirror of the live 16-wide actor-data texture, per-map prebaked NPC packed vertex/index buffers and VAOs, and an NPC WebGL2 shader/draw primitive. With `rust-npc-parity=1`, the live shadow path consumes the exact TypeScript-selected prebaked NPC ranges and dynamic fallback frame geometry in opaque and transparent production order, including world-entity transforms. Player/projectile/GFX draw ownership remains on PicoGL. Ground items and animated loc draw-range changes already participate in the Stage 1 shadow path.
 
 ### Stage 3: renderer services
 
