@@ -217,11 +217,8 @@ impl StaticGeometryBatch {
             (true, true) => &mut self.lod_alpha_pass,
         };
 
-        let updates = parse_draw_range_patches(
-            flat_patches,
-            pass.draw_ranges.len(),
-        )
-        .map_err(|error| JsValue::from_str(&error))?;
+        let updates = parse_draw_range_patches(flat_patches, pass.draw_ranges.len())
+            .map_err(|error| JsValue::from_str(&error))?;
 
         for (_, candidate) in &updates {
             validate_draw_ranges(&[*candidate], self.index_count as usize)
