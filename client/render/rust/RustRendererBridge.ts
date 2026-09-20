@@ -6,6 +6,11 @@ import {
 
 export interface RustRendererWasm {
     abi_version(): number;
+    select_static_map(mapKey: number): void;
+    active_static_map_key(): number;
+    resident_static_map_count(): number;
+    remove_static_map(mapKey: number): void;
+    clear_static_maps(): void;
 
     upload_geometry(vertices: Uint32Array, indices: Uint32Array): void;
     upload_model_info(modelInfo: Uint16Array): void;
@@ -210,6 +215,7 @@ export class RustRendererBridge {
             );
         }
 
+        this.wasm.select_static_map(packet.mapKey);
         this.wasm.upload_geometry(
             packet.packedVertexWords,
             packet.indices,
@@ -320,6 +326,22 @@ export class RustRendererBridge {
             geometry.alphaLodDrawRanges,
             geometry.alphaLodDrawRangePlanes,
         );
+    }
+
+    getResidentStaticMapCount(): number {
+        return this.wasm.resident_static_map_count();
+    }
+
+    removeStaticMap(mapKey: number): void {
+        this.wasm.remove_static_map(mapKey);
+        if (this.uploadedPacket?.mapKey === mapKey) {
+            this.uploadedPacket = undefined;
+        }
+    }
+
+    clearStaticMaps(): void {
+        this.wasm.clear_static_maps();
+        this.uploadedPacket = undefined;
     }
 
     dispose(): void {
