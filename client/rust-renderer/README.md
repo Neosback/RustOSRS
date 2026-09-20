@@ -29,6 +29,7 @@ Stage 0 is implemented, Stage 1 static-scene parity is actively landing, and Sta
 - Rust-owned live actor-data `RGBA16UI` texture, backfilled on shadow startup and updated only when the existing PicoGL actor checksum/size gate changes
 - Rust-owned per-map prebaked NPC packed vertex/index buffers and VAOs, mirrored from the same `SdMapData` bytes
 - opt-in Rust NPC shadow draw submission for both prebaked map NPCs and current-frame dynamic fallback geometry, using the exact live TypeScript-selected animation state, actor-data offsets, world-entity transforms and deck/model offsets
+- Rust-owned player shader program and reusable finalized-player geometry draw primitive; live player shadow wiring remains the next Stage 2 step
 - incremental loc and door geometry replacement for live object-state changes
 - per-frame animated-loc draw-range patching without re-uploading geometry
 - resident ground-item geometry with spawn, rebuild and despawn synchronization
@@ -45,7 +46,7 @@ For image comparison, use `?rust-renderer=shadow&rust-pixel-parity=1`. The first
 
 Prebaked NPC rendering can be added to the detached Rust shadow with `?rust-renderer=shadow&rust-npc-parity=1`. This mode deliberately reuses the draw ranges that TypeScript already selected for the live NPC animation frame instead of duplicating actor simulation in Rust. Static-only pixel capture is disabled while NPC parity is enabled until the PicoGL reference capture includes the same dynamic entity subset.
 
-The previously identified Mode-1 overlapping world-entity ghost redraw is now mirrored in Rust as a terrain-only blended pass with the exact packed-HSL tint and opacity contract. Stage 2 now owns the live actor-data texture, per-map prebaked NPC packed geometry, a reusable dynamic-NPC fallback GPU batch, the NPC shader program and an opt-in live shadow draw path. TypeScript still owns actor simulation, animation-frame choice and dynamic frame construction; Rust consumes only finalized packed geometry plus numeric renderer state. Players, projectiles, graphics effects, picking/interaction rendering and final framebuffer/post-processing remain later stages.
+The previously identified Mode-1 overlapping world-entity ghost redraw is now mirrored in Rust as a terrain-only blended pass with the exact packed-HSL tint and opacity contract. Stage 2 now owns the live actor-data texture, per-map prebaked NPC packed geometry, a reusable dynamic-NPC fallback GPU batch, the NPC shader program and an opt-in live shadow draw path. TypeScript still owns actor simulation, animation-frame choice and dynamic frame construction; Rust consumes only finalized packed geometry plus numeric renderer state. The finalized-player Rust shader/draw primitive is implemented and CI-verified, but live player shadow submission is not wired yet. Projectiles, graphics effects, picking/interaction rendering and final framebuffer/post-processing remain later stages.
 
 ## Why WebGL2 first
 
