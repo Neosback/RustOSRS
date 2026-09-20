@@ -18,6 +18,10 @@ export interface RustRendererWasm {
         vertices: Uint32Array,
         indices: Uint32Array,
     ): void;
+    upload_dynamic_gfx_geometry(
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void;
     upload_dynamic_player_geometry(
         vertices: Uint32Array,
         indices: Uint32Array,
@@ -155,6 +159,25 @@ export interface RustRendererWasm {
         modelYOffset: number,
         transparent: boolean,
     ): void;
+    render_active_gfx_pass(
+        viewMatrix: Float32Array,
+        projectionMatrix: Float32Array,
+        skyRgba: Float32Array,
+        sceneHslOverride: Float32Array,
+        playerPos: Float32Array,
+        renderDistance: number,
+        fogDepth: number,
+        currentTime: number,
+        brightness: number,
+        isNewTextureAnim: boolean,
+        colorBanding: number,
+        actorDataOffset: number,
+        modelYOffset: number,
+        mapX: number,
+        mapY: number,
+        transparent: boolean,
+    ): void;
+
     render_active_player_pass(
         viewMatrix: Float32Array,
         projectionMatrix: Float32Array,
@@ -272,6 +295,15 @@ export interface RustDynamicNpcPassState extends RustStaticFrameState {
     mapKey: number;
     npcDataOffset: number;
     modelYOffset: number;
+    transparent: boolean;
+}
+
+export interface RustGfxPassState extends RustStaticFrameState {
+    mapKey: number;
+    actorDataOffset: number;
+    modelYOffset: number;
+    mapX: number;
+    mapY: number;
     transparent: boolean;
 }
 
@@ -585,6 +617,50 @@ export class RustRendererBridge {
             pass.colorBanding,
             pass.npcDataOffset,
             pass.modelYOffset,
+            pass.transparent,
+        );
+    }
+
+    renderGfxPass(
+        pass: RustGfxPassState,
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void {
+        if (!this.uploadedMapKeys.has(pass.mapKey)) {
+            throw new Error(
+                `Rust static map ${pass.mapKey} has not been uploaded`,
+            );
+        }
+        if (
+            !Number.isInteger(pass.actorDataOffset)
+            || pass.actorDataOffset < 0
+        ) {
+            throw new Error(
+                `Invalid GFX actor-data offset: ${pass.actorDataOffset}`,
+            );
+        }
+        if (vertices.length === 0 || indices.length === 0) {
+            return;
+        }
+
+        this.wasm.select_static_map(pass.mapKey);
+        this.wasm.upload_dynamic_gfx_geometry(vertices, indices);
+        this.wasm.render_active_gfx_pass(
+            pass.viewMatrix,
+            pass.projectionMatrix,
+            pass.skyRgba,
+            pass.sceneHslOverride,
+            pass.playerPos,
+            pass.renderDistance,
+            pass.fogDepth,
+            pass.currentTime,
+            pass.brightness,
+            pass.isNewTextureAnim,
+            pass.colorBanding,
+            pass.actorDataOffset,
+            pass.modelYOffset,
+            pass.mapX,
+            pass.mapY,
             pass.transparent,
         );
     }
