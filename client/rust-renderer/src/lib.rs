@@ -10,6 +10,7 @@
 
 pub mod draw;
 pub mod model_info;
+pub mod packet;
 pub mod packed_vertex;
 
 #[cfg(target_arch = "wasm32")]
@@ -17,6 +18,7 @@ mod webgl;
 
 pub use draw::{DrawRange, DrawStats, filter_draw_ranges};
 pub use model_info::{ModelInfo, ModelInfoDrawCommand, create_model_info_texture_data};
+pub use packet::{RendererPacketError, validate_draw_ranges, validate_geometry};
 pub use packed_vertex::{PackedVertex, VertexInput};
 
 #[cfg(target_arch = "wasm32")]
