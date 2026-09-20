@@ -186,6 +186,7 @@ import {
     createProjectileProgram,
 } from "../../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
+import { mirrorRustSceneOverlay } from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRenderer } from "../../WebGLOsrsRenderer";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
@@ -337,6 +338,163 @@ export function populateTileMarkerOverlayState(host: WebGLOsrsRendererHost,
         );
     }
 
+const rustTileOverlayLineVertices = new Float32Array(15);
+const rustTileOverlayFillVertices = new Float32Array(12);
+const rustTileOverlayColor = new Float32Array(4);
+
+function setRustTileOverlayColor(colorRgb: number, alpha: number): void {
+    const rgb = colorRgb >>> 0;
+    rustTileOverlayColor[0] = ((rgb >> 16) & 0xff) / 255;
+    rustTileOverlayColor[1] = ((rgb >> 8) & 0xff) / 255;
+    rustTileOverlayColor[2] = (rgb & 0xff) / 255;
+    rustTileOverlayColor[3] = Math.max(0, Math.min(1, alpha));
+}
+
+function mirrorRustDepthAwareTile(
+    host: WebGLOsrsRendererHost,
+    args: OverlayUpdateArgs,
+    tileX: number,
+    tileY: number,
+    plane: number,
+    colorRgb: number,
+    fillAlpha: number,
+    drawFill: boolean,
+): void {
+    const sampleHeight = args.helpers.getTileHeightAtPlane;
+    const corners = [
+        [tileX, sampleHeight(tileX, tileY, plane), tileY],
+        [tileX + 1, sampleHeight(tileX + 1, tileY, plane), tileY],
+        [tileX + 1, sampleHeight(tileX + 1, tileY + 1, plane), tileY + 1],
+        [tileX, sampleHeight(tileX, tileY + 1, plane), tileY + 1],
+    ] as const;
+
+    if (drawFill && fillAlpha > 0) {
+        for (let i = 0; i < 4; i++) {
+            const corner = corners[i];
+            const offset = i * 3;
+            rustTileOverlayFillVertices[offset] = corner[0];
+            rustTileOverlayFillVertices[offset + 1] = corner[1] - 0.015;
+            rustTileOverlayFillVertices[offset + 2] = corner[2];
+        }
+        setRustTileOverlayColor(colorRgb, fillAlpha);
+        mirrorRustSceneOverlay(
+            host,
+            rustTileOverlayFillVertices,
+            rustTileOverlayColor,
+            true,
+        );
+    }
+
+    for (let i = 0; i < 4; i++) {
+        const corner = corners[i];
+        const offset = i * 3;
+        rustTileOverlayLineVertices[offset] = corner[0];
+        rustTileOverlayLineVertices[offset + 1] = corner[1] - 0.02;
+        rustTileOverlayLineVertices[offset + 2] = corner[2];
+    }
+    rustTileOverlayLineVertices[12] = corners[0][0];
+    rustTileOverlayLineVertices[13] = corners[0][1] - 0.02;
+    rustTileOverlayLineVertices[14] = corners[0][2];
+    setRustTileOverlayColor(colorRgb, 1);
+    mirrorRustSceneOverlay(
+        host,
+        rustTileOverlayLineVertices,
+        rustTileOverlayColor,
+        false,
+    );
+}
+
+function mirrorRustDepthAwareTileOverlays(
+    host: WebGLOsrsRendererHost,
+    args: OverlayUpdateArgs,
+    tileMarkersConfig: TileMarkersPluginConfig,
+): void {
+    const state = args.state;
+    const getHeightSamplePlaneForTile = (
+        args.helpers as OverlayUpdateArgs["helpers"] & {
+            getHeightSamplePlaneForTile?: (
+                tileX: number,
+                tileY: number,
+                basePlane: number,
+            ) => number;
+        }
+    ).getHeightSamplePlaneForTile;
+    const resolvePlane = (
+        tile: { x: number; y: number; plane?: number },
+    ): number => {
+        if (typeof tile.plane === "number" && Number.isFinite(tile.plane)) {
+            return tile.plane | 0;
+        }
+        const basePlane =
+            (state.playerRawLevel ?? state.playerLevel) | 0;
+        return getHeightSamplePlaneForTile
+            ? getHeightSamplePlaneForTile(tile.x | 0, tile.y | 0, basePlane)
+            : args.helpers.getEffectivePlaneForTile(
+                tile.x | 0,
+                tile.y | 0,
+                basePlane,
+            );
+    };
+
+    if (state.hoverEnabled && state.hoverTile) {
+        mirrorRustDepthAwareTile(
+            host,
+            args,
+            state.hoverTile.x | 0,
+            state.hoverTile.y | 0,
+            resolvePlane(state.hoverTile),
+            0xffff00,
+            0.25,
+            true,
+        );
+    }
+    if (state.destTile) {
+        mirrorRustDepthAwareTile(
+            host,
+            args,
+            state.destTile.x | 0,
+            state.destTile.y | 0,
+            resolvePlane(state.destTile),
+            tileMarkersConfig.destinationTileColor,
+            0.2,
+            true,
+        );
+    }
+    if (state.currentTile) {
+        mirrorRustDepthAwareTile(
+            host,
+            args,
+            state.currentTile.x | 0,
+            state.currentTile.y | 0,
+            resolvePlane(state.currentTile),
+            tileMarkersConfig.currentTileColor,
+            0,
+            false,
+        );
+    }
+
+    const highlights = state.tileHighlights;
+    if (!highlights) return;
+    for (const highlight of highlights) {
+        if (!highlight || highlight.alwaysOnTop) continue;
+        const plane = args.helpers.getEffectivePlaneForTile(
+            highlight.x,
+            highlight.y,
+            highlight.plane,
+        );
+        mirrorRustDepthAwareTile(
+            host,
+            args,
+            highlight.x,
+            highlight.y,
+            plane,
+            highlight.colorRgb,
+            highlight.fillAlpha,
+            highlight.fillAlpha > 0,
+        );
+    }
+}
+
 export function drawSceneTileOverlays(host: WebGLOsrsRendererHost, time: number, deltaTime: number): void {
 
         if (host.uiHidden || !host.overlayManager || !host.tileMarkerOverlay) {
@@ -370,6 +528,7 @@ export function drawSceneTileOverlays(host: WebGLOsrsRendererHost, time: number,
         args.state.groundItems = undefined;
         host.overlayManager.update(args);
         host.overlayManager.draw(RenderPhase.ToSceneFramebuffer);
+        mirrorRustDepthAwareTileOverlays(host, args, tileMarkersConfig);
     
 }
 
