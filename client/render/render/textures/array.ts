@@ -235,6 +235,7 @@ export function initTextureArray(host: WebGLOsrsRendererHost, ) {
         }
 
         host.textureArrayPixels = new Uint8Array(pixels.buffer);
+        host.rustGlobalResourcesRevision++;
         host.textureArray = createTextureArray(
             host.app,
             host.textureArrayPixels,
@@ -355,6 +356,7 @@ export function updateTextureArray(host: WebGLOsrsRendererHost, textures: Map<nu
             updatedCount++;
         }
         if (updatedCount > 0) {
+            host.rustGlobalResourcesRevision++;
             // Mipmap generation for a large TEXTURE_2D_ARRAY is expensive and can stall hard.
             // Defer it and amortize across frames while maps are streaming in.
             const now = performance.now();
