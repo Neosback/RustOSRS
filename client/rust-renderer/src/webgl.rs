@@ -1,5 +1,6 @@
 use crate::draw::{
-    DrawRange, DrawStats, draw_range_is_visible, parse_draw_range_patches, parse_draw_ranges,
+    DRAW_HASH_OFFSET_BASIS, DrawRange, DrawStats, draw_range_is_visible, hash_visible_draw_ranges,
+    parse_draw_range_patches, parse_draw_ranges,
 };
 use crate::packet::{validate_draw_ranges, validate_geometry};
 use crate::static_scene::StaticMapState;
@@ -324,6 +325,7 @@ pub struct RustWebGlRenderer {
     texture_layer_count: i32,
     material_count: i32,
     last_stats: DrawStats,
+    last_draw_hash: u32,
 }
 
 #[wasm_bindgen]
@@ -414,6 +416,7 @@ impl RustWebGlRenderer {
             texture_layer_count: 1,
             material_count: 1,
             last_stats: DrawStats::default(),
+            last_draw_hash: DRAW_HASH_OFFSET_BASIS,
         })
     }
 
@@ -901,7 +904,7 @@ impl RustWebGlRenderer {
 
     /// Uploads geometry for an auxiliary static map batch.
     ///
-    /// kind 0 = non-door loc geometry, kind 1 = door geometry.
+    /// kind 0 = non-door loc geometry, kind 1 = door geometry, kind 2 = ground items.
     pub fn upload_aux_geometry(
         &mut self,
         kind: u32,
@@ -1081,6 +1084,7 @@ impl RustWebGlRenderer {
         require_vec4(sky_rgba, "sky_rgba")?;
         self.prepare_default_frame(sky_rgba);
         self.last_stats = DrawStats::default();
+        self.last_draw_hash = DRAW_HASH_OFFSET_BASIS;
         Ok(())
     }
 
@@ -1237,6 +1241,7 @@ impl RustWebGlRenderer {
 
         if clear_frame {
             self.prepare_default_frame(sky_rgba);
+            self.last_draw_hash = DRAW_HASH_OFFSET_BASIS;
         } else {
             self.prepare_viewport();
         }
@@ -1359,6 +1364,17 @@ impl RustWebGlRenderer {
 
         let roof_limit = roof_plane_limit.clamp(0.0, 3.0) as u8;
 
+        let flags = u32::from(discard_alpha) | (u32::from(use_lod) << 1);
+        let mut draw_hash = hash_visible_draw_ranges(
+            self.last_draw_hash,
+            self.static_map_key,
+            flags,
+            0,
+            &pass.draw_ranges,
+            Some(&pass.range_planes),
+            roof_limit,
+        );
+
         self.gl
             .bind_vertex_array(Some(&self.static_map.terrain_batch.vao));
         let mut stats = submit_draw_ranges(
@@ -1371,15 +1387,24 @@ impl RustWebGlRenderer {
             false,
         );
 
-        for batch in [
-            &self.static_map.loc_batch,
-            &self.static_map.ground_batch,
-            &self.static_map.door_batch,
-        ]
-        .into_iter()
-        .flatten()
-        {
+        for (batch_kind, batch) in [
+            (1, self.static_map.loc_batch.as_ref()),
+            (2, self.static_map.ground_batch.as_ref()),
+            (3, self.static_map.door_batch.as_ref()),
+        ] {
+            let Some(batch) = batch else {
+                continue;
+            };
             let batch_pass = batch.pass(use_lod, discard_alpha);
+            draw_hash = hash_visible_draw_ranges(
+                draw_hash,
+                self.static_map_key,
+                flags,
+                batch_kind,
+                &batch_pass.draw_ranges,
+                Some(&batch_pass.range_planes),
+                roof_limit,
+            );
             self.gl.bind_vertex_array(Some(&batch.vao));
             let batch_stats = submit_draw_ranges(
                 &self.gl,
@@ -1394,6 +1419,7 @@ impl RustWebGlRenderer {
             stats.submitted_indices += batch_stats.submitted_indices;
         }
 
+        self.last_draw_hash = draw_hash;
         self.gl.bind_vertex_array(None);
         if clear_frame {
             self.last_stats = stats;
@@ -1410,6 +1436,10 @@ impl RustWebGlRenderer {
 
     pub fn last_submitted_indices(&self) -> f64 {
         self.last_stats.submitted_indices as f64
+    }
+
+    pub fn last_draw_hash(&self) -> u32 {
+        self.last_draw_hash
     }
 
     pub fn dispose(&mut self) {
