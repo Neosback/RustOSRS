@@ -87,7 +87,9 @@ pub fn parse_draw_range_patches(
     }
 
     let mut patches = Vec::with_capacity(flat.len() / 4);
-    for chunk in flat.chunks_exact(4) {
+    let (chunks, remainder) = flat.as_chunks::<4>();
+    debug_assert!(remainder.is_empty());
+    for chunk in chunks {
         let range_index = chunk[0] as usize;
         if range_index >= range_count {
             return Err(format!(
