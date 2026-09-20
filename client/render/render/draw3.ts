@@ -186,6 +186,7 @@ import {
     createProjectileProgram,
 } from "../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
+import { mirrorRustGroundItemGeometry } from "../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
 import { RENDER_CONSTANTS } from "./constants";
 
@@ -299,6 +300,7 @@ export function rebuildGroundItemsForMap(host: WebGLOsrsRendererHost,
 
         if (!data) {
             map.clearGroundItemGeometry();
+            mirrorRustGroundItemGeometry(host, map.id | 0);
             return (objModelLoader.modelLoader?.missCount ?? 0) > missesBefore;
         }
 
@@ -327,6 +329,7 @@ export function rebuildGroundItemsForMap(host: WebGLOsrsRendererHost,
             host.sceneUniformBuffer,
             data,
         );
+        mirrorRustGroundItemGeometry(host, map.id | 0, data);
         return false;
     
 }
