@@ -24,7 +24,10 @@ impl Display for RendererPacketError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::VertexWordCount(words) => {
-                write!(formatter, "packed vertex packet must contain u32 triplets, got {words} words")
+                write!(
+                    formatter,
+                    "packed vertex packet must contain u32 triplets, got {words} words"
+                )
             }
             Self::IndexOutOfBounds {
                 index_position,
