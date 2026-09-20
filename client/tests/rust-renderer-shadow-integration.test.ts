@@ -7,6 +7,7 @@ async function main(): Promise<void> {
         RUST_DRAW_HASH_OFFSET_BASIS,
         countExpectedDrawRanges,
         createAnimatedLocDrawRangePatches,
+        createWorldEntityGhostSceneHslOverride,
         getRustRendererShadowDiagnostics,
         hashExpectedDrawRanges,
     } = await import("../render/rust/RustShadowIntegration");
@@ -153,6 +154,19 @@ async function main(): Promise<void> {
         1,
     );
     assert.equal(drawHash, 0xdceda6f5);
+
+    assert.deepEqual(
+        Array.from(
+            createWorldEntityGhostSceneHslOverride(
+                (12 << 10) | (3 << 7) | 64,
+            )!,
+        ),
+        [12, 3, 64, 127],
+    );
+    assert.equal(
+        createWorldEntityGhostSceneHslOverride(0),
+        undefined,
+    );
 
     assert.equal(
         isRustPixelParityEnabled(
