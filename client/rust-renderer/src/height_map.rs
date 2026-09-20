@@ -22,7 +22,11 @@ impl HeightMap {
         if values.len() != expected {
             return Err("height-map packet length does not match dimensions");
         }
-        Ok(Self { size, planes, values })
+        Ok(Self {
+            size,
+            planes,
+            values,
+        })
     }
 
     pub const fn size(&self) -> usize {
@@ -58,29 +62,17 @@ impl HeightMap {
         let h_ne = self.tile_height(tile_x + 1, tile_z + 1, plane, border);
 
         let h0 = if offset_x + offset_z <= TILE_SIZE {
-            (h_sw * TILE_SIZE
-                + (h_se - h_sw) * offset_x
-                + (h_nw - h_sw) * offset_z)
-                >> TILE_SHIFT
+            (h_sw * TILE_SIZE + (h_se - h_sw) * offset_x + (h_nw - h_sw) * offset_z) >> TILE_SHIFT
         } else {
             let rx = TILE_SIZE - offset_x;
             let rz = TILE_SIZE - offset_z;
-            (h_ne * TILE_SIZE
-                + (h_nw - h_ne) * rx
-                + (h_se - h_ne) * rz)
-                >> TILE_SHIFT
+            (h_ne * TILE_SIZE + (h_nw - h_ne) * rx + (h_se - h_ne) * rz) >> TILE_SHIFT
         };
 
         let h1 = if offset_x <= offset_z {
-            (h_sw * TILE_SIZE
-                + (h_nw - h_sw) * offset_z
-                + (h_ne - h_nw) * offset_x)
-                >> TILE_SHIFT
+            (h_sw * TILE_SIZE + (h_nw - h_sw) * offset_z + (h_ne - h_nw) * offset_x) >> TILE_SHIFT
         } else {
-            (h_sw * TILE_SIZE
-                + (h_se - h_sw) * offset_x
-                + (h_ne - h_se) * offset_z)
-                >> TILE_SHIFT
+            (h_sw * TILE_SIZE + (h_se - h_sw) * offset_x + (h_ne - h_se) * offset_z) >> TILE_SHIFT
         };
 
         h0.max(h1) as f32
