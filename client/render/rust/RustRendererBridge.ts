@@ -180,6 +180,7 @@ export interface RustRendererWasm {
         mapX: number,
         mapY: number,
         transparent: boolean,
+        restoreCullBackFace: boolean,
     ): void;
     render_active_projectile_pass(
         viewMatrix: Float32Array,
@@ -329,6 +330,7 @@ export interface RustGfxPassState extends RustStaticFrameState {
     mapX: number;
     mapY: number;
     transparent: boolean;
+    restoreCullBackFace: boolean;
 }
 
 export interface RustProjectilePassState extends RustStaticFrameState {
@@ -697,6 +699,7 @@ export class RustRendererBridge {
             pass.mapX,
             pass.mapY,
             pass.transparent,
+            pass.restoreCullBackFace,
         );
     }
 
