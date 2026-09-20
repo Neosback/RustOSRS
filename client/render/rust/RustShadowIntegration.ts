@@ -1122,6 +1122,70 @@ export function mirrorRustGfxGeometry(
     }
 }
 
+export function mirrorRustProjectileGeometry(
+    host: WebGLOsrsRendererHost,
+    map: WebGLMapSquare,
+    vertices: Uint8Array,
+    indices: Int32Array,
+    projectileDataOffset: number,
+    modelYOffset: number,
+    projectileSubOffset: Float32Array,
+    transparent: boolean,
+    cullBackFace: boolean,
+): void {
+    const state = activeShadowFrames.get(host);
+    if (!state?.projectileParityEnabled) return;
+
+    const expectedPhase: RustShadowFramePhase =
+        transparent ? "transparent-actors" : "opaque-actors";
+    if (state.phase !== expectedPhase) return;
+
+    const runtime = getRuntime(host);
+    if (!runtime) return;
+
+    const mapKey = map.id | 0;
+    const frame = state.framesByMapKey.get(mapKey);
+    if (!frame || vertices.length === 0 || indices.length === 0) {
+        return;
+    }
+
+    try {
+        runtime.bridge.renderProjectilePass(
+            {
+                ...frame,
+                projectileDataOffset,
+                modelYOffset,
+                projectileSubOffset,
+                mapX: map.mapX,
+                mapY: map.mapY,
+                transparent,
+                cullBackFace,
+            },
+            packedVertexWords(vertices),
+            unsignedIndexWords(indices),
+        );
+
+        const ranges: DrawRange[] = [[0, indices.length, 1]];
+        addStats(
+            state.expectedStats,
+            countExpectedDrawRanges(ranges, undefined, 3),
+        );
+        state.expectedDrawHash = hashExpectedDrawRanges(
+            state.expectedDrawHash,
+            mapKey,
+            transparent,
+            false,
+            9,
+            ranges,
+            undefined,
+            3,
+        );
+        state.mirroredProjectilePasses++;
+    } catch (error) {
+        disableShadow(host, "projectile draw mirror", error);
+    }
+}
+
 export function mirrorRustPlayerGeometry(
     host: WebGLOsrsRendererHost,
     map: WebGLMapSquare,
