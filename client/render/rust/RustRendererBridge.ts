@@ -123,6 +123,7 @@ export class RustRendererBridge {
     readonly wasm: RustRendererWasm;
 
     private uploadedPacket?: RustStaticScenePacket;
+    private globalResourcesRevision: number | undefined;
 
     constructor(
         canvas: HTMLCanvasElement,
@@ -155,6 +156,24 @@ export class RustRendererBridge {
             resources.waterHeight,
             resources.waterLayers,
         );
+    }
+
+    /**
+     * Upload renderer-global resources only when the live resource mirror
+     * revision changes. Returns true when WASM received a new snapshot.
+     */
+    syncGlobalResources(
+        resources: RustRendererGlobalResources,
+        revision: number,
+    ): boolean {
+        const normalizedRevision = revision | 0;
+        if (this.globalResourcesRevision === normalizedRevision) {
+            return false;
+        }
+
+        this.uploadGlobalResources(resources);
+        this.globalResourcesRevision = normalizedRevision;
+        return true;
     }
 
     uploadStaticScene(
@@ -242,6 +261,7 @@ export class RustRendererBridge {
 
     dispose(): void {
         this.uploadedPacket = undefined;
+        this.globalResourcesRevision = undefined;
         this.wasm.dispose();
     }
 
