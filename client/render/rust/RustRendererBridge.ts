@@ -13,6 +13,7 @@ export interface RustRendererWasm {
     clear_static_maps(): void;
 
     upload_geometry(vertices: Uint32Array, indices: Uint32Array): void;
+    upload_npc_geometry(vertices: Uint32Array, indices: Uint32Array): void;
     upload_model_info(modelInfo: Uint16Array): void;
     upload_height_map(heightMap: Int16Array, size: number, planes: number): void;
     upload_water_mask(waterMask: Uint8Array, size: number, planes: number): void;
@@ -300,6 +301,10 @@ export class RustRendererBridge {
         this.wasm.upload_geometry(
             packet.packedVertexWords,
             packet.indices,
+        );
+        this.wasm.upload_npc_geometry(
+            packet.npcPackedVertexWords,
+            packet.npcIndices,
         );
         this.wasm.upload_height_map(
             packet.heightMap,
