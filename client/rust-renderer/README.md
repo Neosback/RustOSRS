@@ -15,13 +15,16 @@ Stage 0 is implemented and Stage 1 static-scene parity is actively landing:
 - Rust-owned VAO, vertex buffer, index buffer and texture resources
 - indexed and instanced draw submission
 - static model-info, height-map, material, texture-array, water-texture and water-mask uploads
-- resident opaque and alpha static passes uploaded once per map packet
-- Rust-owned opaque/alpha frame scheduling
+- resident opaque, alpha, LOD opaque and LOD alpha static passes uploaded once per map packet
+- Rust-owned opaque/alpha frame scheduling and full-detail/LOD selection
 - roof-plane draw-range filtering that preserves original draw IDs
+- world-entity transform and opacity parity for static map geometry
 - empty alpha passes do not fall back to drawing the full index buffer
+- live PicoGL texture/material/water bytes retained as synchronized CPU mirrors for zero-readback WASM upload
+- revisioned TypeScript adapter for uploading those exact live global resources into Rust
 - native Rust tests, bridge tests and WASM compile CI
 
-The production client still uses the existing renderer. The next integration milestone is an A/B runtime path that can feed the same decoded map data and camera state to PicoGL and Rust without changing scene construction.
+The production client still uses the existing renderer. The bridge can now consume the same decoded map packet and the same live global texture/material bytes without GPU readback. The next engine milestone is to make Rust resident-scene storage match the live renderer: terrain plus loc/door static batches, followed by multiple simultaneously resident map squares. That is the point where an A/B runtime can render the same visible-map set rather than a single diagnostic map.
 
 ## Why WebGL2 first
 
