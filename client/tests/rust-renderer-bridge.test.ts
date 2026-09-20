@@ -72,6 +72,8 @@ class MockWasm implements RustRendererWasm {
     }> = [];
     renderFrameCalls = 0;
     beginFrameCalls = 0;
+    presentationEnabledState = false;
+    presentFrameCalls = 0;
     mapPassCalls: Array<{ mapKey: number; transparent: boolean }> = [];
     ghostPassCalls: Array<{
         mapKey: number;
@@ -373,6 +375,18 @@ class MockWasm implements RustRendererWasm {
             width,
             height,
         });
+    }
+
+    set_presentation_enabled(enabled: boolean): void {
+        this.presentationEnabledState = enabled;
+    }
+
+    presentation_enabled(): boolean {
+        return this.presentationEnabledState;
+    }
+
+    present_frame(): void {
+        this.presentFrameCalls++;
     }
 
     begin_static_frame(_skyRgba: Float32Array): void {
@@ -818,6 +832,24 @@ function frame(): RustStaticFrameState {
             }),
         /material table has 1 bytes/,
     );
+}
+
+{
+    const bridge = new RustRendererBridge(
+        {} as HTMLCanvasElement,
+        MockWasm,
+    );
+    const wasm = MockWasm.last!;
+
+    assert.equal(bridge.isPresentationEnabled(), false);
+    bridge.setPresentationEnabled(true);
+    assert.equal(bridge.isPresentationEnabled(), true);
+    bridge.presentFrame();
+    assert.equal(wasm.presentFrameCalls, 1);
+
+    bridge.setPresentationEnabled(false);
+    assert.equal(bridge.isPresentationEnabled(), false);
+    bridge.dispose();
 }
 
 {
