@@ -27,6 +27,14 @@ export interface RustRendererWasm {
         alphaRanges: Uint32Array,
         alphaRangePlanes: Uint8Array,
     ): void;
+    upload_static_lod_passes(
+        modelInfoOpaque: Uint16Array,
+        opaqueRanges: Uint32Array,
+        opaqueRangePlanes: Uint8Array,
+        modelInfoAlpha: Uint16Array,
+        alphaRanges: Uint32Array,
+        alphaRangePlanes: Uint8Array,
+    ): void;
 
     upload_texture_array(
         pixels: Uint8Array,
@@ -55,6 +63,7 @@ export interface RustRendererWasm {
         currentTime: number,
         brightness: number,
         roofPlaneLimit: number,
+        useLod: boolean,
         isNewTextureAnim: boolean,
         colorBanding: number,
     ): void;
@@ -97,6 +106,7 @@ export interface RustStaticFrameState {
     currentTime: number;
     brightness: number;
     roofPlaneLimit: number;
+    useLod: boolean;
     isNewTextureAnim: boolean;
     colorBanding: number;
 }
@@ -187,6 +197,14 @@ export class RustRendererBridge {
             packet.alphaDrawRanges,
             packet.alphaDrawRangePlanes,
         );
+        this.wasm.upload_static_lod_passes(
+            packet.modelInfoOpaqueLod,
+            packet.opaqueLodDrawRanges,
+            packet.opaqueLodDrawRangePlanes,
+            packet.modelInfoAlphaLod,
+            packet.alphaLodDrawRanges,
+            packet.alphaLodDrawRangePlanes,
+        );
         this.uploadedPacket = packet;
     }
 
@@ -209,6 +227,7 @@ export class RustRendererBridge {
             frame.currentTime,
             frame.brightness,
             frame.roofPlaneLimit,
+            frame.useLod,
             frame.isNewTextureAnim,
             frame.colorBanding,
         );
