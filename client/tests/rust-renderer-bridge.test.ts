@@ -62,6 +62,14 @@ class MockWasm implements RustRendererWasm {
         opacity: number;
         hsl: number[];
     }> = [];
+    npcPassCalls: Array<{
+        mapKey: number;
+        ranges: Uint32Array;
+        npcDataOffset: number;
+        modelYOffset: number;
+        transparent: boolean;
+        worldEntityTransform: Float32Array;
+    }> = [];
     passSequence: Array<{
         mapKey: number;
         pass: "opaque" | "ghost" | "transparent";
@@ -308,6 +316,35 @@ class MockWasm implements RustRendererWasm {
         this.passSequence.push({
             mapKey: this.selectedMapKey,
             pass: transparent ? "transparent" : "opaque",
+        });
+    }
+
+    render_active_npc_pass(
+        drawRanges: Uint32Array,
+        _viewMatrix: Float32Array,
+        _projectionMatrix: Float32Array,
+        worldEntityTransform: Float32Array,
+        _worldEntityOpacity: number,
+        _skyRgba: Float32Array,
+        _sceneHslOverride: Float32Array,
+        _playerPos: Float32Array,
+        _renderDistance: number,
+        _fogDepth: number,
+        _currentTime: number,
+        _brightness: number,
+        _isNewTextureAnim: boolean,
+        _colorBanding: number,
+        npcDataOffset: number,
+        modelYOffset: number,
+        transparent: boolean,
+    ): void {
+        this.npcPassCalls.push({
+            mapKey: this.selectedMapKey,
+            ranges: new Uint32Array(drawRanges),
+            npcDataOffset,
+            modelYOffset,
+            transparent,
+            worldEntityTransform: new Float32Array(worldEntityTransform),
         });
     }
 
@@ -862,6 +899,47 @@ function frame(): RustStaticFrameState {
         { mapKey: 2001, pass: "transparent" },
     ]);
     assert.equal(bridge.beginStaticFrame([]), false);
+
+    const npcTransform = new Float32Array([
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        2, 3, 4, 1,
+    ]);
+    bridge.renderNpcPass({
+        ...firstFrame,
+        drawRanges: new Uint32Array([
+            0, 3, 1,
+            12, 6, 1,
+        ]),
+        npcDataOffset: 24,
+        modelYOffset: 0.5,
+        transparent: false,
+        worldEntityTransform: npcTransform,
+    });
+    assert.equal(wasm.npcPassCalls.length, 1);
+    assert.equal(wasm.npcPassCalls[0].mapKey, 2001);
+    assert.deepEqual(
+        Array.from(wasm.npcPassCalls[0].ranges),
+        [0, 3, 1, 12, 6, 1],
+    );
+    assert.equal(wasm.npcPassCalls[0].npcDataOffset, 24);
+    assert.equal(wasm.npcPassCalls[0].modelYOffset, 0.5);
+    assert.equal(wasm.npcPassCalls[0].transparent, false);
+    assert.deepEqual(
+        Array.from(wasm.npcPassCalls[0].worldEntityTransform),
+        Array.from(npcTransform),
+    );
+    assert.throws(
+        () => bridge.renderNpcPass({
+            ...firstFrame,
+            drawRanges: new Uint32Array([0, 3]),
+            npcDataOffset: 0,
+            modelYOffset: 0,
+            transparent: false,
+        }),
+        /offset\/element\/instance triples/,
+    );
     bridge.dispose();
 }
 
