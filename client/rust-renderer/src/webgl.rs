@@ -1149,7 +1149,8 @@ impl RustWebGlRenderer {
             return Err(JsValue::from_str("player_pos must contain two f32 values"));
         }
         let state = self
-            .static_state
+            .static_map
+            .state
             .ok_or_else(|| JsValue::from_str("static map state has not been configured"))?;
         let pass = match (use_lod, discard_alpha) {
             (false, false) => &self.static_map.terrain_batch.opaque_pass,
@@ -1357,10 +1358,12 @@ impl RustWebGlRenderer {
     ) -> Result<(), JsValue> {
         let mut batch = match kind {
             AUX_BATCH_LOC => self
+                .static_map
                 .loc_batch
                 .take()
                 .ok_or_else(|| JsValue::from_str("loc geometry has not been uploaded"))?,
             AUX_BATCH_DOOR => self
+                .static_map
                 .door_batch
                 .take()
                 .ok_or_else(|| JsValue::from_str("door geometry has not been uploaded"))?,
