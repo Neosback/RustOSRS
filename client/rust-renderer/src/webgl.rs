@@ -68,6 +68,153 @@ impl StaticPass {
     }
 }
 
+struct StaticGeometryBatch {
+    vertex_buffer: WebGlBuffer,
+    index_buffer: WebGlBuffer,
+    vao: WebGlVertexArrayObject,
+    opaque_pass: StaticPass,
+    alpha_pass: StaticPass,
+    lod_opaque_pass: StaticPass,
+    lod_alpha_pass: StaticPass,
+    index_count: u32,
+}
+
+impl StaticGeometryBatch {
+    fn new(gl: &Gl) -> Result<Self, JsValue> {
+        let vertex_buffer = gl
+            .create_buffer()
+            .ok_or_else(|| JsValue::from_str("failed to create static batch vertex buffer"))?;
+        let index_buffer = gl
+            .create_buffer()
+            .ok_or_else(|| JsValue::from_str("failed to create static batch index buffer"))?;
+        let vao = gl
+            .create_vertex_array()
+            .ok_or_else(|| JsValue::from_str("failed to create static batch vertex array"))?;
+
+        gl.bind_vertex_array(Some(&vao));
+        gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&vertex_buffer));
+        gl.enable_vertex_attrib_array(0);
+        gl.vertex_attrib_i_pointer_with_i32(0, 3, Gl::UNSIGNED_INT, 12, 0);
+        gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
+        gl.bind_vertex_array(None);
+
+        Ok(Self {
+            vertex_buffer,
+            index_buffer,
+            vao,
+            opaque_pass: StaticPass::new(gl)?,
+            alpha_pass: StaticPass::new(gl)?,
+            lod_opaque_pass: StaticPass::new(gl)?,
+            lod_alpha_pass: StaticPass::new(gl)?,
+            index_count: 0,
+        })
+    }
+
+    fn upload_geometry(
+        &mut self,
+        gl: &Gl,
+        packed_vertices: &[u32],
+        indices: &[u32],
+    ) -> Result<(), JsValue> {
+        validate_geometry(packed_vertices, indices)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+        let vertices = js_sys::Uint32Array::from(packed_vertices);
+        let index_data = js_sys::Uint32Array::from(indices);
+
+        gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&self.vertex_buffer));
+        gl.buffer_data_with_opt_array_buffer(
+            Gl::ARRAY_BUFFER,
+            Some(&vertices.buffer()),
+            Gl::STATIC_DRAW,
+        );
+        gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
+        gl.buffer_data_with_opt_array_buffer(
+            Gl::ELEMENT_ARRAY_BUFFER,
+            Some(&index_data.buffer()),
+            Gl::STATIC_DRAW,
+        );
+
+        self.index_count = indices.len() as u32;
+        self.opaque_pass.clear();
+        self.alpha_pass.clear();
+        self.lod_opaque_pass.clear();
+        self.lod_alpha_pass.clear();
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn upload_passes(
+        &mut self,
+        gl: &Gl,
+        lod: bool,
+        model_info_opaque: &[u16],
+        opaque_ranges: &[u32],
+        opaque_range_planes: &[u8],
+        model_info_alpha: &[u16],
+        alpha_ranges: &[u32],
+        alpha_range_planes: &[u8],
+    ) -> Result<(), JsValue> {
+        let opaque = parse_draw_ranges(opaque_ranges).map_err(JsValue::from_str)?;
+        validate_draw_ranges(&opaque, self.index_count as usize)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let alpha = parse_draw_ranges(alpha_ranges).map_err(JsValue::from_str)?;
+        validate_draw_ranges(&alpha, self.index_count as usize)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+        let (opaque_pass, alpha_pass) = if lod {
+            (&mut self.lod_opaque_pass, &mut self.lod_alpha_pass)
+        } else {
+            (&mut self.opaque_pass, &mut self.alpha_pass)
+        };
+
+        if !opaque.is_empty() {
+            upload_model_info_texture(
+                gl,
+                &opaque_pass.model_info_texture,
+                model_info_opaque,
+                "static batch opaque model-info",
+            )?;
+        }
+        if !alpha.is_empty() {
+            upload_model_info_texture(
+                gl,
+                &alpha_pass.model_info_texture,
+                model_info_alpha,
+                "static batch alpha model-info",
+            )?;
+        }
+
+        opaque_pass.draw_ranges = opaque;
+        opaque_pass.range_planes = opaque_range_planes.to_vec();
+        alpha_pass.draw_ranges = alpha;
+        alpha_pass.range_planes = alpha_range_planes.to_vec();
+        Ok(())
+    }
+
+    fn pass(&self, lod: bool, alpha: bool) -> &StaticPass {
+        match (lod, alpha) {
+            (false, false) => &self.opaque_pass,
+            (false, true) => &self.alpha_pass,
+            (true, false) => &self.lod_opaque_pass,
+            (true, true) => &self.lod_alpha_pass,
+        }
+    }
+
+    fn delete(&self, gl: &Gl) {
+        gl.delete_vertex_array(Some(&self.vao));
+        gl.delete_buffer(Some(&self.vertex_buffer));
+        gl.delete_buffer(Some(&self.index_buffer));
+        self.opaque_pass.delete(gl);
+        self.alpha_pass.delete(gl);
+        self.lod_opaque_pass.delete(gl);
+        self.lod_alpha_pass.delete(gl);
+    }
+}
+
+const AUX_BATCH_LOC: u32 = 0;
+const AUX_BATCH_DOOR: u32 = 1;
+
 /// Rust/WASM rendering backend.
 ///
 /// Stage 0 remains available through `render_reference`. Stage 1 adds the
@@ -93,6 +240,8 @@ pub struct RustWebGlRenderer {
     static_alpha_pass: StaticPass,
     static_lod_opaque_pass: StaticPass,
     static_lod_alpha_pass: StaticPass,
+    loc_batch: Option<StaticGeometryBatch>,
+    door_batch: Option<StaticGeometryBatch>,
     height_map_texture: WebGlTexture,
     texture_array: WebGlTexture,
     material_texture: WebGlTexture,
@@ -215,6 +364,8 @@ impl RustWebGlRenderer {
             static_alpha_pass,
             static_lod_opaque_pass,
             static_lod_alpha_pass,
+            loc_batch: None,
+            door_batch: None,
             height_map_texture,
             texture_array,
             material_texture,
@@ -686,6 +837,99 @@ impl RustWebGlRenderer {
         self.static_lod_alpha_pass.clear();
     }
 
+    /// Uploads geometry for an auxiliary static map batch.
+    ///
+    /// kind 0 = non-door loc geometry, kind 1 = door geometry.
+    pub fn upload_aux_geometry(
+        &mut self,
+        kind: u32,
+        packed_vertices: &[u32],
+        indices: &[u32],
+    ) -> Result<(), JsValue> {
+        if packed_vertices.is_empty() || indices.is_empty() {
+            let existing = match kind {
+                AUX_BATCH_LOC => self.loc_batch.take(),
+                AUX_BATCH_DOOR => self.door_batch.take(),
+                _ => return Err(JsValue::from_str("unknown auxiliary static batch kind")),
+            };
+            if let Some(batch) = existing {
+                batch.delete(&self.gl);
+            }
+            return Ok(());
+        }
+
+        let mut batch = match kind {
+            AUX_BATCH_LOC => self.loc_batch.take(),
+            AUX_BATCH_DOOR => self.door_batch.take(),
+            _ => return Err(JsValue::from_str("unknown auxiliary static batch kind")),
+        }
+        .unwrap_or(StaticGeometryBatch::new(&self.gl)?);
+
+        if let Err(error) = batch.upload_geometry(&self.gl, packed_vertices, indices) {
+            match kind {
+                AUX_BATCH_LOC => self.loc_batch = Some(batch),
+                AUX_BATCH_DOOR => self.door_batch = Some(batch),
+                _ => unreachable!(),
+            }
+            return Err(error);
+        }
+
+        match kind {
+            AUX_BATCH_LOC => self.loc_batch = Some(batch),
+            AUX_BATCH_DOOR => self.door_batch = Some(batch),
+            _ => unreachable!(),
+        }
+        Ok(())
+    }
+
+    /// Uploads full-detail pass state for an auxiliary static batch.
+    #[allow(clippy::too_many_arguments)]
+    pub fn upload_aux_passes(
+        &mut self,
+        kind: u32,
+        model_info_opaque: &[u16],
+        opaque_ranges: &[u32],
+        opaque_range_planes: &[u8],
+        model_info_alpha: &[u16],
+        alpha_ranges: &[u32],
+        alpha_range_planes: &[u8],
+    ) -> Result<(), JsValue> {
+        self.upload_aux_pass_set(
+            kind,
+            false,
+            model_info_opaque,
+            opaque_ranges,
+            opaque_range_planes,
+            model_info_alpha,
+            alpha_ranges,
+            alpha_range_planes,
+        )
+    }
+
+    /// Uploads LOD pass state for an auxiliary static batch.
+    #[allow(clippy::too_many_arguments)]
+    pub fn upload_aux_lod_passes(
+        &mut self,
+        kind: u32,
+        model_info_opaque: &[u16],
+        opaque_ranges: &[u32],
+        opaque_range_planes: &[u8],
+        model_info_alpha: &[u16],
+        alpha_ranges: &[u32],
+        alpha_range_planes: &[u8],
+    ) -> Result<(), JsValue> {
+        self.upload_aux_pass_set(
+            kind,
+            true,
+            model_info_opaque,
+            opaque_ranges,
+            opaque_range_planes,
+            model_info_alpha,
+            alpha_ranges,
+            alpha_range_planes,
+        )
+    }
+
     /// Stage-0 geometry/HSL reference pass retained as an A/B diagnostic.
     pub fn render_reference(
         &mut self,
@@ -992,6 +1236,12 @@ impl RustWebGlRenderer {
         self.static_alpha_pass.delete(&self.gl);
         self.static_lod_opaque_pass.delete(&self.gl);
         self.static_lod_alpha_pass.delete(&self.gl);
+        if let Some(batch) = self.loc_batch.take() {
+            batch.delete(&self.gl);
+        }
+        if let Some(batch) = self.door_batch.take() {
+            batch.delete(&self.gl);
+        }
         self.gl.delete_texture(Some(&self.height_map_texture));
         self.gl.delete_texture(Some(&self.texture_array));
         self.gl.delete_texture(Some(&self.material_texture));
@@ -1005,6 +1255,49 @@ impl RustWebGlRenderer {
         self.static_lod_alpha_pass.clear();
         self.index_count = 0;
         self.static_state = None;
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn upload_aux_pass_set(
+        &mut self,
+        kind: u32,
+        lod: bool,
+        model_info_opaque: &[u16],
+        opaque_ranges: &[u32],
+        opaque_range_planes: &[u8],
+        model_info_alpha: &[u16],
+        alpha_ranges: &[u32],
+        alpha_range_planes: &[u8],
+    ) -> Result<(), JsValue> {
+        let mut batch = match kind {
+            AUX_BATCH_LOC => self
+                .loc_batch
+                .take()
+                .ok_or_else(|| JsValue::from_str("loc geometry has not been uploaded"))?,
+            AUX_BATCH_DOOR => self
+                .door_batch
+                .take()
+                .ok_or_else(|| JsValue::from_str("door geometry has not been uploaded"))?,
+            _ => return Err(JsValue::from_str("unknown auxiliary static batch kind")),
+        };
+
+        let result = batch.upload_passes(
+            &self.gl,
+            lod,
+            model_info_opaque,
+            opaque_ranges,
+            opaque_range_planes,
+            model_info_alpha,
+            alpha_ranges,
+            alpha_range_planes,
+        );
+
+        match kind {
+            AUX_BATCH_LOC => self.loc_batch = Some(batch),
+            AUX_BATCH_DOOR => self.door_batch = Some(batch),
+            _ => unreachable!(),
+        }
+        result
     }
 
     fn prepare_viewport(&self) {
