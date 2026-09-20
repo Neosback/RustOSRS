@@ -316,12 +316,7 @@ impl IndexedGeometryBatch {
         packed_vertices: &[u32],
         indices: &[u32],
     ) -> Result<(), JsValue> {
-        self.upload_geometry_with_usage(
-            gl,
-            packed_vertices,
-            indices,
-            Gl::STATIC_DRAW,
-        )
+        self.upload_geometry_with_usage(gl, packed_vertices, indices, Gl::STATIC_DRAW)
     }
 
     fn upload_geometry_with_usage(
@@ -338,11 +333,7 @@ impl IndexedGeometryBatch {
         let index_data = js_sys::Uint32Array::from(indices);
 
         gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&self.vertex_buffer));
-        gl.buffer_data_with_opt_array_buffer(
-            Gl::ARRAY_BUFFER,
-            Some(&vertices.buffer()),
-            usage,
-        );
+        gl.buffer_data_with_opt_array_buffer(Gl::ARRAY_BUFFER, Some(&vertices.buffer()), usage);
         gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
         gl.buffer_data_with_opt_array_buffer(
             Gl::ELEMENT_ARRAY_BUFFER,
