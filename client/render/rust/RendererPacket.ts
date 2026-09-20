@@ -2,7 +2,7 @@ import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import type { DrawRange } from "../DrawRange";
 import type { SdMapData } from "../loader/SdMapData";
 
-export const RUST_RENDERER_ABI_VERSION = 7 as const;
+export const RUST_RENDERER_ABI_VERSION = 8 as const;
 
 /**
  * Numeric-only static map-square packet for the Rust/WASM renderer.
