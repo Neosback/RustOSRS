@@ -233,10 +233,11 @@ export async function initWaterTextures(host: WebGLOsrsRendererHost, ): Promise<
             );
         }
 
+        host.waterTexturePixels = data;
         host.waterTextures?.delete();
         host.waterTextures = createTextureArray(
             host.app,
-            data,
+            host.waterTexturePixels,
             WATER_TEXTURE_SIZE,
             WATER_TEXTURE_SIZE,
             WATER_TEXTURE_ASSETS.length,
