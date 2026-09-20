@@ -104,6 +104,23 @@ export interface RustRendererWasm {
         colorBanding: number,
         transparent: boolean,
     ): void;
+    render_active_static_terrain_ghost_pass(
+        viewMatrix: Float32Array,
+        projectionMatrix: Float32Array,
+        worldEntityTransform: Float32Array,
+        worldEntityOpacity: number,
+        skyRgba: Float32Array,
+        sceneHslOverride: Float32Array,
+        playerPos: Float32Array,
+        renderDistance: number,
+        fogDepth: number,
+        currentTime: number,
+        brightness: number,
+        roofPlaneLimit: number,
+        useLod: boolean,
+        isNewTextureAnim: boolean,
+        colorBanding: number,
+    ): void;
 
     render_static_frame(
         viewMatrix: Float32Array,
@@ -169,6 +186,7 @@ export interface RustStaticFrameState {
 
 export interface RustResidentMapFrameState extends RustStaticFrameState {
     mapKey: number;
+    worldEntityGhostSceneHslOverride?: Float32Array;
 }
 
 /**
@@ -335,6 +353,9 @@ export class RustRendererBridge {
 
         for (const frame of frames) {
             this.renderResidentMapPass(frame, false);
+            if (frame.worldEntityGhostSceneHslOverride) {
+                this.renderResidentTerrainGhostPass(frame);
+            }
         }
         for (let i = frames.length - 1; i >= 0; i--) {
             this.renderResidentMapPass(frames[i], true);
@@ -374,6 +395,33 @@ export class RustRendererBridge {
             frame.isNewTextureAnim,
             frame.colorBanding,
             transparent,
+        );
+    }
+
+    private renderResidentTerrainGhostPass(
+        frame: RustResidentMapFrameState,
+    ): void {
+        const sceneHslOverride =
+            frame.worldEntityGhostSceneHslOverride;
+        if (!sceneHslOverride) return;
+
+        this.wasm.select_static_map(frame.mapKey);
+        this.wasm.render_active_static_terrain_ghost_pass(
+            frame.viewMatrix,
+            frame.projectionMatrix,
+            frame.worldEntityTransform,
+            0.01,
+            frame.skyRgba,
+            sceneHslOverride,
+            frame.playerPos,
+            frame.renderDistance,
+            frame.fogDepth,
+            frame.currentTime,
+            frame.brightness,
+            frame.roofPlaneLimit,
+            frame.useLod,
+            frame.isNewTextureAnim,
+            frame.colorBanding,
         );
     }
 
