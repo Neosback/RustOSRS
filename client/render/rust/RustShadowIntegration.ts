@@ -201,6 +201,21 @@ export function isRustFullDynamicShadowEnabled(
     );
 }
 
+export function isRustFullDynamicStructuralParityMatch(
+    diagnostics: RustRendererShadowDiagnostics,
+): boolean {
+    return (
+        diagnostics.enabled
+        && !diagnostics.failed
+        && diagnostics.npcParityEnabled
+        && diagnostics.playerParityEnabled
+        && diagnostics.gfxParityEnabled
+        && diagnostics.projectileParityEnabled
+        && diagnostics.drawStatsMatch
+        && diagnostics.drawSequenceMatch
+    );
+}
+
 export interface RustRendererShadowDiagnostics {
     enabled: boolean;
     failed: boolean;
