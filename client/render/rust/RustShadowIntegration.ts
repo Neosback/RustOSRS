@@ -411,23 +411,23 @@ function addStats(
     target.submittedIndices += source.submittedIndices;
 }
 
-function shouldDrawWorldEntityGhostPass(
+function getWorldEntityGhostSceneHslOverride(
     host: WebGLOsrsRendererHost,
     map: WebGLMapSquare,
-): boolean {
+): Float32Array | undefined {
     if (
         !host.sceneUniformBuffer
         || !host.mapManager.worldEntityMapIds.has(map.id)
     ) {
-        return false;
+        return undefined;
     }
 
     const entityIndex = host.getWorldEntityIndexForMapId(map.id);
-    if (entityIndex === undefined) return false;
+    if (entityIndex === undefined) return undefined;
 
     const entity =
         host.osrsClient.worldViewManager.getWorldEntity(entityIndex);
-    if (!entity || entity.drawMode !== 1) return false;
+    if (!entity || entity.drawMode !== 1) return undefined;
 
     const worldView =
         host.osrsClient.worldViewManager.getWorldView(entityIndex);
@@ -435,7 +435,7 @@ function shouldDrawWorldEntityGhostPass(
         !worldView
         || (worldView.npcIds.size === 0 && worldView.playerIds.size === 0)
     ) {
-        return false;
+        return undefined;
     }
 
     const overlay = host.worldEntityOverlays.get(entityIndex);
@@ -443,8 +443,15 @@ function shouldDrawWorldEntityGhostPass(
         overlay?.configId !== undefined && overlay.configId >= 0
             ? host.osrsClient.worldEntityTypeLoader?.load(overlay.configId)
             : undefined;
+    const packedHsl = worldEntityType?.sceneTintHsl ?? 0;
+    if (packedHsl <= 0) return undefined;
 
-    return !!worldEntityType && worldEntityType.sceneTintHsl > 0;
+    return new Float32Array([
+        (packedHsl >> 10) & 63,
+        (packedHsl >> 7) & 7,
+        packedHsl & 127,
+        127,
+    ]);
 }
 
 function countExpectedMapStaticDraws(
@@ -768,8 +775,10 @@ export function renderRustStaticShadowFrame(
                 true,
                 createAnimatedLocDrawRangePatches(map, true, useLod),
             );
+            const worldEntityGhostSceneHslOverride =
+                getWorldEntityGhostSceneHslOverride(host, map);
             const worldEntityGhostPass =
-                shouldDrawWorldEntityGhostPass(host, map);
+                !!worldEntityGhostSceneHslOverride;
             if (worldEntityGhostPass) {
                 expectedWorldEntityGhostPasses++;
             }
@@ -816,6 +825,7 @@ export function renderRustStaticShadowFrame(
                 useLod,
                 isNewTextureAnim: !!host.osrsClient.isNewTextureAnim,
                 colorBanding: host.colorBanding,
+                worldEntityGhostSceneHslOverride,
             });
         }
 
