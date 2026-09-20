@@ -186,7 +186,10 @@ import {
     createProjectileProgram,
 } from "../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
-import { mirrorRustActorData } from "../rust/RustShadowIntegration";
+import {
+    isRustPrimaryRendererActive,
+    mirrorRustActorData,
+} from "../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
 import { RENDER_CONSTANTS } from "./constants";
 
@@ -299,6 +302,10 @@ export function draw(host: WebGLOsrsRendererHost, drawCall: DrawCall, drawRanges
             host._accumulate(host.drawSubsetBuffer, len);
         } else {
             host._accumulate(drawRanges);
+        }
+
+        if (isRustPrimaryRendererActive(host)) {
+            return;
         }
 
         if (host.drawBackend) {
