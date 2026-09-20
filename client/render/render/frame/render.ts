@@ -817,7 +817,6 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         passStartIndices = host._frameIndices;
         passStartBatches = host._frameBatches;
         host.renderTransparentNpcPass(npcDataTextureIndex, npcDataTexture);
-        finishRustActorShadowFrame(host);
         transparentNpcIndices = Math.max(0, host._frameIndices - passStartIndices);
         transparentNpcBatches = Math.max(0, host._frameBatches - passStartBatches);
         profiler.endPhase();
@@ -825,6 +824,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         passStartIndices = host._frameIndices;
         passStartBatches = host._frameBatches;
         host.renderTransparentPlayerPass(playerDataTextureIndex, playerDataTexture);
+        finishRustActorShadowFrame(host);
         transparentPlayerIndices = Math.max(0, host._frameIndices - passStartIndices);
         transparentPlayerBatches = Math.max(0, host._frameBatches - passStartBatches);
         profiler.endPhase();
