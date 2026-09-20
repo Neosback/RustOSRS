@@ -43,9 +43,13 @@ pub struct ModelInfoDrawCommand {
 pub fn create_model_info_texture_data(commands: &[ModelInfoDrawCommand]) -> Vec<u16> {
     let instance_count: usize = commands.iter().map(|command| command.instances.len()).sum();
 
-    let logical_texels = commands.len() + instance_count;
-    let padded_texels = logical_texels.div_ceil(16) * 16;
-    let texel_count = padded_texels.max(16);
+    // Match SceneBuffer.ts exactly. The TypeScript allocation formula counts
+    // command header words before rounding to a 16-texel row, then multiplies
+    // by four channels. It over-allocates relative to the logical texel count
+    // for some command/instance mixes, but packet parity is more important
+    // than "fixing" that behavior during the renderer migration.
+    let data_length = (commands.len() * 4 + instance_count).div_ceil(16) * 16;
+    let texel_count = data_length.max(16);
     let mut texture = vec![0u16; texel_count * 4];
 
     let mut instance_offset = 0usize;
@@ -134,6 +138,19 @@ mod tests {
         assert_eq!(&packet[8..12], &first.encode_texel());
         assert_eq!(&packet[12..16], &second.encode_texel());
         assert_eq!(&packet[16..20], &second.encode_texel());
+    }
+
+    #[test]
+    fn texture_packet_matches_typescript_padding_rule() {
+        let commands = (0..5)
+            .map(|_| ModelInfoDrawCommand { instances: vec![] })
+            .collect::<Vec<_>>();
+
+        let packet = create_model_info_texture_data(&commands);
+
+        // SceneBuffer.ts:
+        // ceil((5 * 4 + 0) / 16) * 16 texels * 4 channels = 128 u16.
+        assert_eq!(packet.len(), 128);
     }
 
     #[test]
