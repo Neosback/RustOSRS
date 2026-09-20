@@ -223,6 +223,7 @@ export class GfxRenderer {
                                 (baseOffset + (inst.slot | 0)) | 0,
                                 yOff | 0,
                                 transparent,
+                                !!(this.renderer as any).cullBackFace,
                             );
                         }
                     }
