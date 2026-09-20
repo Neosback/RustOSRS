@@ -17,6 +17,47 @@ import {
 
 const runtimes = new WeakMap<WebGLOsrsRendererHost, RustRendererShadowRuntime>();
 const failedHosts = new WeakSet<WebGLOsrsRendererHost>();
+export interface RustRendererShadowDiagnostics {
+    enabled: boolean;
+    failed: boolean;
+    residentMaps: number;
+    visibleMaps: number;
+    eligibleMaps: number;
+    mirroredMaps: number;
+    drawCalls: number;
+    submittedIndices: number;
+}
+
+const diagnostics = new WeakMap<
+    WebGLOsrsRendererHost,
+    RustRendererShadowDiagnostics
+>();
+
+function publishDiagnostics(
+    host: WebGLOsrsRendererHost,
+    value: RustRendererShadowDiagnostics,
+): void {
+    diagnostics.set(host, value);
+    (host.canvas as HTMLCanvasElement & {
+        __rustRendererShadowDiagnostics?: RustRendererShadowDiagnostics;
+    }).__rustRendererShadowDiagnostics = value;
+}
+
+export function getRustRendererShadowDiagnostics(
+    host: WebGLOsrsRendererHost,
+): RustRendererShadowDiagnostics {
+    return diagnostics.get(host) ?? {
+        enabled: false,
+        failed: failedHosts.has(host),
+        residentMaps: 0,
+        visibleMaps: 0,
+        eligibleMaps: 0,
+        mirroredMaps: 0,
+        drawCalls: 0,
+        submittedIndices: 0,
+    };
+}
+
 
 function disableShadow(
     host: WebGLOsrsRendererHost,
@@ -27,6 +68,11 @@ function disableShadow(
         console.warn(`[RustRenderer] shadow ${phase} disabled`, error);
     }
     failedHosts.add(host);
+    publishDiagnostics(host, {
+        ...getRustRendererShadowDiagnostics(host),
+        enabled: false,
+        failed: true,
+    });
 
     const runtime = runtimes.get(host);
     if (runtime) {
@@ -68,6 +114,16 @@ export async function initRustRendererShadow(
 
         runtimes.set(host, runtime);
         syncGlobalResources(host, runtime);
+        publishDiagnostics(host, {
+            enabled: true,
+            failed: false,
+            residentMaps: runtime.bridge.getResidentStaticMapCount(),
+            visibleMaps: 0,
+            eligibleMaps: 0,
+            mirroredMaps: 0,
+            drawCalls: 0,
+            submittedIndices: 0,
+        });
         console.info("[RustRenderer] shadow renderer enabled");
     } catch (error) {
         disableShadow(host, "initialization", error);
@@ -85,6 +141,10 @@ export function disposeRustRendererShadow(
         runtimes.delete(host);
     }
     failedHosts.delete(host);
+    diagnostics.delete(host);
+    delete (host.canvas as HTMLCanvasElement & {
+        __rustRendererShadowDiagnostics?: RustRendererShadowDiagnostics;
+    }).__rustRendererShadowDiagnostics;
 }
 
 export function mirrorRustStaticMap(
@@ -119,6 +179,10 @@ export function mirrorRustStaticMap(
             createRustStaticScenePacket(data),
             timeLoaded,
         );
+        publishDiagnostics(host, {
+            ...getRustRendererShadowDiagnostics(host),
+            residentMaps: runtime.bridge.getResidentStaticMapCount(),
+        });
     } catch (error) {
         disableShadow(host, "map mirror", error);
     }
@@ -134,6 +198,10 @@ export function removeRustStaticMap(
 
     try {
         runtime.bridge.removeStaticMap(getMapSquareId(mapX, mapY));
+        publishDiagnostics(host, {
+            ...getRustRendererShadowDiagnostics(host),
+            residentMaps: runtime.bridge.getResidentStaticMapCount(),
+        });
     } catch (error) {
         disableShadow(host, "map removal", error);
     }
@@ -159,7 +227,17 @@ export function renderRustStaticShadowFrame(
         syncGlobalResources(host, runtime);
 
         const count = host.mapManager.visibleMapCount | 0;
-        if (count <= 0) return;
+        if (count <= 0) {
+            publishDiagnostics(host, {
+                ...getRustRendererShadowDiagnostics(host),
+                visibleMaps: 0,
+                eligibleMaps: 0,
+                mirroredMaps: 0,
+                drawCalls: 0,
+                submittedIndices: 0,
+            });
+            return;
+        }
 
         const cullTile = host.getRenderCullTile();
         const renderDistanceTiles = Math.max(0, renderDistance | 0);
@@ -169,6 +247,7 @@ export function renderRustStaticShadowFrame(
         );
         const roofPlaneLimit = host.getRoofPlaneLimit();
         const frames: RustResidentMapFrameState[] = [];
+        let eligibleMaps = 0;
 
         for (let i = 0; i < count; i++) {
             const map = host.mapManager.visibleMaps[i];
@@ -184,6 +263,7 @@ export function renderRustStaticShadowFrame(
                 continue;
             }
 
+            eligibleMaps++;
             const mapKey = map.id | 0;
             if (!runtime.bridge.hasStaticMap(mapKey)) {
                 continue;
@@ -227,6 +307,20 @@ export function renderRustStaticShadowFrame(
         }
 
         runtime.bridge.renderStaticMaps(frames);
+        const stats =
+            frames.length > 0
+                ? runtime.bridge.getLastStats()
+                : { drawCalls: 0, submittedIndices: 0 };
+        publishDiagnostics(host, {
+            enabled: true,
+            failed: false,
+            residentMaps: runtime.bridge.getResidentStaticMapCount(),
+            visibleMaps: count,
+            eligibleMaps,
+            mirroredMaps: frames.length,
+            drawCalls: stats.drawCalls,
+            submittedIndices: stats.submittedIndices,
+        });
     } catch (error) {
         disableShadow(host, "frame render", error);
     }
