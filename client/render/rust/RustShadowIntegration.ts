@@ -990,6 +990,7 @@ export function renderRustStaticShadowFrame(
 ): void {
     const runtime = getRuntime(host);
     if (!runtime) return;
+    activeShadowFrames.delete(host);
 
     try {
         syncRustShadowCanvasSize(
@@ -1016,6 +1017,8 @@ export function renderRustStaticShadowFrame(
                 drawSequenceMatch: true,
                 staticParityMatch: true,
                 expectedWorldEntityGhostPasses: 0,
+                npcParityEnabled: isRustNpcShadowEnabled(),
+                mirroredNpcPasses: 0,
             });
             return;
         }
@@ -1144,10 +1147,46 @@ export function renderRustStaticShadowFrame(
                 entry.worldEntityGhostPass,
             );
         }
+
+        const npcParityEnabled = isRustNpcShadowEnabled();
+        const state: ActiveRustShadowFrame = {
+            frames,
+            framesByMapKey: new Map(
+                frames.map((frame) => [frame.mapKey, frame]),
+            ),
+            mirroredStaticMaps,
+            expectedStats,
+            expectedDrawHash:
+                frames.length > 0 ? expectedDrawHash : 0,
+            visibleMaps: count,
+            eligibleMaps,
+            expectedWorldEntityGhostPasses,
+            pixelReference:
+                npcParityEnabled ? undefined : pixelReference,
+            npcParityEnabled,
+            mirroredNpcPasses: 0,
+            phase: "prepared",
+        };
+
+        if (frames.length === 0) {
+            finalizeRustShadowFrame(host, runtime, state);
+            return;
+        }
+
+        if (runtime.bridge.beginStaticFrame(frames)) {
+            runtime.bridge.renderOpaqueStaticMaps(frames);
+        }
+
+        if (npcParityEnabled) {
+            activeShadowFrames.set(host, state);
+            return;
+        }
+
+        runtime.bridge.renderTransparentStaticMaps(frames);
         for (let i = mirroredStaticMaps.length - 1; i >= 0; i--) {
             const entry = mirroredStaticMaps[i];
-            expectedDrawHash = hashExpectedMapStaticPass(
-                expectedDrawHash,
+            state.expectedDrawHash = hashExpectedMapStaticPass(
+                state.expectedDrawHash,
                 entry.map,
                 entry.useLod,
                 true,
@@ -1155,64 +1194,8 @@ export function renderRustStaticShadowFrame(
                 entry.worldEntityGhostPass,
             );
         }
-
-        if (runtime.bridge.beginStaticFrame(frames)) {
-            runtime.bridge.renderOpaqueStaticMaps(frames);
-
-            // Stage 2 actor passes will be inserted here so Rust preserves the
-            // production ordering: opaque static -> opaque actors ->
-            // transparent static -> transparent NPCs/players.
-            runtime.bridge.renderTransparentStaticMaps(frames);
-        }
-        const stats =
-            frames.length > 0
-                ? runtime.bridge.getLastStats()
-                : { drawCalls: 0, submittedIndices: 0 };
-        const drawHash =
-            frames.length > 0
-                ? runtime.bridge.getLastDrawHash()
-                : 0;
-        if (frames.length === 0) {
-            expectedDrawHash = 0;
-        }
-        const drawStatsMatch =
-            stats.drawCalls === expectedStats.drawCalls
-            && stats.submittedIndices
-                === expectedStats.submittedIndices;
-        const drawSequenceMatch =
-            drawHash === (expectedDrawHash >>> 0);
-        const previousDiagnostics =
-            getRustRendererShadowDiagnostics(host);
-        let pixelParity = previousDiagnostics.pixelParity;
-        if (pixelReference) {
-            const rustPixels = readCanvasRgbaPixels(runtime.canvas);
-            if (rustPixels) {
-                pixelParity = compareRgbaFrames(
-                    pixelReference,
-                    rustPixels,
-                );
-            }
-        }
-
-        publishDiagnostics(host, {
-            enabled: true,
-            failed: false,
-            residentMaps: runtime.bridge.getResidentStaticMapCount(),
-            visibleMaps: count,
-            eligibleMaps,
-            mirroredMaps: frames.length,
-            drawCalls: stats.drawCalls,
-            submittedIndices: stats.submittedIndices,
-            expectedDrawCalls: expectedStats.drawCalls,
-            expectedSubmittedIndices: expectedStats.submittedIndices,
-            drawStatsMatch,
-            drawHash,
-            expectedDrawHash: expectedDrawHash >>> 0,
-            drawSequenceMatch,
-            staticParityMatch: drawStatsMatch && drawSequenceMatch,
-            expectedWorldEntityGhostPasses,
-            pixelParity,
-        });
+        state.phase = "transparent-npc";
+        finalizeRustShadowFrame(host, runtime, state);
     } catch (error) {
         disableShadow(host, "frame render", error);
     }
