@@ -248,7 +248,6 @@ struct IndexedGeometryBatch {
     vertex_buffer: WebGlBuffer,
     index_buffer: WebGlBuffer,
     vao: WebGlVertexArrayObject,
-    index_count: u32,
 }
 
 impl IndexedGeometryBatch {
@@ -274,7 +273,6 @@ impl IndexedGeometryBatch {
             vertex_buffer,
             index_buffer,
             vao,
-            index_count: 0,
         })
     }
 
@@ -303,7 +301,6 @@ impl IndexedGeometryBatch {
             Gl::STATIC_DRAW,
         );
 
-        self.index_count = indices.len() as u32;
         Ok(())
     }
 
