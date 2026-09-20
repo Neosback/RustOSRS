@@ -416,7 +416,8 @@ impl RustWebGlRenderer {
     }
 
     pub fn resident_static_map_count(&self) -> u32 {
-        (self.parked_static_maps.len() + 1) as u32
+        let active_count = usize::from(!self.static_map.is_empty());
+        (self.parked_static_maps.len() + active_count) as u32
     }
 
     pub fn remove_static_map(&mut self, map_key: u32) -> Result<(), JsValue> {
