@@ -18,6 +18,10 @@ pub enum RendererPacketError {
         end_index: u64,
         index_count: usize,
     },
+    DrawRangePlaneCount {
+        range_count: usize,
+        plane_count: usize,
+    },
 }
 
 impl Display for RendererPacketError {
@@ -51,6 +55,13 @@ impl Display for RendererPacketError {
             } => write!(
                 formatter,
                 "draw range {draw_index} ends at index {end_index}, but index buffer has {index_count} entries"
+            ),
+            Self::DrawRangePlaneCount {
+                range_count,
+                plane_count,
+            } => write!(
+                formatter,
+                "draw-range plane packet has {plane_count} entries, expected {range_count}"
             ),
         }
     }
@@ -106,6 +117,19 @@ pub fn validate_draw_ranges(
     Ok(())
 }
 
+pub fn validate_draw_range_planes(
+    ranges: &[DrawRange],
+    range_planes: &[u8],
+) -> Result<(), RendererPacketError> {
+    if ranges.len() != range_planes.len() {
+        return Err(RendererPacketError::DrawRangePlaneCount {
+            range_count: ranges.len(),
+            plane_count: range_planes.len(),
+        });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +143,28 @@ mod tests {
                 index_position: 1,
                 vertex_index: 1,
                 vertex_count: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn draw_range_planes_require_one_entry_per_range() {
+        assert!(
+            validate_draw_range_planes(
+                &[DrawRange::new(0, 3, 1), DrawRange::new(12, 6, 1)],
+                &[0, 2],
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            validate_draw_range_planes(
+                &[DrawRange::new(0, 3, 1), DrawRange::new(12, 6, 1)],
+                &[0],
+            )
+            .unwrap_err(),
+            RendererPacketError::DrawRangePlaneCount {
+                range_count: 2,
+                plane_count: 1,
             }
         );
     }
