@@ -1,6 +1,7 @@
 use crate::draw::{DrawRange, DrawStats, draw_range_is_visible, parse_draw_ranges};
 use crate::packet::{validate_draw_ranges, validate_geometry};
 use crate::static_scene::StaticMapState;
+use std::collections::HashMap;
 use wasm_bindgen::{JsCast, prelude::*};
 use web_sys::{
     HtmlCanvasElement, WebGl2RenderingContext as Gl, WebGlBuffer, WebGlProgram, WebGlShader,
@@ -271,7 +272,9 @@ pub struct RustWebGlRenderer {
 
     static_program: StaticProgram,
 
+    static_map_key: u32,
     static_map: StaticMapResources,
+    parked_static_maps: HashMap<u32, StaticMapResources>,
     texture_array: WebGlTexture,
     material_texture: WebGlTexture,
     water_texture_array: WebGlTexture,
@@ -359,7 +362,9 @@ impl RustWebGlRenderer {
             reference_view_proj,
             reference_brightness,
             static_program,
+            static_map_key: 0,
             static_map,
+            parked_static_maps: HashMap::new(),
             texture_array,
             material_texture,
             water_texture_array,
@@ -371,6 +376,70 @@ impl RustWebGlRenderer {
 
     pub fn abi_version(&self) -> u32 {
         crate::RENDERER_ABI_VERSION
+    }
+
+    /// Selects a resident static map slot, preserving the previously active
+    /// map's GPU resources for later reuse.
+    pub fn select_static_map(&mut self, map_key: u32) -> Result<(), JsValue> {
+        if self.static_map_key == map_key {
+            return Ok(());
+        }
+
+        let next = match self.parked_static_maps.remove(&map_key) {
+            Some(map) => map,
+            None => StaticMapResources::new(&self.gl)?,
+        };
+        let previous = std::mem::replace(&mut self.static_map, next);
+        self.parked_static_maps
+            .insert(self.static_map_key, previous);
+        self.static_map_key = map_key;
+        Ok(())
+    }
+
+    pub fn active_static_map_key(&self) -> u32 {
+        self.static_map_key
+    }
+
+    pub fn resident_static_map_count(&self) -> u32 {
+        (self.parked_static_maps.len() + 1) as u32
+    }
+
+    pub fn remove_static_map(&mut self, map_key: u32) -> Result<(), JsValue> {
+        if map_key != self.static_map_key {
+            if let Some(mut map) = self.parked_static_maps.remove(&map_key) {
+                map.delete(&self.gl);
+            }
+            return Ok(());
+        }
+
+        if let Some(next_key) = self.parked_static_maps.keys().next().copied() {
+            let next = self
+                .parked_static_maps
+                .remove(&next_key)
+                .expect("resident map key disappeared");
+            let mut removed = std::mem::replace(&mut self.static_map, next);
+            removed.delete(&self.gl);
+            self.static_map_key = next_key;
+            return Ok(());
+        }
+
+        let replacement = StaticMapResources::new(&self.gl)?;
+        let mut removed = std::mem::replace(&mut self.static_map, replacement);
+        removed.delete(&self.gl);
+        self.static_map_key = 0;
+        Ok(())
+    }
+
+    pub fn clear_static_maps(&mut self) -> Result<(), JsValue> {
+        for (_, mut map) in self.parked_static_maps.drain() {
+            map.delete(&self.gl);
+        }
+
+        let replacement = StaticMapResources::new(&self.gl)?;
+        let mut active = std::mem::replace(&mut self.static_map, replacement);
+        active.delete(&self.gl);
+        self.static_map_key = 0;
+        Ok(())
     }
 
     /// Uploads the current TypeScript packed-vertex/index packet unchanged.
@@ -1169,6 +1238,9 @@ impl RustWebGlRenderer {
 
     pub fn dispose(&mut self) {
         self.static_map.delete(&self.gl);
+        for (_, mut map) in self.parked_static_maps.drain() {
+            map.delete(&self.gl);
+        }
         self.gl.delete_texture(Some(&self.texture_array));
         self.gl.delete_texture(Some(&self.material_texture));
         self.gl.delete_texture(Some(&self.water_texture_array));
