@@ -9,7 +9,7 @@ const clientDir = path.resolve(scriptDir, "..");
 const publicDir = path.join(clientDir, "public");
 const rendererDir = path.join(publicDir, "rust-renderer");
 const bridgeSource = readFileSync(
-    path.join(clientDir, "render", "rust", "RustRendererBridge.ts"),
+    path.join(clientDir, "render", "rust", "RendererPacket.ts"),
     "utf8",
 );
 const abiMatch = bridgeSource.match(/RUST_RENDERER_ABI_VERSION\s*=\s*(\d+)/);
