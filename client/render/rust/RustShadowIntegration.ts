@@ -221,10 +221,12 @@ export function getRustRendererShadowDiagnostics(
         playerParityEnabled: false,
         gfxParityEnabled: false,
         projectileParityEnabled: false,
+        overlayParityEnabled: false,
         mirroredNpcPasses: 0,
         mirroredPlayerPasses: 0,
         mirroredGfxPasses: 0,
         mirroredProjectilePasses: 0,
+        mirroredOverlayPasses: 0,
     };
 }
 
@@ -345,6 +347,7 @@ export async function initRustRendererShadow(
             mirroredPlayerPasses: 0,
             mirroredGfxPasses: 0,
             mirroredProjectilePasses: 0,
+            mirroredOverlayPasses: 0,
         });
         console.info("[RustRenderer] shadow renderer enabled");
     } catch (error) {
@@ -952,10 +955,12 @@ function finalizeRustShadowFrame(
         playerParityEnabled: state.playerParityEnabled,
         gfxParityEnabled: state.gfxParityEnabled,
         projectileParityEnabled: state.projectileParityEnabled,
+        overlayParityEnabled: state.overlayParityEnabled,
         mirroredNpcPasses: state.mirroredNpcPasses,
         mirroredPlayerPasses: state.mirroredPlayerPasses,
         mirroredGfxPasses: state.mirroredGfxPasses,
         mirroredProjectilePasses: state.mirroredProjectilePasses,
+        mirroredOverlayPasses: state.mirroredOverlayPasses,
         pixelParity,
     });
     activeShadowFrames.delete(host);
@@ -1424,10 +1429,12 @@ export function renderRustStaticShadowFrame(
                 playerParityEnabled: isRustPlayerShadowEnabled(),
                 gfxParityEnabled: isRustGfxShadowEnabled(),
                 projectileParityEnabled: isRustProjectileShadowEnabled(),
+                overlayParityEnabled: isRustSceneOverlayShadowEnabled(),
                 mirroredNpcPasses: 0,
                 mirroredPlayerPasses: 0,
                 mirroredGfxPasses: 0,
                 mirroredProjectilePasses: 0,
+                mirroredOverlayPasses: 0,
             });
             return;
         }
