@@ -2163,6 +2163,235 @@ impl RustWebGlRenderer {
         result
     }
 
+    /// Renders one finalized projectile frame. TypeScript remains
+    /// authoritative for trajectory, orientation packing and animation frame
+    /// choice; Rust owns the GPU upload/state/submission boundary.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_active_projectile_pass(
+        &mut self,
+        view_matrix: &[f32],
+        projection_matrix: &[f32],
+        sky_rgba: &[f32],
+        scene_hsl_override: &[f32],
+        player_pos: &[f32],
+        render_distance: f32,
+        fog_depth: f32,
+        current_time: f32,
+        brightness: f32,
+        is_new_texture_anim: bool,
+        color_banding: f32,
+        projectile_data_offset: i32,
+        model_y_offset: f32,
+        projectile_sub_offset: &[f32],
+        map_x: f32,
+        map_y: f32,
+        transparent: bool,
+        cull_back_face: bool,
+    ) -> Result<(), JsValue> {
+        require_matrix(view_matrix, "view_matrix")?;
+        require_matrix(projection_matrix, "projection_matrix")?;
+        require_vec4(sky_rgba, "sky_rgba")?;
+        require_vec4(scene_hsl_override, "scene_hsl_override")?;
+        if player_pos.len() != 2 {
+            return Err(JsValue::from_str("player_pos must contain two f32 values"));
+        }
+        if projectile_sub_offset.len() != 2 {
+            return Err(JsValue::from_str(
+                "projectile_sub_offset must contain two f32 values",
+            ));
+        }
+        if projectile_data_offset < 0 {
+            return Err(JsValue::from_str(
+                "projectile_data_offset must be non-negative",
+            ));
+        }
+
+        let state = self
+            .static_map
+            .state
+            .ok_or_else(|| JsValue::from_str("static map state has not been configured"))?;
+        let index_count = self.dynamic_projectile_batch.index_count;
+        if index_count == 0 {
+            return Ok(());
+        }
+
+        if transparent {
+            self.gl.enable(Gl::BLEND);
+            self.gl
+                .blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+            self.gl.depth_mask(false);
+        } else {
+            self.gl.disable(Gl::BLEND);
+            self.gl.depth_mask(true);
+        }
+        if cull_back_face {
+            self.gl.enable(Gl::CULL_FACE);
+            self.gl.cull_face(Gl::BACK);
+        } else {
+            self.gl.disable(Gl::CULL_FACE);
+        }
+
+        self.prepare_viewport();
+        self.gl.use_program(Some(&self.projectile_program.program));
+
+        self.gl.uniform_matrix4fv_with_f32_array(
+            Some(&self.projectile_program.view_matrix),
+            false,
+            view_matrix,
+        );
+        self.gl.uniform_matrix4fv_with_f32_array(
+            Some(&self.projectile_program.projection_matrix),
+            false,
+            projection_matrix,
+        );
+        self.gl.uniform4fv_with_f32_array(
+            Some(&self.projectile_program.scene_hsl_override),
+            scene_hsl_override,
+        );
+        self.gl.uniform2f(
+            Some(&self.projectile_program.player_pos),
+            player_pos[0],
+            player_pos[1],
+        );
+        self.gl.uniform1f(
+            Some(&self.projectile_program.render_distance),
+            render_distance.max(0.0001),
+        );
+        self.gl.uniform1f(
+            Some(&self.projectile_program.fog_depth),
+            fog_depth.max(0.0),
+        );
+        self.gl.uniform1f(
+            Some(&self.projectile_program.current_time),
+            current_time,
+        );
+        self.gl.uniform1f(
+            Some(&self.projectile_program.brightness),
+            brightness.max(0.0001),
+        );
+        self.gl.uniform1f(
+            Some(&self.projectile_program.is_new_texture_anim),
+            if is_new_texture_anim { 1.0 } else { 0.0 },
+        );
+        self.gl.uniform1f(
+            Some(&self.projectile_program.color_banding),
+            color_banding.max(1.0),
+        );
+        self.gl.uniform1i(
+            Some(&self.projectile_program.projectile_data_offset),
+            projectile_data_offset,
+        );
+        self.gl
+            .uniform2f(Some(&self.projectile_program.map_pos), map_x, map_y);
+        self.gl
+            .uniform1f(Some(&self.projectile_program.time_loaded), -1.0);
+        self.gl.uniform1i(
+            Some(&self.projectile_program.scene_border_size),
+            state.border_size,
+        );
+        self.gl.uniform1f(
+            Some(&self.projectile_program.model_y_offset),
+            model_y_offset,
+        );
+        self.gl.uniform2f(
+            Some(&self.projectile_program.projectile_sub_offset),
+            projectile_sub_offset[0],
+            projectile_sub_offset[1],
+        );
+        self.gl.uniform1i(
+            Some(&self.projectile_program.texture_layer_count),
+            self.texture_layer_count.max(1),
+        );
+        self.gl.uniform1i(
+            Some(&self.projectile_program.material_count),
+            self.material_count.max(1),
+        );
+        self.gl.uniform1i(
+            Some(&self.projectile_program.discard_alpha),
+            i32::from(transparent),
+        );
+        self.gl.uniform4fv_with_f32_array(
+            Some(&self.projectile_program.sky_color),
+            sky_rgba,
+        );
+        self.gl.uniform1f(
+            Some(&self.projectile_program.world_entity_opacity),
+            1.0,
+        );
+
+        self.gl.active_texture(Gl::TEXTURE6);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D, Some(&self.actor_data_texture));
+        self.gl
+            .uniform1i(Some(&self.projectile_program.actor_data_sampler), 6);
+
+        self.gl.active_texture(Gl::TEXTURE1);
+        self.gl.bind_texture(
+            Gl::TEXTURE_2D_ARRAY,
+            Some(&self.static_map.height_map_texture),
+        );
+        self.gl
+            .uniform1i(Some(&self.projectile_program.height_map_sampler), 1);
+
+        self.gl.active_texture(Gl::TEXTURE2);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.texture_array));
+        self.gl
+            .uniform1i(Some(&self.projectile_program.texture_sampler), 2);
+
+        self.gl.active_texture(Gl::TEXTURE3);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D, Some(&self.material_texture));
+        self.gl
+            .uniform1i(Some(&self.projectile_program.material_sampler), 3);
+
+        self.gl.active_texture(Gl::TEXTURE4);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.water_texture_array));
+        self.gl.uniform1i(
+            Some(&self.projectile_program.water_texture_sampler),
+            4,
+        );
+
+        self.gl.active_texture(Gl::TEXTURE5);
+        self.gl.bind_texture(
+            Gl::TEXTURE_2D_ARRAY,
+            Some(&self.static_map.water_mask_texture),
+        );
+        self.gl
+            .uniform1i(Some(&self.projectile_program.water_mask_sampler), 5);
+
+        let ranges = [DrawRange::new(0, index_count, 1)];
+        let flags = u32::from(transparent);
+        self.last_draw_hash = hash_visible_draw_ranges(
+            self.last_draw_hash,
+            self.static_map_key,
+            flags,
+            DYNAMIC_PROJECTILE_BATCH_KIND,
+            &ranges,
+            None,
+            3,
+        );
+
+        self.gl
+            .bind_vertex_array(Some(&self.dynamic_projectile_batch.vao));
+        let stats = submit_draw_ranges(
+            &self.gl,
+            &ranges,
+            index_count,
+            None,
+            None,
+            3,
+            false,
+        );
+        self.gl.bind_vertex_array(None);
+        self.gl.depth_mask(true);
+
+        self.last_stats.draw_calls += stats.draw_calls;
+        self.last_stats.submitted_indices += stats.submitted_indices;
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn render_npc_geometry_pass(
         &mut self,
