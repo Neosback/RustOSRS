@@ -341,6 +341,11 @@ export async function cleanUp(host: WebGLOsrsRendererHost, ): Promise<void> {
         host.waterTextures?.delete();
         host.waterTextures = undefined;
 
+        host.textureArrayPixels = undefined;
+        host.textureMaterialBytes = undefined;
+        host.waterTexturePixels = undefined;
+        host.rustGlobalResourcesRevision++;
+
         host.drawBackend?.dispose();
         host.drawBackend = undefined;
 
