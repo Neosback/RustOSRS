@@ -186,6 +186,7 @@ import {
     createProjectileProgram,
 } from "../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
+import { mirrorRustActorData } from "../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
 import { RENDER_CONSTANTS } from "./constants";
 
@@ -258,6 +259,10 @@ export function updateActorDataTexture(host: WebGLOsrsRendererHost, ) {
 
         // Keep legacy buffer in sync for any code that references it
         host.actorDataTextureBuffer[0] = writeTex;
+
+        // Reuse the existing PicoGL checksum/size gate above: Rust only
+        // receives actor data when the live actor texture was actually updated.
+        mirrorRustActorData(host, uploadView, texWidth, texHeight);
         return 0;
     
 }
