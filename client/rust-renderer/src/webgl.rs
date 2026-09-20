@@ -15,6 +15,7 @@ const REFERENCE_VERTEX_SHADER: &str = include_str!("shaders/reference.vert.glsl"
 const REFERENCE_FRAGMENT_SHADER: &str = include_str!("shaders/reference.frag.glsl");
 const STATIC_VERTEX_SHADER: &str = include_str!("shaders/static.vert.glsl");
 const STATIC_FRAGMENT_SHADER: &str = include_str!("shaders/static.frag.glsl");
+const NPC_VERTEX_SHADER: &str = include_str!("shaders/npc.vert.glsl");
 
 struct StaticProgram {
     program: WebGlProgram,
@@ -36,6 +37,39 @@ struct StaticProgram {
     roof_plane_limit: WebGlUniformLocation,
     scene_border_size: WebGlUniformLocation,
     model_info_sampler: WebGlUniformLocation,
+    height_map_sampler: WebGlUniformLocation,
+    texture_sampler: WebGlUniformLocation,
+    material_sampler: WebGlUniformLocation,
+    water_texture_sampler: WebGlUniformLocation,
+    water_mask_sampler: WebGlUniformLocation,
+    texture_layer_count: WebGlUniformLocation,
+    material_count: WebGlUniformLocation,
+    discard_alpha: WebGlUniformLocation,
+    sky_color: WebGlUniformLocation,
+}
+
+
+struct NpcProgram {
+    program: WebGlProgram,
+    view_matrix: WebGlUniformLocation,
+    projection_matrix: WebGlUniformLocation,
+    world_entity_transform: WebGlUniformLocation,
+    world_entity_opacity: WebGlUniformLocation,
+    scene_hsl_override: WebGlUniformLocation,
+    player_pos: WebGlUniformLocation,
+    render_distance: WebGlUniformLocation,
+    fog_depth: WebGlUniformLocation,
+    current_time: WebGlUniformLocation,
+    brightness: WebGlUniformLocation,
+    is_new_texture_anim: WebGlUniformLocation,
+    color_banding: WebGlUniformLocation,
+    draw_id: WebGlUniformLocation,
+    npc_data_offset: WebGlUniformLocation,
+    map_pos: WebGlUniformLocation,
+    time_loaded: WebGlUniformLocation,
+    scene_border_size: WebGlUniformLocation,
+    model_y_offset: WebGlUniformLocation,
+    actor_data_sampler: WebGlUniformLocation,
     height_map_sampler: WebGlUniformLocation,
     texture_sampler: WebGlUniformLocation,
     material_sampler: WebGlUniformLocation,
@@ -247,6 +281,7 @@ struct IndexedGeometryBatch {
     vertex_buffer: WebGlBuffer,
     index_buffer: WebGlBuffer,
     vao: WebGlVertexArrayObject,
+    index_count: u32,
 }
 
 impl IndexedGeometryBatch {
@@ -272,6 +307,7 @@ impl IndexedGeometryBatch {
             vertex_buffer,
             index_buffer,
             vao,
+            index_count: 0,
         })
     }
 
@@ -300,6 +336,7 @@ impl IndexedGeometryBatch {
             Gl::STATIC_DRAW,
         );
 
+        self.index_count = indices.len() as u32;
         Ok(())
     }
 
@@ -388,6 +425,7 @@ pub struct RustWebGlRenderer {
     reference_brightness: WebGlUniformLocation,
 
     static_program: StaticProgram,
+    npc_program: NpcProgram,
 
     static_map_key: u32,
     static_map: StaticMapResources,
@@ -418,6 +456,7 @@ impl RustWebGlRenderer {
         let reference_program =
             create_program(&gl, REFERENCE_VERTEX_SHADER, REFERENCE_FRAGMENT_SHADER)?;
         let static_program_raw = create_program(&gl, STATIC_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
+        let npc_program_raw = create_program(&gl, NPC_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
 
         let static_map = StaticMapResources::new(&gl)?;
         let texture_array = create_nearest_texture(&gl, Gl::TEXTURE_2D_ARRAY)?;
@@ -470,6 +509,46 @@ impl RustWebGlRenderer {
             program: static_program_raw,
         };
 
+        let npc_program = NpcProgram {
+            view_matrix: required_uniform(&gl, &npc_program_raw, "u_viewMatrix")?,
+            projection_matrix: required_uniform(&gl, &npc_program_raw, "u_projectionMatrix")?,
+            world_entity_transform: required_uniform(
+                &gl,
+                &npc_program_raw,
+                "u_worldEntityTransform",
+            )?,
+            world_entity_opacity: required_uniform(
+                &gl,
+                &npc_program_raw,
+                "u_worldEntityOpacity",
+            )?,
+            scene_hsl_override: required_uniform(&gl, &npc_program_raw, "u_sceneHslOverride")?,
+            player_pos: required_uniform(&gl, &npc_program_raw, "u_playerPos")?,
+            render_distance: required_uniform(&gl, &npc_program_raw, "u_renderDistance")?,
+            fog_depth: required_uniform(&gl, &npc_program_raw, "u_fogDepth")?,
+            current_time: required_uniform(&gl, &npc_program_raw, "u_currentTime")?,
+            brightness: required_uniform(&gl, &npc_program_raw, "u_brightness")?,
+            is_new_texture_anim: required_uniform(&gl, &npc_program_raw, "u_isNewTextureAnim")?,
+            color_banding: required_uniform(&gl, &npc_program_raw, "u_colorBanding")?,
+            draw_id: required_uniform(&gl, &npc_program_raw, "u_drawId")?,
+            npc_data_offset: required_uniform(&gl, &npc_program_raw, "u_npcDataOffset")?,
+            map_pos: required_uniform(&gl, &npc_program_raw, "u_mapPos")?,
+            time_loaded: required_uniform(&gl, &npc_program_raw, "u_timeLoaded")?,
+            scene_border_size: required_uniform(&gl, &npc_program_raw, "u_sceneBorderSize")?,
+            model_y_offset: required_uniform(&gl, &npc_program_raw, "u_modelYOffset")?,
+            actor_data_sampler: required_uniform(&gl, &npc_program_raw, "u_npcDataTexture")?,
+            height_map_sampler: required_uniform(&gl, &npc_program_raw, "u_heightMap")?,
+            texture_sampler: required_uniform(&gl, &npc_program_raw, "u_textures")?,
+            material_sampler: required_uniform(&gl, &npc_program_raw, "u_textureMaterials")?,
+            water_texture_sampler: required_uniform(&gl, &npc_program_raw, "u_waterTextures")?,
+            water_mask_sampler: required_uniform(&gl, &npc_program_raw, "u_waterMask")?,
+            texture_layer_count: required_uniform(&gl, &npc_program_raw, "u_textureLayerCount")?,
+            material_count: required_uniform(&gl, &npc_program_raw, "u_materialCount")?,
+            discard_alpha: required_uniform(&gl, &npc_program_raw, "u_discardAlpha")?,
+            sky_color: required_uniform(&gl, &npc_program_raw, "u_skyColor")?,
+            program: npc_program_raw,
+        };
+
         gl.enable(Gl::DEPTH_TEST);
         gl.depth_func(Gl::LEQUAL);
         gl.enable(Gl::CULL_FACE);
@@ -484,6 +563,7 @@ impl RustWebGlRenderer {
             reference_view_proj,
             reference_brightness,
             static_program,
+            npc_program,
             static_map_key: 0,
             static_map,
             parked_static_maps: HashMap::new(),
@@ -1664,6 +1744,7 @@ impl RustWebGlRenderer {
         self.gl.delete_texture(Some(&self.actor_data_texture));
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
+        self.gl.delete_program(Some(&self.npc_program.program));
     }
 
     #[allow(clippy::too_many_arguments)]
