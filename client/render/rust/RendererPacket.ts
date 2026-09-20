@@ -1,18 +1,31 @@
 import type { DrawRange } from "../DrawRange";
 import type { SdMapData } from "../loader/SdMapData";
 
-export const RUST_RENDERER_ABI_VERSION = 1 as const;
+export const RUST_RENDERER_ABI_VERSION = 2 as const;
 
 /**
- * Stage-0 packet sent to the Rust/WASM renderer.
+ * Numeric-only static map-square packet for the Rust/WASM renderer.
  *
- * This deliberately contains numeric buffers only. Do not add PicoGL objects,
- * TypeScript class instances, callbacks, loaders, or React state here.
+ * This is a migration boundary, not a mirror of WebGLMapSquare. Do not add
+ * PicoGL resources, TypeScript class instances, callbacks, loaders or React
+ * state here.
  */
 export interface RustStaticScenePacket {
     abiVersion: typeof RUST_RENDERER_ABI_VERSION;
+
+    mapX: number;
+    mapY: number;
+    borderSize: number;
+    heightMapSize: number;
+    heightMapPlanes: number;
+
     packedVertexWords: Uint32Array;
     indices: Uint32Array;
+
+    modelInfoOpaque: Uint16Array;
+    modelInfoAlpha: Uint16Array;
+    heightMap: Int16Array;
+
     opaqueDrawRanges: Uint32Array;
     opaqueDrawRangePlanes: Uint8Array;
     alphaDrawRanges: Uint32Array;
@@ -37,8 +50,8 @@ export function flattenDrawRanges(ranges: readonly DrawRange[]): Uint32Array {
 
 /**
  * Reinterprets the current 12-byte packed vertex buffer as u32 triplets.
- * The renderer's existing DataBuffer allocation is naturally 4-byte aligned.
- * A defensive copy is used only for a misaligned external view.
+ * The renderer's DataBuffer allocation is normally 4-byte aligned. A copy is
+ * used only when an external view is misaligned.
  */
 export function packedVertexWords(vertices: Uint8Array): Uint32Array {
     if (vertices.byteLength % 12 !== 0) {
@@ -70,15 +83,46 @@ export function unsignedIndexWords(indices: Int32Array): Uint32Array {
     return new Uint32Array(copy.buffer);
 }
 
+export function inferHeightMapPlanes(heightMap: Int16Array, size: number): number {
+    if (!Number.isInteger(size) || size <= 0) {
+        throw new Error(`Invalid height-map size: ${size}`);
+    }
+    const planeSamples = size * size;
+    if (heightMap.length === 0 || heightMap.length % planeSamples !== 0) {
+        throw new Error(
+            `Height-map packet has ${heightMap.length} samples; expected a multiple of ${planeSamples}`,
+        );
+    }
+    return heightMap.length / planeSamples;
+}
+
 /**
- * Stage-0 adapter for an already-decoded map square. This is intentionally
- * small so it can disappear after scene/mesh preparation itself moves to Rust.
+ * Adapter for an already-decoded map square.
+ *
+ * Static scene preparation remains TypeScript in this migration phase, but
+ * every value crossing into Rust is POD/numeric and can later be produced
+ * directly in WASM memory.
  */
 export function createRustStaticScenePacket(data: SdMapData): RustStaticScenePacket {
+    const heightMapSize = data.heightMapSize;
+    const heightMapPlanes = inferHeightMapPlanes(data.heightMapTextureData, heightMapSize);
+
     return {
         abiVersion: RUST_RENDERER_ABI_VERSION,
+
+        mapX: data.renderPosX ?? data.mapX,
+        mapY: data.renderPosY ?? data.mapY,
+        borderSize: data.borderSize,
+        heightMapSize,
+        heightMapPlanes,
+
         packedVertexWords: packedVertexWords(data.vertices),
         indices: unsignedIndexWords(data.indices),
+
+        modelInfoOpaque: data.modelTextureData,
+        modelInfoAlpha: data.modelTextureDataAlpha,
+        heightMap: data.heightMapTextureData,
+
         opaqueDrawRanges: flattenDrawRanges(data.drawRanges),
         opaqueDrawRangePlanes: data.drawRangesPlanes,
         alphaDrawRanges: flattenDrawRanges(data.drawRangesAlpha),
