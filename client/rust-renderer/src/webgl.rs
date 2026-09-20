@@ -465,7 +465,8 @@ impl RustWebGlRenderer {
         packed_vertices: &[u32],
         indices: &[u32],
     ) -> Result<(), JsValue> {
-        self.static_map.terrain_batch
+        self.static_map
+            .terrain_batch
             .upload_geometry(&self.gl, packed_vertices, indices)
     }
 
