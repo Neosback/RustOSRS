@@ -36,6 +36,12 @@ class MockWasm implements RustRendererWasm {
     auxGeometryUploads: number[] = [];
     auxPassUploads: number[] = [];
     auxLodPassUploads: number[] = [];
+    auxRangePatches: Array<{
+        kind: number;
+        lod: boolean;
+        alpha: boolean;
+        patches: Uint32Array;
+    }> = [];
     textureResourceUploads = 0;
     materialResourceUploads = 0;
     waterResourceUploads = 0;
@@ -188,6 +194,20 @@ class MockWasm implements RustRendererWasm {
         _alphaRangePlanes: Uint8Array,
     ): void {
         this.auxLodPassUploads.push(kind);
+    }
+
+    patch_aux_draw_ranges(
+        kind: number,
+        lod: boolean,
+        alpha: boolean,
+        patches: Uint32Array,
+    ): void {
+        this.auxRangePatches.push({
+            kind,
+            lod,
+            alpha,
+            patches: new Uint32Array(patches),
+        });
     }
 
     upload_texture_array(
@@ -670,6 +690,41 @@ function frame(): RustStaticFrameState {
         { mapKey: 2002, transparent: true },
         { mapKey: 2001, transparent: true },
     ]);
+    bridge.dispose();
+}
+
+{
+    const bridge = new RustRendererBridge(
+        {} as HTMLCanvasElement,
+        MockWasm,
+    );
+    const scene = packet();
+    scene.mapKey = 3001;
+    bridge.uploadStaticScene(scene, 1.0);
+
+    const patches = new Uint32Array([2, 48, 6, 1]);
+    assert.equal(
+        bridge.patchLocDrawRanges(3001, true, false, patches),
+        true,
+    );
+    assert.deepEqual(MockWasm.last?.auxRangePatches, [
+        {
+            kind: 0,
+            lod: true,
+            alpha: false,
+            patches,
+        },
+    ]);
+
+    assert.equal(
+        bridge.patchLocDrawRanges(
+            9999,
+            false,
+            false,
+            new Uint32Array([0, 0, 3, 1]),
+        ),
+        false,
+    );
     bridge.dispose();
 }
 
