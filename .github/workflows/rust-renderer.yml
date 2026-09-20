@@ -9,6 +9,7 @@ on:
       - "client/rust-renderer/**"
       - "client/render/rust/**"
       - "client/tests/rust-renderer-bridge.test.ts"
+      - "client/scripts/check-rust-renderer-abi.mjs"
       - "client/package.json"
       - "client/yarn.lock"
       - ".github/workflows/rust-renderer.yml"
@@ -17,6 +18,7 @@ on:
       - "client/rust-renderer/**"
       - "client/render/rust/**"
       - "client/tests/rust-renderer-bridge.test.ts"
+      - "client/scripts/check-rust-renderer-abi.mjs"
       - "client/package.json"
       - "client/yarn.lock"
       - ".github/workflows/rust-renderer.yml"
@@ -58,6 +60,8 @@ jobs:
         run: corepack enable
       - name: Install client dependencies
         run: yarn install --immutable
+      - name: Check renderer ABI alignment
+        run: yarn check:rust-renderer-abi
       - name: Test TypeScript bridge
         run: yarn test:rust-renderer-bridge
       - name: Test shadow integration module graph
