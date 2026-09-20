@@ -31,29 +31,38 @@ pub struct DrawStats {
     pub submitted_indices: u64,
 }
 
+pub fn draw_range_is_visible(
+    range: DrawRange,
+    plane: Option<u8>,
+    roof_plane_limit: u8,
+) -> bool {
+    if range.is_empty() {
+        return false;
+    }
+    if roof_plane_limit >= 3 {
+        return true;
+    }
+
+    // Match TypeScript drawWithRoofPlaneFilter: missing metadata defaults
+    // visible on plane 0 rather than accidentally dropping geometry.
+    plane.unwrap_or(0) <= roof_plane_limit
+}
+
 pub fn filter_draw_ranges(
     ranges: &[DrawRange],
     range_planes: Option<&[u8]>,
     roof_plane_limit: u8,
 ) -> Vec<DrawRange> {
-    if roof_plane_limit >= 3 || range_planes.is_none() {
-        return ranges
-            .iter()
-            .copied()
-            .filter(|range| !range.is_empty())
-            .collect();
-    }
-
-    let planes = range_planes.expect("range planes checked above");
     ranges
         .iter()
         .copied()
         .enumerate()
         .filter(|(index, range)| {
-            if range.is_empty() {
-                return false;
-            }
-            planes.get(*index).copied().unwrap_or(0) <= roof_plane_limit
+            draw_range_is_visible(
+                *range,
+                range_planes.and_then(|planes| planes.get(*index).copied()),
+                roof_plane_limit,
+            )
         })
         .map(|(_, range)| range)
         .collect()
@@ -89,6 +98,18 @@ mod tests {
             filter_draw_ranges(&ranges, Some(&[0, 2]), 0),
             vec![ranges[0], ranges[2]]
         );
+    }
+
+    #[test]
+    fn roof_visibility_preserves_original_range_semantics() {
+        let visible = DrawRange::new(0, 3, 1);
+        let empty = DrawRange::new(12, 0, 1);
+
+        assert!(draw_range_is_visible(visible, Some(0), 0));
+        assert!(!draw_range_is_visible(visible, Some(2), 0));
+        assert!(draw_range_is_visible(visible, None, 0));
+        assert!(draw_range_is_visible(visible, Some(2), 3));
+        assert!(!draw_range_is_visible(empty, Some(0), 3));
     }
 
     #[test]
