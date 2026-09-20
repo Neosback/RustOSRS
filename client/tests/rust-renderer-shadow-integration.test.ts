@@ -4,6 +4,7 @@ async function main(): Promise<void> {
     (globalThis as any).self = globalThis;
 
     const {
+        countExpectedDrawRanges,
         createAnimatedLocDrawRangePatches,
         getRustRendererShadowDiagnostics,
     } = await import("../render/rust/RustShadowIntegration");
@@ -59,6 +60,59 @@ async function main(): Promise<void> {
     assert.deepEqual(
         Array.from(createAnimatedLocDrawRangePatches(animatedMap, true, false)),
         [5, 36, 9, 1],
+    );
+
+    assert.deepEqual(
+        countExpectedDrawRanges(
+            [
+                [0, 3, 1],
+                [12, 6, 2],
+                [36, 9, 1],
+            ],
+            new Uint8Array([0, 2, 1]),
+            1,
+        ),
+        {
+            drawCalls: 2,
+            submittedIndices: 12,
+        },
+    );
+
+    assert.deepEqual(
+        countExpectedDrawRanges(
+            [
+                [0, 3, 1],
+                [12, 6, 2],
+            ],
+            new Uint8Array([0, 0]),
+            3,
+            new Uint32Array([
+                1,
+                48,
+                9,
+                3,
+            ]),
+        ),
+        {
+            drawCalls: 2,
+            submittedIndices: 30,
+        },
+    );
+
+    assert.deepEqual(
+        countExpectedDrawRanges(
+            [
+                [0, 3, 1],
+                [12, 0, 1],
+                [12, 6, 0],
+            ],
+            undefined,
+            3,
+        ),
+        {
+            drawCalls: 1,
+            submittedIndices: 3,
+        },
     );
 
     console.log("rust renderer shadow integration smoke test passed");
