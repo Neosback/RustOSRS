@@ -1199,6 +1199,7 @@ export function mirrorRustPlayerGeometry(
     worldEntityTransform: Float32Array,
     transparent: boolean,
     cullBackFace: boolean,
+    restoreCullBackFace: boolean,
 ): void {
     const state = activeShadowFrames.get(host);
     if (!state?.playerParityEnabled) return;
@@ -1230,6 +1231,7 @@ export function mirrorRustPlayerGeometry(
                 worldEntityTransform,
                 transparent,
                 cullBackFace,
+                restoreCullBackFace,
             },
             packedVertexWords(vertices),
             unsignedIndexWords(indices),
