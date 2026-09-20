@@ -715,8 +715,7 @@ impl RustWebGlRenderer {
         );
 
         self.gl.enable(Gl::BLEND);
-        self.gl
-            .blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+        self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
         let alpha_result = self.render_static(
             view_matrix,
             projection_matrix,
