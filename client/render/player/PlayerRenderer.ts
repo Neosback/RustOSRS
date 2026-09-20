@@ -2603,8 +2603,15 @@ export class PlayerRenderer {
                         );
                         gpuGeometry = this.getPlayerGpuGeometry(gpuOwnerKey, batchKey);
                     }
-                    const counts = gpuGeometry
-                        ? { countAlpha: gpuGeometry.alpha?.count ?? 0 }
+                    const counts: PlayerGeometryBuildResult = gpuGeometry
+                        ? {
+                              countOpaque: gpuGeometry.opaque?.count ?? 0,
+                              countAlpha: gpuGeometry.alpha?.count ?? 0,
+                              opaqueVertices: gpuGeometry.opaque?.vertices,
+                              opaqueIndices: gpuGeometry.opaque?.indices,
+                              alphaVertices: gpuGeometry.alpha?.vertices,
+                              alphaIndices: gpuGeometry.alpha?.indices,
+                          }
                         : this.dynamicUpdateBuffersFor(
                               baseRec.baseModel,
                               baseRec.baseCenterX,
@@ -2637,6 +2644,20 @@ export class PlayerRenderer {
                             slots,
                             counts.countAlpha | 0,
                         );
+                        if (counts.alphaVertices && counts.alphaIndices) {
+                            mirrorRustPlayerGeometry(
+                                r,
+                                map,
+                                counts.alphaVertices,
+                                counts.alphaIndices,
+                                baseOffset,
+                                slots,
+                                r.playerYOffset,
+                                WebGLMapSquare.IDENTITY_MAT4,
+                                true,
+                                false,
+                            );
+                        }
                     }
                 }
 
@@ -2662,13 +2683,16 @@ export class PlayerRenderer {
 
                     // Per-player WorldView: apply deck height + bobbing transform
                     const wvIdAlpha = playerEcsAlpha?.getWorldViewId?.(inst.pid) ?? -1;
+                    let playerModelYOffset = r.playerYOffset;
+                    let playerWorldEntityTransform = WebGLMapSquare.IDENTITY_MAT4;
                     if (wvIdAlpha >= 0) {
-                        const weTransform =
-                            r.worldEntityAnimator?.getTransform(wvIdAlpha) ??
-                            WebGLMapSquare.IDENTITY_MAT4;
-                        draw.uniform("u_modelYOffset", r.playerYOffset + alphaDeckH).uniform(
+                        playerModelYOffset = r.playerYOffset + alphaDeckH;
+                        playerWorldEntityTransform =
+                            r.worldEntityAnimator?.getTransform(wvIdAlpha)
+                            ?? WebGLMapSquare.IDENTITY_MAT4;
+                        draw.uniform("u_modelYOffset", playerModelYOffset).uniform(
                             "u_worldEntityTransform",
-                            weTransform,
+                            playerWorldEntityTransform,
                         );
                     }
 
@@ -2676,6 +2700,20 @@ export class PlayerRenderer {
                     draw.uniform("u_drawIdOverride", inst.slot | 0);
                     (draw as any).drawRanges([0, counts.countAlpha | 0, 1]);
                     draw.draw();
+                    if (counts.alphaVertices && counts.alphaIndices) {
+                        mirrorRustPlayerGeometry(
+                            r,
+                            map,
+                            counts.alphaVertices,
+                            counts.alphaIndices,
+                            baseOffset,
+                            [inst.slot | 0],
+                            playerModelYOffset,
+                            playerWorldEntityTransform,
+                            true,
+                            false,
+                        );
+                    }
 
                     // Restore overworld uniforms after WE player draw
                     if (wvIdAlpha >= 0) {
