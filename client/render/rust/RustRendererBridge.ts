@@ -221,6 +221,7 @@ export interface RustRendererWasm {
         modelYOffset: number,
         transparent: boolean,
         cullBackFace: boolean,
+        restoreCullBackFace: boolean,
     ): void;
 
     render_active_static_terrain_ghost_pass(
@@ -351,6 +352,7 @@ export interface RustPlayerPassState extends RustStaticFrameState {
     modelYOffset: number;
     transparent: boolean;
     cullBackFace: boolean;
+    restoreCullBackFace: boolean;
 }
 
 /**
@@ -801,6 +803,7 @@ export class RustRendererBridge {
             pass.modelYOffset,
             pass.transparent,
             pass.cullBackFace,
+            pass.restoreCullBackFace,
         );
     }
 
