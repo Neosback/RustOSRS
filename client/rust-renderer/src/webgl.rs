@@ -804,23 +804,21 @@ impl RustWebGlRenderer {
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
         if !opaque.is_empty() {
-            std::mem::swap(
-                &mut self.static_opaque_pass,
-                &mut self.static_lod_opaque_pass,
-            );
-            let upload_result = self.upload_model_info(model_info_opaque);
-            std::mem::swap(
-                &mut self.static_opaque_pass,
-                &mut self.static_lod_opaque_pass,
-            );
-            upload_result?;
+            upload_model_info_texture(
+                &self.gl,
+                &self.static_lod_opaque_pass.model_info_texture,
+                model_info_opaque,
+                "static LOD opaque model-info",
+            )?;
         }
 
         if !alpha.is_empty() {
-            std::mem::swap(&mut self.static_alpha_pass, &mut self.static_lod_alpha_pass);
-            let upload_result = self.upload_model_info_alpha(model_info_alpha);
-            std::mem::swap(&mut self.static_alpha_pass, &mut self.static_lod_alpha_pass);
-            upload_result?;
+            upload_model_info_texture(
+                &self.gl,
+                &self.static_lod_alpha_pass.model_info_texture,
+                model_info_alpha,
+                "static LOD alpha model-info",
+            )?;
         }
 
         self.static_lod_opaque_pass.draw_ranges = opaque;
@@ -846,7 +844,7 @@ impl RustWebGlRenderer {
         packed_vertices: &[u32],
         indices: &[u32],
     ) -> Result<(), JsValue> {
-        if packed_vertices.is_empty() || indices.is_empty() {
+        if packed_vertices.is_empty() && indices.is_empty() {
             let existing = match kind {
                 AUX_BATCH_LOC => self.loc_batch.take(),
                 AUX_BATCH_DOOR => self.door_batch.take(),
