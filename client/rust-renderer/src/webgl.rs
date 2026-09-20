@@ -1168,26 +1168,12 @@ impl RustWebGlRenderer {
     }
 
     pub fn dispose(&mut self) {
-        self.static_map.terrain_batch.delete(&self.gl);
-        if let Some(batch) = self.static_map.loc_batch.take() {
-            batch.delete(&self.gl);
-        }
-        if let Some(batch) = self.static_map.door_batch.take() {
-            batch.delete(&self.gl);
-        }
-        self.gl.delete_texture(Some(&self.static_map.height_map_texture));
+        self.static_map.delete(&self.gl);
         self.gl.delete_texture(Some(&self.texture_array));
         self.gl.delete_texture(Some(&self.material_texture));
         self.gl.delete_texture(Some(&self.water_texture_array));
-        self.gl.delete_texture(Some(&self.static_map.water_mask_texture));
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
-        self.static_map.terrain_batch.opaque_pass.clear();
-        self.static_map.terrain_batch.alpha_pass.clear();
-        self.static_map.terrain_batch.lod_opaque_pass.clear();
-        self.static_map.terrain_batch.lod_alpha_pass.clear();
-        self.static_map.terrain_batch.index_count = 0;
-        self.static_map.state = None;
     }
 
     #[allow(clippy::too_many_arguments)]
