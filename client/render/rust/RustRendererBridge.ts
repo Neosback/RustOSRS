@@ -18,6 +18,10 @@ export interface RustRendererWasm {
         vertices: Uint32Array,
         indices: Uint32Array,
     ): void;
+    upload_dynamic_player_geometry(
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void;
     upload_model_info(modelInfo: Uint16Array): void;
     upload_height_map(heightMap: Int16Array, size: number, planes: number): void;
     upload_water_mask(waterMask: Uint8Array, size: number, planes: number): void;
@@ -151,6 +155,24 @@ export interface RustRendererWasm {
         modelYOffset: number,
         transparent: boolean,
     ): void;
+    render_active_player_pass(
+        viewMatrix: Float32Array,
+        projectionMatrix: Float32Array,
+        worldEntityTransform: Float32Array,
+        skyRgba: Float32Array,
+        sceneHslOverride: Float32Array,
+        playerPos: Float32Array,
+        renderDistance: number,
+        fogDepth: number,
+        currentTime: number,
+        brightness: number,
+        isNewTextureAnim: boolean,
+        colorBanding: number,
+        playerDataOffset: number,
+        modelYOffset: number,
+        transparent: boolean,
+        cullBackFace: boolean,
+    ): void;
 
     render_active_static_terrain_ghost_pass(
         viewMatrix: Float32Array,
@@ -250,6 +272,14 @@ export interface RustDynamicNpcPassState extends RustStaticFrameState {
     npcDataOffset: number;
     modelYOffset: number;
     transparent: boolean;
+}
+
+export interface RustPlayerPassState extends RustStaticFrameState {
+    mapKey: number;
+    playerDataOffset: number;
+    modelYOffset: number;
+    transparent: boolean;
+    cullBackFace: boolean;
 }
 
 /**
@@ -554,6 +584,50 @@ export class RustRendererBridge {
             pass.npcDataOffset,
             pass.modelYOffset,
             pass.transparent,
+        );
+    }
+
+    renderDynamicPlayerPass(
+        pass: RustPlayerPassState,
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void {
+        if (!this.uploadedMapKeys.has(pass.mapKey)) {
+            throw new Error(
+                `Rust static map ${pass.mapKey} has not been uploaded`,
+            );
+        }
+        if (
+            !Number.isInteger(pass.playerDataOffset)
+            || pass.playerDataOffset < 0
+        ) {
+            throw new Error(
+                `Invalid player actor-data offset: ${pass.playerDataOffset}`,
+            );
+        }
+        if (vertices.length === 0 || indices.length === 0) {
+            return;
+        }
+
+        this.wasm.select_static_map(pass.mapKey);
+        this.wasm.upload_dynamic_player_geometry(vertices, indices);
+        this.wasm.render_active_player_pass(
+            pass.viewMatrix,
+            pass.projectionMatrix,
+            pass.worldEntityTransform,
+            pass.skyRgba,
+            pass.sceneHslOverride,
+            pass.playerPos,
+            pass.renderDistance,
+            pass.fogDepth,
+            pass.currentTime,
+            pass.brightness,
+            pass.isNewTextureAnim,
+            pass.colorBanding,
+            pass.playerDataOffset,
+            pass.modelYOffset,
+            pass.transparent,
+            pass.cullBackFace,
         );
     }
 
