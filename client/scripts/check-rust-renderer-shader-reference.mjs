@@ -6,9 +6,10 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const clientRoot = path.resolve(here, "..");
 
-// These legacy PicoGL shaders are frozen parity references while the Rust
-// renderer is the primary scene backend. If one changes, update the matching
-// Rust shader first, review parity, then deliberately refresh this manifest.
+// Both shader trees are locked to one reviewed parity snapshot. This is
+// deliberately bilateral: an edit to either the Pico reference shaders or
+// the Rust/WASM production shaders fails CI until the paired semantics have
+// been reviewed together and this manifest is intentionally refreshed.
 const expectedGitBlobSha1 = {
     "render/shaders/main.vert.glsl": "4d396ed90953cffbef608d264b27806bf4669f27",
     "render/shaders/main.frag.glsl": "63fc12e2359b417f4e1051f9d24ea96e084a65a9",
@@ -25,7 +26,17 @@ const expectedGitBlobSha1 = {
     "render/shaders/includes/height-map.glsl": "eedb0fed035a35e8ea7a443b2e6a73272e3f2159",
     "render/shaders/includes/priority-depth.glsl": "e1c3b3ab735eda9bc107f2cb57cde6a40d942c80",
     "render/shaders/includes/scene-uniforms.glsl": "0139ed8f95b3c86ce98d7a3467d23ea342ac1a10",
-    "render/shaders/includes/unpack-float.glsl": "2023c7368001fe951d39dc060aeea5267454b0d2"
+    "render/shaders/includes/unpack-float.glsl": "2023c7368001fe951d39dc060aeea5267454b0d2",
+    "rust-renderer/src/shaders/static.vert.glsl": "c2d33950f973e66189c6693a2f6e3487b476e1cd",
+    "rust-renderer/src/shaders/static.frag.glsl": "7e15e26d6d193df8dd6f3a3b0a8ea47fac148835",
+    "rust-renderer/src/shaders/npc.vert.glsl": "ef4bf24c991503493273f5e72f5a4777594d489e",
+    "rust-renderer/src/shaders/player.vert.glsl": "ae9f30cf2eddf005d844fdd8b662f1b7d53e2e53",
+    "rust-renderer/src/shaders/player.frag.glsl": "a2df033391dbd77a30c58516bc967c43485e14e4",
+    "rust-renderer/src/shaders/projectile.vert.glsl": "1f343f19604f27a1b37afaaa653110dfc32190c9",
+    "rust-renderer/src/shaders/present.vert.glsl": "0fc1044b53478b283d5fd275f2a8e561fe16c03f",
+    "rust-renderer/src/shaders/present-fxaa.frag.glsl": "ecc04b42755f78dcb484274bf7435b914467c4fc",
+    "rust-renderer/src/shaders/scene-overlay.vert.glsl": "1d957d3d1f603ce12d082efc1a8b3f077535afe8",
+    "rust-renderer/src/shaders/scene-overlay.frag.glsl": "ee43fe7bcf567639d75a58075eb92cf982a80abe"
 };
 
 function gitBlobSha1(bytes) {
@@ -52,12 +63,12 @@ if (changed.length > 0) {
         )
         .join("\n");
     throw new Error(
-        "Legacy PicoGL shader reference changed without a Rust parity review.\n"
+        "Renderer shader parity snapshot changed without a paired review.\n"
         + details
-        + "\nUpdate the Rust shader semantics first, validate parity, then refresh this manifest.",
+        + "\nKeep the Pico reference and Rust/WASM semantics aligned, validate parity, then deliberately refresh this manifest.",
     );
 }
 
 console.log(
-    `Legacy shader parity reference is stable (${Object.keys(expectedGitBlobSha1).length} files)`,
+    `Renderer shader parity snapshot is stable (${Object.keys(expectedGitBlobSha1).length} files)`,
 );
