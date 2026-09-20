@@ -16,15 +16,25 @@ Stage 0 is implemented and Stage 1 static-scene parity is actively landing:
 - indexed and instanced draw submission
 - static model-info, height-map, material, texture-array, water-texture and water-mask uploads
 - resident opaque, alpha, LOD opaque and LOD alpha static passes uploaded once per map packet
-- Rust-owned opaque/alpha frame scheduling and full-detail/LOD selection
+- explicit Rust `StaticPass`, `StaticGeometryBatch` and per-map GPU resource ownership
+- terrain, non-door loc and door static geometry retained and drawn by Rust
+- multiple simultaneously resident map squares keyed by map-square id
+- one-clear multi-map frame scheduling: opaque maps forward, transparent maps in reverse order
+- Rust-owned full-detail/LOD selection with the same live distance threshold inputs
 - roof-plane draw-range filtering that preserves original draw IDs
 - world-entity transform and opacity parity for static map geometry
 - empty alpha passes do not fall back to drawing the full index buffer
 - live PicoGL texture/material/water bytes retained as synchronized CPU mirrors for zero-readback WASM upload
 - revisioned TypeScript adapter for uploading those exact live global resources into Rust
-- native Rust tests, bridge tests and WASM compile CI
+- incremental loc and door geometry replacement for live object-state changes
+- deterministic browser `wasm-bindgen` packaging through `yarn build:rust-renderer`
+- opt-in isolated shadow runtime through `?rust-renderer=shadow`
+- shadow diagnostics for resident, visible and mirrored map counts plus Rust draw statistics
+- native Rust tests, bridge tests, wasm32 compile checks, browser-WASM packaging and shadow-integration CI
 
-The production client still uses the existing renderer. The bridge can now consume the same decoded map packet and the same live global texture/material bytes without GPU readback. The next engine milestone is to make Rust resident-scene storage match the live renderer: terrain plus loc/door static batches, followed by multiple simultaneously resident map squares. That is the point where an A/B runtime can render the same visible-map set rather than a single diagnostic map.
+The production client still presents the existing PicoGL renderer. With `?rust-renderer=shadow`, Rust now runs on a detached canvas and consumes the same live decoded map data, global texture/material resources, camera matrices, fog inputs, roof state, render-distance culling, LOD decisions and world-entity transforms. Shadow failures are isolated and do not replace or corrupt the production rendering path.
+
+The next parity work is no longer basic bridge scaffolding. Static-scene gaps are animated-loc per-frame range changes, ground-item geometry, and a controlled static-only pixel-diff harness. Dynamic players, NPCs, projectiles, graphics effects, picking/interaction rendering and final framebuffer/post-processing remain later stages.
 
 ## Why WebGL2 first
 
@@ -53,7 +63,9 @@ No PicoGL object, React object, loader instance, game socket or TypeScript class
 
 Port the current main map pass: scene uniforms, model-info packets, opaque/alpha passes, roof filtering, textures, materials, height maps, water masks, current main GLSL semantics, framebuffers and presentation.
 
-Acceptance: identical scene packet + camera produces pixel-comparable output between PicoGL and Rust.
+Current status: the static terrain/loc/door scene can be mirrored live into an isolated Rust canvas across multiple resident map squares. Animated loc mutations, ground items and controlled pixel-diff validation are the remaining major static-scene acceptance gaps.
+
+Acceptance: identical static scene state + camera produces pixel-comparable output between PicoGL and Rust.
 
 ### Stage 2: dynamic scene
 
