@@ -18,6 +18,13 @@ import {
     syncRustShadowCanvasSize,
     type RustRendererShadowRuntime,
 } from "./RustRendererRuntime";
+import {
+    compareRgbaFrames,
+    disposeRustPixelParity,
+    readCanvasRgbaPixels,
+    type RustPixelFrame,
+    type RustPixelParityMetrics,
+} from "./RustPixelParity";
 
 const runtimes = new WeakMap<WebGLOsrsRendererHost, RustRendererShadowRuntime>();
 const failedHosts = new WeakSet<WebGLOsrsRendererHost>();
@@ -43,6 +50,7 @@ export interface RustRendererShadowDiagnostics {
     drawSequenceMatch: boolean;
     staticParityMatch: boolean;
     expectedWorldEntityGhostPasses: number;
+    pixelParity?: RustPixelParityMetrics;
 }
 
 const diagnostics = new WeakMap<
@@ -106,6 +114,7 @@ function disableShadow(
         } catch {}
         runtimes.delete(host);
     }
+    disposeRustPixelParity(host);
 }
 
 function getRuntime(
@@ -176,6 +185,7 @@ export function disposeRustRendererShadow(
     failedHosts.delete(host);
     diagnostics.delete(host);
     pendingGroundGeometry.delete(host);
+    disposeRustPixelParity(host);
     delete (host.canvas as HTMLCanvasElement & {
         __rustRendererShadowDiagnostics?: RustRendererShadowDiagnostics;
     }).__rustRendererShadowDiagnostics;
@@ -665,6 +675,7 @@ export function renderRustStaticShadowFrame(
     renderDistance: number,
     fogDepth: number,
     currentTime: number,
+    pixelReference?: RustPixelFrame,
 ): void {
     const runtime = getRuntime(host);
     if (!runtime) return;
@@ -849,6 +860,19 @@ export function renderRustStaticShadowFrame(
                 === expectedStats.submittedIndices;
         const drawSequenceMatch =
             drawHash === (expectedDrawHash >>> 0);
+        const previousDiagnostics =
+            getRustRendererShadowDiagnostics(host);
+        let pixelParity = previousDiagnostics.pixelParity;
+        if (pixelReference) {
+            const rustPixels = readCanvasRgbaPixels(runtime.canvas);
+            if (rustPixels) {
+                pixelParity = compareRgbaFrames(
+                    pixelReference,
+                    rustPixels,
+                );
+            }
+        }
+
         publishDiagnostics(host, {
             enabled: true,
             failed: false,
@@ -866,6 +890,7 @@ export function renderRustStaticShadowFrame(
             drawSequenceMatch,
             staticParityMatch: drawStatsMatch && drawSequenceMatch,
             expectedWorldEntityGhostPasses,
+            pixelParity,
         });
     } catch (error) {
         disableShadow(host, "frame render", error);
