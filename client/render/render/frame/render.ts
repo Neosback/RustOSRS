@@ -199,6 +199,7 @@ import {
     isRustGfxShadowEnabled,
     isRustNpcShadowEnabled,
     isRustPlayerShadowEnabled,
+    isRustProjectileShadowEnabled,
     renderRustStaticShadowFrame,
 } from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
@@ -750,7 +751,8 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         const rustDynamicParityEnabled =
             isRustNpcShadowEnabled()
             || isRustPlayerShadowEnabled()
-            || isRustGfxShadowEnabled();
+            || isRustGfxShadowEnabled()
+            || isRustProjectileShadowEnabled();
         const rustPixelReference =
             getRustRendererShadowDiagnostics(host).enabled
             && !rustDynamicParityEnabled
