@@ -1369,6 +1369,37 @@ fn submit_draw_ranges(
     stats
 }
 
+fn upload_model_info_texture(
+    gl: &Gl,
+    texture: &WebGlTexture,
+    model_info: &[u16],
+    label: &str,
+) -> Result<(), JsValue> {
+    if model_info.is_empty() || model_info.len() % (16 * 4) != 0 {
+        return Err(JsValue::from_str(&format!(
+            "{label} packet must contain complete 16-wide RGBA16UI rows"
+        )));
+    }
+
+    let rows = (model_info.len() / (16 * 4)) as i32;
+    let data = js_sys::Uint16Array::from(model_info);
+
+    gl.active_texture(Gl::TEXTURE0);
+    gl.bind_texture(Gl::TEXTURE_2D, Some(texture));
+    gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
+        Gl::TEXTURE_2D,
+        0,
+        Gl::RGBA16UI as i32,
+        16,
+        rows,
+        0,
+        Gl::RGBA_INTEGER,
+        Gl::UNSIGNED_SHORT,
+        Some(data.unchecked_ref()),
+    )?;
+    Ok(())
+}
+
 fn create_nearest_texture(gl: &Gl, target: u32) -> Result<WebGlTexture, JsValue> {
     let texture = gl
         .create_texture()
