@@ -142,7 +142,7 @@ export function validateWaterMask(
     }
 }
 
-function createStaticGeometryPacket(input: {
+export function createRustStaticGeometryPacket(input: {
     vertices: Uint8Array;
     indices: Int32Array;
     modelInfoOpaque: Uint16Array;
@@ -174,6 +174,48 @@ function createStaticGeometryPacket(input: {
         alphaLodDrawRanges: flattenDrawRanges(input.alphaLodDrawRanges),
         alphaLodDrawRangePlanes: input.alphaLodDrawRangePlanes,
     };
+}
+
+export function createRustLocGeometryPacket(
+    data: SdMapData,
+): RustStaticGeometryPacket {
+    return createRustStaticGeometryPacket({
+        vertices: data.loc.vertices,
+        indices: data.loc.indices,
+        modelInfoOpaque: data.loc.modelTextureData,
+        modelInfoAlpha: data.loc.modelTextureDataAlpha,
+        modelInfoOpaqueLod: data.loc.modelTextureDataLod,
+        modelInfoAlphaLod: data.loc.modelTextureDataLodAlpha,
+        opaqueDrawRanges: data.loc.drawRanges,
+        opaqueDrawRangePlanes: data.loc.drawRangesPlanes,
+        alphaDrawRanges: data.loc.drawRangesAlpha,
+        alphaDrawRangePlanes: data.loc.drawRangesAlphaPlanes,
+        opaqueLodDrawRanges: data.loc.drawRangesLod,
+        opaqueLodDrawRangePlanes: data.loc.drawRangesLodPlanes,
+        alphaLodDrawRanges: data.loc.drawRangesLodAlpha,
+        alphaLodDrawRangePlanes: data.loc.drawRangesLodAlphaPlanes,
+    });
+}
+
+export function createRustDoorGeometryPacket(
+    data: SdMapData,
+): RustStaticGeometryPacket {
+    return createRustStaticGeometryPacket({
+        vertices: data.doorVertices,
+        indices: data.doorIndices,
+        modelInfoOpaque: data.doorModelTextureData,
+        modelInfoAlpha: data.doorModelTextureDataAlpha,
+        modelInfoOpaqueLod: data.doorModelTextureDataLod,
+        modelInfoAlphaLod: data.doorModelTextureDataLodAlpha,
+        opaqueDrawRanges: data.doorDrawRanges,
+        opaqueDrawRangePlanes: data.doorDrawRangesPlanes,
+        alphaDrawRanges: data.doorDrawRangesAlpha,
+        alphaDrawRangePlanes: data.doorDrawRangesAlphaPlanes,
+        opaqueLodDrawRanges: data.doorDrawRangesLod,
+        opaqueLodDrawRangePlanes: data.doorDrawRangesLodPlanes,
+        alphaLodDrawRanges: data.doorDrawRangesLodAlpha,
+        alphaLodDrawRangePlanes: data.doorDrawRangesLodAlphaPlanes,
+    });
 }
 
 /**
@@ -218,37 +260,7 @@ export function createRustStaticScenePacket(data: SdMapData): RustStaticScenePac
         alphaLodDrawRanges: flattenDrawRanges(data.drawRangesLodAlpha),
         alphaLodDrawRangePlanes: data.drawRangesLodAlphaPlanes,
 
-        locGeometry: createStaticGeometryPacket({
-            vertices: data.loc.vertices,
-            indices: data.loc.indices,
-            modelInfoOpaque: data.loc.modelTextureData,
-            modelInfoAlpha: data.loc.modelTextureDataAlpha,
-            modelInfoOpaqueLod: data.loc.modelTextureDataLod,
-            modelInfoAlphaLod: data.loc.modelTextureDataLodAlpha,
-            opaqueDrawRanges: data.loc.drawRanges,
-            opaqueDrawRangePlanes: data.loc.drawRangesPlanes,
-            alphaDrawRanges: data.loc.drawRangesAlpha,
-            alphaDrawRangePlanes: data.loc.drawRangesAlphaPlanes,
-            opaqueLodDrawRanges: data.loc.drawRangesLod,
-            opaqueLodDrawRangePlanes: data.loc.drawRangesLodPlanes,
-            alphaLodDrawRanges: data.loc.drawRangesLodAlpha,
-            alphaLodDrawRangePlanes: data.loc.drawRangesLodAlphaPlanes,
-        }),
-        doorGeometry: createStaticGeometryPacket({
-            vertices: data.doorVertices,
-            indices: data.doorIndices,
-            modelInfoOpaque: data.doorModelTextureData,
-            modelInfoAlpha: data.doorModelTextureDataAlpha,
-            modelInfoOpaqueLod: data.doorModelTextureDataLod,
-            modelInfoAlphaLod: data.doorModelTextureDataLodAlpha,
-            opaqueDrawRanges: data.doorDrawRanges,
-            opaqueDrawRangePlanes: data.doorDrawRangesPlanes,
-            alphaDrawRanges: data.doorDrawRangesAlpha,
-            alphaDrawRangePlanes: data.doorDrawRangesAlphaPlanes,
-            opaqueLodDrawRanges: data.doorDrawRangesLod,
-            opaqueLodDrawRangePlanes: data.doorDrawRangesLodPlanes,
-            alphaLodDrawRanges: data.doorDrawRangesLodAlpha,
-            alphaLodDrawRangePlanes: data.doorDrawRangesLodAlphaPlanes,
-        }),
+        locGeometry: createRustLocGeometryPacket(data),
+        doorGeometry: createRustDoorGeometryPacket(data),
     };
 }
