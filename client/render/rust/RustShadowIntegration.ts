@@ -411,6 +411,19 @@ function addStats(
     target.submittedIndices += source.submittedIndices;
 }
 
+export function createWorldEntityGhostSceneHslOverride(
+    packedHsl: number,
+): Float32Array | undefined {
+    if ((packedHsl | 0) <= 0) return undefined;
+
+    return new Float32Array([
+        (packedHsl >> 10) & 63,
+        (packedHsl >> 7) & 7,
+        packedHsl & 127,
+        127,
+    ]);
+}
+
 function getWorldEntityGhostSceneHslOverride(
     host: WebGLOsrsRendererHost,
     map: WebGLMapSquare,
@@ -443,15 +456,9 @@ function getWorldEntityGhostSceneHslOverride(
         overlay?.configId !== undefined && overlay.configId >= 0
             ? host.osrsClient.worldEntityTypeLoader?.load(overlay.configId)
             : undefined;
-    const packedHsl = worldEntityType?.sceneTintHsl ?? 0;
-    if (packedHsl <= 0) return undefined;
-
-    return new Float32Array([
-        (packedHsl >> 10) & 63,
-        (packedHsl >> 7) & 7,
-        packedHsl & 127,
-        127,
-    ]);
+    return createWorldEntityGhostSceneHslOverride(
+        worldEntityType?.sceneTintHsl ?? 0,
+    );
 }
 
 function countExpectedMapStaticDraws(
