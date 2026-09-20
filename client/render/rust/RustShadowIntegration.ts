@@ -59,9 +59,11 @@ interface ActiveRustShadowFrame {
     npcParityEnabled: boolean;
     playerParityEnabled: boolean;
     gfxParityEnabled: boolean;
+    projectileParityEnabled: boolean;
     mirroredNpcPasses: number;
     mirroredPlayerPasses: number;
     mirroredGfxPasses: number;
+    mirroredProjectilePasses: number;
     phase: RustShadowFramePhase;
 }
 
@@ -103,6 +105,17 @@ export function isRustGfxShadowEnabled(search?: string): boolean {
     );
 }
 
+export function isRustProjectileShadowEnabled(search?: string): boolean {
+    const query =
+        search
+        ?? (typeof window !== "undefined" ? window.location.search : "");
+    const params = new URLSearchParams(query);
+    return (
+        params.get("rust-renderer") === "shadow"
+        && params.get("rust-projectile-parity") === "1"
+    );
+}
+
 export interface RustRendererShadowDiagnostics {
     enabled: boolean;
     failed: boolean;
@@ -123,9 +136,11 @@ export interface RustRendererShadowDiagnostics {
     npcParityEnabled: boolean;
     playerParityEnabled: boolean;
     gfxParityEnabled: boolean;
+    projectileParityEnabled: boolean;
     mirroredNpcPasses: number;
     mirroredPlayerPasses: number;
     mirroredGfxPasses: number;
+    mirroredProjectilePasses: number;
     pixelParity?: RustPixelParityMetrics;
 }
 
