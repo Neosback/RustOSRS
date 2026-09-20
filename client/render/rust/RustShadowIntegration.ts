@@ -58,8 +58,10 @@ interface ActiveRustShadowFrame {
     pixelReference?: RustPixelFrame;
     npcParityEnabled: boolean;
     playerParityEnabled: boolean;
+    gfxParityEnabled: boolean;
     mirroredNpcPasses: number;
     mirroredPlayerPasses: number;
+    mirroredGfxPasses: number;
     phase: RustShadowFramePhase;
 }
 
@@ -90,6 +92,17 @@ export function isRustPlayerShadowEnabled(search?: string): boolean {
     );
 }
 
+export function isRustGfxShadowEnabled(search?: string): boolean {
+    const query =
+        search
+        ?? (typeof window !== "undefined" ? window.location.search : "");
+    const params = new URLSearchParams(query);
+    return (
+        params.get("rust-renderer") === "shadow"
+        && params.get("rust-gfx-parity") === "1"
+    );
+}
+
 export interface RustRendererShadowDiagnostics {
     enabled: boolean;
     failed: boolean;
@@ -109,8 +122,10 @@ export interface RustRendererShadowDiagnostics {
     expectedWorldEntityGhostPasses: number;
     npcParityEnabled: boolean;
     playerParityEnabled: boolean;
+    gfxParityEnabled: boolean;
     mirroredNpcPasses: number;
     mirroredPlayerPasses: number;
+    mirroredGfxPasses: number;
     pixelParity?: RustPixelParityMetrics;
 }
 
@@ -151,8 +166,10 @@ export function getRustRendererShadowDiagnostics(
         expectedWorldEntityGhostPasses: 0,
         npcParityEnabled: false,
         playerParityEnabled: false,
+        gfxParityEnabled: false,
         mirroredNpcPasses: 0,
         mirroredPlayerPasses: 0,
+        mirroredGfxPasses: 0,
     };
 }
 
@@ -835,6 +852,7 @@ function finalizeRustShadowFrame(
         state.pixelReference
         && !state.npcParityEnabled
         && !state.playerParityEnabled
+        && !state.gfxParityEnabled
     ) {
         const rustPixels = readCanvasRgbaPixels(runtime.canvas);
         if (rustPixels) {
@@ -865,8 +883,10 @@ function finalizeRustShadowFrame(
             state.expectedWorldEntityGhostPasses,
         npcParityEnabled: state.npcParityEnabled,
         playerParityEnabled: state.playerParityEnabled,
+        gfxParityEnabled: state.gfxParityEnabled,
         mirroredNpcPasses: state.mirroredNpcPasses,
         mirroredPlayerPasses: state.mirroredPlayerPasses,
+        mirroredGfxPasses: state.mirroredGfxPasses,
         pixelParity,
     });
     activeShadowFrames.delete(host);
@@ -878,7 +898,9 @@ export function beginRustOpaqueActorShadowPass(
     const state = activeShadowFrames.get(host);
     if (
         !state
-        || (!state.npcParityEnabled && !state.playerParityEnabled)
+        || (!state.npcParityEnabled
+            && !state.playerParityEnabled
+            && !state.gfxParityEnabled)
         || state.phase !== "prepared"
     ) {
         return;
@@ -1013,6 +1035,66 @@ export function mirrorRustDynamicNpcGeometry(
     }
 }
 
+export function mirrorRustGfxGeometry(
+    host: WebGLOsrsRendererHost,
+    map: WebGLMapSquare,
+    vertices: Uint8Array,
+    indices: Int32Array,
+    actorDataOffset: number,
+    modelYOffset: number,
+    transparent: boolean,
+): void {
+    const state = activeShadowFrames.get(host);
+    if (!state?.gfxParityEnabled) return;
+
+    const expectedPhase: RustShadowFramePhase =
+        transparent ? "transparent-actors" : "opaque-actors";
+    if (state.phase !== expectedPhase) return;
+
+    const runtime = getRuntime(host);
+    if (!runtime) return;
+
+    const mapKey = map.id | 0;
+    const frame = state.framesByMapKey.get(mapKey);
+    if (!frame || vertices.length === 0 || indices.length === 0) {
+        return;
+    }
+
+    try {
+        runtime.bridge.renderGfxPass(
+            {
+                ...frame,
+                actorDataOffset,
+                modelYOffset,
+                mapX: map.mapX,
+                mapY: map.mapY,
+                transparent,
+            },
+            packedVertexWords(vertices),
+            unsignedIndexWords(indices),
+        );
+
+        const ranges: DrawRange[] = [[0, indices.length, 1]];
+        addStats(
+            state.expectedStats,
+            countExpectedDrawRanges(ranges, undefined, 3),
+        );
+        state.expectedDrawHash = hashExpectedDrawRanges(
+            state.expectedDrawHash,
+            mapKey,
+            transparent,
+            false,
+            8,
+            ranges,
+            undefined,
+            3,
+        );
+        state.mirroredGfxPasses++;
+    } catch (error) {
+        disableShadow(host, "GFX draw mirror", error);
+    }
+}
+
 export function mirrorRustPlayerGeometry(
     host: WebGLOsrsRendererHost,
     map: WebGLMapSquare,
@@ -1088,7 +1170,9 @@ export function completeRustOpaqueActorShadowPass(
     const state = activeShadowFrames.get(host);
     if (
         !state
-        || (!state.npcParityEnabled && !state.playerParityEnabled)
+        || (!state.npcParityEnabled
+            && !state.playerParityEnabled
+            && !state.gfxParityEnabled)
         || state.phase !== "opaque-actors"
     ) {
         return;
@@ -1129,7 +1213,9 @@ export function finishRustActorShadowFrame(
     const state = activeShadowFrames.get(host);
     if (
         !state
-        || (!state.npcParityEnabled && !state.playerParityEnabled)
+        || (!state.npcParityEnabled
+            && !state.playerParityEnabled
+            && !state.gfxParityEnabled)
         || state.phase !== "transparent-actors"
     ) {
         return;
@@ -1184,8 +1270,10 @@ export function renderRustStaticShadowFrame(
                 expectedWorldEntityGhostPasses: 0,
                 npcParityEnabled: isRustNpcShadowEnabled(),
                 playerParityEnabled: isRustPlayerShadowEnabled(),
+                gfxParityEnabled: isRustGfxShadowEnabled(),
                 mirroredNpcPasses: 0,
                 mirroredPlayerPasses: 0,
+                mirroredGfxPasses: 0,
             });
             return;
         }
@@ -1317,8 +1405,9 @@ export function renderRustStaticShadowFrame(
 
         const npcParityEnabled = isRustNpcShadowEnabled();
         const playerParityEnabled = isRustPlayerShadowEnabled();
+        const gfxParityEnabled = isRustGfxShadowEnabled();
         const dynamicParityEnabled =
-            npcParityEnabled || playerParityEnabled;
+            npcParityEnabled || playerParityEnabled || gfxParityEnabled;
         const state: ActiveRustShadowFrame = {
             frames,
             framesByMapKey: new Map(
@@ -1335,8 +1424,10 @@ export function renderRustStaticShadowFrame(
                 dynamicParityEnabled ? undefined : pixelReference,
             npcParityEnabled,
             playerParityEnabled,
+            gfxParityEnabled,
             mirroredNpcPasses: 0,
             mirroredPlayerPasses: 0,
+            mirroredGfxPasses: 0,
             phase: "prepared",
         };
 
