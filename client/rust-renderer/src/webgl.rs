@@ -2984,6 +2984,10 @@ impl RustWebGlRenderer {
         let width = self.presentation_width.max(1);
         let height = self.presentation_height.max(1);
 
+        // ensure_presentation_target() may allocate/resize attachments and
+        // intentionally leaves FRAMEBUFFER unbound. Rebind the actual scene
+        // source before resolve/presentation so READ_FRAMEBUFFER never falls
+        // back to the canvas/default framebuffer.
         if self.presentation_msaa_enabled {
             self.gl.bind_framebuffer(
                 Gl::READ_FRAMEBUFFER,
