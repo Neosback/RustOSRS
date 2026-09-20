@@ -48,7 +48,7 @@ pub fn validate_static_scene_packet(
     validate_draw_ranges(draw_ranges, indices.len()).map_err(packet_error)?;
     state.validate().map_err(str::to_owned)?;
 
-    if model_info_rgba16ui.is_empty() || model_info_rgba16ui.len() % (16 * 4) != 0 {
+    if model_info_rgba16ui.is_empty() || !model_info_rgba16ui.len().is_multiple_of(16 * 4) {
         return Err(
             "model-info texture data must contain complete 16-wide RGBA16UI rows".to_owned(),
         );
