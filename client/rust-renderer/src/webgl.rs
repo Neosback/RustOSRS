@@ -2,7 +2,9 @@ use crate::draw::{
     DRAW_HASH_OFFSET_BASIS, DrawRange, DrawStats, draw_range_is_visible, hash_visible_draw_ranges,
     parse_draw_range_patches, parse_draw_ranges,
 };
-use crate::packet::{validate_draw_ranges, validate_geometry};
+use crate::packet::{
+    validate_draw_range_planes, validate_draw_ranges, validate_geometry,
+};
 use crate::static_scene::StaticMapState;
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, prelude::*};
@@ -259,6 +261,10 @@ impl StaticGeometryBatch {
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let alpha = parse_draw_ranges(alpha_ranges).map_err(JsValue::from_str)?;
         validate_draw_ranges(&alpha, self.index_count as usize)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        validate_draw_range_planes(&opaque, opaque_range_planes)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        validate_draw_range_planes(&alpha, alpha_range_planes)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
         let (opaque_pass, alpha_pass) = if lod {
