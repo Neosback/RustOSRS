@@ -2291,6 +2291,7 @@ export class PlayerRenderer {
                             WebGLMapSquare.IDENTITY_MAT4,
                             false,
                             rustCullBackFace,
+                            !!r.cullBackFace,
                         );
                     }
                 }
@@ -2347,6 +2348,7 @@ export class PlayerRenderer {
                         playerWorldEntityTransform,
                         false,
                         rustCullBackFace,
+                        !!r.cullBackFace,
                     );
                 }
 
@@ -2656,6 +2658,7 @@ export class PlayerRenderer {
                                 WebGLMapSquare.IDENTITY_MAT4,
                                 true,
                                 false,
+                                !!r.cullBackFace,
                             );
                         }
                     }
@@ -2712,6 +2715,7 @@ export class PlayerRenderer {
                             playerWorldEntityTransform,
                             true,
                             false,
+                            !!r.cullBackFace,
                         );
                     }
 
