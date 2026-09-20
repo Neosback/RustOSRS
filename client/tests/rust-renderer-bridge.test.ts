@@ -34,6 +34,10 @@ class MockWasm implements RustRendererWasm {
         vertices: Uint32Array;
         indices: Uint32Array;
     }> = [];
+    dynamicPlayerGeometryUploads: Array<{
+        vertices: Uint32Array;
+        indices: Uint32Array;
+    }> = [];
     modelInfoUploads: Uint16Array[] = [];
     heightUploads = 0;
     waterMaskUploads = 0;
@@ -79,6 +83,14 @@ class MockWasm implements RustRendererWasm {
         npcDataOffset: number;
         modelYOffset: number;
         transparent: boolean;
+        worldEntityTransform: Float32Array;
+    }> = [];
+    playerPassCalls: Array<{
+        mapKey: number;
+        playerDataOffset: number;
+        modelYOffset: number;
+        transparent: boolean;
+        cullBackFace: boolean;
         worldEntityTransform: Float32Array;
     }> = [];
     passSequence: Array<{
@@ -151,6 +163,16 @@ class MockWasm implements RustRendererWasm {
         indices: Uint32Array,
     ): void {
         this.dynamicNpcGeometryUploads.push({
+            vertices: new Uint32Array(vertices),
+            indices: new Uint32Array(indices),
+        });
+    }
+
+    upload_dynamic_player_geometry(
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void {
+        this.dynamicPlayerGeometryUploads.push({
             vertices: new Uint32Array(vertices),
             indices: new Uint32Array(indices),
         });
@@ -392,6 +414,34 @@ class MockWasm implements RustRendererWasm {
             npcDataOffset,
             modelYOffset,
             transparent,
+            worldEntityTransform: new Float32Array(worldEntityTransform),
+        });
+    }
+
+    render_active_player_pass(
+        _viewMatrix: Float32Array,
+        _projectionMatrix: Float32Array,
+        worldEntityTransform: Float32Array,
+        _skyRgba: Float32Array,
+        _sceneHslOverride: Float32Array,
+        _playerPos: Float32Array,
+        _renderDistance: number,
+        _fogDepth: number,
+        _currentTime: number,
+        _brightness: number,
+        _isNewTextureAnim: boolean,
+        _colorBanding: number,
+        playerDataOffset: number,
+        modelYOffset: number,
+        transparent: boolean,
+        cullBackFace: boolean,
+    ): void {
+        this.playerPassCalls.push({
+            mapKey: this.selectedMapKey,
+            playerDataOffset,
+            modelYOffset,
+            transparent,
+            cullBackFace,
             worldEntityTransform: new Float32Array(worldEntityTransform),
         });
     }
@@ -1019,6 +1069,42 @@ function frame(): RustStaticFrameState {
             npcDataOffset: 31,
             modelYOffset: 1.25,
             transparent: true,
+            worldEntityTransform: npcTransform,
+        },
+    );
+
+    const playerVertices = new Uint32Array([21, 22, 23]);
+    const playerIndices = new Uint32Array([0, 0, 0]);
+    bridge.renderDynamicPlayerPass(
+        {
+            ...firstFrame,
+            playerDataOffset: 9,
+            modelYOffset: 2.5,
+            transparent: false,
+            cullBackFace: true,
+            worldEntityTransform: npcTransform,
+        },
+        playerVertices,
+        playerIndices,
+    );
+    assert.equal(wasm.dynamicPlayerGeometryUploads.length, 1);
+    assert.deepEqual(
+        Array.from(wasm.dynamicPlayerGeometryUploads[0].vertices),
+        [21, 22, 23],
+    );
+    assert.deepEqual(
+        Array.from(wasm.dynamicPlayerGeometryUploads[0].indices),
+        [0, 0, 0],
+    );
+    assert.equal(wasm.playerPassCalls.length, 1);
+    assert.deepEqual(
+        wasm.playerPassCalls[0],
+        {
+            mapKey: 2001,
+            playerDataOffset: 9,
+            modelYOffset: 2.5,
+            transparent: false,
+            cullBackFace: true,
             worldEntityTransform: npcTransform,
         },
     );
