@@ -137,6 +137,30 @@ function syncGlobalResources(
     );
 }
 
+function syncCurrentActorData(
+    host: WebGLOsrsRendererHost,
+    runtime: RustRendererShadowRuntime,
+): void {
+    const height = host.actorDataLastTexHeight | 0;
+    const currentTexture =
+        host.actorDataTextures[host.actorDataCurrentIndex];
+    if (height <= 0 || !currentTexture) return;
+
+    const width = 16;
+    const requiredU16 = width * height * 4;
+    if (host.actorRenderData.length < requiredU16) {
+        throw new Error(
+            `Current actor-data buffer has ${host.actorRenderData.length} u16 values; expected at least ${requiredU16}`,
+        );
+    }
+
+    runtime.bridge.uploadActorData(
+        host.actorRenderData.subarray(0, requiredU16),
+        width,
+        height,
+    );
+}
+
 export async function initRustRendererShadow(
     host: WebGLOsrsRendererHost,
 ): Promise<void> {
@@ -148,6 +172,7 @@ export async function initRustRendererShadow(
 
         runtimes.set(host, runtime);
         syncGlobalResources(host, runtime);
+        syncCurrentActorData(host, runtime);
         publishDiagnostics(host, {
             enabled: true,
             failed: false,
@@ -261,6 +286,22 @@ export function removeRustStaticMap(
         });
     } catch (error) {
         disableShadow(host, "map removal", error);
+    }
+}
+
+export function mirrorRustActorData(
+    host: WebGLOsrsRendererHost,
+    values: Uint16Array,
+    width: number,
+    height: number,
+): void {
+    const runtime = getRuntime(host);
+    if (!runtime) return;
+
+    try {
+        runtime.bridge.uploadActorData(values, width, height);
+    } catch (error) {
+        disableShadow(host, "actor-data mirror", error);
     }
 }
 
