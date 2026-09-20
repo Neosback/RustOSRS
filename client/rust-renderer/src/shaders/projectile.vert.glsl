@@ -236,14 +236,6 @@ struct ProjectileInfo {
     uint roll;
 };
 
-ivec2 dataTexCoord(int index) {
-    return ivec2(index % 16, index / 16);
-}
-
-float decodeSignedU16(uint value) {
-    return float((value & 0x8000u) != 0u ? int(value) - 65536 : int(value));
-}
-
 ProjectileInfo decodeProjectileInfo(int offset) {
     int baseTexel = offset * 2;
     uvec4 data = texelFetch(u_npcDataTexture, dataTexCoord(baseTexel), 0);
