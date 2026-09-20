@@ -326,6 +326,8 @@ pub struct RustWebGlRenderer {
     material_count: i32,
     last_stats: DrawStats,
     last_draw_hash: u32,
+    terrain_only_pass: bool,
+    terrain_batch_kind: u32,
 }
 
 #[wasm_bindgen]
@@ -417,6 +419,8 @@ impl RustWebGlRenderer {
             material_count: 1,
             last_stats: DrawStats::default(),
             last_draw_hash: DRAW_HASH_OFFSET_BASIS,
+            terrain_only_pass: false,
+            terrain_batch_kind: 0,
         })
     }
 
@@ -1139,6 +1143,61 @@ impl RustWebGlRenderer {
         )
     }
 
+    /// Mirrors the PicoGL Mode-1 overlapping world-entity ghost redraw.
+    ///
+    /// The live renderer redraws only the opaque terrain batch with blending,
+    /// a packed-HSL override and very low world-entity opacity. Auxiliary loc,
+    /// ground-item and door batches are intentionally excluded.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_active_static_terrain_ghost_pass(
+        &mut self,
+        view_matrix: &[f32],
+        projection_matrix: &[f32],
+        world_entity_transform: &[f32],
+        world_entity_opacity: f32,
+        sky_rgba: &[f32],
+        scene_hsl_override: &[f32],
+        player_pos: &[f32],
+        render_distance: f32,
+        fog_depth: f32,
+        current_time: f32,
+        brightness: f32,
+        roof_plane_limit: f32,
+        use_lod: bool,
+        is_new_texture_anim: bool,
+        color_banding: f32,
+    ) -> Result<(), JsValue> {
+        self.gl.enable(Gl::BLEND);
+        self.gl
+            .blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+
+        self.terrain_only_pass = true;
+        self.terrain_batch_kind = 4;
+        let result = self.render_static(
+            view_matrix,
+            projection_matrix,
+            world_entity_transform,
+            world_entity_opacity,
+            sky_rgba,
+            scene_hsl_override,
+            player_pos,
+            render_distance,
+            fog_depth,
+            current_time,
+            brightness,
+            roof_plane_limit,
+            use_lod,
+            is_new_texture_anim,
+            color_banding,
+            false,
+            false,
+        );
+        self.terrain_only_pass = false;
+        self.terrain_batch_kind = 0;
+        self.gl.disable(Gl::BLEND);
+        result
+    }
+
     /// Backwards-compatible one-map frame wrapper.
     #[allow(clippy::too_many_arguments)]
     pub fn render_static_frame(
@@ -1369,7 +1428,7 @@ impl RustWebGlRenderer {
             self.last_draw_hash,
             self.static_map_key,
             flags,
-            0,
+            self.terrain_batch_kind,
             &pass.draw_ranges,
             Some(&pass.range_planes),
             roof_limit,
@@ -1387,36 +1446,38 @@ impl RustWebGlRenderer {
             false,
         );
 
-        for (batch_kind, batch) in [
-            (1, self.static_map.loc_batch.as_ref()),
-            (2, self.static_map.ground_batch.as_ref()),
-            (3, self.static_map.door_batch.as_ref()),
-        ] {
-            let Some(batch) = batch else {
-                continue;
-            };
-            let batch_pass = batch.pass(use_lod, discard_alpha);
-            draw_hash = hash_visible_draw_ranges(
-                draw_hash,
-                self.static_map_key,
-                flags,
-                batch_kind,
-                &batch_pass.draw_ranges,
-                Some(&batch_pass.range_planes),
-                roof_limit,
-            );
-            self.gl.bind_vertex_array(Some(&batch.vao));
-            let batch_stats = submit_draw_ranges(
-                &self.gl,
-                &batch_pass.draw_ranges,
-                batch.index_count,
-                Some(&self.static_program.draw_id),
-                Some(&batch_pass.range_planes),
-                roof_limit,
-                false,
-            );
-            stats.draw_calls += batch_stats.draw_calls;
-            stats.submitted_indices += batch_stats.submitted_indices;
+        if !self.terrain_only_pass {
+            for (batch_kind, batch) in [
+                (1, self.static_map.loc_batch.as_ref()),
+                (2, self.static_map.ground_batch.as_ref()),
+                (3, self.static_map.door_batch.as_ref()),
+            ] {
+                let Some(batch) = batch else {
+                    continue;
+                };
+                let batch_pass = batch.pass(use_lod, discard_alpha);
+                draw_hash = hash_visible_draw_ranges(
+                    draw_hash,
+                    self.static_map_key,
+                    flags,
+                    batch_kind,
+                    &batch_pass.draw_ranges,
+                    Some(&batch_pass.range_planes),
+                    roof_limit,
+                );
+                self.gl.bind_vertex_array(Some(&batch.vao));
+                let batch_stats = submit_draw_ranges(
+                    &self.gl,
+                    &batch_pass.draw_ranges,
+                    batch.index_count,
+                    Some(&self.static_program.draw_id),
+                    Some(&batch_pass.range_planes),
+                    roof_limit,
+                    false,
+                );
+                stats.draw_calls += batch_stats.draw_calls;
+                stats.submitted_indices += batch_stats.submitted_indices;
+            }
         }
 
         self.last_draw_hash = draw_hash;
