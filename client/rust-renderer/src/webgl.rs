@@ -813,6 +813,21 @@ impl RustWebGlRenderer {
         )
     }
 
+    /// Uploads one finalized player geometry packet into a reusable
+    /// dynamic batch. Appearance construction and animation remain in TypeScript.
+    pub fn upload_dynamic_player_geometry(
+        &mut self,
+        packed_vertices: &[u32],
+        indices: &[u32],
+    ) -> Result<(), JsValue> {
+        self.dynamic_player_batch.upload_geometry_with_usage(
+            &self.gl,
+            packed_vertices,
+            indices,
+            Gl::DYNAMIC_DRAW,
+        )
+    }
+
     /// Uploads one RGBA16UI model-info packet produced by SceneBuffer.
     ///
     /// The first texels hold per-draw instance offsets; remaining texels hold
@@ -2133,6 +2148,210 @@ impl RustWebGlRenderer {
             false,
         );
         self.gl.bind_vertex_array(None);
+        self.last_stats.draw_calls += stats.draw_calls;
+        self.last_stats.submitted_indices += stats.submitted_indices;
+        Ok(())
+    }
+
+    /// Renders the currently uploaded finalized player geometry as one actor.
+    ///
+    /// The initial parity boundary intentionally avoids the PicoGL slot-instance
+    /// attribute: TypeScript passes the exact actor-data slot directly and Rust
+    /// submits one player draw. Slot instancing can be restored later as an
+    /// optimization after visual parity is established.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_active_player_pass(
+        &mut self,
+        view_matrix: &[f32],
+        projection_matrix: &[f32],
+        world_entity_transform: &[f32],
+        sky_rgba: &[f32],
+        scene_hsl_override: &[f32],
+        player_pos: &[f32],
+        render_distance: f32,
+        fog_depth: f32,
+        current_time: f32,
+        brightness: f32,
+        is_new_texture_anim: bool,
+        color_banding: f32,
+        player_data_offset: i32,
+        model_y_offset: f32,
+        transparent: bool,
+        cull_back_face: bool,
+    ) -> Result<(), JsValue> {
+        require_matrix(view_matrix, "view_matrix")?;
+        require_matrix(projection_matrix, "projection_matrix")?;
+        require_matrix(world_entity_transform, "world_entity_transform")?;
+        require_vec4(sky_rgba, "sky_rgba")?;
+        require_vec4(scene_hsl_override, "scene_hsl_override")?;
+        if player_pos.len() != 2 {
+            return Err(JsValue::from_str("player_pos must contain two f32 values"));
+        }
+        if player_data_offset < 0 {
+            return Err(JsValue::from_str(
+                "player_data_offset must be non-negative",
+            ));
+        }
+
+        let state = self
+            .static_map
+            .state
+            .ok_or_else(|| JsValue::from_str("static map state has not been configured"))?;
+        let index_count = self.dynamic_player_batch.index_count;
+        if index_count == 0 {
+            return Ok(());
+        }
+
+        if transparent {
+            self.gl.enable(Gl::BLEND);
+            self.gl
+                .blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+        } else {
+            self.gl.disable(Gl::BLEND);
+        }
+        if cull_back_face {
+            self.gl.enable(Gl::CULL_FACE);
+            self.gl.cull_face(Gl::BACK);
+        } else {
+            self.gl.disable(Gl::CULL_FACE);
+        }
+
+        self.prepare_viewport();
+        self.gl.use_program(Some(&self.player_program.program));
+
+        self.gl.uniform_matrix4fv_with_f32_array(
+            Some(&self.player_program.view_matrix),
+            false,
+            view_matrix,
+        );
+        self.gl.uniform_matrix4fv_with_f32_array(
+            Some(&self.player_program.projection_matrix),
+            false,
+            projection_matrix,
+        );
+        self.gl.uniform_matrix4fv_with_f32_array(
+            Some(&self.player_program.world_entity_transform),
+            false,
+            world_entity_transform,
+        );
+        self.gl.uniform4fv_with_f32_array(
+            Some(&self.player_program.scene_hsl_override),
+            scene_hsl_override,
+        );
+        self.gl.uniform2f(
+            Some(&self.player_program.player_pos),
+            player_pos[0],
+            player_pos[1],
+        );
+        self.gl.uniform1f(
+            Some(&self.player_program.render_distance),
+            render_distance.max(0.0001),
+        );
+        self.gl.uniform1f(
+            Some(&self.player_program.fog_depth),
+            fog_depth.max(0.0),
+        );
+        self.gl.uniform1f(
+            Some(&self.player_program.current_time),
+            current_time,
+        );
+        self.gl.uniform1f(
+            Some(&self.player_program.brightness),
+            brightness.max(0.0001),
+        );
+        self.gl.uniform1f(
+            Some(&self.player_program.is_new_texture_anim),
+            if is_new_texture_anim { 1.0 } else { 0.0 },
+        );
+        self.gl.uniform1f(
+            Some(&self.player_program.color_banding),
+            color_banding.max(1.0),
+        );
+        self.gl.uniform1i(
+            Some(&self.player_program.player_data_offset),
+            player_data_offset,
+        );
+        self.gl.uniform2f(
+            Some(&self.player_program.map_pos),
+            state.map_x,
+            state.map_y,
+        );
+        self.gl.uniform1f(
+            Some(&self.player_program.time_loaded),
+            state.time_loaded,
+        );
+        self.gl.uniform1i(
+            Some(&self.player_program.scene_border_size),
+            state.border_size,
+        );
+        self.gl.uniform1f(
+            Some(&self.player_program.model_y_offset),
+            model_y_offset,
+        );
+        self.gl.uniform1i(
+            Some(&self.player_program.material_count),
+            self.material_count.max(1),
+        );
+        self.gl.uniform1i(
+            Some(&self.player_program.discard_alpha),
+            i32::from(transparent),
+        );
+        self.gl.uniform4fv_with_f32_array(
+            Some(&self.player_program.sky_color),
+            sky_rgba,
+        );
+
+        self.gl.active_texture(Gl::TEXTURE6);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D, Some(&self.actor_data_texture));
+        self.gl
+            .uniform1i(Some(&self.player_program.actor_data_sampler), 6);
+
+        self.gl.active_texture(Gl::TEXTURE1);
+        self.gl.bind_texture(
+            Gl::TEXTURE_2D_ARRAY,
+            Some(&self.static_map.height_map_texture),
+        );
+        self.gl
+            .uniform1i(Some(&self.player_program.height_map_sampler), 1);
+
+        self.gl.active_texture(Gl::TEXTURE2);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&self.texture_array));
+        self.gl
+            .uniform1i(Some(&self.player_program.texture_sampler), 2);
+
+        self.gl.active_texture(Gl::TEXTURE3);
+        self.gl
+            .bind_texture(Gl::TEXTURE_2D, Some(&self.material_texture));
+        self.gl
+            .uniform1i(Some(&self.player_program.material_sampler), 3);
+
+        let range = [DrawRange::new(0, index_count, 1)];
+        let flags = u32::from(transparent);
+        self.last_draw_hash = hash_visible_draw_ranges(
+            self.last_draw_hash,
+            self.static_map_key,
+            flags,
+            DYNAMIC_PLAYER_BATCH_KIND,
+            &range,
+            None,
+            3,
+        );
+
+        self.gl
+            .bind_vertex_array(Some(&self.dynamic_player_batch.vao));
+        let stats = submit_draw_ranges(
+            &self.gl,
+            &range,
+            index_count,
+            None,
+            None,
+            3,
+            false,
+        );
+        self.gl.bind_vertex_array(None);
+
         self.last_stats.draw_calls += stats.draw_calls;
         self.last_stats.submitted_indices += stats.submitted_indices;
         Ok(())
