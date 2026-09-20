@@ -10,11 +10,6 @@ import {
     RustStaticScenePacket,
 } from "../render/rust/RendererPacket";
 
-type RenderCall = {
-    discardAlpha: boolean;
-    clearFrame: boolean;
-};
-
 class MockWasm implements RustRendererWasm {
     static abiVersion = RUST_RENDERER_ABI_VERSION;
     static last?: MockWasm;
@@ -27,7 +22,10 @@ class MockWasm implements RustRendererWasm {
     staticStateCalls = 0;
     drawRangeUploads: Uint32Array[] = [];
     staticPassUploads = 0;
-    renderCalls: RenderCall[] = [];
+    renderFrameCalls = 0;
+
+    private opaqueRanges = new Uint32Array();
+    private alphaRanges = new Uint32Array();
 
     constructor(_canvas: HTMLCanvasElement) {
         MockWasm.last = this;
@@ -77,14 +75,14 @@ class MockWasm implements RustRendererWasm {
     }
 
     upload_static_passes(
-        modelInfoOpaque: Uint16Array,
+        _modelInfoOpaque: Uint16Array,
         opaqueRanges: Uint32Array,
-        modelInfoAlpha: Uint16Array,
+        _modelInfoAlpha: Uint16Array,
         alphaRanges: Uint32Array,
     ): void {
         this.staticPassUploads++;
-        this.modelInfoUploads.push(modelInfoOpaque, modelInfoAlpha);
-        this.drawRangeUploads.push(opaqueRanges, alphaRanges);
+        this.opaqueRanges = opaqueRanges;
+        this.alphaRanges = alphaRanges;
     }
 
     upload_texture_array(
@@ -120,22 +118,40 @@ class MockWasm implements RustRendererWasm {
         _isNewTextureAnim: boolean,
         _colorBanding: number,
     ): void {
-        this.renderCalls.push({
-            discardAlpha: true,
-            clearFrame: true,
-        });
+        this.renderFrameCalls++;
     }
 
     last_draw_calls(): number {
-        return this.renderCalls.length;
+        if (this.renderFrameCalls === 0) return 0;
+        return this.countDrawCalls(this.opaqueRanges) + this.countDrawCalls(this.alphaRanges);
     }
 
     last_submitted_indices(): number {
-        return this.renderCalls.length * 3;
+        if (this.renderFrameCalls === 0) return 0;
+        return (
+            this.countSubmittedIndices(this.opaqueRanges)
+            + this.countSubmittedIndices(this.alphaRanges)
+        );
     }
 
     dispose(): void {
         this.disposed = true;
+    }
+
+    private countDrawCalls(ranges: Uint32Array): number {
+        let calls = 0;
+        for (let i = 0; i + 2 < ranges.length; i += 3) {
+            if (ranges[i + 1] > 0 && ranges[i + 2] > 0) calls++;
+        }
+        return calls;
+    }
+
+    private countSubmittedIndices(ranges: Uint32Array): number {
+        let indices = 0;
+        for (let i = 0; i + 2 < ranges.length; i += 3) {
+            indices += ranges[i + 1] * ranges[i + 2];
+        }
+        return indices;
     }
 }
 
@@ -148,14 +164,14 @@ function packet(): RustStaticScenePacket {
         heightMapSize: 2,
         heightMapPlanes: 1,
         packedVertexWords: new Uint32Array([1, 2, 3]),
-        indices: new Uint32Array([0]),
+        indices: new Uint32Array([0, 0, 0]),
         modelInfoOpaque: new Uint16Array(64),
         modelInfoAlpha: new Uint16Array(64),
         heightMap: new Int16Array(4),
         waterMask: new Uint8Array(16),
-        opaqueDrawRanges: new Uint32Array([0, 1, 1]),
+        opaqueDrawRanges: new Uint32Array([0, 3, 1]),
         opaqueDrawRangePlanes: new Uint8Array([0]),
-        alphaDrawRanges: new Uint32Array([0, 1, 1]),
+        alphaDrawRanges: new Uint32Array([0, 3, 1]),
         alphaDrawRangePlanes: new Uint8Array([0]),
     };
 }
@@ -189,17 +205,41 @@ function frame(): RustStaticFrameState {
     assert.equal(wasm.geometryUploads, 1);
     assert.equal(wasm.heightUploads, 1);
     assert.equal(wasm.waterMaskUploads, 1);
+    assert.equal(wasm.staticStateCalls, 1);
     assert.equal(wasm.staticPassUploads, 1);
-    assert.equal(wasm.modelInfoUploads.length, 2);
-    assert.equal(wasm.drawRangeUploads.length, 2);
-    assert.equal(wasm.renderCalls.length, 1);
+    assert.equal(wasm.modelInfoUploads.length, 0);
+    assert.equal(wasm.drawRangeUploads.length, 0);
+    assert.equal(wasm.renderFrameCalls, 1);
+    assert.deepEqual(bridge.getLastStats(), {
+        drawCalls: 2,
+        submittedIndices: 6,
+    });
+
+    bridge.renderStatic(frame());
+    assert.equal(wasm.staticPassUploads, 1);
+    assert.equal(wasm.renderFrameCalls, 2);
+
+    bridge.dispose();
+    assert.equal(wasm.disposed, true);
+}
+
+{
+    const noAlpha = packet();
+    noAlpha.alphaDrawRanges = new Uint32Array();
+    noAlpha.alphaDrawRangePlanes = new Uint8Array();
+
+    const bridge = new RustRendererBridge(
+        {} as HTMLCanvasElement,
+        MockWasm,
+    );
+    bridge.uploadStaticScene(noAlpha, 4.5);
+    bridge.renderStatic(frame());
+
     assert.deepEqual(bridge.getLastStats(), {
         drawCalls: 1,
         submittedIndices: 3,
     });
-
     bridge.dispose();
-    assert.equal(wasm.disposed, true);
 }
 
 {
