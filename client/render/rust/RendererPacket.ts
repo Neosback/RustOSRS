@@ -3,7 +3,7 @@ import type { DrawRange } from "../DrawRange";
 import type { GroundItemGeometryBuildData } from "../ground/GroundItemMeshBuilder";
 import type { SdMapData } from "../loader/SdMapData";
 
-export const RUST_RENDERER_ABI_VERSION = 21 as const;
+export const RUST_RENDERER_ABI_VERSION = 22 as const;
 
 /**
  * Numeric-only static map-square packet for the Rust/WASM renderer.
