@@ -1371,12 +1371,78 @@ export function finishRustActorShadowFrame(
     if (!runtime) return;
 
     try {
+        if (state.overlayParityEnabled) {
+            // The reference captured before scene overlays is intentionally
+            // ignored. A matching reference, when requested, is supplied after
+            // PicoGL draws the same overlay subset.
+            state.phase = "scene-overlays";
+            return;
+        }
         if (pixelReference) {
             state.pixelReference = pixelReference;
         }
         finalizeRustShadowFrame(host, runtime, state);
     } catch (error) {
         disableShadow(host, "actor frame finalize", error);
+    }
+}
+
+export function mirrorRustSceneOverlay(
+    host: WebGLOsrsRendererHost,
+    vertices: Float32Array,
+    color: Float32Array,
+    filled: boolean,
+): void {
+    const state = activeShadowFrames.get(host);
+    if (
+        !state?.overlayParityEnabled
+        || state.phase !== "scene-overlays"
+    ) {
+        return;
+    }
+    if (vertices.length === 0) return;
+
+    const runtime = getRuntime(host);
+    if (!runtime) return;
+    const frame = state.frames[0];
+    if (!frame) return;
+
+    try {
+        runtime.bridge.renderSceneOverlay(
+            vertices,
+            color,
+            frame.viewMatrix,
+            frame.projectionMatrix,
+            filled,
+        );
+        state.mirroredOverlayPasses++;
+    } catch (error) {
+        disableShadow(host, "scene overlay mirror", error);
+    }
+}
+
+export function finishRustSceneOverlayShadowFrame(
+    host: WebGLOsrsRendererHost,
+    pixelReference?: RustPixelFrame,
+): void {
+    const state = activeShadowFrames.get(host);
+    if (
+        !state?.overlayParityEnabled
+        || state.phase !== "scene-overlays"
+    ) {
+        return;
+    }
+
+    const runtime = getRuntime(host);
+    if (!runtime) return;
+
+    try {
+        if (pixelReference) {
+            state.pixelReference = pixelReference;
+        }
+        finalizeRustShadowFrame(host, runtime, state);
+    } catch (error) {
+        disableShadow(host, "scene overlay finalize", error);
     }
 }
 
