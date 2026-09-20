@@ -1,7 +1,7 @@
 import type { DrawRange } from "../DrawRange";
 import type { SdMapData } from "../loader/SdMapData";
 
-export const RUST_RENDERER_ABI_VERSION = 3 as const;
+export const RUST_RENDERER_ABI_VERSION = 4 as const;
 
 /**
  * Numeric-only static map-square packet for the Rust/WASM renderer.
