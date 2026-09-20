@@ -9,6 +9,7 @@ layout(location = 0) in uvec3 a_packed;
 
 uniform mat4 u_viewMatrix;
 uniform mat4 u_projectionMatrix;
+uniform mat4 u_worldEntityTransform;
 uniform vec4 u_sceneHslOverride;
 uniform vec2 u_playerPos;
 uniform float u_renderDistance;
@@ -305,7 +306,7 @@ void main() {
         ? loadingFog
         : fogFactorOsrs(localPos.xz - u_playerPos);
 
-    vec4 viewPos = u_viewMatrix * vec4(localPos, 1.0);
+    vec4 viewPos = u_worldEntityTransform * (u_viewMatrix * vec4(localPos, 1.0));
 
     viewPos.z += float(modelInfo.plane) * 0.001;
     uint modelPriority = modelInfo.priority & 0x7u;
