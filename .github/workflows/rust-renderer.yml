@@ -41,6 +41,8 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: WASM check
         run: cargo check --target wasm32-unknown-unknown
+      - name: Package browser WASM
+        run: node ../scripts/build-rust-renderer.mjs
 
   bridge:
     runs-on: ubuntu-latest
@@ -58,3 +60,5 @@ jobs:
         run: yarn install --immutable
       - name: Test TypeScript bridge
         run: yarn test:rust-renderer-bridge
+      - name: Build client
+        run: yarn build
