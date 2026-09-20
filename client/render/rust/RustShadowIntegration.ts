@@ -42,6 +42,7 @@ export interface RustRendererShadowDiagnostics {
     expectedDrawHash: number;
     drawSequenceMatch: boolean;
     staticParityMatch: boolean;
+    expectedWorldEntityGhostPasses: number;
 }
 
 const diagnostics = new WeakMap<
@@ -78,6 +79,7 @@ export function getRustRendererShadowDiagnostics(
         expectedDrawHash: 0,
         drawSequenceMatch: true,
         staticParityMatch: true,
+        expectedWorldEntityGhostPasses: 0,
     };
 }
 
@@ -153,6 +155,7 @@ export async function initRustRendererShadow(
             expectedDrawHash: 0,
             drawSequenceMatch: true,
             staticParityMatch: true,
+            expectedWorldEntityGhostPasses: 0,
         });
         console.info("[RustRenderer] shadow renderer enabled");
     } catch (error) {
@@ -398,10 +401,47 @@ function addStats(
     target.submittedIndices += source.submittedIndices;
 }
 
+function shouldDrawWorldEntityGhostPass(
+    host: WebGLOsrsRendererHost,
+    map: WebGLMapSquare,
+): boolean {
+    if (
+        !host.sceneUniformBuffer
+        || !host.mapManager.worldEntityMapIds.has(map.id)
+    ) {
+        return false;
+    }
+
+    const entityIndex = host.getWorldEntityIndexForMapId(map.id);
+    if (entityIndex === undefined) return false;
+
+    const entity =
+        host.osrsClient.worldViewManager.getWorldEntity(entityIndex);
+    if (!entity || entity.drawMode !== 1) return false;
+
+    const worldView =
+        host.osrsClient.worldViewManager.getWorldView(entityIndex);
+    if (
+        !worldView
+        || (worldView.npcIds.size === 0 && worldView.playerIds.size === 0)
+    ) {
+        return false;
+    }
+
+    const overlay = host.worldEntityOverlays.get(entityIndex);
+    const worldEntityType =
+        overlay?.configId !== undefined && overlay.configId >= 0
+            ? host.osrsClient.worldEntityTypeLoader?.load(overlay.configId)
+            : undefined;
+
+    return !!worldEntityType && worldEntityType.sceneTintHsl > 0;
+}
+
 function countExpectedMapStaticDraws(
     map: WebGLMapSquare,
     useLod: boolean,
     roofPlaneLimit: number,
+    worldEntityGhostPass: boolean,
 ): RustStaticDrawStats {
     const total: RustStaticDrawStats = {
         drawCalls: 0,
@@ -471,6 +511,17 @@ function countExpectedMapStaticDraws(
                 ),
             );
         }
+
+        if (!transparent && worldEntityGhostPass) {
+            addStats(
+                total,
+                countExpectedDrawRanges(
+                    terrain.drawRanges,
+                    map.getDrawRangesPlanes(false, false, useLod),
+                    roofPlaneLimit,
+                ),
+            );
+        }
     }
 
     return total;
@@ -482,6 +533,7 @@ function hashExpectedMapStaticPass(
     useLod: boolean,
     transparent: boolean,
     roofPlaneLimit: number,
+    worldEntityGhostPass: boolean,
 ): number {
     const mapKey = map.id >>> 0;
     const terrain = map.getDrawCall(transparent, false, useLod);
@@ -555,6 +607,19 @@ function hashExpectedMapStaticPass(
         );
     }
 
+    if (!transparent && worldEntityGhostPass) {
+        hash = hashExpectedDrawRanges(
+            hash,
+            mapKey,
+            false,
+            useLod,
+            4,
+            terrain.drawRanges,
+            map.getDrawRangesPlanes(false, false, useLod),
+            roofPlaneLimit,
+        );
+    }
+
     return hash >>> 0;
 }
 
@@ -624,6 +689,7 @@ export function renderRustStaticShadowFrame(
                 expectedDrawHash: 0,
                 drawSequenceMatch: true,
                 staticParityMatch: true,
+                expectedWorldEntityGhostPasses: 0,
             });
             return;
         }
@@ -643,7 +709,9 @@ export function renderRustStaticShadowFrame(
         const mirroredStaticMaps: Array<{
             map: WebGLMapSquare;
             useLod: boolean;
+            worldEntityGhostPass: boolean;
         }> = [];
+        let expectedWorldEntityGhostPasses = 0;
         let eligibleMaps = 0;
 
         for (let i = 0; i < count; i++) {
@@ -685,12 +753,18 @@ export function renderRustStaticShadowFrame(
                 true,
                 createAnimatedLocDrawRangePatches(map, true, useLod),
             );
+            const worldEntityGhostPass =
+                shouldDrawWorldEntityGhostPass(host, map);
+            if (worldEntityGhostPass) {
+                expectedWorldEntityGhostPasses++;
+            }
             addStats(
                 expectedStats,
                 countExpectedMapStaticDraws(
                     map,
                     useLod,
                     roofPlaneLimit,
+                    worldEntityGhostPass,
                 ),
             );
 
@@ -705,7 +779,11 @@ export function renderRustStaticShadowFrame(
                 }
             }
 
-            mirroredStaticMaps.push({ map, useLod });
+            mirroredStaticMaps.push({
+                map,
+                useLod,
+                worldEntityGhostPass,
+            });
             frames.push({
                 mapKey,
                 viewMatrix: camera.viewMatrix,
@@ -734,6 +812,7 @@ export function renderRustStaticShadowFrame(
                 entry.useLod,
                 false,
                 roofPlaneLimit,
+                entry.worldEntityGhostPass,
             );
         }
         for (let i = mirroredStaticMaps.length - 1; i >= 0; i--) {
@@ -744,6 +823,7 @@ export function renderRustStaticShadowFrame(
                 entry.useLod,
                 true,
                 roofPlaneLimit,
+                entry.worldEntityGhostPass,
             );
         }
 
@@ -781,6 +861,7 @@ export function renderRustStaticShadowFrame(
             expectedDrawHash: expectedDrawHash >>> 0,
             drawSequenceMatch,
             staticParityMatch: drawStatsMatch && drawSequenceMatch,
+            expectedWorldEntityGhostPasses,
         });
     } catch (error) {
         disableShadow(host, "frame render", error);
