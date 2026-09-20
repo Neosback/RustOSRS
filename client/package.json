@@ -59,7 +59,8 @@
     "export-height-map": "tsx scripts/cache/export-height-map.ts",
     "export-items": "tsx scripts/cache/export-items.ts",
     "deploy": "node scripts/deploy.mjs",
-    "test:rust-renderer-bridge": "tsx tests/rust-renderer-bridge.test.ts"
+    "test:rust-renderer-bridge": "tsx tests/rust-renderer-bridge.test.ts",
+    "test:rust-renderer-shadow": "tsx tests/rust-renderer-shadow-integration.test.ts"
   },
   "eslintConfig": {
     "extends": [
