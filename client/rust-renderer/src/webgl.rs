@@ -585,12 +585,12 @@ impl RustWebGlRenderer {
         let presentation_msaa_framebuffer = gl
             .create_framebuffer()
             .ok_or_else(|| JsValue::from_str("failed to create presentation MSAA framebuffer"))?;
-        let presentation_msaa_color_renderbuffer = gl
-            .create_renderbuffer()
-            .ok_or_else(|| JsValue::from_str("failed to create presentation MSAA color renderbuffer"))?;
-        let presentation_msaa_depth_renderbuffer = gl
-            .create_renderbuffer()
-            .ok_or_else(|| JsValue::from_str("failed to create presentation MSAA depth renderbuffer"))?;
+        let presentation_msaa_color_renderbuffer = gl.create_renderbuffer().ok_or_else(|| {
+            JsValue::from_str("failed to create presentation MSAA color renderbuffer")
+        })?;
+        let presentation_msaa_depth_renderbuffer = gl.create_renderbuffer().ok_or_else(|| {
+            JsValue::from_str("failed to create presentation MSAA depth renderbuffer")
+        })?;
         initialize_fallback_texture_array(&gl, &texture_array)?;
         initialize_fallback_materials(&gl, &material_texture)?;
         initialize_fallback_water_textures(&gl, &water_texture_array)?;
@@ -1626,8 +1626,7 @@ impl RustWebGlRenderer {
             } else {
                 &self.presentation_framebuffer
             };
-            self.gl
-                .bind_framebuffer(Gl::FRAMEBUFFER, Some(framebuffer));
+            self.gl.bind_framebuffer(Gl::FRAMEBUFFER, Some(framebuffer));
         } else {
             self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
         }
@@ -2913,10 +2912,8 @@ impl RustWebGlRenderer {
                 Gl::READ_FRAMEBUFFER,
                 Some(&self.presentation_msaa_framebuffer),
             );
-            self.gl.bind_framebuffer(
-                Gl::DRAW_FRAMEBUFFER,
-                Some(&self.presentation_framebuffer),
-            );
+            self.gl
+                .bind_framebuffer(Gl::DRAW_FRAMEBUFFER, Some(&self.presentation_framebuffer));
             self.gl.blit_framebuffer(
                 0,
                 0,
@@ -3138,10 +3135,8 @@ impl RustWebGlRenderer {
                 height,
             );
 
-            self.gl.bind_framebuffer(
-                Gl::FRAMEBUFFER,
-                Some(&self.presentation_msaa_framebuffer),
-            );
+            self.gl
+                .bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.presentation_msaa_framebuffer));
             self.gl.framebuffer_renderbuffer(
                 Gl::FRAMEBUFFER,
                 Gl::COLOR_ATTACHMENT0,
