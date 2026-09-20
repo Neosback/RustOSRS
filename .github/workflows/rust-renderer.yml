@@ -22,6 +22,7 @@ on:
       - "client/tests/rust-renderer-bridge.test.ts"
       - "client/scripts/check-rust-renderer-abi.mjs"
       - "client/scripts/check-rust-renderer-shader-reference.mjs"
+      - "client/scripts/test-rust-renderer-browser.mjs"
       - "client/package.json"
       - "client/yarn.lock"
       - ".github/workflows/rust-renderer.yml"
@@ -43,6 +44,7 @@ on:
       - "client/tests/rust-renderer-bridge.test.ts"
       - "client/scripts/check-rust-renderer-abi.mjs"
       - "client/scripts/check-rust-renderer-shader-reference.mjs"
+      - "client/scripts/test-rust-renderer-browser.mjs"
       - "client/package.json"
       - "client/yarn.lock"
       - ".github/workflows/rust-renderer.yml"
@@ -69,6 +71,8 @@ jobs:
         run: cargo check --target wasm32-unknown-unknown
       - name: Package browser WASM
         run: node ../scripts/build-rust-renderer.mjs
+      - name: Browser WASM/WebGL2 acceptance
+        run: node ../scripts/test-rust-renderer-browser.mjs
 
   bridge:
     runs-on: ubuntu-latest
