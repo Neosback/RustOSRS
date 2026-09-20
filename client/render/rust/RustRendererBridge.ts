@@ -169,6 +169,7 @@ export interface RustRendererWasm {
         isNewTextureAnim: boolean,
         colorBanding: number,
         playerDataOffset: number,
+        playerSlots: Int32Array,
         modelYOffset: number,
         transparent: boolean,
         cullBackFace: boolean,
@@ -277,6 +278,7 @@ export interface RustDynamicNpcPassState extends RustStaticFrameState {
 export interface RustPlayerPassState extends RustStaticFrameState {
     mapKey: number;
     playerDataOffset: number;
+    playerSlots: Int32Array;
     modelYOffset: number;
     transparent: boolean;
     cullBackFace: boolean;
@@ -605,6 +607,11 @@ export class RustRendererBridge {
                 `Invalid player actor-data offset: ${pass.playerDataOffset}`,
             );
         }
+        for (const slot of pass.playerSlots) {
+            if (!Number.isInteger(slot) || slot < 0) {
+                throw new Error(`Invalid player actor slot: ${slot}`);
+            }
+        }
         if (vertices.length === 0 || indices.length === 0) {
             return;
         }
@@ -625,6 +632,7 @@ export class RustRendererBridge {
             pass.isNewTextureAnim,
             pass.colorBanding,
             pass.playerDataOffset,
+            pass.playerSlots,
             pass.modelYOffset,
             pass.transparent,
             pass.cullBackFace,
