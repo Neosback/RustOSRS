@@ -906,8 +906,8 @@ function frame(): RustStaticFrameState {
             10, 20, 31,
         ]),
         new Float32Array([1, 0.5, 0, 0.25]),
-        identity,
-        identity,
+        firstFrame.viewMatrix,
+        firstFrame.projectionMatrix,
         true,
     );
     assert.equal(wasm.sceneOverlayCalls.length, 1);
