@@ -1,4 +1,4 @@
-use crate::draw::{DrawRange, DrawStats, parse_draw_ranges};
+use crate::draw::{DrawRange, DrawStats, draw_range_is_visible, parse_draw_ranges};
 use crate::packet::{validate_draw_ranges, validate_geometry};
 use crate::static_scene::StaticMapState;
 use wasm_bindgen::{JsCast, prelude::*};
@@ -75,6 +75,8 @@ pub struct RustWebGlRenderer {
 
     draw_ranges: Vec<DrawRange>,
     draw_ranges_alpha: Vec<DrawRange>,
+    draw_range_planes: Vec<u8>,
+    draw_range_alpha_planes: Vec<u8>,
     index_count: u32,
     last_stats: DrawStats,
 }
@@ -184,6 +186,8 @@ impl RustWebGlRenderer {
             static_state: None,
             draw_ranges: Vec::new(),
             draw_ranges_alpha: Vec::new(),
+            draw_range_planes: Vec::new(),
+            draw_range_alpha_planes: Vec::new(),
             index_count: 0,
             last_stats: DrawStats::default(),
         })
@@ -226,6 +230,8 @@ impl RustWebGlRenderer {
         self.index_count = indices.len() as u32;
         self.draw_ranges.clear();
         self.draw_ranges_alpha.clear();
+        self.draw_range_planes.clear();
+        self.draw_range_alpha_planes.clear();
         Ok(())
     }
 
@@ -546,6 +552,7 @@ impl RustWebGlRenderer {
         validate_draw_ranges(&ranges, self.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         self.draw_ranges = ranges;
+        self.draw_range_planes.clear();
         Ok(())
     }
 
@@ -554,6 +561,7 @@ impl RustWebGlRenderer {
         validate_draw_ranges(&ranges, self.index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         self.draw_ranges_alpha = ranges;
+        self.draw_range_alpha_planes.clear();
         Ok(())
     }
 
@@ -562,8 +570,10 @@ impl RustWebGlRenderer {
         &mut self,
         model_info_opaque: &[u16],
         opaque_ranges: &[u32],
+        opaque_range_planes: &[u8],
         model_info_alpha: &[u16],
         alpha_ranges: &[u32],
+        alpha_range_planes: &[u8],
     ) -> Result<(), JsValue> {
         let opaque = parse_draw_ranges(opaque_ranges).map_err(JsValue::from_str)?;
         validate_draw_ranges(&opaque, self.index_count as usize)
@@ -581,12 +591,16 @@ impl RustWebGlRenderer {
 
         self.draw_ranges = opaque;
         self.draw_ranges_alpha = alpha;
+        self.draw_range_planes = opaque_range_planes.to_vec();
+        self.draw_range_alpha_planes = alpha_range_planes.to_vec();
         Ok(())
     }
 
     pub fn clear_draw_ranges(&mut self) {
         self.draw_ranges.clear();
         self.draw_ranges_alpha.clear();
+        self.draw_range_planes.clear();
+        self.draw_range_alpha_planes.clear();
     }
 
     /// Stage-0 geometry/HSL reference pass retained as an A/B diagnostic.
@@ -615,6 +629,8 @@ impl RustWebGlRenderer {
             &self.draw_ranges,
             self.index_count,
             None,
+            None,
+            3,
             true,
         );
         self.gl.bind_vertex_array(None);
@@ -676,6 +692,10 @@ impl RustWebGlRenderer {
             &mut self.model_info_alpha_texture,
         );
         std::mem::swap(&mut self.draw_ranges, &mut self.draw_ranges_alpha);
+        std::mem::swap(
+            &mut self.draw_range_planes,
+            &mut self.draw_range_alpha_planes,
+        );
 
         let alpha_result = self.render_static(
             view_matrix,
@@ -695,6 +715,10 @@ impl RustWebGlRenderer {
         );
 
         std::mem::swap(&mut self.draw_ranges, &mut self.draw_ranges_alpha);
+        std::mem::swap(
+            &mut self.draw_range_planes,
+            &mut self.draw_range_alpha_planes,
+        );
         std::mem::swap(
             &mut self.model_info_texture,
             &mut self.model_info_alpha_texture,
@@ -848,6 +872,8 @@ impl RustWebGlRenderer {
             &self.draw_ranges,
             self.index_count,
             Some(&self.static_program.draw_id),
+            Some(&self.draw_range_planes),
+            roof_plane_limit.clamp(0.0, 3.0) as u8,
             false,
         );
         self.gl.bind_vertex_array(None);
@@ -884,6 +910,8 @@ impl RustWebGlRenderer {
         self.gl.delete_program(Some(&self.static_program.program));
         self.draw_ranges.clear();
         self.draw_ranges_alpha.clear();
+        self.draw_range_planes.clear();
+        self.draw_range_alpha_planes.clear();
         self.index_count = 0;
         self.static_state = None;
     }
@@ -907,6 +935,8 @@ fn submit_draw_ranges(
     ranges: &[DrawRange],
     index_count: u32,
     draw_id: Option<&WebGlUniformLocation>,
+    range_planes: Option<&[u8]>,
+    roof_plane_limit: u8,
     draw_all_if_empty: bool,
 ) -> DrawStats {
     let mut stats = DrawStats::default();
@@ -924,7 +954,8 @@ fn submit_draw_ranges(
     }
 
     for (draw_index, range) in ranges.iter().copied().enumerate() {
-        if range.is_empty() {
+        let plane = range_planes.and_then(|planes| planes.get(draw_index).copied());
+        if !draw_range_is_visible(range, plane, roof_plane_limit) {
             continue;
         }
         if let Some(location) = draw_id {
