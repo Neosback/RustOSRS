@@ -693,17 +693,6 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             .update();
         profiler.endPhase();
 
-        renderRustStaticShadowFrame(
-            host,
-            {
-                viewMatrix: camera.viewMatrix as Float32Array,
-                projectionMatrix: camera.projectionMatrix as Float32Array,
-            },
-            renderDistance,
-            fogDepth,
-            timeSec,
-        );
-
         // CPU-side interactions with latest camera
         profiler.startPhase("interact");
         host.osrsClient.clientPlugins.updateInteractionPointer(camera);
@@ -745,6 +734,16 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
         profiler.startPhase("roof");
         host.roofPlaneLimit = host.computeFrameRoofPlaneLimit();
+        renderRustStaticShadowFrame(
+            host,
+            {
+                viewMatrix: camera.viewMatrix as Float32Array,
+                projectionMatrix: camera.projectionMatrix as Float32Array,
+            },
+            renderDistance,
+            fogDepth,
+            timeSec,
+        );
         host.osrsClient.clientPlugins.beforeSceneRender(host, () => {
             host.renderOpaqueActorPass(playerDataTextureIndex, playerDataTexture);
             host.renderTransparentNpcPass(npcDataTextureIndex, npcDataTexture);
