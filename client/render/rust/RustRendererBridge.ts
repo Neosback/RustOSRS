@@ -19,6 +19,12 @@ export interface RustRendererWasm {
         timeLoaded: number,
     ): void;
     set_draw_ranges(flatRanges: Uint32Array): void;
+    upload_static_passes(
+        modelInfoOpaque: Uint16Array,
+        opaqueRanges: Uint32Array,
+        modelInfoAlpha: Uint16Array,
+        alphaRanges: Uint32Array,
+    ): void;
 
     upload_texture_array(
         pixels: Uint8Array,
@@ -34,7 +40,7 @@ export interface RustRendererWasm {
         layers: number,
     ): void;
 
-    render_static(
+    render_static_frame(
         viewMatrix: Float32Array,
         projectionMatrix: Float32Array,
         skyRgba: Float32Array,
@@ -47,8 +53,6 @@ export interface RustRendererWasm {
         roofPlaneLimit: number,
         isNewTextureAnim: boolean,
         colorBanding: number,
-        discardAlpha: boolean,
-        clearFrame: boolean,
     ): void;
 
     last_draw_calls(): number;
@@ -103,7 +107,6 @@ export class RustRendererBridge {
     readonly wasm: RustRendererWasm;
 
     private uploadedPacket?: RustStaticScenePacket;
-    private timeLoaded = 0;
 
     constructor(
         canvas: HTMLCanvasElement,
@@ -162,7 +165,6 @@ export class RustRendererBridge {
             packet.heightMapSize,
             packet.heightMapPlanes,
         );
-        this.timeLoaded = timeLoaded;
         this.wasm.set_static_map_state(
             packet.mapX,
             packet.mapY,
@@ -170,6 +172,12 @@ export class RustRendererBridge {
             packet.heightMapSize,
             packet.heightMapPlanes,
             timeLoaded,
+        );
+        this.wasm.upload_static_passes(
+            packet.modelInfoOpaque,
+            packet.opaqueDrawRanges,
+            packet.modelInfoAlpha,
+            packet.alphaDrawRanges,
         );
         this.uploadedPacket = packet;
     }
@@ -180,27 +188,20 @@ export class RustRendererBridge {
             throw new Error("Rust static scene has not been uploaded");
         }
 
-        this.wasm.set_static_map_state(
-            packet.mapX,
-            packet.mapY,
-            packet.borderSize,
-            packet.heightMapSize,
-            packet.heightMapPlanes,
-            this.timeLoaded,
+        this.wasm.render_static_frame(
+            frame.viewMatrix,
+            frame.projectionMatrix,
+            frame.skyRgba,
+            frame.sceneHslOverride,
+            frame.playerPos,
+            frame.renderDistance,
+            frame.fogDepth,
+            frame.currentTime,
+            frame.brightness,
+            frame.roofPlaneLimit,
+            frame.isNewTextureAnim,
+            frame.colorBanding,
         );
-
-        this.wasm.upload_model_info(packet.modelInfoOpaque);
-        this.wasm.set_draw_ranges(packet.opaqueDrawRanges);
-        this.renderPass(frame, false, true);
-
-        if (
-            packet.alphaDrawRanges.length > 0
-            && packet.modelInfoAlpha.length > 0
-        ) {
-            this.wasm.upload_model_info(packet.modelInfoAlpha);
-            this.wasm.set_draw_ranges(packet.alphaDrawRanges);
-            this.renderPass(frame, true, false);
-        }
     }
 
     getLastStats(): { drawCalls: number; submittedIndices: number } {
@@ -215,26 +216,5 @@ export class RustRendererBridge {
         this.wasm.dispose();
     }
 
-    private renderPass(
-        frame: RustStaticFrameState,
-        discardAlpha: boolean,
-        clearFrame: boolean,
-    ): void {
-        this.wasm.render_static(
-            frame.viewMatrix,
-            frame.projectionMatrix,
-            frame.skyRgba,
-            frame.sceneHslOverride,
-            frame.playerPos,
-            frame.renderDistance,
-            frame.fogDepth,
-            frame.currentTime,
-            frame.brightness,
-            frame.roofPlaneLimit,
-            frame.isNewTextureAnim,
-            frame.colorBanding,
-            discardAlpha,
-            clearFrame,
-        );
-    }
+}
 }
