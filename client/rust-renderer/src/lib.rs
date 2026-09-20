@@ -31,4 +31,4 @@ pub use static_scene::{StaticMapState, validate_static_scene_packet};
 pub use webgl::RustWebGlRenderer;
 
 /// Increment only for a breaking renderer packet/layout change.
-pub const RENDERER_ABI_VERSION: u32 = 9;
+pub const RENDERER_ABI_VERSION: u32 = 10;
