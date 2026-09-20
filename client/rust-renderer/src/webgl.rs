@@ -18,6 +18,7 @@ const STATIC_FRAGMENT_SHADER: &str = include_str!("shaders/static.frag.glsl");
 const NPC_VERTEX_SHADER: &str = include_str!("shaders/npc.vert.glsl");
 const PLAYER_VERTEX_SHADER: &str = include_str!("shaders/player.vert.glsl");
 const PLAYER_FRAGMENT_SHADER: &str = include_str!("shaders/player.frag.glsl");
+const PROJECTILE_VERTEX_SHADER: &str = include_str!("shaders/projectile.vert.glsl");
 
 struct StaticProgram {
     program: WebGlProgram,
@@ -108,6 +109,37 @@ struct PlayerProgram {
     material_count: WebGlUniformLocation,
     discard_alpha: WebGlUniformLocation,
     sky_color: WebGlUniformLocation,
+}
+
+struct ProjectileProgram {
+    program: WebGlProgram,
+    view_matrix: WebGlUniformLocation,
+    projection_matrix: WebGlUniformLocation,
+    scene_hsl_override: WebGlUniformLocation,
+    player_pos: WebGlUniformLocation,
+    render_distance: WebGlUniformLocation,
+    fog_depth: WebGlUniformLocation,
+    current_time: WebGlUniformLocation,
+    brightness: WebGlUniformLocation,
+    is_new_texture_anim: WebGlUniformLocation,
+    color_banding: WebGlUniformLocation,
+    projectile_data_offset: WebGlUniformLocation,
+    map_pos: WebGlUniformLocation,
+    time_loaded: WebGlUniformLocation,
+    scene_border_size: WebGlUniformLocation,
+    model_y_offset: WebGlUniformLocation,
+    projectile_sub_offset: WebGlUniformLocation,
+    actor_data_sampler: WebGlUniformLocation,
+    height_map_sampler: WebGlUniformLocation,
+    texture_sampler: WebGlUniformLocation,
+    material_sampler: WebGlUniformLocation,
+    water_texture_sampler: WebGlUniformLocation,
+    water_mask_sampler: WebGlUniformLocation,
+    texture_layer_count: WebGlUniformLocation,
+    material_count: WebGlUniformLocation,
+    discard_alpha: WebGlUniformLocation,
+    sky_color: WebGlUniformLocation,
+    world_entity_opacity: WebGlUniformLocation,
 }
 
 struct StaticPass {
@@ -389,6 +421,7 @@ const NPC_BATCH_KIND: u32 = 5;
 const DYNAMIC_NPC_BATCH_KIND: u32 = 6;
 const DYNAMIC_PLAYER_BATCH_KIND: u32 = 7;
 const DYNAMIC_GFX_BATCH_KIND: u32 = 8;
+const DYNAMIC_PROJECTILE_BATCH_KIND: u32 = 9;
 
 struct StaticMapResources {
     terrain_batch: StaticGeometryBatch,
@@ -467,6 +500,8 @@ pub struct RustWebGlRenderer {
     npc_program: NpcProgram,
     dynamic_npc_batch: IndexedGeometryBatch,
     dynamic_gfx_batch: IndexedGeometryBatch,
+    projectile_program: ProjectileProgram,
+    dynamic_projectile_batch: IndexedGeometryBatch,
     player_program: PlayerProgram,
     dynamic_player_batch: IndexedGeometryBatch,
     player_slot_buffer: WebGlBuffer,
@@ -502,10 +537,13 @@ impl RustWebGlRenderer {
         let static_program_raw = create_program(&gl, STATIC_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
         let npc_program_raw = create_program(&gl, NPC_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
         let player_program_raw = create_program(&gl, PLAYER_VERTEX_SHADER, PLAYER_FRAGMENT_SHADER)?;
+        let projectile_program_raw =
+            create_program(&gl, PROJECTILE_VERTEX_SHADER, STATIC_FRAGMENT_SHADER)?;
 
         let static_map = StaticMapResources::new(&gl)?;
         let dynamic_npc_batch = IndexedGeometryBatch::new(&gl)?;
         let dynamic_gfx_batch = IndexedGeometryBatch::new(&gl)?;
+        let dynamic_projectile_batch = IndexedGeometryBatch::new(&gl)?;
         let dynamic_player_batch = IndexedGeometryBatch::new(&gl)?;
         let player_slot_buffer = gl
             .create_buffer()
@@ -638,6 +676,109 @@ impl RustWebGlRenderer {
             program: player_program_raw,
         };
 
+        let projectile_program = ProjectileProgram {
+            view_matrix: required_uniform(&gl, &projectile_program_raw, "u_viewMatrix")?,
+            projection_matrix: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_projectionMatrix",
+            )?,
+            scene_hsl_override: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_sceneHslOverride",
+            )?,
+            player_pos: required_uniform(&gl, &projectile_program_raw, "u_playerPos")?,
+            render_distance: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_renderDistance",
+            )?,
+            fog_depth: required_uniform(&gl, &projectile_program_raw, "u_fogDepth")?,
+            current_time: required_uniform(&gl, &projectile_program_raw, "u_currentTime")?,
+            brightness: required_uniform(&gl, &projectile_program_raw, "u_brightness")?,
+            is_new_texture_anim: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_isNewTextureAnim",
+            )?,
+            color_banding: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_colorBanding",
+            )?,
+            projectile_data_offset: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_projectileDataOffset",
+            )?,
+            map_pos: required_uniform(&gl, &projectile_program_raw, "u_mapPos")?,
+            time_loaded: required_uniform(&gl, &projectile_program_raw, "u_timeLoaded")?,
+            scene_border_size: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_sceneBorderSize",
+            )?,
+            model_y_offset: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_modelYOffset",
+            )?,
+            projectile_sub_offset: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_projectileSubOffset",
+            )?,
+            actor_data_sampler: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_npcDataTexture",
+            )?,
+            height_map_sampler: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_heightMap",
+            )?,
+            texture_sampler: required_uniform(&gl, &projectile_program_raw, "u_textures")?,
+            material_sampler: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_textureMaterials",
+            )?,
+            water_texture_sampler: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_waterTextures",
+            )?,
+            water_mask_sampler: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_waterMask",
+            )?,
+            texture_layer_count: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_textureLayerCount",
+            )?,
+            material_count: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_materialCount",
+            )?,
+            discard_alpha: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_discardAlpha",
+            )?,
+            sky_color: required_uniform(&gl, &projectile_program_raw, "u_skyColor")?,
+            world_entity_opacity: required_uniform(
+                &gl,
+                &projectile_program_raw,
+                "u_worldEntityOpacity",
+            )?,
+            program: projectile_program_raw,
+        };
+
         gl.enable(Gl::DEPTH_TEST);
         gl.depth_func(Gl::LEQUAL);
         gl.enable(Gl::CULL_FACE);
@@ -655,6 +796,8 @@ impl RustWebGlRenderer {
             npc_program,
             dynamic_npc_batch,
             dynamic_gfx_batch,
+            projectile_program,
+            dynamic_projectile_batch,
             player_program,
             dynamic_player_batch,
             player_slot_buffer,
@@ -2485,11 +2628,13 @@ impl RustWebGlRenderer {
         self.gl.delete_texture(Some(&self.actor_data_texture));
         self.dynamic_npc_batch.delete(&self.gl);
         self.dynamic_gfx_batch.delete(&self.gl);
+        self.dynamic_projectile_batch.delete(&self.gl);
         self.dynamic_player_batch.delete(&self.gl);
         self.gl.delete_buffer(Some(&self.player_slot_buffer));
         self.gl.delete_program(Some(&self.reference_program));
         self.gl.delete_program(Some(&self.static_program.program));
         self.gl.delete_program(Some(&self.npc_program.program));
+        self.gl.delete_program(Some(&self.projectile_program.program));
         self.gl.delete_program(Some(&self.player_program.program));
     }
 
