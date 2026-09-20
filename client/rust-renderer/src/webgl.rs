@@ -2922,8 +2922,19 @@ impl RustWebGlRenderer {
         self.presentation_msaa_samples
     }
 
-    /// Presents the Rust-owned scene target to the canvas without
-    /// post-processing. FXAA/MSAA are layered on top in later Stage-3 steps.
+    pub fn set_presentation_fxaa_enabled(&mut self, enabled: bool) {
+        self.presentation_fxaa_enabled = enabled;
+    }
+
+    pub fn presentation_fxaa_enabled(&self) -> bool {
+        self.presentation_fxaa_enabled
+    }
+
+    /// Presents the Rust-owned scene target to the canvas.
+    ///
+    /// MSAA, when enabled, resolves into the single-sample presentation
+    /// texture first. FXAA then samples that exact resolved texture into the
+    /// default framebuffer; otherwise the resolved texture is blitted raw.
     pub fn present_frame(&mut self) -> Result<(), JsValue> {
         if !self.presentation_enabled {
             return Ok(());
@@ -2954,21 +2965,53 @@ impl RustWebGlRenderer {
             );
         }
 
-        self.gl
-            .bind_framebuffer(Gl::READ_FRAMEBUFFER, Some(&self.presentation_framebuffer));
-        self.gl.bind_framebuffer(Gl::DRAW_FRAMEBUFFER, None);
-        self.gl.blit_framebuffer(
-            0,
-            0,
-            width,
-            height,
-            0,
-            0,
-            width,
-            height,
-            Gl::COLOR_BUFFER_BIT,
-            Gl::NEAREST,
-        );
+        if self.presentation_fxaa_enabled {
+            self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
+            self.prepare_viewport();
+
+            self.gl.disable(Gl::DEPTH_TEST);
+            self.gl.disable(Gl::BLEND);
+
+            self.gl.use_program(Some(&self.present_program.program));
+            self.gl.uniform2f(
+                Some(&self.present_program.resolution),
+                width as f32,
+                height as f32,
+            );
+            self.gl.active_texture(Gl::TEXTURE0);
+            self.gl
+                .bind_texture(Gl::TEXTURE_2D, Some(&self.presentation_color_texture));
+            self.gl
+                .uniform1i(Some(&self.present_program.frame_sampler), 0);
+
+            self.gl.bind_vertex_array(Some(&self.present_vao));
+            self.gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+            self.gl.bind_vertex_array(None);
+            self.gl.bind_texture(Gl::TEXTURE_2D, None);
+            self.gl.use_program(None);
+
+            // Scene rendering expects depth testing on at the beginning of the
+            // next frame. Blending intentionally remains disabled so the next
+            // opaque pass starts from the same state as the PicoGL renderer.
+            self.gl.enable(Gl::DEPTH_TEST);
+        } else {
+            self.gl
+                .bind_framebuffer(Gl::READ_FRAMEBUFFER, Some(&self.presentation_framebuffer));
+            self.gl.bind_framebuffer(Gl::DRAW_FRAMEBUFFER, None);
+            self.gl.blit_framebuffer(
+                0,
+                0,
+                width,
+                height,
+                0,
+                0,
+                width,
+                height,
+                Gl::COLOR_BUFFER_BIT,
+                Gl::NEAREST,
+            );
+        }
+
         self.gl.bind_framebuffer(Gl::READ_FRAMEBUFFER, None);
         self.gl.bind_framebuffer(Gl::DRAW_FRAMEBUFFER, None);
         self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
