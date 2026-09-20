@@ -31,6 +31,7 @@ async function main(): Promise<void> {
         expectedDrawHash: 0,
         drawSequenceMatch: true,
         staticParityMatch: true,
+        expectedWorldEntityGhostPasses: 0,
     });
 
     const animatedMap = {
