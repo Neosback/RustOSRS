@@ -279,8 +279,6 @@ function emptyGeometryPacket(): RustStaticGeometryPacket {
         opaqueLodDrawRangePlanes: new Uint8Array(),
         alphaLodDrawRanges: new Uint32Array(),
         alphaLodDrawRangePlanes: new Uint8Array(),
-        locGeometry: emptyGeometryPacket(),
-        doorGeometry: emptyGeometryPacket(),
     };
 }
 
@@ -308,6 +306,8 @@ function packet(): RustStaticScenePacket {
         opaqueLodDrawRangePlanes: new Uint8Array([0]),
         alphaLodDrawRanges: new Uint32Array(),
         alphaLodDrawRangePlanes: new Uint8Array(),
+        locGeometry: emptyGeometryPacket(),
+        doorGeometry: emptyGeometryPacket(),
     };
 }
 
