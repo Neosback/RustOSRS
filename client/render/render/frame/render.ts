@@ -196,6 +196,7 @@ import {
     completeRustOpaqueActorShadowPass,
     finishRustActorShadowFrame,
     getRustRendererShadowDiagnostics,
+    isRustGfxShadowEnabled,
     isRustNpcShadowEnabled,
     isRustPlayerShadowEnabled,
     renderRustStaticShadowFrame,
@@ -747,7 +748,9 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         profiler.startPhase("roof");
         host.roofPlaneLimit = host.computeFrameRoofPlaneLimit();
         const rustDynamicParityEnabled =
-            isRustNpcShadowEnabled() || isRustPlayerShadowEnabled();
+            isRustNpcShadowEnabled()
+            || isRustPlayerShadowEnabled()
+            || isRustGfxShadowEnabled();
         const rustPixelReference =
             getRustRendererShadowDiagnostics(host).enabled
             && !rustDynamicParityEnabled
