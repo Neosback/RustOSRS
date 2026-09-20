@@ -185,6 +185,7 @@ import {
     createPlayerProgram,
     createProjectileProgram,
 } from "../../shaders/Shaders";
+import { mirrorRustNpcDrawRanges } from "../../rust/RustShadowIntegration";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
@@ -350,6 +351,15 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
                         drawRanges[j] = frame;
                     }
                     host.draw(drawCall, drawRanges);
+                    mirrorRustNpcDrawRanges(
+                        host,
+                        map,
+                        drawRanges,
+                        baseOffsetNpc,
+                        host.getNpcModelYOffset(),
+                        WebGLMapSquare.IDENTITY_MAT4,
+                        false,
+                    );
 
                     // Second pass: draw world-entity NPCs with deck height + bobbing transform
                     if (weNpcIndices.length > 0) {
@@ -385,6 +395,15 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
                             drawRanges[wj] = frame;
                         }
                         host.draw(drawCall, drawRanges);
+                        mirrorRustNpcDrawRanges(
+                            host,
+                            map,
+                            drawRanges,
+                            baseOffsetNpc,
+                            host.getNpcModelYOffset(weDeckH),
+                            weTransform,
+                            false,
+                        );
                     }
                 }
             }
