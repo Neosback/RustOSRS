@@ -228,6 +228,64 @@ export function capturePicoStaticReference(
     }
 }
 
+export function capturePicoSceneReference(
+    host: WebGLOsrsRendererHost,
+    sourceFramebuffer: Framebuffer,
+): RustPixelFrame {
+    const target = ensureReferenceTarget(host);
+
+    try {
+        // Resolve/copy the completed scene into a single-sample RGBA target.
+        // This works for both the direct texture path and an MSAA renderbuffer
+        // source without adding overlays or post-processing to the oracle.
+        host.app.readFramebuffer(sourceFramebuffer);
+        host.app.drawFramebuffer(target.framebuffer);
+        host.gl.readBuffer(PicoGL.COLOR_ATTACHMENT0);
+        host.app.blitFramebuffer(PicoGL.COLOR_BUFFER_BIT, {
+            srcStartX: 0,
+            srcStartY: 0,
+            srcEndX: target.width,
+            srcEndY: target.height,
+            dstStartX: 0,
+            dstStartY: 0,
+            dstEndX: target.width,
+            dstEndY: target.height,
+            filter: PicoGL.NEAREST,
+        });
+
+        host.app.readFramebuffer(target.framebuffer);
+        host.gl.readBuffer(PicoGL.COLOR_ATTACHMENT0);
+
+        const pixels = new Uint8Array(
+            target.width * target.height * 4,
+        );
+        host.gl.readPixels(
+            0,
+            0,
+            target.width,
+            target.height,
+            PicoGL.RGBA,
+            PicoGL.UNSIGNED_BYTE,
+            pixels,
+        );
+
+        return {
+            width: target.width,
+            height: target.height,
+            pixels,
+        };
+    } finally {
+        host.app.drawFramebuffer(sourceFramebuffer);
+        host.app.readFramebuffer(sourceFramebuffer);
+        host.app.viewport(
+            0,
+            0,
+            host.sceneRenderWidth | 0,
+            host.sceneRenderHeight | 0,
+        );
+    }
+}
+
 export function readCanvasRgbaPixels(
     canvas: HTMLCanvasElement,
 ): RustPixelFrame | undefined {
