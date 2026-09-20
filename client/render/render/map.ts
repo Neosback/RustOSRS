@@ -186,6 +186,7 @@ import {
     createProjectileProgram,
 } from "../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
+import { mirrorRustStaticMap } from "../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
 import { RENDER_CONSTANTS } from "./constants";
 
@@ -345,6 +346,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
             host.pendingLocGeometryUpdates.delete(mapId);
             host.pendingDoorLocUpdates.delete(mapId);
             host.updateTextureArray(mapData.loadedTextures);
+            mirrorRustStaticMap(host, mapData, existing.timeLoaded);
             return;
         }
 
@@ -397,6 +399,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
         }
 
         host.updateTextureArray(mapData.loadedTextures);
+        mirrorRustStaticMap(host, mapData, reuseTime);
 
         host.pendingLocUpdates.delete(mapId);
         host.pendingLocGeometryUpdates.delete(mapId);
