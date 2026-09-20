@@ -88,6 +88,7 @@ class MockWasm implements RustRendererWasm {
     playerPassCalls: Array<{
         mapKey: number;
         playerDataOffset: number;
+        playerSlots: Int32Array;
         modelYOffset: number;
         transparent: boolean;
         cullBackFace: boolean;
@@ -432,6 +433,7 @@ class MockWasm implements RustRendererWasm {
         _isNewTextureAnim: boolean,
         _colorBanding: number,
         playerDataOffset: number,
+        playerSlots: Int32Array,
         modelYOffset: number,
         transparent: boolean,
         cullBackFace: boolean,
@@ -439,6 +441,7 @@ class MockWasm implements RustRendererWasm {
         this.playerPassCalls.push({
             mapKey: this.selectedMapKey,
             playerDataOffset,
+            playerSlots: new Int32Array(playerSlots),
             modelYOffset,
             transparent,
             cullBackFace,
@@ -1079,6 +1082,7 @@ function frame(): RustStaticFrameState {
         {
             ...firstFrame,
             playerDataOffset: 9,
+            playerSlots: new Int32Array(),
             modelYOffset: 2.5,
             transparent: false,
             cullBackFace: true,
@@ -1102,9 +1106,37 @@ function frame(): RustStaticFrameState {
         {
             mapKey: 2001,
             playerDataOffset: 9,
+            playerSlots: new Int32Array(),
             modelYOffset: 2.5,
             transparent: false,
             cullBackFace: true,
+            worldEntityTransform: npcTransform,
+        },
+    );
+
+    bridge.renderDynamicPlayerPass(
+        {
+            ...firstFrame,
+            playerDataOffset: 40,
+            playerSlots: new Int32Array([1, 4, 7]),
+            modelYOffset: 0.75,
+            transparent: true,
+            cullBackFace: false,
+            worldEntityTransform: npcTransform,
+        },
+        playerVertices,
+        playerIndices,
+    );
+    assert.equal(wasm.playerPassCalls.length, 2);
+    assert.deepEqual(
+        wasm.playerPassCalls[1],
+        {
+            mapKey: 2001,
+            playerDataOffset: 40,
+            playerSlots: new Int32Array([1, 4, 7]),
+            modelYOffset: 0.75,
+            transparent: true,
+            cullBackFace: false,
             worldEntityTransform: npcTransform,
         },
     );
