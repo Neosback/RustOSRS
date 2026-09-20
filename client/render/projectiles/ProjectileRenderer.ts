@@ -4,7 +4,10 @@ import { DrawCall, Texture } from "picogl";
 import type { WebGLMapSquare } from "../WebGLMapSquare";
 import type { WebGLOsrsRenderer } from "../WebGLOsrsRenderer";
 import type { GfxCache } from "../gfx/GfxCache";
-import { mirrorRustProjectileGeometry } from "../rust/RustShadowIntegration";
+import {
+    isRustPrimaryRendererActive,
+    mirrorRustProjectileGeometry,
+} from "../rust/RustShadowIntegration";
 import type { SpotAnimGpuCache, SpotAnimGpuRecord } from "../gfx/SpotAnimGpuCache";
 import { sampleBridgeHeightForWorldTile } from "../../game/scene/BridgeHeightSampler";
 import { BridgePlaneStrategy } from "../../game/scene/PlaneResolver";
@@ -240,7 +243,9 @@ export class ProjectileRenderer {
                 dc.uniform("u_modelYOffset", modelYOffset);
                 vec2.set(subOffset, fracX, fracY);
                 dc.uniform("u_projectileSubOffset", subOffset);
-                dc.draw();
+                if (!isRustPrimaryRendererActive(this.renderer)) {
+                    dc.draw();
+                }
 
                 if (rustGeometry) {
                     mirrorRustProjectileGeometry(
