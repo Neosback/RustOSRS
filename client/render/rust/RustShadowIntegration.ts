@@ -939,22 +939,22 @@ function countExpectedMapStaticDraws(
     };
 
     for (const transparent of [false, true]) {
-        const terrain = map.getDrawCall(transparent, false, useLod);
+        const terrainDrawRanges = map.getDrawRanges(transparent, false, useLod);
         addStats(
             total,
             countExpectedDrawRanges(
-                terrain.drawRanges,
+                terrainDrawRanges,
                 map.getDrawRangesPlanes(transparent, false, useLod),
                 roofPlaneLimit,
             ),
         );
 
-        const loc = map.getLocDrawCall(transparent, false, useLod);
-        if (loc) {
+        const locDrawRanges = map.getLocDrawRanges(transparent, false, useLod);
+        if (locDrawRanges) {
             addStats(
                 total,
                 countExpectedDrawRanges(
-                    loc.drawRanges,
+                    locDrawRanges,
                     map.getLocDrawRangesPlanes(transparent, false, useLod),
                     roofPlaneLimit,
                     createAnimatedLocDrawRangePatches(
@@ -966,16 +966,16 @@ function countExpectedMapStaticDraws(
             );
         }
 
-        const ground = map.getGroundItemDrawCall(
+        const groundDrawRanges = map.getGroundItemDrawRanges(
             transparent,
             false,
             useLod,
         );
-        if (ground) {
+        if (groundDrawRanges) {
             addStats(
                 total,
                 countExpectedDrawRanges(
-                    ground.drawRanges,
+                    groundDrawRanges,
                     map.getGroundItemDrawRangesPlanes(
                         transparent,
                         false,
@@ -986,12 +986,12 @@ function countExpectedMapStaticDraws(
             );
         }
 
-        const door = map.getDoorDrawCall(transparent, false, useLod);
-        if (door) {
+        const doorDrawRanges = map.getDoorDrawRanges(transparent, false, useLod);
+        if (doorDrawRanges) {
             addStats(
                 total,
                 countExpectedDrawRanges(
-                    door.drawRanges,
+                    doorDrawRanges,
                     map.getDoorDrawRangesPlanes(
                         transparent,
                         false,
@@ -1006,7 +1006,7 @@ function countExpectedMapStaticDraws(
             addStats(
                 total,
                 countExpectedDrawRanges(
-                    terrain.drawRanges,
+                    terrainDrawRanges,
                     map.getDrawRangesPlanes(false, false, useLod),
                     roofPlaneLimit,
                 ),
@@ -1026,27 +1026,27 @@ function hashExpectedMapStaticPass(
     worldEntityGhostPass: boolean,
 ): number {
     const mapKey = map.id >>> 0;
-    const terrain = map.getDrawCall(transparent, false, useLod);
+    const terrainDrawRanges = map.getDrawRanges(transparent, false, useLod);
     hash = hashExpectedDrawRanges(
         hash,
         mapKey,
         transparent,
         useLod,
         0,
-        terrain.drawRanges,
+        terrainDrawRanges,
         map.getDrawRangesPlanes(transparent, false, useLod),
         roofPlaneLimit,
     );
 
-    const loc = map.getLocDrawCall(transparent, false, useLod);
-    if (loc) {
+    const locDrawRanges = map.getLocDrawRanges(transparent, false, useLod);
+    if (locDrawRanges) {
         hash = hashExpectedDrawRanges(
             hash,
             mapKey,
             transparent,
             useLod,
             1,
-            loc.drawRanges,
+            locDrawRanges,
             map.getLocDrawRangesPlanes(transparent, false, useLod),
             roofPlaneLimit,
             createAnimatedLocDrawRangePatches(
@@ -1062,14 +1062,14 @@ function hashExpectedMapStaticPass(
         false,
         useLod,
     );
-    if (ground) {
+    if (groundDrawRanges) {
         hash = hashExpectedDrawRanges(
             hash,
             mapKey,
             transparent,
             useLod,
             2,
-            ground.drawRanges,
+            groundDrawRanges,
             map.getGroundItemDrawRangesPlanes(
                 transparent,
                 false,
@@ -1079,15 +1079,15 @@ function hashExpectedMapStaticPass(
         );
     }
 
-    const door = map.getDoorDrawCall(transparent, false, useLod);
-    if (door) {
+    const doorDrawRanges = map.getDoorDrawRanges(transparent, false, useLod);
+    if (doorDrawRanges) {
         hash = hashExpectedDrawRanges(
             hash,
             mapKey,
             transparent,
             useLod,
             3,
-            door.drawRanges,
+            doorDrawRanges,
             map.getDoorDrawRangesPlanes(
                 transparent,
                 false,
@@ -1104,7 +1104,7 @@ function hashExpectedMapStaticPass(
             false,
             useLod,
             4,
-            terrain.drawRanges,
+            terrainDrawRanges,
             map.getDrawRangesPlanes(false, false, useLod),
             roofPlaneLimit,
         );
