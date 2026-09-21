@@ -40,18 +40,15 @@ function createModelInfoTexture(app: PicoApp, data: Uint16Array): Texture {
     });
 }
 
-export type DrawCallRange = {
-    drawCall: DrawCall;
-    drawRanges: DrawRange[];
-};
-
-type DeferredDrawCallRange = {
+type AnyDrawCallRange = {
     drawCall?: DrawCall;
     drawRanges: DrawRange[];
     materializeDrawCall?: () => DrawCall;
 };
 
-type AnyDrawCallRange = DrawCallRange | DeferredDrawCallRange;
+export type DrawCallRange = AnyDrawCallRange & {
+    drawCall: DrawCall;
+};
 
 function createDeferredDrawCallRange(
     drawRanges: DrawRange[],
