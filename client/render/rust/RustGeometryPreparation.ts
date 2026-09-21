@@ -95,7 +95,12 @@ export async function getModelInfoTextureBuilder(): Promise<ModelInfoTextureBuil
 
 
 let vertexBatchBuilderFactoryPromise: Promise<VertexBatchBuilderFactory> | undefined;
+let vertexBatchBuilderFactory: VertexBatchBuilderFactory | undefined;
 let warnedAboutVertexFallback = false;
+
+export function createVertexBatchBuilderIfReady(): VertexBatchBuilder | undefined {
+    return vertexBatchBuilderFactory?.();
+}
 
 export async function getVertexBatchBuilderFactory(): Promise<VertexBatchBuilderFactory> {
     if (!vertexBatchBuilderFactoryPromise) {
@@ -107,7 +112,8 @@ export async function getVertexBatchBuilderFactory(): Promise<VertexBatchBuilder
                         "Rust renderer web package does not export RustVertexBufferBuilder",
                     );
                 }
-                return (): VertexBatchBuilder => new RustVertexBufferBuilder();
+                vertexBatchBuilderFactory = (): VertexBatchBuilder => new RustVertexBufferBuilder();
+                return vertexBatchBuilderFactory;
             })
             .catch((error) => {
                 if (!warnedAboutVertexFallback) {
@@ -118,7 +124,8 @@ export async function getVertexBatchBuilderFactory(): Promise<VertexBatchBuilder
                         error,
                     );
                 }
-                return (): undefined => undefined;
+                vertexBatchBuilderFactory = (): undefined => undefined;
+                return vertexBatchBuilderFactory;
             });
     }
 
