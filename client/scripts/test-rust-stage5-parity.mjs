@@ -698,6 +698,33 @@ arraysEqual(
     "model normal parity",
 );
 
+const overflowNormalXs = new Int32Array([0, 50000, 0]);
+const overflowNormalYs = new Int32Array([0, 50000, 0]);
+const overflowNormalZs = new Int32Array([0, 0, 50000]);
+arraysEqual(
+    module.calculate_model_normals(
+        overflowNormalXs,
+        overflowNormalYs,
+        overflowNormalZs,
+        3,
+        normalI1,
+        normalI2,
+        normalI3,
+        normalTypes,
+    ),
+    referenceNormals(
+        overflowNormalXs,
+        overflowNormalYs,
+        overflowNormalZs,
+        3,
+        normalI1,
+        normalI2,
+        normalI3,
+        normalTypes,
+    ),
+    "model normal Int32 overflow parity",
+);
+
 function adjustLightness(hsl, lightness) {
     lightness = ((hsl & 127) * lightness) >> 7;
     if (lightness < 2) lightness = 2;
