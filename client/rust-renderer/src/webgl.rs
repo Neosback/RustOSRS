@@ -2547,18 +2547,14 @@ impl RustWebGlRenderer {
         npc_data_offset: i32,
     ) -> Result<(), JsValue> {
         if npc_data_offset < 0 {
-            return Err(JsValue::from_str(
-                "npc_data_offset must be non-negative",
-            ));
+            return Err(JsValue::from_str("npc_data_offset must be non-negative"));
         }
         for (draw_index, range) in ranges.iter().enumerate() {
             if range.is_empty() {
                 continue;
             }
-            let max_index = i64::from(npc_data_offset)
-                + draw_index as i64
-                + i64::from(range.instances)
-                - 1;
+            let max_index =
+                i64::from(npc_data_offset) + draw_index as i64 + i64::from(range.instances) - 1;
             self.validate_actor_index(max_index, "NPC")?;
         }
         Ok(())
