@@ -186,7 +186,7 @@ import {
 } from "../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
 import {
-    isRustPrimaryRendererActive,
+    isRustPrimaryRendererEnabled,
     mirrorRustStaticMap,
 } from "../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
@@ -302,7 +302,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
                     sceneUniformBuffer,
                     mapData,
                     existing.timeLoaded,
-                    !isRustPrimaryRendererActive(host),
+                    !isRustPrimaryRendererEnabled(),
                 );
             } else if (isLocGeometryUpdate && mapData.locOnly) {
                 existing.refreshLocGeometry(
@@ -317,7 +317,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
                     mapData,
                     getClientCycle() | 0,
                     existing.timeLoaded,
-                    !isRustPrimaryRendererActive(host),
+                    !isRustPrimaryRendererEnabled(),
                 );
             } else {
                 existing.refreshSceneGeometry(
@@ -333,7 +333,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
                     mapData,
                     getClientCycle() | 0,
                     existing.timeLoaded,
-                    !isRustPrimaryRendererActive(host),
+                    !isRustPrimaryRendererEnabled(),
                 );
             }
 
@@ -386,7 +386,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
             getClientCycle() | 0,
             reuseFrame,
             host.osrsClient.npcEcs,
-            !isRustPrimaryRendererActive(host),
+            !isRustPrimaryRendererEnabled(),
         );
 
         // For instances, set base world position for height sampling.
