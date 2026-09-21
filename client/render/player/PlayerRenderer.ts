@@ -74,6 +74,8 @@ type PlayerGpuPass = {
     ib: VertexBuffer;
     drawCall: DrawCall;
     count: number;
+    vertexCapacityBytes: number;
+    indexCapacityBytes: number;
     vertices: Uint8Array;
     indices: Int32Array;
 };
@@ -470,8 +472,8 @@ export class PlayerRenderer {
         if (!program) return undefined;
         if (
             pass &&
-            pass.vb.byteLength >= vertices.byteLength &&
-            pass.ib.byteLength >= indices.byteLength
+            pass.vertexCapacityBytes >= vertices.byteLength &&
+            pass.indexCapacityBytes >= indices.byteLength
         ) {
             if (vertices.byteLength > 0) pass.vb.data(vertices);
             if (indices.byteLength > 0) pass.ib.data(indices);
@@ -517,6 +519,8 @@ export class PlayerRenderer {
             ib,
             drawCall,
             count: indices.length | 0,
+            vertexCapacityBytes: vertices.byteLength,
+            indexCapacityBytes: indices.byteLength,
             vertices,
             indices,
         };
