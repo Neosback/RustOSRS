@@ -536,7 +536,7 @@ export function getFrameOverheadPrayerMaxEntries(host: WebGLOsrsRendererHost, ):
 
 export function updateAnimatedDrawRanges(host: WebGLOsrsRendererHost, 
         map: WebGLMapSquare,
-        drawCall: DrawCall,
+        drawCall: DrawCall | undefined,
         drawRanges: DrawRange[],
         transparent: boolean,
         isInteract: boolean,
@@ -563,9 +563,14 @@ export function updateAnimatedDrawRanges(host: WebGLOsrsRendererHost,
                 continue;
             }
 
-            drawCall.offsets[index] = frame[0];
-            (drawCall as any).numElements[index] = frame[1];
+            // CPU draw-range metadata is authoritative for both Rust packets and
+            // legacy Pico rendering. Keep the Pico draw-call arrays synchronized
+            // only when a legacy GPU draw call has been materialized.
             drawRanges[index] = frame;
+            if (drawCall) {
+                drawCall.offsets[index] = frame[0];
+                (drawCall as any).numElements[index] = frame[1];
+            }
         }
     
 }

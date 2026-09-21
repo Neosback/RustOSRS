@@ -2395,7 +2395,7 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
 
     public updateAnimatedDrawRanges(
         map: WebGLMapSquare,
-        drawCall: DrawCall,
+        drawCall: DrawCall | undefined,
         drawRanges: DrawRange[],
         transparent: boolean,
         isInteract: boolean,
