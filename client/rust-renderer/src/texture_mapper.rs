@@ -185,6 +185,7 @@ fn project_planar(
     apply_direction(u, v, direction)
 }
 
+#[allow(clippy::approx_constant)]
 fn project_spherical(
     vertex: (f64, f64, f64),
     center: (i32, i32, i32),
@@ -581,10 +582,8 @@ pub fn compute_model_uvs(
             }
         }
 
-        let mut offset = face * 6;
-        for value in [u0, v0, u1, v1, u2, v2] {
-            uvs[offset] = value as f32;
-            offset += 1;
+        for (component, value) in [u0, v0, u1, v1, u2, v2].into_iter().enumerate() {
+            uvs[face * 6 + component] = value as f32;
         }
     }
     Ok(uvs)
