@@ -1,3 +1,8 @@
+import {
+    recordRustStage5Attempt,
+    recordRustStage5Fallback,
+    recordRustStage5Success,
+} from "./RustStage5Ownership";
 import type { ModelData } from "./ModelData";
 
 export type RustTextureMapper = (
@@ -40,12 +45,15 @@ export function computeTextureCoordsWithRustIfReady(
     model: ModelData,
     effectiveFaceTextures: Int16Array,
 ): Float32Array | undefined {
+    recordRustStage5Attempt("uv");
     if (!textureMapper) {
+        recordRustStage5Fallback("uv", "backend unavailable");
         return undefined;
     }
 
+    let uvs: Float32Array;
     try {
-        const uvs = textureMapper(
+        uvs = textureMapper(
             model.verticesX,
             model.verticesY,
             model.verticesZ,
@@ -67,7 +75,6 @@ export function computeTextureCoordsWithRustIfReady(
             model.textureTransU ?? EMPTY_I32,
             model.textureTransV ?? EMPTY_I32,
         );
-        return uvs.length === model.faceCount * 6 ? uvs : undefined;
     } catch (error) {
         if (!warnedAboutTextureMappingFailure) {
             warnedAboutTextureMappingFailure = true;
@@ -76,6 +83,13 @@ export function computeTextureCoordsWithRustIfReady(
                 error,
             );
         }
+        recordRustStage5Fallback("uv", "backend threw", true);
         return undefined;
     }
+    if (uvs.length !== model.faceCount * 6) {
+        recordRustStage5Fallback("uv", "invalid result length", true);
+        return undefined;
+    }
+    recordRustStage5Success("uv");
+    return uvs;
 }
