@@ -366,9 +366,7 @@ export function renderTransparentNpcPass(host: WebGLOsrsRendererHost,
                 }
 
                 if (drawCall) {
-                    if (drawCall) {
-                        host.draw(drawCall, drawRanges);
-                    }
+                    host.draw(drawCall, drawRanges);
                 }
                 mirrorRustNpcDrawRanges(
                     host,
@@ -417,9 +415,7 @@ export function renderTransparentNpcPass(host: WebGLOsrsRendererHost,
                         setNpcDrawRange(wj, frame);
                     }
                     if (drawCall) {
-                    if (drawCall) {
-                        host.draw(drawCall, drawRanges);
-                    }
+                    host.draw(drawCall, drawRanges);
                 }
                     mirrorRustNpcDrawRanges(
                         host,
