@@ -47,6 +47,10 @@ export class RenderDataWorkerPool {
         }
     }
 
+    setRustStage5ForceTypeScript(force: boolean): Promise<void> {
+        return this.runAll((w) => w.setRustStage5ForceTypeScript(force));
+    }
+
     setRustStage5StrictMode(strict: boolean): Promise<void> {
         return this.runAll((w) => w.setRustStage5StrictMode(strict));
     }
