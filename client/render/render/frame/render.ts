@@ -505,9 +505,29 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         }
 
         // ========== Game Resource Checks ==========
-        host.syncSceneFramebufferSize();
-        if (host.needsFramebufferUpdate) {
-            host.initFramebuffer();
+        const rustPrimaryRendererEnabled =
+            isRustPrimaryRendererActive(host);
+        if (rustPrimaryRendererEnabled) {
+            // Keep scene dimensions current for Rust presentation without
+            // allocating the legacy PicoGL scene framebuffer.
+            const sceneSize = host.getSceneRenderSize();
+            host.sceneRenderWidth = sceneSize.width | 0;
+            host.sceneRenderHeight = sceneSize.height | 0;
+            host.needsFramebufferUpdate = false;
+
+            // Context-loss fallback may have lazily recreated the Pico scene
+            // target. Release it again once Rust-primary is active.
+            host.framebuffer?.delete();
+            host.framebuffer = undefined;
+            host.colorTarget?.delete();
+            host.colorTarget = undefined;
+            host.depthTarget?.delete();
+            host.depthTarget = undefined;
+        } else {
+            host.syncSceneFramebufferSize();
+            if (host.needsFramebufferUpdate || !host.framebuffer) {
+                host.initFramebuffer();
+            }
         }
 
         if (
@@ -515,7 +535,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             !host.mainAlphaProgram ||
             !host.npcProgram ||
             !host.sceneUniformBuffer ||
-            !host.framebuffer ||
+            (!rustPrimaryRendererEnabled && !host.framebuffer) ||
             !host.textureFramebuffer ||
             !host.frameDrawCall ||
             !host.textureArray ||
@@ -552,7 +572,9 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             host.app.disable(PicoGL.CULL_FACE);
         }
 
-        const directTextureScenePass = host.shouldUseDirectTextureScenePass();
+        const directTextureScenePass =
+            rustPrimaryRendererEnabled
+            || host.shouldUseDirectTextureScenePass();
         const sceneFramebuffer = directTextureScenePass
             ? host.textureFramebuffer!
             : host.framebuffer!;
@@ -752,8 +774,6 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
         profiler.startPhase("roof");
         host.roofPlaneLimit = host.computeFrameRoofPlaneLimit();
-        const rustPrimaryRendererEnabled =
-            isRustPrimaryRendererActive(host);
         const rustNpcParityEnabled = isRustNpcShadowEnabled();
         const rustPlayerParityEnabled = isRustPlayerShadowEnabled();
         const rustGfxParityEnabled = isRustGfxShadowEnabled();
