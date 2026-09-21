@@ -185,7 +185,10 @@ import {
     createProjectileProgram,
 } from "../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
-import { mirrorRustGroundItemGeometry } from "../rust/RustShadowIntegration";
+import {
+    isRustPrimaryRendererActive,
+    mirrorRustGroundItemGeometry,
+} from "../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
 import { RENDER_CONSTANTS } from "./constants";
 
@@ -327,6 +330,7 @@ export function rebuildGroundItemsForMap(host: WebGLOsrsRendererHost,
             host.waterTextures,
             host.sceneUniformBuffer,
             data,
+            !isRustPrimaryRendererActive(host),
         );
         mirrorRustGroundItemGeometry(host, map.id | 0, data);
         return false;

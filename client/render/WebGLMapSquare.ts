@@ -223,14 +223,14 @@ type GroundItemGeometryResources = {
     modelInfoTextureInteractAlpha: Texture;
     modelInfoTextureInteractLod: Texture;
     modelInfoTextureInteractLodAlpha: Texture;
-    drawCall: DrawCallRange;
-    drawCallAlpha: DrawCallRange;
-    drawCallLod: DrawCallRange;
-    drawCallLodAlpha: DrawCallRange;
-    drawCallInteract: DrawCallRange;
-    drawCallInteractAlpha: DrawCallRange;
-    drawCallInteractLod: DrawCallRange;
-    drawCallInteractLodAlpha: DrawCallRange;
+    drawCall: AnyDrawCallRange;
+    drawCallAlpha: AnyDrawCallRange;
+    drawCallLod: AnyDrawCallRange;
+    drawCallLodAlpha: AnyDrawCallRange;
+    drawCallInteract: AnyDrawCallRange;
+    drawCallInteractAlpha: AnyDrawCallRange;
+    drawCallInteractLod: AnyDrawCallRange;
+    drawCallInteractLodAlpha: AnyDrawCallRange;
     planes?: {
         main: Uint8Array;
         alpha: Uint8Array;
@@ -306,6 +306,7 @@ function createLocGeometryResources(
     borderSize: number,
     timeLoaded: number,
     geometry: LocGeometryData,
+    eagerLegacyDrawCalls: boolean = true,
 ): DoorGeometryResources | undefined {
     if (geometry.vertices.length === 0 || geometry.indices.length === 0) {
         return undefined;
@@ -345,25 +346,28 @@ function createLocGeometryResources(
         program: Program,
         modelInfoTexture: Texture,
         drawRanges: DrawRange[],
-    ): DrawCallRange => {
-        const drawCall = app
-            .createDrawCall(program, vertexArray)
-            .uniformBlock("SceneUniforms", sceneUniformBuffer)
-            .uniform("u_timeLoaded", timeLoaded)
-            .uniform("u_mapPos", mapPos)
-            .uniform("u_roofPlaneLimit", 3.0)
-            .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-            .uniform("u_worldEntityOpacity", 1.0)
-            .texture("u_textures", textureArray)
-            .texture("u_textureMaterials", textureMaterials)
-            .texture("u_waterTextures", waterTextures)
-            .texture("u_heightMap", heightMapTexture)
-            .texture("u_waterMask", waterMaskTexture)
-            .uniform("u_sceneBorderSize", borderSize)
-            .texture("u_modelInfoTexture", modelInfoTexture)
-            .drawRanges(...drawRanges);
-        return { drawCall, drawRanges };
-    };
+    ): AnyDrawCallRange =>
+        createDeferredDrawCallRange(
+            drawRanges,
+            () =>
+                app
+                    .createDrawCall(program, vertexArray)
+                    .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                    .uniform("u_timeLoaded", timeLoaded)
+                    .uniform("u_mapPos", mapPos)
+                    .uniform("u_roofPlaneLimit", 3.0)
+                    .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                    .uniform("u_worldEntityOpacity", 1.0)
+                    .texture("u_textures", textureArray)
+                    .texture("u_textureMaterials", textureMaterials)
+                    .texture("u_waterTextures", waterTextures)
+                    .texture("u_heightMap", heightMapTexture)
+                    .texture("u_waterMask", waterMaskTexture)
+                    .uniform("u_sceneBorderSize", borderSize)
+                    .texture("u_modelInfoTexture", modelInfoTexture)
+                    .drawRanges(...drawRanges),
+            eagerLegacyDrawCalls,
+        );
 
     const planes =
         geometry.drawRangesPlanes.length > 0
@@ -798,6 +802,7 @@ export class WebGLMapSquare {
             borderSize,
             time,
             mapData.loc,
+            eagerLegacyDrawCalls,
         );
 
         let npcInterleavedBuffer: GpuInterleavedBuffer | undefined;
@@ -1308,16 +1313,21 @@ export class WebGLMapSquare {
         isLod: boolean,
     ): DrawCallRange | undefined {
         if (!this.loc) return undefined;
+        let drawCallRange: AnyDrawCallRange;
         if (isInteract) {
             if (isLod) {
-                return isAlpha ? this.loc.drawCallInteractLodAlpha : this.loc.drawCallInteractLod;
+                drawCallRange = isAlpha
+                    ? this.loc.drawCallInteractLodAlpha
+                    : this.loc.drawCallInteractLod;
+            } else {
+                drawCallRange = isAlpha ? this.loc.drawCallInteractAlpha : this.loc.drawCallInteract;
             }
-            return isAlpha ? this.loc.drawCallInteractAlpha : this.loc.drawCallInteract;
+        } else if (isLod) {
+            drawCallRange = isAlpha ? this.loc.drawCallLodAlpha : this.loc.drawCallLod;
+        } else {
+            drawCallRange = isAlpha ? this.loc.drawCallAlpha : this.loc.drawCall;
         }
-        if (isLod) {
-            return isAlpha ? this.loc.drawCallLodAlpha : this.loc.drawCallLod;
-        }
-        return isAlpha ? this.loc.drawCallAlpha : this.loc.drawCall;
+        return materializeDrawCallRange(drawCallRange);
     }
 
     getLocDrawRanges(
@@ -1419,17 +1429,19 @@ export class WebGLMapSquare {
     ): DrawCallRange | undefined {
         if (!this.groundItems) return undefined;
         const batch = this.groundItems;
+        let drawCallRange: AnyDrawCallRange;
         if (isInteract) {
             if (isLod) {
-                return isAlpha ? batch.drawCallInteractLodAlpha : batch.drawCallInteractLod;
+                drawCallRange = isAlpha ? batch.drawCallInteractLodAlpha : batch.drawCallInteractLod;
+            } else {
+                drawCallRange = isAlpha ? batch.drawCallInteractAlpha : batch.drawCallInteract;
             }
-            return isAlpha ? batch.drawCallInteractAlpha : batch.drawCallInteract;
+        } else if (isLod) {
+            drawCallRange = isAlpha ? batch.drawCallLodAlpha : batch.drawCallLod;
         } else {
-            if (isLod) {
-                return isAlpha ? batch.drawCallLodAlpha : batch.drawCallLod;
-            }
-            return isAlpha ? batch.drawCallAlpha : batch.drawCall;
+            drawCallRange = isAlpha ? batch.drawCallAlpha : batch.drawCall;
         }
+        return materializeDrawCallRange(drawCallRange);
     }
 
     getGroundItemDrawRanges(
@@ -1990,6 +2002,7 @@ export class WebGLMapSquare {
         mapData: SdMapData,
         clientCycle: number,
         time?: number,
+        eagerLegacyDrawCalls: boolean = true,
     ): void {
         if (mapData.mapX !== this.mapX || mapData.mapY !== this.mapY) {
             console.warn("[WebGLMapSquare] Loc geometry map mismatch", mapData.mapX, mapData.mapY);
@@ -2014,6 +2027,7 @@ export class WebGLMapSquare {
             this.borderSize,
             loadTime,
             mapData.loc,
+            eagerLegacyDrawCalls,
         );
         this.locDrawRangeGroups = this.loc ? getDrawRangeGroups(this.loc) : undefined;
         this.locDrawRangePlanes = this.loc?.planes;
@@ -2056,6 +2070,7 @@ export class WebGLMapSquare {
         sceneUniformBuffer: UniformBuffer,
         mapData: SdMapData,
         time?: number,
+        eagerLegacyDrawCalls: boolean = true,
     ): void {
         if (mapData.mapX !== this.mapX || mapData.mapY !== this.mapY) {
             console.warn("[WebGLMapSquare] Door geometry map mismatch", mapData.mapX, mapData.mapY);
@@ -2161,30 +2176,32 @@ export class WebGLMapSquare {
             program: Program,
             modelInfoTexture: Texture | undefined,
             drawRanges: DrawRange[],
-        ): DrawCallRange => {
-            const drawCall = app
-                .createDrawCall(program, doorVertexArray)
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", loadTime)
-                .uniform("u_mapPos", mapPos)
-                .uniform("u_roofPlaneLimit", 3.0)
-                .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                .uniform("u_worldEntityOpacity", 1.0)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_waterTextures", waterTextures)
-                .texture("u_heightMap", this.heightMapTexture)
-                .texture("u_waterMask", this.waterMaskTexture)
-                .uniform("u_sceneBorderSize", this.borderSize)
-                .drawRanges(...drawRanges);
-            if (modelInfoTexture) {
-                drawCall.texture("u_modelInfoTexture", modelInfoTexture);
-            }
-            return {
-                drawCall,
+        ): AnyDrawCallRange =>
+            createDeferredDrawCallRange(
                 drawRanges,
-            };
-        };
+                () => {
+                    const drawCall = app
+                        .createDrawCall(program, doorVertexArray)
+                        .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                        .uniform("u_timeLoaded", loadTime)
+                        .uniform("u_mapPos", mapPos)
+                        .uniform("u_roofPlaneLimit", 3.0)
+                        .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                        .uniform("u_worldEntityOpacity", 1.0)
+                        .texture("u_textures", textureArray)
+                        .texture("u_textureMaterials", textureMaterials)
+                        .texture("u_waterTextures", waterTextures)
+                        .texture("u_heightMap", this.heightMapTexture)
+                        .texture("u_waterMask", this.waterMaskTexture)
+                        .uniform("u_sceneBorderSize", this.borderSize)
+                        .drawRanges(...drawRanges);
+                    if (modelInfoTexture) {
+                        drawCall.texture("u_modelInfoTexture", modelInfoTexture);
+                    }
+                    return drawCall;
+                },
+                eagerLegacyDrawCalls,
+            );
 
         const doorDrawCall = buildDrawCall(
             mainProgram,
@@ -2528,6 +2545,7 @@ export class WebGLMapSquare {
             mapData,
             clientCycle,
             loadTime,
+            eagerLegacyDrawCalls,
         );
 
         this.refreshDoorGeometry(
@@ -2540,6 +2558,7 @@ export class WebGLMapSquare {
             sceneUniformBuffer,
             mapData,
             loadTime,
+            eagerLegacyDrawCalls,
         );
     }
 
@@ -2584,6 +2603,7 @@ export class WebGLMapSquare {
         waterTextures: Texture,
         sceneUniformBuffer: UniformBuffer,
         data?: GroundItemGeometryBuildData,
+        eagerLegacyDrawCalls: boolean = true,
     ): void {
         this.clearGroundItemGeometry();
         if (!data || data.vertices.length === 0 || data.indices.length === 0) {
@@ -2611,30 +2631,28 @@ export class WebGLMapSquare {
             program: Program,
             modelInfoTexture: Texture,
             drawRanges: DrawRange[],
-        ): DrawCallRange => {
-            const drawCall = app
-                .createDrawCall(program, vertexArray)
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", loadTime)
-                .uniform("u_mapPos", mapPos)
-                .uniform("u_roofPlaneLimit", 3.0)
-                .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                .uniform("u_worldEntityOpacity", 1.0)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_waterTextures", waterTextures)
-                .texture("u_heightMap", this.heightMapTexture)
-                .texture("u_waterMask", this.waterMaskTexture)
-                .uniform("u_sceneBorderSize", this.borderSize)
-                .drawRanges(...drawRanges);
-            if (modelInfoTexture) {
-                drawCall.texture("u_modelInfoTexture", modelInfoTexture);
-            }
-            return {
-                drawCall,
+        ): AnyDrawCallRange =>
+            createDeferredDrawCallRange(
                 drawRanges,
-            };
-        };
+                () =>
+                    app
+                        .createDrawCall(program, vertexArray)
+                        .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                        .uniform("u_timeLoaded", loadTime)
+                        .uniform("u_mapPos", mapPos)
+                        .uniform("u_roofPlaneLimit", 3.0)
+                        .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                        .uniform("u_worldEntityOpacity", 1.0)
+                        .texture("u_textures", textureArray)
+                        .texture("u_textureMaterials", textureMaterials)
+                        .texture("u_waterTextures", waterTextures)
+                        .texture("u_heightMap", this.heightMapTexture)
+                        .texture("u_waterMask", this.waterMaskTexture)
+                        .uniform("u_sceneBorderSize", this.borderSize)
+                        .texture("u_modelInfoTexture", modelInfoTexture)
+                        .drawRanges(...drawRanges),
+                eagerLegacyDrawCalls,
+            );
 
         const modelInfoTexture = createModelInfoTexture(app, data.modelTextureData);
         const modelInfoTextureAlpha = createModelInfoTexture(app, data.modelTextureDataAlpha);

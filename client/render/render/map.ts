@@ -302,6 +302,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
                     sceneUniformBuffer,
                     mapData,
                     existing.timeLoaded,
+                    !isRustPrimaryRendererActive(host),
                 );
             } else if (isLocGeometryUpdate && mapData.locOnly) {
                 existing.refreshLocGeometry(
@@ -316,6 +317,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
                     mapData,
                     getClientCycle() | 0,
                     existing.timeLoaded,
+                    !isRustPrimaryRendererActive(host),
                 );
             } else {
                 existing.refreshSceneGeometry(
