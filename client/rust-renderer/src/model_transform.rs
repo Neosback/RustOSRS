@@ -352,6 +352,231 @@ pub fn apply_legacy_transforms(
     Ok(result)
 }
 
+fn sample_height(
+    heights: &[i32],
+    width: usize,
+    height: usize,
+    x: i32,
+    z: i32,
+    rx: i32,
+    rz: i32,
+) -> Option<i32> {
+    if x < 0 || z < 0 || x as usize + 1 >= width || z as usize + 1 >= height {
+        return None;
+    }
+    let x0 = x as usize;
+    let z0 = z as usize;
+    let index = |xx: usize, zz: usize| xx * height + zz;
+    let h0 = heights[index(x0, z0)]
+        .wrapping_mul(128 - rx)
+        .wrapping_add(heights[index(x0 + 1, z0)].wrapping_mul(rx))
+        >> 7;
+    let h1 = heights[index(x0, z0 + 1)]
+        .wrapping_mul(128 - rx)
+        .wrapping_add(heights[index(x0 + 1, z0 + 1)].wrapping_mul(rx))
+        >> 7;
+    Some(h0.wrapping_mul(128 - rz).wrapping_add(h1.wrapping_mul(rz)) >> 7)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn contour_vertices_y(
+    vertices_x: &[i32],
+    vertices_y: &[i32],
+    vertices_z: &[i32],
+    used_vertex_count: usize,
+    contour_type: i32,
+    param: i32,
+    height_map: &[i32],
+    height_width: usize,
+    height_depth: usize,
+    height_map_above: &[i32],
+    above_width: usize,
+    above_depth: usize,
+    scene_x: i32,
+    scene_height: i32,
+    scene_z: i32,
+    type2_denominator: i32,
+    min_y: i32,
+    max_y: i32,
+    preserve_type1_unused_oob: bool,
+) -> Result<Vec<i32>, String> {
+    let vertex_count = vertices_x.len();
+    if vertices_y.len() != vertex_count || vertices_z.len() != vertex_count {
+        return Err("contour vertices must have matching x/y/z lengths".to_string());
+    }
+    if height_width.saturating_mul(height_depth) != height_map.len() {
+        return Err("contour height-map dimensions do not match data length".to_string());
+    }
+    if !height_map_above.is_empty()
+        && above_width.saturating_mul(above_depth) != height_map_above.len()
+    {
+        return Err("contour above-height-map dimensions do not match data length".to_string());
+    }
+
+    let used = used_vertex_count.min(vertex_count);
+    let mut output = vec![0; vertex_count];
+    let delta_y = max_y.wrapping_sub(min_y);
+
+    for vertex in 0..vertex_count {
+        let is_used = vertex < used;
+        let vx = vertices_x[vertex].wrapping_add(scene_x);
+        let vz = vertices_z[vertex].wrapping_add(scene_z);
+        let rx = vx & 0x7f;
+        let rz = vz & 0x7f;
+        let tile_x = vx >> 7;
+        let tile_z = vz >> 7;
+        let base_height = || {
+            sample_height(
+                height_map,
+                height_width,
+                height_depth,
+                tile_x,
+                tile_z,
+                rx,
+                rz,
+            )
+        };
+        let above_height = || {
+            sample_height(
+                height_map_above,
+                above_width,
+                above_depth,
+                tile_x,
+                tile_z,
+                rx,
+                rz,
+            )
+        };
+
+        match contour_type {
+            1 => {
+                if let Some(height) = base_height() {
+                    output[vertex] = vertices_y[vertex]
+                        .wrapping_add(height)
+                        .wrapping_sub(scene_height);
+                } else if !is_used && preserve_type1_unused_oob {
+                    output[vertex] = vertices_y[vertex];
+                }
+            }
+            2 => {
+                let shifted = vertices_y[vertex].wrapping_shl(16);
+                let y_ratio = if type2_denominator == 0 {
+                    0
+                } else {
+                    shifted / type2_denominator
+                };
+                if y_ratio < param {
+                    if let Some(height) = base_height() {
+                        if param == 0 {
+                            output[vertex] = vertices_y[vertex];
+                        } else {
+                            let delta = (height.wrapping_sub(scene_height) as i64)
+                                * (param.wrapping_sub(y_ratio) as i64);
+                            output[vertex] = vertices_y[vertex]
+                                .wrapping_add((delta / param as i64) as i32);
+                        }
+                    }
+                } else {
+                    output[vertex] = vertices_y[vertex];
+                }
+            }
+            3 => {
+                if !is_used {
+                    continue;
+                }
+                if let Some(height) = base_height() {
+                    let mut delta = height.wrapping_sub(scene_height);
+                    let clamp_limit = param.saturating_abs();
+                    if clamp_limit > 0 {
+                        delta = delta.clamp(-clamp_limit, clamp_limit);
+                    }
+                    output[vertex] = vertices_y[vertex].wrapping_add(delta);
+                } else {
+                    output[vertex] = vertices_y[vertex];
+                }
+            }
+            4 => {
+                if !is_used {
+                    continue;
+                }
+                if let Some(height) = above_height() {
+                    output[vertex] = vertices_y[vertex]
+                        .wrapping_add(height)
+                        .wrapping_sub(scene_height)
+                        .wrapping_add(delta_y);
+                }
+            }
+            5 => {
+                if !is_used {
+                    continue;
+                }
+                if let (Some(height), Some(height_above)) = (base_height(), above_height()) {
+                    let delta_height = height.wrapping_sub(height_above);
+                    let shifted = vertices_y[vertex].wrapping_shl(8);
+                    let ratio = if delta_y == 0 { 0 } else { shifted / delta_y };
+                    output[vertex] = ratio
+                        .wrapping_mul(delta_height)
+                        .wrapping_shr(8)
+                        .wrapping_sub(scene_height.wrapping_sub(height));
+                }
+            }
+            _ => {
+                output[vertex] = vertices_y[vertex];
+            }
+        }
+    }
+
+    Ok(output)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = contour_vertices_y)]
+#[allow(clippy::too_many_arguments)]
+pub fn contour_vertices_y_wasm(
+    vertices_x: &[i32],
+    vertices_y: &[i32],
+    vertices_z: &[i32],
+    used_vertex_count: usize,
+    contour_type: i32,
+    param: i32,
+    height_map: &[i32],
+    height_width: usize,
+    height_depth: usize,
+    height_map_above: &[i32],
+    above_width: usize,
+    above_depth: usize,
+    scene_x: i32,
+    scene_height: i32,
+    scene_z: i32,
+    type2_denominator: i32,
+    min_y: i32,
+    max_y: i32,
+    preserve_type1_unused_oob: bool,
+) -> Result<Vec<i32>, wasm_bindgen::JsValue> {
+    contour_vertices_y(
+        vertices_x,
+        vertices_y,
+        vertices_z,
+        used_vertex_count,
+        contour_type,
+        param,
+        height_map,
+        height_width,
+        height_depth,
+        height_map_above,
+        above_width,
+        above_depth,
+        scene_x,
+        scene_height,
+        scene_z,
+        type2_denominator,
+        min_y,
+        max_y,
+        preserve_type1_unused_oob,
+    )
+    .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = apply_legacy_transforms)]
 #[allow(clippy::too_many_arguments)]
@@ -423,6 +648,62 @@ mod tests {
         [
             1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ]
+    }
+
+    #[test]
+    fn contour_type_one_matches_bilinear_height_offset() {
+        let heights = vec![0, 128, 128, 256];
+        let result = contour_vertices_y(
+            &[64],
+            &[10],
+            &[64],
+            1,
+            1,
+            0,
+            &heights,
+            2,
+            2,
+            &[],
+            0,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            -20,
+            20,
+            true,
+        )
+        .unwrap();
+        assert_eq!(result, vec![138]);
+    }
+
+    #[test]
+    fn contour_type_three_clamps_delta() {
+        let heights = vec![0, 200, 200, 400];
+        let result = contour_vertices_y(
+            &[64],
+            &[5],
+            &[64],
+            1,
+            3,
+            25,
+            &heights,
+            2,
+            2,
+            &[],
+            0,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            -20,
+            20,
+            false,
+        )
+        .unwrap();
+        assert_eq!(result, vec![30]);
     }
 
     #[test]
