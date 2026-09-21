@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feature/rust-renderer-core
     paths:
       - "client/rust-renderer/**"
       - "client/render/**"
