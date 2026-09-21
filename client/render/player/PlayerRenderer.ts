@@ -130,16 +130,10 @@ export class PlayerRenderer {
         }
     > = new Map();
 
-    // PERF (mobile): cache face metadata per base model.
-    // Note: alpha values can change at runtime via alpha transforms, so we cache the stable metadata
-    // (index/priority/textureId) and rebuild the opaque/alpha buckets per frame without allocations.
-    private baseModelFaceMetaCache: WeakMap<any, { faces: any[] }> = new WeakMap();
     // PERF (mobile): reuse a SceneBuffer + typed index arrays for the local player.
     private localSceneBuf?: any;
     private localIndexScratch: Int32Array = new Int32Array(0);
     private localIndexScratchAlpha: Int32Array = new Int32Array(0);
-    private localFacesOpaque: any[] = [];
-    private localFacesAlpha: any[] = [];
     private readonly emptyIndexScratch: Int32Array = new Int32Array(0);
     private readonly emptyVertexScratch: Uint8Array = new Uint8Array(0);
     private lastUploadedOpaqueGeomKey?: string;
