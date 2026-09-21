@@ -185,7 +185,10 @@ import {
     createProjectileProgram,
 } from "../../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
-import { mirrorRustSceneOverlay } from "../../rust/RustShadowIntegration";
+import {
+    isRustPrimaryRendererActive,
+    mirrorRustSceneOverlay,
+} from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRenderer } from "../../WebGLOsrsRenderer";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
@@ -526,7 +529,9 @@ export function drawSceneTileOverlays(host: WebGLOsrsRendererHost, time: number,
         args.state.overheadPrayers = undefined;
         args.state.groundItems = undefined;
         host.overlayManager.update(args);
-        host.overlayManager.draw(RenderPhase.ToSceneFramebuffer);
+        if (!isRustPrimaryRendererActive(host)) {
+            host.overlayManager.draw(RenderPhase.ToSceneFramebuffer);
+        }
         mirrorRustDepthAwareTileOverlays(host, args, tileMarkersConfig);
     
 }
