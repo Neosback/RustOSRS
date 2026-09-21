@@ -1174,6 +1174,7 @@ export class PlayerRenderer {
     }
 
     private ensurePlayerGpuCapacity(vertexData: Uint8Array, indexData: Int32Array): void {
+        if (isRustPrimaryRendererActive(this.renderer)) return;
         const r: any = this.renderer as any;
         const app = r.app;
         const vao = r.playerVertexArray;
@@ -1256,6 +1257,7 @@ export class PlayerRenderer {
     // Ensure alpha buffers/VAO/drawcall have enough capacity when we render
     // dynamic player geometry via the transparent pass (rare; e.g., fishing skillcape emote).
     private ensurePlayerGpuCapacityAlpha(vertexData: Uint8Array, indexData: Int32Array): void {
+        if (isRustPrimaryRendererActive(this.renderer)) return;
         const r: any = this.renderer as any;
         const app = r.app;
         const vao = r.playerVertexArrayAlpha;
