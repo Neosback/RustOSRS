@@ -238,7 +238,19 @@ export class LocPlacementPreviewOverlay implements Overlay {
         alpha: boolean,
         renderer: LocPlacementPreviewRenderer,
     ): Batch | undefined {
-        if (!this.app || !this.gl || !this.sceneUniforms || !this.waterMask || faces.length === 0) return undefined;
+        const previewVertShader = this.previewVertShader;
+        const mainFragShader = this.mainFragShader;
+        if (
+            !this.app
+            || !this.gl
+            || !this.sceneUniforms
+            || !this.waterMask
+            || !previewVertShader
+            || !mainFragShader
+            || faces.length === 0
+        ) {
+            return undefined;
+        }
         const scene = new SceneBuffer(textureLoader, textureIdIndexMap, model.verticesCount);
         scene.addModel(model, faces);
         const vertices = scene.vertexBuf.byteArray();
@@ -267,9 +279,9 @@ export class LocPlacementPreviewOverlay implements Overlay {
             .indexBuffer(indexBuffer);
         const program = this.app.createProgram(
             alpha
-                ? prependDefines(this.previewVertShader, ["DISCARD_ALPHA"])
-                : this.previewVertShader,
-            alpha ? prependDefines(this.mainFragShader, ["DISCARD_ALPHA"]) : this.mainFragShader,
+                ? prependDefines(previewVertShader, ["DISCARD_ALPHA"])
+                : previewVertShader,
+            alpha ? prependDefines(mainFragShader, ["DISCARD_ALPHA"]) : mainFragShader,
         );
         const drawCall = this.app
             .createDrawCall(program, array)
