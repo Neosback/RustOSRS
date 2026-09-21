@@ -7,7 +7,9 @@ import {
     applyLegacyTransformsWithRustIfReady,
     contourVerticesWithRustIfReady,
     type LegacyTransformOperation,
+    RustBasicTransformMode,
     skinSkeletalVerticesWithRustIfReady,
+    transformVerticesWithRustIfReady,
 } from "./RustModelTransforms";
 import { SeqBase } from "./seq/SeqBase";
 import { SeqFrame } from "./seq/SeqFrame";
@@ -766,6 +768,18 @@ export class Model extends Entity {
     }
 
     rotate90(): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_90,
+            )
+        ) {
+            this.invalidateBounds();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             const temp = this.verticesX[i];
             this.verticesX[i] = this.verticesZ[i];
@@ -776,6 +790,18 @@ export class Model extends Entity {
     }
 
     rotate180(): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_180,
+            )
+        ) {
+            this.invalidateBounds();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesX[i] = -this.verticesX[i];
             this.verticesZ[i] = -this.verticesZ[i];
@@ -785,6 +811,18 @@ export class Model extends Entity {
     }
 
     rotate270(): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_270,
+            )
+        ) {
+            this.invalidateBounds();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             const temp = this.verticesZ[i];
             this.verticesZ[i] = this.verticesX[i];
@@ -795,6 +833,19 @@ export class Model extends Entity {
     }
 
     rotate(angle: number): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_ANGLE,
+                angle,
+            )
+        ) {
+            this.invalidateBounds();
+            return;
+        }
         const sin = SINE[angle];
         const cos = COSINE[angle];
 
@@ -808,6 +859,21 @@ export class Model extends Entity {
     }
 
     translate(x: number, y: number, z: number): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.TRANSLATE,
+                x,
+                y,
+                z,
+            )
+        ) {
+            this.invalidateBounds();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesX[i] += x;
             this.verticesY[i] += y;
@@ -818,6 +884,21 @@ export class Model extends Entity {
     }
 
     scale(x: number, y: number, z: number): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.SCALE,
+                x,
+                y,
+                z,
+            )
+        ) {
+            this.invalidateBounds();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesX[i] = ((this.verticesX[i] * x) / 128) | 0;
             this.verticesY[i] = ((this.verticesY[i] * y) / 128) | 0;
