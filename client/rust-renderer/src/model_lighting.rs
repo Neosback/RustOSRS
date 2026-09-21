@@ -49,14 +49,11 @@ pub fn calculate_model_normals(
         let a = indices1[face];
         let b = indices2[face];
         let c = indices3[face];
-        if a < 0
-            || b < 0
-            || c < 0
-            || a as usize >= used
-            || b as usize >= used
-            || c as usize >= used
+        if a < 0 || b < 0 || c < 0 || a as usize >= used || b as usize >= used || c as usize >= used
         {
-            return Err(format!("normal face {face} references vertex outside used range"));
+            return Err(format!(
+                "normal face {face} references vertex outside used range"
+            ));
         }
         let a = a as usize;
         let b = b as usize;
@@ -78,8 +75,7 @@ pub fn calculate_model_normals(
             nz >>= 1;
         }
 
-        let mut magnitude =
-            ((nx * nx + ny * ny + nz * nz) as f64).sqrt().trunc() as i64;
+        let mut magnitude = ((nx * nx + ny * ny + nz * nz) as f64).sqrt().trunc() as i64;
         if magnitude <= 0 {
             magnitude = 1;
         }
@@ -127,12 +123,16 @@ fn select_normal(
     let vertex = vertex as usize;
     let base_offset = vertex * 4;
     if base_offset + 3 >= vertex_normals.len() {
-        return Err(format!("lighting references missing vertex normal {vertex}"));
+        return Err(format!(
+            "lighting references missing vertex normal {vertex}"
+        ));
     }
     if !merged_normals.is_empty() {
         let merged_offset = vertex * 5;
         if merged_offset + 4 >= merged_normals.len() {
-            return Err(format!("lighting merged normal packet missing vertex {vertex}"));
+            return Err(format!(
+                "lighting merged normal packet missing vertex {vertex}"
+            ));
         }
         if merged_normals[merged_offset] != 0 {
             return Ok((
@@ -195,7 +195,9 @@ pub fn light_model_faces(
         ("faceColors", face_colors.len()),
     ] {
         if len != face_count {
-            return Err(format!("lighting {name} has {len} entries for {face_count} faces"));
+            return Err(format!(
+                "lighting {name} has {len} entries for {face_count} faces"
+            ));
         }
     }
     for (name, len) in [
@@ -256,17 +258,15 @@ pub fn light_model_faces(
         if texture == -1 {
             if render_type == 0 {
                 let color = face_colors[face] as i32;
-                for (component, vertex) in
-                    [indices1[face], indices2[face], indices3[face]]
-                        .into_iter()
-                        .enumerate()
+                for (component, vertex) in [indices1[face], indices2[face], indices3[face]]
+                    .into_iter()
+                    .enumerate()
                 {
                     let normal = select_normal(vertex, vertex_normals, merged_normals)?;
                     let light =
                         vertex_light(normal, ambient, light_intensity, light_x, light_y, light_z);
                     let packed = (light.trunc() as i32).wrapping_shl(17);
-                    result[out + component] =
-                        packed | adjust_lightness(color, packed >> 17);
+                    result[out + component] = packed | adjust_lightness(color, packed >> 17);
                 }
             } else if render_type == 1 {
                 let normal_offset = face * 4;
@@ -285,8 +285,7 @@ pub fn light_model_faces(
                         ambient as f64 + dot as f64 / face_intensity as f64
                     };
                     let packed = (light.trunc() as i32).wrapping_shl(17);
-                    result[out] =
-                        packed | adjust_lightness(face_colors[face] as i32, packed >> 17);
+                    result[out] = packed | adjust_lightness(face_colors[face] as i32, packed >> 17);
                     result[out + 2] = -1;
                 }
             } else if render_type == 3 {
@@ -296,10 +295,9 @@ pub fn light_model_faces(
                 result[out + 2] = -2;
             }
         } else if render_type == 0 {
-            for (component, vertex) in
-                [indices1[face], indices2[face], indices3[face]]
-                    .into_iter()
-                    .enumerate()
+            for (component, vertex) in [indices1[face], indices2[face], indices3[face]]
+                .into_iter()
+                .enumerate()
             {
                 let normal = select_normal(vertex, vertex_normals, merged_normals)?;
                 let light =
