@@ -7,6 +7,7 @@ import { FaceNormal } from "./FaceNormal";
 import { Model } from "./Model";
 import {
     contourVerticesWithRustIfReady,
+    mirrorModelGeometryWithRustIfReady,
     RustBasicTransformMode,
     transformVerticesWithRustIfReady,
 } from "./RustModelTransforms";
@@ -2772,6 +2773,19 @@ export class ModelData extends Entity {
     }
 
     mirror() {
+        if (
+            mirrorModelGeometryWithRustIfReady(
+                this.verticesZ,
+                this.indices1,
+                this.indices3,
+                this.verticesCount,
+                this.faceCount,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
+
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesZ[i] = -this.verticesZ[i];
         }
