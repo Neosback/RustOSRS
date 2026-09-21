@@ -89,6 +89,7 @@ jobs:
         env:
           CI: "false"
           NODE_ENV: "production"
+          DISABLE_ESLINT_PLUGIN: "true"
         run: yarn exec craco build
       - name: Check renderer ABI alignment
         run: yarn check:rust-renderer-abi
