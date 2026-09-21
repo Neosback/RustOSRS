@@ -100,6 +100,101 @@ impl VertexBatchBuilder {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn push_terrain_tile(
+        &mut self,
+        vertices_x: &[i32],
+        vertices_y: &[i32],
+        vertices_z: &[i32],
+        faces_a: &[i32],
+        faces_b: &[i32],
+        faces_c: &[i32],
+        colors_a: &[i32],
+        colors_b: &[i32],
+        colors_c: &[i32],
+        texture_ids: &[i32],
+        texture_indices: &[i32],
+        tile_x: i32,
+        tile_z: i32,
+        offset_x: i32,
+        offset_z: i32,
+    ) -> Result<Vec<u32>, String> {
+        const INVALID_HSL_COLOR: i32 = 12_345_678;
+        const TILE_SIZE: f32 = 128.0;
+
+        if vertices_y.len() != vertices_x.len() || vertices_z.len() != vertices_x.len() {
+            return Err("terrain vertex coordinate arrays must have equal lengths".to_string());
+        }
+
+        let face_count = faces_a.len();
+        for (label, len) in [
+            ("facesB", faces_b.len()),
+            ("facesC", faces_c.len()),
+            ("faceColorsA", colors_a.len()),
+            ("faceColorsB", colors_b.len()),
+            ("faceColorsC", colors_c.len()),
+            ("textureIndices", texture_indices.len()),
+        ] {
+            if len != face_count {
+                return Err(format!(
+                    "terrain {label} has {len} entries, expected {face_count}"
+                ));
+            }
+        }
+        if !texture_ids.is_empty() && texture_ids.len() != face_count {
+            return Err(format!(
+                "terrain textureIds has {} entries, expected {face_count}",
+                texture_ids.len()
+            ));
+        }
+
+        let mut indices = Vec::with_capacity(face_count.saturating_mul(3));
+
+        for face_index in 0..face_count {
+            let source_texture_id = texture_ids.get(face_index).copied().unwrap_or(-1);
+            if colors_a[face_index] == INVALID_HSL_COLOR && source_texture_id == -1 {
+                continue;
+            }
+
+            let corners = [faces_a[face_index], faces_b[face_index], faces_c[face_index]];
+            let hsls = [colors_a[face_index], colors_b[face_index], colors_c[face_index]];
+            let texture_index = texture_indices[face_index];
+
+            for corner in 0..3 {
+                let vertex_index = usize::try_from(corners[corner]).map_err(|_| {
+                    format!(
+                        "terrain face {face_index} corner {corner} has negative vertex index {}",
+                        corners[corner]
+                    )
+                })?;
+                if vertex_index >= vertices_x.len() {
+                    return Err(format!(
+                        "terrain face {face_index} corner {corner} references vertex {vertex_index}, but tile has {} vertices",
+                        vertices_x.len()
+                    ));
+                }
+
+                let u = (vertices_x[vertex_index] - tile_x) as f32 / TILE_SIZE;
+                let v = (vertices_z[vertex_index] - tile_z) as f32 / TILE_SIZE;
+                let input = VertexInput {
+                    x: vertices_x[vertex_index].wrapping_add(offset_x),
+                    y: vertices_y[vertex_index],
+                    z: vertices_z[vertex_index].wrapping_add(offset_z),
+                    hsl: hsls[corner],
+                    alpha: 0xff,
+                    texture_id: texture_index,
+                    priority: 0,
+                    priority_is_packed: false,
+                    u,
+                    v,
+                };
+                indices.push(self.deduper.push(input, true));
+            }
+        }
+
+        Ok(indices)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn push_model_faces(
         &mut self,
         vertices_x: &[i32],
@@ -325,6 +420,46 @@ mod wasm {
         }
 
         #[allow(clippy::too_many_arguments)]
+        pub fn push_terrain_tile(
+            &mut self,
+            vertices_x: &[i32],
+            vertices_y: &[i32],
+            vertices_z: &[i32],
+            faces_a: &[i32],
+            faces_b: &[i32],
+            faces_c: &[i32],
+            colors_a: &[i32],
+            colors_b: &[i32],
+            colors_c: &[i32],
+            texture_ids: &[i32],
+            texture_indices: &[i32],
+            tile_x: i32,
+            tile_z: i32,
+            offset_x: i32,
+            offset_z: i32,
+        ) -> Result<Vec<u32>, JsValue> {
+            self.inner
+                .push_terrain_tile(
+                    vertices_x,
+                    vertices_y,
+                    vertices_z,
+                    faces_a,
+                    faces_b,
+                    faces_c,
+                    colors_a,
+                    colors_b,
+                    colors_c,
+                    texture_ids,
+                    texture_indices,
+                    tile_x,
+                    tile_z,
+                    offset_x,
+                    offset_z,
+                )
+                .map_err(|error| JsValue::from_str(&error))
+        }
+
+        #[allow(clippy::too_many_arguments)]
         pub fn push_model_faces(
             &mut self,
             vertices_x: &[i32],
@@ -494,6 +629,48 @@ mod tests {
                 .push_batch(&integer_record(0), &[0.0, 0.0], &[4])
                 .is_err()
         );
+    }
+
+    #[test]
+    fn terrain_builder_skips_hidden_faces_and_matches_uvs() {
+        let mut builder = VertexBatchBuilder::default();
+        let indices = builder
+            .push_terrain_tile(
+                &[128, 256, 128, 256],
+                &[0, 0, 0, 0],
+                &[256, 256, 384, 384],
+                &[0, 0],
+                &[1, 2],
+                &[2, 3],
+                &[0x1234, 12_345_678],
+                &[0x2345, 12_345_678],
+                &[0x3456, 12_345_678],
+                &[-1, -1],
+                &[-1, -1],
+                128,
+                256,
+                -128,
+                -256,
+            )
+            .unwrap();
+
+        assert_eq!(indices.len(), 3);
+        assert_eq!(builder.vertex_count(), 3);
+
+        let mut expected = VertexBatchBuilder::default();
+        let expected_indices = expected
+            .push_batch(
+                &[
+                    0, 0, 0, 0x1234, 255, -1, 0, 128, 0, 0, 0x2345, 255, -1, 0, 0, 0, 128,
+                    0x3456, 255, -1, 0,
+                ],
+                &[0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                &[FLAG_REUSE_VERTEX; 3],
+            )
+            .unwrap();
+
+        assert_eq!(indices, expected_indices);
+        assert_eq!(builder.packed_vertices(), expected.packed_vertices());
     }
 
     #[test]
