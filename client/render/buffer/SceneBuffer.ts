@@ -27,6 +27,9 @@ export enum ContourGroundType {
     TERRAIN = 3, // Already positioned, with baked smooth vertex lighting.
 }
 
+const EMPTY_MODEL_UVS = new Float32Array(0);
+const MODEL_FACE_FIELD_STRIDE = 5;
+
 export type ModelInfo = {
     sceneX: number;
     sceneZ: number;
@@ -520,6 +523,52 @@ export class SceneBuffer {
 
         if (model.faceTextures && !modelTexCoords) {
             throw new Error("Model has face textures but no texture coordinates");
+        }
+
+        if (this.vertexBuf.hasRustModelFaceBuilder()) {
+            const faceFields = new Int32Array(faces.length * MODEL_FACE_FIELD_STRIDE);
+            let faceFieldOffset = 0;
+            for (const face of faces) {
+                const textureIndex = this.textureIdIndexMap.get(face.textureId) ?? -1;
+                if (textureIndex !== -1) {
+                    this.usedTextureIds.add(face.textureId);
+                }
+
+                faceFields[faceFieldOffset++] = face.index;
+                faceFields[faceFieldOffset++] = face.alpha;
+                faceFields[faceFieldOffset++] = face.priority;
+                faceFields[faceFieldOffset++] = face.renderLayer ?? -1;
+                faceFields[faceFieldOffset++] = textureIndex;
+            }
+
+            const rustIndices = this.vertexBuf.addModelFaces(
+                verticesX,
+                verticesY,
+                verticesZ,
+                facesA,
+                facesB,
+                facesC,
+                model.faceColors1,
+                model.faceColors2,
+                model.faceColors3,
+                modelTexCoords ?? EMPTY_MODEL_UVS,
+                faceFields,
+                sceneX,
+                sceneHeight,
+                sceneZ,
+                model.overrideHue,
+                model.overrideSaturation,
+                model.overrideLuminance,
+                model.overrideAmount,
+                reuseVertices,
+            );
+            if (!rustIndices) {
+                throw new Error("Rust model face builder became unavailable during model packing");
+            }
+            for (let i = 0; i < rustIndices.length; i++) {
+                this.indices.push(rustIndices[i]);
+            }
+            return;
         }
 
         const vertexCount = faces.length * 3;
