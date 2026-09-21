@@ -186,7 +186,10 @@ import {
     createProjectileProgram,
 } from "../../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
-import { initRustRendererShadow } from "../../rust/RustShadowIntegration";
+import {
+    initRustRendererShadow,
+    isRustPrimaryRendererActive,
+} from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS, optimizeAssumingFlatsHaveSameFirstAndLastData } from "../constants";
 import { initRenderer } from "../handlers";
@@ -272,11 +275,22 @@ export async function init(host: WebGLOsrsRendererHost, ): Promise<void> {
             PicoGL.FLOAT, // float u_isNewTextureAnim;
         ]);
 
-        host.initFramebuffers();
         await host.initWaterTextures();
 
         host.initTextures();
         await initRustRendererShadow(host);
+
+        if (isRustPrimaryRendererActive(host)) {
+            // Rust owns the scene framebuffer in primary mode. PicoGL only
+            // needs its texture target for the compatibility/UI overlay path.
+            const sceneSize = host.getSceneRenderSize();
+            host.sceneRenderWidth = sceneSize.width | 0;
+            host.sceneRenderHeight = sceneSize.height | 0;
+            host.needsFramebufferUpdate = false;
+            host.initTextureFramebuffer();
+        } else {
+            host.initFramebuffers();
+        }
 
         console.log("Renderer init");
 
