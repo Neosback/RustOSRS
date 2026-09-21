@@ -30,7 +30,7 @@ pub fn skin_skeletal_vertices(
             bone_scales.len()
         ));
     }
-    if bone_matrices.len() % 16 != 0 {
+    if !bone_matrices.len().is_multiple_of(16) {
         return Err(format!(
             "skeletal bone matrix packet length {} is not divisible by 16",
             bone_matrices.len()
@@ -159,7 +159,7 @@ pub fn apply_legacy_transforms(
     if vertices_y.len() != vertex_count || vertices_z.len() != vertex_count {
         return Err("legacy vertices must have matching x/y/z lengths".to_string());
     }
-    if operation_fields.len() % 4 != 0 {
+    if !operation_fields.len().is_multiple_of(4) {
         return Err(format!(
             "legacy operation field length {} is not divisible by 4",
             operation_fields.len()
