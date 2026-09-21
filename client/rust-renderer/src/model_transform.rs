@@ -1,4 +1,4 @@
-fn js_round_to_i32(value: f32) -> i32 {
+fn js_round_f64_to_i32(value: f64) -> i32 {
     // JavaScript Math.round() resolves .5 ties toward +infinity.
     (value + 0.5).floor() as i32
 }
@@ -64,14 +64,12 @@ pub fn skin_skeletal_vertices(
             continue;
         }
 
-        let vx = vertices_x[vertex] as f32;
-        let vy = -(vertices_y[vertex] as f32);
-        let vz = -(vertices_z[vertex] as f32);
-
-        let mut out_x = 0.0f32;
-        let mut out_y = 0.0f32;
-        let mut out_z = 0.0f32;
-
+        // The TypeScript fallback builds a Float32 mat4 for every weighted
+        // bone, adds those matrices through gl-matrix (also Float32), then
+        // applies the final matrix using JavaScript Number arithmetic. Keep
+        // that rounding order exactly rather than accumulating transformed
+        // coordinates directly.
+        let mut transform = [0.0f32; 16];
         for influence in start..end {
             let bone_id = bone_ids[influence];
             if bone_id < 0 || bone_id as usize >= bone_count {
@@ -81,14 +79,37 @@ pub fn skin_skeletal_vertices(
             let matrix = &bone_matrices[matrix_offset..matrix_offset + 16];
             let weight = bone_scales[influence] as f32 / 255.0;
 
-            out_x += weight * (matrix[0] * vx + matrix[4] * vy + matrix[8] * vz + matrix[12]);
-            out_y += weight * (matrix[1] * vx + matrix[5] * vy + matrix[9] * vz + matrix[13]);
-            out_z += weight * (matrix[2] * vx + matrix[6] * vy + matrix[10] * vz + matrix[14]);
+            for element in 0..16 {
+                let row = element & 3;
+                let weighted = if row == 3 {
+                    matrix[element]
+                } else {
+                    weight * matrix[element]
+                };
+                transform[element] += weighted;
+            }
         }
 
-        transformed.push(js_round_to_i32(out_x));
-        transformed.push(-js_round_to_i32(out_y));
-        transformed.push(-js_round_to_i32(out_z));
+        let vx = vertices_x[vertex] as f64;
+        let vy = -(vertices_y[vertex] as f64);
+        let vz = -(vertices_z[vertex] as f64);
+
+        let out_x = transform[0] as f64 * vx
+            + transform[4] as f64 * vy
+            + transform[8] as f64 * vz
+            + transform[12] as f64;
+        let out_y = transform[1] as f64 * vx
+            + transform[5] as f64 * vy
+            + transform[9] as f64 * vz
+            + transform[13] as f64;
+        let out_z = transform[2] as f64 * vx
+            + transform[6] as f64 * vy
+            + transform[10] as f64 * vz
+            + transform[14] as f64;
+
+        transformed.push(js_round_f64_to_i32(out_x));
+        transformed.push(-js_round_f64_to_i32(out_y));
+        transformed.push(-js_round_f64_to_i32(out_z));
     }
 
     Ok(transformed)
@@ -221,7 +242,9 @@ const LEGACY_TRANSFORM_LIGHT: i32 = 7;
 const LEGACY_RESULT_HEADER: usize = 7;
 
 fn rs_trig(angle: i32) -> (i32, i32) {
-    let radians = angle as f64 * std::f64::consts::TAU / 2048.0;
+    let angular_ratio = 360.0f64 / 2048.0;
+    let angular_ratio_radians = angular_ratio * (std::f64::consts::PI / 180.0);
+    let radians = angle as f64 * angular_ratio_radians;
     (
         (65536.0 * radians.sin()).trunc() as i32,
         (65536.0 * radians.cos()).trunc() as i32,
