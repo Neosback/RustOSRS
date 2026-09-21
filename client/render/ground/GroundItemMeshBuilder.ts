@@ -8,13 +8,16 @@ import { resolveHeightSamplePlaneForLocal } from "../../game/scene/PlaneResolver
 import { DrawRange, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
 import type { WebGLMapSquare } from "../WebGLMapSquare";
-import { createVertexBatchBuilderIfReady } from "../rust/RustGeometryPreparation";
+import {
+    buildDrawListIfReady,
+    buildModelInfoTextureDataIfReady,
+    createVertexBatchBuilderIfReady,
+} from "../rust/RustGeometryPreparation";
 import {
     ContourGroundType,
     type DrawCommand,
     type ModelInfo,
     SceneBuffer,
-    createModelInfoTextureData,
     getModelFacesFiltered,
 } from "../buffer/SceneBuffer";
 
@@ -51,19 +54,6 @@ export type GroundItemGeometryBuildData = {
 };
 
 const tempVec = vec3.create();
-
-function buildDrawRanges(drawCommands: DrawCommand[]): {
-    ranges: DrawRange[];
-    planes: Uint8Array;
-} {
-    const planes = new Uint8Array(drawCommands.length);
-    const ranges = drawCommands.map((cmd, idx) => {
-        const plane = cmd.instances[0].planeCullLevel ?? cmd.instances[0].level;
-        planes[idx] = plane & 0xff;
-        return newDrawRange(cmd.offset, cmd.elements, cmd.instances.length);
-    });
-    return { ranges, planes };
-}
 
 function pushDrawCommand(
     collections: DrawCommand[][],
@@ -186,26 +176,31 @@ export function buildGroundItemGeometry(
         return undefined;
     }
 
-    const { ranges: drawRanges, planes: drawRangesPlanes } = buildDrawRanges(sceneBuf.drawCommands);
-    const { ranges: drawRangesAlpha, planes: drawRangesAlphaPlanes } = buildDrawRanges(
-        sceneBuf.drawCommandsAlpha,
-    );
-    const { ranges: drawRangesLod, planes: drawRangesLodPlanes } = buildDrawRanges(
-        sceneBuf.drawCommandsLod,
-    );
-    const { ranges: drawRangesLodAlpha, planes: drawRangesLodAlphaPlanes } = buildDrawRanges(
-        sceneBuf.drawCommandsLodAlpha,
-    );
-    const { ranges: drawRangesInteract, planes: drawRangesInteractPlanes } = buildDrawRanges(
-        sceneBuf.drawCommandsInteract,
-    );
-    const { ranges: drawRangesInteractAlpha, planes: drawRangesInteractAlphaPlanes } =
-        buildDrawRanges(sceneBuf.drawCommandsInteractAlpha);
-    const { ranges: drawRangesInteractLod, planes: drawRangesInteractLodPlanes } = buildDrawRanges(
-        sceneBuf.drawCommandsInteractLod,
-    );
-    const { ranges: drawRangesInteractLodAlpha, planes: drawRangesInteractLodAlphaPlanes } =
-        buildDrawRanges(sceneBuf.drawCommandsInteractLodAlpha);
+    const main = buildDrawListIfReady(sceneBuf.drawCommands);
+    const alpha = buildDrawListIfReady(sceneBuf.drawCommandsAlpha);
+    const lod = buildDrawListIfReady(sceneBuf.drawCommandsLod);
+    const lodAlpha = buildDrawListIfReady(sceneBuf.drawCommandsLodAlpha);
+    const interact = buildDrawListIfReady(sceneBuf.drawCommandsInteract);
+    const interactAlpha = buildDrawListIfReady(sceneBuf.drawCommandsInteractAlpha);
+    const interactLod = buildDrawListIfReady(sceneBuf.drawCommandsInteractLod);
+    const interactLodAlpha = buildDrawListIfReady(sceneBuf.drawCommandsInteractLodAlpha);
+
+    const drawRanges = main.ranges;
+    const drawRangesPlanes = main.planes;
+    const drawRangesAlpha = alpha.ranges;
+    const drawRangesAlphaPlanes = alpha.planes;
+    const drawRangesLod = lod.ranges;
+    const drawRangesLodPlanes = lod.planes;
+    const drawRangesLodAlpha = lodAlpha.ranges;
+    const drawRangesLodAlphaPlanes = lodAlpha.planes;
+    const drawRangesInteract = interact.ranges;
+    const drawRangesInteractPlanes = interact.planes;
+    const drawRangesInteractAlpha = interactAlpha.ranges;
+    const drawRangesInteractAlphaPlanes = interactAlpha.planes;
+    const drawRangesInteractLod = interactLod.ranges;
+    const drawRangesInteractLodPlanes = interactLod.planes;
+    const drawRangesInteractLodAlpha = interactLodAlpha.ranges;
+    const drawRangesInteractLodAlphaPlanes = interactLodAlpha.planes;
 
     return {
         vertices: sceneBuf.vertexBuf.byteArray(),
@@ -228,16 +223,16 @@ export function buildGroundItemGeometry(
             interactLod: drawRangesInteractLodPlanes,
             interactLodAlpha: drawRangesInteractLodAlphaPlanes,
         },
-        modelTextureData: createModelInfoTextureData(sceneBuf.drawCommands),
-        modelTextureDataAlpha: createModelInfoTextureData(sceneBuf.drawCommandsAlpha),
-        modelTextureDataLod: createModelInfoTextureData(sceneBuf.drawCommandsLod),
-        modelTextureDataLodAlpha: createModelInfoTextureData(sceneBuf.drawCommandsLodAlpha),
-        modelTextureDataInteract: createModelInfoTextureData(sceneBuf.drawCommandsInteract),
-        modelTextureDataInteractAlpha: createModelInfoTextureData(
+        modelTextureData: buildModelInfoTextureDataIfReady(sceneBuf.drawCommands),
+        modelTextureDataAlpha: buildModelInfoTextureDataIfReady(sceneBuf.drawCommandsAlpha),
+        modelTextureDataLod: buildModelInfoTextureDataIfReady(sceneBuf.drawCommandsLod),
+        modelTextureDataLodAlpha: buildModelInfoTextureDataIfReady(sceneBuf.drawCommandsLodAlpha),
+        modelTextureDataInteract: buildModelInfoTextureDataIfReady(sceneBuf.drawCommandsInteract),
+        modelTextureDataInteractAlpha: buildModelInfoTextureDataIfReady(
             sceneBuf.drawCommandsInteractAlpha,
         ),
-        modelTextureDataInteractLod: createModelInfoTextureData(sceneBuf.drawCommandsInteractLod),
-        modelTextureDataInteractLodAlpha: createModelInfoTextureData(
+        modelTextureDataInteractLod: buildModelInfoTextureDataIfReady(sceneBuf.drawCommandsInteractLod),
+        modelTextureDataInteractLodAlpha: buildModelInfoTextureDataIfReady(
             sceneBuf.drawCommandsInteractLodAlpha,
         ),
         usedTextureIds: new Set(sceneBuf.usedTextureIds),
