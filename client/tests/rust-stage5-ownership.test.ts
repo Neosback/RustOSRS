@@ -5,6 +5,7 @@ import {
     registerRustModelNormalCalculator,
 } from "../rs/model/RustModelLighting";
 import assert from "node:assert/strict";
+import { MAX_TEXTURES } from "../render/render/constants";
 
 import {
     applyLegacyTransformsWithRustIfReady,
@@ -33,6 +34,12 @@ import {
 
 resetRustStage5OwnershipStats();
 setRustStage5StrictMode(false);
+
+assert.equal(
+    MAX_TEXTURES,
+    1024,
+    "packed vertex texture-layer ABI supports exactly 1024 layers",
+);
 
 registerRustBasicVertexTransformer((x, y, z, _mode, a, b, c) => {
     return new Int32Array([x[0] + a, y[0] + b, z[0] + c]);
