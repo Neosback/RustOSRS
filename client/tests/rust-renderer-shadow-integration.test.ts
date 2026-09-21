@@ -23,6 +23,7 @@ async function main(): Promise<void> {
     const {
         WebGLMapSquare,
         createDeferredDrawCallRange,
+        dematerializeDrawCallRange,
         materializeDrawCallRange,
         releaseDrawCallRange,
     } = await import("../render/WebGLMapSquare");
@@ -247,16 +248,26 @@ async function main(): Promise<void> {
     assert.equal(deferredCreations, 1);
     assert.equal((materialized.drawCall as any).marker, "legacy");
     assert.equal(materialized.drawRanges, deferredRanges);
-    assert.equal(materialized.materializeDrawCall, undefined);
+    assert.equal(materialized.materializeDrawCall !== undefined, true);
 
     const materializedAgain = materializeDrawCallRange(deferred);
     assert.equal(deferredCreations, 1);
     assert.equal(materializedAgain.drawCall, materialized.drawCall);
 
+    dematerializeDrawCallRange(deferred);
+    assert.equal(deferred.drawCall, undefined);
+    assert.equal(deferred.materializeDrawCall !== undefined, true);
+    const rematerialized = materializeDrawCallRange(deferred);
+    assert.equal(deferredCreations, 2);
+    assert.equal((rematerialized.drawCall as any).marker, "legacy");
+
     // Simulate the Stage 4 primary-to-legacy transition at the real map accessors.
     // Primary leaves these ranges deferred; the first legacy accessor must
     // materialize exactly once and subsequent fallback frames must reuse it.
     const fallbackMap = Object.create(WebGLMapSquare.prototype) as any;
+    fallbackMap.mapX = 0;
+    fallbackMap.mapY = 0;
+    fallbackMap.legacyMapTextureState = { resources: undefined };
     const makeFallbackRange = (marker: string) => {
         let creations = 0;
         const range = createDeferredDrawCallRange(
@@ -301,6 +312,28 @@ async function main(): Promise<void> {
     assert.equal(groundFallback.creations(), 1);
     fallbackMap.getGroundItemDrawCall(false, false, false);
     assert.equal(groundFallback.creations(), 1);
+
+    // Rust-primary recovery must reclaim any Pico resources materialized by a
+    // temporary fallback without destroying the factories needed for a later
+    // context-loss fallback.
+    fallbackMap.releaseLegacySceneGpuResources();
+    assert.equal(terrainFallback.range.drawCall, undefined);
+    assert.equal(locFallback.range.drawCall, undefined);
+    assert.equal(doorFallback.range.drawCall, undefined);
+    assert.equal(groundFallback.range.drawCall, undefined);
+    assert.equal(terrainFallback.range.materializeDrawCall !== undefined, true);
+    assert.equal(locFallback.range.materializeDrawCall !== undefined, true);
+    assert.equal(doorFallback.range.materializeDrawCall !== undefined, true);
+    assert.equal(groundFallback.range.materializeDrawCall !== undefined, true);
+
+    fallbackMap.getDrawCall(false, false, false);
+    fallbackMap.getLocDrawCall(false, false, false);
+    fallbackMap.getDoorDrawCall(false, false, false);
+    fallbackMap.getGroundItemDrawCall(false, false, false);
+    assert.equal(terrainFallback.creations(), 2);
+    assert.equal(locFallback.creations(), 2);
+    assert.equal(doorFallback.creations(), 2);
+    assert.equal(groundFallback.creations(), 2);
 
     let eagerCreations = 0;
     const eager = createDeferredDrawCallRange(
