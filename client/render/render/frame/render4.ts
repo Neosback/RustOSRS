@@ -359,9 +359,7 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
                         setNpcDrawRange(j, frame);
                     }
                     if (drawCall) {
-                        if (drawCall) {
-                            host.draw(drawCall, drawRanges);
-                        }
+                        host.draw(drawCall, drawRanges);
                     }
                     mirrorRustNpcDrawRanges(
                         host,
@@ -405,9 +403,7 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
                             setNpcDrawRange(wj, frame);
                         }
                         if (drawCall) {
-                        if (drawCall) {
-                            host.draw(drawCall, drawRanges);
-                        }
+                        host.draw(drawCall, drawRanges);
                     }
                         mirrorRustNpcDrawRanges(
                             host,
