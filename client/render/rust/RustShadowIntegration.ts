@@ -4,7 +4,11 @@ import { WebGLMapSquare } from "../WebGLMapSquare";
 import type { GroundItemGeometryBuildData } from "../ground/GroundItemMeshBuilder";
 import type { SdMapData } from "../loader/SdMapData";
 import type { DynamicNpcFrameGeometry } from "../npc/DynamicNpcAnimLoader";
-import { setRustStage5StrictMode } from "../../rs/model/RustStage5Ownership";
+import {
+    getRustStage5OwnershipStats,
+    setRustStage5StrictMode,
+    type RustStage5OwnershipStats,
+} from "../../rs/model/RustStage5Ownership";
 import type { WebGLOsrsRendererHost } from "../render/hostInterface";
 import { getRustRendererGlobalResourceSnapshot } from "./LiveResourceAdapter";
 import { getModelFaceBuilder } from "./RustFacePreparation";
@@ -251,6 +255,7 @@ export interface RustRendererShadowDiagnostics {
     mirroredProjectilePasses: number;
     mirroredOverlayPasses: number;
     pixelParity?: RustPixelParityMetrics;
+    stage5Ownership?: RustStage5OwnershipStats;
 }
 
 const diagnostics = new WeakMap<
@@ -262,10 +267,14 @@ function publishDiagnostics(
     host: WebGLOsrsRendererHost,
     value: RustRendererShadowDiagnostics,
 ): void {
-    diagnostics.set(host, value);
+    const enriched = {
+        ...value,
+        stage5Ownership: getRustStage5OwnershipStats(),
+    };
+    diagnostics.set(host, enriched);
     (host.canvas as HTMLCanvasElement & {
         __rustRendererShadowDiagnostics?: RustRendererShadowDiagnostics;
-    }).__rustRendererShadowDiagnostics = value;
+    }).__rustRendererShadowDiagnostics = enriched;
 }
 
 export function getRustRendererShadowDiagnostics(
