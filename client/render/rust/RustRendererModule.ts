@@ -1,4 +1,8 @@
 import {
+    registerRustModelFaceLighter,
+    registerRustModelNormalCalculator,
+} from "../../rs/model/RustModelLighting";
+import {
     registerRustBasicVertexTransformer,
     registerRustContourBuilder,
     registerRustLegacyTransformer,
@@ -87,6 +91,33 @@ export interface RustRendererWebModule {
         textureIds: Int32Array,
     ) => number;
     build_draw_list?: (commandFields: Uint32Array) => RustPreparedDrawListWasm;
+    calculate_model_normals?: (
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        usedVertexCount: number,
+        indices1: Int32Array,
+        indices2: Int32Array,
+        indices3: Int32Array,
+        faceRenderTypes: Int8Array,
+    ) => Int32Array;
+    light_model_faces?: (
+        indices1: Int32Array,
+        indices2: Int32Array,
+        indices3: Int32Array,
+        faceColors: Uint16Array,
+        faceRenderTypes: Int8Array,
+        faceAlphas: Int8Array,
+        faceTextures: Int16Array,
+        vertexNormals: Int32Array,
+        mergedNormals: Int32Array,
+        faceNormals: Int32Array,
+        ambient: number,
+        contrast: number,
+        lightX: number,
+        lightY: number,
+        lightZ: number,
+    ) => Int32Array;
     mirror_model_geometry?: (
         verticesZ: Int32Array,
         indices1: Int32Array,
@@ -206,6 +237,16 @@ export async function loadRustRendererModule(): Promise<RustRendererWebModule> {
                         "Rust renderer web package does not export RustWebGlRenderer",
                     );
                 }
+                registerRustModelNormalCalculator(
+                    typeof typed.calculate_model_normals === "function"
+                        ? typed.calculate_model_normals
+                        : undefined,
+                );
+                registerRustModelFaceLighter(
+                    typeof typed.light_model_faces === "function"
+                        ? typed.light_model_faces
+                        : undefined,
+                );
                 registerRustSkeletalSkinner(
                     typeof typed.skin_skeletal_vertices === "function"
                         ? typed.skin_skeletal_vertices
