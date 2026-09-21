@@ -157,7 +157,7 @@ import { InteractType } from "../../InteractType";
 import { profiler } from "../../PerformanceProfiler";
 import { PlayerChatheadFactory } from "../../PlayerChatheadFactory";
 import { resolveFogRange } from "../../RenderDistancePolicy";
-import { WebGLMapSquare } from "../../WebGLMapSquare";
+import { WebGLMapSquare, materializeDrawCallRange } from "../../WebGLMapSquare";
 import { WorldEntityAnimator } from "../../WorldEntityAnimator";
 import { SceneBuffer } from "../../buffer/SceneBuffer";
 import { getModelFaces, isModelFaceTransparent } from "../../buffer/SceneBuffer";
@@ -185,6 +185,7 @@ import {
     createProjectileProgram,
 } from "../../shaders/Shaders";
 import {
+    isRustPrimaryRendererActive,
     mirrorRustDynamicNpcGeometry,
     mirrorRustNpcDrawRanges,
 } from "../../rust/RustShadowIntegration";
@@ -199,6 +200,7 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
 
         if (!actorDataTexture) return;
 
+        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(host);
         const cullTile = host.getRenderCullTile();
         const renderDistanceTiles = Math.max(0, host.getFrameRenderDistanceTiles() | 0);
         const renderDistancePadTiles = 0;
@@ -241,12 +243,24 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
                     if (!npcBatch) {
                         continue;
                     }
-                    const { drawCall, drawRanges } = npcBatch;
-                    drawCall
-                        .uniform("u_npcDataOffset", baseOffsetNpc)
-                        .uniform("u_modelYOffset", host.getNpcModelYOffset())
-                        .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                        .texture("u_npcDataTexture", actorDataTexture);
+                    const drawRanges = npcBatch.drawRanges;
+                    const drawCall = rustPrimaryRendererEnabled
+                        ? undefined
+                        : materializeDrawCallRange(npcBatch).drawCall;
+                    if (drawCall) {
+                        drawCall
+                            .uniform("u_npcDataOffset", baseOffsetNpc)
+                            .uniform("u_modelYOffset", host.getNpcModelYOffset())
+                            .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                            .texture("u_npcDataTexture", actorDataTexture);
+                    }
+                    const setNpcDrawRange = (index: number, frame: DrawRange): void => {
+                        drawRanges[index] = frame;
+                        if (drawCall) {
+                            (drawCall as any).offsets[index] = frame[0];
+                            (drawCall as any).numElements[index] = frame[1];
+                        }
+                    };
                     const ecs = host.osrsClient.npcEcs;
                     const ids: number[] = map.npcEntityIds as any;
 
@@ -256,18 +270,14 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
                     for (let j = 0; j < npcCount; j++) {
                         const id = ids[j] | 0;
                         if (!host.shouldRenderNpcFromMap(map, id)) {
-                            (drawCall as any).offsets[j] = 0;
-                            (drawCall as any).numElements[j] = 0;
-                            drawRanges[j] = NULL_DRAW_RANGE;
+                            setNpcDrawRange(j, NULL_DRAW_RANGE);
                             continue;
                         }
 
                         // NPCs assigned to a world entity skip the overworld pass
                         if (ecs.getWorldViewId(id) >= 0) {
                             weNpcIndices.push(j);
-                            (drawCall as any).offsets[j] = 0;
-                            (drawCall as any).numElements[j] = 0;
-                            drawRanges[j] = NULL_DRAW_RANGE;
+                            setNpcDrawRange(j, NULL_DRAW_RANGE);
                             continue;
                         }
 
@@ -324,9 +334,7 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
                                     (geometry.alphaVertices.length > 0 &&
                                         geometry.alphaIndices.length > 0));
                             if (geometry && hasDynamicGraphics) {
-                                (drawCall as any).offsets[j] = 0;
-                                (drawCall as any).numElements[j] = 0;
-                                drawRanges[j] = NULL_DRAW_RANGE;
+                                setNpcDrawRange(j, NULL_DRAW_RANGE);
                                 dynamicNpcs.push({
                                     map,
                                     npcIndex: j,
@@ -348,11 +356,13 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
                             anim.frames[
                                 Math.max(0, Math.min((anim.frames.length - 1) | 0, frameId))
                                 ];
-                        (drawCall as any).offsets[j] = frame[0];
-                        (drawCall as any).numElements[j] = frame[1];
-                        drawRanges[j] = frame;
+                        setNpcDrawRange(j, frame);
                     }
-                    host.draw(drawCall, drawRanges);
+                    if (drawCall) {
+                        if (drawCall) {
+                            host.draw(drawCall, drawRanges);
+                        }
+                    }
                     mirrorRustNpcDrawRanges(
                         host,
                         map,
@@ -372,14 +382,14 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
                             WebGLMapSquare.IDENTITY_MAT4;
                         const weDeckH = host.getWorldEntityDeckHeight(0, 0);
 
-                        drawCall
-                            .uniform("u_modelYOffset", host.getNpcModelYOffset(weDeckH))
-                            .uniform("u_worldEntityTransform", weTransform);
+                        if (drawCall) {
+                            drawCall
+                                .uniform("u_modelYOffset", host.getNpcModelYOffset(weDeckH))
+                                .uniform("u_worldEntityTransform", weTransform);
+                        }
 
                         for (let j = 0; j < npcCount; j++) {
-                            (drawCall as any).offsets[j] = 0;
-                            (drawCall as any).numElements[j] = 0;
-                            drawRanges[j] = NULL_DRAW_RANGE;
+                            setNpcDrawRange(j, NULL_DRAW_RANGE);
                         }
                         for (const wj of weNpcIndices) {
                             const wid = ids[wj] | 0;
@@ -392,11 +402,13 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
                                 anim.frames[
                                     Math.max(0, Math.min((anim.frames.length - 1) | 0, wFrameId))
                                     ];
-                            (drawCall as any).offsets[wj] = frame[0];
-                            (drawCall as any).numElements[wj] = frame[1];
-                            drawRanges[wj] = frame;
+                            setNpcDrawRange(wj, frame);
                         }
-                        host.draw(drawCall, drawRanges);
+                        if (drawCall) {
+                        if (drawCall) {
+                            host.draw(drawCall, drawRanges);
+                        }
+                    }
                         mirrorRustNpcDrawRanges(
                             host,
                             map,
