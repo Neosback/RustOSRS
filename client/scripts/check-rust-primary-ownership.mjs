@@ -49,6 +49,16 @@ assertIncludes(
     "deleteLegacyMapTextures(this.legacyMapTextureState);",
     "WebGLMapSquare legacy texture cleanup",
 );
+assertIncludes(
+    mapSquare,
+    "releaseLegacySceneGpuResources(): void",
+    "WebGLMapSquare primary-resume GPU cleanup",
+);
+assertIncludes(
+    mapSquare,
+    "dematerializeDrawCallRange(resources.drawCall);",
+    "WebGLMapSquare repeatable fallback draw-call cleanup",
+);
 assertExcludes(
     mapSquare,
     "readonly heightMapTexture: Texture",
@@ -114,6 +124,23 @@ assertExcludes(
     "actorDataTextures",
     "Rust actor recovery must not depend on Pico actor textures",
 );
+assertIncludes(
+    rustIntegration,
+    "function releaseLegacySceneGpuResourcesForPrimary(",
+    "Rust-primary legacy map GPU reclamation",
+);
+assertIncludes(
+    rustIntegration,
+    "map.releaseLegacySceneGpuResources();",
+    "Rust-primary resident-map GPU reclamation",
+);
+const primaryReleaseCalls =
+    rustIntegration.match(/releaseLegacySceneGpuResourcesForPrimary\(host, runtime\);/g) ?? [];
+if (primaryReleaseCalls.length < 2) {
+    throw new Error(
+        "Rust-primary legacy map GPU reclamation must run on initial activation and recovery",
+    );
+}
 
 const npc = source("render/render/anim/npc2.ts");
 const npcUpload = functionBody(
@@ -188,8 +215,20 @@ assertIncludes(
 const mapLoader = source("render/render/map.ts");
 assertIncludes(
     mapLoader,
+    "!isRustPrimaryRendererEnabled()",
+    "map legacy GPU startup eager-materialization gate",
+);
+assertExcludes(
+    mapLoader,
     "!isRustPrimaryRendererActive(host)",
-    "map legacy GPU eager-materialization gate",
+    "map loading must defer Pico resources before the Rust runtime becomes active",
+);
+
+const draw3 = source("render/render/draw3.ts");
+assertIncludes(
+    draw3,
+    "!isRustPrimaryRendererEnabled()",
+    "ground-item legacy GPU startup eager-materialization gate",
 );
 
 const frame = source("render/render/frame/render.ts");
