@@ -2339,6 +2339,11 @@ impl RustWebGlRenderer {
         transparent: bool,
         cull_back_face: bool,
     ) -> Result<(), JsValue> {
+        let index_count = self.dynamic_projectile_batch.index_count;
+        if index_count == 0 {
+            return Ok(());
+        }
+
         require_matrix(view_matrix, "view_matrix")?;
         require_matrix(projection_matrix, "projection_matrix")?;
         require_vec4(sky_rgba, "sky_rgba")?;
@@ -2363,11 +2368,6 @@ impl RustWebGlRenderer {
             .static_map
             .state
             .ok_or_else(|| JsValue::from_str("static map state has not been configured"))?;
-        let index_count = self.dynamic_projectile_batch.index_count;
-        if index_count == 0 {
-            return Ok(());
-        }
-
         if transparent {
             self.gl.enable(Gl::BLEND);
             self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
@@ -2793,6 +2793,11 @@ impl RustWebGlRenderer {
         cull_back_face: bool,
         restore_cull_back_face: bool,
     ) -> Result<(), JsValue> {
+        let index_count = self.dynamic_player_batch.index_count;
+        if index_count == 0 {
+            return Ok(());
+        }
+
         require_matrix(view_matrix, "view_matrix")?;
         require_matrix(projection_matrix, "projection_matrix")?;
         require_matrix(world_entity_transform, "world_entity_transform")?;
@@ -2818,11 +2823,6 @@ impl RustWebGlRenderer {
             .static_map
             .state
             .ok_or_else(|| JsValue::from_str("static map state has not been configured"))?;
-        let index_count = self.dynamic_player_batch.index_count;
-        if index_count == 0 {
-            return Ok(());
-        }
-
         if transparent {
             self.gl.enable(Gl::BLEND);
             self.gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
