@@ -1,4 +1,5 @@
 import {
+    registerRustBasicVertexTransformer,
     registerRustContourBuilder,
     registerRustLegacyTransformer,
     registerRustSkeletalSkinner,
@@ -85,6 +86,15 @@ export interface RustRendererWebModule {
         textureIds: Int32Array,
     ) => number;
     build_draw_list?: (commandFields: Uint32Array) => RustPreparedDrawListWasm;
+    transform_vertices_basic?: (
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        mode: number,
+        a: number,
+        b: number,
+        c: number,
+    ) => Int32Array;
     compute_model_uvs?: (
         verticesX: Int32Array,
         verticesY: Int32Array,
@@ -203,6 +213,11 @@ export async function loadRustRendererModule(): Promise<RustRendererWebModule> {
                 registerRustContourBuilder(
                     typeof typed.contour_vertices_y === "function"
                         ? typed.contour_vertices_y
+                        : undefined,
+                );
+                registerRustBasicVertexTransformer(
+                    typeof typed.transform_vertices_basic === "function"
+                        ? typed.transform_vertices_basic
                         : undefined,
                 );
                 registerRustTextureMapper(
