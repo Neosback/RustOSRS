@@ -1,4 +1,7 @@
-import { registerRustSkeletalSkinner } from "../../rs/model/RustModelTransforms";
+import {
+    registerRustLegacyTransformer,
+    registerRustSkeletalSkinner,
+} from "../../rs/model/RustModelTransforms";
 import type { RustRendererWasmConstructor } from "./RustRendererBridge";
 
 export interface RustVertexBufferBuilderWasm {
@@ -80,6 +83,23 @@ export interface RustRendererWebModule {
         textureIds: Int32Array,
     ) => number;
     build_draw_list?: (commandFields: Uint32Array) => RustPreparedDrawListWasm;
+    apply_legacy_transforms?: (
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        faceAlphas: Int8Array,
+        faceColors: Uint16Array,
+        vertexLabelOffsets: Uint32Array,
+        vertexLabelIndices: Int32Array,
+        faceLabelOffsets: Uint32Array,
+        faceLabelIndices: Int32Array,
+        operationFields: Int32Array,
+        operationLabelOffsets: Uint32Array,
+        operationLabels: Int32Array,
+        initialOriginX: number,
+        initialOriginY: number,
+        initialOriginZ: number,
+    ) => Int32Array;
     skin_skeletal_vertices?: (
         verticesX: Int32Array,
         verticesY: Int32Array,
@@ -128,6 +148,11 @@ export async function loadRustRendererModule(): Promise<RustRendererWebModule> {
                 registerRustSkeletalSkinner(
                     typeof typed.skin_skeletal_vertices === "function"
                         ? typed.skin_skeletal_vertices
+                        : undefined,
+                );
+                registerRustLegacyTransformer(
+                    typeof typed.apply_legacy_transforms === "function"
+                        ? typed.apply_legacy_transforms
                         : undefined,
                 );
                 return typed;
