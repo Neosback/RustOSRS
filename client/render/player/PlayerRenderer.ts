@@ -5,7 +5,6 @@ import { EquipmentSlot } from "../../rs/config/player/Equipment";
 import { PlayerAppearance } from "../../rs/config/player/PlayerAppearance";
 import { getMapIndexFromTile } from "../../rs/map/MapFileIndex";
 import { Model } from "../../rs/model/Model";
-import { ModelData } from "../../rs/model/ModelData";
 import { clamp } from "../../common/utils/MathUtil";
 import { ActorAnimationClip } from "../../game/actor/ActorAnimation";
 import type { PlayerAnimKey } from "../../game/ecs/PlayerEcs";
