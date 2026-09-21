@@ -182,6 +182,12 @@ export class VertexBuffer extends DataBuffer {
         return this.offset++;
     }
 
+    reset(): void {
+        this.offset = 0;
+        this.vertexIndices.clear();
+        this.rustBuilder?.clear();
+    }
+
     byteArray(): Uint8Array {
         if (!this.rustBuilder) {
             return super.byteArray();
