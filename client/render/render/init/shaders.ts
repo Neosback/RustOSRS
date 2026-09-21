@@ -184,6 +184,7 @@ import {
     createPlayerProgram,
     createProjectileProgram,
 } from "../../shaders/Shaders";
+import { isRustPrimaryRendererEnabled } from "../../rust/RustShadowIntegration";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
@@ -269,17 +270,25 @@ export async function initShaders(host: WebGLOsrsRendererHost, ): Promise<Progra
         host.hoverLineProgram = hoverLineProgram;
         host.hitsplatProgram = hitsplatProgram;
 
-        host.frameDrawCall = host.app.createDrawCall(frameProgram, host.quadArray);
+        const rustPrimaryRequested = isRustPrimaryRendererEnabled();
+        host.frameDrawCall = rustPrimaryRequested
+            ? undefined
+            : host.app.createDrawCall(frameProgram, host.quadArray);
 
-        try {
-            const [frameFxaaProgram] = await host.app.createPrograms(FRAME_FXAA_PROGRAM);
-            host.frameFxaaProgram = frameFxaaProgram;
-            host.frameFxaaDrawCall = host.app.createDrawCall(frameFxaaProgram, host.quadArray);
-        } catch (e) {
-            console.warn("[WebGLOsrsRenderer] FXAA unavailable; continuing without it", e);
+        if (rustPrimaryRequested) {
             host.frameFxaaProgram = undefined;
             host.frameFxaaDrawCall = undefined;
-            host.fxaaEnabled = false;
+        } else {
+            try {
+                const [frameFxaaProgram] = await host.app.createPrograms(FRAME_FXAA_PROGRAM);
+                host.frameFxaaProgram = frameFxaaProgram;
+                host.frameFxaaDrawCall = host.app.createDrawCall(frameFxaaProgram, host.quadArray);
+            } catch (e) {
+                console.warn("[WebGLOsrsRenderer] FXAA unavailable; continuing without it", e);
+                host.frameFxaaProgram = undefined;
+                host.frameFxaaDrawCall = undefined;
+                host.fxaaEnabled = false;
+            }
         }
 
         if (host.hoverLineProgram && host.sceneUniformBuffer) {
