@@ -6,6 +6,7 @@ import type { SdMapData } from "../loader/SdMapData";
 import type { DynamicNpcFrameGeometry } from "../npc/DynamicNpcAnimLoader";
 import type { WebGLOsrsRendererHost } from "../render/hostInterface";
 import { getRustRendererGlobalResourceSnapshot } from "./LiveResourceAdapter";
+import { getModelFaceBuilder } from "./RustFacePreparation";
 import {
     getDrawListBuilder,
     getModelInfoTextureBuilder,
@@ -574,12 +575,13 @@ export async function initRustRendererShadow(
         if (!runtime) return;
 
         // The renderer module is loaded at this point. Prime the shared Stage 5
-        // vertex-builder factory so synchronous actor/ground geometry paths can
-        // use Rust packing without introducing async work into the frame loop.
+        // geometry helpers so synchronous actor/ground/model paths can use
+        // Rust preparation without introducing async work into the frame loop.
         await Promise.all([
             getVertexBatchBuilderFactory(),
             getModelInfoTextureBuilder(),
             getDrawListBuilder(),
+            getModelFaceBuilder(),
         ]);
 
         runtimes.set(host, runtime);
