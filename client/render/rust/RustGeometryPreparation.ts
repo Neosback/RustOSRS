@@ -6,6 +6,11 @@ import {
 import type { Model } from "../../rs/model/Model";
 import { getModelHash, type ModelHashBuffer } from "../buffer/ModelHashBuffer";
 import type { VertexBatchBuilder } from "../buffer/VertexBuffer";
+import {
+    recordRustStage5Attempt,
+    recordRustStage5Fallback,
+    recordRustStage5Success,
+} from "../../rs/model/RustStage5Ownership";
 import { loadRustRendererModule } from "./RustRendererModule";
 
 export type ModelInfoTextureBuilder = (commands: DrawCommand[]) => Uint16Array;
@@ -81,6 +86,7 @@ export function buildModelInfoTextureDataIfReady(commands: DrawCommand[]): Uint1
 
 export async function getModelInfoTextureBuilder(): Promise<ModelInfoTextureBuilder> {
     if (!modelInfoBuilderPromise) {
+        recordRustStage5Attempt("modelInfo");
         modelInfoBuilderPromise = loadRustRendererModule()
             .then((module) => {
                 const rustBuilder = module.build_model_info_texture_data;
@@ -92,9 +98,12 @@ export async function getModelInfoTextureBuilder(): Promise<ModelInfoTextureBuil
 
                 modelInfoBuilder = (commands: DrawCommand[]): Uint16Array =>
                     buildModelInfoTextureDataWithRust(commands, rustBuilder);
+                recordRustStage5Success("modelInfo");
                 return modelInfoBuilder;
             })
             .catch((error) => {
+                modelInfoBuilderPromise = undefined;
+                modelInfoBuilder = undefined;
                 if (!warnedAboutFallback) {
                     warnedAboutFallback = true;
                     console.warn(
@@ -103,8 +112,8 @@ export async function getModelInfoTextureBuilder(): Promise<ModelInfoTextureBuil
                         error,
                     );
                 }
-                modelInfoBuilder = createModelInfoTextureData;
-                return modelInfoBuilder;
+                recordRustStage5Fallback("modelInfo", "backend unavailable", true);
+                return createModelInfoTextureData;
             });
     }
 
@@ -122,6 +131,7 @@ export function createVertexBatchBuilderIfReady(): VertexBatchBuilder | undefine
 
 export async function getVertexBatchBuilderFactory(): Promise<VertexBatchBuilderFactory> {
     if (!vertexBatchBuilderFactoryPromise) {
+        recordRustStage5Attempt("vertexBuilder");
         vertexBatchBuilderFactoryPromise = loadRustRendererModule()
             .then((module) => {
                 const RustVertexBufferBuilder = module.RustVertexBufferBuilder;
@@ -131,9 +141,12 @@ export async function getVertexBatchBuilderFactory(): Promise<VertexBatchBuilder
                     );
                 }
                 vertexBatchBuilderFactory = (): VertexBatchBuilder => new RustVertexBufferBuilder();
+                recordRustStage5Success("vertexBuilder");
                 return vertexBatchBuilderFactory;
             })
             .catch((error) => {
+                vertexBatchBuilderFactoryPromise = undefined;
+                vertexBatchBuilderFactory = undefined;
                 if (!warnedAboutVertexFallback) {
                     warnedAboutVertexFallback = true;
                     console.warn(
@@ -142,8 +155,8 @@ export async function getVertexBatchBuilderFactory(): Promise<VertexBatchBuilder
                         error,
                     );
                 }
-                vertexBatchBuilderFactory = (): undefined => undefined;
-                return vertexBatchBuilderFactory;
+                recordRustStage5Fallback("vertexBuilder", "backend unavailable", true);
+                return (): undefined => undefined;
             });
     }
 
@@ -167,6 +180,7 @@ const EMPTY_TEXTURE_IDS = new Int32Array(0);
 
 async function getRustModelHasher(): Promise<RustModelHasher | undefined> {
     if (!rustModelHasherPromise) {
+        recordRustStage5Attempt("modelHash");
         rustModelHasherPromise = loadRustRendererModule()
             .then((module) => {
                 const rustHasher = module.hash_model_geometry;
@@ -175,9 +189,11 @@ async function getRustModelHasher(): Promise<RustModelHasher | undefined> {
                         "Rust renderer web package does not export hash_model_geometry",
                     );
                 }
+                recordRustStage5Success("modelHash");
                 return rustHasher;
             })
             .catch((error) => {
+                rustModelHasherPromise = undefined;
                 if (!warnedAboutModelHashFallback) {
                     warnedAboutModelHashFallback = true;
                     console.warn(
@@ -186,6 +202,7 @@ async function getRustModelHasher(): Promise<RustModelHasher | undefined> {
                         error,
                     );
                 }
+                recordRustStage5Fallback("modelHash", "backend unavailable", true);
                 return undefined;
             });
     }
@@ -263,6 +280,7 @@ export function buildDrawListIfReady(commands: DrawCommand[]): PreparedDrawList 
 
 export async function getDrawListBuilder(): Promise<DrawListBuilder> {
     if (!drawListBuilderPromise) {
+        recordRustStage5Attempt("drawList");
         drawListBuilderPromise = loadRustRendererModule()
             .then((module) => {
                 const rustBuilder = module.build_draw_list;
@@ -296,9 +314,12 @@ export async function getDrawListBuilder(): Promise<DrawListBuilder> {
                         prepared.free?.();
                     }
                 };
+                recordRustStage5Success("drawList");
                 return drawListBuilder;
             })
             .catch((error) => {
+                drawListBuilderPromise = undefined;
+                drawListBuilder = undefined;
                 if (!warnedAboutDrawListFallback) {
                     warnedAboutDrawListFallback = true;
                     console.warn(
@@ -307,8 +328,8 @@ export async function getDrawListBuilder(): Promise<DrawListBuilder> {
                         error,
                     );
                 }
-                drawListBuilder = buildDrawListWithTypeScript;
-                return drawListBuilder;
+                recordRustStage5Fallback("drawList", "backend unavailable", true);
+                return buildDrawListWithTypeScript;
             });
     }
 
