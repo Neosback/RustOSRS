@@ -18,7 +18,6 @@ import {
     type DrawCommand,
     type ModelInfo,
     SceneBuffer,
-    getModelFacesFiltered,
 } from "../buffer/SceneBuffer";
 
 export type GroundItemGeometryBuildData = {
@@ -136,8 +135,7 @@ export function buildGroundItemGeometry(
         };
 
         const opaqueOffset = sceneBuf.indexByteOffset();
-        const opaqueFaces = getModelFacesFiltered(model, textureLoader, false);
-        sceneBuf.addModel(model, opaqueFaces, tempVec, false);
+        sceneBuf.addModelFiltered(model, false, tempVec, false);
         const opaqueElements = (sceneBuf.indexByteOffset() - opaqueOffset) / 4;
         if (opaqueElements > 0) {
             pushDrawCommand(
@@ -153,10 +151,9 @@ export function buildGroundItemGeometry(
             );
         }
 
-        const alphaFaces = getModelFacesFiltered(model, textureLoader, true);
-        if (alphaFaces.length > 0) {
+        if (sceneBuf.getModelFaceCount(model, true) > 0) {
             const alphaOffset = sceneBuf.indexByteOffset();
-            sceneBuf.addModel(model, alphaFaces, tempVec, false);
+            sceneBuf.addModelFiltered(model, true, tempVec, false);
             const alphaElements = (sceneBuf.indexByteOffset() - alphaOffset) / 4;
             pushDrawCommand(
                 [
