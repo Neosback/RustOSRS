@@ -1057,7 +1057,7 @@ function hashExpectedMapStaticPass(
         );
     }
 
-    const ground = map.getGroundItemDrawCall(
+    const groundDrawRanges = map.getGroundItemDrawRanges(
         transparent,
         false,
         useLod,
