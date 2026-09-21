@@ -334,9 +334,9 @@ function createLocGeometryResources(
             .indexBuffer(indexBuffer);
 
         const created: LegacySceneBatchGpuResources = {
-            interleavedBuffer,
-            indexBuffer,
-            vertexArray,
+            terrainLegacyGpu?.interleavedBuffer,
+            terrainLegacyGpu?.indexBuffer,
+            terrainLegacyGpu?.vertexArray,
             modelInfoTexture: createModelInfoTexture(app, geometry.modelTextureData),
             modelInfoTextureAlpha: createModelInfoTexture(app, geometry.modelTextureDataAlpha),
             modelInfoTextureLod: createModelInfoTexture(app, geometry.modelTextureDataLod),
@@ -718,49 +718,13 @@ export class WebGLMapSquare {
             );
         }
         const mapPos = vec2.fromValues(usedRenderX, usedRenderY);
+        let loadedMapSquare: WebGLMapSquare | undefined;
+        let terrainLegacyGpu: LegacySceneBatchGpuResources | undefined;
 
-        const interleavedBuffer = app.createInterleavedBuffer(12, mapData.vertices);
-        const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.indices);
+        const ensureTerrainLegacyGpu = (): LegacySceneBatchGpuResources => {
+            if (terrainLegacyGpu) return terrainLegacyGpu;
 
-        const vertexArray = app
-            .createVertexArray()
-            // v0, v1, v2
-            .vertexAttributeBuffer(0, interleavedBuffer, {
-                type: PicoGL.UNSIGNED_INT,
-                size: 3,
-                stride: 12,
-                integer: true as any,
-            })
-            .indexBuffer(indexBuffer);
-
-        const modelInfoTexture = createModelInfoTexture(app, mapData.modelTextureData);
-        const modelInfoTextureAlpha = createModelInfoTexture(app, mapData.modelTextureDataAlpha);
-
-        const modelInfoTextureLod = createModelInfoTexture(app, mapData.modelTextureDataLod);
-        const modelInfoTextureLodAlpha = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataLodAlpha,
-        );
-
-        const modelInfoTextureInteract = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteract,
-        );
-        const modelInfoTextureInteractAlpha = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteractAlpha,
-        );
-
-        const modelInfoTextureInteractLod = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteractLod,
-        );
-        const modelInfoTextureInteractLodAlpha = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteractLodAlpha,
-        );
-
-        const heightMapSize = mapData.heightMapSize ?? Scene.MAP_SQUARE_SIZE + borderSize * 2;
+            const heightMapSize = mapData.heightMapSize ?? Scene.MAP_SQUARE_SIZE + borderSize * 2;
         const heightMapTexture = app.createTextureArray(
             mapData.heightMapTextureData,
             heightMapSize,
@@ -794,74 +758,71 @@ export class WebGLMapSquare {
 
         const createDrawCall = (
             program: Program,
-            modelInfoTexture: Texture | undefined,
+            selectModelInfoTexture: (gpu: LegacySceneBatchGpuResources) => Texture,
             drawRanges: DrawRange[],
-            vertexArrayOverride?: VertexArray,
-            forceEager: boolean = false,
-        ): AnyDrawCallRange => {
-            const vao = vertexArrayOverride ?? vertexArray;
-            return createDeferredDrawCallRange(
+        ): AnyDrawCallRange =>
+            createDeferredDrawCallRange(
                 drawRanges,
                 () => {
-                    const drawCall = app
-                        .createDrawCall(program, vao)
+                    const gpu = ensureTerrainLegacyGpu();
+                    return app
+                        .createDrawCall(program, gpu.vertexArray)
                         .uniformBlock("SceneUniforms", sceneUniformBuffer)
                         .uniform("u_timeLoaded", time)
                         .uniform("u_mapPos", mapPos)
                         .uniform("u_roofPlaneLimit", 3.0)
                         .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
                         .uniform("u_worldEntityOpacity", 1.0)
-                        // .uniform("u_drawIdOffset", drawIdOffset)
                         .texture("u_textures", textureArray)
                         .texture("u_textureMaterials", textureMaterials)
                         .texture("u_waterTextures", waterTextures)
                         .texture("u_heightMap", heightMapTexture)
                         .texture("u_waterMask", waterMaskTexture)
                         .uniform("u_sceneBorderSize", borderSize)
-                        // .texture("u_modelInfoTexture", modelInfoTexture)
+                        .texture("u_modelInfoTexture", selectModelInfoTexture(gpu))
                         .drawRanges(...drawRanges);
-                    if (modelInfoTexture) {
-                        drawCall.texture("u_modelInfoTexture", modelInfoTexture);
-                    }
-                    return drawCall;
                 },
-                forceEager || eagerLegacyDrawCalls,
+                eagerLegacyDrawCalls,
             );
-        };
 
-        const drawCall = createDrawCall(mainProgram, modelInfoTexture, mapData.drawRanges);
+        const drawCall = createDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTexture,
+            mapData.drawRanges,
+        );
         const drawCallAlpha = createDrawCall(
             mainAlphaProgram,
-            modelInfoTextureAlpha,
+            (gpu) => gpu.modelInfoTextureAlpha,
             mapData.drawRangesAlpha,
         );
-
-        const drawCallLod = createDrawCall(mainProgram, modelInfoTextureLod, mapData.drawRangesLod);
+        const drawCallLod = createDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTextureLod,
+            mapData.drawRangesLod,
+        );
         const drawCallLodAlpha = createDrawCall(
             mainAlphaProgram,
-            modelInfoTextureLodAlpha,
+            (gpu) => gpu.modelInfoTextureLodAlpha,
             mapData.drawRangesLodAlpha,
         );
-
         const drawCallInteract = createDrawCall(
             mainProgram,
-            modelInfoTextureInteract,
+            (gpu) => gpu.modelInfoTextureInteract,
             mapData.drawRangesInteract,
         );
         const drawCallInteractAlpha = createDrawCall(
             mainAlphaProgram,
-            modelInfoTextureInteractAlpha,
+            (gpu) => gpu.modelInfoTextureInteractAlpha,
             mapData.drawRangesInteractAlpha,
         );
-
         const drawCallInteractLod = createDrawCall(
             mainProgram,
-            modelInfoTextureInteractLod,
+            (gpu) => gpu.modelInfoTextureInteractLod,
             mapData.drawRangesInteractLod,
         );
         const drawCallInteractLodAlpha = createDrawCall(
             mainAlphaProgram,
-            modelInfoTextureInteractLodAlpha,
+            (gpu) => gpu.modelInfoTextureInteractLodAlpha,
             mapData.drawRangesInteractLodAlpha,
         );
 
@@ -902,7 +863,6 @@ export class WebGLMapSquare {
         let npcInterleavedBuffer: GpuInterleavedBuffer | undefined;
         let npcIndexBuffer: GpuIndexBuffer | undefined;
         let npcVertexArray: VertexArray | undefined;
-        let loadedMapSquare: WebGLMapSquare | undefined;
 
         const ensureNpcLegacyGpu = (): VertexArray => {
             if (npcVertexArray) return npcVertexArray;
@@ -1180,17 +1140,17 @@ export class WebGLMapSquare {
             heightMapTexture,
             waterMaskTexture,
 
-            modelInfoTexture,
-            modelInfoTextureAlpha,
+            terrainLegacyGpu?.modelInfoTexture,
+            terrainLegacyGpu?.modelInfoTextureAlpha,
 
-            modelInfoTextureLod,
-            modelInfoTextureLodAlpha,
+            terrainLegacyGpu?.modelInfoTextureLod,
+            terrainLegacyGpu?.modelInfoTextureLodAlpha,
 
-            modelInfoTextureInteract,
-            modelInfoTextureInteractAlpha,
+            terrainLegacyGpu?.modelInfoTextureInteract,
+            terrainLegacyGpu?.modelInfoTextureInteractAlpha,
 
-            modelInfoTextureInteractLod,
-            modelInfoTextureInteractLodAlpha,
+            terrainLegacyGpu?.modelInfoTextureInteractLod,
+            terrainLegacyGpu?.modelInfoTextureInteractLodAlpha,
 
             drawCall,
             drawCallAlpha,
@@ -1231,6 +1191,7 @@ export class WebGLMapSquare {
             mapData.tileLocIdsByLevel,
             mapData.tileLocTypeRotByLevel,
         );
+        loadedMapSquare.terrainLegacyGpu = terrainLegacyGpu;
         // Initialize occupancy counters to match initial flags
         for (const c of occInit) {
             loadedMapSquare.incNpcOcc(c.plane, c.x, c.y);
