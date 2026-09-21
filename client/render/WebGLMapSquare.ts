@@ -649,7 +649,7 @@ export class WebGLMapSquare {
     private npcInterleavedBuffer?: GpuInterleavedBuffer;
     private npcIndexBuffer?: GpuIndexBuffer;
     private npcVertexArray?: VertexArray;
-    drawCallNpc?: DrawCallRange;
+    drawCallNpc?: AnyDrawCallRange;
 
     npcEntityIds: number[] = [];
     npcIdleFrames: AnimationFrames[] = [];
@@ -1078,15 +1078,7 @@ export class WebGLMapSquare {
 
         const drawCallNpc =
             hasNpcGeometry && npcVertexArray
-                ? materializeDrawCallRange(
-                      createDrawCall(
-                          npcProgram,
-                          undefined,
-                          drawRangesNpc,
-                          npcVertexArray,
-                          true,
-                      ),
-                  )
+                ? createDrawCall(npcProgram, undefined, drawRangesNpc, npcVertexArray)
                 : undefined;
 
         const planes = {
@@ -1231,7 +1223,7 @@ export class WebGLMapSquare {
         npcInterleavedBuffer: GpuInterleavedBuffer | undefined,
         npcIndexBuffer: GpuIndexBuffer | undefined,
         npcVertexArray: VertexArray | undefined,
-        drawCallNpc: DrawCallRange | undefined,
+        drawCallNpc: AnyDrawCallRange | undefined,
 
         // Animated locs
         public locsAnimated: LocAnimated[],
