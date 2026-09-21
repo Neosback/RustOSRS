@@ -4,6 +4,7 @@ import { WebGLMapSquare } from "../WebGLMapSquare";
 import type { GroundItemGeometryBuildData } from "../ground/GroundItemMeshBuilder";
 import type { SdMapData } from "../loader/SdMapData";
 import type { DynamicNpcFrameGeometry } from "../npc/DynamicNpcAnimLoader";
+import { setRustStage5StrictMode } from "../../rs/model/RustStage5Ownership";
 import type { WebGLOsrsRendererHost } from "../render/hostInterface";
 import { getRustRendererGlobalResourceSnapshot } from "./LiveResourceAdapter";
 import { getModelFaceBuilder } from "./RustFacePreparation";
@@ -310,6 +311,8 @@ function disableShadow(
         console.warn(`[RustRenderer] shadow ${phase} disabled`, error);
     }
     failedHosts.add(host);
+    setRustStage5StrictMode(false);
+    void host.osrsClient.workerPool.setRustStage5StrictMode(false).catch(() => {});
     publishDiagnostics(host, {
         ...getRustRendererShadowDiagnostics(host),
         enabled: false,
