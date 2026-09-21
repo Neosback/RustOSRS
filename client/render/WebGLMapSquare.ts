@@ -334,9 +334,9 @@ function createLocGeometryResources(
             .indexBuffer(indexBuffer);
 
         const created: LegacySceneBatchGpuResources = {
-            terrainLegacyGpu?.interleavedBuffer,
-            terrainLegacyGpu?.indexBuffer,
-            terrainLegacyGpu?.vertexArray,
+            interleavedBuffer,
+            indexBuffer,
+            vertexArray,
             modelInfoTexture: createModelInfoTexture(app, geometry.modelTextureData),
             modelInfoTextureAlpha: createModelInfoTexture(app, geometry.modelTextureDataAlpha),
             modelInfoTextureLod: createModelInfoTexture(app, geometry.modelTextureDataLod),
@@ -721,10 +721,7 @@ export class WebGLMapSquare {
         let loadedMapSquare: WebGLMapSquare | undefined;
         let terrainLegacyGpu: LegacySceneBatchGpuResources | undefined;
 
-        const ensureTerrainLegacyGpu = (): LegacySceneBatchGpuResources => {
-            if (terrainLegacyGpu) return terrainLegacyGpu;
-
-            const heightMapSize = mapData.heightMapSize ?? Scene.MAP_SQUARE_SIZE + borderSize * 2;
+        const heightMapSize = mapData.heightMapSize ?? Scene.MAP_SQUARE_SIZE + borderSize * 2;
         const heightMapTexture = app.createTextureArray(
             mapData.heightMapTextureData,
             heightMapSize,
@@ -754,7 +751,71 @@ export class WebGLMapSquare {
             },
         );
 
-        // const time = performance.now() * 0.001;
+        const ensureTerrainLegacyGpu = (): LegacySceneBatchGpuResources => {
+            if (terrainLegacyGpu) return terrainLegacyGpu;
+
+            const interleavedBuffer = app.createInterleavedBuffer(12, mapData.vertices);
+            const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.indices);
+            const vertexArray = app
+                .createVertexArray()
+                .vertexAttributeBuffer(0, interleavedBuffer, {
+                    type: PicoGL.UNSIGNED_INT,
+                    size: 3,
+                    stride: 12,
+                    integer: true as any,
+                })
+                .indexBuffer(indexBuffer);
+
+            const created: LegacySceneBatchGpuResources = {
+                interleavedBuffer,
+                indexBuffer,
+                vertexArray,
+                modelInfoTexture: createModelInfoTexture(app, mapData.modelTextureData),
+                modelInfoTextureAlpha: createModelInfoTexture(app, mapData.modelTextureDataAlpha),
+                modelInfoTextureLod: createModelInfoTexture(app, mapData.modelTextureDataLod),
+                modelInfoTextureLodAlpha: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataLodAlpha,
+                ),
+                modelInfoTextureInteract: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteract,
+                ),
+                modelInfoTextureInteractAlpha: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteractAlpha,
+                ),
+                modelInfoTextureInteractLod: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteractLod,
+                ),
+                modelInfoTextureInteractLodAlpha: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteractLodAlpha,
+                ),
+            };
+            terrainLegacyGpu = created;
+
+            if (loadedMapSquare) {
+                loadedMapSquare.terrainLegacyGpu = created;
+                loadedMapSquare.interleavedBuffer = created.interleavedBuffer;
+                loadedMapSquare.indexBuffer = created.indexBuffer;
+                loadedMapSquare.vertexArray = created.vertexArray;
+                loadedMapSquare.modelInfoTexture = created.modelInfoTexture;
+                loadedMapSquare.modelInfoTextureAlpha = created.modelInfoTextureAlpha;
+                loadedMapSquare.modelInfoTextureLod = created.modelInfoTextureLod;
+                loadedMapSquare.modelInfoTextureLodAlpha = created.modelInfoTextureLodAlpha;
+                loadedMapSquare.modelInfoTextureInteract = created.modelInfoTextureInteract;
+                loadedMapSquare.modelInfoTextureInteractAlpha =
+                    created.modelInfoTextureInteractAlpha;
+                loadedMapSquare.modelInfoTextureInteractLod =
+                    created.modelInfoTextureInteractLod;
+                loadedMapSquare.modelInfoTextureInteractLodAlpha =
+                    created.modelInfoTextureInteractLodAlpha;
+            }
+
+            return created;
+        };
 
         const createDrawCall = (
             program: Program,
@@ -2356,72 +2417,98 @@ export class WebGLMapSquare {
         releaseDrawCallRange(this.drawCallInteractAlpha);
         releaseDrawCallRange(this.drawCallInteractLod);
         releaseDrawCallRange(this.drawCallInteractLodAlpha);
-        deleteMapSquareResource(this.mapX, this.mapY, "vertexArray.refresh", this.vertexArray);
-        deleteMapSquareResource(
+
+        deleteLegacySceneBatchGpuResources(
             this.mapX,
             this.mapY,
-            "interleavedBuffer.refresh",
-            this.interleavedBuffer,
+            "terrain.refresh",
+            this.terrainLegacyGpu,
         );
-        deleteMapSquareResource(this.mapX, this.mapY, "indexBuffer.refresh", this.indexBuffer);
-        this.modelInfoTexture.delete();
-        this.modelInfoTextureAlpha.delete();
-        this.modelInfoTextureLod.delete();
-        this.modelInfoTextureLodAlpha.delete();
-        this.modelInfoTextureInteract.delete();
-        this.modelInfoTextureInteractAlpha.delete();
-        this.modelInfoTextureInteractLod.delete();
-        this.modelInfoTextureInteractLodAlpha.delete();
+        this.terrainLegacyGpu = undefined;
+        this.interleavedBuffer = undefined;
+        this.indexBuffer = undefined;
+        this.vertexArray = undefined;
+        this.modelInfoTexture = undefined;
+        this.modelInfoTextureAlpha = undefined;
+        this.modelInfoTextureLod = undefined;
+        this.modelInfoTextureLodAlpha = undefined;
+        this.modelInfoTextureInteract = undefined;
+        this.modelInfoTextureInteractAlpha = undefined;
+        this.modelInfoTextureInteractLod = undefined;
+        this.modelInfoTextureInteractLodAlpha = undefined;
 
-        this.interleavedBuffer = app.createInterleavedBuffer(12, mapData.vertices);
-        this.indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.indices);
-        this.vertexArray = app
-            .createVertexArray()
-            .vertexAttributeBuffer(0, this.interleavedBuffer, {
-                type: PicoGL.UNSIGNED_INT,
-                size: 3,
-                stride: 12,
-                integer: true as any,
-            })
-            .indexBuffer(this.indexBuffer);
+        const ensureTerrainLegacyGpu = (): LegacySceneBatchGpuResources => {
+            const existing = this.terrainLegacyGpu;
+            if (existing) return existing;
 
-        this.modelInfoTexture = createModelInfoTexture(app, mapData.modelTextureData);
-        this.modelInfoTextureAlpha = createModelInfoTexture(app, mapData.modelTextureDataAlpha);
-        this.modelInfoTextureLod = createModelInfoTexture(app, mapData.modelTextureDataLod);
-        this.modelInfoTextureLodAlpha = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataLodAlpha,
-        );
-        this.modelInfoTextureInteract = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteract,
-        );
-        this.modelInfoTextureInteractAlpha = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteractAlpha,
-        );
-        this.modelInfoTextureInteractLod = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteractLod,
-        );
-        this.modelInfoTextureInteractLodAlpha = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteractLodAlpha,
-        );
+            const interleavedBuffer = app.createInterleavedBuffer(12, mapData.vertices);
+            const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.indices);
+            const vertexArray = app
+                .createVertexArray()
+                .vertexAttributeBuffer(0, interleavedBuffer, {
+                    type: PicoGL.UNSIGNED_INT,
+                    size: 3,
+                    stride: 12,
+                    integer: true as any,
+                })
+                .indexBuffer(indexBuffer);
+
+            const created: LegacySceneBatchGpuResources = {
+                interleavedBuffer,
+                indexBuffer,
+                vertexArray,
+                modelInfoTexture: createModelInfoTexture(app, mapData.modelTextureData),
+                modelInfoTextureAlpha: createModelInfoTexture(app, mapData.modelTextureDataAlpha),
+                modelInfoTextureLod: createModelInfoTexture(app, mapData.modelTextureDataLod),
+                modelInfoTextureLodAlpha: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataLodAlpha,
+                ),
+                modelInfoTextureInteract: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteract,
+                ),
+                modelInfoTextureInteractAlpha: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteractAlpha,
+                ),
+                modelInfoTextureInteractLod: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteractLod,
+                ),
+                modelInfoTextureInteractLodAlpha: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteractLodAlpha,
+                ),
+            };
+
+            this.terrainLegacyGpu = created;
+            this.interleavedBuffer = created.interleavedBuffer;
+            this.indexBuffer = created.indexBuffer;
+            this.vertexArray = created.vertexArray;
+            this.modelInfoTexture = created.modelInfoTexture;
+            this.modelInfoTextureAlpha = created.modelInfoTextureAlpha;
+            this.modelInfoTextureLod = created.modelInfoTextureLod;
+            this.modelInfoTextureLodAlpha = created.modelInfoTextureLodAlpha;
+            this.modelInfoTextureInteract = created.modelInfoTextureInteract;
+            this.modelInfoTextureInteractAlpha = created.modelInfoTextureInteractAlpha;
+            this.modelInfoTextureInteractLod = created.modelInfoTextureInteractLod;
+            this.modelInfoTextureInteractLodAlpha = created.modelInfoTextureInteractLodAlpha;
+            return created;
+        };
 
         const mapPos = vec2.fromValues(this.renderPosX, this.renderPosY);
         const buildDrawCall = (
             program: Program,
-            modelInfoTex: Texture | undefined,
+            selectModelInfoTexture: (gpu: LegacySceneBatchGpuResources) => Texture,
             drawRanges: DrawRange[],
-            vertexArrayOverride?: VertexArray,
-        ): AnyDrawCallRange => {
-            const vao = vertexArrayOverride ?? this.vertexArray;
-            return createDeferredDrawCallRange(
+        ): AnyDrawCallRange =>
+            createDeferredDrawCallRange(
                 drawRanges,
                 () => {
-                    const drawCall = app
-                        .createDrawCall(program, vao)
+                    const gpu = ensureTerrainLegacyGpu();
+                    return app
+                        .createDrawCall(program, gpu.vertexArray)
                         .uniformBlock("SceneUniforms", sceneUniformBuffer)
                         .uniform("u_timeLoaded", loadTime)
                         .uniform("u_mapPos", mapPos)
@@ -2434,52 +2521,53 @@ export class WebGLMapSquare {
                         .texture("u_heightMap", this.heightMapTexture)
                         .texture("u_waterMask", this.waterMaskTexture)
                         .uniform("u_sceneBorderSize", this.borderSize)
+                        .texture("u_modelInfoTexture", selectModelInfoTexture(gpu))
                         .drawRanges(...drawRanges);
-                    if (modelInfoTex) {
-                        drawCall.texture("u_modelInfoTexture", modelInfoTex);
-                    }
-                    return drawCall;
                 },
                 eagerLegacyDrawCalls,
             );
-        };
 
-        this.drawCall = buildDrawCall(mainProgram, this.modelInfoTexture, mapData.drawRanges);
+        this.drawCall = buildDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTexture,
+            mapData.drawRanges,
+        );
         this.drawCallAlpha = buildDrawCall(
             mainAlphaProgram,
-            this.modelInfoTextureAlpha,
+            (gpu) => gpu.modelInfoTextureAlpha,
             mapData.drawRangesAlpha,
         );
         this.drawCallLod = buildDrawCall(
             mainProgram,
-            this.modelInfoTextureLod,
+            (gpu) => gpu.modelInfoTextureLod,
             mapData.drawRangesLod,
         );
         this.drawCallLodAlpha = buildDrawCall(
             mainAlphaProgram,
-            this.modelInfoTextureLodAlpha,
+            (gpu) => gpu.modelInfoTextureLodAlpha,
             mapData.drawRangesLodAlpha,
         );
         this.drawCallInteract = buildDrawCall(
             mainProgram,
-            this.modelInfoTextureInteract,
+            (gpu) => gpu.modelInfoTextureInteract,
             mapData.drawRangesInteract,
         );
         this.drawCallInteractAlpha = buildDrawCall(
             mainAlphaProgram,
-            this.modelInfoTextureInteractAlpha,
+            (gpu) => gpu.modelInfoTextureInteractAlpha,
             mapData.drawRangesInteractAlpha,
         );
         this.drawCallInteractLod = buildDrawCall(
             mainProgram,
-            this.modelInfoTextureInteractLod,
+            (gpu) => gpu.modelInfoTextureInteractLod,
             mapData.drawRangesInteractLod,
         );
         this.drawCallInteractLodAlpha = buildDrawCall(
             mainAlphaProgram,
-            this.modelInfoTextureInteractLodAlpha,
+            (gpu) => gpu.modelInfoTextureInteractLodAlpha,
             mapData.drawRangesInteractLodAlpha,
         );
+        this.terrainDrawRangeGroups = getDrawRangeGroups(this);
 
         this.drawRangePlanes = {
             main: mapData.drawRangesPlanes,
