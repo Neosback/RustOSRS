@@ -9,7 +9,10 @@ import { clamp } from "../../common/utils/MathUtil";
 import { getBridgeLinkedBelow, isBridgeSurfaceTile } from "../../game/scene/BridgeTiles";
 import { DrawRange, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
-import { buildModelFacesIfReady } from "../rust/RustFacePreparation";
+import {
+    buildModelFacePacketIfReady,
+    buildModelFacesIfReady,
+} from "../rust/RustFacePreparation";
 import { LocAnimatedData } from "../loc/LocAnimatedData";
 import { LocAnimatedGroup } from "../loc/LocAnimatedGroup";
 import { SceneLocEntity } from "../loc/SceneLocEntity";
@@ -335,13 +338,21 @@ export class SceneBuffer {
     }
 
     addModelAnimFrame(model: Model, transparent: boolean): DrawRange {
-        // Optimized: filter transparency in single pass instead of getModelFaces() + filter()
-        const faces = getModelFacesFiltered(model, this.textureLoader, transparent);
-
         const offset = this.indexByteOffset();
-        this.addModel(model, faces);
-        const elements = (this.indexByteOffset() - offset) / 4;
+        const facePacket = this.vertexBuf.hasRustModelFaceBuilder()
+            ? buildModelFacePacketIfReady(
+                model,
+                this.textureLoader,
+                transparent ? 1 : 0,
+            )
+            : undefined;
 
+        if (!facePacket || !this.addModelFacePacket(model, facePacket)) {
+            const faces = getModelFacesFiltered(model, this.textureLoader, transparent);
+            this.addModel(model, faces);
+        }
+
+        const elements = (this.indexByteOffset() - offset) / 4;
         return newDrawRange(offset, elements, 1);
     }
 
@@ -461,10 +472,6 @@ export class SceneBuffer {
 
         for (const sceneModel of group.models) {
             const model = sceneModel.model;
-
-            // Optimized: filter transparency in single pass instead of getModelFaces() + filter()
-            const faces = getModelFacesFiltered(model, this.textureLoader, group.transparent);
-
             const vertexOffset: vec3 = [
                 sceneModel.sceneX,
                 sceneModel.sceneHeight,
@@ -473,8 +480,23 @@ export class SceneBuffer {
             if (sceneModel.heightOffset !== 0) {
                 vertexOffset[1] = -sceneModel.heightOffset;
             }
+
             const offset = this.indexByteOffset();
-            this.addModel(model, faces, vertexOffset);
+            const facePacket = this.vertexBuf.hasRustModelFaceBuilder()
+                ? buildModelFacePacketIfReady(
+                    model,
+                    this.textureLoader,
+                    group.transparent ? 1 : 0,
+                )
+                : undefined;
+            if (!facePacket || !this.addModelFacePacket(model, facePacket, vertexOffset)) {
+                const faces = getModelFacesFiltered(
+                    model,
+                    this.textureLoader,
+                    group.transparent,
+                );
+                this.addModel(model, faces, vertexOffset);
+            }
             const elements = (this.indexByteOffset() - offset) / 4;
 
             const drawCommand: DrawCommand = {
@@ -542,6 +564,86 @@ export class SceneBuffer {
         }
     }
 
+    private addModelFacePacket(
+        model: Model,
+        faceFields: Int32Array,
+        offset?: vec3,
+        reuseVertices: boolean = true,
+    ): boolean {
+        if (!this.vertexBuf.hasRustModelFaceBuilder()) {
+            return false;
+        }
+        if (faceFields.length % MODEL_FACE_FIELD_STRIDE !== 0) {
+            throw new Error(
+                `Malformed model face packet length ${faceFields.length}`,
+            );
+        }
+        if (faceFields.length === 0) {
+            return true;
+        }
+
+        const modelTexCoords = model.uvs;
+        if (model.faceTextures && !modelTexCoords) {
+            throw new Error("Model has face textures but no texture coordinates");
+        }
+
+        for (
+            let fieldOffset = MODEL_FACE_FIELD_STRIDE - 1;
+            fieldOffset < faceFields.length;
+            fieldOffset += MODEL_FACE_FIELD_STRIDE
+        ) {
+            const textureId = faceFields[fieldOffset] | 0;
+            const textureIndex = this.textureIdIndexMap.get(textureId) ?? -1;
+            if (textureIndex !== -1) {
+                this.usedTextureIds.add(textureId);
+            }
+            faceFields[fieldOffset] = textureIndex;
+        }
+
+        let verticesY = model.verticesY;
+        let sceneX = 0;
+        let sceneZ = 0;
+        let sceneHeight = 0;
+        if (offset) {
+            sceneX = offset[0];
+            sceneHeight = offset[1];
+            sceneZ = offset[2];
+            if (model.contourVerticesY) {
+                verticesY = model.contourVerticesY;
+            }
+        }
+
+        const rustIndices = this.vertexBuf.addModelFaces(
+            model.verticesX,
+            verticesY,
+            model.verticesZ,
+            model.indices1,
+            model.indices2,
+            model.indices3,
+            model.faceColors1,
+            model.faceColors2,
+            model.faceColors3,
+            modelTexCoords ?? EMPTY_MODEL_UVS,
+            faceFields,
+            sceneX,
+            sceneHeight,
+            sceneZ,
+            model.overrideHue,
+            model.overrideSaturation,
+            model.overrideLuminance,
+            model.overrideAmount,
+            reuseVertices,
+        );
+        if (!rustIndices) {
+            return false;
+        }
+
+        for (let i = 0; i < rustIndices.length; i++) {
+            this.indices.push(rustIndices[i]);
+        }
+        return true;
+    }
+
     addModel(model: Model, faces: ModelFace[], offset?: vec3, reuseVertices: boolean = true): void {
         if (faces.length === 0) {
             return;
@@ -576,46 +678,16 @@ export class SceneBuffer {
             const faceFields = new Int32Array(faces.length * MODEL_FACE_FIELD_STRIDE);
             let faceFieldOffset = 0;
             for (const face of faces) {
-                const textureIndex = this.textureIdIndexMap.get(face.textureId) ?? -1;
-                if (textureIndex !== -1) {
-                    this.usedTextureIds.add(face.textureId);
-                }
-
                 faceFields[faceFieldOffset++] = face.index;
                 faceFields[faceFieldOffset++] = face.alpha;
                 faceFields[faceFieldOffset++] = face.priority;
                 faceFields[faceFieldOffset++] = face.renderLayer ?? -1;
-                faceFields[faceFieldOffset++] = textureIndex;
+                faceFields[faceFieldOffset++] = face.textureId;
             }
 
-            const rustIndices = this.vertexBuf.addModelFaces(
-                verticesX,
-                verticesY,
-                verticesZ,
-                facesA,
-                facesB,
-                facesC,
-                model.faceColors1,
-                model.faceColors2,
-                model.faceColors3,
-                modelTexCoords ?? EMPTY_MODEL_UVS,
-                faceFields,
-                sceneX,
-                sceneHeight,
-                sceneZ,
-                model.overrideHue,
-                model.overrideSaturation,
-                model.overrideLuminance,
-                model.overrideAmount,
-                reuseVertices,
-            );
-            if (!rustIndices) {
-                throw new Error("Rust model face builder became unavailable during model packing");
+            if (this.addModelFacePacket(model, faceFields, offset, reuseVertices)) {
+                return;
             }
-            for (let i = 0; i < rustIndices.length; i++) {
-                this.indices.push(rustIndices[i]);
-            }
-            return;
         }
 
         const vertexCount = faces.length * 3;
