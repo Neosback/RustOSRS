@@ -185,7 +185,10 @@ import {
     createProjectileProgram,
 } from "../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
-import { mirrorRustStaticMap } from "../rust/RustShadowIntegration";
+import {
+    isRustPrimaryRendererActive,
+    mirrorRustStaticMap,
+} from "../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
 import { RENDER_CONSTANTS } from "./constants";
 
@@ -328,6 +331,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
                     mapData,
                     getClientCycle() | 0,
                     existing.timeLoaded,
+                    !isRustPrimaryRendererActive(host),
                 );
             }
 
@@ -380,6 +384,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
             getClientCycle() | 0,
             reuseFrame,
             host.osrsClient.npcEcs,
+            !isRustPrimaryRendererActive(host),
         );
 
         // For instances, set base world position for height sampling.
