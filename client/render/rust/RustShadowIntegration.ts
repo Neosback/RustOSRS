@@ -387,6 +387,25 @@ function syncGlobalResources(
     );
 }
 
+function releaseLegacySceneGpuResourcesForPrimary(
+    host: WebGLOsrsRendererHost,
+    runtime: RustRendererShadowRuntime,
+): void {
+    if (runtime.mode !== "primary") return;
+
+    for (const map of host.mapManager.mapSquares.values()) {
+        try {
+            map.releaseLegacySceneGpuResources();
+        } catch (error) {
+            console.warn("[RustRenderer] Failed to release legacy map GPU resources", {
+                mapX: map.mapX | 0,
+                mapY: map.mapY | 0,
+                error,
+            });
+        }
+    }
+}
+
 function cleanupRustRuntime(
     runtime: RustRendererShadowRuntime,
 ): void {
@@ -440,6 +459,7 @@ async function recoverRustRenderer(
         runtimes.set(host, runtime);
         configureRustRuntime(host, runtime);
         replayRetainedRustState(host, runtime);
+        releaseLegacySceneGpuResourcesForPrimary(host, runtime);
         attachRustContextRecovery(host, runtime);
         recoveringHosts.delete(host);
         recoveringRuntimes.delete(host);
@@ -551,6 +571,7 @@ export async function initRustRendererShadow(
         runtimes.set(host, runtime);
         configureRustRuntime(host, runtime);
         replayRetainedRustState(host, runtime);
+        releaseLegacySceneGpuResourcesForPrimary(host, runtime);
         attachRustContextRecovery(host, runtime);
         publishDiagnostics(host, {
             enabled: true,
