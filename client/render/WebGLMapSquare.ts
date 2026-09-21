@@ -1188,6 +1188,10 @@ export class WebGLMapSquare {
         }
     }
 
+    getDrawRanges(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawRange[] {
+        return this.getDrawCall(isAlpha, isInteract, isLod).drawRanges;
+    }
+
     getLocDrawCall(
         isAlpha: boolean,
         isInteract: boolean,
@@ -1206,6 +1210,14 @@ export class WebGLMapSquare {
         return isAlpha ? this.loc.drawCallAlpha : this.loc.drawCall;
     }
 
+    getLocDrawRanges(
+        isAlpha: boolean,
+        isInteract: boolean,
+        isLod: boolean,
+    ): DrawRange[] | undefined {
+        return this.getLocDrawCall(isAlpha, isInteract, isLod)?.drawRanges;
+    }
+
     getDoorDrawCall(
         isAlpha: boolean,
         isInteract: boolean,
@@ -1222,6 +1234,14 @@ export class WebGLMapSquare {
             return isAlpha ? this.door.drawCallLodAlpha : this.door.drawCallLod;
         }
         return isAlpha ? this.door.drawCallAlpha : this.door.drawCall;
+    }
+
+    getDoorDrawRanges(
+        isAlpha: boolean,
+        isInteract: boolean,
+        isLod: boolean,
+    ): DrawRange[] | undefined {
+        return this.getDoorDrawCall(isAlpha, isInteract, isLod)?.drawRanges;
     }
 
     getDrawRangesPlanes(
@@ -1289,6 +1309,14 @@ export class WebGLMapSquare {
             }
             return isAlpha ? batch.drawCallAlpha : batch.drawCall;
         }
+    }
+
+    getGroundItemDrawRanges(
+        isAlpha: boolean,
+        isInteract: boolean,
+        isLod: boolean,
+    ): DrawRange[] | undefined {
+        return this.getGroundItemDrawCall(isAlpha, isInteract, isLod)?.drawRanges;
     }
 
     getGroundItemDrawRangesPlanes(
