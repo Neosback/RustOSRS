@@ -476,58 +476,62 @@ export function renderTransparentNpcPass(host: WebGLOsrsRendererHost,
 
         if (dynamicNpcs.length > 0 && npcDataTexture) {
             for (const dyn of dynamicNpcs) {
-                const indexCount = host.uploadDynamicNpcGeometry(dyn.geometry, true);
-                if (indexCount <= 0 || !host.dynamicNpcDrawCall) {
+                const indexCount = dyn.geometry.alphaIndices.length | 0;
+                if (indexCount <= 0) {
                     continue;
                 }
 
-                const dynDrawCall = host.dynamicNpcDrawCall;
-                dynDrawCall.texture("u_npcDataTexture", npcDataTexture);
                 const npcDataOffset = dyn.dataOffset + dyn.npcIndex;
-
-                dynDrawCall.uniform("u_npcDataOffset", npcDataOffset);
-                dynDrawCall.uniform("u_mapPos", [dyn.map.renderPosX, dyn.map.renderPosY]);
-                dynDrawCall.uniform("u_timeLoaded", dyn.map.timeLoaded);
-                const dynWvId =
-                    host.osrsClient.npcEcs.getWorldViewId(dyn.ecsId);
+                const dynWvId = host.osrsClient.npcEcs.getWorldViewId(dyn.ecsId);
                 let dynamicModelYOffset: number;
                 let dynamicWorldEntityTransform: Float32Array;
                 if (dynWvId >= 0) {
                     const dynDeckH = host.getWorldEntityDeckHeight(0, 0);
-                    dynamicModelYOffset =
-                        host.getNpcModelYOffset(dynDeckH);
+                    dynamicModelYOffset = host.getNpcModelYOffset(dynDeckH);
                     dynamicWorldEntityTransform =
-                        host.worldEntityAnimator?.getTransform(dynWvId)
-                        ?? WebGLMapSquare.IDENTITY_MAT4;
+                        host.worldEntityAnimator?.getTransform(dynWvId) ??
+                        WebGLMapSquare.IDENTITY_MAT4;
                 } else {
                     dynamicModelYOffset = host.getNpcModelYOffset();
-                    dynamicWorldEntityTransform =
-                        WebGLMapSquare.IDENTITY_MAT4;
-                }
-                dynDrawCall
-                    .uniform("u_modelYOffset", dynamicModelYOffset)
-                    .uniform(
-                        "u_worldEntityTransform",
-                        dynamicWorldEntityTransform,
-                    );
-
-                // Set height map texture from the map
-                const heightMapTex = (dyn.map as any).heightMapTexture;
-                if (heightMapTex) {
-                    dynDrawCall.texture("u_heightMap", heightMapTex);
-                    dynDrawCall.uniform("u_sceneBorderSize", (dyn.map as any).borderSize ?? 6);
-                }
-                const waterMaskTex = (dyn.map as any).waterMaskTexture;
-                if (waterMaskTex) {
-                    dynDrawCall.texture("u_waterMask", waterMaskTex);
+                    dynamicWorldEntityTransform = WebGLMapSquare.IDENTITY_MAT4;
                 }
 
-                host.dynamicNpcSingleDrawRange[0] = 0;
-                host.dynamicNpcSingleDrawRange[1] = indexCount | 0;
-                host.dynamicNpcSingleDrawRange[2] = 1;
-                (dynDrawCall as any).offsets[0] = 0;
-                (dynDrawCall as any).numElements[0] = indexCount | 0;
-                host.draw(dynDrawCall, host.dynamicNpcSingleDrawRanges);
+                if (!rustPrimaryRendererEnabled) {
+                    const uploadedIndexCount = host.uploadDynamicNpcGeometry(dyn.geometry, true);
+                    if (uploadedIndexCount <= 0 || !host.dynamicNpcDrawCall) {
+                        continue;
+                    }
+
+                    const dynDrawCall = host.dynamicNpcDrawCall;
+                    dynDrawCall
+                        .texture("u_npcDataTexture", npcDataTexture)
+                        .uniform("u_npcDataOffset", npcDataOffset)
+                        .uniform("u_mapPos", [dyn.map.renderPosX, dyn.map.renderPosY])
+                        .uniform("u_timeLoaded", dyn.map.timeLoaded)
+                        .uniform("u_modelYOffset", dynamicModelYOffset)
+                        .uniform("u_worldEntityTransform", dynamicWorldEntityTransform);
+
+                    const heightMapTex = (dyn.map as any).heightMapTexture;
+                    if (heightMapTex) {
+                        dynDrawCall.texture("u_heightMap", heightMapTex);
+                        dynDrawCall.uniform(
+                            "u_sceneBorderSize",
+                            (dyn.map as any).borderSize ?? 6,
+                        );
+                    }
+                    const waterMaskTex = (dyn.map as any).waterMaskTexture;
+                    if (waterMaskTex) {
+                        dynDrawCall.texture("u_waterMask", waterMaskTex);
+                    }
+
+                    host.dynamicNpcSingleDrawRange[0] = 0;
+                    host.dynamicNpcSingleDrawRange[1] = uploadedIndexCount | 0;
+                    host.dynamicNpcSingleDrawRange[2] = 1;
+                    (dynDrawCall as any).offsets[0] = 0;
+                    (dynDrawCall as any).numElements[0] = uploadedIndexCount | 0;
+                    host.draw(dynDrawCall, host.dynamicNpcSingleDrawRanges);
+                }
+
                 mirrorRustDynamicNpcGeometry(
                     host,
                     dyn.map,
