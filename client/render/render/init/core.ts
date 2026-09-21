@@ -50,6 +50,7 @@ import { decodeInteractionIndex } from "../../../rs/interaction/InteractionIndex
 import { getMapIndexFromTile, getMapPlaneId, getMapSquareId } from "../../../rs/map/MapFileIndex";
 import { Model } from "../../../rs/model/Model";
 import { ModelData } from "../../../rs/model/ModelData";
+import { setRustStage5StrictMode } from "../../../rs/model/RustStage5Ownership";
 import { Scene } from "../../../rs/scene/Scene";
 import { getUiScale } from "../../../ui/UiScale";
 import { ClickCrossOverlay } from "../../../ui/devoverlay/ClickCrossOverlay";
@@ -280,7 +281,13 @@ export async function init(host: WebGLOsrsRendererHost, ): Promise<void> {
         host.initTextures();
         await initRustRendererShadow(host);
 
-        if (isRustPrimaryRendererActive(host)) {
+        const rustPrimaryRendererActive = isRustPrimaryRendererActive(host);
+        setRustStage5StrictMode(rustPrimaryRendererActive);
+        await host.osrsClient.workerPool.setRustStage5StrictMode(
+            rustPrimaryRendererActive,
+        );
+
+        if (rustPrimaryRendererActive) {
             // Rust owns all offscreen scene/presentation targets in primary
             // mode. PicoGL keeps only its default transparent UI canvas.
             const sceneSize = host.getSceneRenderSize();
