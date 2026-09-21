@@ -184,6 +184,7 @@ import {
     createPlayerProgram,
     createProjectileProgram,
 } from "../../shaders/Shaders";
+import { isRustPrimaryRendererActive } from "../../rust/RustShadowIntegration";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
@@ -347,6 +348,7 @@ export function uploadDynamicNpcGeometry(host: WebGLOsrsRendererHost,
         transparent: boolean,
     ): number {
 
+        if (isRustPrimaryRendererActive(host)) return 0;
         if (!host.npcProgram) return 0;
 
         const vertices = transparent ? geometry.alphaVertices : geometry.opaqueVertices;
