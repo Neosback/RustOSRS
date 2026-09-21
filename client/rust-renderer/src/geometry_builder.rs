@@ -217,7 +217,11 @@ impl VertexBatchBuilder {
                 );
             }
 
-            let vertex_indices = [faces_a[face_index], faces_b[face_index], faces_c[face_index]];
+            let vertex_indices = [
+                faces_a[face_index],
+                faces_b[face_index],
+                faces_c[face_index],
+            ];
             let hsls = [hsl_a, hsl_b, hsl_c];
             let uv_base = face_index
                 .checked_mul(6)
@@ -410,13 +414,10 @@ fn apply_color_override(
         (f64::from(orig_hue) * (1.0 - blend_factor) + over_hue_6bit * blend_factor).round() as i32;
     let new_sat =
         (f64::from(orig_sat) * (1.0 - blend_factor) + over_sat_3bit * blend_factor).round() as i32;
-    let new_lum =
-        (f64::from(orig_lum) * (1.0 - blend_factor) + f64::from(over_lum) * blend_factor).round()
-            as i32;
+    let new_lum = (f64::from(orig_lum) * (1.0 - blend_factor) + f64::from(over_lum) * blend_factor)
+        .round() as i32;
 
-    (new_hue.clamp(0, 0x3f) << 10)
-        + (new_sat.clamp(0, 0x7) << 7)
-        + new_lum.clamp(0, 0x7f)
+    (new_hue.clamp(0, 0x3f) << 10) + (new_sat.clamp(0, 0x7) << 7) + new_lum.clamp(0, 0x7f)
 }
 
 #[cfg(test)]
@@ -526,9 +527,8 @@ mod tests {
         let expected_indices = expected
             .push_batch(
                 &[
-                    10, 20, 30, 0x1234, 255, -1, 11,
-                    138, 20, 30, 0x1234, 255, -1, 11,
-                    10, 148, 30, 0x1234, 255, -1, 11,
+                    10, 20, 30, 0x1234, 255, -1, 11, 138, 20, 30, 0x1234, 255, -1, 11, 10, 148, 30,
+                    0x1234, 255, -1, 11,
                 ],
                 &[0.0; 6],
                 &[FLAG_REUSE_VERTEX; 3],
