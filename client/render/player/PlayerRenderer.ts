@@ -1107,11 +1107,11 @@ export class PlayerRenderer {
             if (controlled) {
                 if (!this.localSceneBuf) {
                     this.localSceneBuf = new SceneBufferCls(
-                    textureLoader,
-                    textureIdIndexMap,
-                    0,
-                    createVertexBatchBuilderIfReady(),
-                );
+                        textureLoader,
+                        textureIdIndexMap,
+                        0,
+                        createVertexBatchBuilderIfReady(),
+                    );
                 }
                 resetSceneBuf(this.localSceneBuf);
                 this.localSceneBuf.addModel(model, facesAlpha);
@@ -1122,6 +1122,7 @@ export class PlayerRenderer {
                     textureLoader,
                     textureIdIndexMap,
                     model.verticesCount + 16,
+                    createVertexBatchBuilderIfReady(),
                 );
                 sceneBufA.addModel(model, facesAlpha);
                 verticesAlpha = sceneBufA.vertexBuf.byteArray();
