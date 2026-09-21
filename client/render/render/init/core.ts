@@ -50,7 +50,10 @@ import { decodeInteractionIndex } from "../../../rs/interaction/InteractionIndex
 import { getMapIndexFromTile, getMapPlaneId, getMapSquareId } from "../../../rs/map/MapFileIndex";
 import { Model } from "../../../rs/model/Model";
 import { ModelData } from "../../../rs/model/ModelData";
-import { setRustStage5StrictMode } from "../../../rs/model/RustStage5Ownership";
+import {
+    setRustStage5ForceTypeScript,
+    setRustStage5StrictMode,
+} from "../../../rs/model/RustStage5Ownership";
 import { Scene } from "../../../rs/scene/Scene";
 import { getUiScale } from "../../../ui/UiScale";
 import { ClickCrossOverlay } from "../../../ui/devoverlay/ClickCrossOverlay";
@@ -191,6 +194,7 @@ import {
     initRustRendererShadow,
     isRustPrimaryRendererActive,
 } from "../../rust/RustShadowIntegration";
+import { getRustRendererRuntimeMode } from "../../rust/RustRendererRuntime";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS, optimizeAssumingFlatsHaveSameFirstAndLastData } from "../constants";
 import { initRenderer } from "../handlers";
@@ -275,6 +279,13 @@ export async function init(host: WebGLOsrsRendererHost, ): Promise<void> {
             PicoGL.FLOAT, // float u_colorBanding;
             PicoGL.FLOAT, // float u_isNewTextureAnim;
         ]);
+
+        const forceTypeScriptStage5 =
+            getRustRendererRuntimeMode() === "off";
+        setRustStage5ForceTypeScript(forceTypeScriptStage5);
+        await host.osrsClient.workerPool.setRustStage5ForceTypeScript(
+            forceTypeScriptStage5,
+        );
 
         await host.initWaterTextures();
 
