@@ -47,7 +47,9 @@ import type {
 import { isKnownWaterTextureId } from "../water/WaterTextureIds";
 import {
     getModelInfoTextureBuilder,
+    getVertexBatchBuilderFactory,
     type ModelInfoTextureBuilder,
+    type VertexBatchBuilderFactory,
 } from "../rust/RustGeometryPreparation";
 import { NpcGeometryData } from "./NpcGeometryData";
 import { type LocGeometryData, type MinimapIcon, SdMapData } from "./SdMapData";
@@ -1200,8 +1202,14 @@ function buildNpcGeometry(
     npcInstances: NpcInstance[],
     baseTileX: number,
     baseTileY: number,
+    vertexBatchBuilderFactory: VertexBatchBuilderFactory,
 ) {
-    const npcSceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 20000);
+    const npcSceneBuf = new SceneBuffer(
+        textureLoader,
+        textureIdIndexMap,
+        20000,
+        vertexBatchBuilderFactory(),
+    );
     const npcRenderBundles = createNpcRenderBundles(
         npcModelLoader,
         basTypeLoader,
@@ -1267,6 +1275,8 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         for (let i = 0; i < textureIds.length; i++) {
             textureIdIndexMap.set(textureIds[i], i + 1);
         }
+
+        const vertexBatchBuilderFactory = await getVertexBatchBuilderFactory();
 
         const borderSize = 6;
 
@@ -1509,9 +1519,24 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
 
         // Terrain does not change for LOC_ADD_CHANGE packets. Keep it in the
         // primary mesh and put mutable non-door locs in their own mesh.
-        const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
-        const locSceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
-        const doorSceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 20000);
+        const sceneBuf = new SceneBuffer(
+            textureLoader,
+            textureIdIndexMap,
+            100000,
+            vertexBatchBuilderFactory(),
+        );
+        const locSceneBuf = new SceneBuffer(
+            textureLoader,
+            textureIdIndexMap,
+            100000,
+            vertexBatchBuilderFactory(),
+        );
+        const doorSceneBuf = new SceneBuffer(
+            textureLoader,
+            textureIdIndexMap,
+            20000,
+            vertexBatchBuilderFactory(),
+        );
         const coreSize = isInstance ? INSTANCE_SIZE : Scene.MAP_SQUARE_SIZE;
         if (!shouldLoadPartial) {
             sceneBuf.addTerrain(scene, usedBorderSize, maxLevel, coreSize, usedBorderSize);
@@ -1614,7 +1639,15 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             }
         }
         const { npcSceneBuf, npcs } = shouldLoadPartial
-            ? { npcSceneBuf: new SceneBuffer(textureLoader, textureIdIndexMap, 1), npcs: [] }
+            ? {
+                  npcSceneBuf: new SceneBuffer(
+                      textureLoader,
+                      textureIdIndexMap,
+                      1,
+                      vertexBatchBuilderFactory(),
+                  ),
+                  npcs: [],
+              }
             : buildNpcGeometry(
                   npcModelLoader,
                   basTypeLoader,
@@ -1627,6 +1660,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
                   renderPosY != null
                       ? Math.floor(renderPosY * Scene.MAP_SQUARE_SIZE)
                       : mapY * Scene.MAP_SQUARE_SIZE,
+                  vertexBatchBuilderFactory,
               );
 
         // Build per-level CSR mappings of loc IDs per interior tile (64x64 region) at tile origin.
@@ -2302,6 +2336,8 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             textureIdIndexMap.set(textureIds[i], i + 1);
         }
 
+        const vertexBatchBuilderFactory = await getVertexBatchBuilderFactory();
+
         const borderSize = 6;
         const maxPlane = Math.max(0, maxLevel | 0);
         const npcInstances = state.npcInstances.filter((instance) => {
@@ -2319,6 +2355,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             npcInstances,
             mapX * Scene.MAP_SQUARE_SIZE,
             mapY * Scene.MAP_SQUARE_SIZE,
+            vertexBatchBuilderFactory,
         );
 
         const vertices = npcSceneBuf.vertexBuf.byteArray();
