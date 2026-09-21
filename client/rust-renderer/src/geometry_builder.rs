@@ -52,7 +52,9 @@ impl VertexBatchBuilder {
         self.texture_id_map.reserve(texture_ids.len());
         for (&texture_id, &texture_index) in texture_ids.iter().zip(texture_indices) {
             if texture_id < 0 {
-                return Err(format!("texture ID map contains negative texture id {texture_id}"));
+                return Err(format!(
+                    "texture ID map contains negative texture id {texture_id}"
+                ));
             }
             if texture_index < 0 {
                 return Err(format!(
