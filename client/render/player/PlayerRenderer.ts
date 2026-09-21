@@ -445,6 +445,9 @@ export class PlayerRenderer {
     }
 
     private getPlayerGpuGeometry(ownerKey: string, geometryKey: string): PlayerGpuGeometry | undefined {
+        if (isRustPrimaryRendererActive(this.renderer)) {
+            return undefined;
+        }
         let geometry = this.playerGpuGeometryCache.get(ownerKey);
         if (geometry?.geometryKey === geometryKey) {
             this.playerGpuGeometryCache.delete(ownerKey);
@@ -1279,12 +1282,21 @@ export class PlayerRenderer {
         uploadTarget: "both" | "opaqueOnly" | "alphaOnly" | "cacheOnly" = "both",
     ): PlayerGeometryBuildResult {
         const r: any = this.renderer as any;
-        if (!r.playerInterleavedBuffer || !r.playerIndexBuffer)
+        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(this.renderer);
+        if (
+            !rustPrimaryRendererEnabled &&
+            (!r.playerInterleavedBuffer || !r.playerIndexBuffer)
+        ) {
             return { countOpaque: 0, countAlpha: 0 };
+        }
         const captureRustGeometry = isRustPlayerShadowEnabled();
         const controlled = this.isControlledPid(pid);
-        const uploadOpaque = uploadTarget === "both" || uploadTarget === "opaqueOnly";
-        const uploadAlpha = uploadTarget === "both" || uploadTarget === "alphaOnly";
+        const uploadOpaque =
+            !rustPrimaryRendererEnabled &&
+            (uploadTarget === "both" || uploadTarget === "opaqueOnly");
+        const uploadAlpha =
+            !rustPrimaryRendererEnabled &&
+            (uploadTarget === "both" || uploadTarget === "alphaOnly");
         const opaqueUploadKey = cacheKey && uploadOpaque ? `opaque:${cacheKey}` : undefined;
         const alphaUploadKey = cacheKey && uploadAlpha ? `alpha:${cacheKey}` : undefined;
         // Hit cache
