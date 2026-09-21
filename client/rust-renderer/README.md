@@ -113,7 +113,11 @@ Rust-primary is now the default. `DrawBackend.ts` is removed, and primary mode n
 
 Stage 5 has moved well beyond scaffolding. The production Rust path now owns packed-vertex encoding and deduplication, model-face filtering, model face geometry construction, HSL override blending, terrain triangle construction and UV generation, texture-ID-to-resident-layer mapping, used-texture residency tracking, model hashing, model-info packet construction and draw-list construction. Static grouping can use Rust opaque/transparent face counts without expanding every face into TypeScript objects, and animated/merged models reuse raw Rust face packets directly.
 
-TypeScript still owns cache decoding, scene traversal/grouping, animation and pose selection, skeletal/legacy model transforms, contour-ground CPU transforms where their semantics are part of model preparation, and the worker/main-thread transport boundary. A fully WASM-resident geometry pipeline would require moving more of those transforms and/or changing the worker/GPU ownership architecture so packed geometry does not leave WASM memory before upload.
+Rust/WASM now also owns the model-preparation math that was previously left in TypeScript: skeletal skinning, legacy animation transforms, basic rotate/translate/scale transforms, contour-ground types 1-5, model mirroring, complex texture-coordinate projection, vertex/face normal generation and final face lighting. The TypeScript bridge retains the original algorithms as compatibility fallback, materializes Rust normal packets back into the existing `VertexNormal`/`FaceNormal` objects required by `mergeNormals()`, and flattens merged normals only at the Rust lighting boundary.
+
+The Stage 5 CI oracle is intentionally independent from the WebGL renderer parity path. It compares packaged WASM directly against JavaScript reference semantics for the full 2048-angle OSRS rotation table, representative combined legacy rotations, contour types 1-5, weighted skeletal matrix accumulation, UV mapping types 1-3 in all four directions, normal generation and face-lighting special cases. Separate ownership tests fail on unexpected fallback, and a direct `ModelData.light()` integration test proves Rust normals/lighting are used in the production model path.
+
+TypeScript still owns cache decoding, scene traversal/grouping, simulation and animation/pose selection, construction of animation/bone/label inputs, compatibility fallback code and the worker/main-thread transport boundary. A fully WASM-resident geometry pipeline would require changing that transport/ownership architecture so decoded model state and packed geometry can remain resident through GPU upload instead of crossing JS/WASM typed-array boundaries.
 
 Those remaining Stage 5 items are optimization and architectural cleanup. They are not missing scene-renderer capabilities.
 
@@ -126,8 +130,8 @@ The remaining pre-merge gate is representative **human in-game visual acceptance
 Follow-up hardening, not cutover blockers:
 
 - eliminate duplicated Pico/Rust GLSL semantics with generated/shared shader sources or another drift-proof contract
-- continue Stage 5 by moving skeletal/legacy transforms and selected contour preparation into Rust where doing so preserves cache/model semantics
-- reduce worker/JS/WASM typed-array churn and, if the architecture is changed accordingly, keep packed geometry resident through GPU upload
+- continue Stage 5 by moving more animation/input preparation and scene grouping across the Rust boundary where doing so preserves cache/model semantics
+- reduce worker/JS/WASM typed-array churn and, if the architecture is changed accordingly, keep decoded/prepared geometry resident through GPU upload
 - retire the legacy Pico scene renderer only after the fallback window is no longer desired
 
 The automated fallback smoke contract is covered: deferred terrain/loc/door/ground Pico draw calls remain unmaterialized during primary operation and materialize exactly once through their real legacy accessors. Eager compilation of the fallback-only Pico scene programs is an intentional recovery policy, not an unfinished Stage 4 task.
