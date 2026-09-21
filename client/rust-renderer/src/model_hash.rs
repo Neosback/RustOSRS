@@ -21,10 +21,22 @@ pub fn xxhash32(bytes: &[u8], seed: u32) -> u32 {
         let mut v4 = seed.wrapping_sub(PRIME1);
 
         while offset + 16 <= bytes.len() {
-            v1 = round(v1, u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()));
-            v2 = round(v2, u32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap()));
-            v3 = round(v3, u32::from_le_bytes(bytes[offset + 8..offset + 12].try_into().unwrap()));
-            v4 = round(v4, u32::from_le_bytes(bytes[offset + 12..offset + 16].try_into().unwrap()));
+            v1 = round(
+                v1,
+                u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()),
+            );
+            v2 = round(
+                v2,
+                u32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap()),
+            );
+            v3 = round(
+                v3,
+                u32::from_le_bytes(bytes[offset + 8..offset + 12].try_into().unwrap()),
+            );
+            v4 = round(
+                v4,
+                u32::from_le_bytes(bytes[offset + 12..offset + 16].try_into().unwrap()),
+            );
             offset += 16;
         }
 
@@ -104,15 +116,7 @@ mod tests {
 
     #[test]
     fn model_hash_uses_typescript_part_order_and_little_endian_words() {
-        let parts: [&[i32]; 7] = [
-            &[1, -2],
-            &[3],
-            &[4],
-            &[5, 6],
-            &[7],
-            &[8],
-            &[9, -1],
-        ];
+        let parts: [&[i32]; 7] = [&[1, -2], &[3], &[4], &[5, 6], &[7], &[8], &[9, -1]];
         let mut expected = Vec::new();
         for part in parts {
             for value in part {
