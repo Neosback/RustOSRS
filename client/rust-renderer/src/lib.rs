@@ -9,6 +9,7 @@
 //! into this crate.
 
 pub mod draw;
+pub mod draw_builder;
 pub mod geometry_builder;
 pub mod height_map;
 pub mod material;
@@ -22,6 +23,7 @@ pub mod static_scene;
 mod webgl;
 
 pub use draw::{DrawRange, DrawStats, filter_draw_ranges};
+pub use draw_builder::{PreparedDrawList, prepare_draw_list};
 pub use geometry_builder::VertexBatchBuilder;
 pub use height_map::HeightMap;
 pub use material::{Material, decode_material};
