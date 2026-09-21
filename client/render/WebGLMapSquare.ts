@@ -195,6 +195,32 @@ type LegacySceneBatchGpuResources = {
     modelInfoTextureInteractLodAlpha: Texture;
 };
 
+function deleteLegacySceneBatchGpuResources(
+    mapX: number,
+    mapY: number,
+    label: string,
+    resources: LegacySceneBatchGpuResources | undefined,
+): void {
+    if (!resources) return;
+    deleteMapSquareResource(mapX, mapY, `${label}.vertexArray`, resources.vertexArray);
+    deleteMapSquareResource(
+        mapX,
+        mapY,
+        `${label}.interleavedBuffer`,
+        resources.interleavedBuffer,
+    );
+    deleteMapSquareResource(mapX, mapY, `${label}.indexBuffer`, resources.indexBuffer);
+    resources.modelInfoTexture.delete();
+    resources.modelInfoTextureAlpha.delete();
+    resources.modelInfoTextureLod.delete();
+    resources.modelInfoTextureLodAlpha.delete();
+    resources.modelInfoTextureInteract.delete();
+    resources.modelInfoTextureInteractAlpha.delete();
+    resources.modelInfoTextureInteractLod.delete();
+    resources.modelInfoTextureInteractLodAlpha.delete();
+}
+
+
 type DeferredGeometryResources = {
     legacyGpu?: LegacySceneBatchGpuResources;
     drawCall: AnyDrawCallRange;
@@ -636,6 +662,7 @@ export class WebGLMapSquare {
     /** Static loc ambient sound emitters; built lazily by the renderer, cleared on scene data refresh. */
     ambientSoundEmitters?: { locId: number; x: number; y: number; level: number; rot: number }[];
     private terrainDrawRangeGroups: DrawRangeGroups;
+    private terrainLegacyGpu?: LegacySceneBatchGpuResources;
     private loc?: LocGeometryResources;
     private locDrawRangeGroups?: DrawRangeGroups;
     private locDrawRangePlanes?: NonNullable<LocGeometryResources["planes"]>;
