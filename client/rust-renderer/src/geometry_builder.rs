@@ -66,10 +66,9 @@ impl VertexBatchBuilder {
 
         let mut indices = Vec::with_capacity(vertex_count);
 
-        for index in 0..vertex_count {
+        for (index, &record_flags) in flags.iter().enumerate() {
             let integer_offset = index * INTEGER_FIELD_STRIDE;
             let uv_offset = index * UV_FIELD_STRIDE;
-            let record_flags = flags[index];
 
             if record_flags & !(FLAG_REUSE_VERTEX | FLAG_PRIORITY_IS_PACKED) != 0 {
                 return Err(format!(
