@@ -1,3 +1,4 @@
+import { isRustStage5ForceTypeScript } from "../../rs/model/RustStage5Ownership";
 import {
     registerRustModelFaceLighter,
     registerRustModelNormalCalculator,
@@ -224,6 +225,9 @@ export function getRustRendererModuleUrl(): string {
 }
 
 export async function loadRustRendererModule(): Promise<RustRendererWebModule> {
+    if (isRustStage5ForceTypeScript()) {
+        throw new Error("Rust Stage 5 is disabled by explicit TypeScript compatibility mode");
+    }
     if (!modulePromise) {
         modulePromise = import(
             /* webpackIgnore: true */
