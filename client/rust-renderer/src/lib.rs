@@ -20,6 +20,7 @@ pub mod model_transform;
 pub mod packed_vertex;
 pub mod packet;
 pub mod static_scene;
+pub mod texture_mapper;
 
 #[cfg(target_arch = "wasm32")]
 mod webgl;
@@ -36,6 +37,7 @@ pub use model_transform::skin_skeletal_vertices;
 pub use packed_vertex::{PackedVertex, VertexInput};
 pub use packet::{RendererPacketError, validate_draw_ranges, validate_geometry};
 pub use static_scene::{StaticMapState, validate_static_scene_packet};
+pub use texture_mapper::compute_model_uvs;
 
 #[cfg(target_arch = "wasm32")]
 pub use geometry_builder::RustVertexBufferBuilder;
