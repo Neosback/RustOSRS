@@ -523,10 +523,19 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             host.colorTarget = undefined;
             host.depthTarget?.delete();
             host.depthTarget = undefined;
+            host.textureFramebuffer?.delete();
+            host.textureFramebuffer = undefined;
+            host.textureColorTarget?.delete();
+            host.textureColorTarget = undefined;
+            host.textureDepthTarget?.delete();
+            host.textureDepthTarget = undefined;
         } else {
             host.syncSceneFramebufferSize();
             if (host.needsFramebufferUpdate || !host.framebuffer) {
                 host.initFramebuffer();
+            }
+            if (!host.textureFramebuffer) {
+                host.initTextureFramebuffer();
             }
         }
 
@@ -536,8 +545,8 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             !host.npcProgram ||
             !host.sceneUniformBuffer ||
             (!rustPrimaryRendererEnabled && !host.framebuffer) ||
-            !host.textureFramebuffer ||
-            !host.frameDrawCall ||
+            (!rustPrimaryRendererEnabled && !host.textureFramebuffer) ||
+            (!rustPrimaryRendererEnabled && !host.frameDrawCall) ||
             !host.textureArray ||
             !host.textureMaterials ||
             !host.waterTextures
@@ -573,16 +582,22 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         }
 
         const directTextureScenePass =
-            rustPrimaryRendererEnabled
-            || host.shouldUseDirectTextureScenePass();
-        const sceneFramebuffer = directTextureScenePass
-            ? host.textureFramebuffer!
-            : host.framebuffer!;
+            !rustPrimaryRendererEnabled
+            && host.shouldUseDirectTextureScenePass();
+        const sceneFramebuffer = rustPrimaryRendererEnabled
+            ? undefined
+            : directTextureScenePass
+                ? host.textureFramebuffer!
+                : host.framebuffer!;
 
         host.app.enable(PicoGL.DEPTH_TEST);
         host.app.depthMask(true);
 
-        host.app.drawFramebuffer(sceneFramebuffer);
+        if (sceneFramebuffer) {
+            host.app.drawFramebuffer(sceneFramebuffer);
+        } else {
+            host.app.defaultDrawFramebuffer();
+        }
         host.app.viewport(0, 0, host.sceneRenderWidth | 0, host.sceneRenderHeight | 0);
 
         profiler.startPhase("tick");
@@ -618,7 +633,9 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             sceneViewport.width,
             sceneViewport.height,
         );
-        host.clearSceneFramebuffer(sceneFramebufferViewport);
+        if (!rustPrimaryRendererEnabled) {
+            host.clearSceneFramebuffer(sceneFramebufferViewport);
+        }
         // keep CS2-visible viewport zoom in sync with the viewport widget size
         // (Client.viewportZoom; i.e., Rasterizer3D.get3dZoom()) so scripts and widget models scale correctly.
         try {
@@ -795,7 +812,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             rustPixelCaptureRequested
             && !rustDynamicParityEnabled
             && !rustOverlayParityEnabled
-                ? capturePicoStaticReference(host, sceneFramebuffer)
+                ? capturePicoStaticReference(host, sceneFramebuffer!)
                 : undefined;
         const rustDynamicPixelCaptureRequested =
             rustPixelCaptureRequested
@@ -873,7 +890,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         host.renderTransparentPlayerPass(playerDataTextureIndex, playerDataTexture);
         const rustDynamicPixelReference =
             rustDynamicPixelCaptureRequested
-                ? capturePicoSceneReference(host, sceneFramebuffer)
+                ? capturePicoSceneReference(host, sceneFramebuffer!)
                 : undefined;
         finishRustActorShadowFrame(host, rustDynamicPixelReference);
         transparentPlayerIndices = Math.max(0, host._frameIndices - passStartIndices);
@@ -887,7 +904,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             rustPixelCaptureRequested
             && rustOverlayParityEnabled
             && (!rustDynamicParityEnabled || rustFullDynamicParityEnabled)
-                ? capturePicoSceneReference(host, sceneFramebuffer)
+                ? capturePicoSceneReference(host, sceneFramebuffer!)
                 : undefined;
         finishRustSceneOverlayShadowFrame(
             host,
@@ -897,7 +914,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         // Can't sample from the scene renderbuffer, so only blit when the scene pass
         // didn't already render directly into the texture framebuffer.
         profiler.startPhase("blit");
-        if (!directTextureScenePass) {
+        if (!rustPrimaryRendererEnabled && !directTextureScenePass) {
             host.app.readFramebuffer(host.framebuffer);
             host.app.drawFramebuffer(host.textureFramebuffer);
             host.gl.readBuffer(PicoGL.COLOR_ATTACHMENT0);
@@ -1449,7 +1466,9 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
                     },
                     helpers: host.getOverlayHelpers(),
                 });
-                host.overlayManager?.draw(RenderPhase.ToFrameTexture);
+                if (!rustPrimaryRendererEnabled) {
+                    host.overlayManager?.draw(RenderPhase.ToFrameTexture);
+                }
             }
         } catch {}
         profiler.endPhase();
