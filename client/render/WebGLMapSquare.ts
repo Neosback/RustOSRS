@@ -1213,25 +1213,25 @@ export class WebGLMapSquare {
         readonly timeLoaded: number,
         readonly frameLoaded: number,
 
-        public interleavedBuffer: VertexBuffer,
-        public indexBuffer: VertexBuffer,
-        public vertexArray: VertexArray,
+        public interleavedBuffer: VertexBuffer | undefined,
+        public indexBuffer: VertexBuffer | undefined,
+        public vertexArray: VertexArray | undefined,
 
         readonly heightMapTexture: Texture,
         readonly waterMaskTexture: Texture,
 
         // Model info
-        public modelInfoTexture: Texture,
-        public modelInfoTextureAlpha: Texture,
+        public modelInfoTexture: Texture | undefined,
+        public modelInfoTextureAlpha: Texture | undefined,
 
-        public modelInfoTextureLod: Texture,
-        public modelInfoTextureLodAlpha: Texture,
+        public modelInfoTextureLod: Texture | undefined,
+        public modelInfoTextureLodAlpha: Texture | undefined,
 
-        public modelInfoTextureInteract: Texture,
-        public modelInfoTextureInteractAlpha: Texture,
+        public modelInfoTextureInteract: Texture | undefined,
+        public modelInfoTextureInteractAlpha: Texture | undefined,
 
-        public modelInfoTextureInteractLod: Texture,
-        public modelInfoTextureInteractLodAlpha: Texture,
+        public modelInfoTextureInteractLod: Texture | undefined,
+        public modelInfoTextureInteractLodAlpha: Texture | undefined,
 
         // Draw calls
         public drawCall: AnyDrawCallRange,
@@ -1579,28 +1579,31 @@ export class WebGLMapSquare {
         releaseDrawCallRange(this.drawCallInteractLod);
         releaseDrawCallRange(this.drawCallInteractLodAlpha);
         releaseDrawCallRange(this.drawCallNpc);
-        this.vertexArray.delete();
-        this.interleavedBuffer.delete();
-        this.indexBuffer.delete();
+        deleteLegacySceneBatchGpuResources(
+            this.mapX,
+            this.mapY,
+            "terrain",
+            this.terrainLegacyGpu,
+        );
+        this.terrainLegacyGpu = undefined;
+        this.interleavedBuffer = undefined;
+        this.indexBuffer = undefined;
+        this.vertexArray = undefined;
+        this.modelInfoTexture = undefined;
+        this.modelInfoTextureAlpha = undefined;
+        this.modelInfoTextureLod = undefined;
+        this.modelInfoTextureLodAlpha = undefined;
+        this.modelInfoTextureInteract = undefined;
+        this.modelInfoTextureInteractAlpha = undefined;
+        this.modelInfoTextureInteractLod = undefined;
+        this.modelInfoTextureInteractLodAlpha = undefined;
+
         this.npcVertexArray?.delete();
         this.npcInterleavedBuffer?.delete();
         this.npcIndexBuffer?.delete();
 
         this.heightMapTexture.delete();
         this.waterMaskTexture.delete();
-
-        // Model info
-        this.modelInfoTexture.delete();
-        this.modelInfoTextureAlpha.delete();
-
-        this.modelInfoTextureLod.delete();
-        this.modelInfoTextureLodAlpha.delete();
-
-        this.modelInfoTextureInteract.delete();
-        this.modelInfoTextureInteractAlpha.delete();
-
-        this.modelInfoTextureInteractLod.delete();
-        this.modelInfoTextureInteractLodAlpha.delete();
 
         this.clearGroundItemGeometry();
         this.clearLocGeometry();
