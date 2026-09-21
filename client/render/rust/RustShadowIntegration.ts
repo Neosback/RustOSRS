@@ -478,6 +478,13 @@ function attachRustContextRecovery(
             enabled: false,
             failed: false,
         });
+
+        // The old WebGL context is not required for recovery. Rebuild onto a
+        // fresh Rust canvas on the next task so browsers that never emit
+        // webglcontextrestored still return to Rust-primary rendering.
+        setTimeout(() => {
+            void recoverRustRenderer(host, runtime);
+        }, 0);
     };
 
     const onContextRestored = (): void => {
