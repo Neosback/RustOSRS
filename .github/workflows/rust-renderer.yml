@@ -86,7 +86,8 @@ jobs:
       - name: Production client build
         env:
           CI: "false"
-        run: yarn build:pico
+          NODE_ENV: "production"
+        run: yarn exec craco build
       - name: Check renderer ABI alignment
         run: yarn check:rust-renderer-abi
       - name: Guard legacy shader parity reference
