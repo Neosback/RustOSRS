@@ -74,9 +74,13 @@ export function materializeDrawCallRange(drawCallRange: AnyDrawCallRange): DrawC
             throw new Error("Legacy Pico draw call cannot be materialized");
         }
         drawCallRange.drawCall = materialize();
-        drawCallRange.materializeDrawCall = undefined;
     }
     return drawCallRange as DrawCallRange;
+}
+
+export function dematerializeDrawCallRange(drawCallRange: AnyDrawCallRange | undefined): void {
+    if (!drawCallRange?.materializeDrawCall) return;
+    drawCallRange.drawCall = undefined;
 }
 
 export function releaseDrawCallRange(drawCallRange: AnyDrawCallRange | undefined): void {
@@ -791,7 +795,9 @@ export class WebGLMapSquare {
             ensureLegacyMapTextures(legacyMapTextureState);
 
         const ensureTerrainLegacyGpu = (): LegacySceneBatchGpuResources => {
-            if (terrainLegacyGpu) return terrainLegacyGpu;
+            const existing = loadedMapSquare?.terrainLegacyGpu
+                ?? (!loadedMapSquare ? terrainLegacyGpu : undefined);
+            if (existing) return existing;
 
             const interleavedBuffer = app.createInterleavedBuffer(12, mapData.vertices);
             const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.indices);
@@ -964,7 +970,9 @@ export class WebGLMapSquare {
         let npcVertexArray: VertexArray | undefined;
 
         const ensureNpcLegacyGpu = (): VertexArray => {
-            if (npcVertexArray) return npcVertexArray;
+            const existing = loadedMapSquare?.npcVertexArray
+                ?? (!loadedMapSquare ? npcVertexArray : undefined);
+            if (existing) return existing;
 
             npcInterleavedBuffer = app.createInterleavedBuffer(12, mapData.npcVertices);
             npcIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.npcIndices);
@@ -1670,6 +1678,91 @@ export class WebGLMapSquare {
         const y = tileY + this.borderSize;
         if (!cm.isWithinBounds(x, y)) return 0;
         return cm.getFlag(x, y) | 0;
+    }
+
+    releaseLegacySceneGpuResources(): void {
+        const dematerializeBatch = (resources: DeferredGeometryResources | undefined): void => {
+            if (!resources) return;
+            dematerializeDrawCallRange(resources.drawCall);
+            dematerializeDrawCallRange(resources.drawCallAlpha);
+            dematerializeDrawCallRange(resources.drawCallLod);
+            dematerializeDrawCallRange(resources.drawCallLodAlpha);
+            dematerializeDrawCallRange(resources.drawCallInteract);
+            dematerializeDrawCallRange(resources.drawCallInteractAlpha);
+            dematerializeDrawCallRange(resources.drawCallInteractLod);
+            dematerializeDrawCallRange(resources.drawCallInteractLodAlpha);
+        };
+
+        dematerializeDrawCallRange(this.drawCall);
+        dematerializeDrawCallRange(this.drawCallAlpha);
+        dematerializeDrawCallRange(this.drawCallLod);
+        dematerializeDrawCallRange(this.drawCallLodAlpha);
+        dematerializeDrawCallRange(this.drawCallInteract);
+        dematerializeDrawCallRange(this.drawCallInteractAlpha);
+        dematerializeDrawCallRange(this.drawCallInteractLod);
+        dematerializeDrawCallRange(this.drawCallInteractLodAlpha);
+
+        deleteLegacySceneBatchGpuResources(
+            this.mapX,
+            this.mapY,
+            "terrain.primary-resume",
+            this.terrainLegacyGpu,
+        );
+        this.terrainLegacyGpu = undefined;
+        this.interleavedBuffer = undefined;
+        this.indexBuffer = undefined;
+        this.vertexArray = undefined;
+        this.modelInfoTexture = undefined;
+        this.modelInfoTextureAlpha = undefined;
+        this.modelInfoTextureLod = undefined;
+        this.modelInfoTextureLodAlpha = undefined;
+        this.modelInfoTextureInteract = undefined;
+        this.modelInfoTextureInteractAlpha = undefined;
+        this.modelInfoTextureInteractLod = undefined;
+        this.modelInfoTextureInteractLodAlpha = undefined;
+
+        dematerializeDrawCallRange(this.drawCallNpc);
+        deleteMapSquareResource(
+            this.mapX,
+            this.mapY,
+            "npc.vertexArray.primary-resume",
+            this.npcVertexArray,
+        );
+        deleteMapSquareResource(
+            this.mapX,
+            this.mapY,
+            "npc.interleavedBuffer.primary-resume",
+            this.npcInterleavedBuffer,
+        );
+        deleteMapSquareResource(
+            this.mapX,
+            this.mapY,
+            "npc.indexBuffer.primary-resume",
+            this.npcIndexBuffer,
+        );
+        this.npcVertexArray = undefined;
+        this.npcInterleavedBuffer = undefined;
+        this.npcIndexBuffer = undefined;
+
+        const releaseBatch = (
+            label: string,
+            resources: DeferredGeometryResources | undefined,
+        ): void => {
+            if (!resources) return;
+            dematerializeBatch(resources);
+            deleteLegacySceneBatchGpuResources(
+                this.mapX,
+                this.mapY,
+                label,
+                resources.legacyGpu,
+            );
+            resources.legacyGpu = undefined;
+        };
+
+        releaseBatch("loc.primary-resume", this.loc);
+        releaseBatch("door.primary-resume", this.door);
+        releaseBatch("ground.primary-resume", this.groundItems);
+        deleteLegacyMapTextures(this.legacyMapTextureState);
     }
 
     delete() {
