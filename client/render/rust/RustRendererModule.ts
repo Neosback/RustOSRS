@@ -8,6 +8,11 @@ export interface RustVertexBufferBuilderWasm {
         uvFields: Float32Array,
         flags: Uint8Array,
     ): Uint32Array;
+    set_texture_id_map(
+        textureIds: Int32Array,
+        textureIndices: Int32Array,
+    ): void;
+    used_texture_ids(): Int32Array;
     push_terrain_tile(
         verticesX: Int32Array,
         verticesY: Int32Array,
@@ -19,7 +24,6 @@ export interface RustVertexBufferBuilderWasm {
         colorsB: Int32Array,
         colorsC: Int32Array,
         textureIds: Int32Array,
-        textureIndices: Int32Array,
         tileX: number,
         tileZ: number,
         offsetX: number,
