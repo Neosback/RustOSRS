@@ -8,6 +8,7 @@ import { resolveHeightSamplePlaneForLocal } from "../../game/scene/PlaneResolver
 import { DrawRange, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
 import type { WebGLMapSquare } from "../WebGLMapSquare";
+import { createVertexBatchBuilderIfReady } from "../rust/RustGeometryPreparation";
 import {
     ContourGroundType,
     type DrawCommand,
@@ -107,7 +108,12 @@ export function buildGroundItemGeometry(
         return undefined;
     }
 
-    const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, filtered.length * 64);
+    const sceneBuf = new SceneBuffer(
+        textureLoader,
+        textureIdIndexMap,
+        filtered.length * 64,
+        createVertexBatchBuilderIfReady(),
+    );
     const mapBaseX = map.mapX * Scene.MAP_SQUARE_SIZE;
     const mapBaseY = map.mapY * Scene.MAP_SQUARE_SIZE;
 
