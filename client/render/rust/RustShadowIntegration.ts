@@ -522,9 +522,7 @@ function syncCurrentActorData(
     runtime: RustRendererShadowRuntime,
 ): void {
     const height = host.actorDataLastTexHeight | 0;
-    const currentTexture =
-        host.actorDataTextures[host.actorDataCurrentIndex];
-    if (height <= 0 || !currentTexture) return;
+    if (height <= 0) return;
 
     const width = 16;
     const requiredU16 = width * height * 4;
