@@ -1985,8 +1985,9 @@ export class PlayerRenderer {
         actorDataTexture: Texture | undefined,
     ): void {
         const r = this.renderer;
+        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(r);
         if (!actorDataTexture) return;
-        if (!this.drawCall || !this.drawRanges) return;
+        if ((!rustPrimaryRendererEnabled && !this.drawCall) || !this.drawRanges) return;
 
         const baseOffsetPlayer = map.playerDataTextureOffsets[actorDataTextureIndex];
         if (baseOffsetPlayer === -1) return;
@@ -2184,25 +2185,27 @@ export class PlayerRenderer {
             group.instances.push({ slot, pid, mode });
         }
 
-        // Batched rendering: process each batch group through the active draw backend.
-        const draw = r.configureDrawCall(this.drawCall as any as DrawCall);
+        // Batched rendering: primary keeps only CPU geometry/state; legacy modes
+        // retain the Pico draw call for fallback/parity.
+        const draw = rustPrimaryRendererEnabled
+            ? undefined
+            : r.configureDrawCall(this.drawCall as any as DrawCall);
         const playerEcs = r.osrsClient?.playerEcs;
         const playerDeckH = r.getWorldEntityDeckHeight(0, 0);
         const playerMapPos = vec2.fromValues(map.renderPosX, map.renderPosY);
-        draw.uniform("u_mapPos", playerMapPos)
-            .uniform("u_npcDataOffset", baseOffsetPlayer)
-            .uniform("u_modelYOffset", r.playerYOffset)
-            .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-            .texture("u_npcDataTexture", actorDataTexture)
-            .texture("u_heightMap", map.heightMapTexture)
-            .uniform("u_sceneBorderSize", map.borderSize);
+        if (draw) {
+            draw.uniform("u_mapPos", playerMapPos)
+                .uniform("u_npcDataOffset", baseOffsetPlayer)
+                .uniform("u_modelYOffset", r.playerYOffset)
+                .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                .texture("u_npcDataTexture", actorDataTexture)
+                .texture("u_heightMap", map.heightMapTexture)
+                .uniform("u_sceneBorderSize", map.borderSize);
 
-        // Player models use the same winding as terrain/NPC geometry. Respect
-        // the renderer's culling setting here; rendering both sides exposes
-        // internal leg faces as dark triangles when a player is lifted above
-        // the floor.
-        if (r.cullBackFace) r.app.enable(PicoGL.CULL_FACE);
-        else r.app.disable(PicoGL.CULL_FACE);
+            // Player models use the same winding as terrain/NPC geometry.
+            if (r.cullBackFace) r.app.enable(PicoGL.CULL_FACE);
+            else r.app.disable(PicoGL.CULL_FACE);
+        }
 
         // Process each batch group
         for (const [batchKey, group] of this.batchGroups) {
@@ -2211,8 +2214,10 @@ export class PlayerRenderer {
             // player models retain back-face culling to avoid visible internals.
             const rustCullBackFace =
                 !group.appearance.firstPersonArmsOnly && !!r.cullBackFace;
-            if (rustCullBackFace) r.app.enable(PicoGL.CULL_FACE);
-            else r.app.disable(PicoGL.CULL_FACE);
+            if (draw) {
+                if (rustCullBackFace) r.app.enable(PicoGL.CULL_FACE);
+                else r.app.disable(PicoGL.CULL_FACE);
+            }
             if (group.instances.length === 0) continue;
 
             const baseRec = this.ensureBaseForAppearance(group.appearance);
@@ -2289,14 +2294,16 @@ export class PlayerRenderer {
                               .texture("u_heightMap", map.heightMapTexture)
                               .uniform("u_sceneBorderSize", map.borderSize)
                         : draw;
-                    drawPlayerSlots(
-                        playerDraw,
-                        r.playerSlotBuffer!,
-                        this.playerSlotScratch,
-                        slots,
-                        counts.countOpaque | 0,
-                        !isRustPrimaryRendererActive(r),
-                    );
+                    if (playerDraw && r.playerSlotBuffer) {
+                        drawPlayerSlots(
+                            playerDraw,
+                            r.playerSlotBuffer,
+                            this.playerSlotScratch,
+                            slots,
+                            counts.countOpaque | 0,
+                            true,
+                        );
+                    }
                     if (counts.opaqueVertices && counts.opaqueIndices) {
                         mirrorRustPlayerGeometry(
                             r,
@@ -2344,16 +2351,20 @@ export class PlayerRenderer {
                     playerWorldEntityTransform =
                         r.worldEntityAnimator?.getTransform(wvId)
                         ?? WebGLMapSquare.IDENTITY_MAT4;
-                    draw.uniform("u_modelYOffset", playerModelYOffset).uniform(
-                        "u_worldEntityTransform",
-                        playerWorldEntityTransform,
-                    );
+                    if (draw) {
+                        if (draw) {
+                            draw.uniform("u_modelYOffset", playerModelYOffset).uniform(
+                                "u_worldEntityTransform",
+                                playerWorldEntityTransform,
+                            );
+                        }
+                    }
                 }
 
-                // Use drawIdOverride since gl_DrawID will be 0 for single-range draws
-                draw.uniform("u_drawIdOverride", inst.slot | 0);
-                (draw as any).drawRanges([0, counts.countOpaque | 0, 1]);
-                if (!isRustPrimaryRendererActive(r)) {
+                // Use drawIdOverride since gl_DrawID will be 0 for single-range legacy draws.
+                if (draw) {
+                    draw.uniform("u_drawIdOverride", inst.slot | 0);
+                    (draw as any).drawRanges([0, counts.countOpaque | 0, 1]);
                     draw.draw();
                 }
                 if (counts.opaqueVertices && counts.opaqueIndices) {
@@ -2373,16 +2384,16 @@ export class PlayerRenderer {
                 }
 
                 // Restore overworld uniforms after WE player draw
-                if (wvId >= 0) {
+                if (wvId >= 0 && draw) {
                     draw.uniform("u_modelYOffset", r.playerYOffset).uniform(
                         "u_worldEntityTransform",
                         WebGLMapSquare.IDENTITY_MAT4,
                     );
                 }
             }
-            draw.uniform("u_drawIdOverride", -1); // Reset
+            if (draw) draw.uniform("u_drawIdOverride", -1); // Reset
         }
-        if (r.cullBackFace) r.app.enable(PicoGL.CULL_FACE);
+        if (draw && r.cullBackFace) r.app.enable(PicoGL.CULL_FACE);
     }
 
     /**
@@ -2393,10 +2404,15 @@ export class PlayerRenderer {
         playerDataTexture: Texture | undefined,
     ): void {
         const r = this.renderer;
-        if (!playerDataTexture || !this.drawCallAlpha || !this.drawRangesAlpha) {
+        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(r);
+        if (
+            !playerDataTexture ||
+            (!rustPrimaryRendererEnabled && !this.drawCallAlpha) ||
+            !this.drawRangesAlpha
+        ) {
             return;
         }
-        const drawCallAlpha = this.drawCallAlpha as DrawCall;
+        const drawCallAlpha = this.drawCallAlpha as DrawCall | undefined;
         const tex = playerDataTexture as Texture;
 
         // Use dynamic alpha geometry when enabled, otherwise cycle pre-baked alpha ranges
@@ -2574,20 +2590,25 @@ export class PlayerRenderer {
             }
             if (alphaBatchGroups.size === 0) continue;
 
-            // Render batched alpha groups.
-            const draw = r.configureDrawCall(this.drawCallAlpha as any as DrawCall);
+            // Render batched alpha groups. Rust-primary keeps this CPU-only.
+            const draw =
+                !rustPrimaryRendererEnabled && drawCallAlpha
+                    ? r.configureDrawCall(drawCallAlpha)
+                    : undefined;
             const playerEcsAlpha = r.osrsClient?.playerEcs;
             const alphaDeckH = r.getWorldEntityDeckHeight(0, 0);
             const alphaMapPos = vec2.fromValues(map.renderPosX, map.renderPosY);
-            draw.uniform("u_mapPos", alphaMapPos)
-                .uniform("u_npcDataOffset", baseOffset)
-                .uniform("u_modelYOffset", r.playerYOffset)
-                .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                .texture("u_npcDataTexture", playerDataTexture)
-                .texture("u_heightMap", map.heightMapTexture)
-                .uniform("u_sceneBorderSize", map.borderSize);
+            if (draw) {
+                draw.uniform("u_mapPos", alphaMapPos)
+                    .uniform("u_npcDataOffset", baseOffset)
+                    .uniform("u_modelYOffset", r.playerYOffset)
+                    .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                    .texture("u_npcDataTexture", playerDataTexture)
+                    .texture("u_heightMap", map.heightMapTexture)
+                    .uniform("u_sceneBorderSize", map.borderSize);
 
-            r.app.disable(PicoGL.CULL_FACE);
+                r.app.disable(PicoGL.CULL_FACE);
+            }
 
             for (const [batchKey, group] of alphaBatchGroups) {
                 if (group.instances.length === 0) continue;
@@ -2659,14 +2680,16 @@ export class PlayerRenderer {
                                   .texture("u_heightMap", map.heightMapTexture)
                                   .uniform("u_sceneBorderSize", map.borderSize)
                             : draw;
-                        drawPlayerSlots(
-                            playerDraw,
-                            r.playerSlotBuffer!,
-                            this.playerSlotScratch,
-                            slots,
-                            counts.countAlpha | 0,
-                            !isRustPrimaryRendererActive(r),
-                        );
+                        if (playerDraw && r.playerSlotBuffer) {
+                            drawPlayerSlots(
+                                playerDraw,
+                                r.playerSlotBuffer,
+                                this.playerSlotScratch,
+                                slots,
+                                counts.countAlpha | 0,
+                                true,
+                            );
+                        }
                         if (counts.alphaVertices && counts.alphaIndices) {
                             mirrorRustPlayerGeometry(
                                 r,
@@ -2720,10 +2743,10 @@ export class PlayerRenderer {
                         );
                     }
 
-                    // Use drawIdOverride since gl_DrawID will be 0 for single-range draws
-                    draw.uniform("u_drawIdOverride", inst.slot | 0);
-                    (draw as any).drawRanges([0, counts.countAlpha | 0, 1]);
-                    if (!isRustPrimaryRendererActive(r)) {
+                    // Use drawIdOverride since gl_DrawID will be 0 for single-range legacy draws.
+                    if (draw) {
+                        draw.uniform("u_drawIdOverride", inst.slot | 0);
+                        (draw as any).drawRanges([0, counts.countAlpha | 0, 1]);
                         draw.draw();
                     }
                     if (counts.alphaVertices && counts.alphaIndices) {
@@ -2743,16 +2766,16 @@ export class PlayerRenderer {
                     }
 
                     // Restore overworld uniforms after WE player draw
-                    if (wvIdAlpha >= 0) {
+                    if (wvIdAlpha >= 0 && draw) {
                         draw.uniform("u_modelYOffset", r.playerYOffset).uniform(
                             "u_worldEntityTransform",
                             WebGLMapSquare.IDENTITY_MAT4,
                         );
                     }
                 }
-                draw.uniform("u_drawIdOverride", -1); // Reset
+                if (draw) draw.uniform("u_drawIdOverride", -1); // Reset
             }
-            if (r.cullBackFace) r.app.enable(PicoGL.CULL_FACE);
+            if (draw && r.cullBackFace) r.app.enable(PicoGL.CULL_FACE);
         }
     }
 
