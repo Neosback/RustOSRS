@@ -6,6 +6,7 @@ import { blendLight } from "../util/ColorUtil";
 import { FaceNormal } from "./FaceNormal";
 import { Model } from "./Model";
 import { contourVerticesWithRustIfReady } from "./RustModelTransforms";
+import { computeTextureCoordsWithRustIfReady } from "./RustTextureMapper";
 import { LegacyModelLoader, LegacyModelMetadata } from "./ModelLoader";
 import { computeTextureCoords } from "./TextureMapper";
 import { VertexNormal } from "./VertexNormal";
@@ -2889,7 +2890,6 @@ export class ModelData extends Entity {
         model.faceColors3 = new Int32Array(this.faceCount);
         model.faceColors = this.faceColors;
 
-        model.uvs = computeTextureCoords(textureLoader, this);
         if (this.faceTextures) {
             model.faceTextures = new Int16Array(this.faceCount);
             for (let i = 0; i < this.faceCount; i++) {
@@ -2900,8 +2900,12 @@ export class ModelData extends Entity {
                     model.faceTextures[i] = -1;
                 }
             }
+            model.uvs =
+                computeTextureCoordsWithRustIfReady(this, model.faceTextures)
+                ?? computeTextureCoords(textureLoader, this);
         } else {
             model.faceTextures = undefined;
+            model.uvs = undefined;
         }
         if (this.textureFaceCount > 0 && this.textureCoords) {
             const textureCoords = new Int32Array(this.textureFaceCount);
