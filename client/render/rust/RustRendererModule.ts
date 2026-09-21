@@ -2,6 +2,7 @@ import {
     registerRustBasicVertexTransformer,
     registerRustContourBuilder,
     registerRustLegacyTransformer,
+    registerRustMirrorModelGeometry,
     registerRustSkeletalSkinner,
 } from "../../rs/model/RustModelTransforms";
 import { registerRustTextureMapper } from "../../rs/model/RustTextureMapper";
@@ -86,6 +87,11 @@ export interface RustRendererWebModule {
         textureIds: Int32Array,
     ) => number;
     build_draw_list?: (commandFields: Uint32Array) => RustPreparedDrawListWasm;
+    mirror_model_geometry?: (
+        verticesZ: Int32Array,
+        indices1: Int32Array,
+        indices3: Int32Array,
+    ) => Int32Array;
     transform_vertices_basic?: (
         verticesX: Int32Array,
         verticesY: Int32Array,
@@ -218,6 +224,11 @@ export async function loadRustRendererModule(): Promise<RustRendererWebModule> {
                 registerRustBasicVertexTransformer(
                     typeof typed.transform_vertices_basic === "function"
                         ? typed.transform_vertices_basic
+                        : undefined,
+                );
+                registerRustMirrorModelGeometry(
+                    typeof typed.mirror_model_geometry === "function"
+                        ? typed.mirror_model_geometry
                         : undefined,
                 );
                 registerRustTextureMapper(
