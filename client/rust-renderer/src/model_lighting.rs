@@ -206,7 +206,9 @@ pub fn light_model_faces(
         ("faceTextures", face_textures.len()),
     ] {
         if len != 0 && len != face_count {
-            return Err(format!("lighting {name} has {len} entries for {face_count} faces"));
+            return Err(format!(
+                "lighting {name} has {len} entries for {face_count} faces"
+            ));
         }
     }
     if !vertex_normals.len().is_multiple_of(4) {
