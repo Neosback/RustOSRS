@@ -22,9 +22,11 @@ import {
 } from "../rs/model/RustModelTransforms";
 import {
     getRustStage5OwnershipStats,
+    isRustStage5ForceTypeScript,
     recordRustStage5Attempt,
     recordRustStage5Success,
     resetRustStage5OwnershipStats,
+    setRustStage5ForceTypeScript,
     setRustStage5StrictMode,
 } from "../rs/model/RustStage5Ownership";
 import {
@@ -34,6 +36,10 @@ import {
 
 resetRustStage5OwnershipStats();
 setRustStage5StrictMode(false);
+setRustStage5ForceTypeScript(true);
+assert.equal(isRustStage5ForceTypeScript(), true);
+setRustStage5ForceTypeScript(false);
+assert.equal(isRustStage5ForceTypeScript(), false);
 
 assert.equal(
     MAX_TEXTURES,
