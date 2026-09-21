@@ -9,6 +9,7 @@
 //! into this crate.
 
 pub mod draw;
+pub mod geometry_builder;
 pub mod height_map;
 pub mod material;
 pub mod model_info;
@@ -20,6 +21,7 @@ pub mod static_scene;
 mod webgl;
 
 pub use draw::{DrawRange, DrawStats, filter_draw_ranges};
+pub use geometry_builder::VertexBatchBuilder;
 pub use height_map::HeightMap;
 pub use material::{Material, decode_material};
 pub use model_info::{ModelInfo, ModelInfoDrawCommand, create_model_info_texture_data};
@@ -27,6 +29,8 @@ pub use packed_vertex::{PackedVertex, VertexInput};
 pub use packet::{RendererPacketError, validate_draw_ranges, validate_geometry};
 pub use static_scene::{StaticMapState, validate_static_scene_packet};
 
+#[cfg(target_arch = "wasm32")]
+pub use geometry_builder::RustVertexBufferBuilder;
 #[cfg(target_arch = "wasm32")]
 pub use webgl::RustWebGlRenderer;
 
