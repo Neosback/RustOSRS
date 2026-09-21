@@ -2273,7 +2273,10 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             textureIdIndexMap.set(textureIds[i], i + 1);
         }
 
-        const vertexBatchBuilderFactory = await getVertexBatchBuilderFactory();
+        const [vertexBatchBuilderFactory] = await Promise.all([
+            getVertexBatchBuilderFactory(),
+            getModelFaceBuilder(),
+        ]);
 
         const borderSize = 6;
         const maxPlane = Math.max(0, maxLevel | 0);
