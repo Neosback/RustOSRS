@@ -9,6 +9,7 @@ import { clamp } from "../../common/utils/MathUtil";
 import { getBridgeLinkedBelow, isBridgeSurfaceTile } from "../../game/scene/BridgeTiles";
 import { DrawRange, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
+import { buildModelFacesIfReady } from "../rust/RustFacePreparation";
 import { LocAnimatedData } from "../loc/LocAnimatedData";
 import { LocAnimatedGroup } from "../loc/LocAnimatedGroup";
 import { SceneLocEntity } from "../loc/SceneLocEntity";
@@ -674,6 +675,11 @@ function faceTransparencyToAlpha(transparency: number): number {
 }
 
 export function getModelFaces(model: Model): ModelFace[] {
+    const rustFaces = buildModelFacesIfReady(model, undefined, -1);
+    if (rustFaces) {
+        return rustFaces;
+    }
+
     const faces: ModelFace[] = [];
 
     const faceTransparencies = model.faceAlphas;
@@ -729,6 +735,15 @@ export function getModelFacesFiltered(
     textureLoader: TextureLoader,
     transparent: boolean,
 ): ModelFace[] {
+    const rustFaces = buildModelFacesIfReady(
+        model,
+        textureLoader,
+        transparent ? 1 : 0,
+    );
+    if (rustFaces) {
+        return rustFaces;
+    }
+
     const faces: ModelFace[] = [];
 
     const faceTransparencies = model.faceAlphas;
