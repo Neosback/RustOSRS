@@ -13,6 +13,11 @@ export interface RustVertexBufferBuilderWasm {
 
 export type RustVertexBufferBuilderWasmConstructor = new () => RustVertexBufferBuilderWasm;
 
+export interface RustPreparedDrawListWasm {
+    flat_ranges(): Uint32Array;
+    planes(): Uint8Array;
+}
+
 export interface RustRendererWebModule {
     default(input?: unknown): Promise<unknown>;
     RustWebGlRenderer: RustRendererWasmConstructor;
@@ -30,6 +35,7 @@ export interface RustRendererWebModule {
         verticesZ: Int32Array,
         textureIds: Int32Array,
     ) => number;
+    build_draw_list?: (commandFields: Uint32Array) => RustPreparedDrawListWasm;
 }
 
 let modulePromise: Promise<RustRendererWebModule> | undefined;
