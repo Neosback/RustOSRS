@@ -921,8 +921,15 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         // didn't already render directly into the texture framebuffer.
         profiler.startPhase("blit");
         if (!rustPrimaryRendererEnabled && !directTextureScenePass) {
-            host.app.readFramebuffer(host.framebuffer);
-            host.app.drawFramebuffer(host.textureFramebuffer);
+            const legacyFramebuffer = host.framebuffer;
+            const legacyTextureFramebuffer = host.textureFramebuffer;
+            if (!legacyFramebuffer || !legacyTextureFramebuffer) {
+                throw new Error(
+                    "Legacy Pico framebuffers are unavailable while Rust primary is inactive",
+                );
+            }
+            host.app.readFramebuffer(legacyFramebuffer);
+            host.app.drawFramebuffer(legacyTextureFramebuffer);
             host.gl.readBuffer(PicoGL.COLOR_ATTACHMENT0);
             host.app.blitFramebuffer(PicoGL.COLOR_BUFFER_BIT, {
                 srcStartX: 0,
@@ -1511,18 +1518,30 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             );
             host.app.clear();
 
+            const legacyTextureFramebuffer = host.textureFramebuffer;
+            if (!legacyTextureFramebuffer) {
+                throw new Error(
+                    "Legacy Pico presentation texture is unavailable while Rust primary is inactive",
+                );
+            }
             if (host.frameFxaaDrawCall && host.fxaaEnabled) {
                 host.frameFxaaDrawCall.uniform("u_resolution", host.resolutionUni);
                 host.frameFxaaDrawCall.texture(
                     "u_frame",
-                    host.textureFramebuffer.colorAttachments[0],
+                    legacyTextureFramebuffer.colorAttachments[0],
                 );
                 host.frameFxaaDrawCall.draw();
             } else {
-                host.frameDrawCall
+                const frameDrawCall = host.frameDrawCall;
+                if (!frameDrawCall) {
+                    throw new Error(
+                        "Legacy Pico frame draw call is unavailable while Rust primary is inactive",
+                    );
+                }
+                frameDrawCall
                     .texture(
                         "u_frame",
-                        host.textureFramebuffer.colorAttachments[0],
+                        legacyTextureFramebuffer.colorAttachments[0],
                     )
                     .draw();
             }
