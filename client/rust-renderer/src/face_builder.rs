@@ -38,8 +38,7 @@ pub fn prepare_model_faces(
     transparent_texture_ids: &[i32],
     filter: FaceFilter,
 ) -> Vec<i32> {
-    let transparent_textures: HashSet<i32> =
-        transparent_texture_ids.iter().copied().collect();
+    let transparent_textures: HashSet<i32> = transparent_texture_ids.iter().copied().collect();
     let mut out = Vec::with_capacity(face_colors3.len().saturating_mul(FACE_RECORD_STRIDE));
 
     for (index, hsl_c) in face_colors3.iter().copied().enumerate() {
@@ -47,11 +46,7 @@ pub fn prepare_model_faces(
             continue;
         }
 
-        let texture_id = texture_ids
-            .get(index)
-            .copied()
-            .map(i32::from)
-            .unwrap_or(-1);
+        let texture_id = texture_ids.get(index).copied().map(i32::from).unwrap_or(-1);
         let alpha = face_alphas
             .get(index)
             .copied()
@@ -61,32 +56,22 @@ pub fn prepare_model_faces(
             continue;
         }
 
-        let is_transparent = alpha < 0xff
-            || (texture_id != -1 && transparent_textures.contains(&texture_id));
+        let is_transparent =
+            alpha < 0xff || (texture_id != -1 && transparent_textures.contains(&texture_id));
         match filter {
             FaceFilter::Opaque if is_transparent => continue,
             FaceFilter::Transparent if !is_transparent => continue,
             _ => {}
         }
 
-        let priority = priorities
-            .get(index)
-            .copied()
-            .map(i32::from)
-            .unwrap_or(0);
+        let priority = priorities.get(index).copied().map(i32::from).unwrap_or(0);
         let render_layer = render_layers
             .get(index)
             .copied()
             .map(i32::from)
             .unwrap_or(-1);
 
-        out.extend_from_slice(&[
-            index as i32,
-            alpha,
-            priority,
-            render_layer,
-            texture_id,
-        ]);
+        out.extend_from_slice(&[index as i32, alpha, priority, render_layer, texture_id]);
     }
 
     out
@@ -103,8 +88,7 @@ pub fn build_model_faces(
     transparent_texture_ids: &[i32],
     filter: i32,
 ) -> Result<Vec<i32>, wasm_bindgen::JsValue> {
-    let filter = FaceFilter::from_i32(filter)
-        .map_err(wasm_bindgen::JsValue::from_str)?;
+    let filter = FaceFilter::from_i32(filter).map_err(wasm_bindgen::JsValue::from_str)?;
     Ok(prepare_model_faces(
         face_colors3,
         face_alphas,
@@ -140,10 +124,7 @@ mod tests {
         assert_eq!(
             all,
             vec![
-                0, 255, 1, 0, -1,
-                2, 255, 3, 2, -1,
-                3, 3, 4, 3, -1,
-                4, 255, 5, 4, 7,
+                0, 255, 1, 0, -1, 2, 255, 3, 2, -1, 3, 3, 4, 3, -1, 4, 255, 5, 4, 7,
             ]
         );
 
@@ -172,15 +153,8 @@ mod tests {
 
     #[test]
     fn fully_transparent_faces_are_removed() {
-        assert!(prepare_model_faces(
-            &[10],
-            &[-2],
-            &[0],
-            &[],
-            &[],
-            &[],
-            FaceFilter::All,
-        )
-        .is_empty());
+        assert!(
+            prepare_model_faces(&[10], &[-2], &[0], &[], &[], &[], FaceFilter::All,).is_empty()
+        );
     }
 }
