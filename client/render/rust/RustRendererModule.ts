@@ -16,6 +16,7 @@ export type RustVertexBufferBuilderWasmConstructor = new () => RustVertexBufferB
 export interface RustPreparedDrawListWasm {
     flat_ranges(): Uint32Array;
     planes(): Uint8Array;
+    free?(): void;
 }
 
 export interface RustRendererWebModule {
