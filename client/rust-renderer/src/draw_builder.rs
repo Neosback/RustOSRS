@@ -15,7 +15,7 @@ pub fn prepare_draw_list(command_fields: &[u32]) -> Result<PreparedDrawList, &'s
 
     for command in command_fields.as_chunks::<4>().0 {
         flat_ranges.extend_from_slice(&command[..3]);
-        planes.push(u8::try_from(command[3]).unwrap_or(u8::MAX));
+        planes.push(command[3] as u8);
     }
 
     Ok(PreparedDrawList {
@@ -65,6 +65,13 @@ mod tests {
 
         assert_eq!(prepared.flat_ranges, vec![0, 6, 1, 24, 12, 3]);
         assert_eq!(prepared.planes, vec![0, 2]);
+    }
+
+    #[test]
+    fn plane_metadata_matches_typescript_low_byte_masking() {
+        let prepared = prepare_draw_list(&[0, 3, 1, 258, 12, 3, 1, u32::MAX]).unwrap();
+
+        assert_eq!(prepared.planes, vec![2, 255]);
     }
 
     #[test]
