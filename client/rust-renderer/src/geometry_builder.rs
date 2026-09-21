@@ -223,26 +223,28 @@ mod tests {
         let mut builder = VertexBatchBuilder::default();
 
         assert!(builder.push_batch(&[1, 2], &[], &[]).is_err());
-        assert!(builder
-            .push_batch(&integer_record(0), &[0.0], &[0])
-            .is_err());
-        assert!(builder
-            .push_batch(&integer_record(0), &[0.0, 0.0], &[])
-            .is_err());
-        assert!(builder
-            .push_batch(&integer_record(0), &[0.0, 0.0], &[4])
-            .is_err());
+        assert!(
+            builder
+                .push_batch(&integer_record(0), &[0.0], &[0])
+                .is_err()
+        );
+        assert!(
+            builder
+                .push_batch(&integer_record(0), &[0.0, 0.0], &[])
+                .is_err()
+        );
+        assert!(
+            builder
+                .push_batch(&integer_record(0), &[0.0, 0.0], &[4])
+                .is_err()
+        );
     }
 
     #[test]
     fn clear_resets_deduplication_state() {
         let mut builder = VertexBatchBuilder::default();
         builder
-            .push_batch(
-                &integer_record(0),
-                &[0.0, 0.0],
-                &[FLAG_REUSE_VERTEX],
-            )
+            .push_batch(&integer_record(0), &[0.0, 0.0], &[FLAG_REUSE_VERTEX])
             .unwrap();
         assert_eq!(builder.vertex_count(), 1);
 
