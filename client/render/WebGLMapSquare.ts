@@ -195,6 +195,65 @@ type LegacySceneBatchGpuResources = {
     modelInfoTextureInteractLodAlpha: Texture;
 };
 
+type LegacyMapTextureResources = {
+    heightMapTexture: Texture;
+    waterMaskTexture: Texture;
+};
+
+type LegacyMapTextureState = {
+    app: PicoApp;
+    heightMapSize: number;
+    heightMapData: Int16Array;
+    waterMaskData: Uint8Array;
+    resources?: LegacyMapTextureResources;
+};
+
+function ensureLegacyMapTextures(state: LegacyMapTextureState): LegacyMapTextureResources {
+    const existing = state.resources;
+    if (existing) return existing;
+
+    const heightMapTexture = state.app.createTextureArray(
+        state.heightMapData,
+        state.heightMapSize,
+        state.heightMapSize,
+        Scene.MAX_LEVELS,
+        {
+            internalFormat: PicoGL.R16I,
+            minFilter: PicoGL.NEAREST,
+            magFilter: PicoGL.NEAREST,
+            type: PicoGL.SHORT,
+            wrapS: PicoGL.CLAMP_TO_EDGE,
+            wrapT: PicoGL.CLAMP_TO_EDGE,
+        },
+    );
+    const waterMaskTexture = state.app.createTextureArray(
+        state.waterMaskData,
+        state.heightMapSize,
+        state.heightMapSize,
+        Scene.MAX_LEVELS,
+        {
+            internalFormat: PicoGL.RGBA8,
+            minFilter: PicoGL.NEAREST,
+            magFilter: PicoGL.NEAREST,
+            type: PicoGL.UNSIGNED_BYTE,
+            wrapS: PicoGL.CLAMP_TO_EDGE,
+            wrapT: PicoGL.CLAMP_TO_EDGE,
+        },
+    );
+
+    const created = { heightMapTexture, waterMaskTexture };
+    state.resources = created;
+    return created;
+}
+
+function deleteLegacyMapTextures(state: LegacyMapTextureState): void {
+    const resources = state.resources;
+    if (!resources) return;
+    resources.heightMapTexture.delete();
+    resources.waterMaskTexture.delete();
+    state.resources = undefined;
+}
+
 function deleteLegacySceneBatchGpuResources(
     mapX: number,
     mapY: number,
@@ -303,8 +362,7 @@ function createLocGeometryResources(
     textureMaterials: Texture,
     waterTextures: Texture,
     sceneUniformBuffer: UniformBuffer,
-    heightMapTexture: Texture,
-    waterMaskTexture: Texture,
+    getLegacyMapTextures: () => LegacyMapTextureResources,
     mapPos: vec2,
     borderSize: number,
     timeLoaded: number,
@@ -374,6 +432,7 @@ function createLocGeometryResources(
             drawRanges,
             () => {
                 const gpu = ensureLegacyGpu();
+                const { heightMapTexture, waterMaskTexture } = getLegacyMapTextures();
                 return app
                     .createDrawCall(program, gpu.vertexArray)
                     .uniformBlock("SceneUniforms", sceneUniformBuffer)
@@ -475,8 +534,7 @@ function createDoorGeometryResources(
     textureMaterials: Texture,
     waterTextures: Texture,
     sceneUniformBuffer: UniformBuffer,
-    heightMapTexture: Texture,
-    waterMaskTexture: Texture,
+    getLegacyMapTextures: () => LegacyMapTextureResources,
     mapPos: vec2,
     borderSize: number,
     timeLoaded: number,
@@ -549,6 +607,7 @@ function createDoorGeometryResources(
             drawRanges,
             () => {
                 const gpu = ensureLegacyGpu();
+                const { heightMapTexture, waterMaskTexture } = getLegacyMapTextures();
                 return app
                     .createDrawCall(program, gpu.vertexArray)
                     .uniformBlock("SceneUniforms", sceneUniformBuffer)
@@ -722,34 +781,14 @@ export class WebGLMapSquare {
         let terrainLegacyGpu: LegacySceneBatchGpuResources | undefined;
 
         const heightMapSize = mapData.heightMapSize ?? Scene.MAP_SQUARE_SIZE + borderSize * 2;
-        const heightMapTexture = app.createTextureArray(
-            mapData.heightMapTextureData,
+        const legacyMapTextureState: LegacyMapTextureState = {
+            app,
             heightMapSize,
-            heightMapSize,
-            Scene.MAX_LEVELS,
-            {
-                internalFormat: PicoGL.R16I,
-                minFilter: PicoGL.NEAREST,
-                magFilter: PicoGL.NEAREST,
-                type: PicoGL.SHORT,
-                wrapS: PicoGL.CLAMP_TO_EDGE,
-                wrapT: PicoGL.CLAMP_TO_EDGE,
-            },
-        );
-        const waterMaskTexture = app.createTextureArray(
-            mapData.waterMaskTextureData,
-            heightMapSize,
-            heightMapSize,
-            Scene.MAX_LEVELS,
-            {
-                internalFormat: PicoGL.RGBA8,
-                minFilter: PicoGL.NEAREST,
-                magFilter: PicoGL.NEAREST,
-                type: PicoGL.UNSIGNED_BYTE,
-                wrapS: PicoGL.CLAMP_TO_EDGE,
-                wrapT: PicoGL.CLAMP_TO_EDGE,
-            },
-        );
+            heightMapData: new Int16Array(mapData.heightMapTextureData),
+            waterMaskData: new Uint8Array(mapData.waterMaskTextureData),
+        };
+        const getLegacyMapTextures = (): LegacyMapTextureResources =>
+            ensureLegacyMapTextures(legacyMapTextureState);
 
         const ensureTerrainLegacyGpu = (): LegacySceneBatchGpuResources => {
             if (terrainLegacyGpu) return terrainLegacyGpu;
@@ -826,6 +865,7 @@ export class WebGLMapSquare {
                 drawRanges,
                 () => {
                     const gpu = ensureTerrainLegacyGpu();
+                    const { heightMapTexture, waterMaskTexture } = getLegacyMapTextures();
                     return app
                         .createDrawCall(program, gpu.vertexArray)
                         .uniformBlock("SceneUniforms", sceneUniformBuffer)
@@ -895,8 +935,7 @@ export class WebGLMapSquare {
             textureMaterials,
             waterTextures,
             sceneUniformBuffer,
-            heightMapTexture,
-            waterMaskTexture,
+            getLegacyMapTextures,
             mapPos,
             borderSize,
             time,
@@ -912,8 +951,7 @@ export class WebGLMapSquare {
             textureMaterials,
             waterTextures,
             sceneUniformBuffer,
-            heightMapTexture,
-            waterMaskTexture,
+            getLegacyMapTextures,
             mapPos,
             borderSize,
             time,
@@ -1150,6 +1188,7 @@ export class WebGLMapSquare {
                   drawRangesNpc,
                   () => {
                       const vao = ensureNpcLegacyGpu();
+                      const { heightMapTexture, waterMaskTexture } = getLegacyMapTextures();
                       return app
                           .createDrawCall(npcProgram, vao)
                           .uniformBlock("SceneUniforms", sceneUniformBuffer)
@@ -1198,8 +1237,7 @@ export class WebGLMapSquare {
             terrainLegacyGpu?.indexBuffer,
             terrainLegacyGpu?.vertexArray,
 
-            heightMapTexture,
-            waterMaskTexture,
+            legacyMapTextureState,
 
             terrainLegacyGpu?.modelInfoTexture,
             terrainLegacyGpu?.modelInfoTextureAlpha,
@@ -1278,8 +1316,7 @@ export class WebGLMapSquare {
         public indexBuffer: VertexBuffer | undefined,
         public vertexArray: VertexArray | undefined,
 
-        readonly heightMapTexture: Texture,
-        readonly waterMaskTexture: Texture,
+        private readonly legacyMapTextureState: LegacyMapTextureState,
 
         // Model info
         public modelInfoTexture: Texture | undefined,
@@ -1387,6 +1424,14 @@ export class WebGLMapSquare {
             this.npcOccCounts[p] = new Uint16Array(cm.sizeX * cm.sizeY);
             this.playerOccCounts[p] = new Uint16Array(cm.sizeX * cm.sizeY);
         }
+    }
+
+    get heightMapTexture(): Texture {
+        return ensureLegacyMapTextures(this.legacyMapTextureState).heightMapTexture;
+    }
+
+    get waterMaskTexture(): Texture {
+        return ensureLegacyMapTextures(this.legacyMapTextureState).waterMaskTexture;
     }
 
     canRender(frameCount: number): boolean {
@@ -1663,8 +1708,7 @@ export class WebGLMapSquare {
         this.npcInterleavedBuffer?.delete();
         this.npcIndexBuffer?.delete();
 
-        this.heightMapTexture.delete();
-        this.waterMaskTexture.delete();
+        deleteLegacyMapTextures(this.legacyMapTextureState);
 
         this.clearGroundItemGeometry();
         this.clearLocGeometry();
@@ -2208,8 +2252,7 @@ export class WebGLMapSquare {
             textureMaterials,
             waterTextures,
             sceneUniformBuffer,
-            this.heightMapTexture,
-            this.waterMaskTexture,
+            () => ensureLegacyMapTextures(this.legacyMapTextureState),
             vec2.fromValues(this.renderPosX, this.renderPosY),
             this.borderSize,
             loadTime,
@@ -2322,8 +2365,7 @@ export class WebGLMapSquare {
             textureMaterials,
             waterTextures,
             sceneUniformBuffer,
-            this.heightMapTexture,
-            this.waterMaskTexture,
+            () => ensureLegacyMapTextures(this.legacyMapTextureState),
             mapPos,
             this.borderSize,
             loadTime,
@@ -2359,8 +2401,13 @@ export class WebGLMapSquare {
         }
 
         this.heightMapData.set(mapData.heightMapTextureData);
-        this.heightMapTexture.data(mapData.heightMapTextureData);
-        this.waterMaskTexture.data(mapData.waterMaskTextureData);
+        this.legacyMapTextureState.heightMapData = new Int16Array(mapData.heightMapTextureData);
+        this.legacyMapTextureState.waterMaskData = new Uint8Array(mapData.waterMaskTextureData);
+        const legacyMapTextures = this.legacyMapTextureState.resources;
+        if (legacyMapTextures) {
+            legacyMapTextures.heightMapTexture.data(mapData.heightMapTextureData);
+            legacyMapTextures.waterMaskTexture.data(mapData.waterMaskTextureData);
+        }
         this.terrainPickTileOffsets = mapData.terrainPickTileOffsets;
         this.terrainPickVertices = mapData.terrainPickVertices;
         this.terrainPickPlanes = mapData.terrainPickPlanes;
