@@ -3,7 +3,11 @@ import { mat4, vec3 } from "gl-matrix";
 import { COSINE, SINE } from "../MathConstants";
 import { Entity } from "../scene/entity/Entity";
 import { ModelData } from "./ModelData";
-import { skinSkeletalVerticesWithRustIfReady } from "./RustModelTransforms";
+import {
+    applyLegacyTransformsWithRustIfReady,
+    type LegacyTransformOperation,
+    skinSkeletalVerticesWithRustIfReady,
+} from "./RustModelTransforms";
 import { SeqBase } from "./seq/SeqBase";
 import { SeqFrame } from "./seq/SeqFrame";
 import { SeqTransformType } from "./seq/SeqTransformType";
@@ -807,20 +811,19 @@ export class Model extends Entity {
     animateOld(frame: SeqFrame | undefined) {
         if (this.vertexLabels && frame) {
             Model.resetAnimateOrigin();
-
             const base = frame.base;
-
+            const operations: LegacyTransformOperation[] = [];
             for (let i = 0; i < frame.transformCount; i++) {
                 const group = frame.transformGroups[i];
-                this.transform(
-                    base.types[group],
-                    base.labels[group],
-                    frame.transformX[i],
-                    frame.transformY[i],
-                    frame.transformZ[i],
-                );
+                operations.push({
+                    type: base.types[group],
+                    labels: base.labels[group],
+                    x: frame.transformX[i],
+                    y: frame.transformY[i],
+                    z: frame.transformZ[i],
+                });
             }
-
+            this.applyLegacyTransformOperations(operations, false);
             this.postAnimate();
         }
     }
@@ -867,6 +870,48 @@ export class Model extends Entity {
         }
     }
 
+    private applyLegacyTransformOperations(
+        operations: readonly LegacyTransformOperation[],
+        op14: boolean,
+    ): void {
+        if (operations.length === 0) {
+            return;
+        }
+
+        const rustResult = applyLegacyTransformsWithRustIfReady(
+            this.verticesX,
+            this.verticesY,
+            this.verticesZ,
+            this.verticesCount,
+            this.faceAlphas,
+            this.faceColors,
+            this.vertexLabels,
+            this.faceLabels,
+            operations,
+            Model.animateOriginX,
+            Model.animateOriginY,
+            Model.animateOriginZ,
+        );
+        if (rustResult) {
+            Model.animateOriginX = rustResult.originX;
+            Model.animateOriginY = rustResult.originY;
+            Model.animateOriginZ = rustResult.originZ;
+            this.changedLight ||= rustResult.changedLight;
+            return;
+        }
+
+        for (const operation of operations) {
+            this.transform0(
+                operation.type as SeqTransformType,
+                operation.labels as number[],
+                operation.x,
+                operation.y,
+                operation.z,
+                op14,
+            );
+        }
+    }
+
     private applyInterleaveFrame(
         frame: SeqFrame,
         interleave: number[],
@@ -880,6 +925,7 @@ export class Model extends Entity {
         let maskIndex = 0;
         let maskValue = (interleave[maskIndex] ?? 9999999) | 0;
         maskIndex++;
+        const operations: LegacyTransformOperation[] = [];
 
         for (let i = 0; i < frame.transformCount; i++) {
             const group = frame.transformGroups[i] | 0;
@@ -896,27 +942,25 @@ export class Model extends Entity {
 
             const resetOriginGroup = frame.resetOriginGroups[i];
             if (resetOriginGroup !== -1) {
-                this.transform(
-                    SeqTransformType.ORIGIN,
-                    base.labels[resetOriginGroup],
-                    0,
-                    0,
-                    0,
-                    op14,
-                    0xffff,
-                );
+                operations.push({
+                    type: SeqTransformType.ORIGIN,
+                    labels: base.labels[resetOriginGroup],
+                    x: 0,
+                    y: 0,
+                    z: 0,
+                });
             }
 
-            this.transform(
-                base.types[group],
-                base.labels[group],
-                frame.transformX[i],
-                frame.transformY[i],
-                frame.transformZ[i],
-                op14,
-                0xffff,
-            );
+            operations.push({
+                type: base.types[group],
+                labels: base.labels[group],
+                x: frame.transformX[i],
+                y: frame.transformY[i],
+                z: frame.transformZ[i],
+            });
         }
+
+        this.applyLegacyTransformOperations(operations, op14);
     }
 
     private applyInterleaveFrameInterpolated(
@@ -1019,6 +1063,7 @@ export class Model extends Entity {
     ): void {
         void nextFrame;
         void alpha;
+        const operations: LegacyTransformOperation[] = [];
         for (let i = 0; i < frame.transformCount; i++) {
             const group = frame.transformGroups[i];
             const type = base.types[group];
@@ -1028,29 +1073,31 @@ export class Model extends Entity {
                 type === SeqTransformType.ORIGIN
             ) {
                 const resetOriginGroup = frame.resetOriginGroups[i];
-                if (resetOriginGroup !== -1) {
-                    this.transform(
-                        SeqTransformType.ORIGIN,
-                        base.labels[resetOriginGroup],
-                        0,
-                        0,
-                        0,
-                        op14,
-                        base.masks[resetOriginGroup] & mask,
-                    );
+                if (
+                    resetOriginGroup !== -1 &&
+                    (base.masks[resetOriginGroup] & mask) === 0xffff
+                ) {
+                    operations.push({
+                        type: SeqTransformType.ORIGIN,
+                        labels: base.labels[resetOriginGroup],
+                        x: 0,
+                        y: 0,
+                        z: 0,
+                    });
                 }
 
-                this.transform(
-                    base.types[group],
-                    base.labels[group],
-                    frame.transformX[i],
-                    frame.transformY[i],
-                    frame.transformZ[i],
-                    op14,
-                    base.masks[group] & mask,
-                );
+                if ((base.masks[group] & mask) === 0xffff) {
+                    operations.push({
+                        type: base.types[group],
+                        labels: base.labels[group],
+                        x: frame.transformX[i],
+                        y: frame.transformY[i],
+                        z: frame.transformZ[i],
+                    });
+                }
             }
         }
+        this.applyLegacyTransformOperations(operations, op14);
     }
 
     transform(
