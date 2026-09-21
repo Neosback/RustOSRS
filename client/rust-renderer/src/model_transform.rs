@@ -94,6 +94,95 @@ pub fn skin_skeletal_vertices(
     Ok(transformed)
 }
 
+const BASIC_ROTATE_90: i32 = 0;
+const BASIC_ROTATE_180: i32 = 1;
+const BASIC_ROTATE_270: i32 = 2;
+const BASIC_ROTATE_ANGLE: i32 = 3;
+const BASIC_TRANSLATE: i32 = 4;
+const BASIC_SCALE: i32 = 5;
+
+pub fn transform_vertices_basic(
+    vertices_x: &[i32],
+    vertices_y: &[i32],
+    vertices_z: &[i32],
+    mode: i32,
+    a: i32,
+    b: i32,
+    c: i32,
+) -> Result<Vec<i32>, String> {
+    let vertex_count = vertices_x.len();
+    if vertices_y.len() != vertex_count || vertices_z.len() != vertex_count {
+        return Err("basic transform vertices must have matching x/y/z lengths".to_string());
+    }
+
+    let mut result = Vec::with_capacity(vertex_count.saturating_mul(3));
+    let (sin, cos) = if mode == BASIC_ROTATE_ANGLE {
+        rs_trig(a)
+    } else {
+        (0, 0)
+    };
+
+    for vertex in 0..vertex_count {
+        let mut x = vertices_x[vertex];
+        let mut y = vertices_y[vertex];
+        let mut z = vertices_z[vertex];
+
+        match mode {
+            BASIC_ROTATE_90 => {
+                let old_x = x;
+                x = z;
+                z = old_x.wrapping_neg();
+            }
+            BASIC_ROTATE_180 => {
+                x = x.wrapping_neg();
+                z = z.wrapping_neg();
+            }
+            BASIC_ROTATE_270 => {
+                let old_z = z;
+                z = x;
+                x = old_z.wrapping_neg();
+            }
+            BASIC_ROTATE_ANGLE => {
+                let next_x = sin.wrapping_mul(z).wrapping_add(cos.wrapping_mul(x)) >> 16;
+                z = cos.wrapping_mul(z).wrapping_sub(sin.wrapping_mul(x)) >> 16;
+                x = next_x;
+            }
+            BASIC_TRANSLATE => {
+                x = x.wrapping_add(a);
+                y = y.wrapping_add(b);
+                z = z.wrapping_add(c);
+            }
+            BASIC_SCALE => {
+                x = ((x as i64 * a as i64) / 128) as i32;
+                y = ((y as i64 * b as i64) / 128) as i32;
+                z = ((z as i64 * c as i64) / 128) as i32;
+            }
+            _ => return Err(format!("unsupported basic transform mode {mode}")),
+        }
+
+        result.push(x);
+        result.push(y);
+        result.push(z);
+    }
+
+    Ok(result)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = transform_vertices_basic)]
+pub fn transform_vertices_basic_wasm(
+    vertices_x: &[i32],
+    vertices_y: &[i32],
+    vertices_z: &[i32],
+    mode: i32,
+    a: i32,
+    b: i32,
+    c: i32,
+) -> Result<Vec<i32>, wasm_bindgen::JsValue> {
+    transform_vertices_basic(vertices_x, vertices_y, vertices_z, mode, a, b, c)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
 const LEGACY_TRANSFORM_ORIGIN: i32 = 0;
 const LEGACY_TRANSFORM_TRANSLATE: i32 = 1;
 const LEGACY_TRANSFORM_ROTATE: i32 = 2;
@@ -648,6 +737,26 @@ mod tests {
         [
             1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ]
+    }
+
+    #[test]
+    fn basic_vertex_transforms_match_model_semantics() {
+        assert_eq!(
+            transform_vertices_basic(&[10], &[20], &[30], BASIC_ROTATE_90, 0, 0, 0).unwrap(),
+            vec![30, 20, -10]
+        );
+        assert_eq!(
+            transform_vertices_basic(&[10], &[20], &[30], BASIC_TRANSLATE, 5, -3, 7).unwrap(),
+            vec![15, 17, 37]
+        );
+        assert_eq!(
+            transform_vertices_basic(&[10], &[20], &[30], BASIC_SCALE, 256, 64, 128).unwrap(),
+            vec![20, 10, 30]
+        );
+        assert_eq!(
+            transform_vertices_basic(&[10], &[0], &[0], BASIC_ROTATE_ANGLE, 512, 0, 0).unwrap(),
+            vec![0, 0, -10]
+        );
     }
 
     #[test]
