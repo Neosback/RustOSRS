@@ -25,7 +25,7 @@ import { RenderDataLoader, RenderDataResult } from "../../game/worker/RenderData
 import { WorkerState } from "../../game/worker/RenderDataWorker";
 import { AnimationFrames } from "../AnimationFrames";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
-import { ModelHashBuffer, getModelHash } from "../buffer/ModelHashBuffer";
+import { ModelHashBuffer } from "../buffer/ModelHashBuffer";
 import {
     DrawCommand,
     ModelFace,
@@ -46,8 +46,10 @@ import type {
 } from "../npc/NpcRenderTemplate";
 import { isKnownWaterTextureId } from "../water/WaterTextureIds";
 import {
+    getModelHasher,
     getModelInfoTextureBuilder,
     getVertexBatchBuilderFactory,
+    type ModelHasher,
     type ModelInfoTextureBuilder,
     type VertexBatchBuilderFactory,
 } from "../rust/RustGeometryPreparation";
@@ -615,7 +617,7 @@ function createModelGroups(
 }
 
 function addSceneModels(
-    modelHashBuf: ModelHashBuffer,
+    modelHasher: ModelHasher,
     textureLoader: TextureLoader,
     sceneBuf: SceneBuffer,
     sceneModels: SceneModel[],
@@ -624,7 +626,7 @@ function addSceneModels(
     const groupedModels = new Map<number, SceneModel[]>();
     for (const sceneModel of sceneModels) {
         const model = sceneModel.model;
-        const hash = getModelHash(modelHashBuf, model);
+        const hash = modelHasher(model);
         const locs = groupedModels.get(hash);
         if (locs) {
             locs.push(sceneModel);
@@ -1277,6 +1279,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         }
 
         const vertexBatchBuilderFactory = await getVertexBatchBuilderFactory();
+        const modelHasher = await getModelHasher(this.modelHashBuf!);
 
         const borderSize = 6;
 
@@ -1586,7 +1589,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
 
         if (!shouldLoadDoorOnly) {
             addSceneModels(
-                this.modelHashBuf!,
+                modelHasher,
                 textureLoader,
                 locSceneBuf,
                 sceneModels,
@@ -1595,7 +1598,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         }
         if (!shouldLoadLocOnly) {
             addSceneModels(
-                this.modelHashBuf!,
+                modelHasher,
                 textureLoader,
                 doorSceneBuf,
                 doorSceneModels,
