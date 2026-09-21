@@ -5,7 +5,11 @@ import { TextureLoader } from "../texture/TextureLoader";
 import { blendLight } from "../util/ColorUtil";
 import { FaceNormal } from "./FaceNormal";
 import { Model } from "./Model";
-import { contourVerticesWithRustIfReady } from "./RustModelTransforms";
+import {
+    contourVerticesWithRustIfReady,
+    RustBasicTransformMode,
+    transformVerticesWithRustIfReady,
+} from "./RustModelTransforms";
 import { computeTextureCoordsWithRustIfReady } from "./RustTextureMapper";
 import { LegacyModelLoader, LegacyModelMetadata } from "./ModelLoader";
 import { computeTextureCoords } from "./TextureMapper";
@@ -2634,6 +2638,18 @@ export class ModelData extends Entity {
     }
 
     rotate90(): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_90,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             const temp = this.verticesX[i];
             this.verticesX[i] = this.verticesZ[i];
@@ -2644,6 +2660,18 @@ export class ModelData extends Entity {
     }
 
     rotate180(): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_180,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesX[i] = -this.verticesX[i];
             this.verticesZ[i] = -this.verticesZ[i];
@@ -2653,6 +2681,18 @@ export class ModelData extends Entity {
     }
 
     rotate270(): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_270,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             const temp = this.verticesZ[i];
             this.verticesZ[i] = this.verticesX[i];
@@ -2663,6 +2703,19 @@ export class ModelData extends Entity {
     }
 
     rotate(angle: number): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_ANGLE,
+                angle,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
         const sin = SINE[angle];
         const cos = COSINE[angle];
 
@@ -2676,6 +2729,21 @@ export class ModelData extends Entity {
     }
 
     translate(x: number, y: number, z: number): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.TRANSLATE,
+                x,
+                y,
+                z,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesX[i] += x;
             this.verticesY[i] += y;
@@ -2718,6 +2786,21 @@ export class ModelData extends Entity {
     }
 
     resize(resizeX: number, resizeY: number, resizeZ: number): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.SCALE,
+                resizeX,
+                resizeY,
+                resizeZ,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesX[i] = ((this.verticesX[i] * resizeX) / 128) | 0;
             this.verticesY[i] = ((this.verticesY[i] * resizeY) / 128) | 0;
