@@ -1,3 +1,4 @@
+import { newDrawRange, type DrawRange } from "../DrawRange";
 import {
     createModelInfoTextureData,
     type DrawCommand,
@@ -10,6 +11,11 @@ import { loadRustRendererModule } from "./RustRendererModule";
 export type ModelInfoTextureBuilder = (commands: DrawCommand[]) => Uint16Array;
 export type VertexBatchBuilderFactory = () => VertexBatchBuilder | undefined;
 export type ModelHasher = (model: Model) => number;
+export type PreparedDrawList = {
+    ranges: DrawRange[];
+    planes: Uint8Array;
+};
+export type DrawListBuilder = (commands: DrawCommand[]) => PreparedDrawList;
 
 type RustModelInfoPacketBuilder = (
     commandInstanceCounts: Uint32Array,
@@ -199,4 +205,103 @@ export async function getModelHasher(
             textureIds,
         ) >>> 0;
     };
+}
+
+
+const DRAW_COMMAND_FIELD_STRIDE = 4;
+
+export function flattenDrawCommands(commands: DrawCommand[]): Uint32Array {
+    const fields = new Uint32Array(commands.length * DRAW_COMMAND_FIELD_STRIDE);
+    let offset = 0;
+    for (const command of commands) {
+        const instance = command.instances[0];
+        const plane = instance
+            ? (instance.planeCullLevel ?? instance.level) | 0
+            : 0;
+        fields[offset++] = command.offset >>> 0;
+        fields[offset++] = command.elements >>> 0;
+        fields[offset++] = command.instances.length >>> 0;
+        fields[offset++] = plane >>> 0;
+    }
+    return fields;
+}
+
+export function buildDrawListWithTypeScript(commands: DrawCommand[]): PreparedDrawList {
+    const planes = new Uint8Array(commands.length);
+    const ranges = commands.map((command, index) => {
+        const instance = command.instances[0];
+        planes[index] = instance
+            ? ((instance.planeCullLevel ?? instance.level) & 0xff)
+            : 0;
+        return newDrawRange(
+            command.offset,
+            command.elements,
+            command.instances.length,
+        );
+    });
+    return { ranges, planes };
+}
+
+let drawListBuilderPromise: Promise<DrawListBuilder> | undefined;
+let drawListBuilder: DrawListBuilder | undefined;
+let warnedAboutDrawListFallback = false;
+
+export function buildDrawListIfReady(commands: DrawCommand[]): PreparedDrawList {
+    return drawListBuilder
+        ? drawListBuilder(commands)
+        : buildDrawListWithTypeScript(commands);
+}
+
+export async function getDrawListBuilder(): Promise<DrawListBuilder> {
+    if (!drawListBuilderPromise) {
+        drawListBuilderPromise = loadRustRendererModule()
+            .then((module) => {
+                const rustBuilder = module.build_draw_list;
+                if (typeof rustBuilder !== "function") {
+                    throw new Error(
+                        "Rust renderer web package does not export build_draw_list",
+                    );
+                }
+
+                drawListBuilder = (commands: DrawCommand[]): PreparedDrawList => {
+                    const prepared = rustBuilder(flattenDrawCommands(commands));
+                    try {
+                        const flatRanges = prepared.flat_ranges();
+                        const planes = prepared.planes();
+                        if (flatRanges.length !== commands.length * 3) {
+                            throw new Error(
+                                `Rust draw list returned ${flatRanges.length} range values for ${commands.length} commands`,
+                            );
+                        }
+                        const ranges = new Array<DrawRange>(commands.length);
+                        for (let index = 0; index < commands.length; index++) {
+                            const base = index * 3;
+                            ranges[index] = newDrawRange(
+                                flatRanges[base],
+                                flatRanges[base + 1],
+                                flatRanges[base + 2],
+                            );
+                        }
+                        return { ranges, planes };
+                    } finally {
+                        prepared.free?.();
+                    }
+                };
+                return drawListBuilder;
+            })
+            .catch((error) => {
+                if (!warnedAboutDrawListFallback) {
+                    warnedAboutDrawListFallback = true;
+                    console.warn(
+                        "[RustGeometryPreparation] Rust draw-list builder unavailable; "
+                        + "using the TypeScript compatibility builder.",
+                        error,
+                    );
+                }
+                drawListBuilder = buildDrawListWithTypeScript;
+                return drawListBuilder;
+            });
+    }
+
+    return drawListBuilderPromise;
 }
