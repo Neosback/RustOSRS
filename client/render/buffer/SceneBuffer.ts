@@ -332,8 +332,26 @@ export class SceneBuffer {
         return this.vertexCount() - terrainStartVertexCount;
     }
 
-    addModelAnimFrame(model: Model, transparent: boolean): DrawRange {
-        const offset = this.indexByteOffset();
+    getModelFaceCount(model: Model, transparent: boolean): number {
+        const facePacket = this.vertexBuf.hasRustModelFaceBuilder()
+            ? buildModelFacePacketIfReady(
+                model,
+                this.textureLoader,
+                transparent ? 1 : 0,
+            )
+            : undefined;
+        if (facePacket) {
+            return facePacket.length / MODEL_FACE_FIELD_STRIDE;
+        }
+        return getModelFacesFiltered(model, this.textureLoader, transparent).length;
+    }
+
+    addModelFiltered(
+        model: Model,
+        transparent: boolean,
+        offset?: vec3,
+        reuseVertices: boolean = true,
+    ): void {
         const facePacket = this.vertexBuf.hasRustModelFaceBuilder()
             ? buildModelFacePacketIfReady(
                 model,
@@ -342,10 +360,17 @@ export class SceneBuffer {
             )
             : undefined;
 
-        if (!facePacket || !this.addModelFacePacket(model, facePacket)) {
-            const faces = getModelFacesFiltered(model, this.textureLoader, transparent);
-            this.addModel(model, faces);
+        if (facePacket && this.addModelFacePacket(model, facePacket, offset, reuseVertices)) {
+            return;
         }
+
+        const faces = getModelFacesFiltered(model, this.textureLoader, transparent);
+        this.addModel(model, faces, offset, reuseVertices);
+    }
+
+    addModelAnimFrame(model: Model, transparent: boolean): DrawRange {
+        const offset = this.indexByteOffset();
+        this.addModelFiltered(model, transparent);
 
         const elements = (this.indexByteOffset() - offset) / 4;
         return newDrawRange(offset, elements, 1);
@@ -477,21 +502,7 @@ export class SceneBuffer {
             }
 
             const offset = this.indexByteOffset();
-            const facePacket = this.vertexBuf.hasRustModelFaceBuilder()
-                ? buildModelFacePacketIfReady(
-                    model,
-                    this.textureLoader,
-                    group.transparent ? 1 : 0,
-                )
-                : undefined;
-            if (!facePacket || !this.addModelFacePacket(model, facePacket, vertexOffset)) {
-                const faces = getModelFacesFiltered(
-                    model,
-                    this.textureLoader,
-                    group.transparent,
-                );
-                this.addModel(model, faces, vertexOffset);
-            }
+            this.addModelFiltered(model, group.transparent, vertexOffset);
             const elements = (this.indexByteOffset() - offset) / 4;
 
             const drawCommand: DrawCommand = {
