@@ -662,10 +662,12 @@ export function mirrorRustStaticMap(
 
     try {
         if (data.doorOnly) {
+            // Partial reloads are only valid for a still-resident base map.
+            // A worker result can race map removal during streaming; never
+            // resurrect a removed map with only door resources.
+            if (!retained) return;
             const geometry = createRustDoorGeometryPacket(data);
-            if (retained) {
-                retained.packet.doorGeometry = geometry;
-            }
+            retained.packet.doorGeometry = geometry;
             const runtime = getRuntime(host);
             if (runtime) {
                 runtime.bridge.updateDoorGeometry(mapKey, geometry);
@@ -674,10 +676,10 @@ export function mirrorRustStaticMap(
         }
 
         if (data.locOnly) {
+            // Same streaming race rule as door-only reloads.
+            if (!retained) return;
             const geometry = createRustLocGeometryPacket(data);
-            if (retained) {
-                retained.packet.locGeometry = geometry;
-            }
+            retained.packet.locGeometry = geometry;
             const runtime = getRuntime(host);
             if (runtime) {
                 runtime.bridge.updateLocGeometry(mapKey, geometry);
