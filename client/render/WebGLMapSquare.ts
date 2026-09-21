@@ -40,7 +40,7 @@ function createModelInfoTexture(app: PicoApp, data: Uint16Array): Texture {
     });
 }
 
-type AnyDrawCallRange = {
+export type AnyDrawCallRange = {
     drawCall?: DrawCall;
     drawRanges: DrawRange[];
     materializeDrawCall?: () => DrawCall;
@@ -50,7 +50,7 @@ export type DrawCallRange = AnyDrawCallRange & {
     drawCall: DrawCall;
 };
 
-function createDeferredDrawCallRange(
+export function createDeferredDrawCallRange(
     drawRanges: DrawRange[],
     materializeDrawCall: () => DrawCall,
     eager: boolean,
@@ -67,7 +67,7 @@ function createDeferredDrawCallRange(
     };
 }
 
-function materializeDrawCallRange(drawCallRange: AnyDrawCallRange): DrawCallRange {
+export function materializeDrawCallRange(drawCallRange: AnyDrawCallRange): DrawCallRange {
     if (!drawCallRange.drawCall) {
         const materialize = drawCallRange.materializeDrawCall;
         if (!materialize) {
@@ -79,7 +79,7 @@ function materializeDrawCallRange(drawCallRange: AnyDrawCallRange): DrawCallRang
     return drawCallRange as DrawCallRange;
 }
 
-function releaseDrawCallRange(drawCallRange: AnyDrawCallRange | undefined): void {
+export function releaseDrawCallRange(drawCallRange: AnyDrawCallRange | undefined): void {
     if (!drawCallRange) return;
     drawCallRange.materializeDrawCall = undefined;
     drawCallRange.drawCall = undefined;

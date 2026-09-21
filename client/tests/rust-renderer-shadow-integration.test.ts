@@ -21,6 +21,11 @@ async function main(): Promise<void> {
         isRustSceneOverlayShadowEnabled,
     } = await import("../render/rust/RustShadowIntegration");
     const {
+        createDeferredDrawCallRange,
+        materializeDrawCallRange,
+        releaseDrawCallRange,
+    } = await import("../render/WebGLMapSquare");
+    const {
         compareRgbaFrames,
         getRustPixelParityInterval,
         isRustPixelParityEnabled,
@@ -222,6 +227,48 @@ async function main(): Promise<void> {
         createWorldEntityGhostSceneHslOverride(0),
         undefined,
     );
+
+    const deferredRanges = [[12, 6, 1]] as any;
+    let deferredCreations = 0;
+    const deferred = createDeferredDrawCallRange(
+        deferredRanges,
+        () => {
+            deferredCreations++;
+            return { marker: "legacy" } as any;
+        },
+        false,
+    );
+    assert.equal(deferredCreations, 0);
+    assert.equal(deferred.drawCall, undefined);
+    assert.equal(deferred.materializeDrawCall !== undefined, true);
+
+    const materialized = materializeDrawCallRange(deferred);
+    assert.equal(deferredCreations, 1);
+    assert.equal((materialized.drawCall as any).marker, "legacy");
+    assert.equal(materialized.drawRanges, deferredRanges);
+    assert.equal(materialized.materializeDrawCall, undefined);
+
+    const materializedAgain = materializeDrawCallRange(deferred);
+    assert.equal(deferredCreations, 1);
+    assert.equal(materializedAgain.drawCall, materialized.drawCall);
+
+    let eagerCreations = 0;
+    const eager = createDeferredDrawCallRange(
+        [[0, 3, 1]] as any,
+        () => {
+            eagerCreations++;
+            return { marker: "eager" } as any;
+        },
+        true,
+    );
+    assert.equal(eagerCreations, 1);
+    assert.equal((eager.drawCall as any).marker, "eager");
+    assert.equal(eager.materializeDrawCall, undefined);
+
+    releaseDrawCallRange(deferred);
+    assert.equal(deferred.drawCall, undefined);
+    assert.equal(deferred.materializeDrawCall, undefined);
+    assert.equal(deferred.drawRanges.length, 0);
 
     assert.equal(
         getRustRendererRuntimeMode(""),
