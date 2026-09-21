@@ -4,7 +4,9 @@ export type RustStage5Path =
     | "contour"
     | "basic"
     | "mirror"
-    | "uv";
+    | "uv"
+    | "normals"
+    | "lighting";
 
 export type RustStage5PathStats = {
     attempts: number;
@@ -22,6 +24,8 @@ const PATHS: RustStage5Path[] = [
     "basic",
     "mirror",
     "uv",
+    "normals",
+    "lighting",
 ];
 
 let strictMode = false;
