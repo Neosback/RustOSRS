@@ -6,7 +6,12 @@ export type RustStage5Path =
     | "mirror"
     | "uv"
     | "normals"
-    | "lighting";
+    | "lighting"
+    | "vertexBuilder"
+    | "facePreparation"
+    | "modelInfo"
+    | "modelHash"
+    | "drawList";
 
 export type RustStage5PathStats = {
     attempts: number;
@@ -26,6 +31,11 @@ const PATHS: RustStage5Path[] = [
     "uv",
     "normals",
     "lighting",
+    "vertexBuilder",
+    "facePreparation",
+    "modelInfo",
+    "modelHash",
+    "drawList",
 ];
 
 let strictMode = false;
