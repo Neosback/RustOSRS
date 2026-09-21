@@ -203,6 +203,17 @@ mod tests {
     }
 
     #[test]
+    fn texture_layer_budget_matches_ten_bit_vertex_encoding() {
+        let max_layer = PackedVertex::encode(input(1023));
+        assert_eq!(max_layer.texture_id(), Some(1023));
+        assert!(max_layer.is_textured());
+
+        let overflow = PackedVertex::encode(input(1024));
+        assert_eq!(overflow.texture_id(), None);
+        assert!(!overflow.is_textured());
+    }
+
+    #[test]
     fn deduper_uses_complete_packed_vertex_identity() {
         let mut deduper = PackedVertexDeduper::default();
         let first = deduper.push(input(-1), true);
