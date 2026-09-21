@@ -5,6 +5,7 @@ import { Entity } from "../scene/entity/Entity";
 import { ModelData } from "./ModelData";
 import {
     applyLegacyTransformsWithRustIfReady,
+    contourVerticesWithRustIfReady,
     type LegacyTransformOperation,
     skinSkeletalVerticesWithRustIfReady,
 } from "./RustModelTransforms";
@@ -577,6 +578,29 @@ export class Model extends Entity {
             model.verticesY = this.verticesY;
         }
         model.contourVerticesY = new Int32Array(model.verticesCount);
+
+        const rustContour = contourVerticesWithRustIfReady(
+            this.verticesX,
+            this.verticesY,
+            this.verticesZ,
+            model.usedVertexCount,
+            type,
+            param,
+            heightMap,
+            heightMapAbove,
+            sceneX,
+            sceneHeight,
+            sceneZ,
+            this.minY,
+            this.minY,
+            this.maxY,
+            true,
+        );
+        if (rustContour) {
+            model.contourVerticesY = rustContour;
+            model.invalidateBounds();
+            return model;
+        }
 
         if (type === 1) {
             for (let i = 0; i < model.usedVertexCount; i++) {
