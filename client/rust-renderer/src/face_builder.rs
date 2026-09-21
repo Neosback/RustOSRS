@@ -10,6 +10,7 @@ pub enum FaceFilter {
 }
 
 impl FaceFilter {
+    #[cfg(target_arch = "wasm32")]
     fn from_i32(value: i32) -> Result<Self, &'static str> {
         match value {
             -1 => Ok(Self::All),
