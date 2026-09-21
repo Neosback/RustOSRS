@@ -84,7 +84,14 @@ export class SceneBuffer {
     drawCommandsInteractLod: DrawCommand[] = [];
     drawCommandsInteractLodAlpha: DrawCommand[] = [];
 
-    usedTextureIds = new Set<number>();
+    private readonly fallbackUsedTextureIds = new Set<number>();
+
+    get usedTextureIds(): Set<number> {
+        for (const textureId of this.vertexBuf.rustUsedTextureIds()) {
+            this.fallbackUsedTextureIds.add(textureId);
+        }
+        return this.fallbackUsedTextureIds;
+    }
 
     constructor(
         readonly textureLoader: TextureLoader,
@@ -93,6 +100,7 @@ export class SceneBuffer {
         vertexBatchBuilder?: VertexBatchBuilder,
     ) {
         this.vertexBuf = new VertexBuffer(initVertexCount, vertexBatchBuilder);
+        this.vertexBuf.setTextureIdMap(textureIdIndexMap);
     }
 
     vertexCount(): number {
@@ -165,18 +173,6 @@ export class SceneBuffer {
             }
 
             const textureIds = tileModel.faceTextures ?? EMPTY_TERRAIN_TEXTURE_IDS;
-            const textureIndices = new Int32Array(faceCount);
-            textureIndices.fill(-1);
-            if (tileModel.faceTextures) {
-                for (let faceIndex = 0; faceIndex < faceCount; faceIndex++) {
-                    const textureId = tileModel.faceTextures[faceIndex] | 0;
-                    const textureIndex = this.textureIdIndexMap.get(textureId) ?? -1;
-                    textureIndices[faceIndex] = textureIndex;
-                    if (textureIndex !== -1) {
-                        this.usedTextureIds.add(textureId);
-                    }
-                }
-            }
 
             const rustIndices = this.vertexBuf.addTerrainTile(
                 tileModel.vertexX,
@@ -189,7 +185,6 @@ export class SceneBuffer {
                 tileModel.faceColorsB,
                 tileModel.faceColorsC,
                 textureIds,
-                textureIndices,
                 tileModel.vertexX[0],
                 tileModel.vertexZ[0],
                 offsetX,
@@ -587,19 +582,6 @@ export class SceneBuffer {
             throw new Error("Model has face textures but no texture coordinates");
         }
 
-        for (
-            let fieldOffset = MODEL_FACE_FIELD_STRIDE - 1;
-            fieldOffset < faceFields.length;
-            fieldOffset += MODEL_FACE_FIELD_STRIDE
-        ) {
-            const textureId = faceFields[fieldOffset] | 0;
-            const textureIndex = this.textureIdIndexMap.get(textureId) ?? -1;
-            if (textureIndex !== -1) {
-                this.usedTextureIds.add(textureId);
-            }
-            faceFields[fieldOffset] = textureIndex;
-        }
-
         let verticesY = model.verticesY;
         let sceneX = 0;
         let sceneZ = 0;
@@ -773,7 +755,7 @@ export class SceneBuffer {
             const fc = facesC[index];
 
             if (textureIndex !== -1) {
-                this.usedTextureIds.add(textureId);
+                this.fallbackUsedTextureIds.add(textureId);
             }
 
             const packedPriority = renderLayer ?? priority;
