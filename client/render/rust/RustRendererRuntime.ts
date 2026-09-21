@@ -10,7 +10,6 @@ export interface RustRendererShadowRuntime {
     disposeDom?: () => void;
 }
 
-let modulePromise: Promise<RustRendererWebModule> | undefined;
 
 export function getRustRendererRuntimeMode(
     search: string = typeof window !== "undefined" ? window.location.search : "",
