@@ -475,3 +475,84 @@ export function contourVerticesWithRustIfReady(
         return undefined;
     }
 }
+
+
+export const RustBasicTransformMode = {
+    ROTATE_90: 0,
+    ROTATE_180: 1,
+    ROTATE_270: 2,
+    ROTATE_ANGLE: 3,
+    TRANSLATE: 4,
+    SCALE: 5,
+} as const;
+
+export type RustBasicVertexTransformer = (
+    verticesX: Int32Array,
+    verticesY: Int32Array,
+    verticesZ: Int32Array,
+    mode: number,
+    a: number,
+    b: number,
+    c: number,
+) => Int32Array;
+
+let basicVertexTransformer: RustBasicVertexTransformer | undefined;
+let warnedAboutBasicTransformFailure = false;
+
+export function registerRustBasicVertexTransformer(
+    transformer: RustBasicVertexTransformer | undefined,
+): void {
+    basicVertexTransformer = transformer;
+}
+
+export function transformVerticesWithRustIfReady(
+    verticesX: Int32Array,
+    verticesY: Int32Array,
+    verticesZ: Int32Array,
+    vertexCount: number,
+    mode: number,
+    a: number = 0,
+    b: number = 0,
+    c: number = 0,
+): boolean {
+    if (!basicVertexTransformer || vertexCount <= 0) {
+        return false;
+    }
+
+    const count = Math.min(
+        vertexCount | 0,
+        verticesX.length,
+        verticesY.length,
+        verticesZ.length,
+    );
+    try {
+        const transformed = basicVertexTransformer(
+            verticesX.subarray(0, count),
+            verticesY.subarray(0, count),
+            verticesZ.subarray(0, count),
+            mode | 0,
+            a | 0,
+            b | 0,
+            c | 0,
+        );
+        if (transformed.length !== count * 3) {
+            return false;
+        }
+
+        for (let vertex = 0, offset = 0; vertex < count; vertex++) {
+            verticesX[vertex] = transformed[offset++];
+            verticesY[vertex] = transformed[offset++];
+            verticesZ[vertex] = transformed[offset++];
+        }
+        return true;
+    } catch (error) {
+        if (!warnedAboutBasicTransformFailure) {
+            warnedAboutBasicTransformFailure = true;
+            console.warn(
+                "[RustModelTransforms] Rust basic vertex transform failed; using TypeScript fallback.",
+                error,
+            );
+        }
+        return false;
+    }
+}
