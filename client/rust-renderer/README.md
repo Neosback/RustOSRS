@@ -6,7 +6,7 @@ The migration is deliberately incremental. TypeScript can continue decoding cach
 
 ## Current scope
 
-Stages 0-2 are implemented at the parity boundary, Stage 3 primary presentation is implemented, and Rust primary is now the default runtime:
+Stages 0-4 are complete at the renderer-ownership boundary, Stage 5 geometry ownership is actively integrated, and Rust primary is now the default runtime:
 
 - exact 12-byte packed OSRS vertex codec
 - packed-vertex deduplication
@@ -109,21 +109,28 @@ The A/B selector and an opt-in Rust-primary path already exist. Static/NPC draws
 
 Rust-primary is now the default. `DrawBackend.ts` is removed, and primary mode no longer allocates PicoGL scene/MSAA/frame-texture framebuffer targets or Pico FXAA presentation state. Static terrain/loc/door/ground draw ranges are CPU-authoritative; their legacy Pico draw calls, VAOs, vertex/index buffers and model-info textures are deferred until the legacy path is actually materialized. Prebaked NPC Pico resources are likewise deferred, while dynamic NPC, player, GFX and projectile Pico GPU uploads are skipped in Rust-primary and guarded at the low-level upload/cache boundary. Legacy per-map height/water textures are also lazy and are materialized only if the Pico fallback path is entered. Normal Rust-primary operation therefore avoids Pico scene framebuffers, presentation state, draw calls, scene VAOs/buffers/model-info textures, dynamic actor uploads and per-map scene textures. CI now enforces that ownership contract, and the shadow-integration suite exercises the real terrain/loc/door/ground fallback accessors to verify deferred draw calls materialize exactly once when the legacy path is entered. The remaining PicoGL scene programs are intentionally compiled at startup as instant-fallback insurance; making them lazy would turn renderer recovery into an asynchronous shader-compilation event, so they remain compatibility infrastructure until the legacy renderer is retired. Stage 4 implementation is complete at that boundary.
 
-### Stage 5: move geometry preparation
+### Stage 5: move geometry preparation — IN PROGRESS, NON-BLOCKING FOR RENDERER CUTOVER
 
-Port VertexBuffer, SceneBuffer, model face packing, model hashing, terrain/loc mesh construction, culling and draw-list construction. At this point decoded renderer data can remain in Rust memory through GPU upload.
+Stage 5 has moved well beyond scaffolding. The production Rust path now owns packed-vertex encoding and deduplication, model-face filtering, model face geometry construction, HSL override blending, terrain triangle construction and UV generation, texture-ID-to-resident-layer mapping, used-texture residency tracking, model hashing, model-info packet construction and draw-list construction. Static grouping can use Rust opaque/transparent face counts without expanding every face into TypeScript objects, and animated/merged models reuse raw Rust face packets directly.
 
+TypeScript still owns cache decoding, scene traversal/grouping, animation and pose selection, skeletal/legacy model transforms, contour-ground CPU transforms where their semantics are part of model preparation, and the worker/main-thread transport boundary. A fully WASM-resident geometry pipeline would require moving more of those transforms and/or changing the worker/GPU ownership architecture so packed geometry does not leave WASM memory before upload.
+
+Those remaining Stage 5 items are optimization and architectural cleanup. They are not missing scene-renderer capabilities.
 
 ## Remaining cutover blockers
 
-Renderer ownership through Stage 4 is implemented. The remaining pre-merge gate is representative visual acceptance rather than another missing renderer class:
+The Rust/WASM renderer migration itself is complete through Stage 4. Automated acceptance covers static and dynamic draws, roofs, LOD, animated-loc range patching, world-entity ghost terrain, water/material shading, presentation, MSAA, FXAA, overlays, context-loss recovery and the real legacy fallback materialization contract.
 
-- representative full-dynamic parity acceptance across NPC/player/GFX/projectile overlap, transparency, priorities, world entities, water, roofs and animated loc changes
-- representative in-game `rust-renderer=primary` visual acceptance across crowded actor overlap, world entities, water, roofs and animated loc changes
-- eliminate temporary GLSL semantic duplication with shared/generated shader sources or an equivalent drift-proof build contract as follow-up hardening
-- later move `SceneBuffer`, `VertexBuffer`, face packing and dynamic geometry construction into Rust/WASM memory during Stage 5 to remove JS-to-WASM typed-array churn
+The remaining pre-merge gate is representative **human in-game visual acceptance** across crowded actor overlap, world entities, water, roofs and animated loc changes. No missing renderer class or GPU ownership path remains.
 
-The automated fallback smoke contract is now covered: deferred terrain/loc/door/ground Pico draw calls remain unmaterialized during primary operation and materialize exactly once through their real legacy accessors. Eager compilation of the fallback-only Pico scene programs is an intentional recovery policy, not an unfinished Stage 4 task.
+Follow-up hardening, not cutover blockers:
+
+- eliminate duplicated Pico/Rust GLSL semantics with generated/shared shader sources or another drift-proof contract
+- continue Stage 5 by moving skeletal/legacy transforms and selected contour preparation into Rust where doing so preserves cache/model semantics
+- reduce worker/JS/WASM typed-array churn and, if the architecture is changed accordingly, keep packed geometry resident through GPU upload
+- retire the legacy Pico scene renderer only after the fallback window is no longer desired
+
+The automated fallback smoke contract is covered: deferred terrain/loc/door/ground Pico draw calls remain unmaterialized during primary operation and materialize exactly once through their real legacy accessors. Eager compilation of the fallback-only Pico scene programs is an intentional recovery policy, not an unfinished Stage 4 task.
 
 Player composition no longer blocks GPU cutover: Rust consumes finalized packed player geometry already produced by TypeScript. Equipment/identity-kit assembly, recoloring and animation transforms remain intentionally in TypeScript until Stage 5. World interaction is already CPU-side, so a GPU picking framebuffer is not required for the current cutover.
 
