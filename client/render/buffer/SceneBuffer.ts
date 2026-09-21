@@ -28,6 +28,7 @@ export enum ContourGroundType {
 }
 
 const EMPTY_MODEL_UVS = new Float32Array(0);
+const EMPTY_TERRAIN_TEXTURE_IDS = new Int32Array(0);
 const MODEL_FACE_FIELD_STRIDE = 5;
 
 export type ModelInfo = {
@@ -151,6 +152,52 @@ export class SceneBuffer {
     addTerrainTile(tile: SceneTile, offsetX: number, offsetY: number): void {
         const tileModel = tile.tileModel;
         if (!tileModel) {
+            return;
+        }
+
+        if (this.vertexBuf.hasRustTerrainBuilder()) {
+            const faceCount = tileModel.facesA.length;
+            if (faceCount === 0 || tileModel.vertexX.length === 0) {
+                return;
+            }
+
+            const textureIds = tileModel.faceTextures ?? EMPTY_TERRAIN_TEXTURE_IDS;
+            const textureIndices = new Int32Array(faceCount);
+            textureIndices.fill(-1);
+            if (tileModel.faceTextures) {
+                for (let faceIndex = 0; faceIndex < faceCount; faceIndex++) {
+                    const textureId = tileModel.faceTextures[faceIndex] | 0;
+                    const textureIndex = this.textureIdIndexMap.get(textureId) ?? -1;
+                    textureIndices[faceIndex] = textureIndex;
+                    if (textureIndex !== -1) {
+                        this.usedTextureIds.add(textureId);
+                    }
+                }
+            }
+
+            const rustIndices = this.vertexBuf.addTerrainTile(
+                tileModel.vertexX,
+                tileModel.vertexY,
+                tileModel.vertexZ,
+                tileModel.facesA,
+                tileModel.facesB,
+                tileModel.facesC,
+                tileModel.faceColorsA,
+                tileModel.faceColorsB,
+                tileModel.faceColorsC,
+                textureIds,
+                textureIndices,
+                tileModel.vertexX[0],
+                tileModel.vertexZ[0],
+                offsetX,
+                offsetY,
+            );
+            if (!rustIndices) {
+                throw new Error("Rust terrain builder became unavailable during tile packing");
+            }
+            for (let i = 0; i < rustIndices.length; i++) {
+                this.indices.push(rustIndices[i]);
+            }
             return;
         }
 
