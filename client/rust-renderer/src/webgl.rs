@@ -1342,6 +1342,7 @@ impl RustWebGlRenderer {
                 Gl::UNSIGNED_SHORT,
                 Some(data.unchecked_ref()),
             )?;
+        self.actor_data_actor_capacity = actor_capacity;
         Ok(())
     }
 
