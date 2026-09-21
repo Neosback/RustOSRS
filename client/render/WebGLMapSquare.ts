@@ -207,6 +207,55 @@ type GroundItemGeometryResources = {
     };
 };
 
+type DrawRangeGroups = {
+    main: DrawRange[];
+    alpha: DrawRange[];
+    lod: DrawRange[];
+    lodAlpha: DrawRange[];
+    interact: DrawRange[];
+    interactAlpha: DrawRange[];
+    interactLod: DrawRange[];
+    interactLodAlpha: DrawRange[];
+};
+
+type DrawRangeGroupOwner = {
+    drawCall: DrawCallRange;
+    drawCallAlpha: DrawCallRange;
+    drawCallLod: DrawCallRange;
+    drawCallLodAlpha: DrawCallRange;
+    drawCallInteract: DrawCallRange;
+    drawCallInteractAlpha: DrawCallRange;
+    drawCallInteractLod: DrawCallRange;
+    drawCallInteractLodAlpha: DrawCallRange;
+};
+
+function getDrawRangeGroups(owner: DrawRangeGroupOwner): DrawRangeGroups {
+    return {
+        main: owner.drawCall.drawRanges,
+        alpha: owner.drawCallAlpha.drawRanges,
+        lod: owner.drawCallLod.drawRanges,
+        lodAlpha: owner.drawCallLodAlpha.drawRanges,
+        interact: owner.drawCallInteract.drawRanges,
+        interactAlpha: owner.drawCallInteractAlpha.drawRanges,
+        interactLod: owner.drawCallInteractLod.drawRanges,
+        interactLodAlpha: owner.drawCallInteractLodAlpha.drawRanges,
+    };
+}
+
+function selectDrawRangeGroup(
+    groups: DrawRangeGroups,
+    isAlpha: boolean,
+    isInteract: boolean,
+    isLod: boolean,
+): DrawRange[] {
+    if (isInteract) {
+        if (isLod) return isAlpha ? groups.interactLodAlpha : groups.interactLod;
+        return isAlpha ? groups.interactAlpha : groups.interact;
+    }
+    if (isLod) return isAlpha ? groups.lodAlpha : groups.lod;
+    return isAlpha ? groups.alpha : groups.main;
+}
+
 function createLocGeometryResources(
     app: PicoApp,
     mainProgram: Program,
@@ -362,11 +411,15 @@ export class WebGLMapSquare {
     private locTypeRotsAtLocalBuffer: number[] = [];
     /** Static loc ambient sound emitters; built lazily by the renderer, cleared on scene data refresh. */
     ambientSoundEmitters?: { locId: number; x: number; y: number; level: number; rot: number }[];
+    private terrainDrawRangeGroups: DrawRangeGroups;
     private loc?: DoorGeometryResources;
+    private locDrawRangeGroups?: DrawRangeGroups;
     private locDrawRangePlanes?: NonNullable<DoorGeometryResources["planes"]>;
     private door?: DoorGeometryResources;
+    private doorDrawRangeGroups?: DrawRangeGroups;
     private doorDrawRangePlanes?: NonNullable<DoorGeometryResources["planes"]>;
     private groundItems?: GroundItemGeometryResources;
+    private groundItemDrawRangeGroups?: DrawRangeGroups;
     private groundItemDrawRangePlanes?: NonNullable<GroundItemGeometryResources["planes"]>;
 
     private npcInterleavedBuffer?: GpuInterleavedBuffer;
@@ -1095,6 +1148,7 @@ export class WebGLMapSquare {
         public tileLocTypeRotByLevel?: Uint8Array[],
     ) {
         this.id = getMapSquareId(mapX, mapY);
+        this.terrainDrawRangeGroups = getDrawRangeGroups(this);
         /** When >= 0, all interaction/height queries on this map use this plane
          *  instead of the caller's basePlane.  Set for world entity overlays
          *  whose content lives on a specific source plane (e.g. boat deck = 1). */
@@ -1107,10 +1161,12 @@ export class WebGLMapSquare {
         this.npcVertexArray = npcVertexArray;
         this.drawCallNpc = drawCallNpc;
         this.loc = loc;
+        this.locDrawRangeGroups = loc ? getDrawRangeGroups(loc) : undefined;
         if (loc?.planes) {
             this.locDrawRangePlanes = loc.planes;
         }
         this.door = door;
+        this.doorDrawRangeGroups = door ? getDrawRangeGroups(door) : undefined;
         if (door?.planes) {
             this.doorDrawRangePlanes = door.planes;
         }
@@ -1189,7 +1245,12 @@ export class WebGLMapSquare {
     }
 
     getDrawRanges(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawRange[] {
-        return this.getDrawCall(isAlpha, isInteract, isLod).drawRanges;
+        return selectDrawRangeGroup(
+            this.terrainDrawRangeGroups,
+            isAlpha,
+            isInteract,
+            isLod,
+        );
     }
 
     getLocDrawCall(
@@ -1215,7 +1276,10 @@ export class WebGLMapSquare {
         isInteract: boolean,
         isLod: boolean,
     ): DrawRange[] | undefined {
-        return this.getLocDrawCall(isAlpha, isInteract, isLod)?.drawRanges;
+        const groups = this.locDrawRangeGroups;
+        return groups
+            ? selectDrawRangeGroup(groups, isAlpha, isInteract, isLod)
+            : undefined;
     }
 
     getDoorDrawCall(
@@ -1241,7 +1305,10 @@ export class WebGLMapSquare {
         isInteract: boolean,
         isLod: boolean,
     ): DrawRange[] | undefined {
-        return this.getDoorDrawCall(isAlpha, isInteract, isLod)?.drawRanges;
+        const groups = this.doorDrawRangeGroups;
+        return groups
+            ? selectDrawRangeGroup(groups, isAlpha, isInteract, isLod)
+            : undefined;
     }
 
     getDrawRangesPlanes(
@@ -1316,7 +1383,10 @@ export class WebGLMapSquare {
         isInteract: boolean,
         isLod: boolean,
     ): DrawRange[] | undefined {
-        return this.getGroundItemDrawCall(isAlpha, isInteract, isLod)?.drawRanges;
+        const groups = this.groundItemDrawRangeGroups;
+        return groups
+            ? selectDrawRangeGroup(groups, isAlpha, isInteract, isLod)
+            : undefined;
     }
 
     getGroundItemDrawRangesPlanes(
@@ -1409,6 +1479,7 @@ export class WebGLMapSquare {
             door.modelInfoTextureInteractLod.delete();
             door.modelInfoTextureInteractLodAlpha.delete();
             this.door = undefined;
+            this.doorDrawRangeGroups = undefined;
             this.doorDrawRangePlanes = undefined;
         }
     }
@@ -1441,6 +1512,7 @@ export class WebGLMapSquare {
         loc.modelInfoTextureInteractLod.delete();
         loc.modelInfoTextureInteractLodAlpha.delete();
         this.loc = undefined;
+        this.locDrawRangeGroups = undefined;
         this.locDrawRangePlanes = undefined;
     }
 
@@ -1889,6 +1961,7 @@ export class WebGLMapSquare {
             loadTime,
             mapData.loc,
         );
+        this.locDrawRangeGroups = this.loc ? getDrawRangeGroups(this.loc) : undefined;
         this.locDrawRangePlanes = this.loc?.planes;
 
         const cycle = clientCycle | 0;
@@ -1976,6 +2049,7 @@ export class WebGLMapSquare {
             this.door.modelInfoTextureInteractLodAlpha.delete();
         }
         this.door = undefined;
+        this.doorDrawRangeGroups = undefined;
         this.doorDrawRangePlanes = undefined;
 
         if (mapData.doorVertices.length === 0 || mapData.doorIndices.length === 0) {
@@ -2135,6 +2209,7 @@ export class WebGLMapSquare {
             drawCallInteractLodAlpha: doorDrawCallInteractLodAlpha,
             planes: doorPlanes,
         };
+        this.doorDrawRangeGroups = getDrawRangeGroups(this.door);
         if (doorPlanes) {
             this.doorDrawRangePlanes = doorPlanes;
         }
@@ -2435,6 +2510,7 @@ export class WebGLMapSquare {
         resources.modelInfoTextureInteractLod.delete();
         resources.modelInfoTextureInteractLodAlpha.delete();
         this.groundItems = undefined;
+        this.groundItemDrawRangeGroups = undefined;
         this.groundItemDrawRangePlanes = undefined;
     }
 
@@ -2565,6 +2641,7 @@ export class WebGLMapSquare {
         };
 
         this.groundItems = groundResources;
+        this.groundItemDrawRangeGroups = getDrawRangeGroups(groundResources);
         this.groundItemDrawRangePlanes = data.planes;
     }
 
