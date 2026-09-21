@@ -11,6 +11,7 @@ on:
       - "client/tests/rust-renderer-bridge.test.ts"
       - "client/scripts/check-rust-renderer-abi.mjs"
       - "client/scripts/check-rust-renderer-shader-reference.mjs"
+      - "client/scripts/check-rust-primary-ownership.mjs"
       - "client/scripts/test-rust-renderer-browser.mjs"
       - "client/package.json"
       - "client/yarn.lock"
@@ -23,6 +24,7 @@ on:
       - "client/tests/rust-renderer-bridge.test.ts"
       - "client/scripts/check-rust-renderer-abi.mjs"
       - "client/scripts/check-rust-renderer-shader-reference.mjs"
+      - "client/scripts/check-rust-primary-ownership.mjs"
       - "client/scripts/test-rust-renderer-browser.mjs"
       - "client/package.json"
       - "client/yarn.lock"
@@ -71,6 +73,8 @@ jobs:
         run: yarn check:rust-renderer-abi
       - name: Guard legacy shader parity reference
         run: yarn check:rust-renderer-shaders
+      - name: Guard Rust-primary scene ownership
+        run: yarn check:rust-primary-ownership
       - name: Test TypeScript bridge
         run: yarn test:rust-renderer-bridge
       - name: Test shadow integration module graph
