@@ -46,9 +46,11 @@ import type {
 } from "../npc/NpcRenderTemplate";
 import { isKnownWaterTextureId } from "../water/WaterTextureIds";
 import {
+    getDrawListBuilder,
     getModelHasher,
     getModelInfoTextureBuilder,
     getVertexBatchBuilderFactory,
+    type DrawListBuilder,
     type ModelHasher,
     type ModelInfoTextureBuilder,
     type VertexBatchBuilderFactory,
@@ -786,13 +788,16 @@ function addSceneModels(
 function buildLocGeometryData(
     sceneBuf: SceneBuffer,
     modelInfoTextureBuilder: ModelInfoTextureBuilder,
+    drawListBuilder: DrawListBuilder,
 ): LocGeometryData {
-    const drawRanges = (commands: DrawCommand[]): DrawRange[] =>
-        commands.map((cmd) => newDrawRange(cmd.offset, cmd.elements, cmd.instances.length));
-    const drawRangePlanes = (commands: DrawCommand[]): Uint8Array =>
-        new Uint8Array(
-            commands.map((cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level),
-        );
+    const main = drawListBuilder(sceneBuf.drawCommands);
+    const alpha = drawListBuilder(sceneBuf.drawCommandsAlpha);
+    const lod = drawListBuilder(sceneBuf.drawCommandsLod);
+    const lodAlpha = drawListBuilder(sceneBuf.drawCommandsLodAlpha);
+    const interact = drawListBuilder(sceneBuf.drawCommandsInteract);
+    const interactAlpha = drawListBuilder(sceneBuf.drawCommandsInteractAlpha);
+    const interactLod = drawListBuilder(sceneBuf.drawCommandsInteractLod);
+    const interactLodAlpha = drawListBuilder(sceneBuf.drawCommandsInteractLodAlpha);
 
     return {
         vertices: sceneBuf.vertexBuf.byteArray(),
@@ -811,22 +816,22 @@ function buildLocGeometryData(
             sceneBuf.drawCommandsInteractLodAlpha,
         ),
 
-        drawRanges: drawRanges(sceneBuf.drawCommands),
-        drawRangesAlpha: drawRanges(sceneBuf.drawCommandsAlpha),
-        drawRangesPlanes: drawRangePlanes(sceneBuf.drawCommands),
-        drawRangesAlphaPlanes: drawRangePlanes(sceneBuf.drawCommandsAlpha),
-        drawRangesLod: drawRanges(sceneBuf.drawCommandsLod),
-        drawRangesLodAlpha: drawRanges(sceneBuf.drawCommandsLodAlpha),
-        drawRangesLodPlanes: drawRangePlanes(sceneBuf.drawCommandsLod),
-        drawRangesLodAlphaPlanes: drawRangePlanes(sceneBuf.drawCommandsLodAlpha),
-        drawRangesInteract: drawRanges(sceneBuf.drawCommandsInteract),
-        drawRangesInteractAlpha: drawRanges(sceneBuf.drawCommandsInteractAlpha),
-        drawRangesInteractPlanes: drawRangePlanes(sceneBuf.drawCommandsInteract),
-        drawRangesInteractAlphaPlanes: drawRangePlanes(sceneBuf.drawCommandsInteractAlpha),
-        drawRangesInteractLod: drawRanges(sceneBuf.drawCommandsInteractLod),
-        drawRangesInteractLodAlpha: drawRanges(sceneBuf.drawCommandsInteractLodAlpha),
-        drawRangesInteractLodPlanes: drawRangePlanes(sceneBuf.drawCommandsInteractLod),
-        drawRangesInteractLodAlphaPlanes: drawRangePlanes(sceneBuf.drawCommandsInteractLodAlpha),
+        drawRanges: main.ranges,
+        drawRangesAlpha: alpha.ranges,
+        drawRangesPlanes: main.planes,
+        drawRangesAlphaPlanes: alpha.planes,
+        drawRangesLod: lod.ranges,
+        drawRangesLodAlpha: lodAlpha.ranges,
+        drawRangesLodPlanes: lod.planes,
+        drawRangesLodAlphaPlanes: lodAlpha.planes,
+        drawRangesInteract: interact.ranges,
+        drawRangesInteractAlpha: interactAlpha.ranges,
+        drawRangesInteractPlanes: interact.planes,
+        drawRangesInteractAlphaPlanes: interactAlpha.planes,
+        drawRangesInteractLod: interactLod.ranges,
+        drawRangesInteractLodAlpha: interactLodAlpha.ranges,
+        drawRangesInteractLodPlanes: interactLod.planes,
+        drawRangesInteractLodAlphaPlanes: interactLodAlpha.planes,
     };
 }
 
@@ -1777,159 +1782,80 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             bridgeSurfaceFlags[lvl] = levelBridgeFlags;
         }
 
-        // Draw ranges
+        // Draw ranges and plane metadata are prepared by Rust from the
+        // CPU draw-command descriptors. TypeScript keeps the object form only
+        // for compatibility with the existing scene packet types.
+        const drawListBuilder = await getDrawListBuilder();
 
-        // Normal (merged)
-        const drawRanges = sceneBuf.drawCommands.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const drawRangesPlanes = new Uint8Array(
-            sceneBuf.drawCommands.map((cmd) => {
-                const planeCull = cmd.instances[0].planeCullLevel ?? cmd.instances[0].level;
-                return planeCull;
-            }),
-        );
-        const drawRangesAlpha = sceneBuf.drawCommandsAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const drawRangesAlphaPlanes = new Uint8Array(
-            sceneBuf.drawCommandsAlpha.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
+        const mainDrawList = drawListBuilder(sceneBuf.drawCommands);
+        const alphaDrawList = drawListBuilder(sceneBuf.drawCommandsAlpha);
+        const lodDrawList = drawListBuilder(sceneBuf.drawCommandsLod);
+        const lodAlphaDrawList = drawListBuilder(sceneBuf.drawCommandsLodAlpha);
+        const interactDrawList = drawListBuilder(sceneBuf.drawCommandsInteract);
+        const interactAlphaDrawList = drawListBuilder(sceneBuf.drawCommandsInteractAlpha);
+        const interactLodDrawList = drawListBuilder(sceneBuf.drawCommandsInteractLod);
+        const interactLodAlphaDrawList = drawListBuilder(sceneBuf.drawCommandsInteractLodAlpha);
 
-        if (mapProfileEnabled) console.log(
-            `draw ranges: ${drawRanges.length}, alpha: ${drawRangesAlpha.length}`,
-            mapX,
-            mapY,
-        );
+        const drawRanges = mainDrawList.ranges;
+        const drawRangesPlanes = mainDrawList.planes;
+        const drawRangesAlpha = alphaDrawList.ranges;
+        const drawRangesAlphaPlanes = alphaDrawList.planes;
+        const drawRangesLod = lodDrawList.ranges;
+        const drawRangesLodPlanes = lodDrawList.planes;
+        const drawRangesLodAlpha = lodAlphaDrawList.ranges;
+        const drawRangesLodAlphaPlanes = lodAlphaDrawList.planes;
+        const drawRangesInteract = interactDrawList.ranges;
+        const drawRangesInteractPlanes = interactDrawList.planes;
+        const drawRangesInteractAlpha = interactAlphaDrawList.ranges;
+        const drawRangesInteractAlphaPlanes = interactAlphaDrawList.planes;
+        const drawRangesInteractLod = interactLodDrawList.ranges;
+        const drawRangesInteractLodPlanes = interactLodDrawList.planes;
+        const drawRangesInteractLodAlpha = interactLodAlphaDrawList.ranges;
+        const drawRangesInteractLodAlphaPlanes = interactLodAlphaDrawList.planes;
 
-        // Lod (merged)
-        const drawRangesLod = sceneBuf.drawCommandsLod.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const drawRangesLodPlanes = new Uint8Array(
-            sceneBuf.drawCommandsLod.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
-        const drawRangesLodAlpha = sceneBuf.drawCommandsLodAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const drawRangesLodAlphaPlanes = new Uint8Array(
-            sceneBuf.drawCommandsLodAlpha.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
+        if (mapProfileEnabled) {
+            console.log(
+                `draw ranges: ${drawRanges.length}, alpha: ${drawRangesAlpha.length}`,
+                mapX,
+                mapY,
+            );
+            console.log(
+                `draw ranges lod: ${drawRangesLod.length}, alpha: ${drawRangesLodAlpha.length}`,
+                mapX,
+                mapY,
+            );
+            console.log(`draw ranges interact: ${drawRangesInteract.length}`, mapX, mapY);
+        }
 
-        if (mapProfileEnabled) console.log(
-            `draw ranges lod: ${drawRangesLod.length}, alpha: ${drawRangesLodAlpha.length}`,
-            mapX,
-            mapY,
+        const doorMainDrawList = drawListBuilder(doorSceneBuf.drawCommands);
+        const doorAlphaDrawList = drawListBuilder(doorSceneBuf.drawCommandsAlpha);
+        const doorLodDrawList = drawListBuilder(doorSceneBuf.drawCommandsLod);
+        const doorLodAlphaDrawList = drawListBuilder(doorSceneBuf.drawCommandsLodAlpha);
+        const doorInteractDrawList = drawListBuilder(doorSceneBuf.drawCommandsInteract);
+        const doorInteractAlphaDrawList = drawListBuilder(
+            doorSceneBuf.drawCommandsInteractAlpha,
         );
-
-        // Interact (non merged)
-        const drawRangesInteract = sceneBuf.drawCommandsInteract.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const drawRangesInteractPlanes = new Uint8Array(
-            sceneBuf.drawCommandsInteract.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
-        const drawRangesInteractAlpha = sceneBuf.drawCommandsInteractAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const drawRangesInteractAlphaPlanes = new Uint8Array(
-            sceneBuf.drawCommandsInteractAlpha.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
+        const doorInteractLodDrawList = drawListBuilder(doorSceneBuf.drawCommandsInteractLod);
+        const doorInteractLodAlphaDrawList = drawListBuilder(
+            doorSceneBuf.drawCommandsInteractLodAlpha,
         );
 
-        if (mapProfileEnabled) console.log(`draw ranges interact: ${drawRangesInteract.length}`, mapX, mapY);
-
-        // Interact Lod (non merged)
-        const drawRangesInteractLod = sceneBuf.drawCommandsInteractLod.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const drawRangesInteractLodPlanes = new Uint8Array(
-            sceneBuf.drawCommandsInteractLod.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
-        const drawRangesInteractLodAlpha = sceneBuf.drawCommandsInteractLodAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const drawRangesInteractLodAlphaPlanes = new Uint8Array(
-            sceneBuf.drawCommandsInteractLodAlpha.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
-
-        const doorDrawRanges = doorSceneBuf.drawCommands.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const doorDrawRangesPlanes = new Uint8Array(
-            doorSceneBuf.drawCommands.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
-        const doorDrawRangesAlpha = doorSceneBuf.drawCommandsAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const doorDrawRangesAlphaPlanes = new Uint8Array(
-            doorSceneBuf.drawCommandsAlpha.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
-        const doorDrawRangesLod = doorSceneBuf.drawCommandsLod.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const doorDrawRangesLodPlanes = new Uint8Array(
-            doorSceneBuf.drawCommandsLod.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
-        const doorDrawRangesLodAlpha = doorSceneBuf.drawCommandsLodAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const doorDrawRangesLodAlphaPlanes = new Uint8Array(
-            doorSceneBuf.drawCommandsLodAlpha.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
-        const doorDrawRangesInteract = doorSceneBuf.drawCommandsInteract.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const doorDrawRangesInteractPlanes = new Uint8Array(
-            doorSceneBuf.drawCommandsInteract.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
-        const doorDrawRangesInteractAlpha = doorSceneBuf.drawCommandsInteractAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const doorDrawRangesInteractAlphaPlanes = new Uint8Array(
-            doorSceneBuf.drawCommandsInteractAlpha.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
-        const doorDrawRangesInteractLod = doorSceneBuf.drawCommandsInteractLod.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const doorDrawRangesInteractLodPlanes = new Uint8Array(
-            doorSceneBuf.drawCommandsInteractLod.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
-        const doorDrawRangesInteractLodAlpha = doorSceneBuf.drawCommandsInteractLodAlpha.map(
-            (cmd) => newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const doorDrawRangesInteractLodAlphaPlanes = new Uint8Array(
-            doorSceneBuf.drawCommandsInteractLodAlpha.map(
-                (cmd) => cmd.instances[0].planeCullLevel ?? cmd.instances[0].level,
-            ),
-        );
+        const doorDrawRanges = doorMainDrawList.ranges;
+        const doorDrawRangesPlanes = doorMainDrawList.planes;
+        const doorDrawRangesAlpha = doorAlphaDrawList.ranges;
+        const doorDrawRangesAlphaPlanes = doorAlphaDrawList.planes;
+        const doorDrawRangesLod = doorLodDrawList.ranges;
+        const doorDrawRangesLodPlanes = doorLodDrawList.planes;
+        const doorDrawRangesLodAlpha = doorLodAlphaDrawList.ranges;
+        const doorDrawRangesLodAlphaPlanes = doorLodAlphaDrawList.planes;
+        const doorDrawRangesInteract = doorInteractDrawList.ranges;
+        const doorDrawRangesInteractPlanes = doorInteractDrawList.planes;
+        const doorDrawRangesInteractAlpha = doorInteractAlphaDrawList.ranges;
+        const doorDrawRangesInteractAlphaPlanes = doorInteractAlphaDrawList.planes;
+        const doorDrawRangesInteractLod = doorInteractLodDrawList.ranges;
+        const doorDrawRangesInteractLodPlanes = doorInteractLodDrawList.planes;
+        const doorDrawRangesInteractLodAlpha = doorInteractLodAlphaDrawList.ranges;
+        const doorDrawRangesInteractLodAlphaPlanes = doorInteractLodAlphaDrawList.planes;
 
         const modelInfoTextureBuilder = await getModelInfoTextureBuilder();
 
@@ -1976,7 +1902,11 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             doorSceneBuf.drawCommandsInteractLodAlpha,
         );
 
-        const locGeometry = buildLocGeometryData(locSceneBuf, modelInfoTextureBuilder);
+        const locGeometry = buildLocGeometryData(
+            locSceneBuf,
+            modelInfoTextureBuilder,
+            drawListBuilder,
+        );
 
         const heightMapTextureData = shouldLoadPartial
             ? new Int16Array(0)
