@@ -32,7 +32,6 @@ import {
     ModelMergeGroup,
     SceneBuffer,
     SceneModel,
-    createModelInfoTextureData,
     getModelFaces,
     isModelFaceTransparent,
 } from "../buffer/SceneBuffer";
@@ -46,6 +45,10 @@ import type {
     NpcRenderTemplate,
 } from "../npc/NpcRenderTemplate";
 import { isKnownWaterTextureId } from "../water/WaterTextureIds";
+import {
+    getModelInfoTextureBuilder,
+    type ModelInfoTextureBuilder,
+} from "../rust/RustGeometryPreparation";
 import { NpcGeometryData } from "./NpcGeometryData";
 import { type LocGeometryData, type MinimapIcon, SdMapData } from "./SdMapData";
 import { SdMapLoaderInput } from "./SdMapLoaderInput";
@@ -776,7 +779,10 @@ function addSceneModels(
     }
 }
 
-function buildLocGeometryData(sceneBuf: SceneBuffer): LocGeometryData {
+function buildLocGeometryData(
+    sceneBuf: SceneBuffer,
+    modelInfoTextureBuilder: ModelInfoTextureBuilder,
+): LocGeometryData {
     const drawRanges = (commands: DrawCommand[]): DrawRange[] =>
         commands.map((cmd) => newDrawRange(cmd.offset, cmd.elements, cmd.instances.length));
     const drawRangePlanes = (commands: DrawCommand[]): Uint8Array =>
@@ -788,16 +794,16 @@ function buildLocGeometryData(sceneBuf: SceneBuffer): LocGeometryData {
         vertices: sceneBuf.vertexBuf.byteArray(),
         indices: new Int32Array(sceneBuf.indices),
 
-        modelTextureData: createModelInfoTextureData(sceneBuf.drawCommands),
-        modelTextureDataAlpha: createModelInfoTextureData(sceneBuf.drawCommandsAlpha),
-        modelTextureDataLod: createModelInfoTextureData(sceneBuf.drawCommandsLod),
-        modelTextureDataLodAlpha: createModelInfoTextureData(sceneBuf.drawCommandsLodAlpha),
-        modelTextureDataInteract: createModelInfoTextureData(sceneBuf.drawCommandsInteract),
-        modelTextureDataInteractAlpha: createModelInfoTextureData(
+        modelTextureData: modelInfoTextureBuilder(sceneBuf.drawCommands),
+        modelTextureDataAlpha: modelInfoTextureBuilder(sceneBuf.drawCommandsAlpha),
+        modelTextureDataLod: modelInfoTextureBuilder(sceneBuf.drawCommandsLod),
+        modelTextureDataLodAlpha: modelInfoTextureBuilder(sceneBuf.drawCommandsLodAlpha),
+        modelTextureDataInteract: modelInfoTextureBuilder(sceneBuf.drawCommandsInteract),
+        modelTextureDataInteractAlpha: modelInfoTextureBuilder(
             sceneBuf.drawCommandsInteractAlpha,
         ),
-        modelTextureDataInteractLod: createModelInfoTextureData(sceneBuf.drawCommandsInteractLod),
-        modelTextureDataInteractLodAlpha: createModelInfoTextureData(
+        modelTextureDataInteractLod: modelInfoTextureBuilder(sceneBuf.drawCommandsInteractLod),
+        modelTextureDataInteractLodAlpha: modelInfoTextureBuilder(
             sceneBuf.drawCommandsInteractLodAlpha,
         ),
 
@@ -1888,50 +1894,52 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             ),
         );
 
+        const modelInfoTextureBuilder = await getModelInfoTextureBuilder();
+
         // Model info textures
-        const modelTextureData = createModelInfoTextureData(sceneBuf.drawCommands);
-        const modelTextureDataAlpha = createModelInfoTextureData(sceneBuf.drawCommandsAlpha);
+        const modelTextureData = modelInfoTextureBuilder(sceneBuf.drawCommands);
+        const modelTextureDataAlpha = modelInfoTextureBuilder(sceneBuf.drawCommandsAlpha);
 
-        const modelTextureDataLod = createModelInfoTextureData(sceneBuf.drawCommandsLod);
-        const modelTextureDataLodAlpha = createModelInfoTextureData(sceneBuf.drawCommandsLodAlpha);
+        const modelTextureDataLod = modelInfoTextureBuilder(sceneBuf.drawCommandsLod);
+        const modelTextureDataLodAlpha = modelInfoTextureBuilder(sceneBuf.drawCommandsLodAlpha);
 
-        const modelTextureDataInteract = createModelInfoTextureData(sceneBuf.drawCommandsInteract);
-        const modelTextureDataInteractAlpha = createModelInfoTextureData(
+        const modelTextureDataInteract = modelInfoTextureBuilder(sceneBuf.drawCommandsInteract);
+        const modelTextureDataInteractAlpha = modelInfoTextureBuilder(
             sceneBuf.drawCommandsInteractAlpha,
         );
 
-        const modelTextureDataInteractLod = createModelInfoTextureData(
+        const modelTextureDataInteractLod = modelInfoTextureBuilder(
             sceneBuf.drawCommandsInteractLod,
         );
-        const modelTextureDataInteractLodAlpha = createModelInfoTextureData(
+        const modelTextureDataInteractLodAlpha = modelInfoTextureBuilder(
             sceneBuf.drawCommandsInteractLodAlpha,
         );
 
-        const doorModelTextureData = createModelInfoTextureData(doorSceneBuf.drawCommands);
-        const doorModelTextureDataAlpha = createModelInfoTextureData(
+        const doorModelTextureData = modelInfoTextureBuilder(doorSceneBuf.drawCommands);
+        const doorModelTextureDataAlpha = modelInfoTextureBuilder(
             doorSceneBuf.drawCommandsAlpha,
         );
 
-        const doorModelTextureDataLod = createModelInfoTextureData(doorSceneBuf.drawCommandsLod);
-        const doorModelTextureDataLodAlpha = createModelInfoTextureData(
+        const doorModelTextureDataLod = modelInfoTextureBuilder(doorSceneBuf.drawCommandsLod);
+        const doorModelTextureDataLodAlpha = modelInfoTextureBuilder(
             doorSceneBuf.drawCommandsLodAlpha,
         );
 
-        const doorModelTextureDataInteract = createModelInfoTextureData(
+        const doorModelTextureDataInteract = modelInfoTextureBuilder(
             doorSceneBuf.drawCommandsInteract,
         );
-        const doorModelTextureDataInteractAlpha = createModelInfoTextureData(
+        const doorModelTextureDataInteractAlpha = modelInfoTextureBuilder(
             doorSceneBuf.drawCommandsInteractAlpha,
         );
 
-        const doorModelTextureDataInteractLod = createModelInfoTextureData(
+        const doorModelTextureDataInteractLod = modelInfoTextureBuilder(
             doorSceneBuf.drawCommandsInteractLod,
         );
-        const doorModelTextureDataInteractLodAlpha = createModelInfoTextureData(
+        const doorModelTextureDataInteractLodAlpha = modelInfoTextureBuilder(
             doorSceneBuf.drawCommandsInteractLodAlpha,
         );
 
-        const locGeometry = buildLocGeometryData(locSceneBuf);
+        const locGeometry = buildLocGeometryData(locSceneBuf, modelInfoTextureBuilder);
 
         const heightMapTextureData = shouldLoadPartial
             ? new Int16Array(0)
