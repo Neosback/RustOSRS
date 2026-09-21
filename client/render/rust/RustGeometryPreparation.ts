@@ -2,11 +2,14 @@ import {
     createModelInfoTextureData,
     type DrawCommand,
 } from "../buffer/SceneBuffer";
+import type { Model } from "../../rs/model/Model";
+import { getModelHash, type ModelHashBuffer } from "../buffer/ModelHashBuffer";
 import type { VertexBatchBuilder } from "../buffer/VertexBuffer";
 import { loadRustRendererModule } from "./RustRendererModule";
 
 export type ModelInfoTextureBuilder = (commands: DrawCommand[]) => Uint16Array;
 export type VertexBatchBuilderFactory = () => VertexBatchBuilder | undefined;
+export type ModelHasher = (model: Model) => number;
 
 type RustModelInfoPacketBuilder = (
     commandInstanceCounts: Uint32Array,
@@ -130,4 +133,70 @@ export async function getVertexBatchBuilderFactory(): Promise<VertexBatchBuilder
     }
 
     return vertexBatchBuilderFactoryPromise;
+}
+
+
+type RustModelHasher = (
+    faceColors1: Int32Array,
+    faceColors2: Int32Array,
+    faceColors3: Int32Array,
+    verticesX: Int32Array,
+    verticesY: Int32Array,
+    verticesZ: Int32Array,
+    textureIds: Int32Array,
+) => number;
+
+let rustModelHasherPromise: Promise<RustModelHasher | undefined> | undefined;
+let warnedAboutModelHashFallback = false;
+const EMPTY_TEXTURE_IDS = new Int32Array(0);
+
+async function getRustModelHasher(): Promise<RustModelHasher | undefined> {
+    if (!rustModelHasherPromise) {
+        rustModelHasherPromise = loadRustRendererModule()
+            .then((module) => {
+                const rustHasher = module.hash_model_geometry;
+                if (typeof rustHasher !== "function") {
+                    throw new Error(
+                        "Rust renderer web package does not export hash_model_geometry",
+                    );
+                }
+                return rustHasher;
+            })
+            .catch((error) => {
+                if (!warnedAboutModelHashFallback) {
+                    warnedAboutModelHashFallback = true;
+                    console.warn(
+                        "[RustGeometryPreparation] Rust model hasher unavailable; "
+                        + "using the TypeScript compatibility hasher.",
+                        error,
+                    );
+                }
+                return undefined;
+            });
+    }
+    return rustModelHasherPromise;
+}
+
+export async function getModelHasher(
+    fallbackBuffer: ModelHashBuffer,
+): Promise<ModelHasher> {
+    const rustHasher = await getRustModelHasher();
+    if (!rustHasher) {
+        return (model: Model): number => getModelHash(fallbackBuffer, model);
+    }
+
+    return (model: Model): number => {
+        const textureIds = model.faceTextures
+            ? Int32Array.from(model.faceTextures)
+            : EMPTY_TEXTURE_IDS;
+        return rustHasher(
+            model.faceColors1,
+            model.faceColors2,
+            model.faceColors3,
+            model.verticesX,
+            model.verticesY,
+            model.verticesZ,
+            textureIds,
+        ) >>> 0;
+    };
 }
