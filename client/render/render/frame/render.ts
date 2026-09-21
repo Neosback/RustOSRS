@@ -537,6 +537,12 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             if (!host.textureFramebuffer) {
                 host.initTextureFramebuffer();
             }
+            if (!host.frameDrawCall && host.frameProgram) {
+                host.frameDrawCall = host.app.createDrawCall(
+                    host.frameProgram,
+                    host.quadArray,
+                );
+            }
         }
 
         if (
