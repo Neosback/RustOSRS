@@ -39,6 +39,7 @@ const PATHS: RustStage5Path[] = [
 ];
 
 let strictMode = false;
+let forceTypeScript = false;
 
 function emptyPathStats(): RustStage5PathStats {
     return {
@@ -59,6 +60,14 @@ export function setRustStage5StrictMode(enabled: boolean): void {
 
 export function isRustStage5StrictMode(): boolean {
     return strictMode;
+}
+
+export function setRustStage5ForceTypeScript(enabled: boolean): void {
+    forceTypeScript = enabled;
+}
+
+export function isRustStage5ForceTypeScript(): boolean {
+    return forceTypeScript;
 }
 
 export function resetRustStage5OwnershipStats(): void {
