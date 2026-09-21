@@ -1,3 +1,9 @@
+import {
+    recordRustStage5Attempt,
+    recordRustStage5Fallback,
+    recordRustStage5Success,
+} from "./RustStage5Ownership";
+
 export type RustSkeletalSkinner = (
     verticesX: Int32Array,
     verticesY: Int32Array,
@@ -95,17 +101,24 @@ export function skinSkeletalVerticesWithRustIfReady(
     scales: Int32Array[] | undefined,
     boneMatrices: Float32Array,
 ): Int32Array | undefined {
-    if (!skeletalSkinner || !groups || !scales || vertexCount <= 0) {
+    if (!groups || !scales || vertexCount <= 0) {
+        return undefined;
+    }
+    recordRustStage5Attempt("skeletal");
+    if (!skeletalSkinner) {
+        recordRustStage5Fallback("skeletal", "backend unavailable");
         return undefined;
     }
 
     const flattened = flattenSkinning(vertexCount, groups, scales);
     if (!flattened) {
+        recordRustStage5Fallback("skeletal", "invalid skinning packet", true);
         return undefined;
     }
 
+    let result: Int32Array;
     try {
-        const result = skeletalSkinner(
+        result = skeletalSkinner(
             verticesX.subarray(0, vertexCount),
             verticesY.subarray(0, vertexCount),
             verticesZ.subarray(0, vertexCount),
@@ -114,7 +127,6 @@ export function skinSkeletalVerticesWithRustIfReady(
             flattened.boneScales,
             boneMatrices,
         );
-        return result.length === vertexCount * 3 ? result : undefined;
     } catch (error) {
         if (!warnedAboutSkinningFailure) {
             warnedAboutSkinningFailure = true;
@@ -123,8 +135,15 @@ export function skinSkeletalVerticesWithRustIfReady(
                 error,
             );
         }
+        recordRustStage5Fallback("skeletal", "backend threw", true);
         return undefined;
     }
+    if (result.length !== vertexCount * 3) {
+        recordRustStage5Fallback("skeletal", "invalid result length", true);
+        return undefined;
+    }
+    recordRustStage5Success("skeletal");
+    return result;
 }
 
 
@@ -234,7 +253,12 @@ export function applyLegacyTransformsWithRustIfReady(
     initialOriginY: number,
     initialOriginZ: number,
 ): LegacyTransformResult | undefined {
-    if (!legacyTransformer || operations.length === 0 || vertexCount < 0) {
+    if (operations.length === 0 || vertexCount < 0) {
+        return undefined;
+    }
+    recordRustStage5Attempt("legacy");
+    if (!legacyTransformer) {
+        recordRustStage5Fallback("legacy", "backend unavailable");
         return undefined;
     }
 
@@ -291,6 +315,7 @@ export function applyLegacyTransformsWithRustIfReady(
 
         const headerSize = 7;
         if (result.length < headerSize) {
+            recordRustStage5Fallback("legacy", "result header missing", true);
             return undefined;
         }
         const resultVertexCount = result[4] | 0;
@@ -304,6 +329,7 @@ export function applyLegacyTransformsWithRustIfReady(
             || colorCount !== (faceColors?.length ?? 0)
             || result.length !== expectedLength
         ) {
+            recordRustStage5Fallback("legacy", "invalid result packet", true);
             return undefined;
         }
 
@@ -326,6 +352,7 @@ export function applyLegacyTransformsWithRustIfReady(
             }
         }
 
+        recordRustStage5Success("legacy");
         return {
             originX: result[0] | 0,
             originY: result[1] | 0,
@@ -340,6 +367,7 @@ export function applyLegacyTransformsWithRustIfReady(
                 error,
             );
         }
+        recordRustStage5Fallback("legacy", "backend threw", true);
         return undefined;
     }
 }
@@ -433,16 +461,23 @@ export function contourVerticesWithRustIfReady(
     maxY: number,
     preserveType1UnusedOob: boolean,
 ): Int32Array | undefined {
-    if (!contourBuilder || contourType < 1 || contourType > 5) {
+    if (contourType < 1 || contourType > 5) {
+        return undefined;
+    }
+    recordRustStage5Attempt("contour");
+    if (!contourBuilder) {
+        recordRustStage5Fallback("contour", "backend unavailable");
         return undefined;
     }
     const base = flattenHeightMap(heightMap);
     const above = heightMapAbove ? flattenHeightMap(heightMapAbove) : EMPTY_HEIGHT_MAP;
     if (!base || !above) {
+        recordRustStage5Fallback("contour", "invalid height-map packet", true);
         return undefined;
     }
+    let result: Int32Array;
     try {
-        const result = contourBuilder(
+        result = contourBuilder(
             verticesX,
             verticesY,
             verticesZ,
@@ -463,7 +498,6 @@ export function contourVerticesWithRustIfReady(
             maxY | 0,
             preserveType1UnusedOob,
         );
-        return result.length === verticesX.length ? result : undefined;
     } catch (error) {
         if (!warnedAboutContourFailure) {
             warnedAboutContourFailure = true;
@@ -472,8 +506,15 @@ export function contourVerticesWithRustIfReady(
                 error,
             );
         }
+        recordRustStage5Fallback("contour", "backend threw", true);
         return undefined;
     }
+    if (result.length !== verticesX.length) {
+        recordRustStage5Fallback("contour", "invalid result length", true);
+        return undefined;
+    }
+    recordRustStage5Success("contour");
+    return result;
 }
 
 
@@ -515,7 +556,12 @@ export function transformVerticesWithRustIfReady(
     b: number = 0,
     c: number = 0,
 ): boolean {
-    if (!basicVertexTransformer || vertexCount <= 0) {
+    if (vertexCount <= 0) {
+        return false;
+    }
+    recordRustStage5Attempt("basic");
+    if (!basicVertexTransformer) {
+        recordRustStage5Fallback("basic", "backend unavailable");
         return false;
     }
 
@@ -536,6 +582,7 @@ export function transformVerticesWithRustIfReady(
             c | 0,
         );
         if (transformed.length !== count * 3) {
+            recordRustStage5Fallback("basic", "invalid result length", true);
             return false;
         }
 
@@ -544,6 +591,7 @@ export function transformVerticesWithRustIfReady(
             verticesY[vertex] = transformed[offset++];
             verticesZ[vertex] = transformed[offset++];
         }
+        recordRustStage5Success("basic");
         return true;
     } catch (error) {
         if (!warnedAboutBasicTransformFailure) {
@@ -553,6 +601,7 @@ export function transformVerticesWithRustIfReady(
                 error,
             );
         }
+        recordRustStage5Fallback("basic", "backend threw", true);
         return false;
     }
 }
@@ -580,7 +629,9 @@ export function mirrorModelGeometryWithRustIfReady(
     vertexCount: number,
     faceCount: number,
 ): boolean {
+    recordRustStage5Attempt("mirror");
     if (!mirrorModelGeometry) {
+        recordRustStage5Fallback("mirror", "backend unavailable");
         return false;
     }
     const vertices = Math.min(vertexCount | 0, verticesZ.length);
@@ -597,6 +648,7 @@ export function mirrorModelGeometryWithRustIfReady(
             || (result[0] | 0) !== vertices
             || (result[1] | 0) !== faces
         ) {
+            recordRustStage5Fallback("mirror", "invalid result packet", true);
             return false;
         }
 
@@ -610,6 +662,7 @@ export function mirrorModelGeometryWithRustIfReady(
         for (let face = 0; face < faces; face++) {
             indices3[face] = result[offset++];
         }
+        recordRustStage5Success("mirror");
         return true;
     } catch (error) {
         if (!warnedAboutMirrorFailure) {
@@ -619,6 +672,7 @@ export function mirrorModelGeometryWithRustIfReady(
                 error,
             );
         }
+        recordRustStage5Fallback("mirror", "backend threw", true);
         return false;
     }
 }
