@@ -184,7 +184,7 @@ import {
     createPlayerProgram,
     createProjectileProgram,
 } from "../../shaders/Shaders";
-import { isRustPrimaryRendererEnabled } from "../../rust/RustShadowIntegration";
+import { isRustPrimaryRuntime } from "../../rust/RustRendererRuntime";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
@@ -270,7 +270,7 @@ export async function initShaders(host: WebGLOsrsRendererHost, ): Promise<Progra
         host.hoverLineProgram = hoverLineProgram;
         host.hitsplatProgram = hitsplatProgram;
 
-        const rustPrimaryRequested = isRustPrimaryRendererEnabled();
+        const rustPrimaryRequested = isRustPrimaryRuntime();
         host.frameDrawCall = rustPrimaryRequested
             ? undefined
             : host.app.createDrawCall(frameProgram, host.quadArray);
