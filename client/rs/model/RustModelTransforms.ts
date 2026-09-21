@@ -294,8 +294,9 @@ export function applyLegacyTransformsWithRustIfReady(
         }
     }
 
+    let result: Int32Array;
     try {
-        const result = legacyTransformer(
+        result = legacyTransformer(
             verticesX.subarray(0, vertices),
             verticesY.subarray(0, vertices),
             verticesZ.subarray(0, vertices),
@@ -312,53 +313,6 @@ export function applyLegacyTransformsWithRustIfReady(
             initialOriginY | 0,
             initialOriginZ | 0,
         );
-
-        const headerSize = 7;
-        if (result.length < headerSize) {
-            recordRustStage5Fallback("legacy", "result header missing", true);
-            return undefined;
-        }
-        const resultVertexCount = result[4] | 0;
-        const alphaCount = result[5] | 0;
-        const colorCount = result[6] | 0;
-        const expectedLength =
-            headerSize + resultVertexCount * 3 + alphaCount + colorCount;
-        if (
-            resultVertexCount !== vertices
-            || alphaCount !== (faceAlphas?.length ?? 0)
-            || colorCount !== (faceColors?.length ?? 0)
-            || result.length !== expectedLength
-        ) {
-            recordRustStage5Fallback("legacy", "invalid result packet", true);
-            return undefined;
-        }
-
-        let offset = headerSize;
-        for (let vertex = 0; vertex < resultVertexCount; vertex++) {
-            verticesX[vertex] = result[offset++];
-            verticesY[vertex] = result[offset++];
-            verticesZ[vertex] = result[offset++];
-        }
-        if (faceAlphas) {
-            for (let face = 0; face < alphaCount; face++) {
-                faceAlphas[face] = result[offset++];
-            }
-        } else {
-            offset += alphaCount;
-        }
-        if (faceColors) {
-            for (let face = 0; face < colorCount; face++) {
-                faceColors[face] = result[offset++];
-            }
-        }
-
-        recordRustStage5Success("legacy");
-        return {
-            originX: result[0] | 0,
-            originY: result[1] | 0,
-            originZ: result[2] | 0,
-            changedLight: (result[3] | 0) !== 0,
-        };
     } catch (error) {
         if (!warnedAboutLegacyTransformFailure) {
             warnedAboutLegacyTransformFailure = true;
@@ -370,6 +324,53 @@ export function applyLegacyTransformsWithRustIfReady(
         recordRustStage5Fallback("legacy", "backend threw", true);
         return undefined;
     }
+
+    const headerSize = 7;
+    if (result.length < headerSize) {
+        recordRustStage5Fallback("legacy", "result header missing", true);
+        return undefined;
+    }
+    const resultVertexCount = result[4] | 0;
+    const alphaCount = result[5] | 0;
+    const colorCount = result[6] | 0;
+    const expectedLength =
+        headerSize + resultVertexCount * 3 + alphaCount + colorCount;
+    if (
+        resultVertexCount !== vertices
+        || alphaCount !== (faceAlphas?.length ?? 0)
+        || colorCount !== (faceColors?.length ?? 0)
+        || result.length !== expectedLength
+    ) {
+        recordRustStage5Fallback("legacy", "invalid result packet", true);
+        return undefined;
+    }
+
+    let offset = headerSize;
+    for (let vertex = 0; vertex < resultVertexCount; vertex++) {
+        verticesX[vertex] = result[offset++];
+        verticesY[vertex] = result[offset++];
+        verticesZ[vertex] = result[offset++];
+    }
+    if (faceAlphas) {
+        for (let face = 0; face < alphaCount; face++) {
+            faceAlphas[face] = result[offset++];
+        }
+    } else {
+        offset += alphaCount;
+    }
+    if (faceColors) {
+        for (let face = 0; face < colorCount; face++) {
+            faceColors[face] = result[offset++];
+        }
+    }
+
+    recordRustStage5Success("legacy");
+    return {
+        originX: result[0] | 0,
+        originY: result[1] | 0,
+        originZ: result[2] | 0,
+        changedLight: (result[3] | 0) !== 0,
+    };
 }
 
 
@@ -571,8 +572,9 @@ export function transformVerticesWithRustIfReady(
         verticesY.length,
         verticesZ.length,
     );
+    let transformed: Int32Array;
     try {
-        const transformed = basicVertexTransformer(
+        transformed = basicVertexTransformer(
             verticesX.subarray(0, count),
             verticesY.subarray(0, count),
             verticesZ.subarray(0, count),
@@ -581,18 +583,6 @@ export function transformVerticesWithRustIfReady(
             b | 0,
             c | 0,
         );
-        if (transformed.length !== count * 3) {
-            recordRustStage5Fallback("basic", "invalid result length", true);
-            return false;
-        }
-
-        for (let vertex = 0, offset = 0; vertex < count; vertex++) {
-            verticesX[vertex] = transformed[offset++];
-            verticesY[vertex] = transformed[offset++];
-            verticesZ[vertex] = transformed[offset++];
-        }
-        recordRustStage5Success("basic");
-        return true;
     } catch (error) {
         if (!warnedAboutBasicTransformFailure) {
             warnedAboutBasicTransformFailure = true;
@@ -604,6 +594,18 @@ export function transformVerticesWithRustIfReady(
         recordRustStage5Fallback("basic", "backend threw", true);
         return false;
     }
+    if (transformed.length !== count * 3) {
+        recordRustStage5Fallback("basic", "invalid result length", true);
+        return false;
+    }
+
+    for (let vertex = 0, offset = 0; vertex < count; vertex++) {
+        verticesX[vertex] = transformed[offset++];
+        verticesY[vertex] = transformed[offset++];
+        verticesZ[vertex] = transformed[offset++];
+    }
+    recordRustStage5Success("basic");
+    return true;
 }
 
 
@@ -636,34 +638,13 @@ export function mirrorModelGeometryWithRustIfReady(
     }
     const vertices = Math.min(vertexCount | 0, verticesZ.length);
     const faces = Math.min(faceCount | 0, indices1.length, indices3.length);
+    let result: Int32Array;
     try {
-        const result = mirrorModelGeometry(
+        result = mirrorModelGeometry(
             verticesZ.subarray(0, vertices),
             indices1.subarray(0, faces),
             indices3.subarray(0, faces),
         );
-        const expectedLength = 2 + vertices + faces * 2;
-        if (
-            result.length !== expectedLength
-            || (result[0] | 0) !== vertices
-            || (result[1] | 0) !== faces
-        ) {
-            recordRustStage5Fallback("mirror", "invalid result packet", true);
-            return false;
-        }
-
-        let offset = 2;
-        for (let vertex = 0; vertex < vertices; vertex++) {
-            verticesZ[vertex] = result[offset++];
-        }
-        for (let face = 0; face < faces; face++) {
-            indices1[face] = result[offset++];
-        }
-        for (let face = 0; face < faces; face++) {
-            indices3[face] = result[offset++];
-        }
-        recordRustStage5Success("mirror");
-        return true;
     } catch (error) {
         if (!warnedAboutMirrorFailure) {
             warnedAboutMirrorFailure = true;
@@ -675,4 +656,26 @@ export function mirrorModelGeometryWithRustIfReady(
         recordRustStage5Fallback("mirror", "backend threw", true);
         return false;
     }
+    const expectedLength = 2 + vertices + faces * 2;
+    if (
+        result.length !== expectedLength
+        || (result[0] | 0) !== vertices
+        || (result[1] | 0) !== faces
+    ) {
+        recordRustStage5Fallback("mirror", "invalid result packet", true);
+        return false;
+    }
+
+    let offset = 2;
+    for (let vertex = 0; vertex < vertices; vertex++) {
+        verticesZ[vertex] = result[offset++];
+    }
+    for (let face = 0; face < faces; face++) {
+        indices1[face] = result[offset++];
+    }
+    for (let face = 0; face < faces; face++) {
+        indices3[face] = result[offset++];
+    }
+    recordRustStage5Success("mirror");
+    return true;
 }
