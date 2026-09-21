@@ -556,3 +556,69 @@ export function transformVerticesWithRustIfReady(
         return false;
     }
 }
+
+
+export type RustMirrorModelGeometry = (
+    verticesZ: Int32Array,
+    indices1: Int32Array,
+    indices3: Int32Array,
+) => Int32Array;
+
+let mirrorModelGeometry: RustMirrorModelGeometry | undefined;
+let warnedAboutMirrorFailure = false;
+
+export function registerRustMirrorModelGeometry(
+    mirror: RustMirrorModelGeometry | undefined,
+): void {
+    mirrorModelGeometry = mirror;
+}
+
+export function mirrorModelGeometryWithRustIfReady(
+    verticesZ: Int32Array,
+    indices1: Int32Array,
+    indices3: Int32Array,
+    vertexCount: number,
+    faceCount: number,
+): boolean {
+    if (!mirrorModelGeometry) {
+        return false;
+    }
+    const vertices = Math.min(vertexCount | 0, verticesZ.length);
+    const faces = Math.min(faceCount | 0, indices1.length, indices3.length);
+    try {
+        const result = mirrorModelGeometry(
+            verticesZ.subarray(0, vertices),
+            indices1.subarray(0, faces),
+            indices3.subarray(0, faces),
+        );
+        const expectedLength = 2 + vertices + faces * 2;
+        if (
+            result.length !== expectedLength
+            || (result[0] | 0) !== vertices
+            || (result[1] | 0) !== faces
+        ) {
+            return false;
+        }
+
+        let offset = 2;
+        for (let vertex = 0; vertex < vertices; vertex++) {
+            verticesZ[vertex] = result[offset++];
+        }
+        for (let face = 0; face < faces; face++) {
+            indices1[face] = result[offset++];
+        }
+        for (let face = 0; face < faces; face++) {
+            indices3[face] = result[offset++];
+        }
+        return true;
+    } catch (error) {
+        if (!warnedAboutMirrorFailure) {
+            warnedAboutMirrorFailure = true;
+            console.warn(
+                "[RustModelTransforms] Rust model mirror failed; using TypeScript fallback.",
+                error,
+            );
+        }
+        return false;
+    }
+}
