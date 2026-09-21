@@ -221,25 +221,45 @@ export function updateActorDataTexture(host: WebGLOsrsRendererHost, ) {
             checksum = (checksum * 31 + data[i]) | 0;
         }
 
-        // If data hasn't changed and texture size matches, reuse current texture
+        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(host);
+
+        // Rust-primary consumes the CPU actor buffer directly. Any Pico actor-data
+        // textures that were materialized during legacy fallback are released again
+        // once Rust resumes primary ownership.
+        if (rustPrimaryRendererEnabled) {
+            for (let i = 0; i < host.actorDataTextures.length; i++) {
+                host.actorDataTextures[i]?.delete();
+                host.actorDataTextures[i] = undefined;
+            }
+            host.actorDataTextureBuffer[0] = undefined;
+        }
+
+        // If data hasn't changed and the current backend already has the expected
+        // actor-data dimensions, reuse it without another Rust/Pico upload.
         const currentTex = host.actorDataTextures[host.actorDataCurrentIndex];
         if (
             checksum === host.actorDataChecksum &&
             texHeight === host.actorDataLastTexHeight &&
-            currentTex
+            (rustPrimaryRendererEnabled || currentTex)
         ) {
-            // Keep legacy buffer in sync for any code that references it
-            host.actorDataTextureBuffer[0] = currentTex;
+            if (currentTex) {
+                host.actorDataTextureBuffer[0] = currentTex;
+            }
             return 0;
         }
 
-        // Data changed - write to the OTHER texture, then swap
         host.actorDataChecksum = checksum;
         host.actorDataLastTexHeight = texHeight;
 
         const writeIndex = 1 - host.actorDataCurrentIndex;
         const uploadView = host.actorRenderData.subarray(0, requiredU16);
 
+        if (rustPrimaryRendererEnabled) {
+            mirrorRustActorData(host, uploadView, texWidth, texHeight);
+            return 0;
+        }
+
+        // Legacy/shadow mode keeps the existing Pico double-buffered texture path.
         let writeTex = host.actorDataTextures[writeIndex];
         if (!writeTex) {
             writeTex = host.app.createTexture2D(uploadView, texWidth, texHeight, {
