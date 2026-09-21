@@ -28,12 +28,9 @@ import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { ModelHashBuffer } from "../buffer/ModelHashBuffer";
 import {
     DrawCommand,
-    ModelFace,
     ModelMergeGroup,
     SceneBuffer,
     SceneModel,
-    getModelFaces,
-    isModelFaceTransparent,
 } from "../buffer/SceneBuffer";
 import { LocAnimatedGroup } from "../loc/LocAnimatedGroup";
 import { SceneLocEntity } from "../loc/SceneLocEntity";
@@ -621,7 +618,6 @@ function createModelGroups(
 
 function addSceneModels(
     modelHasher: ModelHasher,
-    textureLoader: TextureLoader,
     sceneBuf: SceneBuffer,
     sceneModels: SceneModel[],
     minimizeDrawCalls: boolean,
@@ -641,17 +637,8 @@ function addSceneModels(
     const modelGroupMap: Map<number, ModelMergeGroup> = new Map();
     for (const sceneModels of groupedModels.values()) {
         const model = sceneModels[0].model;
-        const faces = getModelFaces(model);
-
-        const opaqueFaces: ModelFace[] = [];
-        const transparentFaces: ModelFace[] = [];
-        for (const face of faces) {
-            if (isModelFaceTransparent(textureLoader, face)) {
-                transparentFaces.push(face);
-            } else {
-                opaqueFaces.push(face);
-            }
-        }
+        const opaqueFaceCount = sceneBuf.getModelFaceCount(model, false);
+        const transparentFaceCount = sceneBuf.getModelFaceCount(model, true);
 
         const mergeModels: SceneModel[] = [];
         const instancedModels: SceneModel[] = [];
@@ -668,16 +655,16 @@ function addSceneModels(
         }
 
         createModelGroups(modelGroupMap, mergeModels, false);
-        if (transparentFaces.length > 0) {
+        if (transparentFaceCount > 0) {
             createModelGroups(modelGroupMap, mergeModels, true);
         }
 
         const instanceCount = instancedModels.length;
         const mergeOpaque =
-            instanceCount === 1 || instanceCount * opaqueFaces.length < 100 || minimizeDrawCalls;
+            instanceCount === 1 || instanceCount * opaqueFaceCount < 100 || minimizeDrawCalls;
         const mergeTransparent =
             instanceCount === 1 ||
-            instanceCount * transparentFaces.length < 100 ||
+            instanceCount * transparentFaceCount < 100 ||
             minimizeDrawCalls;
 
         // mergeOpaque = false;
@@ -685,9 +672,9 @@ function addSceneModels(
 
         if (mergeOpaque) {
             createModelGroups(modelGroupMap, instancedModels, false);
-        } else if (opaqueFaces.length > 0) {
+        } else if (opaqueFaceCount > 0) {
             const indexOffset = sceneBuf.indexByteOffset();
-            sceneBuf.addModel(model, opaqueFaces);
+            sceneBuf.addModelFiltered(model, false);
             const elementCount = (sceneBuf.indexByteOffset() - indexOffset) / 4;
 
             // Group instanced models by level AND planeCullLevel to keep CPU plane-culling accurate per draw range
@@ -731,11 +718,11 @@ function addSceneModels(
             }
         }
 
-        if (mergeTransparent && transparentFaces.length > 0) {
+        if (mergeTransparent && transparentFaceCount > 0) {
             createModelGroups(modelGroupMap, instancedModels, true);
-        } else if (transparentFaces.length > 0) {
+        } else if (transparentFaceCount > 0) {
             const indexOffset = sceneBuf.indexByteOffset();
-            sceneBuf.addModel(model, transparentFaces);
+            sceneBuf.addModelFiltered(model, true);
             const elementCount = (sceneBuf.indexByteOffset() - indexOffset) / 4;
 
             // Group instanced models by level AND planeCullLevel for transparent path as well
@@ -1599,7 +1586,6 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         if (!shouldLoadDoorOnly) {
             addSceneModels(
                 modelHasher,
-                textureLoader,
                 locSceneBuf,
                 sceneModels,
                 minimizeDrawCalls,
@@ -1608,7 +1594,6 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         if (!shouldLoadLocOnly) {
             addSceneModels(
                 modelHasher,
-                textureLoader,
                 doorSceneBuf,
                 doorSceneModels,
                 minimizeDrawCalls,
