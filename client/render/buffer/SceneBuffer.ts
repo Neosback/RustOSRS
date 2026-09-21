@@ -221,7 +221,7 @@ export class SceneBuffer {
                 const textureIndex = this.textureIdIndexMap.get(vertex.textureId) ?? -1;
 
                 if (textureIndex !== -1) {
-                    this.usedTextureIds.add(vertex.textureId);
+                    this.fallbackUsedTextureIds.add(vertex.textureId);
                 }
 
                 const integerOffset = vertexIndex * VertexBuffer.INTEGER_FIELD_STRIDE;
