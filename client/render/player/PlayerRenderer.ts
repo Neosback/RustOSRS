@@ -936,68 +936,6 @@ export class PlayerRenderer {
             (this.renderer as any).textureIdIndexMap ?? new Map<number, number>();
         const SceneBufferMod = require("../buffer/SceneBuffer");
         const SceneBufferCls = SceneBufferMod.SceneBuffer;
-        const isTrans = SceneBufferMod.isModelFaceTransparent;
-
-        // Local-player perf: cache stable face metadata per base model, then rebuild buckets per frame.
-        let facesOpaque: any[];
-        let facesAlpha: any[];
-        if (controlled) {
-            let meta = this.baseModelFaceMetaCache.get(baseModel);
-            if (!meta) {
-                // Build stable face metadata without per-frame alpha (alpha can be animated).
-                const faces: any[] = [];
-                const priorities = baseModel.faceRenderPriorities;
-                const renderLayers = baseModel.faceRenderLayers;
-                for (let index = 0; index < (baseModel.faceCount | 0); index++) {
-                    const hslC = baseModel.faceColors3[index];
-                    if (hslC === -2) continue;
-                    let textureId = -1;
-                    if (baseModel.faceTextures) textureId = baseModel.faceTextures[index];
-                    let priority = 0;
-                    if (priorities) priority = priorities[index];
-                    faces.push({
-                        index,
-                        alpha: 0xff,
-                        priority,
-                        renderLayer: renderLayers?.[index],
-                        textureId,
-                    });
-                }
-                meta = { faces };
-                this.baseModelFaceMetaCache.set(baseModel, meta);
-            }
-
-            const opaque = this.localFacesOpaque;
-            const alpha = this.localFacesAlpha;
-            opaque.length = 0;
-            alpha.length = 0;
-
-            const faceTransparencies = model.faceAlphas;
-            for (let i = 0; i < meta.faces.length; i++) {
-                const face = meta.faces[i];
-                const idx = face.index | 0;
-                // Be conservative: if a color transform changes skip markers, honor current model state.
-                if ((model.faceColors3?.[idx] ?? 0) === -2) continue;
-
-                let aVal = 0xff;
-                if (faceTransparencies && (face.textureId | 0) === -1) {
-                    aVal = 0xff - (faceTransparencies[idx] & 0xff);
-                }
-                if (aVal === 0) continue;
-                face.alpha = aVal;
-
-                if (isTrans(textureLoader, face)) alpha.push(face);
-                else opaque.push(face);
-            }
-            facesOpaque = opaque;
-            facesAlpha = alpha;
-        } else {
-            // Non-local players: keep the simpler path (keeps cached geometry correctness).
-            const getFaces = SceneBufferMod.getModelFaces;
-            const allFaces = getFaces(model);
-            facesOpaque = allFaces.filter((f: any) => !isTrans(textureLoader, f));
-            facesAlpha = allFaces.filter((f: any) => isTrans(textureLoader, f));
-        }
 
         const resetSceneBuf = (sb: any) => {
             if (!sb) return;
@@ -1044,7 +982,7 @@ export class PlayerRenderer {
                 );
             }
             resetSceneBuf(this.localSceneBuf);
-            if (facesOpaque.length > 0) this.localSceneBuf.addModel(model, facesOpaque);
+            this.localSceneBuf.addModelFiltered(model, false);
             vertices = this.localSceneBuf.vertexBuf.byteArray();
             indices = fillScratch(this.localSceneBuf.indices, false);
         } else {
@@ -1054,7 +992,7 @@ export class PlayerRenderer {
                 model.verticesCount + 16,
                 createVertexBatchBuilderIfReady(),
             );
-            if (facesOpaque.length > 0) sceneBuf.addModel(model, facesOpaque);
+            sceneBuf.addModelFiltered(model, false);
             vertices = sceneBuf.vertexBuf.byteArray();
             indices = new Int32Array(sceneBuf.indices);
         }
@@ -1103,7 +1041,28 @@ export class PlayerRenderer {
         // (e.g., wing fins on Primordial/Pegasian boots) render in the player alpha pass.
         let verticesAlpha = this.emptyVertexScratch;
         let indicesAlpha = this.emptyIndexScratch;
-        if (facesAlpha.length > 0) {
+        const alphaFaceCount = controlled
+            ? (() => {
+                if (!this.localSceneBuf) {
+                    this.localSceneBuf = new SceneBufferCls(
+                        textureLoader,
+                        textureIdIndexMap,
+                        0,
+                        createVertexBatchBuilderIfReady(),
+                    );
+                }
+                return this.localSceneBuf.getModelFaceCount(model, true);
+            })()
+            : (() => {
+                const counter = new SceneBufferCls(
+                    textureLoader,
+                    textureIdIndexMap,
+                    Math.max(16, model.verticesCount + 16),
+                    createVertexBatchBuilderIfReady(),
+                );
+                return counter.getModelFaceCount(model, true);
+            })();
+        if (alphaFaceCount > 0) {
             if (controlled) {
                 if (!this.localSceneBuf) {
                     this.localSceneBuf = new SceneBufferCls(
@@ -1114,7 +1073,7 @@ export class PlayerRenderer {
                     );
                 }
                 resetSceneBuf(this.localSceneBuf);
-                this.localSceneBuf.addModel(model, facesAlpha);
+                this.localSceneBuf.addModelFiltered(model, true);
                 verticesAlpha = this.localSceneBuf.vertexBuf.byteArray();
                 indicesAlpha = fillScratch(this.localSceneBuf.indices, true);
             } else {
@@ -1124,7 +1083,7 @@ export class PlayerRenderer {
                     model.verticesCount + 16,
                     createVertexBatchBuilderIfReady(),
                 );
-                sceneBufA.addModel(model, facesAlpha);
+                sceneBufA.addModelFiltered(model, true);
                 verticesAlpha = sceneBufA.vertexBuf.byteArray();
                 indicesAlpha = new Int32Array(sceneBufA.indices);
             }
