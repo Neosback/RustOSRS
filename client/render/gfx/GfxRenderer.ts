@@ -80,11 +80,12 @@ export class GfxRenderer {
             return;
 
         const transparent = pass === "alpha";
+        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(this.renderer);
         const nowMs = (performance?.now?.() as number) || Date.now();
         const prog = transparent
             ? (this.renderer as any).npcProgram
             : ((this.renderer as any).npcProgramOpaque ?? (this.renderer as any).npcProgram);
-        if (!prog) return;
+        if (!rustPrimaryRendererEnabled && !prog) return;
         const programKey = transparent ? "npc-alpha" : "npc-opaque";
 
         const renderAttachments = <T extends { inst: GfxInstance; slot: number }>(
@@ -170,36 +171,41 @@ export class GfxRenderer {
                 const [spotStr, frameStr] = key.split("|");
                 const spotId = parseInt(spotStr, 10) | 0;
                 const frameIdx = parseInt(frameStr, 10) | 0;
-                const vaoRec = this.gpuCache.getOrCreate(
-                    spotId,
-                    frameIdx,
-                    transparent,
-                    programKey,
-                    prog,
-                );
-                if (!vaoRec) continue;
                 const rustGeometry = this.cache.ensureFrameGeometry(
                     spotId,
                     frameIdx,
                     transparent,
                 );
-                const dc: DrawCall = this.renderer
-                    .configureDrawCall(vaoRec.drawCall)
-                    .uniformBlock("SceneUniforms", (this.renderer as any).sceneUniformBuffer)
-                    .uniform("u_timeLoaded", -1.0)
-                    .texture("u_textures", (this.renderer as any).textureArray)
-                    .texture("u_textureMaterials", (this.renderer as any).textureMaterials)
-                    .texture("u_waterTextures", (this.renderer as any).waterTextures)
-                    .uniform("u_worldEntityOpacity", 1.0)
-                    .uniform("u_mapPos", vec2.fromValues(map.mapX, map.mapY))
-                    .uniform("u_npcDataOffset", baseOffset | 0)
-                    .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                    .texture("u_npcDataTexture", actorDataTexture)
-                    .texture("u_heightMap", map.heightMapTexture)
-                    .texture("u_waterMask", map.waterMaskTexture)
-                    .uniform("u_sceneBorderSize", map.borderSize);
+                if (!rustGeometry || (rustGeometry.indices.length | 0) <= 0) continue;
 
-                (this.renderer as any).app.disable(PicoGL.CULL_FACE);
+                let dc: DrawCall | undefined;
+                if (!rustPrimaryRendererEnabled) {
+                    const vaoRec = this.gpuCache.getOrCreate(
+                        spotId,
+                        frameIdx,
+                        transparent,
+                        programKey,
+                        prog,
+                    );
+                    if (!vaoRec) continue;
+                    dc = this.renderer
+                        .configureDrawCall(vaoRec.drawCall)
+                        .uniformBlock("SceneUniforms", (this.renderer as any).sceneUniformBuffer)
+                        .uniform("u_timeLoaded", -1.0)
+                        .texture("u_textures", (this.renderer as any).textureArray)
+                        .texture("u_textureMaterials", (this.renderer as any).textureMaterials)
+                        .texture("u_waterTextures", (this.renderer as any).waterTextures)
+                        .uniform("u_worldEntityOpacity", 1.0)
+                        .uniform("u_mapPos", vec2.fromValues(map.mapX, map.mapY))
+                        .uniform("u_npcDataOffset", baseOffset | 0)
+                        .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                        .texture("u_npcDataTexture", actorDataTexture)
+                        .texture("u_heightMap", map.heightMapTexture)
+                        .texture("u_waterMask", map.waterMaskTexture)
+                        .uniform("u_sceneBorderSize", map.borderSize);
+
+                    (this.renderer as any).app.disable(PicoGL.CULL_FACE);
+                }
 
                 const yOffsetGroups = this.getReusableYOffsetMap();
                 for (const inst of instances) {
@@ -213,29 +219,30 @@ export class GfxRenderer {
                 }
 
                 for (const [yOff, groupInstances] of yOffsetGroups) {
-                    dc.uniform("u_modelYOffset", yOff | 0);
+                    if (dc) {
+                        dc.uniform("u_modelYOffset", yOff | 0);
+                    }
                     for (const inst of groupInstances) {
-                        dc.uniform("u_drawIdOverride", inst.slot | 0);
-                        if (!isRustPrimaryRendererActive(this.renderer)) {
+                        if (dc) {
+                            dc.uniform("u_drawIdOverride", inst.slot | 0);
                             dc.draw();
                         }
-                        if (rustGeometry) {
-                            mirrorRustGfxGeometry(
-                                this.renderer,
-                                map,
-                                rustGeometry.vertices,
-                                rustGeometry.indices,
-                                (baseOffset + (inst.slot | 0)) | 0,
-                                yOff | 0,
-                                transparent,
-                                !!(this.renderer as any).cullBackFace,
-                            );
-                        }
+                        mirrorRustGfxGeometry(
+                            this.renderer,
+                            map,
+                            rustGeometry.vertices,
+                            rustGeometry.indices,
+                            (baseOffset + (inst.slot | 0)) | 0,
+                            yOff | 0,
+                            transparent,
+                            !!(this.renderer as any).cullBackFace,
+                        );
                     }
                 }
 
-                if ((this.renderer as any).cullBackFace)
+                if (dc && (this.renderer as any).cullBackFace) {
                     (this.renderer as any).app.enable(PicoGL.CULL_FACE);
+                }
             }
         };
 
