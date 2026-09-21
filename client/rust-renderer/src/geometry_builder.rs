@@ -155,8 +155,16 @@ impl VertexBatchBuilder {
                 continue;
             }
 
-            let corners = [faces_a[face_index], faces_b[face_index], faces_c[face_index]];
-            let hsls = [colors_a[face_index], colors_b[face_index], colors_c[face_index]];
+            let corners = [
+                faces_a[face_index],
+                faces_b[face_index],
+                faces_c[face_index],
+            ];
+            let hsls = [
+                colors_a[face_index],
+                colors_b[face_index],
+                colors_c[face_index],
+            ];
             let texture_index = texture_indices[face_index];
 
             for corner in 0..3 {
@@ -661,8 +669,8 @@ mod tests {
         let expected_indices = expected
             .push_batch(
                 &[
-                    0, 0, 0, 0x1234, 255, -1, 0, 128, 0, 0, 0x2345, 255, -1, 0, 0, 0, 128,
-                    0x3456, 255, -1, 0,
+                    0, 0, 0, 0x1234, 255, -1, 0, 128, 0, 0, 0x2345, 255, -1, 0, 0, 0, 128, 0x3456,
+                    255, -1, 0,
                 ],
                 &[0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
                 &[FLAG_REUSE_VERTEX; 3],
