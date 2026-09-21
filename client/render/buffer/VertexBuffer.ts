@@ -13,6 +13,27 @@ export interface VertexBatchBuilder {
         uvFields: Float32Array,
         flags: Uint8Array,
     ): Uint32Array;
+    push_model_faces?(
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        facesA: Int32Array,
+        facesB: Int32Array,
+        facesC: Int32Array,
+        colorsA: Int32Array,
+        colorsB: Int32Array,
+        colorsC: Int32Array,
+        uvs: Float32Array,
+        faceFields: Int32Array,
+        sceneX: number,
+        sceneHeight: number,
+        sceneZ: number,
+        overrideHue: number,
+        overrideSaturation: number,
+        overrideLuminance: number,
+        overrideAmount: number,
+        reuseVertices: boolean,
+    ): Uint32Array;
     packed_vertices(): Uint32Array;
 }
 
@@ -42,6 +63,60 @@ export class VertexBuffer extends DataBuffer {
         if (p <= 3) return p; // 0..3 -> 0..3
         if (p <= 7) return 4 + ((p - 4) >> 1); // 4..5 -> 4, 6..7 -> 5
         return 6 + ((p - 8) >> 1); // 8..9 -> 6, 10..11 -> 7
+    }
+
+    hasRustModelFaceBuilder(): boolean {
+        return typeof this.rustBuilder?.push_model_faces === "function";
+    }
+
+    addModelFaces(
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        facesA: Int32Array,
+        facesB: Int32Array,
+        facesC: Int32Array,
+        colorsA: Int32Array,
+        colorsB: Int32Array,
+        colorsC: Int32Array,
+        uvs: Float32Array,
+        faceFields: Int32Array,
+        sceneX: number,
+        sceneHeight: number,
+        sceneZ: number,
+        overrideHue: number,
+        overrideSaturation: number,
+        overrideLuminance: number,
+        overrideAmount: number,
+        reuseVertices: boolean,
+    ): Uint32Array | undefined {
+        if (!this.rustBuilder?.push_model_faces) {
+            return undefined;
+        }
+
+        const indices = this.rustBuilder.push_model_faces(
+            verticesX,
+            verticesY,
+            verticesZ,
+            facesA,
+            facesB,
+            facesC,
+            colorsA,
+            colorsB,
+            colorsC,
+            uvs,
+            faceFields,
+            sceneX,
+            sceneHeight,
+            sceneZ,
+            overrideHue,
+            overrideSaturation,
+            overrideLuminance,
+            overrideAmount,
+            reuseVertices,
+        );
+        this.offset = this.rustBuilder.vertex_count();
+        return indices;
     }
 
     addBatch(
