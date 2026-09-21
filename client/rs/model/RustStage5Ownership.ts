@@ -39,7 +39,9 @@ const PATHS: RustStage5Path[] = [
 ];
 
 let strictMode = false;
-let forceTypeScript = false;
+let forceTypeScript =
+    typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("rust-renderer") === "off";
 
 function emptyPathStats(): RustStage5PathStats {
     return {
