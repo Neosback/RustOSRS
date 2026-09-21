@@ -60,6 +60,61 @@ assertExcludes(
     "WebGLMapSquare eager map texture allocation",
 );
 
+const drawHelpers = source("render/render/draw2.ts");
+const actorTextureUpload = functionBody(
+    drawHelpers,
+    "export function updateActorDataTexture",
+    "export function _accumulate",
+);
+assertIncludes(
+    actorTextureUpload,
+    "if (rustPrimaryRendererEnabled) {",
+    "actor-data primary ownership branch",
+);
+assertIncludes(
+    actorTextureUpload,
+    "mirrorRustActorData(host, uploadView, texWidth, texHeight);",
+    "actor-data CPU-to-Rust upload",
+);
+assertIncludes(
+    actorTextureUpload,
+    "host.actorDataTextures[i]?.delete();",
+    "legacy actor texture release on Rust-primary resume",
+);
+
+const opaqueActors = source("render/render/frame/render4.ts");
+assertIncludes(
+    opaqueActors,
+    "if (!rustPrimaryRendererEnabled && !actorDataTexture) return;",
+    "opaque actor traversal legacy texture gate",
+);
+
+const transparentNpcs = source("render/render/frame/render3.ts");
+assertIncludes(
+    transparentNpcs,
+    "(!rustPrimaryRendererEnabled && !npcDataTexture)",
+    "transparent NPC traversal legacy texture gate",
+);
+
+const transparentActors = source("render/render/frame/render5.ts");
+assertIncludes(
+    transparentActors,
+    "if (rustPrimaryRendererEnabled || playerDataTexture)",
+    "transparent effect traversal primary actor-data path",
+);
+
+const rustIntegration = source("render/rust/RustShadowIntegration.ts");
+const currentActorSync = functionBody(
+    rustIntegration,
+    "function syncCurrentActorData",
+    "export async function initRustRendererShadow",
+);
+assertExcludes(
+    currentActorSync,
+    "actorDataTextures",
+    "Rust actor recovery must not depend on Pico actor textures",
+);
+
 const npc = source("render/render/anim/npc2.ts");
 const npcUpload = functionBody(
     npc,
