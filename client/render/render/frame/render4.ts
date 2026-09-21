@@ -198,9 +198,8 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
         actorDataTexture: Texture | undefined,
     ): void {
 
-        if (!actorDataTexture) return;
-
         const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(host);
+        if (!rustPrimaryRendererEnabled && !actorDataTexture) return;
         const cullTile = host.getRenderCullTile();
         const renderDistanceTiles = Math.max(0, host.getFrameRenderDistanceTiles() | 0);
         const renderDistancePadTiles = 0;
@@ -252,7 +251,7 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
                             .uniform("u_npcDataOffset", baseOffsetNpc)
                             .uniform("u_modelYOffset", host.getNpcModelYOffset())
                             .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                            .texture("u_npcDataTexture", actorDataTexture);
+                            .texture("u_npcDataTexture", actorDataTexture as Texture);
                     }
                     const setNpcDrawRange = (index: number, frame: DrawRange): void => {
                         drawRanges[index] = frame;
@@ -484,7 +483,7 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
             });
         }
 
-        if (dynamicNpcs.length > 0 && actorDataTexture) {
+        if (dynamicNpcs.length > 0 && (rustPrimaryRendererEnabled || actorDataTexture)) {
             for (const dyn of dynamicNpcs) {
                 const indexCount = dyn.geometry.opaqueIndices.length | 0;
                 if (indexCount <= 0) {
@@ -514,7 +513,7 @@ export function renderOpaqueActorPass(host: WebGLOsrsRendererHost,
 
                     const dynDrawCall = host.dynamicNpcDrawCall;
                     dynDrawCall
-                        .texture("u_npcDataTexture", actorDataTexture)
+                        .texture("u_npcDataTexture", actorDataTexture as Texture)
                         .uniform("u_npcDataOffset", npcDataOffset)
                         .uniform("u_mapPos", [dyn.map.renderPosX, dyn.map.renderPosY])
                         .uniform("u_timeLoaded", dyn.map.timeLoaded)
