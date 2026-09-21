@@ -83,6 +83,10 @@ jobs:
         run: yarn install --immutable
       - name: TypeScript typecheck
         run: yarn typecheck
+      - name: Production client build
+        env:
+          CI: "false"
+        run: yarn build:pico
       - name: Check renderer ABI alignment
         run: yarn check:rust-renderer-abi
       - name: Guard legacy shader parity reference
