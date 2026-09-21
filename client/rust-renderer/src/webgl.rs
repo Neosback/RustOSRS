@@ -534,6 +534,7 @@ pub struct RustWebGlRenderer {
     material_texture: WebGlTexture,
     water_texture_array: WebGlTexture,
     actor_data_texture: WebGlTexture,
+    actor_data_actor_capacity: u32,
 
     presentation_enabled: bool,
     presentation_framebuffer: WebGlFramebuffer,
@@ -872,6 +873,7 @@ impl RustWebGlRenderer {
             material_texture,
             water_texture_array,
             actor_data_texture,
+            actor_data_actor_capacity: 0,
             presentation_enabled: false,
             presentation_framebuffer,
             presentation_color_texture,
@@ -1296,15 +1298,22 @@ impl RustWebGlRenderer {
         width: u32,
         height: u32,
     ) -> Result<(), JsValue> {
-        if width == 0 || height == 0 {
+        if width != 16 {
             return Err(JsValue::from_str(
-                "actor-data texture dimensions must be positive",
+                "actor-data texture width must be exactly 16 texels",
+            ));
+        }
+        if height == 0 {
+            return Err(JsValue::from_str(
+                "actor-data texture height must be positive",
             ));
         }
 
-        let expected = (width as usize)
+        let texel_count = (width as usize)
             .checked_mul(height as usize)
-            .and_then(|value| value.checked_mul(4))
+            .ok_or_else(|| JsValue::from_str("actor-data texture dimensions overflow"))?;
+        let expected = texel_count
+            .checked_mul(4)
             .ok_or_else(|| JsValue::from_str("actor-data texture dimensions overflow"))?;
         if values.len() != expected {
             return Err(JsValue::from_str(&format!(
@@ -1312,6 +1321,10 @@ impl RustWebGlRenderer {
                 values.len()
             )));
         }
+
+        // NPC/player shaders consume exactly two RGBA16UI texels per actor.
+        let actor_capacity = u32::try_from(texel_count / 2)
+            .map_err(|_| JsValue::from_str("actor-data actor capacity overflow"))?;
 
         let data = js_sys::Uint16Array::from(values);
         self.gl.active_texture(Gl::TEXTURE6);
@@ -2343,6 +2356,8 @@ impl RustWebGlRenderer {
             ));
         }
 
+        self.validate_actor_index(i64::from(projectile_data_offset), "projectile")?;
+
         let state = self
             .static_map
             .state
@@ -2511,6 +2526,44 @@ impl RustWebGlRenderer {
     }
 
     #[allow(clippy::too_many_arguments)]
+    fn validate_actor_index(&self, index: i64, label: &str) -> Result<(), JsValue> {
+        if index < 0 {
+            return Err(JsValue::from_str(&format!(
+                "{label} actor-data index must be non-negative"
+            )));
+        }
+        let capacity = i64::from(self.actor_data_actor_capacity);
+        if index >= capacity {
+            return Err(JsValue::from_str(&format!(
+                "{label} actor-data index {index} is outside uploaded capacity {capacity}"
+            )));
+        }
+        Ok(())
+    }
+
+    fn validate_npc_actor_ranges(
+        &self,
+        ranges: &[DrawRange],
+        npc_data_offset: i32,
+    ) -> Result<(), JsValue> {
+        if npc_data_offset < 0 {
+            return Err(JsValue::from_str(
+                "npc_data_offset must be non-negative",
+            ));
+        }
+        for (draw_index, range) in ranges.iter().enumerate() {
+            if range.is_empty() {
+                continue;
+            }
+            let max_index = i64::from(npc_data_offset)
+                + draw_index as i64
+                + i64::from(range.instances)
+                - 1;
+            self.validate_actor_index(max_index, "NPC")?;
+        }
+        Ok(())
+    }
+
     fn render_npc_geometry_pass(
         &mut self,
         flat_ranges: &[u32],
@@ -2553,6 +2606,8 @@ impl RustWebGlRenderer {
         let ranges = parse_draw_ranges(flat_ranges).map_err(JsValue::from_str)?;
         validate_draw_ranges(&ranges, npc_index_count as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+        self.validate_npc_actor_ranges(&ranges, npc_data_offset)?;
 
         if transparent {
             self.gl.enable(Gl::BLEND);
@@ -2755,6 +2810,12 @@ impl RustWebGlRenderer {
         if player_slots.iter().any(|slot| *slot < 0) {
             return Err(JsValue::from_str("player slots must be non-negative"));
         }
+
+        let max_player_index = match player_slots.iter().max() {
+            Some(slot) => i64::from(player_data_offset) + i64::from(*slot),
+            None => i64::from(player_data_offset),
+        };
+        self.validate_actor_index(max_player_index, "player")?;
 
         let state = self
             .static_map
