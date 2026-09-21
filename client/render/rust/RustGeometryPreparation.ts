@@ -2,9 +2,11 @@ import {
     createModelInfoTextureData,
     type DrawCommand,
 } from "../buffer/SceneBuffer";
+import type { VertexBatchBuilder } from "../buffer/VertexBuffer";
 import { loadRustRendererModule } from "./RustRendererModule";
 
 export type ModelInfoTextureBuilder = (commands: DrawCommand[]) => Uint16Array;
+export type VertexBatchBuilderFactory = () => VertexBatchBuilder | undefined;
 
 type RustModelInfoPacketBuilder = (
     commandInstanceCounts: Uint32Array,
@@ -89,4 +91,36 @@ export async function getModelInfoTextureBuilder(): Promise<ModelInfoTextureBuil
     }
 
     return modelInfoBuilderPromise;
+}
+
+
+let vertexBatchBuilderFactoryPromise: Promise<VertexBatchBuilderFactory> | undefined;
+let warnedAboutVertexFallback = false;
+
+export async function getVertexBatchBuilderFactory(): Promise<VertexBatchBuilderFactory> {
+    if (!vertexBatchBuilderFactoryPromise) {
+        vertexBatchBuilderFactoryPromise = loadRustRendererModule()
+            .then((module) => {
+                const RustVertexBufferBuilder = module.RustVertexBufferBuilder;
+                if (typeof RustVertexBufferBuilder !== "function") {
+                    throw new Error(
+                        "Rust renderer web package does not export RustVertexBufferBuilder",
+                    );
+                }
+                return (): VertexBatchBuilder => new RustVertexBufferBuilder();
+            })
+            .catch((error) => {
+                if (!warnedAboutVertexFallback) {
+                    warnedAboutVertexFallback = true;
+                    console.warn(
+                        "[RustGeometryPreparation] Rust vertex builder unavailable; "
+                        + "using the TypeScript compatibility packer.",
+                        error,
+                    );
+                }
+                return (): undefined => undefined;
+            });
+    }
+
+    return vertexBatchBuilderFactoryPromise;
 }
