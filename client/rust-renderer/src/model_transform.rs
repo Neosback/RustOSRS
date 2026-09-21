@@ -126,40 +126,21 @@ mod tests {
 
     fn identity() -> [f32; 16] {
         [
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 1.0,
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+            1.0,
         ]
     }
 
     #[test]
     fn skeletal_skinning_preserves_unweighted_vertices() {
-        let out = skin_skeletal_vertices(
-            &[10],
-            &[-20],
-            &[30],
-            &[0, 0],
-            &[],
-            &[],
-            &[],
-        )
-        .unwrap();
+        let out = skin_skeletal_vertices(&[10], &[-20], &[30], &[0, 0], &[], &[], &[]).unwrap();
         assert_eq!(out, vec![10, -20, 30]);
     }
 
     #[test]
     fn skeletal_skinning_matches_identity_weight() {
-        let out = skin_skeletal_vertices(
-            &[10],
-            &[-20],
-            &[30],
-            &[0, 1],
-            &[0],
-            &[255],
-            &identity(),
-        )
-        .unwrap();
+        let out = skin_skeletal_vertices(&[10], &[-20], &[30], &[0, 1], &[0], &[255], &identity())
+            .unwrap();
         assert_eq!(out, vec![10, -20, 30]);
     }
 
@@ -169,16 +150,8 @@ mod tests {
         matrix[12] = 5.0;
         matrix[13] = 7.0;
         matrix[14] = -9.0;
-        let out = skin_skeletal_vertices(
-            &[10],
-            &[-20],
-            &[30],
-            &[0, 1],
-            &[0],
-            &[255],
-            &matrix,
-        )
-        .unwrap();
+        let out =
+            skin_skeletal_vertices(&[10], &[-20], &[30], &[0, 1], &[0], &[255], &matrix).unwrap();
         assert_eq!(out, vec![15, -27, 39]);
     }
 
@@ -192,16 +165,9 @@ mod tests {
         matrices.extend_from_slice(&left);
         matrices.extend_from_slice(&right);
 
-        let out = skin_skeletal_vertices(
-            &[20],
-            &[0],
-            &[0],
-            &[0, 2],
-            &[0, 1],
-            &[128, 127],
-            &matrices,
-        )
-        .unwrap();
+        let out =
+            skin_skeletal_vertices(&[20], &[0], &[0], &[0, 2], &[0, 1], &[128, 127], &matrices)
+                .unwrap();
         assert_eq!(out[0], 20);
     }
 }
