@@ -17,6 +17,7 @@ import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import { SkeletalSeqLoader } from "../../rs/model/skeletal/SkeletalSeqLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { SceneBuffer } from "../buffer/SceneBuffer";
+import { createVertexBatchBuilderIfReady } from "../rust/RustGeometryPreparation";
 
 export interface DynamicNpcSequenceMeta {
     key: string;
@@ -356,6 +357,7 @@ export class DynamicNpcAnimLoader {
                 this.textureLoader,
                 this.textureIdIndexMap,
                 Math.max(16, (model.verticesCount | 0) + 16),
+                createVertexBatchBuilderIfReady(),
             );
             if (transparent) {
                 this.alphaSceneBuf = sceneBuf;
@@ -374,8 +376,7 @@ export class DynamicNpcAnimLoader {
     }
 
     private resetSceneBuf(sceneBuf: SceneBuffer): void {
-        sceneBuf.vertexBuf.offset = 0;
-        sceneBuf.vertexBuf.vertexIndices.clear();
+        sceneBuf.vertexBuf.reset();
         sceneBuf.indices.length = 0;
         sceneBuf.usedTextureIds.clear();
     }
