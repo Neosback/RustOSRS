@@ -535,48 +535,21 @@ pub fn compute_model_uvs(
                 let scale_x = 64.0 / texture_scale_x[c] as f64;
                 let scale_y = 64.0 / texture_scale_y[c] as f64;
                 let scale_z = 64.0 / texture_scale_z[c] as f64;
-                let f_829 = (vx * scales[0] as f64
-                    + vy * scales[1] as f64
-                    + vz * scales[2] as f64)
+                let f_829 = (vx * scales[0] as f64 + vy * scales[1] as f64 + vz * scales[2] as f64)
                     / scale_x;
-                let f_830 = (vx * scales[3] as f64
-                    + vy * scales[4] as f64
-                    + vz * scales[5] as f64)
+                let f_830 = (vx * scales[3] as f64 + vy * scales[4] as f64 + vz * scales[5] as f64)
                     / scale_y;
-                let f_831 = (vx * scales[6] as f64
-                    + vy * scales[7] as f64
-                    + vz * scales[8] as f64)
+                let f_831 = (vx * scales[6] as f64 + vy * scales[7] as f64 + vz * scales[8] as f64)
                     / scale_z;
                 let scale_type = dominant_axis(f_829, f_830, f_831);
                 (u0, v0) = project_planar(
-                    vertex0,
-                    center,
-                    scale_type,
-                    scales,
-                    direction,
-                    speed,
-                    u_offset,
-                    v_offset,
+                    vertex0, center, scale_type, scales, direction, speed, u_offset, v_offset,
                 );
                 (u1, v1) = project_planar(
-                    vertex1,
-                    center,
-                    scale_type,
-                    scales,
-                    direction,
-                    speed,
-                    u_offset,
-                    v_offset,
+                    vertex1, center, scale_type, scales, direction, speed, u_offset, v_offset,
                 );
                 (u2, v2) = project_planar(
-                    vertex2,
-                    center,
-                    scale_type,
-                    scales,
-                    direction,
-                    speed,
-                    u_offset,
-                    v_offset,
+                    vertex2, center, scale_type, scales, direction, speed, u_offset, v_offset,
                 );
             } else if mapping_type == 3 {
                 (u0, v0) = project_spherical(vertex0, center, scales, direction, speed);
