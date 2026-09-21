@@ -37,10 +37,66 @@ async function main(): Promise<void> {
         getRustRendererRuntimeMode,
         isRustPrimaryRuntime,
     } = await import("../render/rust/RustRendererRuntime");
+    const {
+        buildModelInfoTextureDataWithRust,
+        flattenModelInfoCommands,
+    } = await import("../render/rust/RustGeometryPreparation");
 
     const fakeHost = {
         canvas: {},
     } as any;
+
+    const modelInfoCommands = [
+        {
+            instances: [
+                {
+                    sceneX: 1,
+                    sceneZ: 2,
+                    heightOffset: 3,
+                    level: 1,
+                    contourGround: 2,
+                    priority: 3,
+                    interactType: 4,
+                    interactId: 5,
+                },
+                {
+                    sceneX: 6,
+                    sceneZ: 7,
+                    heightOffset: 8,
+                    level: 0,
+                    planeCullLevel: 2,
+                    contourGround: 1,
+                    priority: 5,
+                    interactType: 6,
+                    interactId: 0x12345,
+                },
+            ],
+        },
+        {
+            instances: [],
+        },
+    ] as any;
+
+    const flatModelInfo = flattenModelInfoCommands(modelInfoCommands);
+    assert.deepEqual(Array.from(flatModelInfo.commandInstanceCounts), [2, 0]);
+    assert.deepEqual(Array.from(flatModelInfo.instanceFields), [
+        1, 2, 3, 1, 1, 2, 3, 4, 5,
+        6, 7, 8, 0, 2, 1, 5, 6, 0x12345,
+    ]);
+
+    let capturedCounts: Uint32Array | undefined;
+    let capturedFields: Int32Array | undefined;
+    const rustModelInfoResult = buildModelInfoTextureDataWithRust(
+        modelInfoCommands,
+        (counts, fields) => {
+            capturedCounts = counts;
+            capturedFields = fields;
+            return new Uint16Array([7, 8, 9]);
+        },
+    );
+    assert.deepEqual(Array.from(rustModelInfoResult), [7, 8, 9]);
+    assert.deepEqual(Array.from(capturedCounts!), [2, 0]);
+    assert.deepEqual(Array.from(capturedFields!), Array.from(flatModelInfo.instanceFields));
 
     assert.deepEqual(getRustRendererShadowDiagnostics(fakeHost), {
         enabled: false,
