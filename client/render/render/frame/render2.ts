@@ -185,6 +185,7 @@ import {
     createProjectileProgram,
 } from "../../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
+import { isRustPrimaryRendererActive } from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
 
@@ -192,6 +193,7 @@ export function renderGeometryPass(host: WebGLOsrsRendererHost, transparent: boo
 
         const roofPlaneLimit = host.getRoofPlaneLimit();
         const cullTile = host.getRenderCullTile();
+        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(host);
 
         const count = host.mapManager.visibleMapCount;
         if (count === 0) {
@@ -239,9 +241,11 @@ export function renderGeometryPass(host: WebGLOsrsRendererHost, transparent: boo
                 fullDetailVisibleMapCount++;
             }
 
-            const { drawCall } = map.getDrawCall(transparent, isInteract, isLod);
             const drawRanges = map.getDrawRanges(transparent, isInteract, isLod);
             const drawRangePlanes = map.getDrawRangesPlanes(transparent, isInteract, isLod);
+            const drawCall = rustPrimaryRendererEnabled
+                ? undefined
+                : map.getDrawCall(transparent, isInteract, isLod).drawCall;
 
             const isWorldEntity = host.mapManager.worldEntityMapIds.has(map.id);
             let weTransform: Float32Array = WebGLMapSquare.IDENTITY_MAT4;
@@ -255,15 +259,19 @@ export function renderGeometryPass(host: WebGLOsrsRendererHost, transparent: boo
                 }
             }
 
-            drawCall.uniform("u_roofPlaneLimit", roofPlaneLimit);
-            drawCall.uniform("u_worldEntityTransform", weTransform);
-            drawCall.uniform("u_worldEntityOpacity", 1.0);
+            if (drawCall) {
+                drawCall.uniform("u_roofPlaneLimit", roofPlaneLimit);
+                drawCall.uniform("u_worldEntityTransform", weTransform);
+                drawCall.uniform("u_worldEntityOpacity", 1.0);
+            }
 
             host.drawWithRoofPlaneFilter(drawCall, drawRanges, drawRangePlanes, roofPlaneLimit);
 
             const locDrawRanges = map.getLocDrawRanges(transparent, isInteract, isLod);
             if (locDrawRanges) {
-                const locBatch = map.getLocDrawCall(transparent, isInteract, isLod);
+                const locBatch = rustPrimaryRendererEnabled
+                    ? undefined
+                    : map.getLocDrawCall(transparent, isInteract, isLod);
                 const locDrawRangePlanes = map.getLocDrawRangesPlanes(
                     transparent,
                     isInteract,
@@ -281,18 +289,20 @@ export function renderGeometryPass(host: WebGLOsrsRendererHost, transparent: boo
                     locBatch.drawCall.uniform("u_roofPlaneLimit", roofPlaneLimit);
                     locBatch.drawCall.uniform("u_worldEntityTransform", weTransform);
                     locBatch.drawCall.uniform("u_worldEntityOpacity", 1.0);
-                    host.drawWithRoofPlaneFilter(
-                        locBatch.drawCall,
-                        locDrawRanges,
-                        locDrawRangePlanes,
-                        roofPlaneLimit,
-                    );
                 }
+                host.drawWithRoofPlaneFilter(
+                    locBatch?.drawCall,
+                    locDrawRanges,
+                    locDrawRangePlanes,
+                    roofPlaneLimit,
+                );
             }
 
             const groundDrawRanges = map.getGroundItemDrawRanges(transparent, isInteract, isLod);
             if (groundDrawRanges) {
-                const groundBatch = map.getGroundItemDrawCall(transparent, isInteract, isLod);
+                const groundBatch = rustPrimaryRendererEnabled
+                    ? undefined
+                    : map.getGroundItemDrawCall(transparent, isInteract, isLod);
                 if (groundBatch) {
                     const groundDrawRangePlanes = map.getGroundItemDrawRangesPlanes(
                         transparent,
@@ -302,18 +312,20 @@ export function renderGeometryPass(host: WebGLOsrsRendererHost, transparent: boo
                     groundBatch.drawCall.uniform("u_roofPlaneLimit", roofPlaneLimit);
                     groundBatch.drawCall.uniform("u_worldEntityTransform", weTransform);
                     groundBatch.drawCall.uniform("u_worldEntityOpacity", 1.0);
-                    host.drawWithRoofPlaneFilter(
-                        groundBatch.drawCall,
-                        groundDrawRanges,
-                        groundDrawRangePlanes,
-                        roofPlaneLimit,
-                    );
                 }
+                host.drawWithRoofPlaneFilter(
+                    groundBatch?.drawCall,
+                    groundDrawRanges,
+                    map.getGroundItemDrawRangesPlanes(transparent, isInteract, isLod),
+                    roofPlaneLimit,
+                );
             }
 
             const doorDrawRanges = map.getDoorDrawRanges(transparent, isInteract, isLod);
             if (doorDrawRanges) {
-                const doorBatch = map.getDoorDrawCall(transparent, isInteract, isLod);
+                const doorBatch = rustPrimaryRendererEnabled
+                    ? undefined
+                    : map.getDoorDrawCall(transparent, isInteract, isLod);
                 if (doorBatch) {
                     const doorDrawRangePlanes = map.getDoorDrawRangesPlanes(
                         transparent,
@@ -322,17 +334,22 @@ export function renderGeometryPass(host: WebGLOsrsRendererHost, transparent: boo
                     );
                     doorBatch.drawCall.uniform("u_roofPlaneLimit", roofPlaneLimit);
                     doorBatch.drawCall.uniform("u_worldEntityTransform", weTransform);
-                    host.drawWithRoofPlaneFilter(
-                        doorBatch.drawCall,
-                        doorDrawRanges,
-                        doorDrawRangePlanes,
-                        roofPlaneLimit,
-                    );
                 }
+                host.drawWithRoofPlaneFilter(
+                    doorBatch?.drawCall,
+                    doorDrawRanges,
+                    map.getDoorDrawRangesPlanes(transparent, isInteract, isLod),
+                    roofPlaneLimit,
+                );
             }
 
             // Mode1 overlap ghost: redraw WE with tint + low opacity when actors overlap
-            if (isWorldEntity && weEntityIndex !== undefined && !transparent) {
+            if (
+                !rustPrimaryRendererEnabled
+                && isWorldEntity
+                && weEntityIndex !== undefined
+                && !transparent
+            ) {
                 const weEntity = host.osrsClient.worldViewManager.getWorldEntity(weEntityIndex);
                 if (weEntity && weEntity.drawMode === 1) {
                     const weView = host.osrsClient.worldViewManager.getWorldView(weEntityIndex);

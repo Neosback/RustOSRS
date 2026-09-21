@@ -2319,7 +2319,7 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
     }
 
     public drawWithRoofPlaneFilter(
-        drawCall: DrawCall,
+        drawCall: DrawCall | undefined,
         drawRanges: DrawRange[],
         drawRangePlanes: Uint8Array | undefined,
         roofPlaneLimit: number,

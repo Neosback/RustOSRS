@@ -331,7 +331,7 @@ export function draw(host: WebGLOsrsRendererHost, drawCall: DrawCall, drawRanges
 }
 
 export function drawWithRoofPlaneFilter(host: WebGLOsrsRendererHost, 
-        drawCall: DrawCall,
+        drawCall: DrawCall | undefined,
         drawRanges: DrawRange[],
         drawRangePlanes: Uint8Array | undefined,
         roofPlaneLimit: number,
@@ -344,7 +344,11 @@ export function drawWithRoofPlaneFilter(host: WebGLOsrsRendererHost,
         }
 
         if (!drawRangePlanes || roofPlaneLimit >= 3) {
-            host.draw(drawCall, drawRanges);
+            if (drawCall) {
+                host.draw(drawCall, drawRanges);
+            } else {
+                host._accumulate(drawRanges);
+            }
             return;
         }
 
@@ -367,10 +371,23 @@ export function drawWithRoofPlaneFilter(host: WebGLOsrsRendererHost,
             return;
         }
         if (visibleRanges >= totalRanges) {
-            host.draw(drawCall, drawRanges);
+            if (drawCall) {
+                host.draw(drawCall, drawRanges);
+            } else {
+                host._accumulate(drawRanges);
+            }
             return;
         }
-        host.draw(drawCall, drawRanges, filtered);
+        if (drawCall) {
+            host.draw(drawCall, drawRanges, filtered);
+            return;
+        }
+
+        host._frameBatches += visibleRanges;
+        for (let i = 0; i < visibleRanges; i++) {
+            const range = drawRanges[filtered[i]] as DrawRange | undefined;
+            host._frameIndices += (range?.[1] ?? 0) * (range?.[2] ?? 1);
+        }
     
 }
 
