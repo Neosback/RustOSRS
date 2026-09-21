@@ -12,6 +12,7 @@ import { resolveHeightSamplePlaneForLocal } from "../../game/scene/PlaneResolver
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { WebGLMapSquare } from "../WebGLMapSquare";
 import type { WebGLOsrsRenderer } from "../WebGLOsrsRenderer";
+import { createVertexBatchBuilderIfReady } from "../rust/RustGeometryPreparation";
 import {
     isRustPlayerShadowEnabled,
     isRustPrimaryRendererActive,
@@ -1001,8 +1002,12 @@ export class PlayerRenderer {
         const resetSceneBuf = (sb: any) => {
             if (!sb) return;
             try {
-                sb.vertexBuf.offset = 0;
-                sb.vertexBuf.vertexIndices?.clear?.();
+                if (typeof sb.vertexBuf.reset === "function") {
+                    sb.vertexBuf.reset();
+                } else {
+                    sb.vertexBuf.offset = 0;
+                    sb.vertexBuf.vertexIndices?.clear?.();
+                }
             } catch {}
             try {
                 sb.indices.length = 0;
@@ -1031,7 +1036,12 @@ export class PlayerRenderer {
         let indices: Int32Array;
         if (controlled) {
             if (!this.localSceneBuf) {
-                this.localSceneBuf = new SceneBufferCls(textureLoader, textureIdIndexMap, 0);
+                this.localSceneBuf = new SceneBufferCls(
+                    textureLoader,
+                    textureIdIndexMap,
+                    0,
+                    createVertexBatchBuilderIfReady(),
+                );
             }
             resetSceneBuf(this.localSceneBuf);
             if (facesOpaque.length > 0) this.localSceneBuf.addModel(model, facesOpaque);
@@ -1042,6 +1052,7 @@ export class PlayerRenderer {
                 textureLoader,
                 textureIdIndexMap,
                 model.verticesCount + 16,
+                createVertexBatchBuilderIfReady(),
             );
             if (facesOpaque.length > 0) sceneBuf.addModel(model, facesOpaque);
             vertices = sceneBuf.vertexBuf.byteArray();
@@ -1095,7 +1106,12 @@ export class PlayerRenderer {
         if (facesAlpha.length > 0) {
             if (controlled) {
                 if (!this.localSceneBuf) {
-                    this.localSceneBuf = new SceneBufferCls(textureLoader, textureIdIndexMap, 0);
+                    this.localSceneBuf = new SceneBufferCls(
+                    textureLoader,
+                    textureIdIndexMap,
+                    0,
+                    createVertexBatchBuilderIfReady(),
+                );
                 }
                 resetSceneBuf(this.localSceneBuf);
                 this.localSceneBuf.addModel(model, facesAlpha);
