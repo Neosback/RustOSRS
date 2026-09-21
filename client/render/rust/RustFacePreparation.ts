@@ -72,30 +72,39 @@ function decodeFaces(flat: Int32Array): PreparedModelFace[] {
     return faces;
 }
 
+function buildRawFacePacket(
+    rawBuilder: RawFaceBuilder,
+    model: Model,
+    textureLoader: TextureLoader | undefined,
+    filter: -1 | 0 | 1,
+): Int32Array {
+    const transparentTextureIds =
+        filter === -1
+            ? EMPTY_I32
+            : collectTransparentTextureIds(model, textureLoader);
+    return rawBuilder(
+        model.faceColors3,
+        model.faceAlphas ?? EMPTY_I8,
+        model.faceRenderPriorities ?? EMPTY_I8,
+        model.faceRenderLayers ?? EMPTY_U8,
+        model.faceTextures ?? EMPTY_I16,
+        transparentTextureIds,
+        filter,
+    );
+}
+
 function createModelFaceBuilder(rawBuilder: RawFaceBuilder): ModelFaceBuilder {
     return (
         model: Model,
         textureLoader: TextureLoader | undefined,
         filter: -1 | 0 | 1,
-    ): PreparedModelFace[] => {
-        const transparentTextureIds =
-            filter === -1
-                ? EMPTY_I32
-                : collectTransparentTextureIds(model, textureLoader);
-        const flat = rawBuilder(
-            model.faceColors3,
-            model.faceAlphas ?? EMPTY_I8,
-            model.faceRenderPriorities ?? EMPTY_I8,
-            model.faceRenderLayers ?? EMPTY_U8,
-            model.faceTextures ?? EMPTY_I16,
-            transparentTextureIds,
-            filter,
-        );
-        return decodeFaces(flat);
-    };
+    ): PreparedModelFace[] => decodeFaces(
+        buildRawFacePacket(rawBuilder, model, textureLoader, filter),
+    );
 }
 
 let faceBuilderPromise: Promise<ModelFaceBuilder | undefined> | undefined;
+let rawFaceBuilder: RawFaceBuilder | undefined;
 let faceBuilder: ModelFaceBuilder | undefined;
 let warnedAboutFallback = false;
 
@@ -105,6 +114,16 @@ export function buildModelFacesIfReady(
     filter: -1 | 0 | 1,
 ): PreparedModelFace[] | undefined {
     return faceBuilder?.(model, textureLoader, filter);
+}
+
+export function buildModelFacePacketIfReady(
+    model: Model,
+    textureLoader: TextureLoader | undefined,
+    filter: -1 | 0 | 1,
+): Int32Array | undefined {
+    return rawFaceBuilder
+        ? buildRawFacePacket(rawFaceBuilder, model, textureLoader, filter)
+        : undefined;
 }
 
 export async function getModelFaceBuilder(): Promise<ModelFaceBuilder | undefined> {
@@ -117,6 +136,7 @@ export async function getModelFaceBuilder(): Promise<ModelFaceBuilder | undefine
                         "Rust renderer web package does not export build_model_faces",
                     );
                 }
+                rawFaceBuilder = rawBuilder;
                 faceBuilder = createModelFaceBuilder(rawBuilder);
                 return faceBuilder;
             })
