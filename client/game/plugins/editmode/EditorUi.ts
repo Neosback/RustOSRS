@@ -1062,7 +1062,16 @@ class EditorChrome {
     }
 
     private itemIcon(id: number, amount: number): HTMLCanvasElement | undefined {
-        return window.osrsClient?.renderer?.itemIconRenderer?.renderToCanvas(id, amount, {
+        const renderer = window.osrsClient?.renderer as {
+            itemIconRenderer?: {
+                renderToCanvas(
+                    id: number,
+                    amount: number,
+                    options: { outline: number; quantityMode: number },
+                ): HTMLCanvasElement | undefined;
+            };
+        } | undefined;
+        return renderer?.itemIconRenderer?.renderToCanvas(id, amount, {
             outline: 1,
             quantityMode: 2,
         });
