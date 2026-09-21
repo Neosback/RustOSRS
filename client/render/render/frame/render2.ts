@@ -304,11 +304,6 @@ export function renderGeometryPass(host: WebGLOsrsRendererHost, transparent: boo
                     ? undefined
                     : map.getGroundItemDrawCall(transparent, isInteract, isLod);
                 if (groundBatch) {
-                    const groundDrawRangePlanes = map.getGroundItemDrawRangesPlanes(
-                        transparent,
-                        isInteract,
-                        isLod,
-                    );
                     groundBatch.drawCall.uniform("u_roofPlaneLimit", roofPlaneLimit);
                     groundBatch.drawCall.uniform("u_worldEntityTransform", weTransform);
                     groundBatch.drawCall.uniform("u_worldEntityOpacity", 1.0);
@@ -327,11 +322,6 @@ export function renderGeometryPass(host: WebGLOsrsRendererHost, transparent: boo
                     ? undefined
                     : map.getDoorDrawCall(transparent, isInteract, isLod);
                 if (doorBatch) {
-                    const doorDrawRangePlanes = map.getDoorDrawRangesPlanes(
-                        transparent,
-                        isInteract,
-                        isLod,
-                    );
                     doorBatch.drawCall.uniform("u_roofPlaneLimit", roofPlaneLimit);
                     doorBatch.drawCall.uniform("u_worldEntityTransform", weTransform);
                 }
