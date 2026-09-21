@@ -339,6 +339,7 @@ export function renderGeometryPass(host: WebGLOsrsRendererHost, transparent: boo
                 && isWorldEntity
                 && weEntityIndex !== undefined
                 && !transparent
+                && drawCall !== undefined
             ) {
                 const weEntity = host.osrsClient.worldViewManager.getWorldEntity(weEntityIndex);
                 if (weEntity && weEntity.drawMode === 1) {
