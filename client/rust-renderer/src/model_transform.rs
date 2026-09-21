@@ -94,7 +94,6 @@ pub fn skin_skeletal_vertices(
     Ok(transformed)
 }
 
-
 const LEGACY_TRANSFORM_ORIGIN: i32 = 0;
 const LEGACY_TRANSFORM_TRANSLATE: i32 = 1;
 const LEGACY_TRANSFORM_ROTATE: i32 = 2;
@@ -181,7 +180,10 @@ pub fn apply_legacy_transforms(
     let mut x = vertices_x.to_vec();
     let mut y = vertices_y.to_vec();
     let mut z = vertices_z.to_vec();
-    let mut alphas: Vec<i32> = face_alphas.iter().map(|value| (*value as i32) & 0xff).collect();
+    let mut alphas: Vec<i32> = face_alphas
+        .iter()
+        .map(|value| (*value as i32) & 0xff)
+        .collect();
     let mut colors: Vec<i32> = face_colors.iter().map(|value| *value as i32).collect();
 
     let mut origin_x = initial_origin_x;
@@ -265,36 +267,21 @@ pub fn apply_legacy_transforms(
                         let mut vz = z[vertex].wrapping_sub(origin_z);
 
                         if angle_z != 0 {
-                            let temp = sin_z
-                                .wrapping_mul(vy)
-                                .wrapping_add(cos_z.wrapping_mul(vx))
-                                >> 16;
-                            vy = cos_z
-                                .wrapping_mul(vy)
-                                .wrapping_sub(sin_z.wrapping_mul(vx))
-                                >> 16;
+                            let temp =
+                                sin_z.wrapping_mul(vy).wrapping_add(cos_z.wrapping_mul(vx)) >> 16;
+                            vy = cos_z.wrapping_mul(vy).wrapping_sub(sin_z.wrapping_mul(vx)) >> 16;
                             vx = temp;
                         }
                         if angle_x != 0 {
-                            let temp = cos_x
-                                .wrapping_mul(vy)
-                                .wrapping_sub(sin_x.wrapping_mul(vz))
-                                >> 16;
-                            vz = sin_x
-                                .wrapping_mul(vy)
-                                .wrapping_add(cos_x.wrapping_mul(vz))
-                                >> 16;
+                            let temp =
+                                cos_x.wrapping_mul(vy).wrapping_sub(sin_x.wrapping_mul(vz)) >> 16;
+                            vz = sin_x.wrapping_mul(vy).wrapping_add(cos_x.wrapping_mul(vz)) >> 16;
                             vy = temp;
                         }
                         if angle_y != 0 {
-                            let temp = sin_y
-                                .wrapping_mul(vz)
-                                .wrapping_add(cos_y.wrapping_mul(vx))
-                                >> 16;
-                            vz = cos_y
-                                .wrapping_mul(vz)
-                                .wrapping_sub(sin_y.wrapping_mul(vx))
-                                >> 16;
+                            let temp =
+                                sin_y.wrapping_mul(vz).wrapping_add(cos_y.wrapping_mul(vx)) >> 16;
+                            vz = cos_y.wrapping_mul(vz).wrapping_sub(sin_y.wrapping_mul(vx)) >> 16;
                             vx = temp;
                         }
 
@@ -316,52 +303,38 @@ pub fn apply_legacy_transforms(
                         let vx = x[vertex].wrapping_sub(origin_x);
                         let vy = y[vertex].wrapping_sub(origin_y);
                         let vz = z[vertex].wrapping_sub(origin_z);
-                        x[vertex] = (((tx as i64 * vx as i64) / 128) as i32)
-                            .wrapping_add(origin_x);
-                        y[vertex] = (((ty as i64 * vy as i64) / 128) as i32)
-                            .wrapping_add(origin_y);
-                        z[vertex] = (((tz as i64 * vz as i64) / 128) as i32)
-                            .wrapping_add(origin_z);
+                        x[vertex] = (((tx as i64 * vx as i64) / 128) as i32).wrapping_add(origin_x);
+                        y[vertex] = (((ty as i64 * vy as i64) / 128) as i32).wrapping_add(origin_y);
+                        z[vertex] = (((tz as i64 * vz as i64) / 128) as i32).wrapping_add(origin_z);
                     },
                 );
             }
             LEGACY_TRANSFORM_ALPHA => {
-                visit_label_indices(
-                    face_label_offsets,
-                    face_label_indices,
-                    labels,
-                    |face| {
-                        if face < alphas.len() {
-                            alphas[face] = (alphas[face] + tx * 8).clamp(0, 255);
-                        }
-                    },
-                );
+                visit_label_indices(face_label_offsets, face_label_indices, labels, |face| {
+                    if face < alphas.len() {
+                        alphas[face] = (alphas[face] + tx * 8).clamp(0, 255);
+                    }
+                });
             }
             LEGACY_TRANSFORM_LIGHT => {
-                visit_label_indices(
-                    face_label_offsets,
-                    face_label_indices,
-                    labels,
-                    |face| {
-                        if face >= colors.len() {
-                            return;
-                        }
-                        let color = colors[face] & 0xffff;
-                        let hue = (((color >> 10) & 0x3f) + tx) & 0x3f;
-                        let saturation = (((color >> 7) & 0x7) + ty).clamp(0, 7);
-                        let lightness = ((color & 0x7f) + tz).clamp(0, 127);
-                        colors[face] = (hue << 10) + (saturation << 7) + lightness;
-                        changed_light = true;
-                    },
-                );
+                visit_label_indices(face_label_offsets, face_label_indices, labels, |face| {
+                    if face >= colors.len() {
+                        return;
+                    }
+                    let color = colors[face] & 0xffff;
+                    let hue = (((color >> 10) & 0x3f) + tx) & 0x3f;
+                    let saturation = (((color >> 7) & 0x7) + ty).clamp(0, 7);
+                    let lightness = ((color & 0x7f) + tz).clamp(0, 127);
+                    colors[face] = (hue << 10) + (saturation << 7) + lightness;
+                    changed_light = true;
+                });
             }
             _ => {}
         }
     }
 
-    let mut result = Vec::with_capacity(
-        LEGACY_RESULT_HEADER + vertex_count * 3 + alphas.len() + colors.len(),
-    );
+    let mut result =
+        Vec::with_capacity(LEGACY_RESULT_HEADER + vertex_count * 3 + alphas.len() + colors.len());
     result.push(origin_x);
     result.push(origin_y);
     result.push(origin_z);
@@ -465,11 +438,26 @@ mod tests {
             &[0, 1],
             &[0],
             &[
-                LEGACY_TRANSFORM_ORIGIN, 0, 0, 0,
-                LEGACY_TRANSFORM_SCALE, 256, 128, 128,
-                LEGACY_TRANSFORM_TRANSLATE, 5, -3, 7,
-                LEGACY_TRANSFORM_ALPHA, 2, 0, 0,
-                LEGACY_TRANSFORM_LIGHT, 1, 1, 1,
+                LEGACY_TRANSFORM_ORIGIN,
+                0,
+                0,
+                0,
+                LEGACY_TRANSFORM_SCALE,
+                256,
+                128,
+                128,
+                LEGACY_TRANSFORM_TRANSLATE,
+                5,
+                -3,
+                7,
+                LEGACY_TRANSFORM_ALPHA,
+                2,
+                0,
+                0,
+                LEGACY_TRANSFORM_LIGHT,
+                1,
+                1,
+                1,
             ],
             &[0, 1, 2, 3, 4, 5],
             &[0, 0, 0, 0, 0],
