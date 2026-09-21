@@ -1531,7 +1531,7 @@ export class PlayerRenderer {
     ): void {
         const r = this.renderer;
         const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(r);
-        if (!actorDataTexture) return;
+        if (!rustPrimaryRendererEnabled && !actorDataTexture) return;
         if ((!rustPrimaryRendererEnabled && !this.drawCall) || !this.drawRanges) return;
 
         const baseOffsetPlayer = map.playerDataTextureOffsets[actorDataTextureIndex];
@@ -1743,7 +1743,7 @@ export class PlayerRenderer {
                 .uniform("u_npcDataOffset", baseOffsetPlayer)
                 .uniform("u_modelYOffset", r.playerYOffset)
                 .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                .texture("u_npcDataTexture", actorDataTexture)
+                .texture("u_npcDataTexture", actorDataTexture as Texture)
                 .texture("u_heightMap", map.heightMapTexture)
                 .uniform("u_sceneBorderSize", map.borderSize);
 
@@ -1835,7 +1835,7 @@ export class PlayerRenderer {
                               .uniform("u_npcDataOffset", baseOffsetPlayer)
                               .uniform("u_modelYOffset", r.playerYOffset)
                               .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                              .texture("u_npcDataTexture", actorDataTexture)
+                              .texture("u_npcDataTexture", actorDataTexture as Texture)
                               .texture("u_heightMap", map.heightMapTexture)
                               .uniform("u_sceneBorderSize", map.borderSize)
                         : draw;
@@ -1949,14 +1949,14 @@ export class PlayerRenderer {
         const r = this.renderer;
         const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(r);
         if (
-            !playerDataTexture ||
+            (!rustPrimaryRendererEnabled && !playerDataTexture) ||
             (!rustPrimaryRendererEnabled && !this.drawCallAlpha) ||
             !this.drawRangesAlpha
         ) {
             return;
         }
         const drawCallAlpha = this.drawCallAlpha as DrawCall | undefined;
-        const tex = playerDataTexture as Texture;
+        const tex = playerDataTexture as Texture | undefined;
 
         // Use dynamic alpha geometry when enabled, otherwise cycle pre-baked alpha ranges
         const frameId = 0; // unused in variant path
@@ -2146,7 +2146,7 @@ export class PlayerRenderer {
                     .uniform("u_npcDataOffset", baseOffset)
                     .uniform("u_modelYOffset", r.playerYOffset)
                     .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                    .texture("u_npcDataTexture", playerDataTexture)
+                    .texture("u_npcDataTexture", playerDataTexture as Texture)
                     .texture("u_heightMap", map.heightMapTexture)
                     .uniform("u_sceneBorderSize", map.borderSize);
 
@@ -2219,7 +2219,7 @@ export class PlayerRenderer {
                                   .uniform("u_npcDataOffset", baseOffset)
                                   .uniform("u_modelYOffset", r.playerYOffset)
                                   .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                                  .texture("u_npcDataTexture", playerDataTexture)
+                                  .texture("u_npcDataTexture", playerDataTexture as Texture)
                                   .texture("u_heightMap", map.heightMapTexture)
                                   .uniform("u_sceneBorderSize", map.borderSize)
                             : draw;
