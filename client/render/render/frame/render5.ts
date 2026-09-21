@@ -184,6 +184,7 @@ import {
     createPlayerProgram,
     createProjectileProgram,
 } from "../../shaders/Shaders";
+import { isRustPrimaryRendererActive } from "../../rust/RustShadowIntegration";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
@@ -193,13 +194,14 @@ export function renderTransparentPlayerPass(host: WebGLOsrsRendererHost,
         playerDataTexture: Texture | undefined,
     ): void {
 
+        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(host);
         const cullTile = host.getRenderCullTile();
         const renderDistanceTiles = Math.max(0, host.getFrameRenderDistanceTiles() | 0);
         const renderDistancePadTiles = 0;
         host.playerRenderer.renderTransparentPlayerPass(playerDataTextureIndex, playerDataTexture);
         // GFX pass (alpha)
         try {
-            if (playerDataTexture) {
+            if (rustPrimaryRendererEnabled || playerDataTexture) {
                 for (let i = host.mapManager.visibleMapCount - 1; i >= 0; i--) {
                     const map = host.mapManager.visibleMaps[i];
                     if (
@@ -233,7 +235,7 @@ export function renderTransparentPlayerPass(host: WebGLOsrsRendererHost,
         } catch {}
         // Projectile pass (alpha)
         try {
-            if (playerDataTexture) {
+            if (rustPrimaryRendererEnabled || playerDataTexture) {
                 for (let i = host.mapManager.visibleMapCount - 1; i >= 0; i--) {
                     const map = host.mapManager.visibleMaps[i];
                     if (
