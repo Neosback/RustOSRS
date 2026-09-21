@@ -343,3 +343,135 @@ export function applyLegacyTransformsWithRustIfReady(
         return undefined;
     }
 }
+
+
+export type RustContourBuilder = (
+    verticesX: Int32Array,
+    verticesY: Int32Array,
+    verticesZ: Int32Array,
+    usedVertexCount: number,
+    contourType: number,
+    param: number,
+    heightMap: Int32Array,
+    heightWidth: number,
+    heightDepth: number,
+    heightMapAbove: Int32Array,
+    aboveWidth: number,
+    aboveDepth: number,
+    sceneX: number,
+    sceneHeight: number,
+    sceneZ: number,
+    type2Denominator: number,
+    minY: number,
+    maxY: number,
+    preserveType1UnusedOob: boolean,
+) => Int32Array;
+
+type FlattenedHeightMap = {
+    width: number;
+    depth: number;
+    data: Int32Array;
+};
+
+let contourBuilder: RustContourBuilder | undefined;
+let warnedAboutContourFailure = false;
+const heightMapCache = new WeakMap<object, FlattenedHeightMap>();
+const EMPTY_HEIGHT_MAP: FlattenedHeightMap = {
+    width: 0,
+    depth: 0,
+    data: new Int32Array(0),
+};
+
+export function registerRustContourBuilder(
+    builder: RustContourBuilder | undefined,
+): void {
+    contourBuilder = builder;
+}
+
+function flattenHeightMap(heightMap: Int32Array[] | undefined): FlattenedHeightMap | undefined {
+    if (!heightMap || heightMap.length === 0) {
+        return heightMap ? EMPTY_HEIGHT_MAP : undefined;
+    }
+    const key = heightMap as unknown as object;
+    const cached = heightMapCache.get(key);
+    const width = heightMap.length;
+    const depth = heightMap[0]?.length ?? 0;
+    if (cached && cached.width === width && cached.depth === depth) {
+        return cached;
+    }
+    if (depth === 0) {
+        return EMPTY_HEIGHT_MAP;
+    }
+    for (const column of heightMap) {
+        if (!column || column.length !== depth) {
+            return undefined;
+        }
+    }
+    const data = new Int32Array(width * depth);
+    for (let x = 0; x < width; x++) {
+        data.set(heightMap[x], x * depth);
+    }
+    const flattened = { width, depth, data };
+    heightMapCache.set(key, flattened);
+    return flattened;
+}
+
+export function contourVerticesWithRustIfReady(
+    verticesX: Int32Array,
+    verticesY: Int32Array,
+    verticesZ: Int32Array,
+    usedVertexCount: number,
+    contourType: number,
+    param: number,
+    heightMap: Int32Array[],
+    heightMapAbove: Int32Array[] | undefined,
+    sceneX: number,
+    sceneHeight: number,
+    sceneZ: number,
+    type2Denominator: number,
+    minY: number,
+    maxY: number,
+    preserveType1UnusedOob: boolean,
+): Int32Array | undefined {
+    if (!contourBuilder || contourType < 1 || contourType > 5) {
+        return undefined;
+    }
+    const base = flattenHeightMap(heightMap);
+    const above = heightMapAbove ? flattenHeightMap(heightMapAbove) : EMPTY_HEIGHT_MAP;
+    if (!base || !above) {
+        return undefined;
+    }
+    try {
+        const result = contourBuilder(
+            verticesX,
+            verticesY,
+            verticesZ,
+            usedVertexCount | 0,
+            contourType | 0,
+            param | 0,
+            base.data,
+            base.width | 0,
+            base.depth | 0,
+            above.data,
+            above.width | 0,
+            above.depth | 0,
+            sceneX | 0,
+            sceneHeight | 0,
+            sceneZ | 0,
+            type2Denominator | 0,
+            minY | 0,
+            maxY | 0,
+            preserveType1UnusedOob,
+        );
+        return result.length === verticesX.length ? result : undefined;
+    } catch (error) {
+        if (!warnedAboutContourFailure) {
+            warnedAboutContourFailure = true;
+            console.warn(
+                "[RustModelTransforms] Rust contour transform failed; using TypeScript fallback.",
+                error,
+            );
+        }
+        return undefined;
+    }
+}
