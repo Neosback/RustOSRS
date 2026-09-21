@@ -3,6 +3,7 @@ import { mat4, vec3 } from "gl-matrix";
 import { COSINE, SINE } from "../MathConstants";
 import { Entity } from "../scene/entity/Entity";
 import { ModelData } from "./ModelData";
+import { skinSkeletalVerticesWithRustIfReady } from "./RustModelTransforms";
 import { SeqBase } from "./seq/SeqBase";
 import { SeqFrame } from "./seq/SeqFrame";
 import { SeqTransformType } from "./seq/SeqTransformType";
@@ -1321,9 +1322,40 @@ export class Model extends Entity {
     }
 
     transformSkeletal(skeletalBase: SkeletalBase, poseId: number, frame: number): void {
+        void frame;
         if (!this.animMayaGroups) {
             return;
         }
+
+        const boneCount = skeletalBase.getBoneCount();
+        if (boneCount > 0) {
+            const boneMatrices = new Float32Array(boneCount * 16);
+            for (let boneId = 0; boneId < boneCount; boneId++) {
+                const bone = skeletalBase.getBone(boneId);
+                if (bone) {
+                    boneMatrices.set(bone.getFinalMatrix(poseId), boneId * 16);
+                }
+            }
+
+            const transformed = skinSkeletalVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                this.animMayaGroups,
+                this.animMayaScales,
+                boneMatrices,
+            );
+            if (transformed) {
+                for (let vertex = 0, offset = 0; vertex < this.verticesCount; vertex++) {
+                    this.verticesX[vertex] = transformed[offset++];
+                    this.verticesY[vertex] = transformed[offset++];
+                    this.verticesZ[vertex] = transformed[offset++];
+                }
+                return;
+            }
+        }
+
         for (let v = 0; v < this.verticesCount; v++) {
             const group = this.animMayaGroups[v];
             if (group && group.length !== 0) {
