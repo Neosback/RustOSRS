@@ -107,7 +107,7 @@ The automated Stage 3 browser gate now covers raw presentation, resize, Rust-own
 
 The A/B selector and an opt-in Rust-primary path already exist. Static/NPC draws routed through `host.draw()` and direct player/GFX/projectile submissions are suppressed on the Pico context while primary mode is active, so Rust is the only 3D GPU submitter in that mode.
 
-Rust-primary is now the default. `DrawBackend.ts` is removed, and primary mode no longer allocates PicoGL scene/MSAA/frame-texture framebuffer targets or Pico FXAA presentation state. The remaining Stage 4 cleanup is to separate CPU scene metadata/geometry preparation from PicoGL scene program, draw-call, VAO and buffer ownership while keeping only the compatibility/UI surface that is still required.
+Rust-primary is now the default. `DrawBackend.ts` is removed, and primary mode no longer allocates PicoGL scene/MSAA/frame-texture framebuffer targets or Pico FXAA presentation state. Static terrain/loc/door/ground draw ranges are CPU-authoritative; their legacy Pico draw calls, VAOs, vertex/index buffers and model-info textures are deferred until the legacy path is actually materialized. Prebaked NPC Pico resources are likewise deferred, while dynamic NPC, player, GFX and projectile Pico GPU uploads are skipped in Rust-primary and guarded at the low-level upload/cache boundary. The remaining Stage 4 cleanup is now limited to fallback-only Pico scene program compilation and the legacy per-map height/water textures, plus final validation that no hidden primary allocation path remains.
 
 ### Stage 5: move geometry preparation
 
@@ -120,7 +120,7 @@ The renderer is now far enough along that the blockers are acceptance and legacy
 
 - representative full-dynamic parity acceptance across NPC/player/GFX/projectile overlap, transparency, priorities, world entities, water, roofs and animated loc changes
 - representative in-game `rust-renderer=primary` visual acceptance across crowded actor overlap, world entities, water, roofs and animated loc changes
-- finish removing PicoGL scene program/draw-call/VAO/buffer ownership from Rust-primary now that offscreen framebuffer ownership and `DrawBackend.ts` are gone
+- defer fallback-only Pico scene program compilation and the legacy per-map height/water textures so Rust-primary has no remaining Pico 3D-scene GPU ownership
 - eliminate temporary GLSL semantic duplication with shared/generated shader sources or an equivalent drift-proof build contract
 - later move `SceneBuffer`, `VertexBuffer`, face packing and dynamic geometry construction into Rust/WASM memory to remove JS-to-WASM typed-array churn
 
