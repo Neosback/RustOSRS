@@ -45,6 +45,7 @@ import type {
     NpcRenderTemplate,
 } from "../npc/NpcRenderTemplate";
 import { isKnownWaterTextureId } from "../water/WaterTextureIds";
+import { getModelFaceBuilder } from "../rust/RustFacePreparation";
 import {
     getDrawListBuilder,
     getModelHasher,
@@ -1283,8 +1284,11 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             textureIdIndexMap.set(textureIds[i], i + 1);
         }
 
-        const vertexBatchBuilderFactory = await getVertexBatchBuilderFactory();
-        const modelHasher = await getModelHasher(this.modelHashBuf!);
+        const [vertexBatchBuilderFactory, modelHasher] = await Promise.all([
+            getVertexBatchBuilderFactory(),
+            getModelHasher(this.modelHashBuf!),
+            getModelFaceBuilder(),
+        ]);
 
         const borderSize = 6;
 
