@@ -13,6 +13,11 @@ export interface VertexBatchBuilder {
         uvFields: Float32Array,
         flags: Uint8Array,
     ): Uint32Array;
+    set_texture_id_map?(
+        textureIds: Int32Array,
+        textureIndices: Int32Array,
+    ): void;
+    used_texture_ids?(): Int32Array;
     push_terrain_tile?(
         verticesX: Int32Array,
         verticesY: Int32Array,
@@ -24,7 +29,6 @@ export interface VertexBatchBuilder {
         colorsB: Int32Array,
         colorsC: Int32Array,
         textureIds: Int32Array,
-        textureIndices: Int32Array,
         tileX: number,
         tileZ: number,
         offsetX: number,
@@ -82,6 +86,26 @@ export class VertexBuffer extends DataBuffer {
         return 6 + ((p - 8) >> 1); // 8..9 -> 6, 10..11 -> 7
     }
 
+    setTextureIdMap(textureIdIndexMap: Map<number, number>): void {
+        if (!this.rustBuilder?.set_texture_id_map) {
+            return;
+        }
+
+        const textureIds = new Int32Array(textureIdIndexMap.size);
+        const textureIndices = new Int32Array(textureIdIndexMap.size);
+        let offset = 0;
+        for (const [textureId, textureIndex] of textureIdIndexMap) {
+            textureIds[offset] = textureId;
+            textureIndices[offset] = textureIndex;
+            offset++;
+        }
+        this.rustBuilder.set_texture_id_map(textureIds, textureIndices);
+    }
+
+    rustUsedTextureIds(): Int32Array {
+        return this.rustBuilder?.used_texture_ids?.() ?? new Int32Array(0);
+    }
+
     hasRustTerrainBuilder(): boolean {
         return typeof this.rustBuilder?.push_terrain_tile === "function";
     }
@@ -97,7 +121,6 @@ export class VertexBuffer extends DataBuffer {
         colorsB: Int32Array,
         colorsC: Int32Array,
         textureIds: Int32Array,
-        textureIndices: Int32Array,
         tileX: number,
         tileZ: number,
         offsetX: number,
@@ -118,7 +141,6 @@ export class VertexBuffer extends DataBuffer {
             colorsB,
             colorsC,
             textureIds,
-            textureIndices,
             tileX,
             tileZ,
             offsetX,
