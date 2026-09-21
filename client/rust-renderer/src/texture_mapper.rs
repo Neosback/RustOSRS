@@ -119,7 +119,10 @@ fn apply_direction(mut u: f64, mut v: f64, direction: i32) -> (f64, f64) {
         }
         _ => {}
     }
-    (u, v)
+    // TextureMapper.ts writes every projected pair through a shared
+    // Float32Array before seam correction. Round here so cylindrical and
+    // spherical wrap decisions see the same values as the TypeScript path.
+    (u as f32 as f64, v as f32 as f64)
 }
 
 fn project_cylindrical(
