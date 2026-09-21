@@ -472,8 +472,8 @@ pub fn contour_vertices_y(
                         } else {
                             let delta = (height.wrapping_sub(scene_height) as i64)
                                 * (param.wrapping_sub(y_ratio) as i64);
-                            output[vertex] = vertices_y[vertex]
-                                .wrapping_add((delta / param as i64) as i32);
+                            output[vertex] =
+                                vertices_y[vertex].wrapping_add((delta / param as i64) as i32);
                         }
                     }
                 } else {
