@@ -183,6 +183,35 @@ pub fn transform_vertices_basic_wasm(
         .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
+pub fn mirror_model_geometry(
+    vertices_z: &[i32],
+    indices1: &[i32],
+    indices3: &[i32],
+) -> Result<Vec<i32>, String> {
+    if indices1.len() != indices3.len() {
+        return Err("mirror face index arrays must have matching lengths".to_string());
+    }
+
+    let mut result = Vec::with_capacity(2 + vertices_z.len() + indices1.len() * 2);
+    result.push(vertices_z.len() as i32);
+    result.push(indices1.len() as i32);
+    result.extend(vertices_z.iter().map(|value| value.wrapping_neg()));
+    result.extend_from_slice(indices3);
+    result.extend_from_slice(indices1);
+    Ok(result)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = mirror_model_geometry)]
+pub fn mirror_model_geometry_wasm(
+    vertices_z: &[i32],
+    indices1: &[i32],
+    indices3: &[i32],
+) -> Result<Vec<i32>, wasm_bindgen::JsValue> {
+    mirror_model_geometry(vertices_z, indices1, indices3)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
 const LEGACY_TRANSFORM_ORIGIN: i32 = 0;
 const LEGACY_TRANSFORM_TRANSLATE: i32 = 1;
 const LEGACY_TRANSFORM_ROTATE: i32 = 2;
@@ -737,6 +766,12 @@ mod tests {
         [
             1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ]
+    }
+
+    #[test]
+    fn mirror_geometry_flips_z_and_face_winding() {
+        let result = mirror_model_geometry(&[10, -20], &[0, 1], &[2, 3]).unwrap();
+        assert_eq!(result, vec![2, 2, -10, 20, 2, 3, 0, 1]);
     }
 
     #[test]
