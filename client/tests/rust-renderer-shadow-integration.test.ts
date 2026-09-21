@@ -21,6 +21,7 @@ async function main(): Promise<void> {
         isRustSceneOverlayShadowEnabled,
     } = await import("../render/rust/RustShadowIntegration");
     const {
+        WebGLMapSquare,
         createDeferredDrawCallRange,
         materializeDrawCallRange,
         releaseDrawCallRange,
@@ -251,6 +252,55 @@ async function main(): Promise<void> {
     const materializedAgain = materializeDrawCallRange(deferred);
     assert.equal(deferredCreations, 1);
     assert.equal(materializedAgain.drawCall, materialized.drawCall);
+
+    // Simulate the Stage 4 primary-to-legacy transition at the real map accessors.
+    // Primary leaves these ranges deferred; the first legacy accessor must
+    // materialize exactly once and subsequent fallback frames must reuse it.
+    const fallbackMap = Object.create(WebGLMapSquare.prototype) as any;
+    const makeFallbackRange = (marker: string) => {
+        let creations = 0;
+        const range = createDeferredDrawCallRange(
+            [[0, 3, 1]] as any,
+            () => {
+                creations++;
+                return { marker } as any;
+            },
+            false,
+        );
+        return { range, creations: () => creations };
+    };
+
+    const terrainFallback = makeFallbackRange("terrain");
+    fallbackMap.drawCall = terrainFallback.range;
+    assert.equal(terrainFallback.range.drawCall, undefined);
+    assert.equal((fallbackMap.getDrawCall(false, false, false).drawCall as any).marker, "terrain");
+    assert.equal(terrainFallback.creations(), 1);
+    fallbackMap.getDrawCall(false, false, false);
+    assert.equal(terrainFallback.creations(), 1);
+
+    const locFallback = makeFallbackRange("loc");
+    fallbackMap.loc = { drawCall: locFallback.range };
+    assert.equal((fallbackMap.getLocDrawCall(false, false, false)!.drawCall as any).marker, "loc");
+    assert.equal(locFallback.creations(), 1);
+    fallbackMap.getLocDrawCall(false, false, false);
+    assert.equal(locFallback.creations(), 1);
+
+    const doorFallback = makeFallbackRange("door");
+    fallbackMap.door = { drawCall: doorFallback.range };
+    assert.equal((fallbackMap.getDoorDrawCall(false, false, false)!.drawCall as any).marker, "door");
+    assert.equal(doorFallback.creations(), 1);
+    fallbackMap.getDoorDrawCall(false, false, false);
+    assert.equal(doorFallback.creations(), 1);
+
+    const groundFallback = makeFallbackRange("ground");
+    fallbackMap.groundItems = { drawCall: groundFallback.range };
+    assert.equal(
+        (fallbackMap.getGroundItemDrawCall(false, false, false)!.drawCall as any).marker,
+        "ground",
+    );
+    assert.equal(groundFallback.creations(), 1);
+    fallbackMap.getGroundItemDrawCall(false, false, false);
+    assert.equal(groundFallback.creations(), 1);
 
     let eagerCreations = 0;
     const eager = createDeferredDrawCallRange(
