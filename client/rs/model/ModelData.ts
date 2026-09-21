@@ -5,6 +5,7 @@ import { TextureLoader } from "../texture/TextureLoader";
 import { blendLight } from "../util/ColorUtil";
 import { FaceNormal } from "./FaceNormal";
 import { Model } from "./Model";
+import { contourVerticesWithRustIfReady } from "./RustModelTransforms";
 import { LegacyModelLoader, LegacyModelMetadata } from "./ModelLoader";
 import { computeTextureCoords } from "./TextureMapper";
 import { VertexNormal } from "./VertexNormal";
@@ -2376,6 +2377,29 @@ export class ModelData extends Entity {
         model.contrast = this.contrast;
         model.verticesY = this.verticesY;
         model.contourVerticesY = new Int32Array(model.verticesCount);
+
+        const rustContour = contourVerticesWithRustIfReady(
+            this.verticesX,
+            this.verticesY,
+            this.verticesZ,
+            model.usedVertexCount,
+            type,
+            param,
+            heightMap,
+            heightMapAbove,
+            sceneX,
+            sceneHeight,
+            sceneZ,
+            -this.height,
+            this.minY,
+            this.maxY,
+            false,
+        );
+        if (rustContour) {
+            model.contourVerticesY = rustContour;
+            model.invalidate();
+            return model;
+        }
 
         if (type === 1) {
             for (let i = 0; i < model.usedVertexCount; i++) {
