@@ -8,6 +8,27 @@ export interface RustVertexBufferBuilderWasm {
         uvFields: Float32Array,
         flags: Uint8Array,
     ): Uint32Array;
+    push_model_faces(
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        facesA: Int32Array,
+        facesB: Int32Array,
+        facesC: Int32Array,
+        colorsA: Int32Array,
+        colorsB: Int32Array,
+        colorsC: Int32Array,
+        uvs: Float32Array,
+        faceFields: Int32Array,
+        sceneX: number,
+        sceneHeight: number,
+        sceneZ: number,
+        overrideHue: number,
+        overrideSaturation: number,
+        overrideLuminance: number,
+        overrideAmount: number,
+        reuseVertices: boolean,
+    ): Uint32Array;
     packed_vertices(): Uint32Array;
 }
 
