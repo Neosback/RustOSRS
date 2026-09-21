@@ -1,3 +1,4 @@
+import { registerRustSkeletalSkinner } from "../../rs/model/RustModelTransforms";
 import type { RustRendererWasmConstructor } from "./RustRendererBridge";
 
 export interface RustVertexBufferBuilderWasm {
@@ -79,6 +80,15 @@ export interface RustRendererWebModule {
         textureIds: Int32Array,
     ) => number;
     build_draw_list?: (commandFields: Uint32Array) => RustPreparedDrawListWasm;
+    skin_skeletal_vertices?: (
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        vertexGroupOffsets: Uint32Array,
+        boneIds: Int32Array,
+        boneScales: Int32Array,
+        boneMatrices: Float32Array,
+    ) => Int32Array;
     build_model_faces?: (
         faceColors3: Int32Array,
         faceAlphas: Int8Array,
@@ -115,6 +125,11 @@ export async function loadRustRendererModule(): Promise<RustRendererWebModule> {
                         "Rust renderer web package does not export RustWebGlRenderer",
                     );
                 }
+                registerRustSkeletalSkinner(
+                    typeof typed.skin_skeletal_vertices === "function"
+                        ? typed.skin_skeletal_vertices
+                        : undefined,
+                );
                 return typed;
             })
             .catch((error) => {
