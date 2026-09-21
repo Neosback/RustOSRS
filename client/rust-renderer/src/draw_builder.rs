@@ -13,7 +13,7 @@ pub fn prepare_draw_list(command_fields: &[u32]) -> Result<PreparedDrawList, &'s
     let mut flat_ranges = Vec::with_capacity(command_count * 3);
     let mut planes = Vec::with_capacity(command_count);
 
-    for command in command_fields.chunks_exact(4) {
+    for command in command_fields.as_chunks::<4>().0 {
         flat_ranges.extend_from_slice(&command[..3]);
         planes.push(u8::try_from(command[3]).unwrap_or(u8::MAX));
     }
