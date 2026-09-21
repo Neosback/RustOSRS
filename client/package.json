@@ -67,6 +67,7 @@
     "test:rust-renderer-bridge": "tsx tests/rust-renderer-bridge.test.ts",
     "test:rust-renderer-shadow": "tsx tests/rust-renderer-shadow-integration.test.ts",
     "test:rust-stage5-ownership": "tsx tests/rust-stage5-ownership.test.ts",
+    "test:rust-stage5-parity": "node scripts/test-rust-stage5-parity.mjs",
     "check:rust-primary-ownership": "node scripts/check-rust-primary-ownership.mjs"
   },
   "eslintConfig": {
