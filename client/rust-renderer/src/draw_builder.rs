@@ -45,9 +45,10 @@ impl RustPreparedDrawList {
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen]
-pub fn build_draw_list(command_fields: &[u32]) -> Result<RustPreparedDrawList, wasm_bindgen::JsValue> {
-    let prepared = prepare_draw_list(command_fields)
-        .map_err(wasm_bindgen::JsValue::from_str)?;
+pub fn build_draw_list(
+    command_fields: &[u32],
+) -> Result<RustPreparedDrawList, wasm_bindgen::JsValue> {
+    let prepared = prepare_draw_list(command_fields).map_err(wasm_bindgen::JsValue::from_str)?;
     Ok(RustPreparedDrawList {
         flat_ranges: prepared.flat_ranges,
         planes: prepared.planes,
@@ -60,11 +61,7 @@ mod tests {
 
     #[test]
     fn builds_ranges_and_plane_metadata_from_commands() {
-        let prepared = prepare_draw_list(&[
-            0, 6, 1, 0,
-            24, 12, 3, 2,
-        ])
-        .unwrap();
+        let prepared = prepare_draw_list(&[0, 6, 1, 0, 24, 12, 3, 2]).unwrap();
 
         assert_eq!(prepared.flat_ranges, vec![0, 6, 1, 24, 12, 3]);
         assert_eq!(prepared.planes, vec![0, 2]);
