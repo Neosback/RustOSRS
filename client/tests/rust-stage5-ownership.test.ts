@@ -21,6 +21,8 @@ import {
 } from "../rs/model/RustModelTransforms";
 import {
     getRustStage5OwnershipStats,
+    recordRustStage5Attempt,
+    recordRustStage5Success,
     resetRustStage5OwnershipStats,
     setRustStage5StrictMode,
 } from "../rs/model/RustStage5Ownership";
@@ -229,6 +231,17 @@ assert.deepEqual(
     [11, 22, 33],
 );
 
+for (const path of [
+    "vertexBuilder",
+    "facePreparation",
+    "modelInfo",
+    "modelHash",
+    "drawList",
+] as const) {
+    recordRustStage5Attempt(path);
+    recordRustStage5Success(path);
+}
+
 let stats = getRustStage5OwnershipStats();
 for (const path of [
     "skeletal",
@@ -239,6 +252,11 @@ for (const path of [
     "uv",
     "normals",
     "lighting",
+    "vertexBuilder",
+    "facePreparation",
+    "modelInfo",
+    "modelHash",
+    "drawList",
 ] as const) {
     assert.equal(stats[path].attempts, 1, `${path} attempt count`);
     assert.equal(stats[path].successes, 1, `${path} success count`);
