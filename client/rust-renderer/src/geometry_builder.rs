@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use crate::packed_vertex::{PackedVertexDeduper, VertexInput};
 
 const INTEGER_FIELD_STRIDE: usize = 7;
@@ -23,11 +25,63 @@ const FLAG_PRIORITY_IS_PACKED: u8 = 2;
 #[derive(Default)]
 pub struct VertexBatchBuilder {
     deduper: PackedVertexDeduper,
+    texture_id_map: HashMap<i32, i32>,
+    used_texture_ids: HashSet<i32>,
 }
 
 impl VertexBatchBuilder {
     pub fn clear(&mut self) {
         self.deduper = PackedVertexDeduper::default();
+        self.used_texture_ids.clear();
+    }
+
+    pub fn set_texture_id_map(
+        &mut self,
+        texture_ids: &[i32],
+        texture_indices: &[i32],
+    ) -> Result<(), String> {
+        if texture_ids.len() != texture_indices.len() {
+            return Err(format!(
+                "texture ID map has {} ids but {} indices",
+                texture_ids.len(),
+                texture_indices.len()
+            ));
+        }
+
+        self.texture_id_map.clear();
+        self.texture_id_map.reserve(texture_ids.len());
+        for (&texture_id, &texture_index) in texture_ids.iter().zip(texture_indices) {
+            if texture_id < 0 {
+                return Err(format!("texture ID map contains negative texture id {texture_id}"));
+            }
+            if texture_index < 0 {
+                return Err(format!(
+                    "texture ID map contains negative texture index {texture_index}"
+                ));
+            }
+            self.texture_id_map.insert(texture_id, texture_index);
+        }
+        self.used_texture_ids.clear();
+        Ok(())
+    }
+
+    pub fn used_texture_ids(&self) -> Vec<i32> {
+        let mut ids: Vec<i32> = self.used_texture_ids.iter().copied().collect();
+        ids.sort_unstable();
+        ids
+    }
+
+    fn map_texture_id(&mut self, texture_id: i32) -> i32 {
+        if texture_id < 0 {
+            return -1;
+        }
+        match self.texture_id_map.get(&texture_id).copied() {
+            Some(texture_index) => {
+                self.used_texture_ids.insert(texture_id);
+                texture_index
+            }
+            None => -1,
+        }
     }
 
     pub fn vertex_count(&self) -> usize {
@@ -112,7 +166,6 @@ impl VertexBatchBuilder {
         colors_b: &[i32],
         colors_c: &[i32],
         texture_ids: &[i32],
-        texture_indices: &[i32],
         tile_x: i32,
         tile_z: i32,
         offset_x: i32,
@@ -132,7 +185,6 @@ impl VertexBatchBuilder {
             ("faceColorsA", colors_a.len()),
             ("faceColorsB", colors_b.len()),
             ("faceColorsC", colors_c.len()),
-            ("textureIndices", texture_indices.len()),
         ] {
             if len != face_count {
                 return Err(format!(
@@ -165,7 +217,7 @@ impl VertexBatchBuilder {
                 colors_b[face_index],
                 colors_c[face_index],
             ];
-            let texture_index = texture_indices[face_index];
+            let texture_index = self.map_texture_id(source_texture_id);
 
             for corner in 0..3 {
                 let vertex_index = usize::try_from(corners[corner]).map_err(|_| {
@@ -286,7 +338,7 @@ impl VertexBatchBuilder {
             let alpha = face[1];
             let priority = face[2];
             let render_layer = face[3];
-            let texture_index = face[4];
+            let texture_index = self.map_texture_id(face[4]);
 
             let mut hsl_a = colors_a[face_index];
             let mut hsl_b = colors_b[face_index];
@@ -427,6 +479,20 @@ mod wasm {
                 .map_err(|error| JsValue::from_str(&error))
         }
 
+        pub fn set_texture_id_map(
+            &mut self,
+            texture_ids: &[i32],
+            texture_indices: &[i32],
+        ) -> Result<(), JsValue> {
+            self.inner
+                .set_texture_id_map(texture_ids, texture_indices)
+                .map_err(|error| JsValue::from_str(&error))
+        }
+
+        pub fn used_texture_ids(&self) -> Vec<i32> {
+            self.inner.used_texture_ids()
+        }
+
         #[allow(clippy::too_many_arguments)]
         pub fn push_terrain_tile(
             &mut self,
@@ -440,7 +506,6 @@ mod wasm {
             colors_b: &[i32],
             colors_c: &[i32],
             texture_ids: &[i32],
-            texture_indices: &[i32],
             tile_x: i32,
             tile_z: i32,
             offset_x: i32,
@@ -458,7 +523,6 @@ mod wasm {
                     colors_b,
                     colors_c,
                     texture_ids,
-                    texture_indices,
                     tile_x,
                     tile_z,
                     offset_x,
@@ -654,7 +718,6 @@ mod tests {
                 &[0x2345, 12_345_678],
                 &[0x3456, 12_345_678],
                 &[-1, -1],
-                &[-1, -1],
                 128,
                 256,
                 -128,
@@ -679,6 +742,53 @@ mod tests {
 
         assert_eq!(indices, expected_indices);
         assert_eq!(builder.packed_vertices(), expected.packed_vertices());
+    }
+
+    #[test]
+    fn model_builder_maps_source_texture_ids_and_tracks_residency() {
+        let mut builder = VertexBatchBuilder::default();
+        builder.set_texture_id_map(&[7], &[3]).unwrap();
+
+        let indices = builder
+            .push_model_faces(
+                &[0, 128, 0],
+                &[0, 0, 128],
+                &[0, 0, 0],
+                &[0],
+                &[1],
+                &[2],
+                &[0x1234],
+                &[0x2345],
+                &[0x3456],
+                &[0.0; 6],
+                &[0, 255, 0, -1, 7],
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                true,
+            )
+            .unwrap();
+
+        assert_eq!(indices, vec![0, 1, 2]);
+        assert_eq!(builder.used_texture_ids(), vec![7]);
+
+        let expected = crate::packed_vertex::PackedVertex::encode(VertexInput {
+            x: 0,
+            y: 0,
+            z: 0,
+            hsl: 0x1234,
+            alpha: 255,
+            texture_id: 3,
+            priority: 0,
+            priority_is_packed: false,
+            u: 0.0,
+            v: 0.0,
+        });
+        assert_eq!(&builder.packed_vertices()[..3], &expected.words());
     }
 
     #[test]
