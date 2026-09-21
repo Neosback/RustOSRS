@@ -1816,44 +1816,57 @@ export class WebGLMapSquare {
             }
         }
 
-        if (npcGeometry.vertices.length > 0 && npcGeometry.indices.length > 0) {
-            this.npcInterleavedBuffer = app.createInterleavedBuffer(12, npcGeometry.vertices);
-            this.npcIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, npcGeometry.indices);
-            this.npcVertexArray = app
-                .createVertexArray()
-                .vertexAttributeBuffer(0, this.npcInterleavedBuffer, {
-                    type: PicoGL.UNSIGNED_INT,
-                    size: 3,
-                    stride: 12,
-                    integer: true as any,
-                })
-                .indexBuffer(this.npcIndexBuffer);
+        this.npcInterleavedBuffer = undefined;
+        this.npcIndexBuffer = undefined;
+        this.npcVertexArray = undefined;
 
+        if (npcGeometry.vertices.length > 0 && npcGeometry.indices.length > 0) {
             const drawRangesNpc = new Array(npcGeometry.npcs.length)
                 .fill(0)
                 .map(() => newDrawRange(0, 0, 1));
 
             const mapPos = vec2.fromValues(this.renderPosX, this.renderPosY);
-            const drawCall = app
-                .createDrawCall(npcProgram, this.npcVertexArray)
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", this.timeLoaded)
-                .uniform("u_mapPos", mapPos)
-                .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                .uniform("u_worldEntityOpacity", 1.0)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_waterTextures", waterTextures)
-                .texture("u_heightMap", this.heightMapTexture)
-                .texture("u_waterMask", this.waterMaskTexture)
-                .uniform("u_sceneBorderSize", this.borderSize)
-                .drawRanges(...drawRangesNpc);
+            this.drawCallNpc = createDeferredDrawCallRange(
+                drawRangesNpc,
+                () => {
+                    if (!this.npcVertexArray) {
+                        this.npcInterleavedBuffer = app.createInterleavedBuffer(
+                            12,
+                            npcGeometry.vertices,
+                        );
+                        this.npcIndexBuffer = app.createIndexBuffer(
+                            PicoGL.UNSIGNED_INT,
+                            npcGeometry.indices,
+                        );
+                        this.npcVertexArray = app
+                            .createVertexArray()
+                            .vertexAttributeBuffer(0, this.npcInterleavedBuffer, {
+                                type: PicoGL.UNSIGNED_INT,
+                                size: 3,
+                                stride: 12,
+                                integer: true as any,
+                            })
+                            .indexBuffer(this.npcIndexBuffer);
+                    }
 
-            this.drawCallNpc = { drawCall, drawRanges: drawRangesNpc };
+                    return app
+                        .createDrawCall(npcProgram, this.npcVertexArray)
+                        .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                        .uniform("u_timeLoaded", this.timeLoaded)
+                        .uniform("u_mapPos", mapPos)
+                        .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                        .uniform("u_worldEntityOpacity", 1.0)
+                        .texture("u_textures", textureArray)
+                        .texture("u_textureMaterials", textureMaterials)
+                        .texture("u_waterTextures", waterTextures)
+                        .texture("u_heightMap", this.heightMapTexture)
+                        .texture("u_waterMask", this.waterMaskTexture)
+                        .uniform("u_sceneBorderSize", this.borderSize)
+                        .drawRanges(...drawRangesNpc);
+                },
+                false,
+            );
         } else {
-            this.npcInterleavedBuffer = undefined;
-            this.npcIndexBuffer = undefined;
-            this.npcVertexArray = undefined;
             this.drawCallNpc = undefined;
         }
 
