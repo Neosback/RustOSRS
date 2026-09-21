@@ -1,3 +1,9 @@
+import {
+    calculateModelNormalsWithRustIfReady,
+    lightModelFacesWithRustIfReady,
+    registerRustModelFaceLighter,
+    registerRustModelNormalCalculator,
+} from "../rs/model/RustModelLighting";
 import assert from "node:assert/strict";
 
 import {
@@ -176,8 +182,64 @@ assert.deepEqual(
     [0, 0, 1, 0, 0, 1],
 );
 
+registerRustModelNormalCalculator(() =>
+    new Int32Array([
+        1, 1,
+        1, 2, 3, 4,
+        1, 5, 6, 7,
+    ]),
+);
+const normals = calculateModelNormalsWithRustIfReady(
+    new Int32Array([0]),
+    new Int32Array([0]),
+    new Int32Array([0]),
+    1,
+    new Int32Array([0]),
+    new Int32Array([0]),
+    new Int32Array([0]),
+    undefined,
+);
+assert(normals);
+assert.equal(normals.usedVertexCount, 1);
+assert.equal(normals.faceCount, 1);
+assert.deepEqual(Array.from(normals.vertexNormals), [1, 2, 3, 4]);
+assert.deepEqual(Array.from(normals.faceNormals), [1, 5, 6, 7]);
+
+registerRustModelFaceLighter(() => new Int32Array([11, 22, 33]));
+assert.deepEqual(
+    Array.from(
+        lightModelFacesWithRustIfReady(
+            new Int32Array([0]),
+            new Int32Array([0]),
+            new Int32Array([0]),
+            new Uint16Array([0x1234]),
+            undefined,
+            undefined,
+            undefined,
+            normals.vertexNormals,
+            undefined,
+            normals.faceNormals,
+            64,
+            768,
+            -50,
+            -10,
+            -50,
+        )!,
+    ),
+    [11, 22, 33],
+);
+
 let stats = getRustStage5OwnershipStats();
-for (const path of ["skeletal", "legacy", "contour", "basic", "mirror", "uv"] as const) {
+for (const path of [
+    "skeletal",
+    "legacy",
+    "contour",
+    "basic",
+    "mirror",
+    "uv",
+    "normals",
+    "lighting",
+] as const) {
     assert.equal(stats[path].attempts, 1, `${path} attempt count`);
     assert.equal(stats[path].successes, 1, `${path} success count`);
     assert.equal(stats[path].fallbacks, 0, `${path} fallback count`);
@@ -221,6 +283,8 @@ assert.throws(
 );
 setRustStage5StrictMode(false);
 
+registerRustModelNormalCalculator(undefined);
+registerRustModelFaceLighter(undefined);
 registerRustSkeletalSkinner(undefined);
 registerRustLegacyTransformer(undefined);
 registerRustContourBuilder(undefined);
