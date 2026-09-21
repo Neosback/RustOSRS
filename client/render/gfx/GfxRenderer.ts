@@ -69,7 +69,8 @@ export class GfxRenderer {
         pass: Pass,
         offsets: { player?: number; npc?: number; world?: number } = {},
     ): void {
-        if (!actorDataTexture) return;
+        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(this.renderer);
+        if (!rustPrimaryRendererEnabled && !actorDataTexture) return;
         const playerOffset =
             offsets.player !== undefined && offsets.player !== -1 ? offsets.player | 0 : undefined;
         const npcOffset =
@@ -80,7 +81,6 @@ export class GfxRenderer {
             return;
 
         const transparent = pass === "alpha";
-        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(this.renderer);
         const nowMs = (performance?.now?.() as number) || Date.now();
         const prog = transparent
             ? (this.renderer as any).npcProgram
@@ -199,7 +199,7 @@ export class GfxRenderer {
                         .uniform("u_mapPos", vec2.fromValues(map.mapX, map.mapY))
                         .uniform("u_npcDataOffset", baseOffset | 0)
                         .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                        .texture("u_npcDataTexture", actorDataTexture)
+                        .texture("u_npcDataTexture", actorDataTexture as Texture)
                         .texture("u_heightMap", map.heightMapTexture)
                         .texture("u_waterMask", map.waterMaskTexture)
                         .uniform("u_sceneBorderSize", map.borderSize);
