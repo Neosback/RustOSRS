@@ -31,16 +31,26 @@ paths.appBuild = path.resolve(appRoot, "build");
 // WebRTC clients cannot fetch custom interfaces from the signalling relay.
 // Export the same definitions that the server plugins register, rather than maintaining
 // a second list in the browser build.
-const interfaceOutput = path.join(paths.appPublic, "browser-host/interfaces");
-fs.mkdirSync(interfaceOutput, { recursive: true });
-const browserHostInterfaces = JSON.parse(
-    execFileSync(process.execPath, [require.resolve("tsx/cli"), "scripts/browser-host-interface-definitions.ts"], {
-        cwd: path.resolve(appRoot, "../server"),
-        encoding: "utf8",
-    }),
+const serverRoot = path.resolve(appRoot, "../server");
+const interfaceScript = path.join(
+    serverRoot,
+    "scripts/browser-host-interface-definitions.ts",
 );
-for (const definition of browserHostInterfaces) {
-    fs.writeFileSync(path.join(interfaceOutput, `${definition.groupId}.json`), JSON.stringify(definition));
+if (fs.existsSync(interfaceScript)) {
+    const interfaceOutput = path.join(paths.appPublic, "browser-host/interfaces");
+    fs.mkdirSync(interfaceOutput, { recursive: true });
+    const browserHostInterfaces = JSON.parse(
+        execFileSync(process.execPath, [require.resolve("tsx/cli"), interfaceScript], {
+            cwd: serverRoot,
+            encoding: "utf8",
+        }),
+    );
+    for (const definition of browserHostInterfaces) {
+        fs.writeFileSync(
+            path.join(interfaceOutput, `${definition.groupId}.json`),
+            JSON.stringify(definition),
+        );
+    }
 }
 
 module.exports = {
