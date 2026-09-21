@@ -1194,9 +1194,9 @@ export class WebGLMapSquare {
             time,
             frame,
 
-            interleavedBuffer,
-            indexBuffer,
-            vertexArray,
+            terrainLegacyGpu?.interleavedBuffer,
+            terrainLegacyGpu?.indexBuffer,
+            terrainLegacyGpu?.vertexArray,
 
             heightMapTexture,
             waterMaskTexture,
