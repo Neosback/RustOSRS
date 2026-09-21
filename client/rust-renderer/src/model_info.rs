@@ -71,7 +71,6 @@ pub fn create_model_info_texture_data(commands: &[ModelInfoDrawCommand]) -> Vec<
     texture
 }
 
-
 const MODEL_INFO_FIELD_STRIDE: usize = 9;
 
 /// Builds the same RGBA16UI packet as `create_model_info_texture_data` from
@@ -85,14 +84,13 @@ pub fn create_model_info_texture_data_flat(
     command_instance_counts: &[u32],
     instance_fields: &[i32],
 ) -> Result<Vec<u16>, String> {
-    let instance_count = command_instance_counts.iter().try_fold(
-        0usize,
-        |total, count| {
+    let instance_count = command_instance_counts
+        .iter()
+        .try_fold(0usize, |total, count| {
             total
                 .checked_add(*count as usize)
                 .ok_or_else(|| "model-info instance count overflow".to_string())
-        },
-    )?;
+        })?;
 
     let expected_fields = instance_count
         .checked_mul(MODEL_INFO_FIELD_STRIDE)
