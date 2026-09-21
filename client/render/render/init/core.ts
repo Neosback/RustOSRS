@@ -281,13 +281,12 @@ export async function init(host: WebGLOsrsRendererHost, ): Promise<void> {
         await initRustRendererShadow(host);
 
         if (isRustPrimaryRendererActive(host)) {
-            // Rust owns the scene framebuffer in primary mode. PicoGL only
-            // needs its texture target for the compatibility/UI overlay path.
+            // Rust owns all offscreen scene/presentation targets in primary
+            // mode. PicoGL keeps only its default transparent UI canvas.
             const sceneSize = host.getSceneRenderSize();
             host.sceneRenderWidth = sceneSize.width | 0;
             host.sceneRenderHeight = sceneSize.height | 0;
             host.needsFramebufferUpdate = false;
-            host.initTextureFramebuffer();
         } else {
             host.initFramebuffers();
         }
