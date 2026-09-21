@@ -179,37 +179,7 @@ function resolveNpcOwnerPlacement(
     };
 }
 
-type DoorGeometryResources = {
-    interleavedBuffer: GpuInterleavedBuffer;
-    indexBuffer: GpuIndexBuffer;
-    vertexArray: VertexArray;
-    modelInfoTexture: Texture;
-    modelInfoTextureAlpha: Texture;
-    modelInfoTextureLod: Texture;
-    modelInfoTextureLodAlpha: Texture;
-    modelInfoTextureInteract: Texture;
-    modelInfoTextureInteractAlpha: Texture;
-    modelInfoTextureInteractLod: Texture;
-    modelInfoTextureInteractLodAlpha: Texture;
-    drawCall: AnyDrawCallRange;
-    drawCallAlpha: AnyDrawCallRange;
-    drawCallLod: AnyDrawCallRange;
-    drawCallLodAlpha: AnyDrawCallRange;
-    drawCallInteract: AnyDrawCallRange;
-    drawCallInteractAlpha: AnyDrawCallRange;
-    drawCallInteractLod: AnyDrawCallRange;
-    drawCallInteractLodAlpha: AnyDrawCallRange;
-    planes?: {
-        main: Uint8Array;
-        alpha: Uint8Array;
-        lod: Uint8Array;
-        lodAlpha: Uint8Array;
-        interact: Uint8Array;
-        interactAlpha: Uint8Array;
-        interactLod: Uint8Array;
-        interactLodAlpha: Uint8Array;
-    };
-};
+type DoorGeometryResources = DeferredGeometryResources;
 
 type LegacySceneBatchGpuResources = {
     interleavedBuffer: GpuInterleavedBuffer;
@@ -470,6 +440,181 @@ function createLocGeometryResources(
     return resources;
 }
 
+
+function createDoorGeometryResources(
+    app: PicoApp,
+    mainProgram: Program,
+    mainAlphaProgram: Program,
+    textureArray: Texture,
+    textureMaterials: Texture,
+    waterTextures: Texture,
+    sceneUniformBuffer: UniformBuffer,
+    heightMapTexture: Texture,
+    waterMaskTexture: Texture,
+    mapPos: vec2,
+    borderSize: number,
+    timeLoaded: number,
+    mapData: SdMapData,
+    eagerLegacyDrawCalls: boolean = true,
+): DoorGeometryResources | undefined {
+    if (mapData.doorVertices.length === 0 || mapData.doorIndices.length === 0) {
+        return undefined;
+    }
+
+    let resources: DoorGeometryResources;
+
+    const ensureLegacyGpu = (): LegacySceneBatchGpuResources => {
+        const existing = resources.legacyGpu;
+        if (existing) return existing;
+
+        const interleavedBuffer = app.createInterleavedBuffer(12, mapData.doorVertices);
+        const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.doorIndices);
+        const vertexArray = app
+            .createVertexArray()
+            .vertexAttributeBuffer(0, interleavedBuffer, {
+                type: PicoGL.UNSIGNED_INT,
+                size: 3,
+                stride: 12,
+                integer: true as any,
+            })
+            .indexBuffer(indexBuffer);
+
+        const created: LegacySceneBatchGpuResources = {
+            interleavedBuffer,
+            indexBuffer,
+            vertexArray,
+            modelInfoTexture: createModelInfoTexture(app, mapData.doorModelTextureData),
+            modelInfoTextureAlpha: createModelInfoTexture(
+                app,
+                mapData.doorModelTextureDataAlpha,
+            ),
+            modelInfoTextureLod: createModelInfoTexture(app, mapData.doorModelTextureDataLod),
+            modelInfoTextureLodAlpha: createModelInfoTexture(
+                app,
+                mapData.doorModelTextureDataLodAlpha,
+            ),
+            modelInfoTextureInteract: createModelInfoTexture(
+                app,
+                mapData.doorModelTextureDataInteract,
+            ),
+            modelInfoTextureInteractAlpha: createModelInfoTexture(
+                app,
+                mapData.doorModelTextureDataInteractAlpha,
+            ),
+            modelInfoTextureInteractLod: createModelInfoTexture(
+                app,
+                mapData.doorModelTextureDataInteractLod,
+            ),
+            modelInfoTextureInteractLodAlpha: createModelInfoTexture(
+                app,
+                mapData.doorModelTextureDataInteractLodAlpha,
+            ),
+        };
+        resources.legacyGpu = created;
+        return created;
+    };
+
+    const buildDrawCall = (
+        program: Program,
+        selectModelInfoTexture: (gpu: LegacySceneBatchGpuResources) => Texture,
+        drawRanges: DrawRange[],
+    ): AnyDrawCallRange =>
+        createDeferredDrawCallRange(
+            drawRanges,
+            () => {
+                const gpu = ensureLegacyGpu();
+                return app
+                    .createDrawCall(program, gpu.vertexArray)
+                    .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                    .uniform("u_timeLoaded", timeLoaded)
+                    .uniform("u_mapPos", mapPos)
+                    .uniform("u_roofPlaneLimit", 3.0)
+                    .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                    .uniform("u_worldEntityOpacity", 1.0)
+                    .texture("u_textures", textureArray)
+                    .texture("u_textureMaterials", textureMaterials)
+                    .texture("u_waterTextures", waterTextures)
+                    .texture("u_heightMap", heightMapTexture)
+                    .texture("u_waterMask", waterMaskTexture)
+                    .uniform("u_sceneBorderSize", borderSize)
+                    .texture("u_modelInfoTexture", selectModelInfoTexture(gpu))
+                    .drawRanges(...drawRanges);
+            },
+            false,
+        );
+
+    const planes =
+        mapData.doorDrawRangesPlanes.length > 0
+            ? {
+                  main: mapData.doorDrawRangesPlanes,
+                  alpha: mapData.doorDrawRangesAlphaPlanes,
+                  lod: mapData.doorDrawRangesLodPlanes,
+                  lodAlpha: mapData.doorDrawRangesLodAlphaPlanes,
+                  interact: mapData.doorDrawRangesInteractPlanes,
+                  interactAlpha: mapData.doorDrawRangesInteractAlphaPlanes,
+                  interactLod: mapData.doorDrawRangesInteractLodPlanes,
+                  interactLodAlpha: mapData.doorDrawRangesInteractLodAlphaPlanes,
+              }
+            : undefined;
+
+    resources = {
+        drawCall: buildDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTexture,
+            mapData.doorDrawRanges,
+        ),
+        drawCallAlpha: buildDrawCall(
+            mainAlphaProgram,
+            (gpu) => gpu.modelInfoTextureAlpha,
+            mapData.doorDrawRangesAlpha,
+        ),
+        drawCallLod: buildDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTextureLod,
+            mapData.doorDrawRangesLod,
+        ),
+        drawCallLodAlpha: buildDrawCall(
+            mainAlphaProgram,
+            (gpu) => gpu.modelInfoTextureLodAlpha,
+            mapData.doorDrawRangesLodAlpha,
+        ),
+        drawCallInteract: buildDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTextureInteract,
+            mapData.doorDrawRangesInteract,
+        ),
+        drawCallInteractAlpha: buildDrawCall(
+            mainAlphaProgram,
+            (gpu) => gpu.modelInfoTextureInteractAlpha,
+            mapData.doorDrawRangesInteractAlpha,
+        ),
+        drawCallInteractLod: buildDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTextureInteractLod,
+            mapData.doorDrawRangesInteractLod,
+        ),
+        drawCallInteractLodAlpha: buildDrawCall(
+            mainAlphaProgram,
+            (gpu) => gpu.modelInfoTextureInteractLodAlpha,
+            mapData.doorDrawRangesInteractLodAlpha,
+        ),
+        planes,
+    };
+
+    if (eagerLegacyDrawCalls) {
+        materializeDrawCallRange(resources.drawCall);
+        materializeDrawCallRange(resources.drawCallAlpha);
+        materializeDrawCallRange(resources.drawCallLod);
+        materializeDrawCallRange(resources.drawCallLodAlpha);
+        materializeDrawCallRange(resources.drawCallInteract);
+        materializeDrawCallRange(resources.drawCallInteractAlpha);
+        materializeDrawCallRange(resources.drawCallInteractLod);
+        materializeDrawCallRange(resources.drawCallInteractLodAlpha);
+    }
+
+    return resources;
+}
+
 export class WebGLMapSquare {
     static readonly IDENTITY_MAT4 = mat4.create() as Float32Array;
 
@@ -693,139 +838,22 @@ export class WebGLMapSquare {
             mapData.drawRangesInteractLodAlpha,
         );
 
-        let doorResources: DoorGeometryResources | undefined;
-        if (mapData.doorVertices.length > 0 && mapData.doorIndices.length > 0) {
-            const doorInterleavedBuffer = app.createInterleavedBuffer(12, mapData.doorVertices);
-            const doorIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.doorIndices);
-            const doorVertexArray = app
-                .createVertexArray()
-                .vertexAttributeBuffer(0, doorInterleavedBuffer, {
-                    type: PicoGL.UNSIGNED_INT,
-                    size: 3,
-                    stride: 12,
-                    integer: true as any,
-                })
-                .indexBuffer(doorIndexBuffer);
-
-            const doorModelInfoTexture = createModelInfoTexture(app, mapData.doorModelTextureData);
-            const doorModelInfoTextureAlpha = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataAlpha,
-            );
-
-            const doorModelInfoTextureLod = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataLod,
-            );
-            const doorModelInfoTextureLodAlpha = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataLodAlpha,
-            );
-
-            const doorModelInfoTextureInteract = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataInteract,
-            );
-            const doorModelInfoTextureInteractAlpha = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataInteractAlpha,
-            );
-
-            const doorModelInfoTextureInteractLod = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataInteractLod,
-            );
-            const doorModelInfoTextureInteractLodAlpha = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataInteractLodAlpha,
-            );
-
-            const doorDrawCall = createDrawCall(
-                mainProgram,
-                doorModelInfoTexture,
-                mapData.doorDrawRanges,
-                doorVertexArray,
-            );
-            const doorDrawCallAlpha = createDrawCall(
-                mainAlphaProgram,
-                doorModelInfoTextureAlpha,
-                mapData.doorDrawRangesAlpha,
-                doorVertexArray,
-            );
-            const doorDrawCallLod = createDrawCall(
-                mainProgram,
-                doorModelInfoTextureLod,
-                mapData.doorDrawRangesLod,
-                doorVertexArray,
-            );
-            const doorDrawCallLodAlpha = createDrawCall(
-                mainAlphaProgram,
-                doorModelInfoTextureLodAlpha,
-                mapData.doorDrawRangesLodAlpha,
-                doorVertexArray,
-            );
-            const doorDrawCallInteract = createDrawCall(
-                mainProgram,
-                doorModelInfoTextureInteract,
-                mapData.doorDrawRangesInteract,
-                doorVertexArray,
-            );
-            const doorDrawCallInteractAlpha = createDrawCall(
-                mainAlphaProgram,
-                doorModelInfoTextureInteractAlpha,
-                mapData.doorDrawRangesInteractAlpha,
-                doorVertexArray,
-            );
-            const doorDrawCallInteractLod = createDrawCall(
-                mainProgram,
-                doorModelInfoTextureInteractLod,
-                mapData.doorDrawRangesInteractLod,
-                doorVertexArray,
-            );
-            const doorDrawCallInteractLodAlpha = createDrawCall(
-                mainAlphaProgram,
-                doorModelInfoTextureInteractLodAlpha,
-                mapData.doorDrawRangesInteractLodAlpha,
-                doorVertexArray,
-            );
-
-            const doorPlanes =
-                mapData.doorDrawRangesPlanes.length > 0
-                    ? {
-                          main: mapData.doorDrawRangesPlanes,
-                          alpha: mapData.doorDrawRangesAlphaPlanes,
-                          lod: mapData.doorDrawRangesLodPlanes,
-                          lodAlpha: mapData.doorDrawRangesLodAlphaPlanes,
-                          interact: mapData.doorDrawRangesInteractPlanes,
-                          interactAlpha: mapData.doorDrawRangesInteractAlphaPlanes,
-                          interactLod: mapData.doorDrawRangesInteractLodPlanes,
-                          interactLodAlpha: mapData.doorDrawRangesInteractLodAlphaPlanes,
-                      }
-                    : undefined;
-
-            doorResources = {
-                interleavedBuffer: doorInterleavedBuffer,
-                indexBuffer: doorIndexBuffer,
-                vertexArray: doorVertexArray,
-                modelInfoTexture: doorModelInfoTexture,
-                modelInfoTextureAlpha: doorModelInfoTextureAlpha,
-                modelInfoTextureLod: doorModelInfoTextureLod,
-                modelInfoTextureLodAlpha: doorModelInfoTextureLodAlpha,
-                modelInfoTextureInteract: doorModelInfoTextureInteract,
-                modelInfoTextureInteractAlpha: doorModelInfoTextureInteractAlpha,
-                modelInfoTextureInteractLod: doorModelInfoTextureInteractLod,
-                modelInfoTextureInteractLodAlpha: doorModelInfoTextureInteractLodAlpha,
-                drawCall: doorDrawCall,
-                drawCallAlpha: doorDrawCallAlpha,
-                drawCallLod: doorDrawCallLod,
-                drawCallLodAlpha: doorDrawCallLodAlpha,
-                drawCallInteract: doorDrawCallInteract,
-                drawCallInteractAlpha: doorDrawCallInteractAlpha,
-                drawCallInteractLod: doorDrawCallInteractLod,
-                drawCallInteractLodAlpha: doorDrawCallInteractLodAlpha,
-                planes: doorPlanes,
-            };
-        }
+        const doorResources = createDoorGeometryResources(
+            app,
+            mainProgram,
+            mainAlphaProgram,
+            textureArray,
+            textureMaterials,
+            waterTextures,
+            sceneUniformBuffer,
+            heightMapTexture,
+            waterMaskTexture,
+            mapPos,
+            borderSize,
+            time,
+            mapData,
+            eagerLegacyDrawCalls,
+        );
 
         const locResources = createLocGeometryResources(
             app,
@@ -1567,22 +1595,36 @@ export class WebGLMapSquare {
             releaseDrawCallRange(door.drawCallInteractAlpha);
             releaseDrawCallRange(door.drawCallInteractLod);
             releaseDrawCallRange(door.drawCallInteractLodAlpha);
-            deleteMapSquareResource(this.mapX, this.mapY, "door.vertexArray", door.vertexArray);
-            deleteMapSquareResource(
-                this.mapX,
-                this.mapY,
-                "door.interleavedBuffer",
-                door.interleavedBuffer,
-            );
-            deleteMapSquareResource(this.mapX, this.mapY, "door.indexBuffer", door.indexBuffer);
-            door.modelInfoTexture.delete();
-            door.modelInfoTextureAlpha.delete();
-            door.modelInfoTextureLod.delete();
-            door.modelInfoTextureLodAlpha.delete();
-            door.modelInfoTextureInteract.delete();
-            door.modelInfoTextureInteractAlpha.delete();
-            door.modelInfoTextureInteractLod.delete();
-            door.modelInfoTextureInteractLodAlpha.delete();
+            const legacyGpu = door.legacyGpu;
+            if (legacyGpu) {
+                deleteMapSquareResource(
+                    this.mapX,
+                    this.mapY,
+                    "door.vertexArray",
+                    legacyGpu.vertexArray,
+                );
+                deleteMapSquareResource(
+                    this.mapX,
+                    this.mapY,
+                    "door.interleavedBuffer",
+                    legacyGpu.interleavedBuffer,
+                );
+                deleteMapSquareResource(
+                    this.mapX,
+                    this.mapY,
+                    "door.indexBuffer",
+                    legacyGpu.indexBuffer,
+                );
+                legacyGpu.modelInfoTexture.delete();
+                legacyGpu.modelInfoTextureAlpha.delete();
+                legacyGpu.modelInfoTextureLod.delete();
+                legacyGpu.modelInfoTextureLodAlpha.delete();
+                legacyGpu.modelInfoTextureInteract.delete();
+                legacyGpu.modelInfoTextureInteractAlpha.delete();
+                legacyGpu.modelInfoTextureInteractLod.delete();
+                legacyGpu.modelInfoTextureInteractLodAlpha.delete();
+                door.legacyGpu = undefined;
+            }
             this.door = undefined;
             this.doorDrawRangeGroups = undefined;
             this.doorDrawRangePlanes = undefined;
@@ -2127,211 +2169,72 @@ export class WebGLMapSquare {
 
         this.refreshLocSceneMetadata(mapData);
 
+        const previous = this.door;
+        if (previous) {
+            releaseDrawCallRange(previous.drawCall);
+            releaseDrawCallRange(previous.drawCallAlpha);
+            releaseDrawCallRange(previous.drawCallLod);
+            releaseDrawCallRange(previous.drawCallLodAlpha);
+            releaseDrawCallRange(previous.drawCallInteract);
+            releaseDrawCallRange(previous.drawCallInteractAlpha);
+            releaseDrawCallRange(previous.drawCallInteractLod);
+            releaseDrawCallRange(previous.drawCallInteractLodAlpha);
+
+            const legacyGpu = previous.legacyGpu;
+            if (legacyGpu) {
+                deleteMapSquareResource(
+                    this.mapX,
+                    this.mapY,
+                    "door.vertexArray.refresh",
+                    legacyGpu.vertexArray,
+                );
+                deleteMapSquareResource(
+                    this.mapX,
+                    this.mapY,
+                    "door.interleavedBuffer.refresh",
+                    legacyGpu.interleavedBuffer,
+                );
+                deleteMapSquareResource(
+                    this.mapX,
+                    this.mapY,
+                    "door.indexBuffer.refresh",
+                    legacyGpu.indexBuffer,
+                );
+                legacyGpu.modelInfoTexture.delete();
+                legacyGpu.modelInfoTextureAlpha.delete();
+                legacyGpu.modelInfoTextureLod.delete();
+                legacyGpu.modelInfoTextureLodAlpha.delete();
+                legacyGpu.modelInfoTextureInteract.delete();
+                legacyGpu.modelInfoTextureInteractAlpha.delete();
+                legacyGpu.modelInfoTextureInteractLod.delete();
+                legacyGpu.modelInfoTextureInteractLodAlpha.delete();
+                previous.legacyGpu = undefined;
+            }
+        }
+
         const loadTime = time ?? this.timeLoaded;
-
-        if (this.door) {
-            releaseDrawCallRange(this.door.drawCall);
-            releaseDrawCallRange(this.door.drawCallAlpha);
-            releaseDrawCallRange(this.door.drawCallLod);
-            releaseDrawCallRange(this.door.drawCallLodAlpha);
-            releaseDrawCallRange(this.door.drawCallInteract);
-            releaseDrawCallRange(this.door.drawCallInteractAlpha);
-            releaseDrawCallRange(this.door.drawCallInteractLod);
-            releaseDrawCallRange(this.door.drawCallInteractLodAlpha);
-            deleteMapSquareResource(
-                this.mapX,
-                this.mapY,
-                "door.vertexArray.refresh",
-                this.door.vertexArray,
-            );
-            deleteMapSquareResource(
-                this.mapX,
-                this.mapY,
-                "door.interleavedBuffer.refresh",
-                this.door.interleavedBuffer,
-            );
-            deleteMapSquareResource(
-                this.mapX,
-                this.mapY,
-                "door.indexBuffer.refresh",
-                this.door.indexBuffer,
-            );
-            this.door.modelInfoTexture.delete();
-            this.door.modelInfoTextureAlpha.delete();
-            this.door.modelInfoTextureLod.delete();
-            this.door.modelInfoTextureLodAlpha.delete();
-            this.door.modelInfoTextureInteract.delete();
-            this.door.modelInfoTextureInteractAlpha.delete();
-            this.door.modelInfoTextureInteractLod.delete();
-            this.door.modelInfoTextureInteractLodAlpha.delete();
-        }
-        this.door = undefined;
-        this.doorDrawRangeGroups = undefined;
-        this.doorDrawRangePlanes = undefined;
-
-        if (mapData.doorVertices.length === 0 || mapData.doorIndices.length === 0) {
-            return;
-        }
-
-        const doorInterleavedBuffer = app.createInterleavedBuffer(12, mapData.doorVertices);
-        const doorIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.doorIndices);
-        const doorVertexArray = app
-            .createVertexArray()
-            .vertexAttributeBuffer(0, doorInterleavedBuffer, {
-                type: PicoGL.UNSIGNED_INT,
-                size: 3,
-                stride: 12,
-                integer: true as any,
-            })
-            .indexBuffer(doorIndexBuffer);
-
-        const doorModelInfoTexture = createModelInfoTexture(app, mapData.doorModelTextureData);
-        const doorModelInfoTextureAlpha = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataAlpha,
-        );
-        const doorModelInfoTextureLod = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataLod,
-        );
-        const doorModelInfoTextureLodAlpha = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataLodAlpha,
-        );
-        const doorModelInfoTextureInteract = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataInteract,
-        );
-        const doorModelInfoTextureInteractAlpha = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataInteractAlpha,
-        );
-        const doorModelInfoTextureInteractLod = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataInteractLod,
-        );
-        const doorModelInfoTextureInteractLodAlpha = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataInteractLodAlpha,
-        );
-
         const mapPos = vec2.fromValues(
             mapData.renderPosX ?? mapData.mapX,
             mapData.renderPosY ?? mapData.mapY,
         );
-
-        const buildDrawCall = (
-            program: Program,
-            modelInfoTexture: Texture | undefined,
-            drawRanges: DrawRange[],
-        ): AnyDrawCallRange =>
-            createDeferredDrawCallRange(
-                drawRanges,
-                () => {
-                    const drawCall = app
-                        .createDrawCall(program, doorVertexArray)
-                        .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                        .uniform("u_timeLoaded", loadTime)
-                        .uniform("u_mapPos", mapPos)
-                        .uniform("u_roofPlaneLimit", 3.0)
-                        .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                        .uniform("u_worldEntityOpacity", 1.0)
-                        .texture("u_textures", textureArray)
-                        .texture("u_textureMaterials", textureMaterials)
-                        .texture("u_waterTextures", waterTextures)
-                        .texture("u_heightMap", this.heightMapTexture)
-                        .texture("u_waterMask", this.waterMaskTexture)
-                        .uniform("u_sceneBorderSize", this.borderSize)
-                        .drawRanges(...drawRanges);
-                    if (modelInfoTexture) {
-                        drawCall.texture("u_modelInfoTexture", modelInfoTexture);
-                    }
-                    return drawCall;
-                },
-                eagerLegacyDrawCalls,
-            );
-
-        const doorDrawCall = buildDrawCall(
+        this.door = createDoorGeometryResources(
+            app,
             mainProgram,
-            doorModelInfoTexture,
-            mapData.doorDrawRanges,
-        );
-        const doorDrawCallAlpha = buildDrawCall(
             mainAlphaProgram,
-            doorModelInfoTextureAlpha,
-            mapData.doorDrawRangesAlpha,
+            textureArray,
+            textureMaterials,
+            waterTextures,
+            sceneUniformBuffer,
+            this.heightMapTexture,
+            this.waterMaskTexture,
+            mapPos,
+            this.borderSize,
+            loadTime,
+            mapData,
+            eagerLegacyDrawCalls,
         );
-        const doorDrawCallLod = buildDrawCall(
-            mainProgram,
-            doorModelInfoTextureLod,
-            mapData.doorDrawRangesLod,
-        );
-        const doorDrawCallLodAlpha = buildDrawCall(
-            mainAlphaProgram,
-            doorModelInfoTextureLodAlpha,
-            mapData.doorDrawRangesLodAlpha,
-        );
-        const doorDrawCallInteract = buildDrawCall(
-            mainProgram,
-            doorModelInfoTextureInteract,
-            mapData.doorDrawRangesInteract,
-        );
-        const doorDrawCallInteractAlpha = buildDrawCall(
-            mainAlphaProgram,
-            doorModelInfoTextureInteractAlpha,
-            mapData.doorDrawRangesInteractAlpha,
-        );
-        const doorDrawCallInteractLod = buildDrawCall(
-            mainProgram,
-            doorModelInfoTextureInteractLod,
-            mapData.doorDrawRangesInteractLod,
-        );
-        const doorDrawCallInteractLodAlpha = buildDrawCall(
-            mainAlphaProgram,
-            doorModelInfoTextureInteractLodAlpha,
-            mapData.doorDrawRangesInteractLodAlpha,
-        );
-
-        const doorPlanes =
-            mapData.doorDrawRangesPlanes.length > 0
-                ? {
-                      main: mapData.doorDrawRangesPlanes,
-                      alpha: mapData.doorDrawRangesAlphaPlanes,
-                      lod: mapData.doorDrawRangesLodPlanes,
-                      lodAlpha: mapData.doorDrawRangesLodAlphaPlanes,
-                      interact: mapData.doorDrawRangesInteractPlanes,
-                      interactAlpha: mapData.doorDrawRangesInteractAlphaPlanes,
-                      interactLod: mapData.doorDrawRangesInteractLodPlanes,
-                      interactLodAlpha: mapData.doorDrawRangesInteractLodAlphaPlanes,
-                  }
-                : undefined;
-
-        this.door = {
-            interleavedBuffer: doorInterleavedBuffer,
-            indexBuffer: doorIndexBuffer,
-            vertexArray: doorVertexArray,
-            modelInfoTexture: doorModelInfoTexture,
-            modelInfoTextureAlpha: doorModelInfoTextureAlpha,
-            modelInfoTextureLod: doorModelInfoTextureLod,
-            modelInfoTextureLodAlpha: doorModelInfoTextureLodAlpha,
-            modelInfoTextureInteract: doorModelInfoTextureInteract,
-            modelInfoTextureInteractAlpha: doorModelInfoTextureInteractAlpha,
-            modelInfoTextureInteractLod: doorModelInfoTextureInteractLod,
-            modelInfoTextureInteractLodAlpha: doorModelInfoTextureInteractLodAlpha,
-            drawCall: doorDrawCall,
-            drawCallAlpha: doorDrawCallAlpha,
-            drawCallLod: doorDrawCallLod,
-            drawCallLodAlpha: doorDrawCallLodAlpha,
-            drawCallInteract: doorDrawCallInteract,
-            drawCallInteractAlpha: doorDrawCallInteractAlpha,
-            drawCallInteractLod: doorDrawCallInteractLod,
-            drawCallInteractLodAlpha: doorDrawCallInteractLodAlpha,
-            planes: doorPlanes,
-        };
-        this.doorDrawRangeGroups = getDrawRangeGroups(this.door);
-        if (doorPlanes) {
-            this.doorDrawRangePlanes = doorPlanes;
-        }
+        this.doorDrawRangeGroups = this.door ? getDrawRangeGroups(this.door) : undefined;
+        this.doorDrawRangePlanes = this.door?.planes;
     }
 
     refreshSceneGeometry(
