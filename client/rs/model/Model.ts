@@ -3,6 +3,14 @@ import { mat4, vec3 } from "gl-matrix";
 import { COSINE, SINE } from "../MathConstants";
 import { Entity } from "../scene/entity/Entity";
 import { ModelData } from "./ModelData";
+import {
+    applyLegacyTransformsWithRustIfReady,
+    contourVerticesWithRustIfReady,
+    type LegacyTransformOperation,
+    RustBasicTransformMode,
+    skinSkeletalVerticesWithRustIfReady,
+    transformVerticesWithRustIfReady,
+} from "./RustModelTransforms";
 import { SeqBase } from "./seq/SeqBase";
 import { SeqFrame } from "./seq/SeqFrame";
 import { SeqTransformType } from "./seq/SeqTransformType";
@@ -573,6 +581,29 @@ export class Model extends Entity {
         }
         model.contourVerticesY = new Int32Array(model.verticesCount);
 
+        const rustContour = contourVerticesWithRustIfReady(
+            this.verticesX,
+            this.verticesY,
+            this.verticesZ,
+            model.usedVertexCount,
+            type,
+            param,
+            heightMap,
+            heightMapAbove,
+            sceneX,
+            sceneHeight,
+            sceneZ,
+            this.minY,
+            this.minY,
+            this.maxY,
+            true,
+        );
+        if (rustContour) {
+            model.contourVerticesY = rustContour;
+            model.invalidateBounds();
+            return model;
+        }
+
         if (type === 1) {
             for (let i = 0; i < model.usedVertexCount; i++) {
                 const vx = this.verticesX[i] + sceneX;
@@ -737,6 +768,18 @@ export class Model extends Entity {
     }
 
     rotate90(): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_90,
+            )
+        ) {
+            this.invalidateBounds();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             const temp = this.verticesX[i];
             this.verticesX[i] = this.verticesZ[i];
@@ -747,6 +790,18 @@ export class Model extends Entity {
     }
 
     rotate180(): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_180,
+            )
+        ) {
+            this.invalidateBounds();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesX[i] = -this.verticesX[i];
             this.verticesZ[i] = -this.verticesZ[i];
@@ -756,6 +811,18 @@ export class Model extends Entity {
     }
 
     rotate270(): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_270,
+            )
+        ) {
+            this.invalidateBounds();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             const temp = this.verticesZ[i];
             this.verticesZ[i] = this.verticesX[i];
@@ -766,6 +833,19 @@ export class Model extends Entity {
     }
 
     rotate(angle: number): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_ANGLE,
+                angle,
+            )
+        ) {
+            this.invalidateBounds();
+            return;
+        }
         const sin = SINE[angle];
         const cos = COSINE[angle];
 
@@ -779,6 +859,21 @@ export class Model extends Entity {
     }
 
     translate(x: number, y: number, z: number): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.TRANSLATE,
+                x,
+                y,
+                z,
+            )
+        ) {
+            this.invalidateBounds();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesX[i] += x;
             this.verticesY[i] += y;
@@ -789,6 +884,21 @@ export class Model extends Entity {
     }
 
     scale(x: number, y: number, z: number): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.SCALE,
+                x,
+                y,
+                z,
+            )
+        ) {
+            this.invalidateBounds();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesX[i] = ((this.verticesX[i] * x) / 128) | 0;
             this.verticesY[i] = ((this.verticesY[i] * y) / 128) | 0;
@@ -806,20 +916,19 @@ export class Model extends Entity {
     animateOld(frame: SeqFrame | undefined) {
         if (this.vertexLabels && frame) {
             Model.resetAnimateOrigin();
-
             const base = frame.base;
-
+            const operations: LegacyTransformOperation[] = [];
             for (let i = 0; i < frame.transformCount; i++) {
                 const group = frame.transformGroups[i];
-                this.transform(
-                    base.types[group],
-                    base.labels[group],
-                    frame.transformX[i],
-                    frame.transformY[i],
-                    frame.transformZ[i],
-                );
+                operations.push({
+                    type: base.types[group],
+                    labels: base.labels[group],
+                    x: frame.transformX[i],
+                    y: frame.transformY[i],
+                    z: frame.transformZ[i],
+                });
             }
-
+            this.applyLegacyTransformOperations(operations, false);
             this.postAnimate();
         }
     }
@@ -866,6 +975,48 @@ export class Model extends Entity {
         }
     }
 
+    private applyLegacyTransformOperations(
+        operations: readonly LegacyTransformOperation[],
+        op14: boolean,
+    ): void {
+        if (operations.length === 0) {
+            return;
+        }
+
+        const rustResult = applyLegacyTransformsWithRustIfReady(
+            this.verticesX,
+            this.verticesY,
+            this.verticesZ,
+            this.verticesCount,
+            this.faceAlphas,
+            this.faceColors,
+            this.vertexLabels,
+            this.faceLabels,
+            operations,
+            Model.animateOriginX,
+            Model.animateOriginY,
+            Model.animateOriginZ,
+        );
+        if (rustResult) {
+            Model.animateOriginX = rustResult.originX;
+            Model.animateOriginY = rustResult.originY;
+            Model.animateOriginZ = rustResult.originZ;
+            this.changedLight ||= rustResult.changedLight;
+            return;
+        }
+
+        for (const operation of operations) {
+            this.transform0(
+                operation.type as SeqTransformType,
+                operation.labels as number[],
+                operation.x,
+                operation.y,
+                operation.z,
+                op14,
+            );
+        }
+    }
+
     private applyInterleaveFrame(
         frame: SeqFrame,
         interleave: number[],
@@ -879,6 +1030,7 @@ export class Model extends Entity {
         let maskIndex = 0;
         let maskValue = (interleave[maskIndex] ?? 9999999) | 0;
         maskIndex++;
+        const operations: LegacyTransformOperation[] = [];
 
         for (let i = 0; i < frame.transformCount; i++) {
             const group = frame.transformGroups[i] | 0;
@@ -895,27 +1047,25 @@ export class Model extends Entity {
 
             const resetOriginGroup = frame.resetOriginGroups[i];
             if (resetOriginGroup !== -1) {
-                this.transform(
-                    SeqTransformType.ORIGIN,
-                    base.labels[resetOriginGroup],
-                    0,
-                    0,
-                    0,
-                    op14,
-                    0xffff,
-                );
+                operations.push({
+                    type: SeqTransformType.ORIGIN,
+                    labels: base.labels[resetOriginGroup],
+                    x: 0,
+                    y: 0,
+                    z: 0,
+                });
             }
 
-            this.transform(
-                base.types[group],
-                base.labels[group],
-                frame.transformX[i],
-                frame.transformY[i],
-                frame.transformZ[i],
-                op14,
-                0xffff,
-            );
+            operations.push({
+                type: base.types[group],
+                labels: base.labels[group],
+                x: frame.transformX[i],
+                y: frame.transformY[i],
+                z: frame.transformZ[i],
+            });
         }
+
+        this.applyLegacyTransformOperations(operations, op14);
     }
 
     private applyInterleaveFrameInterpolated(
@@ -1018,6 +1168,7 @@ export class Model extends Entity {
     ): void {
         void nextFrame;
         void alpha;
+        const operations: LegacyTransformOperation[] = [];
         for (let i = 0; i < frame.transformCount; i++) {
             const group = frame.transformGroups[i];
             const type = base.types[group];
@@ -1027,29 +1178,31 @@ export class Model extends Entity {
                 type === SeqTransformType.ORIGIN
             ) {
                 const resetOriginGroup = frame.resetOriginGroups[i];
-                if (resetOriginGroup !== -1) {
-                    this.transform(
-                        SeqTransformType.ORIGIN,
-                        base.labels[resetOriginGroup],
-                        0,
-                        0,
-                        0,
-                        op14,
-                        base.masks[resetOriginGroup] & mask,
-                    );
+                if (
+                    resetOriginGroup !== -1 &&
+                    (base.masks[resetOriginGroup] & mask) === 0xffff
+                ) {
+                    operations.push({
+                        type: SeqTransformType.ORIGIN,
+                        labels: base.labels[resetOriginGroup],
+                        x: 0,
+                        y: 0,
+                        z: 0,
+                    });
                 }
 
-                this.transform(
-                    base.types[group],
-                    base.labels[group],
-                    frame.transformX[i],
-                    frame.transformY[i],
-                    frame.transformZ[i],
-                    op14,
-                    base.masks[group] & mask,
-                );
+                if ((base.masks[group] & mask) === 0xffff) {
+                    operations.push({
+                        type: base.types[group],
+                        labels: base.labels[group],
+                        x: frame.transformX[i],
+                        y: frame.transformY[i],
+                        z: frame.transformZ[i],
+                    });
+                }
             }
         }
+        this.applyLegacyTransformOperations(operations, op14);
     }
 
     transform(
@@ -1321,9 +1474,40 @@ export class Model extends Entity {
     }
 
     transformSkeletal(skeletalBase: SkeletalBase, poseId: number, frame: number): void {
+        void frame;
         if (!this.animMayaGroups) {
             return;
         }
+
+        const boneCount = skeletalBase.getBoneCount();
+        if (boneCount > 0) {
+            const boneMatrices = new Float32Array(boneCount * 16);
+            for (let boneId = 0; boneId < boneCount; boneId++) {
+                const bone = skeletalBase.getBone(boneId);
+                if (bone) {
+                    boneMatrices.set(bone.getFinalMatrix(poseId), boneId * 16);
+                }
+            }
+
+            const transformed = skinSkeletalVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                this.animMayaGroups,
+                this.animMayaScales,
+                boneMatrices,
+            );
+            if (transformed) {
+                for (let vertex = 0, offset = 0; vertex < this.verticesCount; vertex++) {
+                    this.verticesX[vertex] = transformed[offset++];
+                    this.verticesY[vertex] = transformed[offset++];
+                    this.verticesZ[vertex] = transformed[offset++];
+                }
+                return;
+            }
+        }
+
         for (let v = 0; v < this.verticesCount; v++) {
             const group = this.animMayaGroups[v];
             if (group && group.length !== 0) {

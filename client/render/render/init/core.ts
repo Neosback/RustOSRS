@@ -50,6 +50,10 @@ import { decodeInteractionIndex } from "../../../rs/interaction/InteractionIndex
 import { getMapIndexFromTile, getMapPlaneId, getMapSquareId } from "../../../rs/map/MapFileIndex";
 import { Model } from "../../../rs/model/Model";
 import { ModelData } from "../../../rs/model/ModelData";
+import {
+    setRustStage5ForceTypeScript,
+    setRustStage5StrictMode,
+} from "../../../rs/model/RustStage5Ownership";
 import { Scene } from "../../../rs/scene/Scene";
 import { getUiScale } from "../../../ui/UiScale";
 import { ClickCrossOverlay } from "../../../ui/devoverlay/ClickCrossOverlay";
@@ -153,7 +157,6 @@ import type { PlayerSpotAnimationEvent } from "../../../game/sync/PlayerSyncType
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../../game/utils/rotation";
 import { AnimationFrames } from "../../AnimationFrames";
 import { ChatheadFactory } from "../../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../DrawRange";
 import { InteractType } from "../../InteractType";
 import { profiler } from "../../PerformanceProfiler";
@@ -187,6 +190,11 @@ import {
     createProjectileProgram,
 } from "../../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
+import {
+    initRustRendererShadow,
+    isRustPrimaryRendererActive,
+} from "../../rust/RustShadowIntegration";
+import { getRustRendererRuntimeMode } from "../../rust/RustRendererRuntime";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS, optimizeAssumingFlatsHaveSameFirstAndLastData } from "../constants";
 import { initRenderer } from "../handlers";
@@ -229,27 +237,11 @@ export async function init(host: WebGLOsrsRendererHost, ): Promise<void> {
 
         host.timer = host.app.createTimer();
 
-        // Prefer the multi-draw extension when available; fall back to explicit single draws otherwise.
-        // Safari's Metal ANGLE advertises WEBGL_multi_draw but then fails at draw time with
-        // attribute-type mismatches in glMultiDrawArraysInstancedANGLE.
+        // Rust owns primary scene submission. The explicit Pico compatibility
+        // path uses deterministic single-range draws and no secondary backend.
         const state: any = host.app.state;
-        const ext = isSafari ? null : host.gl.getExtension("WEBGL_multi_draw");
-        PicoGL.WEBGL_INFO.MULTI_DRAW_INSTANCED = ext;
-        state.extensions.multiDrawInstanced = ext;
-
-        host.hasMultiDraw = !!ext;
-        host.drawBackend?.dispose();
-        host.drawBackend = createDrawBackend(host.hasMultiDraw);
-        host.drawBackend.init(host.app, host.gl);
-
-        if (!ext) {
-            console.warn(
-                isSafari
-                    ? "Disabling WEBGL_multi_draw on Safari/WebKit; using single-draw fallback."
-                    : "WEBGL_multi_draw extension not available! Rendering may not work correctly. " +
-                      "Falling back to single-draw rendering; this is slower but supported.",
-            );
-        }
+        PicoGL.WEBGL_INFO.MULTI_DRAW_INSTANCED = null;
+        state.extensions.multiDrawInstanced = null;
 
         host.osrsClient.workerPool.initLoader(host.dataLoader);
 
@@ -288,10 +280,34 @@ export async function init(host: WebGLOsrsRendererHost, ): Promise<void> {
             PicoGL.FLOAT, // float u_isNewTextureAnim;
         ]);
 
-        host.initFramebuffers();
+        const forceTypeScriptStage5 =
+            getRustRendererRuntimeMode() === "off";
+        setRustStage5ForceTypeScript(forceTypeScriptStage5);
+        await host.osrsClient.workerPool.setRustStage5ForceTypeScript(
+            forceTypeScriptStage5,
+        );
+
         await host.initWaterTextures();
 
         host.initTextures();
+        await initRustRendererShadow(host);
+
+        const rustPrimaryRendererActive = isRustPrimaryRendererActive(host);
+        setRustStage5StrictMode(rustPrimaryRendererActive);
+        await host.osrsClient.workerPool.setRustStage5StrictMode(
+            rustPrimaryRendererActive,
+        );
+
+        if (rustPrimaryRendererActive) {
+            // Rust owns all offscreen scene/presentation targets in primary
+            // mode. PicoGL keeps only its default transparent UI canvas.
+            const sceneSize = host.getSceneRenderSize();
+            host.sceneRenderWidth = sceneSize.width | 0;
+            host.sceneRenderHeight = sceneSize.height | 0;
+            host.needsFramebufferUpdate = false;
+        } else {
+            host.initFramebuffers();
+        }
 
         console.log("Renderer init");
 

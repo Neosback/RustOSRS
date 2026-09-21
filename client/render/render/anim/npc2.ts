@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../../../game/sync/PlayerSyncType
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../../game/utils/rotation";
 import { AnimationFrames } from "../../AnimationFrames";
 import { ChatheadFactory } from "../../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../DrawRange";
 import { InteractType } from "../../InteractType";
 import { profiler } from "../../PerformanceProfiler";
@@ -185,6 +184,7 @@ import {
     createPlayerProgram,
     createProjectileProgram,
 } from "../../shaders/Shaders";
+import { isRustPrimaryRendererActive } from "../../rust/RustShadowIntegration";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
@@ -348,6 +348,7 @@ export function uploadDynamicNpcGeometry(host: WebGLOsrsRendererHost,
         transparent: boolean,
     ): number {
 
+        if (isRustPrimaryRendererActive(host)) return 0;
         if (!host.npcProgram) return 0;
 
         const vertices = transparent ? geometry.alphaVertices : geometry.opaqueVertices;

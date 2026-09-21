@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../../../game/sync/PlayerSyncType
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../../game/utils/rotation";
 import { AnimationFrames } from "../../AnimationFrames";
 import { ChatheadFactory } from "../../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../DrawRange";
 import { InteractType } from "../../InteractType";
 import { profiler } from "../../PerformanceProfiler";
@@ -185,13 +184,12 @@ import {
     createPlayerProgram,
     createProjectileProgram,
 } from "../../shaders/Shaders";
+import { isRustPrimaryRendererActive } from "../../rust/RustShadowIntegration";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
 
-export function clearDynamicNpcAnimRuntimeState(host: WebGLOsrsRendererHost, ): void {
-
-        host.dynamicNpcAnimLoader?.clear();
+export function releaseDynamicNpcGpuResources(host: WebGLOsrsRendererHost): void {
         host.dynamicNpcDrawCall = undefined;
         host.dynamicNpcVertexArray?.delete();
         host.dynamicNpcVertexArray = undefined;
@@ -202,6 +200,12 @@ export function clearDynamicNpcAnimRuntimeState(host: WebGLOsrsRendererHost, ): 
         host.dynamicNpcBufferVertexSize = 0;
         host.dynamicNpcBufferIndexSize = 0;
         host.dynamicNpcUploadedGeometryKey = undefined;
+}
+
+export function clearDynamicNpcAnimRuntimeState(host: WebGLOsrsRendererHost, ): void {
+
+        host.dynamicNpcAnimLoader?.clear();
+        releaseDynamicNpcGpuResources(host);
     
 }
 
@@ -212,11 +216,9 @@ export function disposeDynamicNpcAnimState(host: WebGLOsrsRendererHost, ): void 
     
 }
 
-export function clearPlayerGeometryRuntimeState(host: WebGLOsrsRendererHost): void {
+export function releasePlayerGeometryGpuResources(host: WebGLOsrsRendererHost): void {
         host.playerDrawCall = undefined;
         host.playerDrawCallAlpha = undefined;
-        host.playerDrawRanges = undefined;
-        host.playerDrawRangesAlpha = undefined;
         host.playerVertexArray?.delete();
         host.playerVertexArray = undefined;
         host.playerVertexArrayAlpha?.delete();
@@ -231,6 +233,12 @@ export function clearPlayerGeometryRuntimeState(host: WebGLOsrsRendererHost): vo
         host.playerIndexBufferAlpha = undefined;
         host.playerSlotBuffer?.delete();
         host.playerSlotBuffer = undefined;
+}
+
+export function clearPlayerGeometryRuntimeState(host: WebGLOsrsRendererHost): void {
+        releasePlayerGeometryGpuResources(host);
+        host.playerDrawRanges = undefined;
+        host.playerDrawRangesAlpha = undefined;
 }
 
 export function initDynamicNpcAnimLoader(host: WebGLOsrsRendererHost, ): void {
@@ -253,17 +261,31 @@ export function initDynamicNpcAnimLoader(host: WebGLOsrsRendererHost, ): void {
     
 }
 
-export async function initPlayerGeometry(host: WebGLOsrsRendererHost, ): Promise<void> {
+export function ensurePlayerGeometryRuntimeState(host: WebGLOsrsRendererHost): boolean {
+        if (
+            host.playerVertexArray &&
+            host.playerVertexArrayAlpha &&
+            host.playerInterleavedBuffer &&
+            host.playerIndexBuffer &&
+            host.playerInterleavedBufferAlpha &&
+            host.playerIndexBufferAlpha &&
+            host.playerSlotBuffer &&
+            host.playerDrawCall &&
+            host.playerDrawCallAlpha
+        ) {
+            return true;
+        }
+        if (
+            !host.playerProgram ||
+            !host.textureArray ||
+            !host.textureMaterials ||
+            !host.sceneUniformBuffer
+        ) {
+            return false;
+        }
 
-        if (!host.playerProgram || !host.textureArray || !host.textureMaterials) {
-            await host.shadersPromise;
-        }
-        if (!host.playerProgram || !host.textureArray || !host.textureMaterials) {
-            return;
-        }
-        clearPlayerGeometryRuntimeState(host);
-        // Prepare empty dynamic GPU resources for player rendering. Base-model building is
-        // handled in PlayerEcs and PlayerRenderer uploads per-frame geometry.
+        releasePlayerGeometryGpuResources(host);
+
         const interleavedBuffer = host.app.createInterleavedBuffer(12, new Int32Array(0));
         const indexBuffer = host.app.createIndexBuffer(PicoGL.UNSIGNED_INT, new Int32Array(0));
         const playerSlotBuffer = host.app.createVertexBuffer(
@@ -288,14 +310,13 @@ export async function initPlayerGeometry(host: WebGLOsrsRendererHost, ): Promise
             .indexBuffer(indexBuffer);
 
         const drawCall = host.app
-            .createDrawCall(host.playerProgramOpaque ?? host.playerProgram!, vertexArray)
-            .uniformBlock("SceneUniforms", host.sceneUniformBuffer!)
+            .createDrawCall(host.playerProgramOpaque ?? host.playerProgram, vertexArray)
+            .uniformBlock("SceneUniforms", host.sceneUniformBuffer)
             .uniform("u_timeLoaded", -1.0)
             .uniform("u_usePlayerSlotAttribute", false)
-            .texture("u_textures", host.textureArray!)
-            .texture("u_textureMaterials", host.textureMaterials!);
+            .texture("u_textures", host.textureArray)
+            .texture("u_textureMaterials", host.textureMaterials);
 
-        // Transparent path: keep separate buffers (initially empty)
         const interleavedBufferAlpha = host.app.createInterleavedBuffer(12, new Int32Array(0));
         const indexBufferAlpha = host.app.createIndexBuffer(PicoGL.UNSIGNED_INT, new Int32Array(0));
         const vertexArrayAlpha = host.app
@@ -313,12 +334,12 @@ export async function initPlayerGeometry(host: WebGLOsrsRendererHost, ): Promise
             })
             .indexBuffer(indexBufferAlpha);
         const drawCallAlpha = host.app
-            .createDrawCall(host.playerProgram!, vertexArrayAlpha)
-            .uniformBlock("SceneUniforms", host.sceneUniformBuffer!)
+            .createDrawCall(host.playerProgram, vertexArrayAlpha)
+            .uniformBlock("SceneUniforms", host.sceneUniformBuffer)
             .uniform("u_timeLoaded", -1.0)
             .uniform("u_usePlayerSlotAttribute", false)
-            .texture("u_textures", host.textureArray!)
-            .texture("u_textureMaterials", host.textureMaterials!);
+            .texture("u_textures", host.textureArray)
+            .texture("u_textureMaterials", host.textureMaterials);
 
         host.playerVertexArray = vertexArray;
         host.playerInterleavedBuffer = interleavedBuffer as any;
@@ -329,7 +350,26 @@ export async function initPlayerGeometry(host: WebGLOsrsRendererHost, ): Promise
         host.playerVertexArrayAlpha = vertexArrayAlpha;
         host.playerDrawCall = drawCall;
         host.playerDrawCallAlpha = drawCallAlpha;
+        host.playerDrawRanges ??= [newDrawRange(0, 0, 1)];
+        host.playerDrawRangesAlpha ??= [newDrawRange(0, 0, 1)];
+        return true;
+}
+
+export async function initPlayerGeometry(host: WebGLOsrsRendererHost, ): Promise<void> {
+
+        if (!host.playerProgram || !host.textureArray || !host.textureMaterials) {
+            await host.shadersPromise;
+        }
+        if (!host.playerProgram || !host.textureArray || !host.textureMaterials) {
+            return;
+        }
+
+        clearPlayerGeometryRuntimeState(host);
         host.playerDrawRanges = [newDrawRange(0, 0, 1)];
         host.playerDrawRangesAlpha = [newDrawRange(0, 0, 1)];
-    
+
+        if (isRustPrimaryRendererActive(host)) {
+            return;
+        }
+        ensurePlayerGeometryRuntimeState(host);
 }

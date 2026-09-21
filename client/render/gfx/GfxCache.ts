@@ -1,7 +1,8 @@
 import { Model } from "../../rs/model/Model";
 import { ModelData } from "../../rs/model/ModelData";
 import type { TextureLoader } from "../../rs/texture/TextureLoader";
-import { getModelFacesFiltered, SceneBuffer } from "../buffer/SceneBuffer";
+import { SceneBuffer } from "../buffer/SceneBuffer";
+import { createVertexBatchBuilderIfReady } from "../rust/RustGeometryPreparation";
 import type { WebGLOsrsRenderer } from "../WebGLOsrsRenderer";
 
 type FrameKey = string; // `${spotId}|${frameIdx}|${pass}|${version}` where pass is 0=opaque,1=alpha
@@ -167,9 +168,9 @@ export class GfxCache {
             textureLoader,
             textureIdIndexMap,
             ((model as any).verticesCount | 0) + 16,
+            createVertexBatchBuilderIfReady(),
         );
-        const faces = getModelFacesFiltered(model, textureLoader, transparent);
-        if (faces.length > 0) sceneBuf.addModel(model, faces);
+        sceneBuf.addModelFiltered(model, transparent);
         const out = {
             vertices: sceneBuf.vertexBuf.byteArray(),
             indices: new Int32Array(sceneBuf.indices),

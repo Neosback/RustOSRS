@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../../game/sync/PlayerSyncTypes";
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../game/utils/rotation";
 import { AnimationFrames } from "../AnimationFrames";
 import { ChatheadFactory } from "../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
 import { profiler } from "../PerformanceProfiler";
@@ -242,7 +241,8 @@ export async function doInstanceSceneBuild(host: WebGLOsrsRendererHost,
             maxLevel: Math.max(0, Math.min(Scene.MAX_LEVELS - 1, host.maxLevel | 0)),
             loadNpcs: host.loadNpcs,
             smoothTerrain: host.smoothTerrain,
-            minimizeDrawCalls: !host.hasMultiDraw,
+            minimizeDrawCalls: true,
+            textureIds: host.textureIds,
             loadedTextureIds: host.loadedTextureIds,
             instance: { templateChunks, regionX, regionY },
             locOverrides: host.locOverrides,

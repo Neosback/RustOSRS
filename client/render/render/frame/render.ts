@@ -153,7 +153,6 @@ import type { PlayerSpotAnimationEvent } from "../../../game/sync/PlayerSyncType
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../../game/utils/rotation";
 import { AnimationFrames } from "../../AnimationFrames";
 import { ChatheadFactory } from "../../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../DrawRange";
 import { InteractType } from "../../InteractType";
 import { profiler } from "../../PerformanceProfiler";
@@ -187,6 +186,26 @@ import {
     createProjectileProgram,
 } from "../../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
+import {
+    capturePicoSceneReference,
+    capturePicoStaticReference,
+    shouldCaptureRustPixelParity,
+} from "../../rust/RustPixelParity";
+import {
+    beginRustOpaqueActorShadowPass,
+    completeRustOpaqueActorShadowPass,
+    finishRustActorShadowFrame,
+    finishRustSceneOverlayShadowFrame,
+    getRustRendererShadowDiagnostics,
+    isRustFullDynamicShadowEnabled,
+    isRustGfxShadowEnabled,
+    isRustNpcShadowEnabled,
+    isRustPlayerShadowEnabled,
+    isRustPrimaryRendererActive,
+    isRustProjectileShadowEnabled,
+    isRustSceneOverlayShadowEnabled,
+    renderRustStaticShadowFrame,
+} from "../../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
 
@@ -486,9 +505,44 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         }
 
         // ========== Game Resource Checks ==========
-        host.syncSceneFramebufferSize();
-        if (host.needsFramebufferUpdate) {
-            host.initFramebuffer();
+        const rustPrimaryRendererEnabled =
+            isRustPrimaryRendererActive(host);
+        if (rustPrimaryRendererEnabled) {
+            // Keep scene dimensions current for Rust presentation without
+            // allocating the legacy PicoGL scene framebuffer.
+            const sceneSize = host.getSceneRenderSize();
+            host.sceneRenderWidth = sceneSize.width | 0;
+            host.sceneRenderHeight = sceneSize.height | 0;
+            host.needsFramebufferUpdate = false;
+
+            // Context-loss fallback may have lazily recreated the Pico scene
+            // target. Release it again once Rust-primary is active.
+            host.framebuffer?.delete();
+            host.framebuffer = undefined;
+            host.colorTarget?.delete();
+            host.colorTarget = undefined;
+            host.depthTarget?.delete();
+            host.depthTarget = undefined;
+            host.textureFramebuffer?.delete();
+            host.textureFramebuffer = undefined;
+            host.textureColorTarget?.delete();
+            host.textureColorTarget = undefined;
+            host.textureDepthTarget?.delete();
+            host.textureDepthTarget = undefined;
+        } else {
+            host.syncSceneFramebufferSize();
+            if (host.needsFramebufferUpdate || !host.framebuffer) {
+                host.initFramebuffer();
+            }
+            if (!host.textureFramebuffer) {
+                host.initTextureFramebuffer();
+            }
+            if (!host.frameDrawCall && host.frameProgram) {
+                host.frameDrawCall = host.app.createDrawCall(
+                    host.frameProgram,
+                    host.quadArray,
+                );
+            }
         }
 
         if (
@@ -496,9 +550,9 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             !host.mainAlphaProgram ||
             !host.npcProgram ||
             !host.sceneUniformBuffer ||
-            !host.framebuffer ||
-            !host.textureFramebuffer ||
-            !host.frameDrawCall ||
+            (!rustPrimaryRendererEnabled && !host.framebuffer) ||
+            (!rustPrimaryRendererEnabled && !host.textureFramebuffer) ||
+            (!rustPrimaryRendererEnabled && !host.frameDrawCall) ||
             !host.textureArray ||
             !host.textureMaterials ||
             !host.waterTextures
@@ -533,15 +587,23 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             host.app.disable(PicoGL.CULL_FACE);
         }
 
-        const directTextureScenePass = host.shouldUseDirectTextureScenePass();
-        const sceneFramebuffer = directTextureScenePass
-            ? host.textureFramebuffer!
-            : host.framebuffer!;
+        const directTextureScenePass =
+            !rustPrimaryRendererEnabled
+            && host.shouldUseDirectTextureScenePass();
+        const sceneFramebuffer = rustPrimaryRendererEnabled
+            ? undefined
+            : directTextureScenePass
+                ? host.textureFramebuffer!
+                : host.framebuffer!;
 
         host.app.enable(PicoGL.DEPTH_TEST);
         host.app.depthMask(true);
 
-        host.app.drawFramebuffer(sceneFramebuffer);
+        if (sceneFramebuffer) {
+            host.app.drawFramebuffer(sceneFramebuffer);
+        } else {
+            host.app.defaultDrawFramebuffer();
+        }
         host.app.viewport(0, 0, host.sceneRenderWidth | 0, host.sceneRenderHeight | 0);
 
         profiler.startPhase("tick");
@@ -577,7 +639,9 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
             sceneViewport.width,
             sceneViewport.height,
         );
-        host.clearSceneFramebuffer(sceneFramebufferViewport);
+        if (!rustPrimaryRendererEnabled) {
+            host.clearSceneFramebuffer(sceneFramebufferViewport);
+        }
         // keep CS2-visible viewport zoom in sync with the viewport widget size
         // (Client.viewportZoom; i.e., Rasterizer3D.get3dZoom()) so scripts and widget models scale correctly.
         try {
@@ -733,6 +797,44 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
         profiler.startPhase("roof");
         host.roofPlaneLimit = host.computeFrameRoofPlaneLimit();
+        const rustNpcParityEnabled = isRustNpcShadowEnabled();
+        const rustPlayerParityEnabled = isRustPlayerShadowEnabled();
+        const rustGfxParityEnabled = isRustGfxShadowEnabled();
+        const rustProjectileParityEnabled =
+            isRustProjectileShadowEnabled();
+        const rustDynamicParityEnabled =
+            rustNpcParityEnabled
+            || rustPlayerParityEnabled
+            || rustGfxParityEnabled
+            || rustProjectileParityEnabled;
+        const rustFullDynamicParityEnabled =
+            isRustFullDynamicShadowEnabled();
+        const rustOverlayParityEnabled =
+            isRustSceneOverlayShadowEnabled();
+        const rustPixelCaptureRequested =
+            getRustRendererShadowDiagnostics(host).enabled
+            && shouldCaptureRustPixelParity(host);
+        const rustPixelReference =
+            rustPixelCaptureRequested
+            && !rustDynamicParityEnabled
+            && !rustOverlayParityEnabled
+                ? capturePicoStaticReference(host, sceneFramebuffer!)
+                : undefined;
+        const rustDynamicPixelCaptureRequested =
+            rustPixelCaptureRequested
+            && rustFullDynamicParityEnabled
+            && !rustOverlayParityEnabled;
+        renderRustStaticShadowFrame(
+            host,
+            {
+                viewMatrix: camera.viewMatrix as Float32Array,
+                projectionMatrix: camera.projectionMatrix as Float32Array,
+            },
+            renderDistance,
+            fogDepth,
+            timeSec,
+            rustPixelReference,
+        );
         host.osrsClient.clientPlugins.beforeSceneRender(host, () => {
             host.renderOpaqueActorPass(playerDataTextureIndex, playerDataTexture);
             host.renderTransparentNpcPass(npcDataTextureIndex, npcDataTexture);
@@ -766,7 +868,9 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         profiler.startPhase("opaqueActor");
         passStartIndices = host._frameIndices;
         passStartBatches = host._frameBatches;
+        beginRustOpaqueActorShadowPass(host);
         host.renderOpaqueActorPass(playerDataTextureIndex, playerDataTexture);
+        completeRustOpaqueActorShadowPass(host);
         opaqueActorIndices = Math.max(0, host._frameIndices - passStartIndices);
         opaqueActorBatches = Math.max(0, host._frameBatches - passStartBatches);
         profiler.endPhase();
@@ -790,6 +894,11 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         passStartIndices = host._frameIndices;
         passStartBatches = host._frameBatches;
         host.renderTransparentPlayerPass(playerDataTextureIndex, playerDataTexture);
+        const rustDynamicPixelReference =
+            rustDynamicPixelCaptureRequested
+                ? capturePicoSceneReference(host, sceneFramebuffer!)
+                : undefined;
+        finishRustActorShadowFrame(host, rustDynamicPixelReference);
         transparentPlayerIndices = Math.max(0, host._frameIndices - passStartIndices);
         transparentPlayerBatches = Math.max(0, host._frameBatches - passStartBatches);
         profiler.endPhase();
@@ -797,13 +906,30 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         try {
             host.drawSceneTileOverlays(time, deltaTime);
         } catch {}
+        const rustOverlayPixelReference =
+            rustPixelCaptureRequested
+            && rustOverlayParityEnabled
+            && (!rustDynamicParityEnabled || rustFullDynamicParityEnabled)
+                ? capturePicoSceneReference(host, sceneFramebuffer!)
+                : undefined;
+        finishRustSceneOverlayShadowFrame(
+            host,
+            rustOverlayPixelReference,
+        );
 
         // Can't sample from the scene renderbuffer, so only blit when the scene pass
         // didn't already render directly into the texture framebuffer.
         profiler.startPhase("blit");
-        if (!directTextureScenePass) {
-            host.app.readFramebuffer(host.framebuffer);
-            host.app.drawFramebuffer(host.textureFramebuffer);
+        if (!rustPrimaryRendererEnabled && !directTextureScenePass) {
+            const legacyFramebuffer = host.framebuffer;
+            const legacyTextureFramebuffer = host.textureFramebuffer;
+            if (!legacyFramebuffer || !legacyTextureFramebuffer) {
+                throw new Error(
+                    "Legacy Pico framebuffers are unavailable while Rust primary is inactive",
+                );
+            }
+            host.app.readFramebuffer(legacyFramebuffer);
+            host.app.drawFramebuffer(legacyTextureFramebuffer);
             host.gl.readBuffer(PicoGL.COLOR_ATTACHMENT0);
             host.app.blitFramebuffer(PicoGL.COLOR_BUFFER_BIT, {
                 srcStartX: 0,
@@ -1353,7 +1479,9 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
                     },
                     helpers: host.getOverlayHelpers(),
                 });
-                host.overlayManager?.draw(RenderPhase.ToFrameTexture);
+                if (!rustPrimaryRendererEnabled) {
+                    host.overlayManager?.draw(RenderPhase.ToFrameTexture);
+                }
             }
         } catch {}
         profiler.endPhase();
@@ -1365,16 +1493,58 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
         profiler.startPhase("present");
         host.app.clearMask(PicoGL.COLOR_BUFFER_BIT | PicoGL.DEPTH_BUFFER_BIT);
-        host.app.clearColor(host.skyColor[0], host.skyColor[1], host.skyColor[2], host.skyColor[3]);
-        host.app.defaultDrawFramebuffer().clear();
+        host.app.defaultDrawFramebuffer();
 
-        if (host.frameFxaaDrawCall && host.fxaaEnabled) {
-            host.frameFxaaDrawCall.uniform("u_resolution", host.resolutionUni);
-            host.frameFxaaDrawCall.texture("u_frame", host.textureFramebuffer.colorAttachments[0]);
-            host.frameFxaaDrawCall.draw();
+        if (rustPrimaryRendererEnabled) {
+            // Rust owns the visible 3D scene in primary mode. Keep the PicoGL
+            // canvas as a transparent input/UI overlay until the UI renderer is
+            // migrated, so menus, hitsplats, interaction halos and other
+            // PostPresent overlays remain fully functional.
+            host.app.clearColor(0.0, 0.0, 0.0, 0.0);
+            host.app.clear();
+
+            // Overhead text normally targets the Pico frame texture before its
+            // scene presentation. Redraw the same phase onto the transparent
+            // overlay surface so it remains visible above the Rust canvas.
+            try {
+                host.overlayManager?.draw(RenderPhase.ToFrameTexture);
+            } catch {}
         } else {
-            host.frameDrawCall.texture("u_frame", host.textureFramebuffer.colorAttachments[0]);
-            host.frameDrawCall.draw();
+            host.app.clearColor(
+                host.skyColor[0],
+                host.skyColor[1],
+                host.skyColor[2],
+                host.skyColor[3],
+            );
+            host.app.clear();
+
+            const legacyTextureFramebuffer = host.textureFramebuffer;
+            if (!legacyTextureFramebuffer) {
+                throw new Error(
+                    "Legacy Pico presentation texture is unavailable while Rust primary is inactive",
+                );
+            }
+            if (host.frameFxaaDrawCall && host.fxaaEnabled) {
+                host.frameFxaaDrawCall.uniform("u_resolution", host.resolutionUni);
+                host.frameFxaaDrawCall.texture(
+                    "u_frame",
+                    legacyTextureFramebuffer.colorAttachments[0],
+                );
+                host.frameFxaaDrawCall.draw();
+            } else {
+                const frameDrawCall = host.frameDrawCall;
+                if (!frameDrawCall) {
+                    throw new Error(
+                        "Legacy Pico frame draw call is unavailable while Rust primary is inactive",
+                    );
+                }
+                frameDrawCall
+                    .texture(
+                        "u_frame",
+                        legacyTextureFramebuffer.colorAttachments[0],
+                    )
+                    .draw();
+            }
         }
         profiler.endPhase();
 

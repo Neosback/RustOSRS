@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../game/sync/PlayerSyncTypes";
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../game/utils/rotation";
 import { AnimationFrames } from "./AnimationFrames";
 import { ChatheadFactory } from "./ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "./DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "./DrawRange";
 import { InteractType } from "./InteractType";
 import { profiler } from "./PerformanceProfiler";
@@ -186,6 +185,7 @@ import {
     createProjectileProgram,
 } from "./shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "./water/WaterTextureIds";
+import { removeRustStaticMap } from "./rust/RustShadowIntegration";
 
 import * as render from "./render";
 import { RENDER_CONSTANTS, TextureFilterMode, HD_SKY_COLOR_VEC4, HD_AUTO_FOG_DEPTH_FACTOR } from "./render/constants";
@@ -331,7 +331,6 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
 
     timer!: Timer;
 
-    hasMultiDraw: boolean = false;
 
     quadPositions?: VertexBuffer;
     quadArray?: VertexArray;
@@ -385,6 +384,15 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
     textureArray?: Texture;
     textureMaterials?: Texture;
     waterTextures?: Texture;
+
+    // CPU mirrors of renderer-global GPU resources. These stay numeric/POD so
+    // the Rust/WASM renderer can consume the exact same bytes without GPU
+    // readback or reconstructing cache textures a second time.
+    public textureArrayPixels?: Uint8Array;
+    public textureMaterialBytes?: Int8Array;
+    public waterTexturePixels?: Uint8Array;
+    public rustGlobalResourcesRevision: number = 0;
+
     waterShadingUnavailable = false;
     waterOverlayColors = new Map<number, [number, number, number]>();
 
@@ -398,7 +406,6 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
     public textureMipmapsLastGenAtMs: number = 0;
     public textureMipmapsDirtyUpdates: number = 0;
 
-    public drawBackend?: DrawBackend;
     // Reusable array for filtered draw ranges (avoids per-frame allocation)
     public drawSubsetBuffer: DrawRange[] = [];
     // Reusable arrays for tickPass (avoids per-frame allocation)
@@ -784,6 +791,7 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
         const previousOnMapRemoved = this.mapManager.onMapRemoved;
         this.mapManager.onMapRemoved = (mapX: number, mapY: number) => {
             this.clearMinimapIconsForMap(mapX | 0, mapY | 0);
+            removeRustStaticMap(this, mapX | 0, mapY | 0);
             if (!previousOnMapRemoved) return;
             try {
                 previousOnMapRemoved(mapX | 0, mapY | 0);
@@ -2311,7 +2319,7 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
     }
 
     public drawWithRoofPlaneFilter(
-        drawCall: DrawCall,
+        drawCall: DrawCall | undefined,
         drawRanges: DrawRange[],
         drawRangePlanes: Uint8Array | undefined,
         roofPlaneLimit: number,
@@ -2387,7 +2395,7 @@ export class WebGLOsrsRenderer extends GameRenderer<WebGLMapSquare> {
 
     public updateAnimatedDrawRanges(
         map: WebGLMapSquare,
-        drawCall: DrawCall,
+        drawCall: DrawCall | undefined,
         drawRanges: DrawRange[],
         transparent: boolean,
         isInteract: boolean,

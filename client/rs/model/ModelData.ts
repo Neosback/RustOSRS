@@ -5,6 +5,17 @@ import { TextureLoader } from "../texture/TextureLoader";
 import { blendLight } from "../util/ColorUtil";
 import { FaceNormal } from "./FaceNormal";
 import { Model } from "./Model";
+import {
+    calculateModelNormalsWithRustIfReady,
+    lightModelFacesWithRustIfReady,
+} from "./RustModelLighting";
+import {
+    contourVerticesWithRustIfReady,
+    mirrorModelGeometryWithRustIfReady,
+    RustBasicTransformMode,
+    transformVerticesWithRustIfReady,
+} from "./RustModelTransforms";
+import { computeTextureCoordsWithRustIfReady } from "./RustTextureMapper";
 import { LegacyModelLoader, LegacyModelMetadata } from "./ModelLoader";
 import { computeTextureCoords } from "./TextureMapper";
 import { VertexNormal } from "./VertexNormal";
@@ -2377,6 +2388,29 @@ export class ModelData extends Entity {
         model.verticesY = this.verticesY;
         model.contourVerticesY = new Int32Array(model.verticesCount);
 
+        const rustContour = contourVerticesWithRustIfReady(
+            this.verticesX,
+            this.verticesY,
+            this.verticesZ,
+            model.usedVertexCount,
+            type,
+            param,
+            heightMap,
+            heightMapAbove,
+            sceneX,
+            sceneHeight,
+            sceneZ,
+            -this.height,
+            this.minY,
+            this.maxY,
+            false,
+        );
+        if (rustContour) {
+            model.contourVerticesY = rustContour;
+            model.invalidate();
+            return model;
+        }
+
         if (type === 1) {
             for (let i = 0; i < model.usedVertexCount; i++) {
                 const vx = this.verticesX[i] + sceneX;
@@ -2609,6 +2643,18 @@ export class ModelData extends Entity {
     }
 
     rotate90(): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_90,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             const temp = this.verticesX[i];
             this.verticesX[i] = this.verticesZ[i];
@@ -2619,6 +2665,18 @@ export class ModelData extends Entity {
     }
 
     rotate180(): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_180,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesX[i] = -this.verticesX[i];
             this.verticesZ[i] = -this.verticesZ[i];
@@ -2628,6 +2686,18 @@ export class ModelData extends Entity {
     }
 
     rotate270(): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_270,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             const temp = this.verticesZ[i];
             this.verticesZ[i] = this.verticesX[i];
@@ -2638,6 +2708,19 @@ export class ModelData extends Entity {
     }
 
     rotate(angle: number): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.ROTATE_ANGLE,
+                angle,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
         const sin = SINE[angle];
         const cos = COSINE[angle];
 
@@ -2651,6 +2734,21 @@ export class ModelData extends Entity {
     }
 
     translate(x: number, y: number, z: number): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.TRANSLATE,
+                x,
+                y,
+                z,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesX[i] += x;
             this.verticesY[i] += y;
@@ -2679,6 +2777,19 @@ export class ModelData extends Entity {
     }
 
     mirror() {
+        if (
+            mirrorModelGeometryWithRustIfReady(
+                this.verticesZ,
+                this.indices1,
+                this.indices3,
+                this.verticesCount,
+                this.faceCount,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
+
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesZ[i] = -this.verticesZ[i];
         }
@@ -2693,6 +2804,21 @@ export class ModelData extends Entity {
     }
 
     resize(resizeX: number, resizeY: number, resizeZ: number): void {
+        if (
+            transformVerticesWithRustIfReady(
+                this.verticesX,
+                this.verticesY,
+                this.verticesZ,
+                this.verticesCount,
+                RustBasicTransformMode.SCALE,
+                resizeX,
+                resizeY,
+                resizeZ,
+            )
+        ) {
+            this.invalidate();
+            return;
+        }
         for (let i = 0; i < this.verticesCount; i++) {
             this.verticesX[i] = ((this.verticesX[i] * resizeX) / 128) | 0;
             this.verticesY[i] = ((this.verticesY[i] * resizeY) / 128) | 0;
@@ -2703,80 +2829,120 @@ export class ModelData extends Entity {
     }
 
     calculateVertexNormals(): void {
-        if (!this.normals) {
-            this.normals = new Array(this.usedVertexCount);
+        if (this.normals) {
+            return;
+        }
 
-            for (let i = 0; i < this.usedVertexCount; i++) {
-                this.normals[i] = new VertexNormal();
+        const verticesY = this.contourVerticesY || this.verticesY;
+        const rustNormals = calculateModelNormalsWithRustIfReady(
+            this.verticesX,
+            verticesY,
+            this.verticesZ,
+            this.usedVertexCount,
+            this.indices1,
+            this.indices2,
+            this.indices3,
+            this.faceRenderTypes,
+        );
+        if (rustNormals) {
+            this.normals = new Array(this.usedVertexCount);
+            for (let vertex = 0; vertex < this.usedVertexCount; vertex++) {
+                const offset = vertex * 4;
+                const normal = new VertexNormal();
+                normal.x = rustNormals.vertexNormals[offset];
+                normal.y = rustNormals.vertexNormals[offset + 1];
+                normal.z = rustNormals.vertexNormals[offset + 2];
+                normal.magnitude = rustNormals.vertexNormals[offset + 3];
+                this.normals[vertex] = normal;
             }
 
-            const verticesY = this.contourVerticesY || this.verticesY;
+            let faceNormals: FaceNormal[] | undefined;
+            for (let face = 0; face < this.faceCount; face++) {
+                const offset = face * 4;
+                if (rustNormals.faceNormals[offset] === 0) {
+                    continue;
+                }
+                faceNormals ??= new Array(this.faceCount);
+                faceNormals[face] = new FaceNormal(
+                    rustNormals.faceNormals[offset + 1],
+                    rustNormals.faceNormals[offset + 2],
+                    rustNormals.faceNormals[offset + 3],
+                );
+            }
+            this.faceNormals = faceNormals;
+            return;
+        }
 
-            for (let i = 0; i < this.faceCount; i++) {
-                const var2 = this.indices1[i];
-                const var3 = this.indices2[i];
-                const var4 = this.indices3[i];
-                const var5 = this.verticesX[var3] - this.verticesX[var2];
-                const var6 = verticesY[var3] - verticesY[var2];
-                const var7 = this.verticesZ[var3] - this.verticesZ[var2];
-                const var8 = this.verticesX[var4] - this.verticesX[var2];
-                const var9 = verticesY[var4] - verticesY[var2];
-                const var10 = this.verticesZ[var4] - this.verticesZ[var2];
-                let var11 = var6 * var10 - var9 * var7;
-                let var12 = var7 * var8 - var10 * var5;
-                let var13 = var5 * var9 - var8 * var6;
+        this.normals = new Array(this.usedVertexCount);
 
-                while (
-                    var11 > 8192 ||
-                    var12 > 8192 ||
-                    var13 > 8192 ||
-                    var11 < -8192 ||
-                    var12 < -8192 ||
-                    var13 < -8192
-                ) {
-                    var11 >>= 1;
-                    var12 >>= 1;
-                    var13 >>= 1;
+        for (let i = 0; i < this.usedVertexCount; i++) {
+            this.normals[i] = new VertexNormal();
+        }
+
+        for (let i = 0; i < this.faceCount; i++) {
+            const var2 = this.indices1[i];
+            const var3 = this.indices2[i];
+            const var4 = this.indices3[i];
+            const var5 = this.verticesX[var3] - this.verticesX[var2];
+            const var6 = verticesY[var3] - verticesY[var2];
+            const var7 = this.verticesZ[var3] - this.verticesZ[var2];
+            const var8 = this.verticesX[var4] - this.verticesX[var2];
+            const var9 = verticesY[var4] - verticesY[var2];
+            const var10 = this.verticesZ[var4] - this.verticesZ[var2];
+            let var11 = var6 * var10 - var9 * var7;
+            let var12 = var7 * var8 - var10 * var5;
+            let var13 = var5 * var9 - var8 * var6;
+
+            while (
+                var11 > 8192 ||
+                var12 > 8192 ||
+                var13 > 8192 ||
+                var11 < -8192 ||
+                var12 < -8192 ||
+                var13 < -8192
+            ) {
+                var11 >>= 1;
+                var12 >>= 1;
+                var13 >>= 1;
+            }
+
+            let var14 = Math.sqrt(var11 * var11 + var12 * var12 + var13 * var13) | 0;
+            if (var14 <= 0) {
+                var14 = 1;
+            }
+
+            var11 = ((var11 * 256) / var14) | 0;
+            var12 = ((var12 * 256) / var14) | 0;
+            var13 = ((var13 * 256) / var14) | 0;
+            let type;
+            if (!this.faceRenderTypes) {
+                type = 0;
+            } else {
+                type = this.faceRenderTypes[i];
+            }
+
+            if (type === 0) {
+                let normal = this.normals[var2];
+                normal.x += var11;
+                normal.y += var12;
+                normal.z += var13;
+                normal.magnitude++;
+                normal = this.normals[var3];
+                normal.x += var11;
+                normal.y += var12;
+                normal.z += var13;
+                normal.magnitude++;
+                normal = this.normals[var4];
+                normal.x += var11;
+                normal.y += var12;
+                normal.z += var13;
+                normal.magnitude++;
+            } else if (type === 1) {
+                if (!this.faceNormals) {
+                    this.faceNormals = new Array(this.faceCount);
                 }
 
-                let var14 = Math.sqrt(var11 * var11 + var12 * var12 + var13 * var13) | 0;
-                if (var14 <= 0) {
-                    var14 = 1;
-                }
-
-                var11 = ((var11 * 256) / var14) | 0;
-                var12 = ((var12 * 256) / var14) | 0;
-                var13 = ((var13 * 256) / var14) | 0;
-                let type;
-                if (!this.faceRenderTypes) {
-                    type = 0;
-                } else {
-                    type = this.faceRenderTypes[i];
-                }
-
-                if (type === 0) {
-                    let normal = this.normals[var2];
-                    normal.x += var11;
-                    normal.y += var12;
-                    normal.z += var13;
-                    normal.magnitude++;
-                    normal = this.normals[var3];
-                    normal.x += var11;
-                    normal.y += var12;
-                    normal.z += var13;
-                    normal.magnitude++;
-                    normal = this.normals[var4];
-                    normal.x += var11;
-                    normal.y += var12;
-                    normal.z += var13;
-                    normal.magnitude++;
-                } else if (type === 1) {
-                    if (!this.faceNormals) {
-                        this.faceNormals = new Array(this.faceCount);
-                    }
-
-                    this.faceNormals[i] = new FaceNormal(var11, var12, var13);
-                }
+                this.faceNormals[i] = new FaceNormal(var11, var12, var13);
             }
         }
     }
@@ -2865,7 +3031,6 @@ export class ModelData extends Entity {
         model.faceColors3 = new Int32Array(this.faceCount);
         model.faceColors = this.faceColors;
 
-        model.uvs = computeTextureCoords(textureLoader, this);
         if (this.faceTextures) {
             model.faceTextures = new Int16Array(this.faceCount);
             for (let i = 0; i < this.faceCount; i++) {
@@ -2876,8 +3041,12 @@ export class ModelData extends Entity {
                     model.faceTextures[i] = -1;
                 }
             }
+            model.uvs =
+                computeTextureCoordsWithRustIfReady(this, model.faceTextures)
+                ?? computeTextureCoords(textureLoader, this);
         } else {
             model.faceTextures = undefined;
+            model.uvs = undefined;
         }
         if (this.textureFaceCount > 0 && this.textureCoords) {
             const textureCoords = new Int32Array(this.textureFaceCount);
@@ -2923,137 +3092,204 @@ export class ModelData extends Entity {
             }
         }
 
-        for (let i = 0; i < this.faceCount; i++) {
-            let type;
-            if (!this.faceRenderTypes) {
-                type = 0;
-            } else {
-                type = this.faceRenderTypes[i];
+        const rustVertexNormals = new Int32Array(this.usedVertexCount * 4);
+        for (let vertex = 0; vertex < this.usedVertexCount; vertex++) {
+            const normal = this.normals[vertex];
+            const offset = vertex * 4;
+            rustVertexNormals[offset] = normal.x;
+            rustVertexNormals[offset + 1] = normal.y;
+            rustVertexNormals[offset + 2] = normal.z;
+            rustVertexNormals[offset + 3] = normal.magnitude;
+        }
+
+        let rustMergedNormals: Int32Array | undefined;
+        if (this.mergedNormals) {
+            rustMergedNormals = new Int32Array(this.usedVertexCount * 5);
+            for (let vertex = 0; vertex < this.usedVertexCount; vertex++) {
+                const normal = this.mergedNormals[vertex];
+                if (!normal) {
+                    continue;
+                }
+                const offset = vertex * 5;
+                rustMergedNormals[offset] = 1;
+                rustMergedNormals[offset + 1] = normal.x;
+                rustMergedNormals[offset + 2] = normal.y;
+                rustMergedNormals[offset + 3] = normal.z;
+                rustMergedNormals[offset + 4] = normal.magnitude;
             }
+        }
 
-            let alpha;
-            if (this.faceAlphas) {
-                alpha = this.faceAlphas[i];
-            } else {
-                alpha = 0;
+        const rustFaceNormals = new Int32Array(this.faceCount * 4);
+        if (this.faceNormals) {
+            for (let face = 0; face < this.faceCount; face++) {
+                const normal = this.faceNormals[face];
+                if (!normal) {
+                    continue;
+                }
+                const offset = face * 4;
+                rustFaceNormals[offset] = 1;
+                rustFaceNormals[offset + 1] = normal.x;
+                rustFaceNormals[offset + 2] = normal.y;
+                rustFaceNormals[offset + 3] = normal.z;
             }
+        }
 
-            let texture;
-            if (model.faceTextures) {
-                texture = model.faceTextures[i];
-            } else {
-                texture = -1;
+        const rustLighting = lightModelFacesWithRustIfReady(
+            this.indices1,
+            this.indices2,
+            this.indices3,
+            this.faceColors,
+            this.faceRenderTypes,
+            this.faceAlphas,
+            model.faceTextures,
+            rustVertexNormals,
+            rustMergedNormals,
+            rustFaceNormals,
+            ambient,
+            contrast,
+            lightX,
+            lightY,
+            lightZ,
+        );
+        if (rustLighting) {
+            for (let face = 0, offset = 0; face < this.faceCount; face++) {
+                model.faceColors1[face] = rustLighting[offset++];
+                model.faceColors2[face] = rustLighting[offset++];
+                model.faceColors3[face] = rustLighting[offset++];
             }
+        } else {
+            for (let i = 0; i < this.faceCount; i++) {
+                let type;
+                if (!this.faceRenderTypes) {
+                    type = 0;
+                } else {
+                    type = this.faceRenderTypes[i];
+                }
 
-            if (alpha === -2) {
-                type = 3;
-            }
+                let alpha;
+                if (this.faceAlphas) {
+                    alpha = this.faceAlphas[i];
+                } else {
+                    alpha = 0;
+                }
 
-            if (alpha === -1) {
-                type = 2;
-            }
+                let texture;
+                if (model.faceTextures) {
+                    texture = model.faceTextures[i];
+                } else {
+                    texture = -1;
+                }
 
-            if (texture === -1) {
-                if (type === 0) {
-                    const color = this.faceColors[i] & 0xffff;
+                if (alpha === -2) {
+                    type = 3;
+                }
 
+                if (alpha === -1) {
+                    type = 2;
+                }
+
+                if (texture === -1) {
+                    if (type === 0) {
+                        const color = this.faceColors[i] & 0xffff;
+
+                        let normal: VertexNormal;
+                        if (this.mergedNormals && this.mergedNormals[this.indices1[i]]) {
+                            normal = this.mergedNormals[this.indices1[i]];
+                        } else {
+                            normal = this.normals[this.indices1[i]];
+                        }
+                        let var14 =
+                            (ambient +
+                                (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
+                                    (lightIntensity * normal.magnitude)) <<
+                            17;
+                        model.faceColors1[i] = var14 | ModelData.adjustLightness(color, var14 >> 17);
+
+                        if (this.mergedNormals && this.mergedNormals[this.indices2[i]]) {
+                            normal = this.mergedNormals[this.indices2[i]];
+                        } else {
+                            normal = this.normals[this.indices2[i]];
+                        }
+                        var14 =
+                            (ambient +
+                                (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
+                                    (lightIntensity * normal.magnitude)) <<
+                            17;
+                        model.faceColors2[i] = var14 | ModelData.adjustLightness(color, var14 >> 17);
+
+                        if (this.mergedNormals && this.mergedNormals[this.indices3[i]]) {
+                            normal = this.mergedNormals[this.indices3[i]];
+                        } else {
+                            normal = this.normals[this.indices3[i]];
+                        }
+                        var14 =
+                            (ambient +
+                                (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
+                                    (lightIntensity * normal.magnitude)) <<
+                            17;
+                        model.faceColors3[i] = var14 | ModelData.adjustLightness(color, var14 >> 17);
+                    } else if (type === 1 && this.faceNormals) {
+                        const normal = this.faceNormals[i];
+                        const var14 =
+                            (ambient +
+                                (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
+                                    ((lightIntensity >> 1) + lightIntensity)) <<
+                            17;
+                        model.faceColors1[i] =
+                            var14 | ModelData.adjustLightness(this.faceColors[i] & 0xffff, var14 >> 17);
+                        model.faceColors3[i] = -1;
+                    } else if (type === 3) {
+                        model.faceColors1[i] = 128;
+                        model.faceColors3[i] = -1;
+                    } else {
+                        model.faceColors3[i] = -2;
+                    }
+                } else if (type === 0) {
                     let normal: VertexNormal;
                     if (this.mergedNormals && this.mergedNormals[this.indices1[i]]) {
                         normal = this.mergedNormals[this.indices1[i]];
                     } else {
                         normal = this.normals[this.indices1[i]];
                     }
-                    let var14 =
-                        (ambient +
-                            (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
-                                (lightIntensity * normal.magnitude)) <<
-                        17;
-                    model.faceColors1[i] = var14 | ModelData.adjustLightness(color, var14 >> 17);
 
+                    let var14 =
+                        ambient +
+                        (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
+                            (lightIntensity * normal.magnitude);
+                    model.faceColors1[i] = ModelData.clampLightness(var14);
                     if (this.mergedNormals && this.mergedNormals[this.indices2[i]]) {
                         normal = this.mergedNormals[this.indices2[i]];
                     } else {
                         normal = this.normals[this.indices2[i]];
                     }
-                    var14 =
-                        (ambient +
-                            (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
-                                (lightIntensity * normal.magnitude)) <<
-                        17;
-                    model.faceColors2[i] = var14 | ModelData.adjustLightness(color, var14 >> 17);
 
+                    var14 =
+                        ambient +
+                        (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
+                            (lightIntensity * normal.magnitude);
+                    model.faceColors2[i] = ModelData.clampLightness(var14);
                     if (this.mergedNormals && this.mergedNormals[this.indices3[i]]) {
                         normal = this.mergedNormals[this.indices3[i]];
                     } else {
                         normal = this.normals[this.indices3[i]];
                     }
+
                     var14 =
-                        (ambient +
-                            (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
-                                (lightIntensity * normal.magnitude)) <<
-                        17;
-                    model.faceColors3[i] = var14 | ModelData.adjustLightness(color, var14 >> 17);
+                        ambient +
+                        (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
+                            (lightIntensity * normal.magnitude);
+                    model.faceColors3[i] = ModelData.clampLightness(var14);
                 } else if (type === 1 && this.faceNormals) {
                     const normal = this.faceNormals[i];
                     const var14 =
-                        (ambient +
-                            (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
-                                ((lightIntensity >> 1) + lightIntensity)) <<
-                        17;
-                    model.faceColors1[i] =
-                        var14 | ModelData.adjustLightness(this.faceColors[i] & 0xffff, var14 >> 17);
-                    model.faceColors3[i] = -1;
-                } else if (type === 3) {
-                    model.faceColors1[i] = 128;
+                        ambient +
+                        (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
+                            ((lightIntensity >> 1) + lightIntensity);
+                    model.faceColors1[i] = ModelData.clampLightness(var14);
                     model.faceColors3[i] = -1;
                 } else {
                     model.faceColors3[i] = -2;
                 }
-            } else if (type === 0) {
-                let normal: VertexNormal;
-                if (this.mergedNormals && this.mergedNormals[this.indices1[i]]) {
-                    normal = this.mergedNormals[this.indices1[i]];
-                } else {
-                    normal = this.normals[this.indices1[i]];
-                }
-
-                let var14 =
-                    ambient +
-                    (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
-                        (lightIntensity * normal.magnitude);
-                model.faceColors1[i] = ModelData.clampLightness(var14);
-                if (this.mergedNormals && this.mergedNormals[this.indices2[i]]) {
-                    normal = this.mergedNormals[this.indices2[i]];
-                } else {
-                    normal = this.normals[this.indices2[i]];
-                }
-
-                var14 =
-                    ambient +
-                    (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
-                        (lightIntensity * normal.magnitude);
-                model.faceColors2[i] = ModelData.clampLightness(var14);
-                if (this.mergedNormals && this.mergedNormals[this.indices3[i]]) {
-                    normal = this.mergedNormals[this.indices3[i]];
-                } else {
-                    normal = this.normals[this.indices3[i]];
-                }
-
-                var14 =
-                    ambient +
-                    (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
-                        (lightIntensity * normal.magnitude);
-                model.faceColors3[i] = ModelData.clampLightness(var14);
-            } else if (type === 1 && this.faceNormals) {
-                const normal = this.faceNormals[i];
-                const var14 =
-                    ambient +
-                    (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
-                        ((lightIntensity >> 1) + lightIntensity);
-                model.faceColors1[i] = ModelData.clampLightness(var14);
-                model.faceColors3[i] = -1;
-            } else {
-                model.faceColors3[i] = -2;
             }
         }
 

@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../../game/sync/PlayerSyncTypes";
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../game/utils/rotation";
 import { AnimationFrames } from "../AnimationFrames";
 import { ChatheadFactory } from "../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
 import { profiler } from "../PerformanceProfiler";
@@ -186,6 +185,10 @@ import {
     createProjectileProgram,
 } from "../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
+import {
+    isRustPrimaryRendererActive,
+    mirrorRustActorData,
+} from "../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
 import { RENDER_CONSTANTS } from "./constants";
 
@@ -218,25 +221,45 @@ export function updateActorDataTexture(host: WebGLOsrsRendererHost, ) {
             checksum = (checksum * 31 + data[i]) | 0;
         }
 
-        // If data hasn't changed and texture size matches, reuse current texture
+        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(host);
+
+        // Rust-primary consumes the CPU actor buffer directly. Any Pico actor-data
+        // textures that were materialized during legacy fallback are released again
+        // once Rust resumes primary ownership.
+        if (rustPrimaryRendererEnabled) {
+            for (let i = 0; i < host.actorDataTextures.length; i++) {
+                host.actorDataTextures[i]?.delete();
+                host.actorDataTextures[i] = undefined;
+            }
+            host.actorDataTextureBuffer[0] = undefined;
+        }
+
+        // If data hasn't changed and the current backend already has the expected
+        // actor-data dimensions, reuse it without another Rust/Pico upload.
         const currentTex = host.actorDataTextures[host.actorDataCurrentIndex];
         if (
             checksum === host.actorDataChecksum &&
             texHeight === host.actorDataLastTexHeight &&
-            currentTex
+            (rustPrimaryRendererEnabled || currentTex)
         ) {
-            // Keep legacy buffer in sync for any code that references it
-            host.actorDataTextureBuffer[0] = currentTex;
+            if (currentTex) {
+                host.actorDataTextureBuffer[0] = currentTex;
+            }
             return 0;
         }
 
-        // Data changed - write to the OTHER texture, then swap
         host.actorDataChecksum = checksum;
         host.actorDataLastTexHeight = texHeight;
 
         const writeIndex = 1 - host.actorDataCurrentIndex;
         const uploadView = host.actorRenderData.subarray(0, requiredU16);
 
+        if (rustPrimaryRendererEnabled) {
+            mirrorRustActorData(host, uploadView, texWidth, texHeight);
+            return 0;
+        }
+
+        // Legacy/shadow mode keeps the existing Pico double-buffered texture path.
         let writeTex = host.actorDataTextures[writeIndex];
         if (!writeTex) {
             writeTex = host.app.createTexture2D(uploadView, texWidth, texHeight, {
@@ -258,6 +281,10 @@ export function updateActorDataTexture(host: WebGLOsrsRendererHost, ) {
 
         // Keep legacy buffer in sync for any code that references it
         host.actorDataTextureBuffer[0] = writeTex;
+
+        // Reuse the existing PicoGL checksum/size gate above: Rust only
+        // receives actor data when the live actor texture was actually updated.
+        mirrorRustActorData(host, uploadView, texWidth, texHeight);
         return 0;
     
 }
@@ -277,7 +304,7 @@ export function _accumulate(host: WebGLOsrsRendererHost, drawRanges: DrawRange[]
 
 export function configureDrawCall(host: WebGLOsrsRendererHost, drawCall: DrawCall): DrawCall {
         host.osrsClient.clientPlugins.configureSceneDrawCall(host, drawCall);
-        return host.drawBackend ? host.drawBackend.configureDrawCall(drawCall) : drawCall;
+        return drawCall.uniform("u_drawIdOverride", -1);
     
 }
 
@@ -296,16 +323,35 @@ export function draw(host: WebGLOsrsRendererHost, drawCall: DrawCall, drawRanges
             host._accumulate(drawRanges);
         }
 
-        if (host.drawBackend) {
-            host.drawBackend.draw(drawCall, drawRanges, drawIndices);
-        } else {
-            drawCall.draw();
+        if (isRustPrimaryRendererActive(host)) {
+            return;
         }
+
+        drawCall.uniform("u_drawIdOverride", -1);
+        if (drawIndices && drawIndices.length > 0) {
+            for (let i = 0; i < drawIndices.length; i++) {
+                const originalIndex = drawIndices[i] | 0;
+                const range = drawRanges[originalIndex];
+                if (!range || (range[1] | 0) <= 0 || (range[2] | 0) <= 0) continue;
+                drawCall.uniform("u_drawIdOverride", originalIndex);
+                (drawCall as any).drawRanges(range);
+                drawCall.draw();
+            }
+        } else {
+            for (let i = 0; i < drawRanges.length; i++) {
+                const range = drawRanges[i];
+                if (!range || (range[1] | 0) <= 0 || (range[2] | 0) <= 0) continue;
+                drawCall.uniform("u_drawIdOverride", i);
+                (drawCall as any).drawRanges(range);
+                drawCall.draw();
+            }
+        }
+        drawCall.uniform("u_drawIdOverride", -1);
     
 }
 
 export function drawWithRoofPlaneFilter(host: WebGLOsrsRendererHost, 
-        drawCall: DrawCall,
+        drawCall: DrawCall | undefined,
         drawRanges: DrawRange[],
         drawRangePlanes: Uint8Array | undefined,
         roofPlaneLimit: number,
@@ -318,7 +364,11 @@ export function drawWithRoofPlaneFilter(host: WebGLOsrsRendererHost,
         }
 
         if (!drawRangePlanes || roofPlaneLimit >= 3) {
-            host.draw(drawCall, drawRanges);
+            if (drawCall) {
+                host.draw(drawCall, drawRanges);
+            } else {
+                host._accumulate(drawRanges);
+            }
             return;
         }
 
@@ -341,10 +391,23 @@ export function drawWithRoofPlaneFilter(host: WebGLOsrsRendererHost,
             return;
         }
         if (visibleRanges >= totalRanges) {
-            host.draw(drawCall, drawRanges);
+            if (drawCall) {
+                host.draw(drawCall, drawRanges);
+            } else {
+                host._accumulate(drawRanges);
+            }
             return;
         }
-        host.draw(drawCall, drawRanges, filtered);
+        if (drawCall) {
+            host.draw(drawCall, drawRanges, filtered);
+            return;
+        }
+
+        host._frameBatches += visibleRanges;
+        for (let i = 0; i < visibleRanges; i++) {
+            const range = drawRanges[filtered[i]] as DrawRange | undefined;
+            host._frameIndices += (range?.[1] ?? 0) * (range?.[2] ?? 1);
+        }
     
 }
 
@@ -510,7 +573,7 @@ export function getFrameOverheadPrayerMaxEntries(host: WebGLOsrsRendererHost, ):
 
 export function updateAnimatedDrawRanges(host: WebGLOsrsRendererHost, 
         map: WebGLMapSquare,
-        drawCall: DrawCall,
+        drawCall: DrawCall | undefined,
         drawRanges: DrawRange[],
         transparent: boolean,
         isInteract: boolean,
@@ -537,9 +600,14 @@ export function updateAnimatedDrawRanges(host: WebGLOsrsRendererHost,
                 continue;
             }
 
-            drawCall.offsets[index] = frame[0];
-            (drawCall as any).numElements[index] = frame[1];
+            // CPU draw-range metadata is authoritative for both Rust packets and
+            // legacy Pico rendering. Keep the Pico draw-call arrays synchronized
+            // only when a legacy GPU draw call has been materialized.
             drawRanges[index] = frame;
+            if (drawCall) {
+                drawCall.offsets[index] = frame[0];
+                (drawCall as any).numElements[index] = frame[1];
+            }
         }
     
 }

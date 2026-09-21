@@ -47,6 +47,14 @@ export class RenderDataWorkerPool {
         }
     }
 
+    setRustStage5ForceTypeScript(force: boolean): Promise<void> {
+        return this.runAll((w) => w.setRustStage5ForceTypeScript(force));
+    }
+
+    setRustStage5StrictMode(strict: boolean): Promise<void> {
+        return this.runAll((w) => w.setRustStage5StrictMode(strict));
+    }
+
     setNpcInstances(instances: NpcInstance[]): Promise<void> {
         const copy = Array.isArray(instances) ? instances.slice() : [];
         return this.runAll((w) => w.setNpcInstances(copy));

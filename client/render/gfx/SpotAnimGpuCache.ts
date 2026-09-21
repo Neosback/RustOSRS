@@ -1,6 +1,7 @@
 import PicoGL, { DrawCall } from "picogl";
 
 import type { WebGLOsrsRenderer } from "../WebGLOsrsRenderer";
+import { isRustPrimaryRendererActive } from "../rust/RustShadowIntegration";
 import { GfxCache } from "./GfxCache";
 
 export type SpotAnimGpuRecord = {
@@ -37,6 +38,7 @@ export class SpotAnimGpuCache {
         programKey: string,
         program: any,
     ): SpotAnimGpuRecord | undefined {
+        if (isRustPrimaryRendererActive(this.renderer)) return undefined;
         if (!program) return undefined;
 
         const key = `${spotId | 0}|${frameIdx | 0}|${transparent ? 1 : 0}|${SPOT_ANIM_GPU_CACHE_VERSION}`;

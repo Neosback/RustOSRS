@@ -4,6 +4,10 @@ import { DrawCall, Texture } from "picogl";
 import type { WebGLMapSquare } from "../WebGLMapSquare";
 import type { WebGLOsrsRenderer } from "../WebGLOsrsRenderer";
 import type { GfxCache } from "../gfx/GfxCache";
+import {
+    isRustPrimaryRendererActive,
+    mirrorRustProjectileGeometry,
+} from "../rust/RustShadowIntegration";
 import type { SpotAnimGpuCache, SpotAnimGpuRecord } from "../gfx/SpotAnimGpuCache";
 import { sampleBridgeHeightForWorldTile } from "../../game/scene/BridgeHeightSampler";
 import { BridgePlaneStrategy } from "../../game/scene/PlaneResolver";
@@ -180,12 +184,14 @@ export class ProjectileRenderer {
         actorDataTexture: Texture | undefined,
         pass: Pass,
     ): void {
-        if (!this.refreshSpotAnimCaches() || !this.gfxCache || !actorDataTexture) return;
+        this.refreshSpotAnimCaches();
+        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(this.renderer);
+        if (!this.gfxCache || (!rustPrimaryRendererEnabled && !actorDataTexture)) return;
         if (!map.projectileDataTextureOffsets || baseOffset === -1) return;
 
         const transparent = pass === "alpha";
         const prog = this.getProjectileProgram(transparent);
-        if (!prog) return;
+        if (!rustPrimaryRendererEnabled && (!this.gpuCache || !prog)) return;
 
         // Get projectiles in this map region
         const projectiles = this.projectileManager.getProjectilesForMap(map.mapX, map.mapY);
@@ -196,30 +202,41 @@ export class ProjectileRenderer {
 
         // Glow projectiles use nested translucent shells. Keep depth testing against
         // the scene, but let every shell blend instead of the outer one hiding the rest.
-        if (transparent) app.depthMask(false);
+        if (transparent && !rustPrimaryRendererEnabled) app.depthMask(false);
 
         const mapWorldX = map.mapX << 13;
         const mapWorldY = map.mapY << 13;
 
         for (const group of groups.values()) {
-            const vaoRec = this.getOrCreateSpotAnimGpu(
+            const rustGeometry = this.gfxCache.ensureFrameGeometry(
                 group.spotId,
                 group.frameIdx,
                 transparent,
-                prog,
             );
-            if (!vaoRec) {
+            if (!rustGeometry || (rustGeometry.indices.length | 0) <= 0) {
                 continue;
             }
 
             const subOffset = vec2.create();
-            const dc = this.configureProjectileDrawCall(
-                vaoRec.drawCall,
-                map,
-                baseOffset,
-                actorDataTexture,
-                subOffset,
-            );
+            let dc: DrawCall | undefined;
+            if (!rustPrimaryRendererEnabled) {
+                const vaoRec = this.getOrCreateSpotAnimGpu(
+                    group.spotId,
+                    group.frameIdx,
+                    transparent,
+                    prog,
+                );
+                if (!vaoRec) {
+                    continue;
+                }
+                dc = this.configureProjectileDrawCall(
+                    vaoRec.drawCall,
+                    map,
+                    baseOffset,
+                    actorDataTexture as Texture,
+                    subOffset,
+                );
+            }
 
             for (const slot of group.slots) {
                 const proj = projectiles[slot];
@@ -229,18 +246,35 @@ export class ProjectileRenderer {
                 const fracX = relativeXf - Math.floor(relativeXf);
                 const fracY = relativeYf - Math.floor(relativeYf);
 
-                dc.uniform("u_drawIdOverride", slot | 0);
-                dc.uniform("u_modelYOffset", this.resolveModelYOffset(proj, pos));
+                const modelYOffset = this.resolveModelYOffset(proj, pos);
                 vec2.set(subOffset, fracX, fracY);
-                dc.uniform("u_projectileSubOffset", subOffset);
-                dc.draw();
+                if (dc) {
+                    dc.uniform("u_drawIdOverride", slot | 0);
+                    dc.uniform("u_modelYOffset", modelYOffset);
+                    dc.uniform("u_projectileSubOffset", subOffset);
+                    dc.draw();
+                }
+
+                mirrorRustProjectileGeometry(
+                    this.renderer,
+                    map,
+                    rustGeometry.vertices,
+                    rustGeometry.indices,
+                    (baseOffset + slot) | 0,
+                    modelYOffset,
+                    subOffset as Float32Array,
+                    transparent,
+                    !!(this.renderer as any).cullBackFace,
+                );
             }
 
-            dc.uniform("u_drawIdOverride", -1);
-            vec2.set(subOffset, 0, 0);
-            dc.uniform("u_projectileSubOffset", subOffset);
+            if (dc) {
+                dc.uniform("u_drawIdOverride", -1);
+                vec2.set(subOffset, 0, 0);
+                dc.uniform("u_projectileSubOffset", subOffset);
+            }
         }
 
-        if (transparent) app.depthMask(true);
+        if (transparent && !rustPrimaryRendererEnabled) app.depthMask(true);
     }
 }

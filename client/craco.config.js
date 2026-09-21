@@ -15,11 +15,7 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 
 const JsonMinimizerPlugin = require("json-minimizer-webpack-plugin");
-const evalSourceMapMiddleware = require("react-dev-utils/evalSourceMapMiddleware");
-const noopServiceWorkerMiddleware = require("react-dev-utils/noopServiceWorkerMiddleware");
-const redirectServedPath = require("react-dev-utils/redirectServedPathMiddleware");
 const paths = require("react-scripts/config/paths");
-const express = require("express");
 
 // This package IS the CRA app root (sibling of ../server and ../docs).
 const appRoot = __dirname;
@@ -35,16 +31,26 @@ paths.appBuild = path.resolve(appRoot, "build");
 // WebRTC clients cannot fetch custom interfaces from the signalling relay.
 // Export the same definitions that the server plugins register, rather than maintaining
 // a second list in the browser build.
-const interfaceOutput = path.join(paths.appPublic, "browser-host/interfaces");
-fs.mkdirSync(interfaceOutput, { recursive: true });
-const browserHostInterfaces = JSON.parse(
-    execFileSync(process.execPath, [path.join(appRoot, "node_modules/tsx/dist/cli.mjs"), "scripts/browser-host-interface-definitions.ts"], {
-        cwd: path.resolve(appRoot, "../server"),
-        encoding: "utf8",
-    }),
+const serverRoot = path.resolve(appRoot, "../server");
+const interfaceScript = path.join(
+    serverRoot,
+    "scripts/browser-host-interface-definitions.ts",
 );
-for (const definition of browserHostInterfaces) {
-    fs.writeFileSync(path.join(interfaceOutput, `${definition.groupId}.json`), JSON.stringify(definition));
+if (fs.existsSync(interfaceScript)) {
+    const interfaceOutput = path.join(paths.appPublic, "browser-host/interfaces");
+    fs.mkdirSync(interfaceOutput, { recursive: true });
+    const browserHostInterfaces = JSON.parse(
+        execFileSync(process.execPath, [require.resolve("tsx/cli"), interfaceScript], {
+            cwd: serverRoot,
+            encoding: "utf8",
+        }),
+    );
+    for (const definition of browserHostInterfaces) {
+        fs.writeFileSync(
+            path.join(interfaceOutput, `${definition.groupId}.json`),
+            JSON.stringify(definition),
+        );
+    }
 }
 
 module.exports = {
@@ -152,6 +158,11 @@ module.exports = {
         },
     },
     devServer: (devServerConfig) => {
+        const evalSourceMapMiddleware = require("react-dev-utils/evalSourceMapMiddleware");
+        const noopServiceWorkerMiddleware = require("react-dev-utils/noopServiceWorkerMiddleware");
+        const redirectServedPath = require("react-dev-utils/redirectServedPathMiddleware");
+        const express = require("express");
+
         delete devServerConfig.onBeforeSetupMiddleware;
         delete devServerConfig.onAfterSetupMiddleware;
 

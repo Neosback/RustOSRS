@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../../../game/sync/PlayerSyncType
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../../game/utils/rotation";
 import { AnimationFrames } from "../../AnimationFrames";
 import { ChatheadFactory } from "../../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../DrawRange";
 import { InteractType } from "../../InteractType";
 import { profiler } from "../../PerformanceProfiler";
@@ -268,8 +267,10 @@ export function initMaterialsTexture(host: WebGLOsrsRendererHost, ): void {
             }
         }
 
+        host.textureMaterialBytes = data;
+        host.rustGlobalResourcesRevision++;
         host.textureMaterials = host.app.createTexture2D(
-            data,
+            host.textureMaterialBytes,
             textureCount,
             MATERIAL_TEXTURE_ROWS,
             {

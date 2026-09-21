@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../../game/sync/PlayerSyncTypes";
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../game/utils/rotation";
 import { AnimationFrames } from "../AnimationFrames";
 import { ChatheadFactory } from "../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
 import { profiler } from "../PerformanceProfiler";
@@ -186,6 +185,10 @@ import {
     createProjectileProgram,
 } from "../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
+import {
+    isRustPrimaryRendererEnabled,
+    mirrorRustGroundItemGeometry,
+} from "../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
 import { RENDER_CONSTANTS } from "./constants";
 
@@ -299,6 +302,7 @@ export function rebuildGroundItemsForMap(host: WebGLOsrsRendererHost,
 
         if (!data) {
             map.clearGroundItemGeometry();
+            mirrorRustGroundItemGeometry(host, map.id | 0);
             return (objModelLoader.modelLoader?.missCount ?? 0) > missesBefore;
         }
 
@@ -326,7 +330,9 @@ export function rebuildGroundItemsForMap(host: WebGLOsrsRendererHost,
             host.waterTextures,
             host.sceneUniformBuffer,
             data,
+            !isRustPrimaryRendererEnabled(),
         );
+        mirrorRustGroundItemGeometry(host, map.id | 0, data);
         return false;
     
 }

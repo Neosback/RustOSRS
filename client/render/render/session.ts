@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../../game/sync/PlayerSyncTypes";
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../game/utils/rotation";
 import { AnimationFrames } from "../AnimationFrames";
 import { ChatheadFactory } from "../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
 import { profiler } from "../PerformanceProfiler";
@@ -186,6 +185,7 @@ import {
     createProjectileProgram,
 } from "../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
+import { disposeRustRendererShadow } from "../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
 import { RENDER_CONSTANTS } from "./constants";
 import { cleanUpRenderer } from "./handlers";
@@ -273,6 +273,7 @@ export function clearSessionCaches(host: WebGLOsrsRendererHost, ): void {
 export async function cleanUp(host: WebGLOsrsRendererHost, ): Promise<void> {
 
         cleanUpRenderer(host);
+        disposeRustRendererShadow(host);
         host.canvas.removeEventListener("touchstart", host.onCanvasTouchStart, true);
         if (isMobileMode && typeof window !== "undefined") {
             window.removeEventListener("resize", host.onMobileLoginViewportChange);
@@ -341,8 +342,11 @@ export async function cleanUp(host: WebGLOsrsRendererHost, ): Promise<void> {
         host.waterTextures?.delete();
         host.waterTextures = undefined;
 
-        host.drawBackend?.dispose();
-        host.drawBackend = undefined;
+        host.textureArrayPixels = undefined;
+        host.textureMaterialBytes = undefined;
+        host.waterTexturePixels = undefined;
+        host.rustGlobalResourcesRevision++;
+
 
         for (const texture of host.actorDataTextures) {
             texture?.delete();

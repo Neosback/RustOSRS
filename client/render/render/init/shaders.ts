@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../../../game/sync/PlayerSyncType
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../../game/utils/rotation";
 import { AnimationFrames } from "../../AnimationFrames";
 import { ChatheadFactory } from "../../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../DrawRange";
 import { InteractType } from "../../InteractType";
 import { profiler } from "../../PerformanceProfiler";
@@ -185,6 +184,7 @@ import {
     createPlayerProgram,
     createProjectileProgram,
 } from "../../shaders/Shaders";
+import { isRustPrimaryRuntime } from "../../rust/RustRendererRuntime";
 import { KNOWN_WATER_TEXTURE_IDS } from "../../water/WaterTextureIds";
 import type { WebGLOsrsRendererHost } from "../hostInterface";
 import { RENDER_CONSTANTS } from "../constants";
@@ -211,7 +211,7 @@ function fitPortraitParams(model: any, params: any): any {
 
 export async function initShaders(host: WebGLOsrsRendererHost, ): Promise<Program[]> {
 
-        const supportsMultiDraw = host.drawBackend?.supportsMultiDraw ?? false;
+        const supportsMultiDraw = false;
         // Create FXAA separately so a Metal/ANGLE link failure on iOS Safari
         // cannot reject the entire program batch (player/NPC/etc.).
         const programs = await host.app.createPrograms(
@@ -270,17 +270,25 @@ export async function initShaders(host: WebGLOsrsRendererHost, ): Promise<Progra
         host.hoverLineProgram = hoverLineProgram;
         host.hitsplatProgram = hitsplatProgram;
 
-        host.frameDrawCall = host.app.createDrawCall(frameProgram, host.quadArray);
+        const rustPrimaryRequested = isRustPrimaryRuntime();
+        host.frameDrawCall = rustPrimaryRequested
+            ? undefined
+            : host.app.createDrawCall(frameProgram, host.quadArray);
 
-        try {
-            const [frameFxaaProgram] = await host.app.createPrograms(FRAME_FXAA_PROGRAM);
-            host.frameFxaaProgram = frameFxaaProgram;
-            host.frameFxaaDrawCall = host.app.createDrawCall(frameFxaaProgram, host.quadArray);
-        } catch (e) {
-            console.warn("[WebGLOsrsRenderer] FXAA unavailable; continuing without it", e);
+        if (rustPrimaryRequested) {
             host.frameFxaaProgram = undefined;
             host.frameFxaaDrawCall = undefined;
-            host.fxaaEnabled = false;
+        } else {
+            try {
+                const [frameFxaaProgram] = await host.app.createPrograms(FRAME_FXAA_PROGRAM);
+                host.frameFxaaProgram = frameFxaaProgram;
+                host.frameFxaaDrawCall = host.app.createDrawCall(frameFxaaProgram, host.quadArray);
+            } catch (e) {
+                console.warn("[WebGLOsrsRenderer] FXAA unavailable; continuing without it", e);
+                host.frameFxaaProgram = undefined;
+                host.frameFxaaDrawCall = undefined;
+                host.fxaaEnabled = false;
+            }
         }
 
         if (host.hoverLineProgram && host.sceneUniformBuffer) {

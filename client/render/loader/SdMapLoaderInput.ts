@@ -22,6 +22,8 @@ export type SdMapLoaderInput = {
      */
     locOnly?: boolean;
 
+    /** Ordered source texture IDs matching the renderer's resident array layers 1..N. */
+    textureIds: number[];
     loadedTextureIds: Set<number>;
 
     // Dynamic loc overrides: Map<"x,y,level,oldId", {newId,newRotation?,moveToX?,moveToY?,seqId?,seqRandomStart?,matchType?,matchRotation?}>

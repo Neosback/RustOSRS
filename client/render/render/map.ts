@@ -152,7 +152,6 @@ import type { PlayerSpotAnimationEvent } from "../../game/sync/PlayerSyncTypes";
 import { RAD_TO_RS_UNITS, computeFacingRotation } from "../../game/utils/rotation";
 import { AnimationFrames } from "../AnimationFrames";
 import { ChatheadFactory } from "../ChatheadFactory";
-import { type DrawBackend, createDrawBackend } from "../DrawBackend";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
 import { profiler } from "../PerformanceProfiler";
@@ -186,6 +185,10 @@ import {
     createProjectileProgram,
 } from "../shaders/Shaders";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
+import {
+    isRustPrimaryRendererEnabled,
+    mirrorRustStaticMap,
+} from "../rust/RustShadowIntegration";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
 import { RENDER_CONSTANTS } from "./constants";
 
@@ -299,6 +302,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
                     sceneUniformBuffer,
                     mapData,
                     existing.timeLoaded,
+                    !isRustPrimaryRendererEnabled(),
                 );
             } else if (isLocGeometryUpdate && mapData.locOnly) {
                 existing.refreshLocGeometry(
@@ -313,6 +317,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
                     mapData,
                     getClientCycle() | 0,
                     existing.timeLoaded,
+                    !isRustPrimaryRendererEnabled(),
                 );
             } else {
                 existing.refreshSceneGeometry(
@@ -328,6 +333,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
                     mapData,
                     getClientCycle() | 0,
                     existing.timeLoaded,
+                    !isRustPrimaryRendererEnabled(),
                 );
             }
 
@@ -345,6 +351,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
             host.pendingLocGeometryUpdates.delete(mapId);
             host.pendingDoorLocUpdates.delete(mapId);
             host.updateTextureArray(mapData.loadedTextures);
+            mirrorRustStaticMap(host, mapData, existing.timeLoaded);
             return;
         }
 
@@ -379,6 +386,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
             getClientCycle() | 0,
             reuseFrame,
             host.osrsClient.npcEcs,
+            !isRustPrimaryRendererEnabled(),
         );
 
         // For instances, set base world position for height sampling.
@@ -397,6 +405,7 @@ export function loadMap(host: WebGLOsrsRendererHost,
         }
 
         host.updateTextureArray(mapData.loadedTextures);
+        mirrorRustStaticMap(host, mapData, reuseTime);
 
         host.pendingLocUpdates.delete(mapId);
         host.pendingLocGeometryUpdates.delete(mapId);

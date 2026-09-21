@@ -40,13 +40,53 @@ function createModelInfoTexture(app: PicoApp, data: Uint16Array): Texture {
     });
 }
 
-export type DrawCallRange = {
-    drawCall: DrawCall;
+export type AnyDrawCallRange = {
+    drawCall?: DrawCall;
     drawRanges: DrawRange[];
+    materializeDrawCall?: () => DrawCall;
 };
 
-function releaseDrawCallRange(drawCallRange: DrawCallRange | undefined): void {
+export type DrawCallRange = AnyDrawCallRange & {
+    drawCall: DrawCall;
+};
+
+export function createDeferredDrawCallRange(
+    drawRanges: DrawRange[],
+    materializeDrawCall: () => DrawCall,
+    eager: boolean,
+): AnyDrawCallRange {
+    if (eager) {
+        return {
+            drawCall: materializeDrawCall(),
+            drawRanges,
+        };
+    }
+    return {
+        drawRanges,
+        materializeDrawCall,
+    };
+}
+
+export function materializeDrawCallRange(drawCallRange: AnyDrawCallRange): DrawCallRange {
+    if (!drawCallRange.drawCall) {
+        const materialize = drawCallRange.materializeDrawCall;
+        if (!materialize) {
+            throw new Error("Legacy Pico draw call cannot be materialized");
+        }
+        drawCallRange.drawCall = materialize();
+    }
+    return drawCallRange as DrawCallRange;
+}
+
+export function dematerializeDrawCallRange(drawCallRange: AnyDrawCallRange | undefined): void {
+    if (!drawCallRange?.materializeDrawCall) return;
+    drawCallRange.drawCall = undefined;
+}
+
+export function releaseDrawCallRange(drawCallRange: AnyDrawCallRange | undefined): void {
     if (!drawCallRange) return;
+    drawCallRange.materializeDrawCall = undefined;
+    drawCallRange.drawCall = undefined;
     drawCallRange.drawRanges.length = 0;
 }
 
@@ -143,7 +183,9 @@ function resolveNpcOwnerPlacement(
     };
 }
 
-type DoorGeometryResources = {
+type DoorGeometryResources = DeferredGeometryResources;
+
+type LegacySceneBatchGpuResources = {
     interleavedBuffer: GpuInterleavedBuffer;
     indexBuffer: GpuIndexBuffer;
     vertexArray: VertexArray;
@@ -155,14 +197,103 @@ type DoorGeometryResources = {
     modelInfoTextureInteractAlpha: Texture;
     modelInfoTextureInteractLod: Texture;
     modelInfoTextureInteractLodAlpha: Texture;
-    drawCall: DrawCallRange;
-    drawCallAlpha: DrawCallRange;
-    drawCallLod: DrawCallRange;
-    drawCallLodAlpha: DrawCallRange;
-    drawCallInteract: DrawCallRange;
-    drawCallInteractAlpha: DrawCallRange;
-    drawCallInteractLod: DrawCallRange;
-    drawCallInteractLodAlpha: DrawCallRange;
+};
+
+type LegacyMapTextureResources = {
+    heightMapTexture: Texture;
+    waterMaskTexture: Texture;
+};
+
+type LegacyMapTextureState = {
+    app: PicoApp;
+    heightMapSize: number;
+    heightMapData: Int16Array;
+    waterMaskData: Uint8Array;
+    resources?: LegacyMapTextureResources;
+};
+
+function ensureLegacyMapTextures(state: LegacyMapTextureState): LegacyMapTextureResources {
+    const existing = state.resources;
+    if (existing) return existing;
+
+    const heightMapTexture = state.app.createTextureArray(
+        state.heightMapData,
+        state.heightMapSize,
+        state.heightMapSize,
+        Scene.MAX_LEVELS,
+        {
+            internalFormat: PicoGL.R16I,
+            minFilter: PicoGL.NEAREST,
+            magFilter: PicoGL.NEAREST,
+            type: PicoGL.SHORT,
+            wrapS: PicoGL.CLAMP_TO_EDGE,
+            wrapT: PicoGL.CLAMP_TO_EDGE,
+        },
+    );
+    const waterMaskTexture = state.app.createTextureArray(
+        state.waterMaskData,
+        state.heightMapSize,
+        state.heightMapSize,
+        Scene.MAX_LEVELS,
+        {
+            internalFormat: PicoGL.RGBA8,
+            minFilter: PicoGL.NEAREST,
+            magFilter: PicoGL.NEAREST,
+            type: PicoGL.UNSIGNED_BYTE,
+            wrapS: PicoGL.CLAMP_TO_EDGE,
+            wrapT: PicoGL.CLAMP_TO_EDGE,
+        },
+    );
+
+    const created = { heightMapTexture, waterMaskTexture };
+    state.resources = created;
+    return created;
+}
+
+function deleteLegacyMapTextures(state: LegacyMapTextureState): void {
+    const resources = state.resources;
+    if (!resources) return;
+    resources.heightMapTexture.delete();
+    resources.waterMaskTexture.delete();
+    state.resources = undefined;
+}
+
+function deleteLegacySceneBatchGpuResources(
+    mapX: number,
+    mapY: number,
+    label: string,
+    resources: LegacySceneBatchGpuResources | undefined,
+): void {
+    if (!resources) return;
+    deleteMapSquareResource(mapX, mapY, `${label}.vertexArray`, resources.vertexArray);
+    deleteMapSquareResource(
+        mapX,
+        mapY,
+        `${label}.interleavedBuffer`,
+        resources.interleavedBuffer,
+    );
+    deleteMapSquareResource(mapX, mapY, `${label}.indexBuffer`, resources.indexBuffer);
+    resources.modelInfoTexture.delete();
+    resources.modelInfoTextureAlpha.delete();
+    resources.modelInfoTextureLod.delete();
+    resources.modelInfoTextureLodAlpha.delete();
+    resources.modelInfoTextureInteract.delete();
+    resources.modelInfoTextureInteractAlpha.delete();
+    resources.modelInfoTextureInteractLod.delete();
+    resources.modelInfoTextureInteractLodAlpha.delete();
+}
+
+
+type DeferredGeometryResources = {
+    legacyGpu?: LegacySceneBatchGpuResources;
+    drawCall: AnyDrawCallRange;
+    drawCallAlpha: AnyDrawCallRange;
+    drawCallLod: AnyDrawCallRange;
+    drawCallLodAlpha: AnyDrawCallRange;
+    drawCallInteract: AnyDrawCallRange;
+    drawCallInteractAlpha: AnyDrawCallRange;
+    drawCallInteractLod: AnyDrawCallRange;
+    drawCallInteractLodAlpha: AnyDrawCallRange;
     planes?: {
         main: Uint8Array;
         alpha: Uint8Array;
@@ -175,37 +306,57 @@ type DoorGeometryResources = {
     };
 };
 
-type GroundItemGeometryResources = {
-    interleavedBuffer: GpuInterleavedBuffer;
-    indexBuffer: GpuIndexBuffer;
-    vertexArray: VertexArray;
-    modelInfoTexture: Texture;
-    modelInfoTextureAlpha: Texture;
-    modelInfoTextureLod: Texture;
-    modelInfoTextureLodAlpha: Texture;
-    modelInfoTextureInteract: Texture;
-    modelInfoTextureInteractAlpha: Texture;
-    modelInfoTextureInteractLod: Texture;
-    modelInfoTextureInteractLodAlpha: Texture;
-    drawCall: DrawCallRange;
-    drawCallAlpha: DrawCallRange;
-    drawCallLod: DrawCallRange;
-    drawCallLodAlpha: DrawCallRange;
-    drawCallInteract: DrawCallRange;
-    drawCallInteractAlpha: DrawCallRange;
-    drawCallInteractLod: DrawCallRange;
-    drawCallInteractLodAlpha: DrawCallRange;
-    planes?: {
-        main: Uint8Array;
-        alpha: Uint8Array;
-        lod: Uint8Array;
-        lodAlpha: Uint8Array;
-        interact: Uint8Array;
-        interactAlpha: Uint8Array;
-        interactLod: Uint8Array;
-        interactLodAlpha: Uint8Array;
-    };
+type LocGeometryResources = DeferredGeometryResources;
+type GroundItemGeometryResources = DeferredGeometryResources;
+
+type DrawRangeGroups = {
+    main: DrawRange[];
+    alpha: DrawRange[];
+    lod: DrawRange[];
+    lodAlpha: DrawRange[];
+    interact: DrawRange[];
+    interactAlpha: DrawRange[];
+    interactLod: DrawRange[];
+    interactLodAlpha: DrawRange[];
 };
+
+type DrawRangeGroupOwner = {
+    drawCall: { drawRanges: DrawRange[] };
+    drawCallAlpha: { drawRanges: DrawRange[] };
+    drawCallLod: { drawRanges: DrawRange[] };
+    drawCallLodAlpha: { drawRanges: DrawRange[] };
+    drawCallInteract: { drawRanges: DrawRange[] };
+    drawCallInteractAlpha: { drawRanges: DrawRange[] };
+    drawCallInteractLod: { drawRanges: DrawRange[] };
+    drawCallInteractLodAlpha: { drawRanges: DrawRange[] };
+};
+
+function getDrawRangeGroups(owner: DrawRangeGroupOwner): DrawRangeGroups {
+    return {
+        main: owner.drawCall.drawRanges,
+        alpha: owner.drawCallAlpha.drawRanges,
+        lod: owner.drawCallLod.drawRanges,
+        lodAlpha: owner.drawCallLodAlpha.drawRanges,
+        interact: owner.drawCallInteract.drawRanges,
+        interactAlpha: owner.drawCallInteractAlpha.drawRanges,
+        interactLod: owner.drawCallInteractLod.drawRanges,
+        interactLodAlpha: owner.drawCallInteractLodAlpha.drawRanges,
+    };
+}
+
+function selectDrawRangeGroup(
+    groups: DrawRangeGroups,
+    isAlpha: boolean,
+    isInteract: boolean,
+    isLod: boolean,
+): DrawRange[] {
+    if (isInteract) {
+        if (isLod) return isAlpha ? groups.interactLodAlpha : groups.interactLod;
+        return isAlpha ? groups.interactAlpha : groups.interact;
+    }
+    if (isLod) return isAlpha ? groups.lodAlpha : groups.lod;
+    return isAlpha ? groups.alpha : groups.main;
+}
 
 function createLocGeometryResources(
     app: PicoApp,
@@ -215,70 +366,96 @@ function createLocGeometryResources(
     textureMaterials: Texture,
     waterTextures: Texture,
     sceneUniformBuffer: UniformBuffer,
-    heightMapTexture: Texture,
-    waterMaskTexture: Texture,
+    getLegacyMapTextures: () => LegacyMapTextureResources,
     mapPos: vec2,
     borderSize: number,
     timeLoaded: number,
     geometry: LocGeometryData,
-): DoorGeometryResources | undefined {
+    eagerLegacyDrawCalls: boolean = true,
+): LocGeometryResources | undefined {
     if (geometry.vertices.length === 0 || geometry.indices.length === 0) {
         return undefined;
     }
 
-    const interleavedBuffer = app.createInterleavedBuffer(12, geometry.vertices);
-    const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, geometry.indices);
-    const vertexArray = app
-        .createVertexArray()
-        .vertexAttributeBuffer(0, interleavedBuffer, {
-            type: PicoGL.UNSIGNED_INT,
-            size: 3,
-            stride: 12,
-            integer: true as any,
-        })
-        .indexBuffer(indexBuffer);
+    let resources: LocGeometryResources;
 
-    const modelInfoTexture = createModelInfoTexture(app, geometry.modelTextureData);
-    const modelInfoTextureAlpha = createModelInfoTexture(app, geometry.modelTextureDataAlpha);
-    const modelInfoTextureLod = createModelInfoTexture(app, geometry.modelTextureDataLod);
-    const modelInfoTextureLodAlpha = createModelInfoTexture(app, geometry.modelTextureDataLodAlpha);
-    const modelInfoTextureInteract = createModelInfoTexture(app, geometry.modelTextureDataInteract);
-    const modelInfoTextureInteractAlpha = createModelInfoTexture(
-        app,
-        geometry.modelTextureDataInteractAlpha,
-    );
-    const modelInfoTextureInteractLod = createModelInfoTexture(
-        app,
-        geometry.modelTextureDataInteractLod,
-    );
-    const modelInfoTextureInteractLodAlpha = createModelInfoTexture(
-        app,
-        geometry.modelTextureDataInteractLodAlpha,
-    );
+    const ensureLegacyGpu = (): LegacySceneBatchGpuResources => {
+        const existing = resources.legacyGpu;
+        if (existing) return existing;
+
+        const interleavedBuffer = app.createInterleavedBuffer(12, geometry.vertices);
+        const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, geometry.indices);
+        const vertexArray = app
+            .createVertexArray()
+            .vertexAttributeBuffer(0, interleavedBuffer, {
+                type: PicoGL.UNSIGNED_INT,
+                size: 3,
+                stride: 12,
+                integer: true as any,
+            })
+            .indexBuffer(indexBuffer);
+
+        const created: LegacySceneBatchGpuResources = {
+            interleavedBuffer,
+            indexBuffer,
+            vertexArray,
+            modelInfoTexture: createModelInfoTexture(app, geometry.modelTextureData),
+            modelInfoTextureAlpha: createModelInfoTexture(app, geometry.modelTextureDataAlpha),
+            modelInfoTextureLod: createModelInfoTexture(app, geometry.modelTextureDataLod),
+            modelInfoTextureLodAlpha: createModelInfoTexture(
+                app,
+                geometry.modelTextureDataLodAlpha,
+            ),
+            modelInfoTextureInteract: createModelInfoTexture(
+                app,
+                geometry.modelTextureDataInteract,
+            ),
+            modelInfoTextureInteractAlpha: createModelInfoTexture(
+                app,
+                geometry.modelTextureDataInteractAlpha,
+            ),
+            modelInfoTextureInteractLod: createModelInfoTexture(
+                app,
+                geometry.modelTextureDataInteractLod,
+            ),
+            modelInfoTextureInteractLodAlpha: createModelInfoTexture(
+                app,
+                geometry.modelTextureDataInteractLodAlpha,
+            ),
+        };
+        resources.legacyGpu = created;
+        return created;
+    };
 
     const createDrawCall = (
         program: Program,
-        modelInfoTexture: Texture,
+        selectModelInfoTexture: (gpu: LegacySceneBatchGpuResources) => Texture,
         drawRanges: DrawRange[],
-    ): DrawCallRange => {
-        const drawCall = app
-            .createDrawCall(program, vertexArray)
-            .uniformBlock("SceneUniforms", sceneUniformBuffer)
-            .uniform("u_timeLoaded", timeLoaded)
-            .uniform("u_mapPos", mapPos)
-            .uniform("u_roofPlaneLimit", 3.0)
-            .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-            .uniform("u_worldEntityOpacity", 1.0)
-            .texture("u_textures", textureArray)
-            .texture("u_textureMaterials", textureMaterials)
-            .texture("u_waterTextures", waterTextures)
-            .texture("u_heightMap", heightMapTexture)
-            .texture("u_waterMask", waterMaskTexture)
-            .uniform("u_sceneBorderSize", borderSize)
-            .texture("u_modelInfoTexture", modelInfoTexture)
-            .drawRanges(...drawRanges);
-        return { drawCall, drawRanges };
-    };
+    ): AnyDrawCallRange =>
+        createDeferredDrawCallRange(
+            drawRanges,
+            () => {
+                const gpu = ensureLegacyGpu();
+                const { heightMapTexture, waterMaskTexture } = getLegacyMapTextures();
+                return app
+                    .createDrawCall(program, gpu.vertexArray)
+                    .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                    .uniform("u_timeLoaded", timeLoaded)
+                    .uniform("u_mapPos", mapPos)
+                    .uniform("u_roofPlaneLimit", 3.0)
+                    .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                    .uniform("u_worldEntityOpacity", 1.0)
+                    .texture("u_textures", textureArray)
+                    .texture("u_textureMaterials", textureMaterials)
+                    .texture("u_waterTextures", waterTextures)
+                    .texture("u_heightMap", heightMapTexture)
+                    .texture("u_waterMask", waterMaskTexture)
+                    .uniform("u_sceneBorderSize", borderSize)
+                    .texture("u_modelInfoTexture", selectModelInfoTexture(gpu))
+                    .drawRanges(...drawRanges);
+            },
+            false,
+        );
 
     const planes =
         geometry.drawRangesPlanes.length > 0
@@ -294,52 +471,237 @@ function createLocGeometryResources(
               }
             : undefined;
 
-    return {
-        interleavedBuffer,
-        indexBuffer,
-        vertexArray,
-        modelInfoTexture,
-        modelInfoTextureAlpha,
-        modelInfoTextureLod,
-        modelInfoTextureLodAlpha,
-        modelInfoTextureInteract,
-        modelInfoTextureInteractAlpha,
-        modelInfoTextureInteractLod,
-        modelInfoTextureInteractLodAlpha,
-        drawCall: createDrawCall(mainProgram, modelInfoTexture, geometry.drawRanges),
+    resources = {
+        drawCall: createDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTexture,
+            geometry.drawRanges,
+        ),
         drawCallAlpha: createDrawCall(
             mainAlphaProgram,
-            modelInfoTextureAlpha,
+            (gpu) => gpu.modelInfoTextureAlpha,
             geometry.drawRangesAlpha,
         ),
-        drawCallLod: createDrawCall(mainProgram, modelInfoTextureLod, geometry.drawRangesLod),
+        drawCallLod: createDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTextureLod,
+            geometry.drawRangesLod,
+        ),
         drawCallLodAlpha: createDrawCall(
             mainAlphaProgram,
-            modelInfoTextureLodAlpha,
+            (gpu) => gpu.modelInfoTextureLodAlpha,
             geometry.drawRangesLodAlpha,
         ),
         drawCallInteract: createDrawCall(
             mainProgram,
-            modelInfoTextureInteract,
+            (gpu) => gpu.modelInfoTextureInteract,
             geometry.drawRangesInteract,
         ),
         drawCallInteractAlpha: createDrawCall(
             mainAlphaProgram,
-            modelInfoTextureInteractAlpha,
+            (gpu) => gpu.modelInfoTextureInteractAlpha,
             geometry.drawRangesInteractAlpha,
         ),
         drawCallInteractLod: createDrawCall(
             mainProgram,
-            modelInfoTextureInteractLod,
+            (gpu) => gpu.modelInfoTextureInteractLod,
             geometry.drawRangesInteractLod,
         ),
         drawCallInteractLodAlpha: createDrawCall(
             mainAlphaProgram,
-            modelInfoTextureInteractLodAlpha,
+            (gpu) => gpu.modelInfoTextureInteractLodAlpha,
             geometry.drawRangesInteractLodAlpha,
         ),
         planes,
     };
+
+    if (eagerLegacyDrawCalls) {
+        materializeDrawCallRange(resources.drawCall);
+        materializeDrawCallRange(resources.drawCallAlpha);
+        materializeDrawCallRange(resources.drawCallLod);
+        materializeDrawCallRange(resources.drawCallLodAlpha);
+        materializeDrawCallRange(resources.drawCallInteract);
+        materializeDrawCallRange(resources.drawCallInteractAlpha);
+        materializeDrawCallRange(resources.drawCallInteractLod);
+        materializeDrawCallRange(resources.drawCallInteractLodAlpha);
+    }
+
+    return resources;
+}
+
+
+function createDoorGeometryResources(
+    app: PicoApp,
+    mainProgram: Program,
+    mainAlphaProgram: Program,
+    textureArray: Texture,
+    textureMaterials: Texture,
+    waterTextures: Texture,
+    sceneUniformBuffer: UniformBuffer,
+    getLegacyMapTextures: () => LegacyMapTextureResources,
+    mapPos: vec2,
+    borderSize: number,
+    timeLoaded: number,
+    mapData: SdMapData,
+    eagerLegacyDrawCalls: boolean = true,
+): DoorGeometryResources | undefined {
+    if (mapData.doorVertices.length === 0 || mapData.doorIndices.length === 0) {
+        return undefined;
+    }
+
+    let resources: DoorGeometryResources;
+
+    const ensureLegacyGpu = (): LegacySceneBatchGpuResources => {
+        const existing = resources.legacyGpu;
+        if (existing) return existing;
+
+        const interleavedBuffer = app.createInterleavedBuffer(12, mapData.doorVertices);
+        const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.doorIndices);
+        const vertexArray = app
+            .createVertexArray()
+            .vertexAttributeBuffer(0, interleavedBuffer, {
+                type: PicoGL.UNSIGNED_INT,
+                size: 3,
+                stride: 12,
+                integer: true as any,
+            })
+            .indexBuffer(indexBuffer);
+
+        const created: LegacySceneBatchGpuResources = {
+            interleavedBuffer,
+            indexBuffer,
+            vertexArray,
+            modelInfoTexture: createModelInfoTexture(app, mapData.doorModelTextureData),
+            modelInfoTextureAlpha: createModelInfoTexture(
+                app,
+                mapData.doorModelTextureDataAlpha,
+            ),
+            modelInfoTextureLod: createModelInfoTexture(app, mapData.doorModelTextureDataLod),
+            modelInfoTextureLodAlpha: createModelInfoTexture(
+                app,
+                mapData.doorModelTextureDataLodAlpha,
+            ),
+            modelInfoTextureInteract: createModelInfoTexture(
+                app,
+                mapData.doorModelTextureDataInteract,
+            ),
+            modelInfoTextureInteractAlpha: createModelInfoTexture(
+                app,
+                mapData.doorModelTextureDataInteractAlpha,
+            ),
+            modelInfoTextureInteractLod: createModelInfoTexture(
+                app,
+                mapData.doorModelTextureDataInteractLod,
+            ),
+            modelInfoTextureInteractLodAlpha: createModelInfoTexture(
+                app,
+                mapData.doorModelTextureDataInteractLodAlpha,
+            ),
+        };
+        resources.legacyGpu = created;
+        return created;
+    };
+
+    const buildDrawCall = (
+        program: Program,
+        selectModelInfoTexture: (gpu: LegacySceneBatchGpuResources) => Texture,
+        drawRanges: DrawRange[],
+    ): AnyDrawCallRange =>
+        createDeferredDrawCallRange(
+            drawRanges,
+            () => {
+                const gpu = ensureLegacyGpu();
+                const { heightMapTexture, waterMaskTexture } = getLegacyMapTextures();
+                return app
+                    .createDrawCall(program, gpu.vertexArray)
+                    .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                    .uniform("u_timeLoaded", timeLoaded)
+                    .uniform("u_mapPos", mapPos)
+                    .uniform("u_roofPlaneLimit", 3.0)
+                    .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                    .uniform("u_worldEntityOpacity", 1.0)
+                    .texture("u_textures", textureArray)
+                    .texture("u_textureMaterials", textureMaterials)
+                    .texture("u_waterTextures", waterTextures)
+                    .texture("u_heightMap", heightMapTexture)
+                    .texture("u_waterMask", waterMaskTexture)
+                    .uniform("u_sceneBorderSize", borderSize)
+                    .texture("u_modelInfoTexture", selectModelInfoTexture(gpu))
+                    .drawRanges(...drawRanges);
+            },
+            false,
+        );
+
+    const planes =
+        mapData.doorDrawRangesPlanes.length > 0
+            ? {
+                  main: mapData.doorDrawRangesPlanes,
+                  alpha: mapData.doorDrawRangesAlphaPlanes,
+                  lod: mapData.doorDrawRangesLodPlanes,
+                  lodAlpha: mapData.doorDrawRangesLodAlphaPlanes,
+                  interact: mapData.doorDrawRangesInteractPlanes,
+                  interactAlpha: mapData.doorDrawRangesInteractAlphaPlanes,
+                  interactLod: mapData.doorDrawRangesInteractLodPlanes,
+                  interactLodAlpha: mapData.doorDrawRangesInteractLodAlphaPlanes,
+              }
+            : undefined;
+
+    resources = {
+        drawCall: buildDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTexture,
+            mapData.doorDrawRanges,
+        ),
+        drawCallAlpha: buildDrawCall(
+            mainAlphaProgram,
+            (gpu) => gpu.modelInfoTextureAlpha,
+            mapData.doorDrawRangesAlpha,
+        ),
+        drawCallLod: buildDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTextureLod,
+            mapData.doorDrawRangesLod,
+        ),
+        drawCallLodAlpha: buildDrawCall(
+            mainAlphaProgram,
+            (gpu) => gpu.modelInfoTextureLodAlpha,
+            mapData.doorDrawRangesLodAlpha,
+        ),
+        drawCallInteract: buildDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTextureInteract,
+            mapData.doorDrawRangesInteract,
+        ),
+        drawCallInteractAlpha: buildDrawCall(
+            mainAlphaProgram,
+            (gpu) => gpu.modelInfoTextureInteractAlpha,
+            mapData.doorDrawRangesInteractAlpha,
+        ),
+        drawCallInteractLod: buildDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTextureInteractLod,
+            mapData.doorDrawRangesInteractLod,
+        ),
+        drawCallInteractLodAlpha: buildDrawCall(
+            mainAlphaProgram,
+            (gpu) => gpu.modelInfoTextureInteractLodAlpha,
+            mapData.doorDrawRangesInteractLodAlpha,
+        ),
+        planes,
+    };
+
+    if (eagerLegacyDrawCalls) {
+        materializeDrawCallRange(resources.drawCall);
+        materializeDrawCallRange(resources.drawCallAlpha);
+        materializeDrawCallRange(resources.drawCallLod);
+        materializeDrawCallRange(resources.drawCallLodAlpha);
+        materializeDrawCallRange(resources.drawCallInteract);
+        materializeDrawCallRange(resources.drawCallInteractAlpha);
+        materializeDrawCallRange(resources.drawCallInteractLod);
+        materializeDrawCallRange(resources.drawCallInteractLodAlpha);
+    }
+
+    return resources;
 }
 
 export class WebGLMapSquare {
@@ -362,17 +724,22 @@ export class WebGLMapSquare {
     private locTypeRotsAtLocalBuffer: number[] = [];
     /** Static loc ambient sound emitters; built lazily by the renderer, cleared on scene data refresh. */
     ambientSoundEmitters?: { locId: number; x: number; y: number; level: number; rot: number }[];
-    private loc?: DoorGeometryResources;
-    private locDrawRangePlanes?: NonNullable<DoorGeometryResources["planes"]>;
+    private terrainDrawRangeGroups: DrawRangeGroups;
+    private terrainLegacyGpu?: LegacySceneBatchGpuResources;
+    private loc?: LocGeometryResources;
+    private locDrawRangeGroups?: DrawRangeGroups;
+    private locDrawRangePlanes?: NonNullable<LocGeometryResources["planes"]>;
     private door?: DoorGeometryResources;
+    private doorDrawRangeGroups?: DrawRangeGroups;
     private doorDrawRangePlanes?: NonNullable<DoorGeometryResources["planes"]>;
     private groundItems?: GroundItemGeometryResources;
+    private groundItemDrawRangeGroups?: DrawRangeGroups;
     private groundItemDrawRangePlanes?: NonNullable<GroundItemGeometryResources["planes"]>;
 
     private npcInterleavedBuffer?: GpuInterleavedBuffer;
     private npcIndexBuffer?: GpuIndexBuffer;
     private npcVertexArray?: VertexArray;
-    drawCallNpc?: DrawCallRange;
+    drawCallNpc?: AnyDrawCallRange;
 
     npcEntityIds: number[] = [];
     npcIdleFrames: AnimationFrames[] = [];
@@ -400,6 +767,7 @@ export class WebGLMapSquare {
         clientCycle: number,
         frame: number,
         npcEcs?: NpcEcs,
+        eagerLegacyDrawCalls: boolean = true,
     ): WebGLMapSquare {
         const { mapX, mapY, borderSize, tileRenderFlags } = mapData;
 
@@ -413,282 +781,173 @@ export class WebGLMapSquare {
             );
         }
         const mapPos = vec2.fromValues(usedRenderX, usedRenderY);
-
-        const interleavedBuffer = app.createInterleavedBuffer(12, mapData.vertices);
-        const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.indices);
-
-        const vertexArray = app
-            .createVertexArray()
-            // v0, v1, v2
-            .vertexAttributeBuffer(0, interleavedBuffer, {
-                type: PicoGL.UNSIGNED_INT,
-                size: 3,
-                stride: 12,
-                integer: true as any,
-            })
-            .indexBuffer(indexBuffer);
-
-        const modelInfoTexture = createModelInfoTexture(app, mapData.modelTextureData);
-        const modelInfoTextureAlpha = createModelInfoTexture(app, mapData.modelTextureDataAlpha);
-
-        const modelInfoTextureLod = createModelInfoTexture(app, mapData.modelTextureDataLod);
-        const modelInfoTextureLodAlpha = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataLodAlpha,
-        );
-
-        const modelInfoTextureInteract = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteract,
-        );
-        const modelInfoTextureInteractAlpha = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteractAlpha,
-        );
-
-        const modelInfoTextureInteractLod = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteractLod,
-        );
-        const modelInfoTextureInteractLodAlpha = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteractLodAlpha,
-        );
+        let loadedMapSquare: WebGLMapSquare | undefined;
+        let terrainLegacyGpu: LegacySceneBatchGpuResources | undefined;
 
         const heightMapSize = mapData.heightMapSize ?? Scene.MAP_SQUARE_SIZE + borderSize * 2;
-        const heightMapTexture = app.createTextureArray(
-            mapData.heightMapTextureData,
+        const legacyMapTextureState: LegacyMapTextureState = {
+            app,
             heightMapSize,
-            heightMapSize,
-            Scene.MAX_LEVELS,
-            {
-                internalFormat: PicoGL.R16I,
-                minFilter: PicoGL.NEAREST,
-                magFilter: PicoGL.NEAREST,
-                type: PicoGL.SHORT,
-                wrapS: PicoGL.CLAMP_TO_EDGE,
-                wrapT: PicoGL.CLAMP_TO_EDGE,
-            },
-        );
-        const waterMaskTexture = app.createTextureArray(
-            mapData.waterMaskTextureData,
-            heightMapSize,
-            heightMapSize,
-            Scene.MAX_LEVELS,
-            {
-                internalFormat: PicoGL.RGBA8,
-                minFilter: PicoGL.NEAREST,
-                magFilter: PicoGL.NEAREST,
-                type: PicoGL.UNSIGNED_BYTE,
-                wrapS: PicoGL.CLAMP_TO_EDGE,
-                wrapT: PicoGL.CLAMP_TO_EDGE,
-            },
-        );
-
-        // const time = performance.now() * 0.001;
-
-        const createDrawCall = (
-            program: Program,
-            modelInfoTexture: Texture | undefined,
-            drawRanges: DrawRange[],
-            vertexArrayOverride?: VertexArray,
-        ): DrawCallRange => {
-            const vao = vertexArrayOverride ?? vertexArray;
-            const drawCall = app
-                .createDrawCall(program, vao)
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", time)
-                .uniform("u_mapPos", mapPos)
-                .uniform("u_roofPlaneLimit", 3.0)
-                .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                .uniform("u_worldEntityOpacity", 1.0)
-                // .uniform("u_drawIdOffset", drawIdOffset)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_waterTextures", waterTextures)
-                .texture("u_heightMap", heightMapTexture)
-                .texture("u_waterMask", waterMaskTexture)
-                .uniform("u_sceneBorderSize", borderSize)
-                // .texture("u_modelInfoTexture", modelInfoTexture)
-                .drawRanges(...drawRanges);
-            if (modelInfoTexture) {
-                drawCall.texture("u_modelInfoTexture", modelInfoTexture);
-            }
-            return {
-                drawCall,
-                drawRanges,
-            };
+            heightMapData: new Int16Array(mapData.heightMapTextureData),
+            waterMaskData: new Uint8Array(mapData.waterMaskTextureData),
         };
+        const getLegacyMapTextures = (): LegacyMapTextureResources =>
+            ensureLegacyMapTextures(legacyMapTextureState);
 
-        const drawCall = createDrawCall(mainProgram, modelInfoTexture, mapData.drawRanges);
-        const drawCallAlpha = createDrawCall(
-            mainAlphaProgram,
-            modelInfoTextureAlpha,
-            mapData.drawRangesAlpha,
-        );
+        const ensureTerrainLegacyGpu = (): LegacySceneBatchGpuResources => {
+            const existing = loadedMapSquare?.terrainLegacyGpu
+                ?? (!loadedMapSquare ? terrainLegacyGpu : undefined);
+            if (existing) return existing;
 
-        const drawCallLod = createDrawCall(mainProgram, modelInfoTextureLod, mapData.drawRangesLod);
-        const drawCallLodAlpha = createDrawCall(
-            mainAlphaProgram,
-            modelInfoTextureLodAlpha,
-            mapData.drawRangesLodAlpha,
-        );
-
-        const drawCallInteract = createDrawCall(
-            mainProgram,
-            modelInfoTextureInteract,
-            mapData.drawRangesInteract,
-        );
-        const drawCallInteractAlpha = createDrawCall(
-            mainAlphaProgram,
-            modelInfoTextureInteractAlpha,
-            mapData.drawRangesInteractAlpha,
-        );
-
-        const drawCallInteractLod = createDrawCall(
-            mainProgram,
-            modelInfoTextureInteractLod,
-            mapData.drawRangesInteractLod,
-        );
-        const drawCallInteractLodAlpha = createDrawCall(
-            mainAlphaProgram,
-            modelInfoTextureInteractLodAlpha,
-            mapData.drawRangesInteractLodAlpha,
-        );
-
-        let doorResources: DoorGeometryResources | undefined;
-        if (mapData.doorVertices.length > 0 && mapData.doorIndices.length > 0) {
-            const doorInterleavedBuffer = app.createInterleavedBuffer(12, mapData.doorVertices);
-            const doorIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.doorIndices);
-            const doorVertexArray = app
+            const interleavedBuffer = app.createInterleavedBuffer(12, mapData.vertices);
+            const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.indices);
+            const vertexArray = app
                 .createVertexArray()
-                .vertexAttributeBuffer(0, doorInterleavedBuffer, {
+                .vertexAttributeBuffer(0, interleavedBuffer, {
                     type: PicoGL.UNSIGNED_INT,
                     size: 3,
                     stride: 12,
                     integer: true as any,
                 })
-                .indexBuffer(doorIndexBuffer);
+                .indexBuffer(indexBuffer);
 
-            const doorModelInfoTexture = createModelInfoTexture(app, mapData.doorModelTextureData);
-            const doorModelInfoTextureAlpha = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataAlpha,
-            );
-
-            const doorModelInfoTextureLod = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataLod,
-            );
-            const doorModelInfoTextureLodAlpha = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataLodAlpha,
-            );
-
-            const doorModelInfoTextureInteract = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataInteract,
-            );
-            const doorModelInfoTextureInteractAlpha = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataInteractAlpha,
-            );
-
-            const doorModelInfoTextureInteractLod = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataInteractLod,
-            );
-            const doorModelInfoTextureInteractLodAlpha = createModelInfoTexture(
-                app,
-                mapData.doorModelTextureDataInteractLodAlpha,
-            );
-
-            const doorDrawCall = createDrawCall(
-                mainProgram,
-                doorModelInfoTexture,
-                mapData.doorDrawRanges,
-                doorVertexArray,
-            );
-            const doorDrawCallAlpha = createDrawCall(
-                mainAlphaProgram,
-                doorModelInfoTextureAlpha,
-                mapData.doorDrawRangesAlpha,
-                doorVertexArray,
-            );
-            const doorDrawCallLod = createDrawCall(
-                mainProgram,
-                doorModelInfoTextureLod,
-                mapData.doorDrawRangesLod,
-                doorVertexArray,
-            );
-            const doorDrawCallLodAlpha = createDrawCall(
-                mainAlphaProgram,
-                doorModelInfoTextureLodAlpha,
-                mapData.doorDrawRangesLodAlpha,
-                doorVertexArray,
-            );
-            const doorDrawCallInteract = createDrawCall(
-                mainProgram,
-                doorModelInfoTextureInteract,
-                mapData.doorDrawRangesInteract,
-                doorVertexArray,
-            );
-            const doorDrawCallInteractAlpha = createDrawCall(
-                mainAlphaProgram,
-                doorModelInfoTextureInteractAlpha,
-                mapData.doorDrawRangesInteractAlpha,
-                doorVertexArray,
-            );
-            const doorDrawCallInteractLod = createDrawCall(
-                mainProgram,
-                doorModelInfoTextureInteractLod,
-                mapData.doorDrawRangesInteractLod,
-                doorVertexArray,
-            );
-            const doorDrawCallInteractLodAlpha = createDrawCall(
-                mainAlphaProgram,
-                doorModelInfoTextureInteractLodAlpha,
-                mapData.doorDrawRangesInteractLodAlpha,
-                doorVertexArray,
-            );
-
-            const doorPlanes =
-                mapData.doorDrawRangesPlanes.length > 0
-                    ? {
-                          main: mapData.doorDrawRangesPlanes,
-                          alpha: mapData.doorDrawRangesAlphaPlanes,
-                          lod: mapData.doorDrawRangesLodPlanes,
-                          lodAlpha: mapData.doorDrawRangesLodAlphaPlanes,
-                          interact: mapData.doorDrawRangesInteractPlanes,
-                          interactAlpha: mapData.doorDrawRangesInteractAlphaPlanes,
-                          interactLod: mapData.doorDrawRangesInteractLodPlanes,
-                          interactLodAlpha: mapData.doorDrawRangesInteractLodAlphaPlanes,
-                      }
-                    : undefined;
-
-            doorResources = {
-                interleavedBuffer: doorInterleavedBuffer,
-                indexBuffer: doorIndexBuffer,
-                vertexArray: doorVertexArray,
-                modelInfoTexture: doorModelInfoTexture,
-                modelInfoTextureAlpha: doorModelInfoTextureAlpha,
-                modelInfoTextureLod: doorModelInfoTextureLod,
-                modelInfoTextureLodAlpha: doorModelInfoTextureLodAlpha,
-                modelInfoTextureInteract: doorModelInfoTextureInteract,
-                modelInfoTextureInteractAlpha: doorModelInfoTextureInteractAlpha,
-                modelInfoTextureInteractLod: doorModelInfoTextureInteractLod,
-                modelInfoTextureInteractLodAlpha: doorModelInfoTextureInteractLodAlpha,
-                drawCall: doorDrawCall,
-                drawCallAlpha: doorDrawCallAlpha,
-                drawCallLod: doorDrawCallLod,
-                drawCallLodAlpha: doorDrawCallLodAlpha,
-                drawCallInteract: doorDrawCallInteract,
-                drawCallInteractAlpha: doorDrawCallInteractAlpha,
-                drawCallInteractLod: doorDrawCallInteractLod,
-                drawCallInteractLodAlpha: doorDrawCallInteractLodAlpha,
-                planes: doorPlanes,
+            const created: LegacySceneBatchGpuResources = {
+                interleavedBuffer,
+                indexBuffer,
+                vertexArray,
+                modelInfoTexture: createModelInfoTexture(app, mapData.modelTextureData),
+                modelInfoTextureAlpha: createModelInfoTexture(app, mapData.modelTextureDataAlpha),
+                modelInfoTextureLod: createModelInfoTexture(app, mapData.modelTextureDataLod),
+                modelInfoTextureLodAlpha: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataLodAlpha,
+                ),
+                modelInfoTextureInteract: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteract,
+                ),
+                modelInfoTextureInteractAlpha: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteractAlpha,
+                ),
+                modelInfoTextureInteractLod: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteractLod,
+                ),
+                modelInfoTextureInteractLodAlpha: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteractLodAlpha,
+                ),
             };
-        }
+            terrainLegacyGpu = created;
+
+            if (loadedMapSquare) {
+                loadedMapSquare.terrainLegacyGpu = created;
+                loadedMapSquare.interleavedBuffer = created.interleavedBuffer;
+                loadedMapSquare.indexBuffer = created.indexBuffer;
+                loadedMapSquare.vertexArray = created.vertexArray;
+                loadedMapSquare.modelInfoTexture = created.modelInfoTexture;
+                loadedMapSquare.modelInfoTextureAlpha = created.modelInfoTextureAlpha;
+                loadedMapSquare.modelInfoTextureLod = created.modelInfoTextureLod;
+                loadedMapSquare.modelInfoTextureLodAlpha = created.modelInfoTextureLodAlpha;
+                loadedMapSquare.modelInfoTextureInteract = created.modelInfoTextureInteract;
+                loadedMapSquare.modelInfoTextureInteractAlpha =
+                    created.modelInfoTextureInteractAlpha;
+                loadedMapSquare.modelInfoTextureInteractLod =
+                    created.modelInfoTextureInteractLod;
+                loadedMapSquare.modelInfoTextureInteractLodAlpha =
+                    created.modelInfoTextureInteractLodAlpha;
+            }
+
+            return created;
+        };
+
+        const createDrawCall = (
+            program: Program,
+            selectModelInfoTexture: (gpu: LegacySceneBatchGpuResources) => Texture,
+            drawRanges: DrawRange[],
+        ): AnyDrawCallRange =>
+            createDeferredDrawCallRange(
+                drawRanges,
+                () => {
+                    const gpu = ensureTerrainLegacyGpu();
+                    const { heightMapTexture, waterMaskTexture } = getLegacyMapTextures();
+                    return app
+                        .createDrawCall(program, gpu.vertexArray)
+                        .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                        .uniform("u_timeLoaded", time)
+                        .uniform("u_mapPos", mapPos)
+                        .uniform("u_roofPlaneLimit", 3.0)
+                        .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                        .uniform("u_worldEntityOpacity", 1.0)
+                        .texture("u_textures", textureArray)
+                        .texture("u_textureMaterials", textureMaterials)
+                        .texture("u_waterTextures", waterTextures)
+                        .texture("u_heightMap", heightMapTexture)
+                        .texture("u_waterMask", waterMaskTexture)
+                        .uniform("u_sceneBorderSize", borderSize)
+                        .texture("u_modelInfoTexture", selectModelInfoTexture(gpu))
+                        .drawRanges(...drawRanges);
+                },
+                eagerLegacyDrawCalls,
+            );
+
+        const drawCall = createDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTexture,
+            mapData.drawRanges,
+        );
+        const drawCallAlpha = createDrawCall(
+            mainAlphaProgram,
+            (gpu) => gpu.modelInfoTextureAlpha,
+            mapData.drawRangesAlpha,
+        );
+        const drawCallLod = createDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTextureLod,
+            mapData.drawRangesLod,
+        );
+        const drawCallLodAlpha = createDrawCall(
+            mainAlphaProgram,
+            (gpu) => gpu.modelInfoTextureLodAlpha,
+            mapData.drawRangesLodAlpha,
+        );
+        const drawCallInteract = createDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTextureInteract,
+            mapData.drawRangesInteract,
+        );
+        const drawCallInteractAlpha = createDrawCall(
+            mainAlphaProgram,
+            (gpu) => gpu.modelInfoTextureInteractAlpha,
+            mapData.drawRangesInteractAlpha,
+        );
+        const drawCallInteractLod = createDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTextureInteractLod,
+            mapData.drawRangesInteractLod,
+        );
+        const drawCallInteractLodAlpha = createDrawCall(
+            mainAlphaProgram,
+            (gpu) => gpu.modelInfoTextureInteractLodAlpha,
+            mapData.drawRangesInteractLodAlpha,
+        );
+
+        const doorResources = createDoorGeometryResources(
+            app,
+            mainProgram,
+            mainAlphaProgram,
+            textureArray,
+            textureMaterials,
+            waterTextures,
+            sceneUniformBuffer,
+            getLegacyMapTextures,
+            mapPos,
+            borderSize,
+            time,
+            mapData,
+            eagerLegacyDrawCalls,
+        );
 
         const locResources = createLocGeometryResources(
             app,
@@ -698,19 +957,23 @@ export class WebGLMapSquare {
             textureMaterials,
             waterTextures,
             sceneUniformBuffer,
-            heightMapTexture,
-            waterMaskTexture,
+            getLegacyMapTextures,
             mapPos,
             borderSize,
             time,
             mapData.loc,
+            eagerLegacyDrawCalls,
         );
 
         let npcInterleavedBuffer: GpuInterleavedBuffer | undefined;
         let npcIndexBuffer: GpuIndexBuffer | undefined;
         let npcVertexArray: VertexArray | undefined;
 
-        if (mapData.npcVertices.length > 0 && mapData.npcIndices.length > 0) {
+        const ensureNpcLegacyGpu = (): VertexArray => {
+            const existing = loadedMapSquare?.npcVertexArray
+                ?? (!loadedMapSquare ? npcVertexArray : undefined);
+            if (existing) return existing;
+
             npcInterleavedBuffer = app.createInterleavedBuffer(12, mapData.npcVertices);
             npcIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.npcIndices);
             npcVertexArray = app
@@ -722,6 +985,22 @@ export class WebGLMapSquare {
                     integer: true as any,
                 })
                 .indexBuffer(npcIndexBuffer);
+
+            if (loadedMapSquare) {
+                loadedMapSquare.npcInterleavedBuffer = npcInterleavedBuffer;
+                loadedMapSquare.npcIndexBuffer = npcIndexBuffer;
+                loadedMapSquare.npcVertexArray = npcVertexArray;
+            }
+
+            return npcVertexArray;
+        };
+
+        if (
+            eagerLegacyDrawCalls &&
+            mapData.npcVertices.length > 0 &&
+            mapData.npcIndices.length > 0
+        ) {
+            ensureNpcLegacyGpu();
         }
 
         // DynamicObject/loc animations are driven by Client.cycle (20ms).
@@ -910,10 +1189,32 @@ export class WebGLMapSquare {
             ? new Array(mapData.npcs.length).fill(0).map(() => newDrawRange(0, 0, 1))
             : [];
 
-        const drawCallNpc =
-            hasNpcGeometry && npcVertexArray
-                ? createDrawCall(npcProgram, undefined, drawRangesNpc, npcVertexArray)
-                : undefined;
+        const hasNpcLegacyGeometry =
+            hasNpcGeometry && mapData.npcVertices.length > 0 && mapData.npcIndices.length > 0;
+        const drawCallNpc = hasNpcLegacyGeometry
+            ? createDeferredDrawCallRange(
+                  drawRangesNpc,
+                  () => {
+                      const vao = ensureNpcLegacyGpu();
+                      const { heightMapTexture, waterMaskTexture } = getLegacyMapTextures();
+                      return app
+                          .createDrawCall(npcProgram, vao)
+                          .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                          .uniform("u_timeLoaded", time)
+                          .uniform("u_mapPos", mapPos)
+                          .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                          .uniform("u_worldEntityOpacity", 1.0)
+                          .texture("u_textures", textureArray)
+                          .texture("u_textureMaterials", textureMaterials)
+                          .texture("u_waterTextures", waterTextures)
+                          .texture("u_heightMap", heightMapTexture)
+                          .texture("u_waterMask", waterMaskTexture)
+                          .uniform("u_sceneBorderSize", borderSize)
+                          .drawRanges(...drawRangesNpc);
+                  },
+                  eagerLegacyDrawCalls,
+              )
+            : undefined;
 
         const planes = {
             main: mapData.drawRangesPlanes,
@@ -926,7 +1227,7 @@ export class WebGLMapSquare {
             interactLodAlpha: mapData.drawRangesInteractLodAlphaPlanes,
         } as const;
 
-        const mapSquare = new WebGLMapSquare(
+        loadedMapSquare = new WebGLMapSquare(
             mapX,
             mapY,
             usedRenderX,
@@ -940,24 +1241,23 @@ export class WebGLMapSquare {
             time,
             frame,
 
-            interleavedBuffer,
-            indexBuffer,
-            vertexArray,
+            terrainLegacyGpu?.interleavedBuffer,
+            terrainLegacyGpu?.indexBuffer,
+            terrainLegacyGpu?.vertexArray,
 
-            heightMapTexture,
-            waterMaskTexture,
+            legacyMapTextureState,
 
-            modelInfoTexture,
-            modelInfoTextureAlpha,
+            terrainLegacyGpu?.modelInfoTexture,
+            terrainLegacyGpu?.modelInfoTextureAlpha,
 
-            modelInfoTextureLod,
-            modelInfoTextureLodAlpha,
+            terrainLegacyGpu?.modelInfoTextureLod,
+            terrainLegacyGpu?.modelInfoTextureLodAlpha,
 
-            modelInfoTextureInteract,
-            modelInfoTextureInteractAlpha,
+            terrainLegacyGpu?.modelInfoTextureInteract,
+            terrainLegacyGpu?.modelInfoTextureInteractAlpha,
 
-            modelInfoTextureInteractLod,
-            modelInfoTextureInteractLodAlpha,
+            terrainLegacyGpu?.modelInfoTextureInteractLod,
+            terrainLegacyGpu?.modelInfoTextureInteractLodAlpha,
 
             drawCall,
             drawCallAlpha,
@@ -998,11 +1298,12 @@ export class WebGLMapSquare {
             mapData.tileLocIdsByLevel,
             mapData.tileLocTypeRotByLevel,
         );
+        loadedMapSquare.terrainLegacyGpu = terrainLegacyGpu;
         // Initialize occupancy counters to match initial flags
         for (const c of occInit) {
-            mapSquare.incNpcOcc(c.plane, c.x, c.y);
+            loadedMapSquare.incNpcOcc(c.plane, c.x, c.y);
         }
-        return mapSquare;
+        return loadedMapSquare;
     }
 
     constructor(
@@ -1019,45 +1320,44 @@ export class WebGLMapSquare {
         readonly timeLoaded: number,
         readonly frameLoaded: number,
 
-        public interleavedBuffer: VertexBuffer,
-        public indexBuffer: VertexBuffer,
-        public vertexArray: VertexArray,
+        public interleavedBuffer: VertexBuffer | undefined,
+        public indexBuffer: VertexBuffer | undefined,
+        public vertexArray: VertexArray | undefined,
 
-        readonly heightMapTexture: Texture,
-        readonly waterMaskTexture: Texture,
+        private readonly legacyMapTextureState: LegacyMapTextureState,
 
         // Model info
-        public modelInfoTexture: Texture,
-        public modelInfoTextureAlpha: Texture,
+        public modelInfoTexture: Texture | undefined,
+        public modelInfoTextureAlpha: Texture | undefined,
 
-        public modelInfoTextureLod: Texture,
-        public modelInfoTextureLodAlpha: Texture,
+        public modelInfoTextureLod: Texture | undefined,
+        public modelInfoTextureLodAlpha: Texture | undefined,
 
-        public modelInfoTextureInteract: Texture,
-        public modelInfoTextureInteractAlpha: Texture,
+        public modelInfoTextureInteract: Texture | undefined,
+        public modelInfoTextureInteractAlpha: Texture | undefined,
 
-        public modelInfoTextureInteractLod: Texture,
-        public modelInfoTextureInteractLodAlpha: Texture,
+        public modelInfoTextureInteractLod: Texture | undefined,
+        public modelInfoTextureInteractLodAlpha: Texture | undefined,
 
         // Draw calls
-        public drawCall: DrawCallRange,
-        public drawCallAlpha: DrawCallRange,
+        public drawCall: AnyDrawCallRange,
+        public drawCallAlpha: AnyDrawCallRange,
 
-        public drawCallLod: DrawCallRange,
-        public drawCallLodAlpha: DrawCallRange,
+        public drawCallLod: AnyDrawCallRange,
+        public drawCallLodAlpha: AnyDrawCallRange,
 
-        public drawCallInteract: DrawCallRange,
-        public drawCallInteractAlpha: DrawCallRange,
+        public drawCallInteract: AnyDrawCallRange,
+        public drawCallInteractAlpha: AnyDrawCallRange,
 
-        public drawCallInteractLod: DrawCallRange,
-        public drawCallInteractLodAlpha: DrawCallRange,
-        loc: DoorGeometryResources | undefined,
+        public drawCallInteractLod: AnyDrawCallRange,
+        public drawCallInteractLodAlpha: AnyDrawCallRange,
+        loc: LocGeometryResources | undefined,
         door: DoorGeometryResources | undefined,
 
         npcInterleavedBuffer: GpuInterleavedBuffer | undefined,
         npcIndexBuffer: GpuIndexBuffer | undefined,
         npcVertexArray: VertexArray | undefined,
-        drawCallNpc: DrawCallRange | undefined,
+        drawCallNpc: AnyDrawCallRange | undefined,
 
         // Animated locs
         public locsAnimated: LocAnimated[],
@@ -1095,6 +1395,7 @@ export class WebGLMapSquare {
         public tileLocTypeRotByLevel?: Uint8Array[],
     ) {
         this.id = getMapSquareId(mapX, mapY);
+        this.terrainDrawRangeGroups = getDrawRangeGroups(this);
         /** When >= 0, all interaction/height queries on this map use this plane
          *  instead of the caller's basePlane.  Set for world entity overlays
          *  whose content lives on a specific source plane (e.g. boat deck = 1). */
@@ -1107,10 +1408,12 @@ export class WebGLMapSquare {
         this.npcVertexArray = npcVertexArray;
         this.drawCallNpc = drawCallNpc;
         this.loc = loc;
+        this.locDrawRangeGroups = loc ? getDrawRangeGroups(loc) : undefined;
         if (loc?.planes) {
             this.locDrawRangePlanes = loc.planes;
         }
         this.door = door;
+        this.doorDrawRangeGroups = door ? getDrawRangeGroups(door) : undefined;
         if (door?.planes) {
             this.doorDrawRangePlanes = door.planes;
         }
@@ -1129,6 +1432,14 @@ export class WebGLMapSquare {
             this.npcOccCounts[p] = new Uint16Array(cm.sizeX * cm.sizeY);
             this.playerOccCounts[p] = new Uint16Array(cm.sizeX * cm.sizeY);
         }
+    }
+
+    get heightMapTexture(): Texture {
+        return ensureLegacyMapTextures(this.legacyMapTextureState).heightMapTexture;
+    }
+
+    get waterMaskTexture(): Texture {
+        return ensureLegacyMapTextures(this.legacyMapTextureState).waterMaskTexture;
     }
 
     canRender(frameCount: number): boolean {
@@ -1173,19 +1484,28 @@ export class WebGLMapSquare {
     }
 
     getDrawCall(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallRange {
+        let drawCallRange: AnyDrawCallRange;
         if (isInteract) {
             if (isLod) {
-                return isAlpha ? this.drawCallInteractLodAlpha : this.drawCallInteractLod;
+                drawCallRange = isAlpha ? this.drawCallInteractLodAlpha : this.drawCallInteractLod;
             } else {
-                return isAlpha ? this.drawCallInteractAlpha : this.drawCallInteract;
+                drawCallRange = isAlpha ? this.drawCallInteractAlpha : this.drawCallInteract;
             }
+        } else if (isLod) {
+            drawCallRange = isAlpha ? this.drawCallLodAlpha : this.drawCallLod;
         } else {
-            if (isLod) {
-                return isAlpha ? this.drawCallLodAlpha : this.drawCallLod;
-            } else {
-                return isAlpha ? this.drawCallAlpha : this.drawCall;
-            }
+            drawCallRange = isAlpha ? this.drawCallAlpha : this.drawCall;
         }
+        return materializeDrawCallRange(drawCallRange);
+    }
+
+    getDrawRanges(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawRange[] {
+        return selectDrawRangeGroup(
+            this.terrainDrawRangeGroups,
+            isAlpha,
+            isInteract,
+            isLod,
+        );
     }
 
     getLocDrawCall(
@@ -1194,16 +1514,32 @@ export class WebGLMapSquare {
         isLod: boolean,
     ): DrawCallRange | undefined {
         if (!this.loc) return undefined;
+        let drawCallRange: AnyDrawCallRange;
         if (isInteract) {
             if (isLod) {
-                return isAlpha ? this.loc.drawCallInteractLodAlpha : this.loc.drawCallInteractLod;
+                drawCallRange = isAlpha
+                    ? this.loc.drawCallInteractLodAlpha
+                    : this.loc.drawCallInteractLod;
+            } else {
+                drawCallRange = isAlpha ? this.loc.drawCallInteractAlpha : this.loc.drawCallInteract;
             }
-            return isAlpha ? this.loc.drawCallInteractAlpha : this.loc.drawCallInteract;
+        } else if (isLod) {
+            drawCallRange = isAlpha ? this.loc.drawCallLodAlpha : this.loc.drawCallLod;
+        } else {
+            drawCallRange = isAlpha ? this.loc.drawCallAlpha : this.loc.drawCall;
         }
-        if (isLod) {
-            return isAlpha ? this.loc.drawCallLodAlpha : this.loc.drawCallLod;
-        }
-        return isAlpha ? this.loc.drawCallAlpha : this.loc.drawCall;
+        return materializeDrawCallRange(drawCallRange);
+    }
+
+    getLocDrawRanges(
+        isAlpha: boolean,
+        isInteract: boolean,
+        isLod: boolean,
+    ): DrawRange[] | undefined {
+        const groups = this.locDrawRangeGroups;
+        return groups
+            ? selectDrawRangeGroup(groups, isAlpha, isInteract, isLod)
+            : undefined;
     }
 
     getDoorDrawCall(
@@ -1212,16 +1548,32 @@ export class WebGLMapSquare {
         isLod: boolean,
     ): DrawCallRange | undefined {
         if (!this.door) return undefined;
+        let drawCallRange: AnyDrawCallRange;
         if (isInteract) {
             if (isLod) {
-                return isAlpha ? this.door.drawCallInteractLodAlpha : this.door.drawCallInteractLod;
+                drawCallRange = isAlpha
+                    ? this.door.drawCallInteractLodAlpha
+                    : this.door.drawCallInteractLod;
+            } else {
+                drawCallRange = isAlpha ? this.door.drawCallInteractAlpha : this.door.drawCallInteract;
             }
-            return isAlpha ? this.door.drawCallInteractAlpha : this.door.drawCallInteract;
+        } else if (isLod) {
+            drawCallRange = isAlpha ? this.door.drawCallLodAlpha : this.door.drawCallLod;
+        } else {
+            drawCallRange = isAlpha ? this.door.drawCallAlpha : this.door.drawCall;
         }
-        if (isLod) {
-            return isAlpha ? this.door.drawCallLodAlpha : this.door.drawCallLod;
-        }
-        return isAlpha ? this.door.drawCallAlpha : this.door.drawCall;
+        return materializeDrawCallRange(drawCallRange);
+    }
+
+    getDoorDrawRanges(
+        isAlpha: boolean,
+        isInteract: boolean,
+        isLod: boolean,
+    ): DrawRange[] | undefined {
+        const groups = this.doorDrawRangeGroups;
+        return groups
+            ? selectDrawRangeGroup(groups, isAlpha, isInteract, isLod)
+            : undefined;
     }
 
     getDrawRangesPlanes(
@@ -1278,17 +1630,30 @@ export class WebGLMapSquare {
     ): DrawCallRange | undefined {
         if (!this.groundItems) return undefined;
         const batch = this.groundItems;
+        let drawCallRange: AnyDrawCallRange;
         if (isInteract) {
             if (isLod) {
-                return isAlpha ? batch.drawCallInteractLodAlpha : batch.drawCallInteractLod;
+                drawCallRange = isAlpha ? batch.drawCallInteractLodAlpha : batch.drawCallInteractLod;
+            } else {
+                drawCallRange = isAlpha ? batch.drawCallInteractAlpha : batch.drawCallInteract;
             }
-            return isAlpha ? batch.drawCallInteractAlpha : batch.drawCallInteract;
+        } else if (isLod) {
+            drawCallRange = isAlpha ? batch.drawCallLodAlpha : batch.drawCallLod;
         } else {
-            if (isLod) {
-                return isAlpha ? batch.drawCallLodAlpha : batch.drawCallLod;
-            }
-            return isAlpha ? batch.drawCallAlpha : batch.drawCall;
+            drawCallRange = isAlpha ? batch.drawCallAlpha : batch.drawCall;
         }
+        return materializeDrawCallRange(drawCallRange);
+    }
+
+    getGroundItemDrawRanges(
+        isAlpha: boolean,
+        isInteract: boolean,
+        isLod: boolean,
+    ): DrawRange[] | undefined {
+        const groups = this.groundItemDrawRangeGroups;
+        return groups
+            ? selectDrawRangeGroup(groups, isAlpha, isInteract, isLod)
+            : undefined;
     }
 
     getGroundItemDrawRangesPlanes(
@@ -1315,6 +1680,91 @@ export class WebGLMapSquare {
         return cm.getFlag(x, y) | 0;
     }
 
+    releaseLegacySceneGpuResources(): void {
+        const dematerializeBatch = (resources: DeferredGeometryResources | undefined): void => {
+            if (!resources) return;
+            dematerializeDrawCallRange(resources.drawCall);
+            dematerializeDrawCallRange(resources.drawCallAlpha);
+            dematerializeDrawCallRange(resources.drawCallLod);
+            dematerializeDrawCallRange(resources.drawCallLodAlpha);
+            dematerializeDrawCallRange(resources.drawCallInteract);
+            dematerializeDrawCallRange(resources.drawCallInteractAlpha);
+            dematerializeDrawCallRange(resources.drawCallInteractLod);
+            dematerializeDrawCallRange(resources.drawCallInteractLodAlpha);
+        };
+
+        dematerializeDrawCallRange(this.drawCall);
+        dematerializeDrawCallRange(this.drawCallAlpha);
+        dematerializeDrawCallRange(this.drawCallLod);
+        dematerializeDrawCallRange(this.drawCallLodAlpha);
+        dematerializeDrawCallRange(this.drawCallInteract);
+        dematerializeDrawCallRange(this.drawCallInteractAlpha);
+        dematerializeDrawCallRange(this.drawCallInteractLod);
+        dematerializeDrawCallRange(this.drawCallInteractLodAlpha);
+
+        deleteLegacySceneBatchGpuResources(
+            this.mapX,
+            this.mapY,
+            "terrain.primary-resume",
+            this.terrainLegacyGpu,
+        );
+        this.terrainLegacyGpu = undefined;
+        this.interleavedBuffer = undefined;
+        this.indexBuffer = undefined;
+        this.vertexArray = undefined;
+        this.modelInfoTexture = undefined;
+        this.modelInfoTextureAlpha = undefined;
+        this.modelInfoTextureLod = undefined;
+        this.modelInfoTextureLodAlpha = undefined;
+        this.modelInfoTextureInteract = undefined;
+        this.modelInfoTextureInteractAlpha = undefined;
+        this.modelInfoTextureInteractLod = undefined;
+        this.modelInfoTextureInteractLodAlpha = undefined;
+
+        dematerializeDrawCallRange(this.drawCallNpc);
+        deleteMapSquareResource(
+            this.mapX,
+            this.mapY,
+            "npc.vertexArray.primary-resume",
+            this.npcVertexArray,
+        );
+        deleteMapSquareResource(
+            this.mapX,
+            this.mapY,
+            "npc.interleavedBuffer.primary-resume",
+            this.npcInterleavedBuffer,
+        );
+        deleteMapSquareResource(
+            this.mapX,
+            this.mapY,
+            "npc.indexBuffer.primary-resume",
+            this.npcIndexBuffer,
+        );
+        this.npcVertexArray = undefined;
+        this.npcInterleavedBuffer = undefined;
+        this.npcIndexBuffer = undefined;
+
+        const releaseBatch = (
+            label: string,
+            resources: DeferredGeometryResources | undefined,
+        ): void => {
+            if (!resources) return;
+            dematerializeBatch(resources);
+            deleteLegacySceneBatchGpuResources(
+                this.mapX,
+                this.mapY,
+                label,
+                resources.legacyGpu,
+            );
+            resources.legacyGpu = undefined;
+        };
+
+        releaseBatch("loc.primary-resume", this.loc);
+        releaseBatch("door.primary-resume", this.door);
+        releaseBatch("ground.primary-resume", this.groundItems);
+        deleteLegacyMapTextures(this.legacyMapTextureState);
+    }
+
     delete() {
         runMapSquareAction(this.mapX, this.mapY, "npcEcs.destroyNpcsForMap", () =>
             this._npcEcs?.destroyNpcsForMap(this.mapX, this.mapY),
@@ -1328,28 +1778,30 @@ export class WebGLMapSquare {
         releaseDrawCallRange(this.drawCallInteractLod);
         releaseDrawCallRange(this.drawCallInteractLodAlpha);
         releaseDrawCallRange(this.drawCallNpc);
-        this.vertexArray.delete();
-        this.interleavedBuffer.delete();
-        this.indexBuffer.delete();
+        deleteLegacySceneBatchGpuResources(
+            this.mapX,
+            this.mapY,
+            "terrain",
+            this.terrainLegacyGpu,
+        );
+        this.terrainLegacyGpu = undefined;
+        this.interleavedBuffer = undefined;
+        this.indexBuffer = undefined;
+        this.vertexArray = undefined;
+        this.modelInfoTexture = undefined;
+        this.modelInfoTextureAlpha = undefined;
+        this.modelInfoTextureLod = undefined;
+        this.modelInfoTextureLodAlpha = undefined;
+        this.modelInfoTextureInteract = undefined;
+        this.modelInfoTextureInteractAlpha = undefined;
+        this.modelInfoTextureInteractLod = undefined;
+        this.modelInfoTextureInteractLodAlpha = undefined;
+
         this.npcVertexArray?.delete();
         this.npcInterleavedBuffer?.delete();
         this.npcIndexBuffer?.delete();
 
-        this.heightMapTexture.delete();
-        this.waterMaskTexture.delete();
-
-        // Model info
-        this.modelInfoTexture.delete();
-        this.modelInfoTextureAlpha.delete();
-
-        this.modelInfoTextureLod.delete();
-        this.modelInfoTextureLodAlpha.delete();
-
-        this.modelInfoTextureInteract.delete();
-        this.modelInfoTextureInteractAlpha.delete();
-
-        this.modelInfoTextureInteractLod.delete();
-        this.modelInfoTextureInteractLodAlpha.delete();
+        deleteLegacyMapTextures(this.legacyMapTextureState);
 
         this.clearGroundItemGeometry();
         this.clearLocGeometry();
@@ -1364,23 +1816,38 @@ export class WebGLMapSquare {
             releaseDrawCallRange(door.drawCallInteractAlpha);
             releaseDrawCallRange(door.drawCallInteractLod);
             releaseDrawCallRange(door.drawCallInteractLodAlpha);
-            deleteMapSquareResource(this.mapX, this.mapY, "door.vertexArray", door.vertexArray);
-            deleteMapSquareResource(
-                this.mapX,
-                this.mapY,
-                "door.interleavedBuffer",
-                door.interleavedBuffer,
-            );
-            deleteMapSquareResource(this.mapX, this.mapY, "door.indexBuffer", door.indexBuffer);
-            door.modelInfoTexture.delete();
-            door.modelInfoTextureAlpha.delete();
-            door.modelInfoTextureLod.delete();
-            door.modelInfoTextureLodAlpha.delete();
-            door.modelInfoTextureInteract.delete();
-            door.modelInfoTextureInteractAlpha.delete();
-            door.modelInfoTextureInteractLod.delete();
-            door.modelInfoTextureInteractLodAlpha.delete();
+            const legacyGpu = door.legacyGpu;
+            if (legacyGpu) {
+                deleteMapSquareResource(
+                    this.mapX,
+                    this.mapY,
+                    "door.vertexArray",
+                    legacyGpu.vertexArray,
+                );
+                deleteMapSquareResource(
+                    this.mapX,
+                    this.mapY,
+                    "door.interleavedBuffer",
+                    legacyGpu.interleavedBuffer,
+                );
+                deleteMapSquareResource(
+                    this.mapX,
+                    this.mapY,
+                    "door.indexBuffer",
+                    legacyGpu.indexBuffer,
+                );
+                legacyGpu.modelInfoTexture.delete();
+                legacyGpu.modelInfoTextureAlpha.delete();
+                legacyGpu.modelInfoTextureLod.delete();
+                legacyGpu.modelInfoTextureLodAlpha.delete();
+                legacyGpu.modelInfoTextureInteract.delete();
+                legacyGpu.modelInfoTextureInteractAlpha.delete();
+                legacyGpu.modelInfoTextureInteractLod.delete();
+                legacyGpu.modelInfoTextureInteractLodAlpha.delete();
+                door.legacyGpu = undefined;
+            }
             this.door = undefined;
+            this.doorDrawRangeGroups = undefined;
             this.doorDrawRangePlanes = undefined;
         }
     }
@@ -1396,23 +1863,33 @@ export class WebGLMapSquare {
         releaseDrawCallRange(loc.drawCallInteractAlpha);
         releaseDrawCallRange(loc.drawCallInteractLod);
         releaseDrawCallRange(loc.drawCallInteractLodAlpha);
-        deleteMapSquareResource(this.mapX, this.mapY, "loc.vertexArray", loc.vertexArray);
-        deleteMapSquareResource(
-            this.mapX,
-            this.mapY,
-            "loc.interleavedBuffer",
-            loc.interleavedBuffer,
-        );
-        deleteMapSquareResource(this.mapX, this.mapY, "loc.indexBuffer", loc.indexBuffer);
-        loc.modelInfoTexture.delete();
-        loc.modelInfoTextureAlpha.delete();
-        loc.modelInfoTextureLod.delete();
-        loc.modelInfoTextureLodAlpha.delete();
-        loc.modelInfoTextureInteract.delete();
-        loc.modelInfoTextureInteractAlpha.delete();
-        loc.modelInfoTextureInteractLod.delete();
-        loc.modelInfoTextureInteractLodAlpha.delete();
+        const legacyGpu = loc.legacyGpu;
+        if (legacyGpu) {
+            deleteMapSquareResource(this.mapX, this.mapY, "loc.vertexArray", legacyGpu.vertexArray);
+            deleteMapSquareResource(
+                this.mapX,
+                this.mapY,
+                "loc.interleavedBuffer",
+                legacyGpu.interleavedBuffer,
+            );
+            deleteMapSquareResource(
+                this.mapX,
+                this.mapY,
+                "loc.indexBuffer",
+                legacyGpu.indexBuffer,
+            );
+            legacyGpu.modelInfoTexture.delete();
+            legacyGpu.modelInfoTextureAlpha.delete();
+            legacyGpu.modelInfoTextureLod.delete();
+            legacyGpu.modelInfoTextureLodAlpha.delete();
+            legacyGpu.modelInfoTextureInteract.delete();
+            legacyGpu.modelInfoTextureInteractAlpha.delete();
+            legacyGpu.modelInfoTextureInteractLod.delete();
+            legacyGpu.modelInfoTextureInteractLodAlpha.delete();
+            loc.legacyGpu = undefined;
+        }
         this.loc = undefined;
+        this.locDrawRangeGroups = undefined;
         this.locDrawRangePlanes = undefined;
     }
 
@@ -1528,44 +2005,57 @@ export class WebGLMapSquare {
             }
         }
 
-        if (npcGeometry.vertices.length > 0 && npcGeometry.indices.length > 0) {
-            this.npcInterleavedBuffer = app.createInterleavedBuffer(12, npcGeometry.vertices);
-            this.npcIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, npcGeometry.indices);
-            this.npcVertexArray = app
-                .createVertexArray()
-                .vertexAttributeBuffer(0, this.npcInterleavedBuffer, {
-                    type: PicoGL.UNSIGNED_INT,
-                    size: 3,
-                    stride: 12,
-                    integer: true as any,
-                })
-                .indexBuffer(this.npcIndexBuffer);
+        this.npcInterleavedBuffer = undefined;
+        this.npcIndexBuffer = undefined;
+        this.npcVertexArray = undefined;
 
+        if (npcGeometry.vertices.length > 0 && npcGeometry.indices.length > 0) {
             const drawRangesNpc = new Array(npcGeometry.npcs.length)
                 .fill(0)
                 .map(() => newDrawRange(0, 0, 1));
 
             const mapPos = vec2.fromValues(this.renderPosX, this.renderPosY);
-            const drawCall = app
-                .createDrawCall(npcProgram, this.npcVertexArray)
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", this.timeLoaded)
-                .uniform("u_mapPos", mapPos)
-                .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                .uniform("u_worldEntityOpacity", 1.0)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_waterTextures", waterTextures)
-                .texture("u_heightMap", this.heightMapTexture)
-                .texture("u_waterMask", this.waterMaskTexture)
-                .uniform("u_sceneBorderSize", this.borderSize)
-                .drawRanges(...drawRangesNpc);
+            this.drawCallNpc = createDeferredDrawCallRange(
+                drawRangesNpc,
+                () => {
+                    if (!this.npcVertexArray) {
+                        this.npcInterleavedBuffer = app.createInterleavedBuffer(
+                            12,
+                            npcGeometry.vertices,
+                        );
+                        this.npcIndexBuffer = app.createIndexBuffer(
+                            PicoGL.UNSIGNED_INT,
+                            npcGeometry.indices,
+                        );
+                        this.npcVertexArray = app
+                            .createVertexArray()
+                            .vertexAttributeBuffer(0, this.npcInterleavedBuffer, {
+                                type: PicoGL.UNSIGNED_INT,
+                                size: 3,
+                                stride: 12,
+                                integer: true as any,
+                            })
+                            .indexBuffer(this.npcIndexBuffer);
+                    }
 
-            this.drawCallNpc = { drawCall, drawRanges: drawRangesNpc };
+                    return app
+                        .createDrawCall(npcProgram, this.npcVertexArray)
+                        .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                        .uniform("u_timeLoaded", this.timeLoaded)
+                        .uniform("u_mapPos", mapPos)
+                        .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                        .uniform("u_worldEntityOpacity", 1.0)
+                        .texture("u_textures", textureArray)
+                        .texture("u_textureMaterials", textureMaterials)
+                        .texture("u_waterTextures", waterTextures)
+                        .texture("u_heightMap", this.heightMapTexture)
+                        .texture("u_waterMask", this.waterMaskTexture)
+                        .uniform("u_sceneBorderSize", this.borderSize)
+                        .drawRanges(...drawRangesNpc);
+                },
+                false,
+            );
         } else {
-            this.npcInterleavedBuffer = undefined;
-            this.npcIndexBuffer = undefined;
-            this.npcVertexArray = undefined;
             this.drawCallNpc = undefined;
         }
 
@@ -1836,6 +2326,7 @@ export class WebGLMapSquare {
         mapData: SdMapData,
         clientCycle: number,
         time?: number,
+        eagerLegacyDrawCalls: boolean = true,
     ): void {
         if (mapData.mapX !== this.mapX || mapData.mapY !== this.mapY) {
             console.warn("[WebGLMapSquare] Loc geometry map mismatch", mapData.mapX, mapData.mapY);
@@ -1854,13 +2345,14 @@ export class WebGLMapSquare {
             textureMaterials,
             waterTextures,
             sceneUniformBuffer,
-            this.heightMapTexture,
-            this.waterMaskTexture,
+            () => ensureLegacyMapTextures(this.legacyMapTextureState),
             vec2.fromValues(this.renderPosX, this.renderPosY),
             this.borderSize,
             loadTime,
             mapData.loc,
+            eagerLegacyDrawCalls,
         );
+        this.locDrawRangeGroups = this.loc ? getDrawRangeGroups(this.loc) : undefined;
         this.locDrawRangePlanes = this.loc?.planes;
 
         const cycle = clientCycle | 0;
@@ -1901,6 +2393,7 @@ export class WebGLMapSquare {
         sceneUniformBuffer: UniformBuffer,
         mapData: SdMapData,
         time?: number,
+        eagerLegacyDrawCalls: boolean = true,
     ): void {
         if (mapData.mapX !== this.mapX || mapData.mapY !== this.mapY) {
             console.warn("[WebGLMapSquare] Door geometry map mismatch", mapData.mapX, mapData.mapY);
@@ -1909,207 +2402,71 @@ export class WebGLMapSquare {
 
         this.refreshLocSceneMetadata(mapData);
 
+        const previous = this.door;
+        if (previous) {
+            releaseDrawCallRange(previous.drawCall);
+            releaseDrawCallRange(previous.drawCallAlpha);
+            releaseDrawCallRange(previous.drawCallLod);
+            releaseDrawCallRange(previous.drawCallLodAlpha);
+            releaseDrawCallRange(previous.drawCallInteract);
+            releaseDrawCallRange(previous.drawCallInteractAlpha);
+            releaseDrawCallRange(previous.drawCallInteractLod);
+            releaseDrawCallRange(previous.drawCallInteractLodAlpha);
+
+            const legacyGpu = previous.legacyGpu;
+            if (legacyGpu) {
+                deleteMapSquareResource(
+                    this.mapX,
+                    this.mapY,
+                    "door.vertexArray.refresh",
+                    legacyGpu.vertexArray,
+                );
+                deleteMapSquareResource(
+                    this.mapX,
+                    this.mapY,
+                    "door.interleavedBuffer.refresh",
+                    legacyGpu.interleavedBuffer,
+                );
+                deleteMapSquareResource(
+                    this.mapX,
+                    this.mapY,
+                    "door.indexBuffer.refresh",
+                    legacyGpu.indexBuffer,
+                );
+                legacyGpu.modelInfoTexture.delete();
+                legacyGpu.modelInfoTextureAlpha.delete();
+                legacyGpu.modelInfoTextureLod.delete();
+                legacyGpu.modelInfoTextureLodAlpha.delete();
+                legacyGpu.modelInfoTextureInteract.delete();
+                legacyGpu.modelInfoTextureInteractAlpha.delete();
+                legacyGpu.modelInfoTextureInteractLod.delete();
+                legacyGpu.modelInfoTextureInteractLodAlpha.delete();
+                previous.legacyGpu = undefined;
+            }
+        }
+
         const loadTime = time ?? this.timeLoaded;
-
-        if (this.door) {
-            releaseDrawCallRange(this.door.drawCall);
-            releaseDrawCallRange(this.door.drawCallAlpha);
-            releaseDrawCallRange(this.door.drawCallLod);
-            releaseDrawCallRange(this.door.drawCallLodAlpha);
-            releaseDrawCallRange(this.door.drawCallInteract);
-            releaseDrawCallRange(this.door.drawCallInteractAlpha);
-            releaseDrawCallRange(this.door.drawCallInteractLod);
-            releaseDrawCallRange(this.door.drawCallInteractLodAlpha);
-            deleteMapSquareResource(
-                this.mapX,
-                this.mapY,
-                "door.vertexArray.refresh",
-                this.door.vertexArray,
-            );
-            deleteMapSquareResource(
-                this.mapX,
-                this.mapY,
-                "door.interleavedBuffer.refresh",
-                this.door.interleavedBuffer,
-            );
-            deleteMapSquareResource(
-                this.mapX,
-                this.mapY,
-                "door.indexBuffer.refresh",
-                this.door.indexBuffer,
-            );
-            this.door.modelInfoTexture.delete();
-            this.door.modelInfoTextureAlpha.delete();
-            this.door.modelInfoTextureLod.delete();
-            this.door.modelInfoTextureLodAlpha.delete();
-            this.door.modelInfoTextureInteract.delete();
-            this.door.modelInfoTextureInteractAlpha.delete();
-            this.door.modelInfoTextureInteractLod.delete();
-            this.door.modelInfoTextureInteractLodAlpha.delete();
-        }
-        this.door = undefined;
-        this.doorDrawRangePlanes = undefined;
-
-        if (mapData.doorVertices.length === 0 || mapData.doorIndices.length === 0) {
-            return;
-        }
-
-        const doorInterleavedBuffer = app.createInterleavedBuffer(12, mapData.doorVertices);
-        const doorIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.doorIndices);
-        const doorVertexArray = app
-            .createVertexArray()
-            .vertexAttributeBuffer(0, doorInterleavedBuffer, {
-                type: PicoGL.UNSIGNED_INT,
-                size: 3,
-                stride: 12,
-                integer: true as any,
-            })
-            .indexBuffer(doorIndexBuffer);
-
-        const doorModelInfoTexture = createModelInfoTexture(app, mapData.doorModelTextureData);
-        const doorModelInfoTextureAlpha = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataAlpha,
-        );
-        const doorModelInfoTextureLod = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataLod,
-        );
-        const doorModelInfoTextureLodAlpha = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataLodAlpha,
-        );
-        const doorModelInfoTextureInteract = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataInteract,
-        );
-        const doorModelInfoTextureInteractAlpha = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataInteractAlpha,
-        );
-        const doorModelInfoTextureInteractLod = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataInteractLod,
-        );
-        const doorModelInfoTextureInteractLodAlpha = createModelInfoTexture(
-            app,
-            mapData.doorModelTextureDataInteractLodAlpha,
-        );
-
         const mapPos = vec2.fromValues(
             mapData.renderPosX ?? mapData.mapX,
             mapData.renderPosY ?? mapData.mapY,
         );
-
-        const buildDrawCall = (
-            program: Program,
-            modelInfoTexture: Texture | undefined,
-            drawRanges: DrawRange[],
-        ): DrawCallRange => {
-            const drawCall = app
-                .createDrawCall(program, doorVertexArray)
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", loadTime)
-                .uniform("u_mapPos", mapPos)
-                .uniform("u_roofPlaneLimit", 3.0)
-                .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                .uniform("u_worldEntityOpacity", 1.0)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_waterTextures", waterTextures)
-                .texture("u_heightMap", this.heightMapTexture)
-                .texture("u_waterMask", this.waterMaskTexture)
-                .uniform("u_sceneBorderSize", this.borderSize)
-                .drawRanges(...drawRanges);
-            if (modelInfoTexture) {
-                drawCall.texture("u_modelInfoTexture", modelInfoTexture);
-            }
-            return {
-                drawCall,
-                drawRanges,
-            };
-        };
-
-        const doorDrawCall = buildDrawCall(
+        this.door = createDoorGeometryResources(
+            app,
             mainProgram,
-            doorModelInfoTexture,
-            mapData.doorDrawRanges,
-        );
-        const doorDrawCallAlpha = buildDrawCall(
             mainAlphaProgram,
-            doorModelInfoTextureAlpha,
-            mapData.doorDrawRangesAlpha,
+            textureArray,
+            textureMaterials,
+            waterTextures,
+            sceneUniformBuffer,
+            () => ensureLegacyMapTextures(this.legacyMapTextureState),
+            mapPos,
+            this.borderSize,
+            loadTime,
+            mapData,
+            eagerLegacyDrawCalls,
         );
-        const doorDrawCallLod = buildDrawCall(
-            mainProgram,
-            doorModelInfoTextureLod,
-            mapData.doorDrawRangesLod,
-        );
-        const doorDrawCallLodAlpha = buildDrawCall(
-            mainAlphaProgram,
-            doorModelInfoTextureLodAlpha,
-            mapData.doorDrawRangesLodAlpha,
-        );
-        const doorDrawCallInteract = buildDrawCall(
-            mainProgram,
-            doorModelInfoTextureInteract,
-            mapData.doorDrawRangesInteract,
-        );
-        const doorDrawCallInteractAlpha = buildDrawCall(
-            mainAlphaProgram,
-            doorModelInfoTextureInteractAlpha,
-            mapData.doorDrawRangesInteractAlpha,
-        );
-        const doorDrawCallInteractLod = buildDrawCall(
-            mainProgram,
-            doorModelInfoTextureInteractLod,
-            mapData.doorDrawRangesInteractLod,
-        );
-        const doorDrawCallInteractLodAlpha = buildDrawCall(
-            mainAlphaProgram,
-            doorModelInfoTextureInteractLodAlpha,
-            mapData.doorDrawRangesInteractLodAlpha,
-        );
-
-        const doorPlanes =
-            mapData.doorDrawRangesPlanes.length > 0
-                ? {
-                      main: mapData.doorDrawRangesPlanes,
-                      alpha: mapData.doorDrawRangesAlphaPlanes,
-                      lod: mapData.doorDrawRangesLodPlanes,
-                      lodAlpha: mapData.doorDrawRangesLodAlphaPlanes,
-                      interact: mapData.doorDrawRangesInteractPlanes,
-                      interactAlpha: mapData.doorDrawRangesInteractAlphaPlanes,
-                      interactLod: mapData.doorDrawRangesInteractLodPlanes,
-                      interactLodAlpha: mapData.doorDrawRangesInteractLodAlphaPlanes,
-                  }
-                : undefined;
-
-        this.door = {
-            interleavedBuffer: doorInterleavedBuffer,
-            indexBuffer: doorIndexBuffer,
-            vertexArray: doorVertexArray,
-            modelInfoTexture: doorModelInfoTexture,
-            modelInfoTextureAlpha: doorModelInfoTextureAlpha,
-            modelInfoTextureLod: doorModelInfoTextureLod,
-            modelInfoTextureLodAlpha: doorModelInfoTextureLodAlpha,
-            modelInfoTextureInteract: doorModelInfoTextureInteract,
-            modelInfoTextureInteractAlpha: doorModelInfoTextureInteractAlpha,
-            modelInfoTextureInteractLod: doorModelInfoTextureInteractLod,
-            modelInfoTextureInteractLodAlpha: doorModelInfoTextureInteractLodAlpha,
-            drawCall: doorDrawCall,
-            drawCallAlpha: doorDrawCallAlpha,
-            drawCallLod: doorDrawCallLod,
-            drawCallLodAlpha: doorDrawCallLodAlpha,
-            drawCallInteract: doorDrawCallInteract,
-            drawCallInteractAlpha: doorDrawCallInteractAlpha,
-            drawCallInteractLod: doorDrawCallInteractLod,
-            drawCallInteractLodAlpha: doorDrawCallInteractLodAlpha,
-            planes: doorPlanes,
-        };
-        if (doorPlanes) {
-            this.doorDrawRangePlanes = doorPlanes;
-        }
+        this.doorDrawRangeGroups = this.door ? getDrawRangeGroups(this.door) : undefined;
+        this.doorDrawRangePlanes = this.door?.planes;
     }
 
     refreshSceneGeometry(
@@ -2125,6 +2482,7 @@ export class WebGLMapSquare {
         mapData: SdMapData,
         clientCycle: number,
         time?: number,
+        eagerLegacyDrawCalls: boolean = true,
     ): void {
         if (mapData.mapX !== this.mapX || mapData.mapY !== this.mapY) {
             console.warn(
@@ -2136,8 +2494,13 @@ export class WebGLMapSquare {
         }
 
         this.heightMapData.set(mapData.heightMapTextureData);
-        this.heightMapTexture.data(mapData.heightMapTextureData);
-        this.waterMaskTexture.data(mapData.waterMaskTextureData);
+        this.legacyMapTextureState.heightMapData = new Int16Array(mapData.heightMapTextureData);
+        this.legacyMapTextureState.waterMaskData = new Uint8Array(mapData.waterMaskTextureData);
+        const legacyMapTextures = this.legacyMapTextureState.resources;
+        if (legacyMapTextures) {
+            legacyMapTextures.heightMapTexture.data(mapData.heightMapTextureData);
+            legacyMapTextures.waterMaskTexture.data(mapData.waterMaskTextureData);
+        }
         this.terrainPickTileOffsets = mapData.terrainPickTileOffsets;
         this.terrainPickVertices = mapData.terrainPickVertices;
         this.terrainPickPlanes = mapData.terrainPickPlanes;
@@ -2194,124 +2557,157 @@ export class WebGLMapSquare {
         releaseDrawCallRange(this.drawCallInteractAlpha);
         releaseDrawCallRange(this.drawCallInteractLod);
         releaseDrawCallRange(this.drawCallInteractLodAlpha);
-        deleteMapSquareResource(this.mapX, this.mapY, "vertexArray.refresh", this.vertexArray);
-        deleteMapSquareResource(
+
+        deleteLegacySceneBatchGpuResources(
             this.mapX,
             this.mapY,
-            "interleavedBuffer.refresh",
-            this.interleavedBuffer,
+            "terrain.refresh",
+            this.terrainLegacyGpu,
         );
-        deleteMapSquareResource(this.mapX, this.mapY, "indexBuffer.refresh", this.indexBuffer);
-        this.modelInfoTexture.delete();
-        this.modelInfoTextureAlpha.delete();
-        this.modelInfoTextureLod.delete();
-        this.modelInfoTextureLodAlpha.delete();
-        this.modelInfoTextureInteract.delete();
-        this.modelInfoTextureInteractAlpha.delete();
-        this.modelInfoTextureInteractLod.delete();
-        this.modelInfoTextureInteractLodAlpha.delete();
+        this.terrainLegacyGpu = undefined;
+        this.interleavedBuffer = undefined;
+        this.indexBuffer = undefined;
+        this.vertexArray = undefined;
+        this.modelInfoTexture = undefined;
+        this.modelInfoTextureAlpha = undefined;
+        this.modelInfoTextureLod = undefined;
+        this.modelInfoTextureLodAlpha = undefined;
+        this.modelInfoTextureInteract = undefined;
+        this.modelInfoTextureInteractAlpha = undefined;
+        this.modelInfoTextureInteractLod = undefined;
+        this.modelInfoTextureInteractLodAlpha = undefined;
 
-        this.interleavedBuffer = app.createInterleavedBuffer(12, mapData.vertices);
-        this.indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.indices);
-        this.vertexArray = app
-            .createVertexArray()
-            .vertexAttributeBuffer(0, this.interleavedBuffer, {
-                type: PicoGL.UNSIGNED_INT,
-                size: 3,
-                stride: 12,
-                integer: true as any,
-            })
-            .indexBuffer(this.indexBuffer);
+        const ensureTerrainLegacyGpu = (): LegacySceneBatchGpuResources => {
+            const existing = this.terrainLegacyGpu;
+            if (existing) return existing;
 
-        this.modelInfoTexture = createModelInfoTexture(app, mapData.modelTextureData);
-        this.modelInfoTextureAlpha = createModelInfoTexture(app, mapData.modelTextureDataAlpha);
-        this.modelInfoTextureLod = createModelInfoTexture(app, mapData.modelTextureDataLod);
-        this.modelInfoTextureLodAlpha = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataLodAlpha,
-        );
-        this.modelInfoTextureInteract = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteract,
-        );
-        this.modelInfoTextureInteractAlpha = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteractAlpha,
-        );
-        this.modelInfoTextureInteractLod = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteractLod,
-        );
-        this.modelInfoTextureInteractLodAlpha = createModelInfoTexture(
-            app,
-            mapData.modelTextureDataInteractLodAlpha,
-        );
+            const interleavedBuffer = app.createInterleavedBuffer(12, mapData.vertices);
+            const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.indices);
+            const vertexArray = app
+                .createVertexArray()
+                .vertexAttributeBuffer(0, interleavedBuffer, {
+                    type: PicoGL.UNSIGNED_INT,
+                    size: 3,
+                    stride: 12,
+                    integer: true as any,
+                })
+                .indexBuffer(indexBuffer);
+
+            const created: LegacySceneBatchGpuResources = {
+                interleavedBuffer,
+                indexBuffer,
+                vertexArray,
+                modelInfoTexture: createModelInfoTexture(app, mapData.modelTextureData),
+                modelInfoTextureAlpha: createModelInfoTexture(app, mapData.modelTextureDataAlpha),
+                modelInfoTextureLod: createModelInfoTexture(app, mapData.modelTextureDataLod),
+                modelInfoTextureLodAlpha: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataLodAlpha,
+                ),
+                modelInfoTextureInteract: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteract,
+                ),
+                modelInfoTextureInteractAlpha: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteractAlpha,
+                ),
+                modelInfoTextureInteractLod: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteractLod,
+                ),
+                modelInfoTextureInteractLodAlpha: createModelInfoTexture(
+                    app,
+                    mapData.modelTextureDataInteractLodAlpha,
+                ),
+            };
+
+            this.terrainLegacyGpu = created;
+            this.interleavedBuffer = created.interleavedBuffer;
+            this.indexBuffer = created.indexBuffer;
+            this.vertexArray = created.vertexArray;
+            this.modelInfoTexture = created.modelInfoTexture;
+            this.modelInfoTextureAlpha = created.modelInfoTextureAlpha;
+            this.modelInfoTextureLod = created.modelInfoTextureLod;
+            this.modelInfoTextureLodAlpha = created.modelInfoTextureLodAlpha;
+            this.modelInfoTextureInteract = created.modelInfoTextureInteract;
+            this.modelInfoTextureInteractAlpha = created.modelInfoTextureInteractAlpha;
+            this.modelInfoTextureInteractLod = created.modelInfoTextureInteractLod;
+            this.modelInfoTextureInteractLodAlpha = created.modelInfoTextureInteractLodAlpha;
+            return created;
+        };
 
         const mapPos = vec2.fromValues(this.renderPosX, this.renderPosY);
         const buildDrawCall = (
             program: Program,
-            modelInfoTex: Texture | undefined,
+            selectModelInfoTexture: (gpu: LegacySceneBatchGpuResources) => Texture,
             drawRanges: DrawRange[],
-            vertexArrayOverride?: VertexArray,
-        ): DrawCallRange => {
-            const vao = vertexArrayOverride ?? this.vertexArray;
-            const drawCall = app
-                .createDrawCall(program, vao)
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", loadTime)
-                .uniform("u_mapPos", mapPos)
-                .uniform("u_roofPlaneLimit", 3.0)
-                .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                .uniform("u_worldEntityOpacity", 1.0)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_waterTextures", waterTextures)
-                .texture("u_heightMap", this.heightMapTexture)
-                .texture("u_waterMask", this.waterMaskTexture)
-                .uniform("u_sceneBorderSize", this.borderSize)
-                .drawRanges(...drawRanges);
-            if (modelInfoTex) {
-                drawCall.texture("u_modelInfoTexture", modelInfoTex);
-            }
-            return { drawCall, drawRanges };
-        };
+        ): AnyDrawCallRange =>
+            createDeferredDrawCallRange(
+                drawRanges,
+                () => {
+                    const gpu = ensureTerrainLegacyGpu();
+                    return app
+                        .createDrawCall(program, gpu.vertexArray)
+                        .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                        .uniform("u_timeLoaded", loadTime)
+                        .uniform("u_mapPos", mapPos)
+                        .uniform("u_roofPlaneLimit", 3.0)
+                        .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                        .uniform("u_worldEntityOpacity", 1.0)
+                        .texture("u_textures", textureArray)
+                        .texture("u_textureMaterials", textureMaterials)
+                        .texture("u_waterTextures", waterTextures)
+                        .texture("u_heightMap", this.heightMapTexture)
+                        .texture("u_waterMask", this.waterMaskTexture)
+                        .uniform("u_sceneBorderSize", this.borderSize)
+                        .texture("u_modelInfoTexture", selectModelInfoTexture(gpu))
+                        .drawRanges(...drawRanges);
+                },
+                eagerLegacyDrawCalls,
+            );
 
-        this.drawCall = buildDrawCall(mainProgram, this.modelInfoTexture, mapData.drawRanges);
+        this.drawCall = buildDrawCall(
+            mainProgram,
+            (gpu) => gpu.modelInfoTexture,
+            mapData.drawRanges,
+        );
         this.drawCallAlpha = buildDrawCall(
             mainAlphaProgram,
-            this.modelInfoTextureAlpha,
+            (gpu) => gpu.modelInfoTextureAlpha,
             mapData.drawRangesAlpha,
         );
         this.drawCallLod = buildDrawCall(
             mainProgram,
-            this.modelInfoTextureLod,
+            (gpu) => gpu.modelInfoTextureLod,
             mapData.drawRangesLod,
         );
         this.drawCallLodAlpha = buildDrawCall(
             mainAlphaProgram,
-            this.modelInfoTextureLodAlpha,
+            (gpu) => gpu.modelInfoTextureLodAlpha,
             mapData.drawRangesLodAlpha,
         );
         this.drawCallInteract = buildDrawCall(
             mainProgram,
-            this.modelInfoTextureInteract,
+            (gpu) => gpu.modelInfoTextureInteract,
             mapData.drawRangesInteract,
         );
         this.drawCallInteractAlpha = buildDrawCall(
             mainAlphaProgram,
-            this.modelInfoTextureInteractAlpha,
+            (gpu) => gpu.modelInfoTextureInteractAlpha,
             mapData.drawRangesInteractAlpha,
         );
         this.drawCallInteractLod = buildDrawCall(
             mainProgram,
-            this.modelInfoTextureInteractLod,
+            (gpu) => gpu.modelInfoTextureInteractLod,
             mapData.drawRangesInteractLod,
         );
         this.drawCallInteractLodAlpha = buildDrawCall(
             mainAlphaProgram,
-            this.modelInfoTextureInteractLodAlpha,
+            (gpu) => gpu.modelInfoTextureInteractLodAlpha,
             mapData.drawRangesInteractLodAlpha,
         );
+        this.terrainDrawRangeGroups = getDrawRangeGroups(this);
 
         this.drawRangePlanes = {
             main: mapData.drawRangesPlanes,
@@ -2364,6 +2760,7 @@ export class WebGLMapSquare {
             mapData,
             clientCycle,
             loadTime,
+            eagerLegacyDrawCalls,
         );
 
         this.refreshDoorGeometry(
@@ -2376,6 +2773,7 @@ export class WebGLMapSquare {
             sceneUniformBuffer,
             mapData,
             loadTime,
+            eagerLegacyDrawCalls,
         );
     }
 
@@ -2390,23 +2788,38 @@ export class WebGLMapSquare {
         releaseDrawCallRange(resources.drawCallInteractAlpha);
         releaseDrawCallRange(resources.drawCallInteractLod);
         releaseDrawCallRange(resources.drawCallInteractLodAlpha);
-        deleteMapSquareResource(this.mapX, this.mapY, "ground.vertexArray", resources.vertexArray);
-        deleteMapSquareResource(
-            this.mapX,
-            this.mapY,
-            "ground.interleavedBuffer",
-            resources.interleavedBuffer,
-        );
-        deleteMapSquareResource(this.mapX, this.mapY, "ground.indexBuffer", resources.indexBuffer);
-        resources.modelInfoTexture.delete();
-        resources.modelInfoTextureAlpha.delete();
-        resources.modelInfoTextureLod.delete();
-        resources.modelInfoTextureLodAlpha.delete();
-        resources.modelInfoTextureInteract.delete();
-        resources.modelInfoTextureInteractAlpha.delete();
-        resources.modelInfoTextureInteractLod.delete();
-        resources.modelInfoTextureInteractLodAlpha.delete();
+        const legacyGpu = resources.legacyGpu;
+        if (legacyGpu) {
+            deleteMapSquareResource(
+                this.mapX,
+                this.mapY,
+                "ground.vertexArray",
+                legacyGpu.vertexArray,
+            );
+            deleteMapSquareResource(
+                this.mapX,
+                this.mapY,
+                "ground.interleavedBuffer",
+                legacyGpu.interleavedBuffer,
+            );
+            deleteMapSquareResource(
+                this.mapX,
+                this.mapY,
+                "ground.indexBuffer",
+                legacyGpu.indexBuffer,
+            );
+            legacyGpu.modelInfoTexture.delete();
+            legacyGpu.modelInfoTextureAlpha.delete();
+            legacyGpu.modelInfoTextureLod.delete();
+            legacyGpu.modelInfoTextureLodAlpha.delete();
+            legacyGpu.modelInfoTextureInteract.delete();
+            legacyGpu.modelInfoTextureInteractAlpha.delete();
+            legacyGpu.modelInfoTextureInteractLod.delete();
+            legacyGpu.modelInfoTextureInteractLodAlpha.delete();
+            resources.legacyGpu = undefined;
+        }
         this.groundItems = undefined;
+        this.groundItemDrawRangeGroups = undefined;
         this.groundItemDrawRangePlanes = undefined;
     }
 
@@ -2419,124 +2832,154 @@ export class WebGLMapSquare {
         waterTextures: Texture,
         sceneUniformBuffer: UniformBuffer,
         data?: GroundItemGeometryBuildData,
+        eagerLegacyDrawCalls: boolean = true,
     ): void {
         this.clearGroundItemGeometry();
         if (!data || data.vertices.length === 0 || data.indices.length === 0) {
             return;
         }
 
-        const interleavedBuffer = app.createInterleavedBuffer(12, data.vertices);
-        const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, data.indices);
-        const vertexArray = app
-            .createVertexArray()
-            .vertexAttributeBuffer(0, interleavedBuffer, {
-                type: PicoGL.UNSIGNED_INT,
-                size: 3,
-                stride: 12,
-                integer: true as any,
-            })
-            .indexBuffer(indexBuffer);
-
         const mapPos = vec2.fromValues(this.renderPosX, this.renderPosY);
         // Use -1 to skip the fog fade-in animation for ground items
         // (u_currentTime - u_timeLoaded will always be > 1, so loadAlpha = 1 immediately)
         const loadTime = -1.0;
 
-        const buildDrawCall = (
-            program: Program,
-            modelInfoTexture: Texture,
-            drawRanges: DrawRange[],
-        ): DrawCallRange => {
-            const drawCall = app
-                .createDrawCall(program, vertexArray)
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", loadTime)
-                .uniform("u_mapPos", mapPos)
-                .uniform("u_roofPlaneLimit", 3.0)
-                .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                .uniform("u_worldEntityOpacity", 1.0)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_waterTextures", waterTextures)
-                .texture("u_heightMap", this.heightMapTexture)
-                .texture("u_waterMask", this.waterMaskTexture)
-                .uniform("u_sceneBorderSize", this.borderSize)
-                .drawRanges(...drawRanges);
-            if (modelInfoTexture) {
-                drawCall.texture("u_modelInfoTexture", modelInfoTexture);
-            }
-            return {
-                drawCall,
-                drawRanges,
+        let groundResources: GroundItemGeometryResources;
+
+        const ensureLegacyGpu = (): LegacySceneBatchGpuResources => {
+            const existing = groundResources.legacyGpu;
+            if (existing) return existing;
+
+            const interleavedBuffer = app.createInterleavedBuffer(12, data.vertices);
+            const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, data.indices);
+            const vertexArray = app
+                .createVertexArray()
+                .vertexAttributeBuffer(0, interleavedBuffer, {
+                    type: PicoGL.UNSIGNED_INT,
+                    size: 3,
+                    stride: 12,
+                    integer: true as any,
+                })
+                .indexBuffer(indexBuffer);
+
+            const created: LegacySceneBatchGpuResources = {
+                interleavedBuffer,
+                indexBuffer,
+                vertexArray,
+                modelInfoTexture: createModelInfoTexture(app, data.modelTextureData),
+                modelInfoTextureAlpha: createModelInfoTexture(app, data.modelTextureDataAlpha),
+                modelInfoTextureLod: createModelInfoTexture(app, data.modelTextureDataLod),
+                modelInfoTextureLodAlpha: createModelInfoTexture(
+                    app,
+                    data.modelTextureDataLodAlpha,
+                ),
+                modelInfoTextureInteract: createModelInfoTexture(
+                    app,
+                    data.modelTextureDataInteract,
+                ),
+                modelInfoTextureInteractAlpha: createModelInfoTexture(
+                    app,
+                    data.modelTextureDataInteractAlpha,
+                ),
+                modelInfoTextureInteractLod: createModelInfoTexture(
+                    app,
+                    data.modelTextureDataInteractLod,
+                ),
+                modelInfoTextureInteractLodAlpha: createModelInfoTexture(
+                    app,
+                    data.modelTextureDataInteractLodAlpha,
+                ),
             };
+            groundResources.legacyGpu = created;
+            return created;
         };
 
-        const modelInfoTexture = createModelInfoTexture(app, data.modelTextureData);
-        const modelInfoTextureAlpha = createModelInfoTexture(app, data.modelTextureDataAlpha);
-        const modelInfoTextureLod = createModelInfoTexture(app, data.modelTextureDataLod);
-        const modelInfoTextureLodAlpha = createModelInfoTexture(app, data.modelTextureDataLodAlpha);
-        const modelInfoTextureInteract = createModelInfoTexture(app, data.modelTextureDataInteract);
-        const modelInfoTextureInteractAlpha = createModelInfoTexture(
-            app,
-            data.modelTextureDataInteractAlpha,
-        );
-        const modelInfoTextureInteractLod = createModelInfoTexture(
-            app,
-            data.modelTextureDataInteractLod,
-        );
-        const modelInfoTextureInteractLodAlpha = createModelInfoTexture(
-            app,
-            data.modelTextureDataInteractLodAlpha,
-        );
+        const buildDrawCall = (
+            program: Program,
+            selectModelInfoTexture: (gpu: LegacySceneBatchGpuResources) => Texture,
+            drawRanges: DrawRange[],
+        ): AnyDrawCallRange =>
+            createDeferredDrawCallRange(
+                drawRanges,
+                () => {
+                    const gpu = ensureLegacyGpu();
+                    return app
+                        .createDrawCall(program, gpu.vertexArray)
+                        .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                        .uniform("u_timeLoaded", loadTime)
+                        .uniform("u_mapPos", mapPos)
+                        .uniform("u_roofPlaneLimit", 3.0)
+                        .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                        .uniform("u_worldEntityOpacity", 1.0)
+                        .texture("u_textures", textureArray)
+                        .texture("u_textureMaterials", textureMaterials)
+                        .texture("u_waterTextures", waterTextures)
+                        .texture("u_heightMap", this.heightMapTexture)
+                        .texture("u_waterMask", this.waterMaskTexture)
+                        .uniform("u_sceneBorderSize", this.borderSize)
+                        .texture("u_modelInfoTexture", selectModelInfoTexture(gpu))
+                        .drawRanges(...drawRanges);
+                },
+                false,
+            );
 
-        const groundResources: GroundItemGeometryResources = {
-            interleavedBuffer,
-            indexBuffer,
-            vertexArray,
-            modelInfoTexture,
-            modelInfoTextureAlpha,
-            modelInfoTextureLod,
-            modelInfoTextureLodAlpha,
-            modelInfoTextureInteract,
-            modelInfoTextureInteractAlpha,
-            modelInfoTextureInteractLod,
-            modelInfoTextureInteractLodAlpha,
-            drawCall: buildDrawCall(mainProgram, modelInfoTexture, data.drawRanges),
+        groundResources = {
+            drawCall: buildDrawCall(
+                mainProgram,
+                (gpu) => gpu.modelInfoTexture,
+                data.drawRanges,
+            ),
             drawCallAlpha: buildDrawCall(
                 mainAlphaProgram,
-                modelInfoTextureAlpha,
+                (gpu) => gpu.modelInfoTextureAlpha,
                 data.drawRangesAlpha,
             ),
-            drawCallLod: buildDrawCall(mainProgram, modelInfoTextureLod, data.drawRangesLod),
+            drawCallLod: buildDrawCall(
+                mainProgram,
+                (gpu) => gpu.modelInfoTextureLod,
+                data.drawRangesLod,
+            ),
             drawCallLodAlpha: buildDrawCall(
                 mainAlphaProgram,
-                modelInfoTextureLodAlpha,
+                (gpu) => gpu.modelInfoTextureLodAlpha,
                 data.drawRangesLodAlpha,
             ),
             drawCallInteract: buildDrawCall(
                 mainProgram,
-                modelInfoTextureInteract,
+                (gpu) => gpu.modelInfoTextureInteract,
                 data.drawRangesInteract,
             ),
             drawCallInteractAlpha: buildDrawCall(
                 mainAlphaProgram,
-                modelInfoTextureInteractAlpha,
+                (gpu) => gpu.modelInfoTextureInteractAlpha,
                 data.drawRangesInteractAlpha,
             ),
             drawCallInteractLod: buildDrawCall(
                 mainProgram,
-                modelInfoTextureInteractLod,
+                (gpu) => gpu.modelInfoTextureInteractLod,
                 data.drawRangesInteractLod,
             ),
             drawCallInteractLodAlpha: buildDrawCall(
                 mainAlphaProgram,
-                modelInfoTextureInteractLodAlpha,
+                (gpu) => gpu.modelInfoTextureInteractLodAlpha,
                 data.drawRangesInteractLodAlpha,
             ),
             planes: data.planes,
         };
 
+        if (eagerLegacyDrawCalls) {
+            materializeDrawCallRange(groundResources.drawCall);
+            materializeDrawCallRange(groundResources.drawCallAlpha);
+            materializeDrawCallRange(groundResources.drawCallLod);
+            materializeDrawCallRange(groundResources.drawCallLodAlpha);
+            materializeDrawCallRange(groundResources.drawCallInteract);
+            materializeDrawCallRange(groundResources.drawCallInteractAlpha);
+            materializeDrawCallRange(groundResources.drawCallInteractLod);
+            materializeDrawCallRange(groundResources.drawCallInteractLodAlpha);
+        }
+
         this.groundItems = groundResources;
+        this.groundItemDrawRangeGroups = getDrawRangeGroups(groundResources);
         this.groundItemDrawRangePlanes = data.planes;
     }
 
