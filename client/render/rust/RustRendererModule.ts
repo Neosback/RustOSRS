@@ -1,4 +1,5 @@
 import {
+    registerRustContourBuilder,
     registerRustLegacyTransformer,
     registerRustSkeletalSkinner,
 } from "../../rs/model/RustModelTransforms";
@@ -83,6 +84,27 @@ export interface RustRendererWebModule {
         textureIds: Int32Array,
     ) => number;
     build_draw_list?: (commandFields: Uint32Array) => RustPreparedDrawListWasm;
+    contour_vertices_y?: (
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        usedVertexCount: number,
+        contourType: number,
+        param: number,
+        heightMap: Int32Array,
+        heightWidth: number,
+        heightDepth: number,
+        heightMapAbove: Int32Array,
+        aboveWidth: number,
+        aboveDepth: number,
+        sceneX: number,
+        sceneHeight: number,
+        sceneZ: number,
+        type2Denominator: number,
+        minY: number,
+        maxY: number,
+        preserveType1UnusedOob: boolean,
+    ) => Int32Array;
     apply_legacy_transforms?: (
         verticesX: Int32Array,
         verticesY: Int32Array,
@@ -153,6 +175,11 @@ export async function loadRustRendererModule(): Promise<RustRendererWebModule> {
                 registerRustLegacyTransformer(
                     typeof typed.apply_legacy_transforms === "function"
                         ? typed.apply_legacy_transforms
+                        : undefined,
+                );
+                registerRustContourBuilder(
+                    typeof typed.contour_vertices_y === "function"
+                        ? typed.contour_vertices_y
                         : undefined,
                 );
                 return typed;
