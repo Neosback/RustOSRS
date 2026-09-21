@@ -119,7 +119,26 @@ const acceptanceHtml = [
     "async function report(payload) {",
     "  await fetch(resultUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });",
     "}",
+    "async function runWorkerWasmSmoke() {",
+    "  const moduleUrl = new URL('/rust-renderer/rustosrs_renderer.js', location.href).href;",
+    "  const workerSource = `self.onmessage = async (event) => { try { const module = await import(event.data.moduleUrl); await module.default(); const out = module.transform_vertices_basic(new Int32Array([1]), new Int32Array([2]), new Int32Array([3]), 4, 5, 6, 7); self.postMessage({ ok: JSON.stringify(Array.from(out)) === JSON.stringify([6,8,10]) }); } catch (error) { self.postMessage({ ok: false, error: String(error && (error.stack || error.message) ? (error.stack || error.message) : error) }); } };`;",
+    "  const blobUrl = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));",
+    "  const worker = new Worker(blobUrl, { type: 'module' });",
+    "  try {",
+    "    const result = await new Promise((resolve, reject) => {",
+    "      const timeout = setTimeout(() => reject(new Error('worker WASM smoke timed out')), 5000);",
+    "      worker.onmessage = (event) => { clearTimeout(timeout); resolve(event.data); };",
+    "      worker.onerror = (event) => { clearTimeout(timeout); reject(new Error(event.message || 'worker WASM smoke failed')); };",
+    "      worker.postMessage({ moduleUrl });",
+    "    });",
+    "    assert(result && result.ok === true, 'worker WASM module execution failed: ' + JSON.stringify(result));",
+    "  } finally {",
+    "    worker.terminate();",
+    "    URL.revokeObjectURL(blobUrl);",
+    "  }",
+    "}",
     "async function run() {",
+    "  await runWorkerWasmSmoke();",
     "  const module = await import('/rust-renderer/rustosrs_renderer.js');",
     "  await module.default();",
     "  const canvas = document.getElementById('scene');",
@@ -458,7 +477,7 @@ const acceptanceHtml = [
     "  assertGlClean(recoveryGl, 'context recovery renderer');",
     "  recovered.dispose();",
     "",
-    "  await report({ ok: true, abi: EXPECTED_ABI, dynamicDrawCalls: 5, contextRecovery: true });",
+    "  await report({ ok: true, abi: EXPECTED_ABI, dynamicDrawCalls: 5, contextRecovery: true, workerWasm: true });",
     "}",
     "run().catch(async (error) => {",
     "  try { await report({ ok: false, error: error && (error.stack || error.message) ? String(error.stack || error.message) : String(error) }); } catch {}",
@@ -601,5 +620,6 @@ console.log(
     "Rust WASM/WebGL2 browser acceptance passed"
     + " (ABI " + result.abi
     + ", dynamic draws " + result.dynamicDrawCalls
-    + ", context recovery " + result.contextRecovery + ")",
+    + ", context recovery " + result.contextRecovery
+    + ", worker WASM " + result.workerWasm + ")",
 );
