@@ -81,12 +81,9 @@ pub fn skin_skeletal_vertices(
             let matrix = &bone_matrices[matrix_offset..matrix_offset + 16];
             let weight = bone_scales[influence] as f32 / 255.0;
 
-            out_x += weight
-                * (matrix[0] * vx + matrix[4] * vy + matrix[8] * vz + matrix[12]);
-            out_y += weight
-                * (matrix[1] * vx + matrix[5] * vy + matrix[9] * vz + matrix[13]);
-            out_z += weight
-                * (matrix[2] * vx + matrix[6] * vy + matrix[10] * vz + matrix[14]);
+            out_x += weight * (matrix[0] * vx + matrix[4] * vy + matrix[8] * vz + matrix[12]);
+            out_y += weight * (matrix[1] * vx + matrix[5] * vy + matrix[9] * vz + matrix[13]);
+            out_z += weight * (matrix[2] * vx + matrix[6] * vy + matrix[10] * vz + matrix[14]);
         }
 
         transformed.push(js_round_to_i32(out_x));
@@ -126,8 +123,7 @@ mod tests {
 
     fn identity() -> [f32; 16] {
         [
-            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-            1.0,
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ]
     }
 
