@@ -24,6 +24,7 @@ import { loadMinimapBlob } from "../../game/worker/MinimapData";
 import { RenderDataLoader, RenderDataResult } from "../../game/worker/RenderDataLoader";
 import { WorkerState } from "../../game/worker/RenderDataWorker";
 import { AnimationFrames } from "../AnimationFrames";
+import { MAX_TEXTURES } from "../render/constants";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { ModelHashBuffer } from "../buffer/ModelHashBuffer";
 import {
