@@ -1,5 +1,10 @@
 import type { Model } from "../../rs/model/Model";
 import type { TextureLoader } from "../../rs/texture/TextureLoader";
+import {
+    recordRustStage5Attempt,
+    recordRustStage5Fallback,
+    recordRustStage5Success,
+} from "../../rs/model/RustStage5Ownership";
 import { loadRustRendererModule } from "./RustRendererModule";
 
 export type PreparedModelFace = {
@@ -128,6 +133,7 @@ export function buildModelFacePacketIfReady(
 
 export async function getModelFaceBuilder(): Promise<ModelFaceBuilder | undefined> {
     if (!faceBuilderPromise) {
+        recordRustStage5Attempt("facePreparation");
         faceBuilderPromise = loadRustRendererModule()
             .then((module) => {
                 const rawBuilder = module.build_model_faces;
@@ -138,9 +144,13 @@ export async function getModelFaceBuilder(): Promise<ModelFaceBuilder | undefine
                 }
                 rawFaceBuilder = rawBuilder;
                 faceBuilder = createModelFaceBuilder(rawBuilder);
+                recordRustStage5Success("facePreparation");
                 return faceBuilder;
             })
             .catch((error) => {
+                faceBuilderPromise = undefined;
+                rawFaceBuilder = undefined;
+                faceBuilder = undefined;
                 if (!warnedAboutFallback) {
                     warnedAboutFallback = true;
                     console.warn(
@@ -149,6 +159,7 @@ export async function getModelFaceBuilder(): Promise<ModelFaceBuilder | undefine
                         error,
                     );
                 }
+                recordRustStage5Fallback("facePreparation", "backend unavailable", true);
                 return undefined;
             });
     }
