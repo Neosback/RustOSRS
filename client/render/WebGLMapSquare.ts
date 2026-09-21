@@ -45,8 +45,47 @@ export type DrawCallRange = {
     drawRanges: DrawRange[];
 };
 
-function releaseDrawCallRange(drawCallRange: DrawCallRange | undefined): void {
+type DeferredDrawCallRange = {
+    drawCall?: DrawCall;
+    drawRanges: DrawRange[];
+    materializeDrawCall?: () => DrawCall;
+};
+
+type AnyDrawCallRange = DrawCallRange | DeferredDrawCallRange;
+
+function createDeferredDrawCallRange(
+    drawRanges: DrawRange[],
+    materializeDrawCall: () => DrawCall,
+    eager: boolean,
+): AnyDrawCallRange {
+    if (eager) {
+        return {
+            drawCall: materializeDrawCall(),
+            drawRanges,
+        };
+    }
+    return {
+        drawRanges,
+        materializeDrawCall,
+    };
+}
+
+function materializeDrawCallRange(drawCallRange: AnyDrawCallRange): DrawCallRange {
+    if (!drawCallRange.drawCall) {
+        const materialize = drawCallRange.materializeDrawCall;
+        if (!materialize) {
+            throw new Error("Legacy Pico draw call cannot be materialized");
+        }
+        drawCallRange.drawCall = materialize();
+        drawCallRange.materializeDrawCall = undefined;
+    }
+    return drawCallRange as DrawCallRange;
+}
+
+function releaseDrawCallRange(drawCallRange: AnyDrawCallRange | undefined): void {
     if (!drawCallRange) return;
+    drawCallRange.materializeDrawCall = undefined;
+    drawCallRange.drawCall = undefined;
     drawCallRange.drawRanges.length = 0;
 }
 
@@ -155,14 +194,14 @@ type DoorGeometryResources = {
     modelInfoTextureInteractAlpha: Texture;
     modelInfoTextureInteractLod: Texture;
     modelInfoTextureInteractLodAlpha: Texture;
-    drawCall: DrawCallRange;
-    drawCallAlpha: DrawCallRange;
-    drawCallLod: DrawCallRange;
-    drawCallLodAlpha: DrawCallRange;
-    drawCallInteract: DrawCallRange;
-    drawCallInteractAlpha: DrawCallRange;
-    drawCallInteractLod: DrawCallRange;
-    drawCallInteractLodAlpha: DrawCallRange;
+    drawCall: AnyDrawCallRange;
+    drawCallAlpha: AnyDrawCallRange;
+    drawCallLod: AnyDrawCallRange;
+    drawCallLodAlpha: AnyDrawCallRange;
+    drawCallInteract: AnyDrawCallRange;
+    drawCallInteractAlpha: AnyDrawCallRange;
+    drawCallInteractLod: AnyDrawCallRange;
+    drawCallInteractLodAlpha: AnyDrawCallRange;
     planes?: {
         main: Uint8Array;
         alpha: Uint8Array;
@@ -219,14 +258,14 @@ type DrawRangeGroups = {
 };
 
 type DrawRangeGroupOwner = {
-    drawCall: DrawCallRange;
-    drawCallAlpha: DrawCallRange;
-    drawCallLod: DrawCallRange;
-    drawCallLodAlpha: DrawCallRange;
-    drawCallInteract: DrawCallRange;
-    drawCallInteractAlpha: DrawCallRange;
-    drawCallInteractLod: DrawCallRange;
-    drawCallInteractLodAlpha: DrawCallRange;
+    drawCall: { drawRanges: DrawRange[] };
+    drawCallAlpha: { drawRanges: DrawRange[] };
+    drawCallLod: { drawRanges: DrawRange[] };
+    drawCallLodAlpha: { drawRanges: DrawRange[] };
+    drawCallInteract: { drawRanges: DrawRange[] };
+    drawCallInteractAlpha: { drawRanges: DrawRange[] };
+    drawCallInteractLod: { drawRanges: DrawRange[] };
+    drawCallInteractLodAlpha: { drawRanges: DrawRange[] };
 };
 
 function getDrawRangeGroups(owner: DrawRangeGroupOwner): DrawRangeGroups {
@@ -453,6 +492,7 @@ export class WebGLMapSquare {
         clientCycle: number,
         frame: number,
         npcEcs?: NpcEcs,
+        eagerLegacyDrawCalls: boolean = true,
     ): WebGLMapSquare {
         const { mapX, mapY, borderSize, tileRenderFlags } = mapData;
 
@@ -545,32 +585,36 @@ export class WebGLMapSquare {
             modelInfoTexture: Texture | undefined,
             drawRanges: DrawRange[],
             vertexArrayOverride?: VertexArray,
-        ): DrawCallRange => {
+            forceEager: boolean = false,
+        ): AnyDrawCallRange => {
             const vao = vertexArrayOverride ?? vertexArray;
-            const drawCall = app
-                .createDrawCall(program, vao)
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", time)
-                .uniform("u_mapPos", mapPos)
-                .uniform("u_roofPlaneLimit", 3.0)
-                .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                .uniform("u_worldEntityOpacity", 1.0)
-                // .uniform("u_drawIdOffset", drawIdOffset)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_waterTextures", waterTextures)
-                .texture("u_heightMap", heightMapTexture)
-                .texture("u_waterMask", waterMaskTexture)
-                .uniform("u_sceneBorderSize", borderSize)
-                // .texture("u_modelInfoTexture", modelInfoTexture)
-                .drawRanges(...drawRanges);
-            if (modelInfoTexture) {
-                drawCall.texture("u_modelInfoTexture", modelInfoTexture);
-            }
-            return {
-                drawCall,
+            return createDeferredDrawCallRange(
                 drawRanges,
-            };
+                () => {
+                    const drawCall = app
+                        .createDrawCall(program, vao)
+                        .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                        .uniform("u_timeLoaded", time)
+                        .uniform("u_mapPos", mapPos)
+                        .uniform("u_roofPlaneLimit", 3.0)
+                        .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                        .uniform("u_worldEntityOpacity", 1.0)
+                        // .uniform("u_drawIdOffset", drawIdOffset)
+                        .texture("u_textures", textureArray)
+                        .texture("u_textureMaterials", textureMaterials)
+                        .texture("u_waterTextures", waterTextures)
+                        .texture("u_heightMap", heightMapTexture)
+                        .texture("u_waterMask", waterMaskTexture)
+                        .uniform("u_sceneBorderSize", borderSize)
+                        // .texture("u_modelInfoTexture", modelInfoTexture)
+                        .drawRanges(...drawRanges);
+                    if (modelInfoTexture) {
+                        drawCall.texture("u_modelInfoTexture", modelInfoTexture);
+                    }
+                    return drawCall;
+                },
+                forceEager || eagerLegacyDrawCalls,
+            );
         };
 
         const drawCall = createDrawCall(mainProgram, modelInfoTexture, mapData.drawRanges);
@@ -965,7 +1009,15 @@ export class WebGLMapSquare {
 
         const drawCallNpc =
             hasNpcGeometry && npcVertexArray
-                ? createDrawCall(npcProgram, undefined, drawRangesNpc, npcVertexArray)
+                ? materializeDrawCallRange(
+                      createDrawCall(
+                          npcProgram,
+                          undefined,
+                          drawRangesNpc,
+                          npcVertexArray,
+                          true,
+                      ),
+                  )
                 : undefined;
 
         const planes = {
@@ -1093,17 +1145,17 @@ export class WebGLMapSquare {
         public modelInfoTextureInteractLodAlpha: Texture,
 
         // Draw calls
-        public drawCall: DrawCallRange,
-        public drawCallAlpha: DrawCallRange,
+        public drawCall: AnyDrawCallRange,
+        public drawCallAlpha: AnyDrawCallRange,
 
-        public drawCallLod: DrawCallRange,
-        public drawCallLodAlpha: DrawCallRange,
+        public drawCallLod: AnyDrawCallRange,
+        public drawCallLodAlpha: AnyDrawCallRange,
 
-        public drawCallInteract: DrawCallRange,
-        public drawCallInteractAlpha: DrawCallRange,
+        public drawCallInteract: AnyDrawCallRange,
+        public drawCallInteractAlpha: AnyDrawCallRange,
 
-        public drawCallInteractLod: DrawCallRange,
-        public drawCallInteractLodAlpha: DrawCallRange,
+        public drawCallInteractLod: AnyDrawCallRange,
+        public drawCallInteractLodAlpha: AnyDrawCallRange,
         loc: DoorGeometryResources | undefined,
         door: DoorGeometryResources | undefined,
 
@@ -1229,19 +1281,19 @@ export class WebGLMapSquare {
     }
 
     getDrawCall(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallRange {
+        let drawCallRange: AnyDrawCallRange;
         if (isInteract) {
             if (isLod) {
-                return isAlpha ? this.drawCallInteractLodAlpha : this.drawCallInteractLod;
+                drawCallRange = isAlpha ? this.drawCallInteractLodAlpha : this.drawCallInteractLod;
             } else {
-                return isAlpha ? this.drawCallInteractAlpha : this.drawCallInteract;
+                drawCallRange = isAlpha ? this.drawCallInteractAlpha : this.drawCallInteract;
             }
+        } else if (isLod) {
+            drawCallRange = isAlpha ? this.drawCallLodAlpha : this.drawCallLod;
         } else {
-            if (isLod) {
-                return isAlpha ? this.drawCallLodAlpha : this.drawCallLod;
-            } else {
-                return isAlpha ? this.drawCallAlpha : this.drawCall;
-            }
+            drawCallRange = isAlpha ? this.drawCallAlpha : this.drawCall;
         }
+        return materializeDrawCallRange(drawCallRange);
     }
 
     getDrawRanges(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawRange[] {
@@ -1288,16 +1340,21 @@ export class WebGLMapSquare {
         isLod: boolean,
     ): DrawCallRange | undefined {
         if (!this.door) return undefined;
+        let drawCallRange: AnyDrawCallRange;
         if (isInteract) {
             if (isLod) {
-                return isAlpha ? this.door.drawCallInteractLodAlpha : this.door.drawCallInteractLod;
+                drawCallRange = isAlpha
+                    ? this.door.drawCallInteractLodAlpha
+                    : this.door.drawCallInteractLod;
+            } else {
+                drawCallRange = isAlpha ? this.door.drawCallInteractAlpha : this.door.drawCallInteract;
             }
-            return isAlpha ? this.door.drawCallInteractAlpha : this.door.drawCallInteract;
+        } else if (isLod) {
+            drawCallRange = isAlpha ? this.door.drawCallLodAlpha : this.door.drawCallLod;
+        } else {
+            drawCallRange = isAlpha ? this.door.drawCallAlpha : this.door.drawCall;
         }
-        if (isLod) {
-            return isAlpha ? this.door.drawCallLodAlpha : this.door.drawCallLod;
-        }
-        return isAlpha ? this.door.drawCallAlpha : this.door.drawCall;
+        return materializeDrawCallRange(drawCallRange);
     }
 
     getDoorDrawRanges(
@@ -2228,6 +2285,7 @@ export class WebGLMapSquare {
         mapData: SdMapData,
         clientCycle: number,
         time?: number,
+        eagerLegacyDrawCalls: boolean = true,
     ): void {
         if (mapData.mapX !== this.mapX || mapData.mapY !== this.mapY) {
             console.warn(
@@ -2356,27 +2414,33 @@ export class WebGLMapSquare {
             modelInfoTex: Texture | undefined,
             drawRanges: DrawRange[],
             vertexArrayOverride?: VertexArray,
-        ): DrawCallRange => {
+        ): AnyDrawCallRange => {
             const vao = vertexArrayOverride ?? this.vertexArray;
-            const drawCall = app
-                .createDrawCall(program, vao)
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", loadTime)
-                .uniform("u_mapPos", mapPos)
-                .uniform("u_roofPlaneLimit", 3.0)
-                .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
-                .uniform("u_worldEntityOpacity", 1.0)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_waterTextures", waterTextures)
-                .texture("u_heightMap", this.heightMapTexture)
-                .texture("u_waterMask", this.waterMaskTexture)
-                .uniform("u_sceneBorderSize", this.borderSize)
-                .drawRanges(...drawRanges);
-            if (modelInfoTex) {
-                drawCall.texture("u_modelInfoTexture", modelInfoTex);
-            }
-            return { drawCall, drawRanges };
+            return createDeferredDrawCallRange(
+                drawRanges,
+                () => {
+                    const drawCall = app
+                        .createDrawCall(program, vao)
+                        .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                        .uniform("u_timeLoaded", loadTime)
+                        .uniform("u_mapPos", mapPos)
+                        .uniform("u_roofPlaneLimit", 3.0)
+                        .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                        .uniform("u_worldEntityOpacity", 1.0)
+                        .texture("u_textures", textureArray)
+                        .texture("u_textureMaterials", textureMaterials)
+                        .texture("u_waterTextures", waterTextures)
+                        .texture("u_heightMap", this.heightMapTexture)
+                        .texture("u_waterMask", this.waterMaskTexture)
+                        .uniform("u_sceneBorderSize", this.borderSize)
+                        .drawRanges(...drawRanges);
+                    if (modelInfoTex) {
+                        drawCall.texture("u_modelInfoTexture", modelInfoTex);
+                    }
+                    return drawCall;
+                },
+                eagerLegacyDrawCalls,
+            );
         };
 
         this.drawCall = buildDrawCall(mainProgram, this.modelInfoTexture, mapData.drawRanges);
