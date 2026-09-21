@@ -24,6 +24,7 @@ import { loadMinimapBlob } from "../../game/worker/MinimapData";
 import { RenderDataLoader, RenderDataResult } from "../../game/worker/RenderDataLoader";
 import { WorkerState } from "../../game/worker/RenderDataWorker";
 import { AnimationFrames } from "../AnimationFrames";
+import { MAX_TEXTURES } from "../render/constants";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { ModelHashBuffer } from "../buffer/ModelHashBuffer";
 import {
@@ -1266,7 +1267,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         let textureIds: number[] = [];
         const textureIdIndexMap = new Map<number, number>();
         textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));
-        textureIds = textureIds.slice(0, 2047);
+        textureIds = textureIds.slice(0, MAX_TEXTURES - 1);
         for (let i = 0; i < textureIds.length; i++) {
             textureIdIndexMap.set(textureIds[i], i + 1);
         }
@@ -2252,7 +2253,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         const basTypeLoader = state.basTypeLoader;
 
         let textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));
-        textureIds = textureIds.slice(0, 2047);
+        textureIds = textureIds.slice(0, MAX_TEXTURES - 1);
         const textureIdIndexMap = new Map<number, number>();
         for (let i = 0; i < textureIds.length; i++) {
             textureIdIndexMap.set(textureIds[i], i + 1);
