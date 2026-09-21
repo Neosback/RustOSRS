@@ -19,6 +19,7 @@ on:
       - "client/scripts/test-rust-renderer-browser.mjs"
       - "client/scripts/test-rust-stage5-parity.mjs"
       - "client/package.json"
+      - "client/craco.config.js"
       - "client/yarn.lock"
       - ".github/workflows/rust-renderer.yml"
   pull_request:
@@ -37,6 +38,7 @@ on:
       - "client/scripts/test-rust-renderer-browser.mjs"
       - "client/scripts/test-rust-stage5-parity.mjs"
       - "client/package.json"
+      - "client/craco.config.js"
       - "client/yarn.lock"
       - ".github/workflows/rust-renderer.yml"
 
