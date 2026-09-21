@@ -70,9 +70,12 @@ pub fn calculate_model_normals(
         let mut nz = var5 * var9 - var8 * var6;
 
         while nx > 8192 || ny > 8192 || nz > 8192 || nx < -8192 || ny < -8192 || nz < -8192 {
-            nx >>= 1;
-            ny >>= 1;
-            nz >>= 1;
+            // TypeScript's >>= first applies ToInt32 to the Number-valued
+            // cross product, then performs an arithmetic shift. Preserve that
+            // wrap before every reduction step instead of shifting i64 values.
+            nx = ((nx as i32) >> 1) as i64;
+            ny = ((ny as i32) >> 1) as i64;
+            nz = ((nz as i32) >> 1) as i64;
         }
 
         let mut magnitude = ((nx * nx + ny * ny + nz * nz) as f64).sqrt().trunc() as i64;
@@ -420,6 +423,27 @@ mod tests {
         assert_eq!(&result[6..10], &[0, -256, 0, 1]);
         assert_eq!(&result[10..14], &[0, -256, 0, 1]);
         assert_eq!(&result[14..18], &[0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn large_cross_product_matches_javascript_int32_shift_semantics() {
+        let result = calculate_model_normals(
+            &[0, 50_000, 0],
+            &[0, 50_000, 0],
+            &[0, 0, 50_000],
+            3,
+            &[0],
+            &[1],
+            &[2],
+            &[],
+        )
+        .unwrap();
+
+        // JS computes the cross product as Number, then the first >>= 1
+        // coerces it to signed Int32. The wrapped normal points (-x,+y).
+        assert_eq!(&result[2..6], &[-181, 181, 0, 1]);
+        assert_eq!(&result[6..10], &[-181, 181, 0, 1]);
+        assert_eq!(&result[10..14], &[-181, 181, 0, 1]);
     }
 
     #[test]
