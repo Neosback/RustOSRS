@@ -152,9 +152,10 @@ mod tests {
     }
 
     #[test]
-    fn fully_transparent_faces_are_removed() {
-        assert!(
-            prepare_model_faces(&[10], &[-2], &[0], &[], &[], &[], FaceFilter::All,).is_empty()
+    fn signed_alpha_bytes_match_typescript_unsigned_mapping() {
+        assert_eq!(
+            prepare_model_faces(&[10], &[-2], &[0], &[], &[], &[], FaceFilter::All),
+            vec![0, 2, 0, -1, -1]
         );
     }
 }
