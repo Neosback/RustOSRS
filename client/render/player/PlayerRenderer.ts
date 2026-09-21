@@ -2352,12 +2352,10 @@ export class PlayerRenderer {
                         r.worldEntityAnimator?.getTransform(wvId)
                         ?? WebGLMapSquare.IDENTITY_MAT4;
                     if (draw) {
-                        if (draw) {
-                            draw.uniform("u_modelYOffset", playerModelYOffset).uniform(
-                                "u_worldEntityTransform",
-                                playerWorldEntityTransform,
-                            );
-                        }
+                        draw.uniform("u_modelYOffset", playerModelYOffset).uniform(
+                            "u_worldEntityTransform",
+                            playerWorldEntityTransform,
+                        );
                     }
                 }
 
@@ -2737,10 +2735,12 @@ export class PlayerRenderer {
                         playerWorldEntityTransform =
                             r.worldEntityAnimator?.getTransform(wvIdAlpha)
                             ?? WebGLMapSquare.IDENTITY_MAT4;
-                        draw.uniform("u_modelYOffset", playerModelYOffset).uniform(
-                            "u_worldEntityTransform",
-                            playerWorldEntityTransform,
-                        );
+                        if (draw) {
+                            draw.uniform("u_modelYOffset", playerModelYOffset).uniform(
+                                "u_worldEntityTransform",
+                                playerWorldEntityTransform,
+                            );
+                        }
                     }
 
                     // Use drawIdOverride since gl_DrawID will be 0 for single-range legacy draws.
