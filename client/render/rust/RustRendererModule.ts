@@ -21,6 +21,15 @@ export interface RustRendererWebModule {
         commandInstanceCounts: Uint32Array,
         instanceFields: Int32Array,
     ) => Uint16Array;
+    hash_model_geometry?: (
+        faceColors1: Int32Array,
+        faceColors2: Int32Array,
+        faceColors3: Int32Array,
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        textureIds: Int32Array,
+    ) => number;
 }
 
 let modulePromise: Promise<RustRendererWebModule> | undefined;
