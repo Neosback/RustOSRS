@@ -10,6 +10,7 @@
 
 pub mod draw;
 pub mod draw_builder;
+pub mod face_builder;
 pub mod geometry_builder;
 pub mod height_map;
 pub mod material;
@@ -24,6 +25,7 @@ mod webgl;
 
 pub use draw::{DrawRange, DrawStats, filter_draw_ranges};
 pub use draw_builder::{PreparedDrawList, prepare_draw_list};
+pub use face_builder::{FaceFilter, prepare_model_faces};
 pub use geometry_builder::VertexBatchBuilder;
 pub use height_map::HeightMap;
 pub use material::{Material, decode_material};
