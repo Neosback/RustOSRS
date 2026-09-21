@@ -185,11 +185,11 @@ export class ProjectileRenderer {
         pass: Pass,
     ): void {
         this.refreshSpotAnimCaches();
-        if (!this.gfxCache || !actorDataTexture) return;
+        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(this.renderer);
+        if (!this.gfxCache || (!rustPrimaryRendererEnabled && !actorDataTexture)) return;
         if (!map.projectileDataTextureOffsets || baseOffset === -1) return;
 
         const transparent = pass === "alpha";
-        const rustPrimaryRendererEnabled = isRustPrimaryRendererActive(this.renderer);
         const prog = this.getProjectileProgram(transparent);
         if (!rustPrimaryRendererEnabled && (!this.gpuCache || !prog)) return;
 
@@ -233,7 +233,7 @@ export class ProjectileRenderer {
                     vaoRec.drawCall,
                     map,
                     baseOffset,
-                    actorDataTexture,
+                    actorDataTexture as Texture,
                     subOffset,
                 );
             }
