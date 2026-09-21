@@ -195,7 +195,9 @@ export function capturePicoStaticReference(
             pixels,
         };
     } finally {
-        host.sceneHslOverride.set(sceneHslOverride);
+        for (let i = 0; i < 4; i++) {
+            host.sceneHslOverride[i] = sceneHslOverride[i];
+        }
         host.sceneUniformBuffer
             ?.set(4, host.sceneHslOverride as Float32Array)
             .update();
