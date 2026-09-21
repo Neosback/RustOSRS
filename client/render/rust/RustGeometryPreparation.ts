@@ -70,7 +70,14 @@ export function buildModelInfoTextureDataWithRust(
 }
 
 let modelInfoBuilderPromise: Promise<ModelInfoTextureBuilder> | undefined;
+let modelInfoBuilder: ModelInfoTextureBuilder | undefined;
 let warnedAboutFallback = false;
+
+export function buildModelInfoTextureDataIfReady(commands: DrawCommand[]): Uint16Array {
+    return modelInfoBuilder
+        ? modelInfoBuilder(commands)
+        : createModelInfoTextureData(commands);
+}
 
 export async function getModelInfoTextureBuilder(): Promise<ModelInfoTextureBuilder> {
     if (!modelInfoBuilderPromise) {
@@ -83,8 +90,9 @@ export async function getModelInfoTextureBuilder(): Promise<ModelInfoTextureBuil
                     );
                 }
 
-                return (commands: DrawCommand[]): Uint16Array =>
+                modelInfoBuilder = (commands: DrawCommand[]): Uint16Array =>
                     buildModelInfoTextureDataWithRust(commands, rustBuilder);
+                return modelInfoBuilder;
             })
             .catch((error) => {
                 if (!warnedAboutFallback) {
@@ -95,7 +103,8 @@ export async function getModelInfoTextureBuilder(): Promise<ModelInfoTextureBuil
                         error,
                     );
                 }
-                return createModelInfoTextureData;
+                modelInfoBuilder = createModelInfoTextureData;
+                return modelInfoBuilder;
             });
     }
 
