@@ -40,6 +40,7 @@ import { LoadedCache } from "../Caches";
 import { NpcGeometryData } from "../../render/loader/NpcGeometryData";
 import { SdMapDataLoader } from "../../render/loader/SdMapDataLoader";
 import type { NpcInstance } from "../../render/npc/NpcRenderTemplate";
+import { setRustStage5StrictMode as setLocalRustStage5StrictMode } from "../../rs/model/RustStage5Ownership";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
 
 registerSerializer(renderDataLoaderSerializer);
@@ -296,6 +297,9 @@ function clearCache(workerState: WorkerState): void {
 }
 
 const worker = {
+    setRustStage5StrictMode(strict: boolean): void {
+        setLocalRustStage5StrictMode(strict);
+    },
     setCustomContent(payload: Parameters<typeof loadFromPayload>[0]): void {
         loadFromPayload(payload);
         void workerStatePromise?.then((state) => state.objTypeLoader.clearCache());
