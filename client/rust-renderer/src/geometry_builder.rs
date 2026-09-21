@@ -788,7 +788,10 @@ mod tests {
             u: 0.0,
             v: 0.0,
         });
-        assert_eq!(&builder.packed_vertices()[..3], &expected.words());
+        assert_eq!(
+            &builder.packed_vertices()[..3],
+            &[expected.v0, expected.v1, expected.v2],
+        );
     }
 
     #[test]
