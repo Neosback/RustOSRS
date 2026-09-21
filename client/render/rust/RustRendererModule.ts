@@ -37,6 +37,15 @@ export interface RustRendererWebModule {
         textureIds: Int32Array,
     ) => number;
     build_draw_list?: (commandFields: Uint32Array) => RustPreparedDrawListWasm;
+    build_model_faces?: (
+        faceColors3: Int32Array,
+        faceAlphas: Int8Array,
+        priorities: Int8Array,
+        renderLayers: Uint8Array,
+        textureIds: Int16Array,
+        transparentTextureIds: Int32Array,
+        filter: number,
+    ) => Int32Array;
 }
 
 let modulePromise: Promise<RustRendererWebModule> | undefined;
