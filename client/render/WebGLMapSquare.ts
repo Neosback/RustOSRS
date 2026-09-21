@@ -875,8 +875,11 @@ export class WebGLMapSquare {
         let npcInterleavedBuffer: GpuInterleavedBuffer | undefined;
         let npcIndexBuffer: GpuIndexBuffer | undefined;
         let npcVertexArray: VertexArray | undefined;
+        let loadedMapSquare: WebGLMapSquare | undefined;
 
-        if (mapData.npcVertices.length > 0 && mapData.npcIndices.length > 0) {
+        const ensureNpcLegacyGpu = (): VertexArray => {
+            if (npcVertexArray) return npcVertexArray;
+
             npcInterleavedBuffer = app.createInterleavedBuffer(12, mapData.npcVertices);
             npcIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.npcIndices);
             npcVertexArray = app
@@ -888,6 +891,22 @@ export class WebGLMapSquare {
                     integer: true as any,
                 })
                 .indexBuffer(npcIndexBuffer);
+
+            if (loadedMapSquare) {
+                loadedMapSquare.npcInterleavedBuffer = npcInterleavedBuffer;
+                loadedMapSquare.npcIndexBuffer = npcIndexBuffer;
+                loadedMapSquare.npcVertexArray = npcVertexArray;
+            }
+
+            return npcVertexArray;
+        };
+
+        if (
+            eagerLegacyDrawCalls &&
+            mapData.npcVertices.length > 0 &&
+            mapData.npcIndices.length > 0
+        ) {
+            ensureNpcLegacyGpu();
         }
 
         // DynamicObject/loc animations are driven by Client.cycle (20ms).
@@ -1076,10 +1095,31 @@ export class WebGLMapSquare {
             ? new Array(mapData.npcs.length).fill(0).map(() => newDrawRange(0, 0, 1))
             : [];
 
-        const drawCallNpc =
-            hasNpcGeometry && npcVertexArray
-                ? createDrawCall(npcProgram, undefined, drawRangesNpc, npcVertexArray)
-                : undefined;
+        const hasNpcLegacyGeometry =
+            hasNpcGeometry && mapData.npcVertices.length > 0 && mapData.npcIndices.length > 0;
+        const drawCallNpc = hasNpcLegacyGeometry
+            ? createDeferredDrawCallRange(
+                  drawRangesNpc,
+                  () => {
+                      const vao = ensureNpcLegacyGpu();
+                      return app
+                          .createDrawCall(npcProgram, vao)
+                          .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                          .uniform("u_timeLoaded", time)
+                          .uniform("u_mapPos", mapPos)
+                          .uniform("u_worldEntityTransform", WebGLMapSquare.IDENTITY_MAT4)
+                          .uniform("u_worldEntityOpacity", 1.0)
+                          .texture("u_textures", textureArray)
+                          .texture("u_textureMaterials", textureMaterials)
+                          .texture("u_waterTextures", waterTextures)
+                          .texture("u_heightMap", heightMapTexture)
+                          .texture("u_waterMask", waterMaskTexture)
+                          .uniform("u_sceneBorderSize", borderSize)
+                          .drawRanges(...drawRangesNpc);
+                  },
+                  eagerLegacyDrawCalls,
+              )
+            : undefined;
 
         const planes = {
             main: mapData.drawRangesPlanes,
@@ -1092,7 +1132,7 @@ export class WebGLMapSquare {
             interactLodAlpha: mapData.drawRangesInteractLodAlphaPlanes,
         } as const;
 
-        const mapSquare = new WebGLMapSquare(
+        loadedMapSquare = new WebGLMapSquare(
             mapX,
             mapY,
             usedRenderX,
@@ -1166,9 +1206,9 @@ export class WebGLMapSquare {
         );
         // Initialize occupancy counters to match initial flags
         for (const c of occInit) {
-            mapSquare.incNpcOcc(c.plane, c.x, c.y);
+            loadedMapSquare.incNpcOcc(c.plane, c.x, c.y);
         }
-        return mapSquare;
+        return loadedMapSquare;
     }
 
     constructor(
