@@ -11,6 +11,7 @@ on:
       - "client/tests/rust-renderer-shadow-integration.test.ts"
       - "client/tests/rust-renderer-bridge.test.ts"
       - "client/tests/rust-stage5-ownership.test.ts"
+      - "client/tests/rust-model-lighting-integration.test.ts"
       - "client/scripts/check-rust-renderer-abi.mjs"
       - "client/scripts/check-rust-renderer-shader-reference.mjs"
       - "client/scripts/check-rust-primary-ownership.mjs"
@@ -27,6 +28,7 @@ on:
       - "client/tests/rust-renderer-shadow-integration.test.ts"
       - "client/tests/rust-renderer-bridge.test.ts"
       - "client/tests/rust-stage5-ownership.test.ts"
+      - "client/tests/rust-model-lighting-integration.test.ts"
       - "client/scripts/check-rust-renderer-abi.mjs"
       - "client/scripts/check-rust-renderer-shader-reference.mjs"
       - "client/scripts/check-rust-primary-ownership.mjs"
@@ -87,5 +89,7 @@ jobs:
         run: yarn test:rust-renderer-bridge
       - name: Test Stage 5 Rust ownership
         run: yarn test:rust-stage5-ownership
+      - name: Test ModelData Rust lighting
+        run: yarn test:rust-model-lighting
       - name: Test shadow integration module graph
         run: yarn test:rust-renderer-shadow
