@@ -13,6 +13,23 @@ export interface VertexBatchBuilder {
         uvFields: Float32Array,
         flags: Uint8Array,
     ): Uint32Array;
+    push_terrain_tile?(
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        facesA: Int32Array,
+        facesB: Int32Array,
+        facesC: Int32Array,
+        colorsA: Int32Array,
+        colorsB: Int32Array,
+        colorsC: Int32Array,
+        textureIds: Int32Array,
+        textureIndices: Int32Array,
+        tileX: number,
+        tileZ: number,
+        offsetX: number,
+        offsetZ: number,
+    ): Uint32Array;
     push_model_faces?(
         verticesX: Int32Array,
         verticesY: Int32Array,
@@ -63,6 +80,52 @@ export class VertexBuffer extends DataBuffer {
         if (p <= 3) return p; // 0..3 -> 0..3
         if (p <= 7) return 4 + ((p - 4) >> 1); // 4..5 -> 4, 6..7 -> 5
         return 6 + ((p - 8) >> 1); // 8..9 -> 6, 10..11 -> 7
+    }
+
+    hasRustTerrainBuilder(): boolean {
+        return typeof this.rustBuilder?.push_terrain_tile === "function";
+    }
+
+    addTerrainTile(
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        facesA: Int32Array,
+        facesB: Int32Array,
+        facesC: Int32Array,
+        colorsA: Int32Array,
+        colorsB: Int32Array,
+        colorsC: Int32Array,
+        textureIds: Int32Array,
+        textureIndices: Int32Array,
+        tileX: number,
+        tileZ: number,
+        offsetX: number,
+        offsetZ: number,
+    ): Uint32Array | undefined {
+        if (!this.rustBuilder?.push_terrain_tile) {
+            return undefined;
+        }
+
+        const indices = this.rustBuilder.push_terrain_tile(
+            verticesX,
+            verticesY,
+            verticesZ,
+            facesA,
+            facesB,
+            facesC,
+            colorsA,
+            colorsB,
+            colorsC,
+            textureIds,
+            textureIndices,
+            tileX,
+            tileZ,
+            offsetX,
+            offsetZ,
+        );
+        this.offset = this.rustBuilder.vertex_count();
+        return indices;
     }
 
     hasRustModelFaceBuilder(): boolean {
