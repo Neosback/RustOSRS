@@ -313,6 +313,7 @@ const acceptanceHtml = [
     "  // which is the WebGL front-face default while static back-face culling is enabled.",
     "  const rasterIndices = new Uint32Array([0,1,2]);",
     "  renderer.upload_geometry(rasterVertices, rasterIndices);",
+    "  renderer.upload_static_passes(modelInfoPacket(0), new Uint32Array([0,3,1]), new Uint8Array([0]), emptyU16, emptyU32, emptyU8);",
     "  renderer.upload_texture_array(new Uint8Array([255,255,255,255, 255,255,255,255]), 1, 1, 2);",
     "  const dryMaterials = new Int8Array(48); dryMaterials[3] = 1; dryMaterials[7] = 1;",
     "  renderer.upload_materials(dryMaterials, 2);",
