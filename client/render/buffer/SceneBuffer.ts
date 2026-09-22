@@ -246,6 +246,109 @@ export class SceneBuffer {
         }
     }
 
+    private addTerrainTilesBatch(
+        tiles: SceneTile[],
+        offsetX: number,
+        offsetY: number,
+    ): void {
+        if (tiles.length === 0) {
+            return;
+        }
+
+        if (!this.vertexBuf.hasRustTerrainBatchBuilder()) {
+            for (const tile of tiles) {
+                this.addTerrainTile(tile, offsetX, offsetY);
+            }
+            return;
+        }
+
+        const models = tiles
+            .map((tile) => tile.tileModel)
+            .filter((model): model is NonNullable<SceneTile["tileModel"]> => {
+                return !!model && model.facesA.length > 0 && model.vertexX.length > 0;
+            });
+        if (models.length === 0) {
+            return;
+        }
+
+        let totalVertices = 0;
+        let totalFaces = 0;
+        for (const model of models) {
+            totalVertices += model.vertexX.length;
+            totalFaces += model.facesA.length;
+        }
+
+        const tileVertexOffsets = new Uint32Array(models.length + 1);
+        const tileFaceOffsets = new Uint32Array(models.length + 1);
+        const tileX = new Int32Array(models.length);
+        const tileZ = new Int32Array(models.length);
+
+        const verticesX = new Int32Array(totalVertices);
+        const verticesY = new Int32Array(totalVertices);
+        const verticesZ = new Int32Array(totalVertices);
+        const facesA = new Int32Array(totalFaces);
+        const facesB = new Int32Array(totalFaces);
+        const facesC = new Int32Array(totalFaces);
+        const colorsA = new Int32Array(totalFaces);
+        const colorsB = new Int32Array(totalFaces);
+        const colorsC = new Int32Array(totalFaces);
+        const textureIds = new Int32Array(totalFaces);
+        textureIds.fill(-1);
+
+        let vertexOffset = 0;
+        let faceOffset = 0;
+        for (let i = 0; i < models.length; i++) {
+            const model = models[i];
+            tileVertexOffsets[i] = vertexOffset;
+            tileFaceOffsets[i] = faceOffset;
+            tileX[i] = model.vertexX[0];
+            tileZ[i] = model.vertexZ[0];
+
+            verticesX.set(model.vertexX, vertexOffset);
+            verticesY.set(model.vertexY, vertexOffset);
+            verticesZ.set(model.vertexZ, vertexOffset);
+            facesA.set(model.facesA, faceOffset);
+            facesB.set(model.facesB, faceOffset);
+            facesC.set(model.facesC, faceOffset);
+            colorsA.set(model.faceColorsA, faceOffset);
+            colorsB.set(model.faceColorsB, faceOffset);
+            colorsC.set(model.faceColorsC, faceOffset);
+            if (model.faceTextures) {
+                textureIds.set(model.faceTextures, faceOffset);
+            }
+
+            vertexOffset += model.vertexX.length;
+            faceOffset += model.facesA.length;
+        }
+        tileVertexOffsets[models.length] = vertexOffset;
+        tileFaceOffsets[models.length] = faceOffset;
+
+        const rustIndices = this.vertexBuf.addTerrainBatch(
+            tileVertexOffsets,
+            tileFaceOffsets,
+            verticesX,
+            verticesY,
+            verticesZ,
+            facesA,
+            facesB,
+            facesC,
+            colorsA,
+            colorsB,
+            colorsC,
+            textureIds,
+            tileX,
+            tileZ,
+            offsetX,
+            offsetY,
+        );
+        if (!rustIndices) {
+            throw new Error("Rust terrain batch builder became unavailable during packing");
+        }
+        for (let i = 0; i < rustIndices.length; i++) {
+            this.indices.push(rustIndices[i]);
+        }
+    }
+
     addTerrain(
         scene: Scene,
         borderSize: number,
@@ -261,15 +364,24 @@ export class SceneBuffer {
         const vertexOffset = worldTileOffset * -128;
 
         const terrainStartVertexCount = this.vertexCount();
+        const useRustTerrainBatch = this.vertexBuf.hasRustTerrainBatchBuilder();
         for (let level = 0; level < scene.levels; level++) {
             const indexOffset = this.indexByteOffset();
+            const levelTerrainTiles: SceneTile[] = [];
+            const emitTerrainTile = (tile: SceneTile): void => {
+                if (useRustTerrainBatch) {
+                    levelTerrainTiles.push(tile);
+                } else {
+                    emitTerrainTile(tile);
+                }
+            };
             for (let x = startX; x < endX; x++) {
                 for (let y = startY; y < endY; y++) {
                     // Always honor force-visible-from-base (0x8 at plane 1) in base pass,
                     // regardless of the base tile presence/minLevel.
                     if (level === 0 && (scene.tileRenderFlags[1][x][y] & 0x8) !== 0) {
                         const upper = scene.tiles[1][x][y];
-                        if (upper) this.addTerrainTile(upper, vertexOffset, vertexOffset);
+                        if (upper) emitTerrainTile(upper);
                     }
 
                     const tile = scene.tiles[level][x][y];
@@ -278,10 +390,10 @@ export class SceneBuffer {
                     }
 
                     if (level === 0 && isBridgeSurfaceTile(tile)) {
-                        this.addTerrainTile(tile, vertexOffset, vertexOffset);
+                        emitTerrainTile(tile);
                         const linked = getBridgeLinkedBelow(tile);
                         if (linked) {
-                            this.addTerrainTile(linked, vertexOffset, vertexOffset);
+                            emitTerrainTile(linked);
                         }
                         continue;
                     }
@@ -291,15 +403,23 @@ export class SceneBuffer {
                         continue;
                     }
                     // Add primary tile model
-                    this.addTerrainTile(tile, vertexOffset, vertexOffset);
+                    emitTerrainTile(tile);
                     // OSRS bridge: draw the original ground tile beneath the shifted bridge tile
                     if (level === 0) {
                         const linked = getBridgeLinkedBelow(tile);
                         if (linked) {
-                            this.addTerrainTile(linked, vertexOffset, vertexOffset);
+                            emitTerrainTile(linked);
                         }
                     }
                 }
+            }
+
+            if (useRustTerrainBatch) {
+                this.addTerrainTilesBatch(
+                    levelTerrainTiles,
+                    vertexOffset,
+                    vertexOffset,
+                );
             }
 
             const levelVertexCount = (this.indexByteOffset() - indexOffset) / 4;
