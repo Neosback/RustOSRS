@@ -116,6 +116,9 @@ From `client/`:
 
 ```bash
 yarn start
+
+# If your Node installation did not allow Corepack to create the yarn shim:
+corepack yarn start
 ```
 
 Then open the URL printed by the CRA development server.
