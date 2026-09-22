@@ -96,4 +96,46 @@ assert.equal(offsetZ, -256);
 assert.deepEqual(sceneBuffer.indices, [0, 1, 2, 3, 4, 5]);
 assert.equal(sceneBuffer.vertexCount(), vertexCount);
 
+
+// The non-Rust fallback must still route through the legacy tile packer.
+// This guards against accidentally recursing through emitTerrainTile when
+// push_terrain_batch is unavailable.
+const fallbackSceneBuffer = new SceneBuffer({} as any, new Map(), 16);
+const fallbackTile = {
+    tileModel: {
+        faces: [
+            {
+                vertices: [
+                    { x: 0, y: 0, z: 0, hsl: 0x1111, textureId: -1, u: 0, v: 0 },
+                    { x: 128, y: 0, z: 0, hsl: 0x2222, textureId: -1, u: 0, v: 0 },
+                    { x: 0, y: 0, z: 128, hsl: 0x3333, textureId: -1, u: 0, v: 0 },
+                ],
+            },
+        ],
+    },
+    skipRender: false,
+    isBridgeSurface: false,
+} as any;
+const fallbackScene = {
+    levels: 1,
+    tileRenderFlags: [
+        [new Uint8Array(1)],
+        [new Uint8Array(1)],
+    ],
+    tiles: [[[fallbackTile]]],
+    isPlayerLevel(): boolean {
+        return true;
+    },
+} as any;
+
+const fallbackVertexCount = fallbackSceneBuffer.addTerrain(
+    fallbackScene,
+    0,
+    0,
+    1,
+    0,
+);
+assert.equal(fallbackVertexCount, 3);
+assert.deepEqual(fallbackSceneBuffer.indices, [0, 1, 2]);
+
 console.log("Terrain batch bridge regression test passed");
