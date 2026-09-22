@@ -54,6 +54,18 @@ if (!hasCommand("rustup") || !hasCommand("cargo")) {
     process.exit(1);
 }
 
+if (!hasCommand("cc", ["--version"])) {
+    const help =
+        process.platform === "darwin"
+            ? "Install the Apple command-line developer tools with: xcode-select --install"
+            : "Install a native build toolchain (for Debian/Ubuntu: sudo apt install build-essential; for Arch: sudo pacman -S base-devel).";
+    console.error(
+        "A C compiler/linker is required to build native Rust tools such as wasm-bindgen-cli.\n" +
+            help,
+    );
+    process.exit(1);
+}
+
 run("rustup", ["target", "add", "wasm32-unknown-unknown"], "Preparing Rust WASM target");
 
 // Enabling the Yarn shim makes the normal 'yarn start' command available.
