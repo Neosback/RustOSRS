@@ -1,0 +1,72 @@
+name: Developer Setup
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".nvmrc"
+      - ".node-version"
+      - "rust-toolchain.toml"
+      - "README.md"
+      - "client/package.json"
+      - "client/yarn.lock"
+      - "client/craco.config.js"
+      - "client/.env.example"
+      - "client/scripts/bootstrap.mjs"
+      - "client/scripts/doctor.mjs"
+      - "client/scripts/run-craco.mjs"
+      - ".github/workflows/developer-setup.yml"
+  pull_request:
+    paths:
+      - ".nvmrc"
+      - ".node-version"
+      - "rust-toolchain.toml"
+      - "README.md"
+      - "client/package.json"
+      - "client/yarn.lock"
+      - "client/craco.config.js"
+      - "client/.env.example"
+      - "client/scripts/bootstrap.mjs"
+      - "client/scripts/doctor.mjs"
+      - "client/scripts/run-craco.mjs"
+      - ".github/workflows/developer-setup.yml"
+
+jobs:
+  fresh-checkout:
+    name: Fresh checkout (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "yarn"
+          cache-dependency-path: "client/yarn.lock"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Bootstrap standalone client
+        working-directory: client
+        run: node scripts/bootstrap.mjs
+
+      - name: TypeScript typecheck
+        working-directory: client
+        run: corepack yarn typecheck
+
+      - name: Production Pico build
+        working-directory: client
+        env:
+          CI: "false"
+          DISABLE_ESLINT_PLUGIN: "true"
+        run: corepack yarn build:pico
