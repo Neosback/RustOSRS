@@ -484,7 +484,7 @@ export function resolveNpcOverlayAnchor(host: WebGLOsrsRendererHost,
 export function getEffectiveControlledPlayerId(host: WebGLOsrsRendererHost, ): number {
 
         const actual = host.osrsClient.controlledPlayerServerId | 0;
-        if (actual > 0) {
+        if (actual >= 0) {
             if (
                 host.pendingControlledPlayerServerId !== undefined &&
                 host.pendingControlledPlayerServerId !== actual
@@ -496,7 +496,7 @@ export function getEffectiveControlledPlayerId(host: WebGLOsrsRendererHost, ): n
         if (host.pendingControlledPlayerServerId !== undefined) {
             return host.pendingControlledPlayerServerId | 0;
         }
-        return 0;
+        return -1;
     
 }
 
