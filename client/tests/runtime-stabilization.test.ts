@@ -101,8 +101,12 @@ const overlaysSource = fs.readFileSync(
     "utf8",
 );
 assert.ok(
-    overlaysSource.includes("if (actual >= 0)"),
-    "controlled player server id 0 must remain valid for overlay ownership",
+    overlaysSource.includes("return actual >= 0 ? actual : -1;"),
+    "controlled player server id 0 must remain valid when no pending handoff exists",
+);
+assert.ok(
+    overlaysSource.includes("if (host.pendingControlledPlayerServerId !== undefined)"),
+    "temporary controlled-player ID zero must preserve the pending server-ID handoff",
 );
 assert.ok(
     overlaysSource.includes("return -1;"),
@@ -136,8 +140,8 @@ assert.ok(
     "player overlay events must accept server id 0",
 );
 assert.ok(
-    !overlays4Source.includes("controlledId <= 0"),
-    "server id 0 must not be treated as an unassigned controlled player",
+    overlays4Source.includes("controlledId <= 0"),
+    "temporary controlled-player ID zero must still allow authoritative ID handoff",
 );
 
 const frameRenderSource = fs.readFileSync(
@@ -148,6 +152,11 @@ assert.ok(
     !frameRenderSource.includes("playerServerId > 0"),
     "server id 0 controlled-player overlays must render",
 );
+assert.ok(
+    !frameRenderSource.includes("if (!serverId || serverId === controlledId)"),
+    "player server id 0 must not be discarded by truthiness checks",
+);
+
 
 
 assert.ok(
