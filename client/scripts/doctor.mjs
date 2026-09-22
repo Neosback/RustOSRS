@@ -108,7 +108,7 @@ checks.push({
 });
 
 const wasmPackage = existsSync(
-    path.join(clientDir, "public", "rust-renderer", "rustosrs_renderer.wasm"),
+    path.join(clientDir, "public", "rust-renderer", "rustosrs_renderer_bg.wasm"),
 );
 checks.push({
     ok: wasmPackage,
