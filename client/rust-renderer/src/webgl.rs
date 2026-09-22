@@ -235,21 +235,23 @@ impl StaticGeometryBatch {
         validate_geometry(packed_vertices, indices)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-        let vertices = js_sys::Uint32Array::from(packed_vertices);
-        let index_data = js_sys::Uint32Array::from(indices);
+        unsafe {
+            let vertices = js_sys::Uint32Array::view(packed_vertices);
+            let index_data = js_sys::Uint32Array::view(indices);
 
-        gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&self.vertex_buffer));
-        gl.buffer_data_with_opt_array_buffer(
-            Gl::ARRAY_BUFFER,
-            Some(&vertices.buffer()),
-            Gl::STATIC_DRAW,
-        );
-        gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
-        gl.buffer_data_with_opt_array_buffer(
-            Gl::ELEMENT_ARRAY_BUFFER,
-            Some(&index_data.buffer()),
-            Gl::STATIC_DRAW,
-        );
+            gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&self.vertex_buffer));
+            gl.buffer_data_with_array_buffer_view(
+                Gl::ARRAY_BUFFER,
+                vertices.unchecked_ref(),
+                Gl::STATIC_DRAW,
+            );
+            gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
+            gl.buffer_data_with_array_buffer_view(
+                Gl::ELEMENT_ARRAY_BUFFER,
+                index_data.unchecked_ref(),
+                Gl::STATIC_DRAW,
+            );
+        }
 
         self.index_count = indices.len() as u32;
         self.opaque_pass.clear();
@@ -412,17 +414,26 @@ impl IndexedGeometryBatch {
         validate_geometry(packed_vertices, indices)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-        let vertices = js_sys::Uint32Array::from(packed_vertices);
-        let index_data = js_sys::Uint32Array::from(indices);
+        // bufferData consumes the source synchronously. Use typed-array views
+        // over WASM memory so dynamic geometry does not allocate/copy through a
+        // second JS-owned ArrayBuffer before every upload.
+        unsafe {
+            let vertices = js_sys::Uint32Array::view(packed_vertices);
+            let index_data = js_sys::Uint32Array::view(indices);
 
-        gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&self.vertex_buffer));
-        gl.buffer_data_with_opt_array_buffer(Gl::ARRAY_BUFFER, Some(&vertices.buffer()), usage);
-        gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
-        gl.buffer_data_with_opt_array_buffer(
-            Gl::ELEMENT_ARRAY_BUFFER,
-            Some(&index_data.buffer()),
-            usage,
-        );
+            gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&self.vertex_buffer));
+            gl.buffer_data_with_array_buffer_view(
+                Gl::ARRAY_BUFFER,
+                vertices.unchecked_ref(),
+                usage,
+            );
+            gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
+            gl.buffer_data_with_array_buffer_view(
+                Gl::ELEMENT_ARRAY_BUFFER,
+                index_data.unchecked_ref(),
+                usage,
+            );
+        }
 
         self.index_count = indices.len() as u32;
         Ok(())
@@ -2920,14 +2931,16 @@ impl RustWebGlRenderer {
                     1,
                 ),
                 slots => {
-                    let slot_data = js_sys::Int32Array::from(slots);
                     self.gl
                         .bind_buffer(Gl::ARRAY_BUFFER, Some(&self.player_slot_buffer));
-                    self.gl.buffer_data_with_opt_array_buffer(
-                        Gl::ARRAY_BUFFER,
-                        Some(&slot_data.buffer()),
-                        Gl::DYNAMIC_DRAW,
-                    );
+                    unsafe {
+                        let slot_data = js_sys::Int32Array::view(slots);
+                        self.gl.buffer_data_with_array_buffer_view(
+                            Gl::ARRAY_BUFFER,
+                            slot_data.unchecked_ref(),
+                            Gl::DYNAMIC_DRAW,
+                        );
+                    }
                     (
                         player_data_offset,
                         true,
