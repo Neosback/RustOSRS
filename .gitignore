@@ -3,6 +3,8 @@
 # JavaScript
 client/node_modules/
 client/build/
+client/.pnp.*
+client/.yarn/
 
 # Rust
 client/rust-renderer/target/
