@@ -484,7 +484,10 @@ export function resolveNpcOverlayAnchor(host: WebGLOsrsRendererHost,
 export function getEffectiveControlledPlayerId(host: WebGLOsrsRendererHost, ): number {
 
         const actual = host.osrsClient.controlledPlayerServerId | 0;
-        if (actual >= 0) {
+        // ID 0 is both a valid server ID and the client's temporary local-player
+        // placeholder before the authoritative handshake arrives. Preserve the
+        // existing pending-ID handoff when one exists, otherwise treat 0 as valid.
+        if (actual > 0) {
             if (
                 host.pendingControlledPlayerServerId !== undefined &&
                 host.pendingControlledPlayerServerId !== actual
@@ -496,7 +499,7 @@ export function getEffectiveControlledPlayerId(host: WebGLOsrsRendererHost, ): n
         if (host.pendingControlledPlayerServerId !== undefined) {
             return host.pendingControlledPlayerServerId | 0;
         }
-        return -1;
+        return actual >= 0 ? actual : -1;
     
 }
 
