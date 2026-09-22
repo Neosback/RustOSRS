@@ -1554,7 +1554,7 @@ export function mirrorRustProjectileGeometry(
 export function mirrorRustPlayerGeometry(
     host: WebGLOsrsRendererHost,
     map: WebGLMapSquare,
-    geometryKey: string,
+    geometryKey: string | undefined,
     vertices: Uint8Array,
     indices: Int32Array,
     playerDataOffset: number,
