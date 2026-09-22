@@ -16,6 +16,7 @@ import {
     removeCacheManifestEntry,
     writeCacheManifestEntry,
 } from "../common/utils/CacheManifest";
+import { runtimePerfCounters } from "../common/debug/RuntimePerfCounters";
 import {
     checkMobile,
     isIos,
@@ -205,6 +206,7 @@ function OsrsClientApp() {
     );
 
     useEffect(() => {
+        runtimePerfCounters.setWorkerPolicy(workerCount, sharedCacheMemoryAvailable);
         console.info(
             `[runtime] renderWorkers=${workerCount} sharedSparseCache=${sharedCacheMemoryAvailable} crossOriginIsolated=${globalThis.crossOriginIsolated === true}`,
         );
@@ -274,6 +276,7 @@ function OsrsClientApp() {
             }
 
             const cacheSize = typeof cacheInfo.size === "number" ? cacheInfo.size : 0;
+            runtimePerfCounters.setCacheAdvertisedBytes(cacheSize);
             const expectedBytes = Math.max(cacheSize, 256 * 1024 * 1024);
             const budget = await getStorageBudget();
             const enoughStorage = await hasEnoughStorage(expectedBytes);
