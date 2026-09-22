@@ -96,9 +96,13 @@ if (!linker) {
     );
 }
 
-const nodeModules = existsSync(path.join(clientDir, "node_modules"));
+const dependenciesInstalled =
+    existsSync(path.join(clientDir, "node_modules")) ||
+    existsSync(path.join(clientDir, ".pnp.cjs")) ||
+    existsSync(path.join(clientDir, ".pnp.loader.mjs")) ||
+    existsSync(path.join(clientDir, ".yarn", "install-state.gz"));
 checks.push({
-    ok: nodeModules,
+    ok: dependenciesInstalled,
     label: "JavaScript dependencies",
     help: "Run 'node scripts/bootstrap.mjs'.",
 });
