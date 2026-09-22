@@ -485,7 +485,7 @@ export function registerPlayerHealthBarUpdate(host: WebGLOsrsRendererHost, event
     }): void {
 
         const serverId = event.serverId | 0;
-        if (serverId <= 0) return;
+        if (serverId < 0) return;
         const bar = event.bar;
         const defId = bar.id | 0;
         const actor = host.playerHealthBars.get(serverId);
