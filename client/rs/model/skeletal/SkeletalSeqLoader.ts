@@ -1,3 +1,4 @@
+import { lruGet, lruSet } from "../../../common/utils/BoundedLru";
 import { Archive } from "../../cache/Archive";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { isGroupMissingError } from "../../cache/js5/GroupMissingError";
@@ -10,6 +11,9 @@ export interface SkeletalSeqLoader {
     clearCache(): void;
 }
 
+const SKELETAL_SEQ_CACHE_MAX = 128;
+const SKELETAL_ARCHIVE_CACHE_MAX = 64;
+
 export class IndexSkeletalSeqLoader implements SkeletalSeqLoader {
     seqs: Map<number, SkeletalSeq> = new Map();
 
@@ -21,7 +25,7 @@ export class IndexSkeletalSeqLoader implements SkeletalSeqLoader {
     ) {}
 
     load(id: number): SkeletalSeq | undefined {
-        const cached = this.seqs.get(id);
+        const cached = lruGet(this.seqs, id);
         if (cached) {
             return cached;
         }
@@ -29,7 +33,7 @@ export class IndexSkeletalSeqLoader implements SkeletalSeqLoader {
         const archiveId = id >> 16;
         const fileId = id & 0xffff;
 
-        let archive = this.archiveCache.get(archiveId);
+        let archive = lruGet(this.archiveCache, archiveId);
         if (!archive) {
             try {
                 archive = this.animIndex.getArchive(archiveId);
@@ -41,7 +45,7 @@ export class IndexSkeletalSeqLoader implements SkeletalSeqLoader {
                 }
                 return undefined;
             }
-            this.archiveCache.set(archiveId, archive);
+            lruSet(this.archiveCache, archiveId, archive, SKELETAL_ARCHIVE_CACHE_MAX);
         }
 
         const file = archive.getFile(fileId);
@@ -50,7 +54,7 @@ export class IndexSkeletalSeqLoader implements SkeletalSeqLoader {
         }
 
         const skeletalSeq = SkeletalSeq.load(this.baseLoader, id, file.data);
-        this.seqs.set(id, skeletalSeq);
+        lruSet(this.seqs, id, skeletalSeq, SKELETAL_SEQ_CACHE_MAX);
         return skeletalSeq;
     }
 
