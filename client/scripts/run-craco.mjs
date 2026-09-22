@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,15 +12,10 @@ if (!["development", "production", "test"].includes(mode) || !command) {
     process.exit(2);
 }
 
-const craco = path.join(clientDir, "node_modules", "@craco", "craco", "dist", "bin", "craco.js");
-if (!existsSync(craco)) {
-    console.error(
-        "Client dependencies are not installed. Run 'node scripts/bootstrap.mjs' from client/ first.",
-    );
-    process.exit(1);
-}
-
-const child = spawn(process.execPath, [craco, command], {
+// Use Yarn to resolve the CRACO binary so this works with both Yarn PnP and
+// node_modules installs. A hard-coded node_modules path breaks on a clean
+// Yarn 4 checkout because PnP is the default linker.
+const child = spawn("corepack", ["yarn", "exec", "craco", command], {
     cwd: clientDir,
     stdio: "inherit",
     env: {
@@ -31,7 +25,10 @@ const child = spawn(process.execPath, [craco, command], {
 });
 
 child.on("error", (error) => {
-    console.error("Failed to launch CRACO:", error);
+    console.error(
+        "Failed to launch CRACO through Corepack. Run 'node scripts/bootstrap.mjs' first.",
+        error,
+    );
     process.exitCode = 1;
 });
 
