@@ -1756,8 +1756,13 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
         } catch {}
         profiler.endPhase();
 
-        if ((host.osrsClient.widgetManager?.rootInterface ?? -1) === WELCOME_SCREEN_GROUP_ID) {
-            // Keep the loaded scene hot, but hide its final image behind the Welcome Screen.
+        if (
+            !rustPrimaryRendererEnabled
+            && (host.osrsClient.widgetManager?.rootInterface ?? -1) === WELCOME_SCREEN_GROUP_ID
+        ) {
+            // This opaque clear belongs to the single-canvas Pico presentation path.
+            // In Rust-primary mode the Pico canvas is the transparent UI layer above
+            // the Rust scene canvas, so clearing it opaque here masks the entire game.
             host.app.disable(PicoGL.SCISSOR_TEST);
             host.app.clearColor(0, 0, 0, 1);
             host.app.defaultDrawFramebuffer().clear();
