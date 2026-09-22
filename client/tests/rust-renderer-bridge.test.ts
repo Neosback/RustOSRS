@@ -47,6 +47,14 @@ class MockWasm implements RustRendererWasm {
         vertices: Uint32Array;
         indices: Uint32Array;
     }> = [];
+    residentPlayerGeometryUploads: Array<{
+        key: string;
+        vertices: Uint32Array;
+        indices: Uint32Array;
+    }> = [];
+    residentPlayerGeometryKeys = new Set<string>();
+    selectedResidentPlayerGeometryKey?: string;
+    releasedResidentPlayerGeometryKeys: string[] = [];
     modelInfoUploads: Uint16Array[] = [];
     heightUploads = 0;
     waterMaskUploads = 0;
@@ -232,10 +240,45 @@ class MockWasm implements RustRendererWasm {
         vertices: Uint32Array,
         indices: Uint32Array,
     ): void {
+        this.selectedResidentPlayerGeometryKey = undefined;
         this.dynamicPlayerGeometryUploads.push({
             vertices: new Uint32Array(vertices),
             indices: new Uint32Array(indices),
         });
+    }
+
+    upload_resident_player_geometry(
+        key: string,
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void {
+        this.residentPlayerGeometryKeys.add(key);
+        this.residentPlayerGeometryUploads.push({
+            key,
+            vertices: new Uint32Array(vertices),
+            indices: new Uint32Array(indices),
+        });
+    }
+
+    select_resident_player_geometry(key: string): void {
+        assert.ok(this.residentPlayerGeometryKeys.has(key));
+        this.selectedResidentPlayerGeometryKey = key;
+    }
+
+    select_dynamic_player_geometry(): void {
+        this.selectedResidentPlayerGeometryKey = undefined;
+    }
+
+    release_resident_player_geometry(key: string): boolean {
+        this.releasedResidentPlayerGeometryKeys.push(key);
+        if (this.selectedResidentPlayerGeometryKey === key) {
+            this.selectedResidentPlayerGeometryKey = undefined;
+        }
+        return this.residentPlayerGeometryKeys.delete(key);
+    }
+
+    resident_player_geometry_count(): number {
+        return this.residentPlayerGeometryKeys.size;
     }
 
     upload_model_info(modelInfo: Uint16Array): void {
@@ -1436,6 +1479,45 @@ function frame(): RustStaticFrameState {
             worldEntityTransform: npcTransform,
         },
     );
+
+    const residentKey = "opaque:appearance|808|3";
+    bridge.renderDynamicPlayerPass(
+        {
+            ...firstFrame,
+            playerDataOffset: 9,
+            playerSlots: new Int32Array([0]),
+            modelYOffset: 2.5,
+            transparent: false,
+            cullBackFace: true,
+            restoreCullBackFace: true,
+            worldEntityTransform: npcTransform,
+        },
+        playerVertices,
+        playerIndices,
+        residentKey,
+    );
+    bridge.renderDynamicPlayerPass(
+        {
+            ...firstFrame,
+            playerDataOffset: 12,
+            playerSlots: new Int32Array([2]),
+            modelYOffset: 2.5,
+            transparent: false,
+            cullBackFace: true,
+            restoreCullBackFace: true,
+            worldEntityTransform: npcTransform,
+        },
+        playerVertices,
+        playerIndices,
+        residentKey,
+    );
+    assert.equal(
+        wasm.residentPlayerGeometryUploads.filter((entry) => entry.key === residentKey).length,
+        1,
+        "resident player geometry should upload only once per stable frame key",
+    );
+    assert.equal(bridge.getResidentPlayerGeometryCount(), 1);
+    assert.equal(wasm.selectedResidentPlayerGeometryKey, residentKey);
 
     bridge.dispose();
 }
