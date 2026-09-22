@@ -2495,18 +2495,17 @@ impl RustWebGlRenderer {
         transparent: bool,
         restore_cull_back_face: bool,
     ) -> Result<(), JsValue> {
-        let (index_count, vao) =
-            if let Some(key) = self.active_gfx_geometry_key.as_deref() {
-                let batch = self.resident_actor_batches.get(key).ok_or_else(|| {
-                    JsValue::from_str(&format!("resident actor geometry not found: {key}"))
-                })?;
-                (batch.index_count, batch.vao.clone())
-            } else {
-                (
-                    self.dynamic_gfx_batch.index_count,
-                    self.dynamic_gfx_batch.vao.clone(),
-                )
-            };
+        let (index_count, vao) = if let Some(key) = self.active_gfx_geometry_key.as_deref() {
+            let batch = self.resident_actor_batches.get(key).ok_or_else(|| {
+                JsValue::from_str(&format!("resident actor geometry not found: {key}"))
+            })?;
+            (batch.index_count, batch.vao.clone())
+        } else {
+            (
+                self.dynamic_gfx_batch.index_count,
+                self.dynamic_gfx_batch.vao.clone(),
+            )
+        };
         if index_count == 0 {
             return Ok(());
         }
@@ -2762,8 +2761,7 @@ impl RustWebGlRenderer {
             3,
         );
 
-        self.gl
-            .bind_vertex_array(Some(&projectile_vao));
+        self.gl.bind_vertex_array(Some(&projectile_vao));
         let stats = submit_draw_ranges(&self.gl, &ranges, index_count, None, None, 3, false);
         self.gl.bind_vertex_array(None);
         self.gl.depth_mask(true);
