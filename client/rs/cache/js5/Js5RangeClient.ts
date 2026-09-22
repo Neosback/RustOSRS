@@ -9,6 +9,7 @@ type PendingGroup = {
     span: GroupSpan;
     urgent: boolean;
     inFlight: boolean;
+    retryCount: number;
     resolve: () => void;
     reject: (err: unknown) => void;
     promise: Promise<void>;
@@ -35,6 +36,10 @@ export class Js5RangeClient {
     private static readonly BLOCK_SECTORS = 512;
     /** Delay before dispatching, letting one frame's misses batch together. */
     private static readonly BATCH_DELAY_MS = 10;
+    /** Retry transient network/server failures without making callers requeue the same group. */
+    private static readonly MAX_FETCH_RETRIES = 3;
+    private static readonly RETRY_BASE_DELAY_MS = 100;
+    private static readonly RETRY_MAX_DELAY_MS = 1000;
 
     private readonly pending = new Map<string, PendingGroup>();
     private readonly fetchedListeners: RangeFetchedListener[] = [];
@@ -124,7 +129,15 @@ export class Js5RangeClient {
         // Many callers fire-and-forget; keep failed fetches from surfacing as
         // unhandled rejections while still rejecting for callers that await.
         promise.catch(() => {});
-        this.pending.set(key, { span, urgent, inFlight: false, resolve, reject, promise });
+        this.pending.set(key, {
+            span,
+            urgent,
+            inFlight: false,
+            retryCount: 0,
+            resolve,
+            reject,
+            promise,
+        });
         this.schedule();
         return promise;
     }
@@ -225,11 +238,45 @@ export class Js5RangeClient {
                 this.finishGroup(group);
             }
         } catch (e) {
+            const retryable = this.isRetryableFetchError(e);
+            const retryGroups: PendingGroup[] = [];
+
             for (const group of batch.groups) {
+                if (
+                    retryable
+                    && !this.rangeUnsupported
+                    && group.retryCount < Js5RangeClient.MAX_FETCH_RETRIES
+                ) {
+                    group.retryCount++;
+                    retryGroups.push(group);
+                    continue;
+                }
+
                 this.pending.delete(groupKey(group.span));
                 group.reject(e);
             }
-            if (!this.rangeUnsupported) {
+
+            if (retryGroups.length > 0) {
+                const attempt = Math.max(...retryGroups.map((group) => group.retryCount));
+                const delayMs = Math.min(
+                    Js5RangeClient.RETRY_BASE_DELAY_MS * (2 ** Math.max(0, attempt - 1)),
+                    Js5RangeClient.RETRY_MAX_DELAY_MS,
+                );
+                console.warn(
+                    `[js5] Range fetch failed; retrying ${retryGroups.length} group(s) `
+                    + `in ${delayMs}ms (attempt ${attempt}/${Js5RangeClient.MAX_FETCH_RETRIES})`,
+                    e,
+                );
+                setTimeout(() => {
+                    for (const group of retryGroups) {
+                        const key = groupKey(group.span);
+                        if (this.pending.get(key) === group) {
+                            group.inFlight = false;
+                        }
+                    }
+                    this.schedule();
+                }, delayMs);
+            } else if (!this.rangeUnsupported) {
                 console.warn("[js5] Range fetch failed:", e);
             }
         } finally {
@@ -325,6 +372,23 @@ export class Js5RangeClient {
             this.pending.delete(key);
             group.reject(e);
         }
+    }
+
+    private isRetryableFetchError(error: unknown): boolean {
+        if (this.rangeUnsupported) {
+            return false;
+        }
+        if (error instanceof TypeError) {
+            // Browser fetch reports transport failures as TypeError.
+            return true;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        const statusMatch = /:\s*(\d{3})$/.exec(message);
+        if (statusMatch) {
+            const status = Number(statusMatch[1]);
+            return status === 408 || status === 429 || status >= 500;
+        }
+        return message.startsWith("Truncated range fetch ");
     }
 
     private async fetchRange(start: number, length: number): Promise<Uint8Array> {
