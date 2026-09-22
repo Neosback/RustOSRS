@@ -91,6 +91,7 @@ class MockWasm implements RustRendererWasm {
     }> = [];
     renderFrameCalls = 0;
     beginFrameCalls = 0;
+    structuralParityEnabledState = false;
     presentationEnabledState = false;
     presentationMsaaEnabledState = false;
     presentationMsaaSamplesState = 0;
@@ -495,6 +496,14 @@ class MockWasm implements RustRendererWasm {
             width,
             height,
         });
+    }
+
+    set_structural_parity_enabled(enabled: boolean): void {
+        this.structuralParityEnabledState = enabled;
+    }
+
+    structural_parity_enabled(): boolean {
+        return this.structuralParityEnabledState;
     }
 
     set_presentation_enabled(enabled: boolean): void {
@@ -995,6 +1004,12 @@ function frame(): RustStaticFrameState {
         MockWasm,
     );
     const wasm = MockWasm.last!;
+
+    assert.equal(bridge.isStructuralParityEnabled(), false);
+    bridge.setStructuralParityEnabled(true);
+    assert.equal(bridge.isStructuralParityEnabled(), true);
+    bridge.setStructuralParityEnabled(false);
+    assert.equal(bridge.isStructuralParityEnabled(), false);
 
     assert.equal(bridge.isPresentationEnabled(), false);
     bridge.setPresentationEnabled(true);
