@@ -1,0 +1,101 @@
+name: Developer Setup
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".nvmrc"
+      - ".node-version"
+      - "rust-toolchain.toml"
+      - "README.md"
+      - "client/package.json"
+      - "client/yarn.lock"
+      - "client/craco.config.js"
+      - "client/.env.example"
+      - "client/scripts/bootstrap.mjs"
+      - "client/scripts/doctor.mjs"
+      - "client/scripts/run-craco.mjs"
+      - ".github/workflows/developer-setup.yml"
+  pull_request:
+    paths:
+      - ".nvmrc"
+      - ".node-version"
+      - "rust-toolchain.toml"
+      - "README.md"
+      - "client/package.json"
+      - "client/yarn.lock"
+      - "client/craco.config.js"
+      - "client/.env.example"
+      - "client/scripts/bootstrap.mjs"
+      - "client/scripts/doctor.mjs"
+      - "client/scripts/run-craco.mjs"
+      - ".github/workflows/developer-setup.yml"
+
+jobs:
+  fresh-checkout:
+    name: Fresh checkout (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Bootstrap standalone client
+        working-directory: client
+        run: node scripts/bootstrap.mjs
+
+      - name: TypeScript typecheck
+        working-directory: client
+        run: corepack yarn typecheck
+
+      - name: Development server smoke test
+        working-directory: client
+        env:
+          BROWSER: "none"
+          CI: "false"
+        run: |
+          LOG_FILE="${RUNNER_TEMP}/rustosrs-dev.log"
+          corepack yarn start:pico >"$LOG_FILE" 2>&1 &
+          DEV_PID=$!
+          cleanup() {
+            kill "$DEV_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for attempt in {1..90}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/ >/dev/null; then
+              echo "Development server responded successfully."
+              exit 0
+            fi
+            if ! kill -0 "$DEV_PID" 2>/dev/null; then
+              echo "Development server exited before becoming ready."
+              cat "$LOG_FILE"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo "Development server did not become ready."
+          cat "$LOG_FILE"
+          exit 1
+
+      - name: Production Pico build
+        working-directory: client
+        env:
+          CI: "false"
+          DISABLE_ESLINT_PLUGIN: "true"
+        run: corepack yarn build:pico

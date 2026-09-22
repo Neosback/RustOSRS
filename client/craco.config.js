@@ -17,7 +17,7 @@ const { execFileSync } = require("child_process");
 const JsonMinimizerPlugin = require("json-minimizer-webpack-plugin");
 const paths = require("react-scripts/config/paths");
 
-// This package IS the CRA app root (sibling of ../server and ../docs).
+// This package is the standalone CRA app root.
 const appRoot = __dirname;
 paths.appPath = appRoot;
 paths.appSrc = appRoot;
@@ -166,7 +166,16 @@ module.exports = {
         delete devServerConfig.onBeforeSetupMiddleware;
         delete devServerConfig.onAfterSetupMiddleware;
 
-        const cachesDir = path.resolve(appRoot, "../server/caches");
+        const configuredCacheDir = process.env.RUSTOSRS_CACHE_DIR
+            ? path.resolve(appRoot, process.env.RUSTOSRS_CACHE_DIR)
+            : undefined;
+        const localCacheDir = path.resolve(appRoot, "caches");
+        const legacyMonorepoCacheDir = path.resolve(appRoot, "../server/caches");
+        const hasCacheManifest = (directory) =>
+            fs.existsSync(path.join(directory, "caches.json"));
+        const cachesDir =
+            configuredCacheDir ??
+            (hasCacheManifest(localCacheDir) ? localCacheDir : legacyMonorepoCacheDir);
 
         return {
             ...devServerConfig,
@@ -204,8 +213,19 @@ module.exports = {
 
                 devServer.app.use(redirectServedPath(paths.publicUrlOrPath));
                 devServer.app.use(noopServiceWorkerMiddleware(paths.publicUrlOrPath));
-                if (fs.existsSync(cachesDir)) {
+                if (hasCacheManifest(cachesDir)) {
+                    console.log(`[dev] Serving cache files from ${cachesDir}`);
                     devServer.app.use("/caches", express.static(cachesDir));
+                } else if (!process.env.REACT_APP_CACHE_BASE_URL) {
+                    const configuredHint = configuredCacheDir
+                        ? ` Configured RUSTOSRS_CACHE_DIR has no caches.json: ${configuredCacheDir}.`
+                        : "";
+                    console.warn(
+                        "[dev] No usable local cache found." +
+                            configuredHint +
+                            " Put cache data in client/caches, set RUSTOSRS_CACHE_DIR, " +
+                            "or set REACT_APP_CACHE_BASE_URL in .env.local.",
+                    );
                 }
 
                 return middlewares;

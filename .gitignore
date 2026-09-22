@@ -1,0 +1,28 @@
+.DS_Store
+
+# JavaScript
+client/node_modules/
+client/build/
+client/.pnp.*
+client/.yarn/
+
+# Rust
+client/rust-renderer/target/
+client/rust-renderer/Cargo.lock
+
+# Local configuration
+client/.env
+client/.env.local
+client/.env.development
+client/.env.development.local
+client/.env.production
+client/.env.production.local
+!client/.env.example
+
+# Local cache data
+client/caches/*
+!client/caches/README.md
+
+# Generated Rust browser package (directory has its own ignore too)
+client/public/rust-renderer/*
+!client/public/rust-renderer/.gitignore
