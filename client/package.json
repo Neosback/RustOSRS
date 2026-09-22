@@ -40,7 +40,7 @@
   "scripts": {
     "start": "node scripts/build-rust-renderer.mjs && node scripts/run-craco.mjs development start",
     "start:pico": "node scripts/run-craco.mjs development start",
-    "dev": "yarn start",
+    "dev": "node scripts/build-rust-renderer.mjs && node scripts/run-craco.mjs development start",
     "build": "node scripts/build-rust-renderer.mjs && node scripts/run-craco.mjs production build",
     "build:pico": "node scripts/run-craco.mjs production build",
     "build:rust-renderer": "node scripts/build-rust-renderer.mjs",
