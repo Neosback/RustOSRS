@@ -40,11 +40,14 @@ export class Js5RangeClient {
     private static readonly MAX_FETCH_RETRIES = 3;
     private static readonly RETRY_BASE_DELAY_MS = 100;
     private static readonly RETRY_MAX_DELAY_MS = 1000;
+    /** Keep urgent traffic responsive without starving background cache warming forever. */
+    private static readonly MAX_URGENT_BATCH_BURST = 4;
 
     private readonly pending = new Map<string, PendingGroup>();
     private readonly fetchedListeners: RangeFetchedListener[] = [];
     private activeFetches = 0;
     private downloadedBytes = 0;
+    private urgentBatchesSinceBackground = 0;
 
     getProgress(): { pending: number; active: number; downloadedBytes: number } {
         return { pending: this.pending.size, active: this.activeFetches, downloadedBytes: this.downloadedBytes };
@@ -180,10 +183,19 @@ export class Js5RangeClient {
         }
         waiting.sort((a, b) => a.span.startByte - b.span.startByte);
 
-        const seedIndices = [
-            ...waiting.map((group, index) => group.urgent ? index : -1).filter((index) => index >= 0),
-            ...waiting.map((group, index) => group.urgent ? -1 : index).filter((index) => index >= 0),
-        ];
+        const urgentSeedIndices = waiting
+            .map((group, index) => group.urgent ? index : -1)
+            .filter((index) => index >= 0);
+        const backgroundSeedIndices = waiting
+            .map((group, index) => group.urgent ? -1 : index)
+            .filter((index) => index >= 0);
+        const forceBackground =
+            urgentSeedIndices.length > 0
+            && backgroundSeedIndices.length > 0
+            && this.urgentBatchesSinceBackground >= Js5RangeClient.MAX_URGENT_BATCH_BURST;
+        const seedIndices = forceBackground
+            ? [...backgroundSeedIndices, ...urgentSeedIndices]
+            : [...urgentSeedIndices, ...backgroundSeedIndices];
         for (const seedIndex of seedIndices) {
             const groups = [waiting[seedIndex]];
             let start = waiting[seedIndex].span.startByte;
@@ -209,6 +221,11 @@ export class Js5RangeClient {
             }
             for (const group of groups) group.inFlight = true;
             this.inFlightRanges.push(range);
+            if (groups.some((group) => !group.urgent)) {
+                this.urgentBatchesSinceBackground = 0;
+            } else {
+                this.urgentBatchesSinceBackground++;
+            }
             return { groups, ...range };
         }
         return undefined;
