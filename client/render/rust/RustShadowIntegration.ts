@@ -2056,7 +2056,7 @@ export function renderRustStaticShadowFrame(
             return;
         }
 
-        if (runtime.bridge.beginStaticFrame(frames)) {
+        if (runtime.bridge.beginStaticFrame(frames, !!host.cullBackFace)) {
             runtime.bridge.renderOpaqueStaticMaps(frames);
         }
 
