@@ -148,6 +148,7 @@ export interface RustRendererWasm {
         filled: boolean,
     ): void;
 
+    set_cull_back_face(enabled: boolean): void;
     begin_static_frame(skyRgba: Float32Array): void;
     render_active_static_map_pass(
         viewMatrix: Float32Array,
@@ -651,11 +652,13 @@ export class RustRendererBridge {
 
     beginStaticFrame(
         frames: readonly RustResidentMapFrameState[],
+        cullBackFace: boolean = true,
     ): boolean {
         if (frames.length === 0) {
             return false;
         }
         this.assertResidentFramesUploaded(frames);
+        this.wasm.set_cull_back_face(cullBackFace);
         this.wasm.begin_static_frame(frames[0].skyRgba);
         return true;
     }
