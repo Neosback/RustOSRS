@@ -47,6 +47,16 @@ class MockWasm implements RustRendererWasm {
         vertices: Uint32Array;
         indices: Uint32Array;
     }> = [];
+    residentActorGeometryUploads: Array<{
+        key: string;
+        vertices: Uint32Array;
+        indices: Uint32Array;
+    }> = [];
+    residentActorGeometryKeys = new Set<string>();
+    selectedResidentNpcGeometryKey?: string;
+    selectedResidentGfxGeometryKey?: string;
+    selectedResidentProjectileGeometryKey?: string;
+    releasedResidentActorGeometryKeys: string[] = [];
     residentPlayerGeometryUploads: Array<{
         key: string;
         vertices: Uint32Array;
@@ -234,6 +244,64 @@ class MockWasm implements RustRendererWasm {
             vertices: new Uint32Array(vertices),
             indices: new Uint32Array(indices),
         });
+    }
+
+    upload_resident_actor_geometry(
+        key: string,
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void {
+        this.residentActorGeometryKeys.add(key);
+        this.residentActorGeometryUploads.push({
+            key,
+            vertices: new Uint32Array(vertices),
+            indices: new Uint32Array(indices),
+        });
+    }
+
+    select_resident_dynamic_npc_geometry(key: string): void {
+        assert.ok(this.residentActorGeometryKeys.has(key));
+        this.selectedResidentNpcGeometryKey = key;
+    }
+
+    select_dynamic_npc_geometry(): void {
+        this.selectedResidentNpcGeometryKey = undefined;
+    }
+
+    select_resident_gfx_geometry(key: string): void {
+        assert.ok(this.residentActorGeometryKeys.has(key));
+        this.selectedResidentGfxGeometryKey = key;
+    }
+
+    select_dynamic_gfx_geometry(): void {
+        this.selectedResidentGfxGeometryKey = undefined;
+    }
+
+    select_resident_projectile_geometry(key: string): void {
+        assert.ok(this.residentActorGeometryKeys.has(key));
+        this.selectedResidentProjectileGeometryKey = key;
+    }
+
+    select_dynamic_projectile_geometry(): void {
+        this.selectedResidentProjectileGeometryKey = undefined;
+    }
+
+    release_resident_actor_geometry(key: string): boolean {
+        this.releasedResidentActorGeometryKeys.push(key);
+        if (this.selectedResidentNpcGeometryKey === key) {
+            this.selectedResidentNpcGeometryKey = undefined;
+        }
+        if (this.selectedResidentGfxGeometryKey === key) {
+            this.selectedResidentGfxGeometryKey = undefined;
+        }
+        if (this.selectedResidentProjectileGeometryKey === key) {
+            this.selectedResidentProjectileGeometryKey = undefined;
+        }
+        return this.residentActorGeometryKeys.delete(key);
+    }
+
+    resident_actor_geometry_count(): number {
+        return this.residentActorGeometryKeys.size;
     }
 
     upload_dynamic_player_geometry(
@@ -1410,6 +1478,74 @@ function frame(): RustStaticFrameState {
             cullBackFace: false,
         },
     );
+
+    const residentNpcKey = "npc:opaque:42:808:3";
+    bridge.renderDynamicNpcPass(
+        {
+            ...firstFrame,
+            npcDataOffset: 60,
+            modelYOffset: 0,
+            transparent: false,
+            worldEntityTransform: npcTransform,
+        },
+        dynamicVertices,
+        dynamicIndices,
+        residentNpcKey,
+    );
+    bridge.renderDynamicNpcPass(
+        {
+            ...firstFrame,
+            npcDataOffset: 61,
+            modelYOffset: 0,
+            transparent: false,
+            worldEntityTransform: npcTransform,
+        },
+        dynamicVertices,
+        dynamicIndices,
+        residentNpcKey,
+    );
+    assert.equal(
+        wasm.residentActorGeometryUploads.filter((entry) => entry.key === residentNpcKey).length,
+        1,
+        "resident NPC geometry should upload only once per stable frame key",
+    );
+
+    const sharedSpotKey = "spot:alpha:100:2";
+    bridge.renderGfxPass(
+        {
+            ...firstFrame,
+            actorDataOffset: 62,
+            modelYOffset: 0,
+            mapX: 50,
+            mapY: 51,
+            transparent: true,
+            restoreCullBackFace: true,
+        },
+        gfxVertices,
+        gfxIndices,
+        sharedSpotKey,
+    );
+    bridge.renderProjectilePass(
+        {
+            ...firstFrame,
+            projectileDataOffset: 63,
+            modelYOffset: 0,
+            projectileSubOffset: new Float32Array([0, 0]),
+            mapX: 50,
+            mapY: 51,
+            transparent: true,
+            cullBackFace: true,
+        },
+        gfxVertices,
+        gfxIndices,
+        sharedSpotKey,
+    );
+    assert.equal(
+        wasm.residentActorGeometryUploads.filter((entry) => entry.key === sharedSpotKey).length,
+        1,
+        "GFX and projectile should share one resident spot-frame geometry upload",
+    );
+    assert.equal(bridge.getResidentActorGeometryCount(), 2);
 
     const playerVertices = new Uint32Array([21, 22, 23]);
     const playerIndices = new Uint32Array([0, 0, 0]);
