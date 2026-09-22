@@ -235,21 +235,23 @@ impl StaticGeometryBatch {
         validate_geometry(packed_vertices, indices)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-        let vertices = js_sys::Uint32Array::from(packed_vertices);
-        let index_data = js_sys::Uint32Array::from(indices);
+        unsafe {
+            let vertices = js_sys::Uint32Array::view(packed_vertices);
+            let index_data = js_sys::Uint32Array::view(indices);
 
-        gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&self.vertex_buffer));
-        gl.buffer_data_with_opt_array_buffer(
-            Gl::ARRAY_BUFFER,
-            Some(&vertices.buffer()),
-            Gl::STATIC_DRAW,
-        );
-        gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
-        gl.buffer_data_with_opt_array_buffer(
-            Gl::ELEMENT_ARRAY_BUFFER,
-            Some(&index_data.buffer()),
-            Gl::STATIC_DRAW,
-        );
+            gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&self.vertex_buffer));
+            gl.buffer_data_with_array_buffer_view(
+                Gl::ARRAY_BUFFER,
+                vertices.unchecked_ref(),
+                Gl::STATIC_DRAW,
+            );
+            gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
+            gl.buffer_data_with_array_buffer_view(
+                Gl::ELEMENT_ARRAY_BUFFER,
+                index_data.unchecked_ref(),
+                Gl::STATIC_DRAW,
+            );
+        }
 
         self.index_count = indices.len() as u32;
         self.opaque_pass.clear();
@@ -412,17 +414,26 @@ impl IndexedGeometryBatch {
         validate_geometry(packed_vertices, indices)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-        let vertices = js_sys::Uint32Array::from(packed_vertices);
-        let index_data = js_sys::Uint32Array::from(indices);
+        // bufferData consumes the source synchronously. Use typed-array views
+        // over WASM memory so dynamic geometry does not allocate/copy through a
+        // second JS-owned ArrayBuffer before every upload.
+        unsafe {
+            let vertices = js_sys::Uint32Array::view(packed_vertices);
+            let index_data = js_sys::Uint32Array::view(indices);
 
-        gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&self.vertex_buffer));
-        gl.buffer_data_with_opt_array_buffer(Gl::ARRAY_BUFFER, Some(&vertices.buffer()), usage);
-        gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
-        gl.buffer_data_with_opt_array_buffer(
-            Gl::ELEMENT_ARRAY_BUFFER,
-            Some(&index_data.buffer()),
-            usage,
-        );
+            gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&self.vertex_buffer));
+            gl.buffer_data_with_array_buffer_view(
+                Gl::ARRAY_BUFFER,
+                vertices.unchecked_ref(),
+                usage,
+            );
+            gl.bind_buffer(Gl::ELEMENT_ARRAY_BUFFER, Some(&self.index_buffer));
+            gl.buffer_data_with_array_buffer_view(
+                Gl::ELEMENT_ARRAY_BUFFER,
+                index_data.unchecked_ref(),
+                usage,
+            );
+        }
 
         self.index_count = indices.len() as u32;
         Ok(())
@@ -535,6 +546,8 @@ pub struct RustWebGlRenderer {
     water_texture_array: WebGlTexture,
     actor_data_texture: WebGlTexture,
     actor_data_actor_capacity: u32,
+    actor_data_texture_width: u32,
+    actor_data_texture_height: u32,
 
     presentation_enabled: bool,
     presentation_framebuffer: WebGlFramebuffer,
@@ -874,6 +887,8 @@ impl RustWebGlRenderer {
             water_texture_array,
             actor_data_texture,
             actor_data_actor_capacity: 0,
+            actor_data_texture_width: 0,
+            actor_data_texture_height: 0,
             presentation_enabled: false,
             presentation_framebuffer,
             presentation_color_texture,
@@ -1326,22 +1341,44 @@ impl RustWebGlRenderer {
         let actor_capacity = u32::try_from(texel_count / 2)
             .map_err(|_| JsValue::from_str("actor-data actor capacity overflow"))?;
 
-        let data = js_sys::Uint16Array::from(values);
+        // WebGL consumes client memory synchronously. Borrow the WASM slice
+        // directly instead of allocating/copying a new JS Uint16Array for every
+        // actor update.
+        let data = unsafe { js_sys::Uint16Array::view(values) };
         self.gl.active_texture(Gl::TEXTURE6);
         self.gl
             .bind_texture(Gl::TEXTURE_2D, Some(&self.actor_data_texture));
-        self.gl
-            .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
-                Gl::TEXTURE_2D,
-                0,
-                Gl::RGBA16UI as i32,
-                width as i32,
-                height as i32,
-                0,
-                Gl::RGBA_INTEGER,
-                Gl::UNSIGNED_SHORT,
-                Some(data.unchecked_ref()),
-            )?;
+
+        if self.actor_data_texture_width != width || self.actor_data_texture_height != height {
+            self.gl
+                .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
+                    Gl::TEXTURE_2D,
+                    0,
+                    Gl::RGBA16UI as i32,
+                    width as i32,
+                    height as i32,
+                    0,
+                    Gl::RGBA_INTEGER,
+                    Gl::UNSIGNED_SHORT,
+                    Some(data.unchecked_ref()),
+                )?;
+            self.actor_data_texture_width = width;
+            self.actor_data_texture_height = height;
+        } else {
+            self.gl
+                .tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_array_buffer_view(
+                    Gl::TEXTURE_2D,
+                    0,
+                    0,
+                    0,
+                    width as i32,
+                    height as i32,
+                    Gl::RGBA_INTEGER,
+                    Gl::UNSIGNED_SHORT,
+                    Some(data.unchecked_ref()),
+                )?;
+        }
+
         self.actor_data_actor_capacity = actor_capacity;
         Ok(())
     }
@@ -2894,14 +2931,16 @@ impl RustWebGlRenderer {
                     1,
                 ),
                 slots => {
-                    let slot_data = js_sys::Int32Array::from(slots);
                     self.gl
                         .bind_buffer(Gl::ARRAY_BUFFER, Some(&self.player_slot_buffer));
-                    self.gl.buffer_data_with_opt_array_buffer(
-                        Gl::ARRAY_BUFFER,
-                        Some(&slot_data.buffer()),
-                        Gl::DYNAMIC_DRAW,
-                    );
+                    unsafe {
+                        let slot_data = js_sys::Int32Array::view(slots);
+                        self.gl.buffer_data_with_array_buffer_view(
+                            Gl::ARRAY_BUFFER,
+                            slot_data.unchecked_ref(),
+                            Gl::DYNAMIC_DRAW,
+                        );
+                    }
                     (
                         player_data_offset,
                         true,

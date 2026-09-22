@@ -182,7 +182,7 @@ module.exports = {
             hot: false,
             liveReload: false,
             headers: {
-                "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+                "Cross-Origin-Opener-Policy": "same-origin",
                 "Cross-Origin-Embedder-Policy": "require-corp",
                 "Cross-Origin-Resource-Policy": "cross-origin",
             },

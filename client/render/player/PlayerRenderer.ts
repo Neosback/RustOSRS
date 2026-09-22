@@ -2,6 +2,7 @@ import { vec2 } from "gl-matrix";
 import PicoGL, { DrawCall, Texture, VertexBuffer } from "picogl";
 
 import { EquipmentSlot } from "../../rs/config/player/Equipment";
+import { resolveControlledPlayerEcsIndex } from "./ControlledPlayer";
 import { PlayerAppearance } from "../../rs/config/player/PlayerAppearance";
 import { getMapIndexFromTile } from "../../rs/map/MapFileIndex";
 import { Model } from "../../rs/model/Model";
@@ -1851,7 +1852,7 @@ export class PlayerRenderer {
                     baseRec.baseCenterZ,
                     group.seqId,
                     group.frameIdx,
-                    this.isControlledPid(inst.pid) ? undefined : batchKey,
+                    batchKey,
                     inst.pid,
                     inst.mode,
                     group.overlaySeqId,
@@ -2235,7 +2236,7 @@ export class PlayerRenderer {
                         baseRec.baseCenterZ,
                         group.seqId,
                         group.frameIdx,
-                        this.isControlledPid(inst.pid) ? undefined : batchKey,
+                        batchKey,
                         inst.pid,
                         inst.mode,
                         group.overlaySeqId,
@@ -2329,7 +2330,10 @@ export class PlayerRenderer {
     private isControlledPid(pid: number): boolean {
         try {
             const mv = this.renderer.osrsClient;
-            const idx = mv.playerEcs.getIndexForServerId(mv.controlledPlayerServerId);
+            const idx = resolveControlledPlayerEcsIndex(
+                mv.playerEcs,
+                mv.controlledPlayerServerId,
+            );
             return idx !== undefined && (idx | 0) === (pid | 0);
         } catch {
             return false;

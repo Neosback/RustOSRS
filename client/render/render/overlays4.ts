@@ -173,6 +173,7 @@ import {
     DynamicNpcFrameGeometry,
     DynamicNpcSequenceMeta,
 } from "../npc/DynamicNpcAnimLoader";
+import { resolveControlledPlayerEcsIndex } from "../player/ControlledPlayer";
 import { PlayerRenderer } from "../player/PlayerRenderer";
 import { ProjectileManager } from "../projectiles/ProjectileManager";
 import { ProjectileRenderer } from "../projectiles/ProjectileRenderer";
@@ -390,8 +391,7 @@ export function ensureActorTileSelectionForFrame(host: WebGLOsrsRendererHost, ):
         const pe = host.osrsClient.playerEcs;
         const renderSelf = host.osrsClient.renderSelf !== false;
         const controlledServerId = host.osrsClient.controlledPlayerServerId | 0;
-        const controlledPid =
-            controlledServerId > 0 ? pe.getIndexForServerId(controlledServerId) : undefined;
+        const controlledPid = resolveControlledPlayerEcsIndex(pe, controlledServerId);
 
         if (
             renderSelf &&
