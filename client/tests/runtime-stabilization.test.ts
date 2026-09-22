@@ -71,4 +71,14 @@ const headerMap = new Map(headers.map((entry: any) => [entry.key, entry.value]))
 assert.equal(headerMap.get("Cross-Origin-Opener-Policy"), "same-origin");
 assert.equal(headerMap.get("Cross-Origin-Embedder-Policy"), "require-corp");
 
+
+const playerRendererSource = fs.readFileSync(
+    path.resolve(__dirname, "../render/player/PlayerRenderer.ts"),
+    "utf8",
+);
+assert.ok(
+    !playerRendererSource.includes("this.isControlledPid(inst.pid) ? undefined : batchKey"),
+    "controlled player should reuse the bounded animation geometry cache",
+);
+
 console.log("Runtime stabilization regression test passed");
