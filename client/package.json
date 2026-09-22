@@ -4,7 +4,7 @@
   "private": true,
   "homepage": "/play",
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=22.5.0 <23"
   },
   "dependencies": {
     "@foxglove/wasm-bz2": "^0.3.0",
@@ -38,11 +38,11 @@
     "xxhash-wasm": "^1.1.0"
   },
   "scripts": {
-    "start": "yarn build:rust-renderer && tsx ../server/scripts/ensure-cache.ts && node ../scripts/run-with-env.mjs development ./node_modules/@craco/craco/dist/bin/craco.js start",
-    "start:pico": "tsx ../server/scripts/ensure-cache.ts && node ../scripts/run-with-env.mjs development ./node_modules/@craco/craco/dist/bin/craco.js start",
+    "start": "yarn build:rust-renderer && node scripts/run-craco.mjs development start",
+    "start:pico": "node scripts/run-craco.mjs development start",
     "dev": "yarn start",
-    "build": "yarn build:rust-renderer && node ../scripts/run-with-env.mjs production ./node_modules/@craco/craco/dist/bin/craco.js build",
-    "build:pico": "node ../scripts/run-with-env.mjs production ./node_modules/@craco/craco/dist/bin/craco.js build",
+    "build": "yarn build:rust-renderer && node scripts/run-craco.mjs production build",
+    "build:pico": "node scripts/run-craco.mjs production build",
     "build:rust-renderer": "node scripts/build-rust-renderer.mjs",
     "check:rust-renderer-abi": "node scripts/check-rust-renderer-abi.mjs",
     "check:rust-renderer-shaders": "node scripts/check-rust-renderer-shader-reference.mjs",
@@ -69,7 +69,9 @@
     "test:rust-stage5-ownership": "tsx tests/rust-stage5-ownership.test.ts",
     "test:rust-model-lighting": "tsx tests/rust-model-lighting-integration.test.ts",
     "test:rust-stage5-parity": "node scripts/test-rust-stage5-parity.mjs",
-    "check:rust-primary-ownership": "node scripts/check-rust-primary-ownership.mjs"
+    "check:rust-primary-ownership": "node scripts/check-rust-primary-ownership.mjs",
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "doctor": "node scripts/doctor.mjs"
   },
   "eslintConfig": {
     "extends": [
