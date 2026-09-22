@@ -101,6 +101,7 @@ interface ActiveRustShadowFrame {
     visibleMaps: number;
     eligibleMaps: number;
     expectedWorldEntityGhostPasses: number;
+    structuralParityEnabled: boolean;
     pixelReference?: RustPixelFrame;
     npcParityEnabled: boolean;
     playerParityEnabled: boolean;
@@ -201,6 +202,18 @@ export function isRustPresentationShadowEnabled(search?: string): boolean {
     );
 }
 
+export function isRustStructuralParityEnabled(search?: string): boolean {
+    const query =
+        search
+        ?? (typeof window !== "undefined" ? window.location.search : "");
+    const params = new URLSearchParams(query);
+    const mode = params.get("rust-renderer");
+    if (mode === "shadow") return true;
+    if (mode === "off") return false;
+    return isRustPrimaryRuntime(query)
+        && params.get("rust-structural-parity") === "1";
+}
+
 export function isRustFullDynamicShadowEnabled(
     search?: string,
 ): boolean {
@@ -218,6 +231,7 @@ export function isRustFullDynamicStructuralParityMatch(
     return (
         diagnostics.enabled
         && !diagnostics.failed
+        && diagnostics.structuralParityEnabled
         && diagnostics.npcParityEnabled
         && diagnostics.playerParityEnabled
         && diagnostics.gfxParityEnabled
@@ -244,6 +258,7 @@ export interface RustRendererShadowDiagnostics {
     drawSequenceMatch: boolean;
     staticParityMatch: boolean;
     expectedWorldEntityGhostPasses: number;
+    structuralParityEnabled: boolean;
     npcParityEnabled: boolean;
     playerParityEnabled: boolean;
     gfxParityEnabled: boolean;
@@ -297,6 +312,7 @@ export function getRustRendererShadowDiagnostics(
         drawSequenceMatch: true,
         staticParityMatch: true,
         expectedWorldEntityGhostPasses: 0,
+        structuralParityEnabled: false,
         npcParityEnabled: false,
         playerParityEnabled: false,
         gfxParityEnabled: false,
@@ -358,6 +374,9 @@ function configureRustRuntime(
     host: WebGLOsrsRendererHost,
     runtime: RustRendererShadowRuntime,
 ): void {
+    runtime.bridge.setStructuralParityEnabled(
+        isRustStructuralParityEnabled(),
+    );
     runtime.bridge.setPresentationEnabled(
         runtime.mode === "primary"
         || isRustPresentationShadowEnabled(),
