@@ -149,4 +149,18 @@ assert.ok(
     "server id 0 controlled-player overlays must render",
 );
 
+
+assert.ok(
+    !frameRenderSource.includes("if (serverId > 0 && healthBars.length < healthBarMaxEntries)"),
+    "player server id 0 must be eligible for health-bar rendering",
+);
+assert.ok(
+    !frameRenderSource.includes("serverId === undefined || (serverId | 0) <= 0"),
+    "player server id 0 must be retained in cached server-tile data",
+);
+assert.ok(
+    !overlays3Source.includes("const serverId = event.serverId | 0;\n        if (serverId <= 0) return;"),
+    "player health-bar updates must accept server id 0",
+);
+
 console.log("Runtime stabilization regression test passed");
