@@ -130,6 +130,8 @@ export interface RustRendererWasm {
         height: number,
     ): void;
 
+    set_structural_parity_enabled(enabled: boolean): void;
+    structural_parity_enabled(): boolean;
     set_presentation_enabled(enabled: boolean): void;
     presentation_enabled(): boolean;
     set_presentation_msaa_enabled(enabled: boolean): void;
@@ -579,6 +581,14 @@ export class RustRendererBridge {
             frame.isNewTextureAnim,
             frame.colorBanding,
         );
+    }
+
+    setStructuralParityEnabled(enabled: boolean): void {
+        this.wasm.set_structural_parity_enabled(enabled);
+    }
+
+    isStructuralParityEnabled(): boolean {
+        return this.wasm.structural_parity_enabled();
     }
 
     setPresentationEnabled(enabled: boolean): void {
