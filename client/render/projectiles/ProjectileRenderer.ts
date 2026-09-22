@@ -258,6 +258,7 @@ export class ProjectileRenderer {
                 mirrorRustProjectileGeometry(
                     this.renderer,
                     map,
+                    `spot:${transparent ? "alpha" : "opaque"}:${group.spotId}:${group.frameIdx}`,
                     rustGeometry.vertices,
                     rustGeometry.indices,
                     (baseOffset + slot) | 0,

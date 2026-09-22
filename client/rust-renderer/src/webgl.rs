@@ -534,6 +534,10 @@ pub struct RustWebGlRenderer {
     dynamic_gfx_batch: IndexedGeometryBatch,
     projectile_program: ProjectileProgram,
     dynamic_projectile_batch: IndexedGeometryBatch,
+    resident_actor_batches: HashMap<String, IndexedGeometryBatch>,
+    active_dynamic_npc_geometry_key: Option<String>,
+    active_gfx_geometry_key: Option<String>,
+    active_projectile_geometry_key: Option<String>,
     player_program: PlayerProgram,
     dynamic_player_batch: IndexedGeometryBatch,
     resident_player_batches: HashMap<String, IndexedGeometryBatch>,
@@ -573,6 +577,7 @@ pub struct RustWebGlRenderer {
     material_count: i32,
     last_stats: DrawStats,
     last_draw_hash: u32,
+    structural_parity_enabled: bool,
     terrain_only_pass: bool,
     terrain_batch_kind: u32,
 }
@@ -878,6 +883,10 @@ impl RustWebGlRenderer {
             dynamic_gfx_batch,
             projectile_program,
             dynamic_projectile_batch,
+            resident_actor_batches: HashMap::new(),
+            active_dynamic_npc_geometry_key: None,
+            active_gfx_geometry_key: None,
+            active_projectile_geometry_key: None,
             player_program,
             dynamic_player_batch,
             resident_player_batches: HashMap::new(),
@@ -913,7 +922,8 @@ impl RustWebGlRenderer {
             texture_layer_count: 1,
             material_count: 1,
             last_stats: DrawStats::default(),
-            last_draw_hash: DRAW_HASH_OFFSET_BASIS,
+            last_draw_hash: 0,
+            structural_parity_enabled: false,
             terrain_only_pass: false,
             terrain_batch_kind: 0,
         })
@@ -921,6 +931,15 @@ impl RustWebGlRenderer {
 
     pub fn abi_version(&self) -> u32 {
         crate::RENDERER_ABI_VERSION
+    }
+
+    pub fn set_structural_parity_enabled(&mut self, enabled: bool) {
+        self.structural_parity_enabled = enabled;
+        self.last_draw_hash = if enabled { DRAW_HASH_OFFSET_BASIS } else { 0 };
+    }
+
+    pub fn structural_parity_enabled(&self) -> bool {
+        self.structural_parity_enabled
     }
 
     /// Selects a resident static map slot, preserving the previously active
@@ -1046,6 +1065,7 @@ impl RustWebGlRenderer {
         packed_vertices: &[u32],
         indices: &[u32],
     ) -> Result<(), JsValue> {
+        self.active_dynamic_npc_geometry_key = None;
         self.dynamic_npc_batch.upload_geometry_with_usage(
             &self.gl,
             packed_vertices,
@@ -1061,6 +1081,7 @@ impl RustWebGlRenderer {
         packed_vertices: &[u32],
         indices: &[u32],
     ) -> Result<(), JsValue> {
+        self.active_gfx_geometry_key = None;
         self.dynamic_gfx_batch.upload_geometry_with_usage(
             &self.gl,
             packed_vertices,
@@ -1077,12 +1098,110 @@ impl RustWebGlRenderer {
         packed_vertices: &[u32],
         indices: &[u32],
     ) -> Result<(), JsValue> {
+        self.active_projectile_geometry_key = None;
         self.dynamic_projectile_batch.upload_geometry_with_usage(
             &self.gl,
             packed_vertices,
             indices,
             Gl::DYNAMIC_DRAW,
         )
+    }
+
+    pub fn upload_resident_actor_geometry(
+        &mut self,
+        key: &str,
+        packed_vertices: &[u32],
+        indices: &[u32],
+    ) -> Result<(), JsValue> {
+        if key.is_empty() {
+            return Err(JsValue::from_str(
+                "resident actor geometry key must not be empty",
+            ));
+        }
+
+        if let Some(batch) = self.resident_actor_batches.get_mut(key) {
+            batch.upload_geometry_with_usage(
+                &self.gl,
+                packed_vertices,
+                indices,
+                Gl::STATIC_DRAW,
+            )?;
+            return Ok(());
+        }
+
+        let mut batch = IndexedGeometryBatch::new(&self.gl)?;
+        if let Err(error) =
+            batch.upload_geometry_with_usage(&self.gl, packed_vertices, indices, Gl::STATIC_DRAW)
+        {
+            batch.delete(&self.gl);
+            return Err(error);
+        }
+        self.resident_actor_batches.insert(key.to_owned(), batch);
+        Ok(())
+    }
+
+    pub fn select_resident_dynamic_npc_geometry(&mut self, key: &str) -> Result<(), JsValue> {
+        if !self.resident_actor_batches.contains_key(key) {
+            return Err(JsValue::from_str(&format!(
+                "resident actor geometry not found: {key}"
+            )));
+        }
+        self.active_dynamic_npc_geometry_key = Some(key.to_owned());
+        Ok(())
+    }
+
+    pub fn select_dynamic_npc_geometry(&mut self) {
+        self.active_dynamic_npc_geometry_key = None;
+    }
+
+    pub fn select_resident_gfx_geometry(&mut self, key: &str) -> Result<(), JsValue> {
+        if !self.resident_actor_batches.contains_key(key) {
+            return Err(JsValue::from_str(&format!(
+                "resident actor geometry not found: {key}"
+            )));
+        }
+        self.active_gfx_geometry_key = Some(key.to_owned());
+        Ok(())
+    }
+
+    pub fn select_dynamic_gfx_geometry(&mut self) {
+        self.active_gfx_geometry_key = None;
+    }
+
+    pub fn select_resident_projectile_geometry(&mut self, key: &str) -> Result<(), JsValue> {
+        if !self.resident_actor_batches.contains_key(key) {
+            return Err(JsValue::from_str(&format!(
+                "resident actor geometry not found: {key}"
+            )));
+        }
+        self.active_projectile_geometry_key = Some(key.to_owned());
+        Ok(())
+    }
+
+    pub fn select_dynamic_projectile_geometry(&mut self) {
+        self.active_projectile_geometry_key = None;
+    }
+
+    pub fn release_resident_actor_geometry(&mut self, key: &str) -> bool {
+        if self.active_dynamic_npc_geometry_key.as_deref() == Some(key) {
+            self.active_dynamic_npc_geometry_key = None;
+        }
+        if self.active_gfx_geometry_key.as_deref() == Some(key) {
+            self.active_gfx_geometry_key = None;
+        }
+        if self.active_projectile_geometry_key.as_deref() == Some(key) {
+            self.active_projectile_geometry_key = None;
+        }
+        if let Some(batch) = self.resident_actor_batches.remove(key) {
+            batch.delete(&self.gl);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn resident_actor_geometry_count(&self) -> u32 {
+        self.resident_actor_batches.len() as u32
     }
 
     /// Uploads one finalized player geometry packet into a reusable
@@ -1816,6 +1935,15 @@ impl RustWebGlRenderer {
         self.render_reference(view_projection, clear_rgba, brightness)
     }
 
+    pub fn set_cull_back_face(&self, enabled: bool) {
+        if enabled {
+            self.gl.enable(Gl::CULL_FACE);
+            self.gl.cull_face(Gl::BACK);
+        } else {
+            self.gl.disable(Gl::CULL_FACE);
+        }
+    }
+
     pub fn begin_static_frame(&mut self, sky_rgba: &[f32]) -> Result<(), JsValue> {
         require_vec4(sky_rgba, "sky_rgba")?;
         if self.presentation_enabled {
@@ -1829,9 +1957,20 @@ impl RustWebGlRenderer {
         } else {
             self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
         }
+        // Every scene frame starts from an explicit opaque/depth-writing
+        // baseline. Dynamic/transparent passes are allowed to mutate these
+        // states later, but none of that state may leak across frame boundaries.
+        self.gl.enable(Gl::DEPTH_TEST);
+        self.gl.depth_func(Gl::LEQUAL);
+        self.gl.depth_mask(true);
+        self.gl.disable(Gl::BLEND);
         self.prepare_default_frame(sky_rgba);
         self.last_stats = DrawStats::default();
-        self.last_draw_hash = DRAW_HASH_OFFSET_BASIS;
+        self.last_draw_hash = if self.structural_parity_enabled {
+            DRAW_HASH_OFFSET_BASIS
+        } else {
+            0
+        };
         Ok(())
     }
 
@@ -2042,7 +2181,11 @@ impl RustWebGlRenderer {
 
         if clear_frame {
             self.prepare_default_frame(sky_rgba);
-            self.last_draw_hash = DRAW_HASH_OFFSET_BASIS;
+            self.last_draw_hash = if self.structural_parity_enabled {
+                DRAW_HASH_OFFSET_BASIS
+            } else {
+                0
+            };
         } else {
             self.prepare_viewport();
         }
@@ -2166,15 +2309,18 @@ impl RustWebGlRenderer {
         let roof_limit = roof_plane_limit.clamp(0.0, 3.0) as u8;
 
         let flags = u32::from(discard_alpha) | (u32::from(use_lod) << 1);
-        let mut draw_hash = hash_visible_draw_ranges(
-            self.last_draw_hash,
-            self.static_map_key,
-            flags,
-            self.terrain_batch_kind,
-            &pass.draw_ranges,
-            Some(&pass.range_planes),
-            roof_limit,
-        );
+        let mut draw_hash = self.last_draw_hash;
+        if self.structural_parity_enabled {
+            draw_hash = hash_visible_draw_ranges(
+                draw_hash,
+                self.static_map_key,
+                flags,
+                self.terrain_batch_kind,
+                &pass.draw_ranges,
+                Some(&pass.range_planes),
+                roof_limit,
+            );
+        }
 
         self.gl
             .bind_vertex_array(Some(&self.static_map.terrain_batch.vao));
@@ -2198,15 +2344,17 @@ impl RustWebGlRenderer {
                     continue;
                 };
                 let batch_pass = batch.pass(use_lod, discard_alpha);
-                draw_hash = hash_visible_draw_ranges(
-                    draw_hash,
-                    self.static_map_key,
-                    flags,
-                    batch_kind,
-                    &batch_pass.draw_ranges,
-                    Some(&batch_pass.range_planes),
-                    roof_limit,
-                );
+                if self.structural_parity_enabled {
+                    draw_hash = hash_visible_draw_ranges(
+                        draw_hash,
+                        self.static_map_key,
+                        flags,
+                        batch_kind,
+                        &batch_pass.draw_ranges,
+                        Some(&batch_pass.range_planes),
+                        roof_limit,
+                    );
+                }
                 self.gl.bind_vertex_array(Some(&batch.vao));
                 let batch_stats = submit_draw_ranges(
                     &self.gl,
@@ -2222,7 +2370,9 @@ impl RustWebGlRenderer {
             }
         }
 
-        self.last_draw_hash = draw_hash;
+        if self.structural_parity_enabled {
+            self.last_draw_hash = draw_hash;
+        }
         self.gl.bind_vertex_array(None);
         if clear_frame {
             self.last_stats = stats;
@@ -2319,11 +2469,21 @@ impl RustWebGlRenderer {
         model_y_offset: f32,
         transparent: bool,
     ) -> Result<(), JsValue> {
-        let npc_index_count = self.dynamic_npc_batch.index_count;
+        let (npc_index_count, npc_vao) =
+            if let Some(key) = self.active_dynamic_npc_geometry_key.as_deref() {
+                let batch = self.resident_actor_batches.get(key).ok_or_else(|| {
+                    JsValue::from_str(&format!("resident actor geometry not found: {key}"))
+                })?;
+                (batch.index_count, batch.vao.clone())
+            } else {
+                (
+                    self.dynamic_npc_batch.index_count,
+                    self.dynamic_npc_batch.vao.clone(),
+                )
+            };
         if npc_index_count == 0 {
             return Ok(());
         }
-        let npc_vao = self.dynamic_npc_batch.vao.clone();
         let range = [0, npc_index_count, 1];
 
         self.render_npc_geometry_pass(
@@ -2377,11 +2537,20 @@ impl RustWebGlRenderer {
         transparent: bool,
         restore_cull_back_face: bool,
     ) -> Result<(), JsValue> {
-        let index_count = self.dynamic_gfx_batch.index_count;
+        let (index_count, vao) = if let Some(key) = self.active_gfx_geometry_key.as_deref() {
+            let batch = self.resident_actor_batches.get(key).ok_or_else(|| {
+                JsValue::from_str(&format!("resident actor geometry not found: {key}"))
+            })?;
+            (batch.index_count, batch.vao.clone())
+        } else {
+            (
+                self.dynamic_gfx_batch.index_count,
+                self.dynamic_gfx_batch.vao.clone(),
+            )
+        };
         if index_count == 0 {
             return Ok(());
         }
-        let vao = self.dynamic_gfx_batch.vao.clone();
         let range = [0, index_count, 1];
         let identity = [
             1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
@@ -2447,7 +2616,18 @@ impl RustWebGlRenderer {
         transparent: bool,
         cull_back_face: bool,
     ) -> Result<(), JsValue> {
-        let index_count = self.dynamic_projectile_batch.index_count;
+        let (index_count, projectile_vao) =
+            if let Some(key) = self.active_projectile_geometry_key.as_deref() {
+                let batch = self.resident_actor_batches.get(key).ok_or_else(|| {
+                    JsValue::from_str(&format!("resident actor geometry not found: {key}"))
+                })?;
+                (batch.index_count, batch.vao.clone())
+            } else {
+                (
+                    self.dynamic_projectile_batch.index_count,
+                    self.dynamic_projectile_batch.vao.clone(),
+                )
+            };
         if index_count == 0 {
             return Ok(());
         }
@@ -2613,18 +2793,19 @@ impl RustWebGlRenderer {
 
         let ranges = [DrawRange::new(0, index_count, 1)];
         let flags = u32::from(transparent);
-        self.last_draw_hash = hash_visible_draw_ranges(
-            self.last_draw_hash,
-            self.static_map_key,
-            flags,
-            DYNAMIC_PROJECTILE_BATCH_KIND,
-            &ranges,
-            None,
-            3,
-        );
+        if self.structural_parity_enabled {
+            self.last_draw_hash = hash_visible_draw_ranges(
+                self.last_draw_hash,
+                self.static_map_key,
+                flags,
+                DYNAMIC_PROJECTILE_BATCH_KIND,
+                &ranges,
+                None,
+                3,
+            );
+        }
 
-        self.gl
-            .bind_vertex_array(Some(&self.dynamic_projectile_batch.vao));
+        self.gl.bind_vertex_array(Some(&projectile_vao));
         let stats = submit_draw_ranges(&self.gl, &ranges, index_count, None, None, 3, false);
         self.gl.bind_vertex_array(None);
         self.gl.depth_mask(true);
@@ -2848,15 +3029,17 @@ impl RustWebGlRenderer {
             .uniform1i(Some(&self.npc_program.water_mask_sampler), 5);
 
         let flags = u32::from(transparent);
-        self.last_draw_hash = hash_visible_draw_ranges(
-            self.last_draw_hash,
-            self.static_map_key,
-            flags,
-            batch_kind,
-            &ranges,
-            None,
-            3,
-        );
+        if self.structural_parity_enabled {
+            self.last_draw_hash = hash_visible_draw_ranges(
+                self.last_draw_hash,
+                self.static_map_key,
+                flags,
+                batch_kind,
+                &ranges,
+                None,
+                3,
+            );
+        }
 
         self.gl.bind_vertex_array(Some(&npc_vao));
         let stats = submit_draw_ranges(
@@ -3088,15 +3271,17 @@ impl RustWebGlRenderer {
 
         let range = [DrawRange::new(0, index_count, instance_count)];
         let flags = u32::from(transparent);
-        self.last_draw_hash = hash_visible_draw_ranges(
-            self.last_draw_hash,
-            self.static_map_key,
-            flags,
-            DYNAMIC_PLAYER_BATCH_KIND,
-            &range,
-            None,
-            3,
-        );
+        if self.structural_parity_enabled {
+            self.last_draw_hash = hash_visible_draw_ranges(
+                self.last_draw_hash,
+                self.static_map_key,
+                flags,
+                DYNAMIC_PLAYER_BATCH_KIND,
+                &range,
+                None,
+                3,
+            );
+        }
 
         self.gl.bind_vertex_array(Some(&player_vao));
         let stats = submit_draw_ranges(&self.gl, &range, index_count, None, None, 3, false);
@@ -3379,6 +3564,12 @@ impl RustWebGlRenderer {
         self.dynamic_npc_batch.delete(&self.gl);
         self.dynamic_gfx_batch.delete(&self.gl);
         self.dynamic_projectile_batch.delete(&self.gl);
+        for (_, batch) in self.resident_actor_batches.drain() {
+            batch.delete(&self.gl);
+        }
+        self.active_dynamic_npc_geometry_key = None;
+        self.active_gfx_geometry_key = None;
+        self.active_projectile_geometry_key = None;
         self.dynamic_player_batch.delete(&self.gl);
         for (_, batch) in self.resident_player_batches.drain() {
             batch.delete(&self.gl);

@@ -1,4 +1,5 @@
 import { CacheIndex } from "../cache/CacheIndex";
+import { isGroupMissingError } from "../cache/js5/GroupMissingError";
 import { Bzip2 } from "../compression/Bzip2";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { MapFileIndex } from "./MapFileIndex";
@@ -31,7 +32,10 @@ export class MapFileLoader {
             const file = this.mapIndex.getFile(archiveId, fileId, key);
             return file?.data;
         } catch (e) {
-            return undefined;
+            if (isGroupMissingError(e)) {
+                return undefined;
+            }
+            throw e;
         }
     }
 
@@ -48,7 +52,10 @@ export class MapFileLoader {
             const file = this.mapIndex.getFile(archiveId, fileId, key);
             return file?.data;
         } catch (e) {
-            return undefined;
+            if (isGroupMissingError(e)) {
+                return undefined;
+            }
+            throw e;
         }
     }
 }

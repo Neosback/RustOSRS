@@ -81,4 +81,90 @@ assert.ok(
     "controlled player should reuse the bounded animation geometry cache",
 );
 
+
+const tick2Source = fs.readFileSync(
+    path.resolve(__dirname, "../render/render/tick2.ts"),
+    "utf8",
+);
+assert.ok(
+    !tick2Source.includes("controlledServerId > 0"),
+    "controlled player server id 0 must remain valid in final player visibility checks",
+);
+assert.ok(
+    tick2Source.includes("resolveInteractionPlaneForWorldTile"),
+    "player/NPC tile arbitration must use bridge-aware interaction planes",
+);
+
+
+const overlaysSource = fs.readFileSync(
+    path.resolve(__dirname, "../render/render/overlays.ts"),
+    "utf8",
+);
+assert.ok(
+    overlaysSource.includes("return actual >= 0 ? actual : -1;"),
+    "controlled player server id 0 must remain valid when no pending handoff exists",
+);
+assert.ok(
+    overlaysSource.includes("if (host.pendingControlledPlayerServerId !== undefined)"),
+    "temporary controlled-player ID zero must preserve the pending server-ID handoff",
+);
+const overlays2Source = fs.readFileSync(
+    path.resolve(__dirname, "../render/render/overlays2.ts"),
+    "utf8",
+);
+assert.ok(
+    !overlays2Source.includes("controlledId > 0"),
+    "controlled player server id 0 must survive hitsplat cleanup",
+);
+
+const overlays3Source = fs.readFileSync(
+    path.resolve(__dirname, "../render/render/overlays3.ts"),
+    "utf8",
+);
+assert.ok(
+    !overlays3Source.includes("controlledId > 0"),
+    "controlled player server id 0 must survive health-bar cleanup",
+);
+
+const overlays4Source = fs.readFileSync(
+    path.resolve(__dirname, "../render/render/overlays4.ts"),
+    "utf8",
+);
+assert.ok(
+    !overlays4Source.includes("targetId > 0"),
+    "player overlay events must accept server id 0",
+);
+assert.ok(
+    overlays4Source.includes("controlledId <= 0"),
+    "temporary controlled-player ID zero must still allow authoritative ID handoff",
+);
+
+const frameRenderSource = fs.readFileSync(
+    path.resolve(__dirname, "../render/render/frame/render.ts"),
+    "utf8",
+);
+assert.ok(
+    !frameRenderSource.includes("playerServerId > 0"),
+    "server id 0 controlled-player overlays must render",
+);
+assert.ok(
+    !frameRenderSource.includes("if (!serverId || serverId === controlledId)"),
+    "player server id 0 must not be discarded by truthiness checks",
+);
+
+
+
+assert.ok(
+    !frameRenderSource.includes("if (serverId > 0 && healthBars.length < healthBarMaxEntries)"),
+    "player server id 0 must be eligible for health-bar rendering",
+);
+assert.ok(
+    !frameRenderSource.includes("serverId === undefined || (serverId | 0) <= 0"),
+    "player server id 0 must be retained in cached server-tile data",
+);
+assert.ok(
+    !overlays3Source.includes("const serverId = event.serverId | 0;\n        if (serverId <= 0) return;"),
+    "player health-bar updates must accept server id 0",
+);
+
 console.log("Runtime stabilization regression test passed");

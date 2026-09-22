@@ -9,7 +9,18 @@ on:
       - "client/render/**"
       - "client/ui/devoverlay/WidgetsOverlay.ts"
       - "client/game/worker/**"
+      - "client/game/OsrsClientApp.tsx"
+      - "client/common/debug/RuntimePerfCounters.ts"
+      - "client/common/utils/BoundedLru.ts"
+      - "client/rs/cache/js5/**"
+      - "client/tests/worker-cache-lru.test.ts"
+      - "client/tests/map-file-loader-errors.test.ts"
+      - "client/tests/terrain-batch-bridge.test.ts"
+      - "client/tests/plane-resolver.test.ts"
+      - "client/game/scene/**"
+      - "client/tests/js5-*.test.ts"
       - "client/rs/model/**"
+      - "client/tests/runtime-perf-counters.test.ts"
       - "client/tests/rust-renderer-shadow-integration.test.ts"
       - "client/tests/rust-renderer-bridge.test.ts"
       - "client/tests/rust-stage5-ownership.test.ts"
@@ -31,7 +42,18 @@ on:
       - "client/render/**"
       - "client/ui/devoverlay/WidgetsOverlay.ts"
       - "client/game/worker/**"
+      - "client/game/OsrsClientApp.tsx"
+      - "client/common/debug/RuntimePerfCounters.ts"
+      - "client/common/utils/BoundedLru.ts"
+      - "client/rs/cache/js5/**"
+      - "client/tests/worker-cache-lru.test.ts"
+      - "client/tests/map-file-loader-errors.test.ts"
+      - "client/tests/terrain-batch-bridge.test.ts"
+      - "client/tests/plane-resolver.test.ts"
+      - "client/game/scene/**"
+      - "client/tests/js5-*.test.ts"
       - "client/rs/model/**"
+      - "client/tests/runtime-perf-counters.test.ts"
       - "client/tests/rust-renderer-shadow-integration.test.ts"
       - "client/tests/rust-renderer-bridge.test.ts"
       - "client/tests/rust-stage5-ownership.test.ts"
@@ -93,6 +115,20 @@ jobs:
         run: yarn typecheck
       - name: Runtime stabilization regressions
         run: yarn exec tsx tests/runtime-stabilization.test.ts
+      - name: Runtime performance counter regressions
+        run: yarn exec tsx tests/runtime-perf-counters.test.ts
+      - name: Worker bounded-cache regressions
+        run: yarn exec tsx tests/worker-cache-lru.test.ts
+      - name: Map file loader error regressions
+        run: yarn exec tsx tests/map-file-loader-errors.test.ts
+      - name: Terrain batch bridge regressions
+        run: yarn exec tsx tests/terrain-batch-bridge.test.ts
+      - name: Plane resolver regressions
+        run: yarn exec tsx tests/plane-resolver.test.ts
+      - name: JS5 range scheduling regressions
+        run: yarn exec tsx tests/js5-range-batching.test.ts
+      - name: Worker JS5 coordinator regressions
+        run: yarn exec tsx tests/js5-coordinator.test.ts
       - name: Production client build
         env:
           CI: "false"

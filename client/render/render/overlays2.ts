@@ -329,7 +329,7 @@ export function trimHitsplats(host: WebGLOsrsRendererHost, tick: number): void {
                     break;
                 }
             }
-            const isControlledPlayer = controlledId > 0 && (playerId | 0) === controlledId;
+            const isControlledPlayer = controlledId >= 0 && (playerId | 0) === controlledId;
             const missingEcsEntry = playerEcs.getIndexForServerId(playerId) === undefined;
             if (!active || (missingEcsEntry && !isControlledPlayer)) {
                 host.playerHitsplats.delete(playerId);

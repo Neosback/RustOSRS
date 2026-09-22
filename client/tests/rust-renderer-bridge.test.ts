@@ -11,6 +11,7 @@ import {
     RustStaticGeometryPacket,
     RustStaticScenePacket,
 } from "../render/rust/RendererPacket";
+import { runtimePerfCounters } from "../common/debug/RuntimePerfCounters";
 import { getRustRendererGlobalResourceSnapshot } from "../render/rust/LiveResourceAdapter";
 import { getRustRendererRuntimeMode } from "../render/rust/RustRendererRuntime";
 
@@ -47,6 +48,16 @@ class MockWasm implements RustRendererWasm {
         vertices: Uint32Array;
         indices: Uint32Array;
     }> = [];
+    residentActorGeometryUploads: Array<{
+        key: string;
+        vertices: Uint32Array;
+        indices: Uint32Array;
+    }> = [];
+    residentActorGeometryKeys = new Set<string>();
+    selectedResidentNpcGeometryKey?: string;
+    selectedResidentGfxGeometryKey?: string;
+    selectedResidentProjectileGeometryKey?: string;
+    releasedResidentActorGeometryKeys: string[] = [];
     residentPlayerGeometryUploads: Array<{
         key: string;
         vertices: Uint32Array;
@@ -81,6 +92,9 @@ class MockWasm implements RustRendererWasm {
     }> = [];
     renderFrameCalls = 0;
     beginFrameCalls = 0;
+    cullBackFaceState = true;
+    cullBackFaceCalls: boolean[] = [];
+    structuralParityEnabledState = false;
     presentationEnabledState = false;
     presentationMsaaEnabledState = false;
     presentationMsaaSamplesState = 0;
@@ -234,6 +248,64 @@ class MockWasm implements RustRendererWasm {
             vertices: new Uint32Array(vertices),
             indices: new Uint32Array(indices),
         });
+    }
+
+    upload_resident_actor_geometry(
+        key: string,
+        vertices: Uint32Array,
+        indices: Uint32Array,
+    ): void {
+        this.residentActorGeometryKeys.add(key);
+        this.residentActorGeometryUploads.push({
+            key,
+            vertices: new Uint32Array(vertices),
+            indices: new Uint32Array(indices),
+        });
+    }
+
+    select_resident_dynamic_npc_geometry(key: string): void {
+        assert.ok(this.residentActorGeometryKeys.has(key));
+        this.selectedResidentNpcGeometryKey = key;
+    }
+
+    select_dynamic_npc_geometry(): void {
+        this.selectedResidentNpcGeometryKey = undefined;
+    }
+
+    select_resident_gfx_geometry(key: string): void {
+        assert.ok(this.residentActorGeometryKeys.has(key));
+        this.selectedResidentGfxGeometryKey = key;
+    }
+
+    select_dynamic_gfx_geometry(): void {
+        this.selectedResidentGfxGeometryKey = undefined;
+    }
+
+    select_resident_projectile_geometry(key: string): void {
+        assert.ok(this.residentActorGeometryKeys.has(key));
+        this.selectedResidentProjectileGeometryKey = key;
+    }
+
+    select_dynamic_projectile_geometry(): void {
+        this.selectedResidentProjectileGeometryKey = undefined;
+    }
+
+    release_resident_actor_geometry(key: string): boolean {
+        this.releasedResidentActorGeometryKeys.push(key);
+        if (this.selectedResidentNpcGeometryKey === key) {
+            this.selectedResidentNpcGeometryKey = undefined;
+        }
+        if (this.selectedResidentGfxGeometryKey === key) {
+            this.selectedResidentGfxGeometryKey = undefined;
+        }
+        if (this.selectedResidentProjectileGeometryKey === key) {
+            this.selectedResidentProjectileGeometryKey = undefined;
+        }
+        return this.residentActorGeometryKeys.delete(key);
+    }
+
+    resident_actor_geometry_count(): number {
+        return this.residentActorGeometryKeys.size;
     }
 
     upload_dynamic_player_geometry(
@@ -429,6 +501,14 @@ class MockWasm implements RustRendererWasm {
         });
     }
 
+    set_structural_parity_enabled(enabled: boolean): void {
+        this.structuralParityEnabledState = enabled;
+    }
+
+    structural_parity_enabled(): boolean {
+        return this.structuralParityEnabledState;
+    }
+
     set_presentation_enabled(enabled: boolean): void {
         this.presentationEnabledState = enabled;
     }
@@ -474,6 +554,11 @@ class MockWasm implements RustRendererWasm {
             color: new Float32Array(color),
             filled,
         });
+    }
+
+    set_cull_back_face(enabled: boolean): void {
+        this.cullBackFaceState = enabled;
+        this.cullBackFaceCalls.push(enabled);
     }
 
     begin_static_frame(_skyRgba: Float32Array): void {
@@ -928,6 +1013,12 @@ function frame(): RustStaticFrameState {
     );
     const wasm = MockWasm.last!;
 
+    assert.equal(bridge.isStructuralParityEnabled(), false);
+    bridge.setStructuralParityEnabled(true);
+    assert.equal(bridge.isStructuralParityEnabled(), true);
+    bridge.setStructuralParityEnabled(false);
+    assert.equal(bridge.isStructuralParityEnabled(), false);
+
     assert.equal(bridge.isPresentationEnabled(), false);
     bridge.setPresentationEnabled(true);
     assert.equal(bridge.isPresentationEnabled(), true);
@@ -1242,9 +1333,11 @@ function frame(): RustStaticFrameState {
     const beginCallsBeforeSplit = wasm.beginFrameCalls;
 
     assert.equal(
-        bridge.beginStaticFrame([firstFrame, secondFrame]),
+        bridge.beginStaticFrame([firstFrame, secondFrame], false),
         true,
     );
+    assert.equal(wasm.cullBackFaceState, false);
+    assert.deepEqual(wasm.cullBackFaceCalls.slice(-1), [false]);
     assert.equal(wasm.beginFrameCalls, beginCallsBeforeSplit + 1);
     assert.deepEqual(wasm.passSequence, []);
 
@@ -1411,6 +1504,74 @@ function frame(): RustStaticFrameState {
         },
     );
 
+    const residentNpcKey = "npc:opaque:42:808:3";
+    bridge.renderDynamicNpcPass(
+        {
+            ...firstFrame,
+            npcDataOffset: 60,
+            modelYOffset: 0,
+            transparent: false,
+            worldEntityTransform: npcTransform,
+        },
+        dynamicVertices,
+        dynamicIndices,
+        residentNpcKey,
+    );
+    bridge.renderDynamicNpcPass(
+        {
+            ...firstFrame,
+            npcDataOffset: 61,
+            modelYOffset: 0,
+            transparent: false,
+            worldEntityTransform: npcTransform,
+        },
+        dynamicVertices,
+        dynamicIndices,
+        residentNpcKey,
+    );
+    assert.equal(
+        wasm.residentActorGeometryUploads.filter((entry) => entry.key === residentNpcKey).length,
+        1,
+        "resident NPC geometry should upload only once per stable frame key",
+    );
+
+    const sharedSpotKey = "spot:alpha:100:2";
+    bridge.renderGfxPass(
+        {
+            ...firstFrame,
+            actorDataOffset: 62,
+            modelYOffset: 0,
+            mapX: 50,
+            mapY: 51,
+            transparent: true,
+            restoreCullBackFace: true,
+        },
+        gfxVertices,
+        gfxIndices,
+        sharedSpotKey,
+    );
+    bridge.renderProjectilePass(
+        {
+            ...firstFrame,
+            projectileDataOffset: 63,
+            modelYOffset: 0,
+            projectileSubOffset: new Float32Array([0, 0]),
+            mapX: 50,
+            mapY: 51,
+            transparent: true,
+            cullBackFace: true,
+        },
+        gfxVertices,
+        gfxIndices,
+        sharedSpotKey,
+    );
+    assert.equal(
+        wasm.residentActorGeometryUploads.filter((entry) => entry.key === sharedSpotKey).length,
+        1,
+        "GFX and projectile should share one resident spot-frame geometry upload",
+    );
+    assert.equal(bridge.getResidentActorGeometryCount(), 2);
+
     const playerVertices = new Uint32Array([21, 22, 23]);
     const playerIndices = new Uint32Array([0, 0, 0]);
     bridge.renderDynamicPlayerPass(
@@ -1518,8 +1679,15 @@ function frame(): RustStaticFrameState {
     );
     assert.equal(bridge.getResidentPlayerGeometryCount(), 1);
     assert.equal(wasm.selectedResidentPlayerGeometryKey, residentKey);
+    assert.ok(runtimePerfCounters.snapshot().residentPlayerBytes > 0);
 
     bridge.dispose();
+
+    const disposedPerf = runtimePerfCounters.snapshot();
+    assert.equal(disposedPerf.residentPlayerEntries, 0);
+    assert.equal(disposedPerf.residentPlayerBytes, 0);
+    assert.equal(disposedPerf.residentActorEntries, 0);
+    assert.equal(disposedPerf.residentActorBytes, 0);
 }
 
 {

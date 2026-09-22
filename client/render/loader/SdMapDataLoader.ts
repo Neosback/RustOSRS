@@ -2318,6 +2318,10 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         };
     }
 
+    shouldClearWorkerCacheAfterLoad(): boolean {
+        return false;
+    }
+
     reset(): void {
         this.modelHashBuf = undefined;
     }

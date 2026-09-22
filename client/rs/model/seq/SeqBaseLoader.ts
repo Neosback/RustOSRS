@@ -1,3 +1,4 @@
+import { lruGet, lruSet } from "../../../common/utils/BoundedLru";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
 import { Dat2SeqBase, SeqBase } from "./SeqBase";
@@ -8,6 +9,8 @@ export interface SeqBaseLoader {
     clearCache(): void;
 }
 
+const SEQ_BASE_CACHE_MAX = 256;
+
 export class IndexSeqBaseLoader implements SeqBaseLoader {
     bases: Map<number, SeqBase> = new Map();
 
@@ -17,7 +20,7 @@ export class IndexSeqBaseLoader implements SeqBaseLoader {
     ) {}
 
     load(id: number): SeqBase | undefined {
-        const cached = this.bases.get(id);
+        const cached = lruGet(this.bases, id);
         if (cached) {
             return cached;
         }
@@ -27,7 +30,7 @@ export class IndexSeqBaseLoader implements SeqBaseLoader {
             return undefined;
         }
         const base = Dat2SeqBase.load(this.cacheInfo, id, file.data);
-        this.bases.set(id, base);
+        lruSet(this.bases, id, base, SEQ_BASE_CACHE_MAX);
         return base;
     }
 

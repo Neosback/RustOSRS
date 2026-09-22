@@ -1028,7 +1028,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
                     15 / 128;
                 const playerServerId = host.getEffectiveControlledPlayerId();
                 const state =
-                    playerServerId > 0 ? host.playerHitsplats.get(playerServerId) : undefined;
+                    playerServerId >= 0 ? host.playerHitsplats.get(playerServerId) : undefined;
                 if (state) {
                     for (let slot = 0; slot < 4 && hitsplats.length < hitsplatMaxEntries; slot++) {
                         // Use client cycles and calculate visibility from end cycle
@@ -1052,7 +1052,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
                         hitsplats.push(entry);
                     }
                 }
-                if (playerServerId > 0) {
+                if (playerServerId >= 0) {
                     host.appendActorHealthBars(
                         host.playerHealthBars,
                         playerServerId,
@@ -1195,7 +1195,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
                         // Get server ID for this player
                         const serverId = pe.getServerIdForIndex?.(i);
-                        if (!serverId || serverId === controlledId) continue; // Skip controlled player (already rendered above)
+                        if (serverId === undefined || serverId === controlledId) continue; // Skip controlled player (already rendered above)
 
                         // Check if this player has hitsplats
                         const state = host.playerHitsplats.get(serverId);
@@ -1247,7 +1247,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
                         }
 
                         // Add health bar for this player
-                        if (serverId > 0 && healthBars.length < healthBarMaxEntries) {
+                        if (serverId >= 0 && healthBars.length < healthBarMaxEntries) {
                             host.appendActorHealthBars(
                                 host.playerHealthBars,
                                 serverId,
@@ -1612,7 +1612,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
                     const ms = host.osrsClient.playerMovementSync;
                     for (let i = 0; i < n; i++) {
                         const serverId = pe.getServerIdForIndex(i);
-                        if (serverId === undefined || (serverId | 0) <= 0) continue;
+                        if (serverId === undefined || (serverId | 0) < 0) continue;
                         const st = ms.getState(serverId | 0);
                         if (!st) continue;
                         // PERF: Reuse existing entry or create new one

@@ -1,3 +1,4 @@
+import { lruGet, lruSet } from "../../../common/utils/BoundedLru";
 import { Model } from "../../model/Model";
 import { ModelData } from "../../model/ModelData";
 import { ModelLoader } from "../../model/ModelLoader";
@@ -9,6 +10,8 @@ import { SeqTypeLoader } from "../seqtype/SeqTypeLoader";
 import { VarManager } from "../vartype/VarManager";
 import { NpcType } from "./NpcType";
 import { NpcTypeLoader } from "./NpcTypeLoader";
+
+const NPC_MODEL_CACHE_MAX = 160;
 
 export class NpcModelLoader {
     modelCache: Map<number, Model>;
@@ -45,7 +48,7 @@ export class NpcModelLoader {
             return undefined;
         }
 
-        let model = this.modelCache.get(npcType.id);
+        let model = lruGet(this.modelCache, npcType.id);
         if (!model) {
             const missesBefore = this.modelLoader.missCount ?? 0;
             const models = new Array<ModelData>(npcType.modelIds.length);
@@ -88,7 +91,7 @@ export class NpcModelLoader {
                 -30,
             );
 
-            this.modelCache.set(npcType.id, model);
+            lruSet(this.modelCache, npcType.id, model, NPC_MODEL_CACHE_MAX);
         }
 
         const hasScale = npcType.widthScale !== 128 || npcType.heightScale !== 128;

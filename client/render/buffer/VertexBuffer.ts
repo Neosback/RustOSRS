@@ -34,6 +34,24 @@ export interface VertexBatchBuilder {
         offsetX: number,
         offsetZ: number,
     ): Uint32Array;
+    push_terrain_batch?(
+        tileVertexOffsets: Uint32Array,
+        tileFaceOffsets: Uint32Array,
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        facesA: Int32Array,
+        facesB: Int32Array,
+        facesC: Int32Array,
+        colorsA: Int32Array,
+        colorsB: Int32Array,
+        colorsC: Int32Array,
+        textureIds: Int32Array,
+        tileX: Int32Array,
+        tileZ: Int32Array,
+        offsetX: number,
+        offsetZ: number,
+    ): Uint32Array;
     push_model_faces?(
         verticesX: Int32Array,
         verticesY: Int32Array,
@@ -108,6 +126,54 @@ export class VertexBuffer extends DataBuffer {
 
     hasRustTerrainBuilder(): boolean {
         return typeof this.rustBuilder?.push_terrain_tile === "function";
+    }
+
+    hasRustTerrainBatchBuilder(): boolean {
+        return typeof this.rustBuilder?.push_terrain_batch === "function";
+    }
+
+    addTerrainBatch(
+        tileVertexOffsets: Uint32Array,
+        tileFaceOffsets: Uint32Array,
+        verticesX: Int32Array,
+        verticesY: Int32Array,
+        verticesZ: Int32Array,
+        facesA: Int32Array,
+        facesB: Int32Array,
+        facesC: Int32Array,
+        colorsA: Int32Array,
+        colorsB: Int32Array,
+        colorsC: Int32Array,
+        textureIds: Int32Array,
+        tileX: Int32Array,
+        tileZ: Int32Array,
+        offsetX: number,
+        offsetZ: number,
+    ): Uint32Array | undefined {
+        if (!this.rustBuilder?.push_terrain_batch) {
+            return undefined;
+        }
+
+        const indices = this.rustBuilder.push_terrain_batch(
+            tileVertexOffsets,
+            tileFaceOffsets,
+            verticesX,
+            verticesY,
+            verticesZ,
+            facesA,
+            facesB,
+            facesC,
+            colorsA,
+            colorsB,
+            colorsC,
+            textureIds,
+            tileX,
+            tileZ,
+            offsetX,
+            offsetZ,
+        );
+        this.offset = this.rustBuilder.vertex_count();
+        return indices;
     }
 
     addTerrainTile(

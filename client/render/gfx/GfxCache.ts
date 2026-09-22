@@ -1,3 +1,4 @@
+import { lruGet, lruSet } from "../../common/utils/BoundedLru";
 import { Model } from "../../rs/model/Model";
 import { ModelData } from "../../rs/model/ModelData";
 import type { TextureLoader } from "../../rs/texture/TextureLoader";
@@ -6,11 +7,21 @@ import { createVertexBatchBuilderIfReady } from "../rust/RustGeometryPreparation
 import type { WebGLOsrsRenderer } from "../WebGLOsrsRenderer";
 
 type FrameKey = string; // `${spotId}|${frameIdx}|${pass}|${version}` where pass is 0=opaque,1=alpha
+type FrameGeometryEntry = {
+    vertices: Uint8Array;
+    indices: Int32Array;
+    approxBytes: number;
+};
+
 const FRAME_GEOMETRY_VERSION = 2;
+const BASE_SPOT_CACHE_MAX = 128;
+const FRAME_GEOMETRY_CACHE_MAX_BYTES = 16 * 1024 * 1024;
 
 export class GfxCache {
     private baseBySpot = new Map<number, Model>();
-    private frameGeom = new Map<FrameKey, { vertices: Uint8Array; indices: Int32Array }>();
+    private frameGeom = new Map<FrameKey, FrameGeometryEntry>();
+    private frameGeomBytes = 0;
+
     constructor(private renderer: WebGLOsrsRenderer) {}
 
     private getSpotType(spotId: number): any | undefined {
@@ -22,7 +33,7 @@ export class GfxCache {
     }
 
     ensureBase(spotId: number): Model | undefined {
-        const cached = this.baseBySpot.get(spotId | 0);
+        const cached = lruGet(this.baseBySpot, spotId | 0);
         if (cached) return cached;
         const spot = this.getSpotType(spotId);
         if (!spot) return undefined;
@@ -58,7 +69,7 @@ export class GfxCache {
             else if (ori === 180) model.rotate180();
             else if (ori === 270) model.rotate270();
         } catch {}
-        this.baseBySpot.set(spotId | 0, model);
+        lruSet(this.baseBySpot, spotId | 0, model, BASE_SPOT_CACHE_MAX);
         return model;
     }
 
@@ -125,7 +136,11 @@ export class GfxCache {
         const pass = transparent ? 1 : 0;
         const key = `${spotId | 0}|${frameIdx | 0}|${pass}|${FRAME_GEOMETRY_VERSION}` as FrameKey;
         const existing = this.frameGeom.get(key);
-        if (existing) return existing;
+        if (existing) {
+            this.frameGeom.delete(key);
+            this.frameGeom.set(key, existing);
+            return existing;
+        }
 
         const base = this.ensureBase(spotId);
         if (!base) return undefined;
@@ -171,12 +186,49 @@ export class GfxCache {
             createVertexBatchBuilderIfReady(),
         );
         sceneBuf.addModelFiltered(model, transparent);
-        const out = {
-            vertices: sceneBuf.vertexBuf.byteArray(),
-            indices: new Int32Array(sceneBuf.indices),
+        const vertices = sceneBuf.vertexBuf.byteArray();
+        const indices = new Int32Array(sceneBuf.indices);
+        const out: FrameGeometryEntry = {
+            vertices,
+            indices,
+            approxBytes: vertices.byteLength + indices.byteLength,
         };
         this.frameGeom.set(key, out);
+        this.frameGeomBytes += out.approxBytes;
+        this.evictFrameGeometryIfNeeded();
         return out;
+    }
+
+    clear(): void {
+        this.baseBySpot.clear();
+        this.frameGeom.clear();
+        this.frameGeomBytes = 0;
+    }
+
+    getStats(): { baseEntries: number; frameEntries: number; frameBytes: number } {
+        return {
+            baseEntries: this.baseBySpot.size,
+            frameEntries: this.frameGeom.size,
+            frameBytes: this.frameGeomBytes,
+        };
+    }
+
+    private evictFrameGeometryIfNeeded(): void {
+        while (
+            this.frameGeomBytes > FRAME_GEOMETRY_CACHE_MAX_BYTES &&
+            this.frameGeom.size > 1
+        ) {
+            const oldestKey = this.frameGeom.keys().next().value as FrameKey | undefined;
+            if (oldestKey === undefined) break;
+            const oldest = this.frameGeom.get(oldestKey);
+            this.frameGeom.delete(oldestKey);
+            if (oldest) {
+                this.frameGeomBytes = Math.max(
+                    0,
+                    this.frameGeomBytes - oldest.approxBytes,
+                );
+            }
+        }
     }
 
     private applyFrame(base: Model, spotId: number, frameIdx: number): Model | undefined {

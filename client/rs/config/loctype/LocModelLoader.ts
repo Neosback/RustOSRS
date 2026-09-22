@@ -1,3 +1,4 @@
+import { lruGet, lruSet } from "../../../common/utils/BoundedLru";
 import { Model } from "../../model/Model";
 import { ModelData } from "../../model/ModelData";
 import { ModelLoader } from "../../model/ModelLoader";
@@ -19,6 +20,10 @@ export type ContourGroundInfo = {
     entityY: number;
     entityZ: number;
 };
+
+const LOC_MODEL_DATA_CACHE_MAX = 256;
+const LOC_ENTITY_CACHE_MAX = 384;
+const LOC_ANIMATED_MODEL_CACHE_MAX = 192;
 
 export class LocModelLoader {
     static mergeLocModelsCache: ModelData[] = new Array(4);
@@ -45,14 +50,14 @@ export class LocModelLoader {
         if (mirrored) {
             key += 0x10000;
         }
-        let model = this.modelDataCache.get(key);
+        let model = lruGet(this.modelDataCache, key);
         if (!model) {
             model = this.modelLoader.getModel(id);
             if (model) {
                 if (mirrored) {
                     model.mirror();
                 }
-                this.modelDataCache.set(key, model);
+                lruSet(this.modelDataCache, key, model, LOC_MODEL_DATA_CACHE_MAX);
             }
         }
 
@@ -209,7 +214,7 @@ export class LocModelLoader {
             key = rotation + (locType.id << 10);
         }
 
-        let model = this.entityCache.get(key);
+        let model = lruGet(this.entityCache, key);
         if (!model) {
             const modelData = this.getLocModelData(locType, type, rotation);
             if (!modelData) {
@@ -246,7 +251,7 @@ export class LocModelLoader {
                 model = modelData;
             }
 
-            this.entityCache.set(key, model);
+            lruSet(this.entityCache, key, model, LOC_ENTITY_CACHE_MAX);
         }
 
         if (locType.mergeNormals) {
@@ -283,7 +288,7 @@ export class LocModelLoader {
             key = rotation + (locType.id << 10);
         }
 
-        let model = this.modelCache.get(key);
+        let model = lruGet(this.modelCache, key);
         if (!model) {
             const modelData = this.getLocModelData(locType, type, rotation);
             if (!modelData) {
@@ -305,7 +310,7 @@ export class LocModelLoader {
                 model = Model.copyAnimated(model, true, true);
             }
 
-            this.modelCache.set(key, model);
+            lruSet(this.modelCache, key, model, LOC_ANIMATED_MODEL_CACHE_MAX);
         }
 
         if (seqId !== -1 && frame !== -1) {

@@ -300,7 +300,7 @@ export class PlayerRenderer {
             // Also clear any geometry cache entries that contain this appearance
             for (const [key] of this.geomCache) {
                 if (key.startsWith(appearanceHash + "|")) {
-                    this.geomCache.delete(key);
+                    this.deleteGeometryCacheEntry(key);
                 }
             }
             for (const [key, geometry] of this.playerGpuGeometryCache) {
@@ -314,16 +314,49 @@ export class PlayerRenderer {
         this.appearanceBaseCache.clear();
         this.lastRenderableAppearance.clear();
         this.geomCache.clear();
+        this.geomCacheBytes = 0;
         this.clearPlayerGpuGeometryCache();
     }
 
-    // Bounded geometry cache: (appearance|seqId|frameIdx) -> buffers
+    // Bounded geometry cache: (appearance|seqId|frameIdx) -> buffers.
     private static readonly GEOM_CACHE_MAX_ENTRIES = 384;
+    private static readonly GEOM_CACHE_MAX_BYTES = 64 * 1024 * 1024;
     private geomCache: Map<
         string,
-        { verts: Uint8Array; inds: Int32Array; vertsA: Uint8Array; indsA: Int32Array }
+        {
+            verts: Uint8Array;
+            inds: Int32Array;
+            vertsA: Uint8Array;
+            indsA: Int32Array;
+            approxBytes: number;
+        }
     > = new Map();
+    private geomCacheBytes = 0;
     private playerGpuGeometryCache: Map<string, PlayerGpuGeometry> = new Map();
+
+    private deleteGeometryCacheEntry(key: string): void {
+        const entry = this.geomCache.get(key);
+        if (!entry) return;
+        this.geomCache.delete(key);
+        this.geomCacheBytes = Math.max(
+            0,
+            this.geomCacheBytes - entry.approxBytes,
+        );
+    }
+
+    private evictGeometryCacheIfNeeded(): void {
+        while (
+            (
+                this.geomCache.size > PlayerRenderer.GEOM_CACHE_MAX_ENTRIES
+                || this.geomCacheBytes > PlayerRenderer.GEOM_CACHE_MAX_BYTES
+            )
+            && this.geomCache.size > 1
+        ) {
+            const oldest = this.geomCache.keys().next().value as string | undefined;
+            if (oldest === undefined) break;
+            this.deleteGeometryCacheEntry(oldest);
+        }
+    }
 
     private ensureBaseForAppearance(
         app: PlayerAppearance,
@@ -1135,17 +1168,21 @@ export class PlayerRenderer {
             if (cacheKey && (animationApplied || seqId < 0)) {
                 const cacheAlphaVerts = new Uint8Array(verticesAlpha);
                 const cacheAlphaInds = new Int32Array(indicesAlpha);
+                const approxBytes =
+                    cacheOpaqueVerts.byteLength
+                    + cacheOpaqueInds.byteLength
+                    + cacheAlphaVerts.byteLength
+                    + cacheAlphaInds.byteLength;
+                this.deleteGeometryCacheEntry(cacheKey);
                 this.geomCache.set(cacheKey, {
                     verts: cacheOpaqueVerts,
                     inds: cacheOpaqueInds,
                     vertsA: cacheAlphaVerts,
                     indsA: cacheAlphaInds,
+                    approxBytes,
                 });
-                while (this.geomCache.size > PlayerRenderer.GEOM_CACHE_MAX_ENTRIES) {
-                    const oldest = this.geomCache.keys().next().value as string | undefined;
-                    if (oldest === undefined) break;
-                    this.geomCache.delete(oldest);
-                }
+                this.geomCacheBytes += approxBytes;
+                this.evictGeometryCacheIfNeeded();
             }
         } catch {}
         return result;

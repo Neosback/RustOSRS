@@ -457,12 +457,20 @@ export function registerPlayerSceneTileCandidate(host: WebGLOsrsRendererHost, pi
         if (pe.getIsHidden(pid | 0)) {
             return;
         }
+        const tileX = (pe.getX(pid) >> 7) | 0;
+        const tileY = (pe.getY(pid) >> 7) | 0;
+        const selectionPlane = resolveInteractionPlaneForWorldTile(
+            host.mapManager,
+            pe.getLevel(pid) | 0,
+            tileX,
+            tileY,
+        );
         host.registerActorTileCandidate(
             "player",
             pid | 0,
-            (pe.getX(pid) >> 7) | 0,
-            (pe.getY(pid) >> 7) | 0,
-            pe.getLevel(pid) | 0,
+            tileX,
+            tileY,
+            selectionPlane,
             priority | 0,
         );
     
