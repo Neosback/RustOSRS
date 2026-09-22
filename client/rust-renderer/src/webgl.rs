@@ -1957,6 +1957,13 @@ impl RustWebGlRenderer {
         } else {
             self.gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
         }
+        // Every scene frame starts from an explicit opaque/depth-writing
+        // baseline. Dynamic/transparent passes are allowed to mutate these
+        // states later, but none of that state may leak across frame boundaries.
+        self.gl.enable(Gl::DEPTH_TEST);
+        self.gl.depth_func(Gl::LEQUAL);
+        self.gl.depth_mask(true);
+        self.gl.disable(Gl::BLEND);
         self.prepare_default_frame(sky_rgba);
         self.last_stats = DrawStats::default();
         self.last_draw_hash = if self.structural_parity_enabled {
