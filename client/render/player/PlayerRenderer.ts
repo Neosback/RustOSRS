@@ -90,6 +90,7 @@ type PlayerGpuGeometry = {
 type PlayerGeometryBuildResult = {
     countOpaque: number;
     countAlpha: number;
+    stableGeometry: boolean;
     opaqueVertices?: Uint8Array;
     opaqueIndices?: Int32Array;
     alphaVertices?: Uint8Array;
@@ -830,7 +831,7 @@ export class PlayerRenderer {
             !rustPrimaryRendererEnabled &&
             (!r.playerInterleavedBuffer || !r.playerIndexBuffer)
         ) {
-            return { countOpaque: 0, countAlpha: 0 };
+            return { countOpaque: 0, countAlpha: 0, stableGeometry: false };
         }
         const captureRustGeometry = isRustPlayerShadowEnabled();
         const controlled = this.isControlledPid(pid);
@@ -883,6 +884,7 @@ export class PlayerRenderer {
                 return {
                     countOpaque: cachedOpaqueCount,
                     countAlpha: cachedAlphaCount,
+                    stableGeometry: true,
                     opaqueVertices: captureRustGeometry ? c.verts : undefined,
                     opaqueIndices: captureRustGeometry ? c.inds : undefined,
                     alphaVertices: captureRustGeometry ? c.vertsA : undefined,
@@ -1117,6 +1119,7 @@ export class PlayerRenderer {
         const result: PlayerGeometryBuildResult = {
             countOpaque: indices.length | 0,
             countAlpha: indicesAlpha.length | 0,
+            stableGeometry: animationApplied || seqId < 0,
             opaqueVertices: rustOpaqueVertices,
             opaqueIndices: rustOpaqueIndices,
             alphaVertices:
@@ -1779,6 +1782,7 @@ export class PlayerRenderer {
                     ? {
                           countOpaque: gpuGeometry.opaque?.count ?? 0,
                           countAlpha: gpuGeometry.alpha?.count ?? 0,
+                          stableGeometry: true,
                           opaqueVertices: gpuGeometry.opaque?.vertices,
                           opaqueIndices: gpuGeometry.opaque?.indices,
                           alphaVertices: gpuGeometry.alpha?.vertices,
@@ -1828,6 +1832,7 @@ export class PlayerRenderer {
                         mirrorRustPlayerGeometry(
                             r,
                             map,
+                            counts.stableGeometry ? `opaque:${batchKey}` : undefined,
                             counts.opaqueVertices,
                             counts.opaqueIndices,
                             baseOffsetPlayer,
@@ -1889,6 +1894,7 @@ export class PlayerRenderer {
                     mirrorRustPlayerGeometry(
                         r,
                         map,
+                        counts.stableGeometry ? `opaque:${batchKey}` : undefined,
                         counts.opaqueVertices,
                         counts.opaqueIndices,
                         baseOffsetPlayer,
@@ -2168,6 +2174,7 @@ export class PlayerRenderer {
                         ? {
                               countOpaque: gpuGeometry.opaque?.count ?? 0,
                               countAlpha: gpuGeometry.alpha?.count ?? 0,
+                          stableGeometry: true,
                               opaqueVertices: gpuGeometry.opaque?.vertices,
                               opaqueIndices: gpuGeometry.opaque?.indices,
                               alphaVertices: gpuGeometry.alpha?.vertices,
@@ -2212,6 +2219,7 @@ export class PlayerRenderer {
                             mirrorRustPlayerGeometry(
                                 r,
                                 map,
+                                counts.stableGeometry ? `alpha:${batchKey}` : undefined,
                                 counts.alphaVertices,
                                 counts.alphaIndices,
                                 baseOffset,
@@ -2273,6 +2281,7 @@ export class PlayerRenderer {
                         mirrorRustPlayerGeometry(
                             r,
                             map,
+                            counts.stableGeometry ? `alpha:${batchKey}` : undefined,
                             counts.alphaVertices,
                             counts.alphaIndices,
                             baseOffset,
