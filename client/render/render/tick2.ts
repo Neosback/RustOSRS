@@ -156,6 +156,7 @@ import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
 import { profiler } from "../PerformanceProfiler";
 import { PlayerChatheadFactory } from "../PlayerChatheadFactory";
+import { resolveControlledPlayerEcsIndex } from "../player/ControlledPlayer";
 import { resolveFogRange } from "../RenderDistancePolicy";
 import { WebGLMapSquare } from "../WebGLMapSquare";
 import { WorldEntityAnimator } from "../WorldEntityAnimator";
@@ -212,12 +213,20 @@ export function registerNpcSceneTileCandidatesByPriority(host: WebGLOsrsRenderer
                 continue;
             }
 
+            const tileX = (npcEcs.getWorldX(ecsId) >> 7) | 0;
+            const tileY = (npcEcs.getWorldY(ecsId) >> 7) | 0;
+            const selectionPlane = resolveInteractionPlaneForWorldTile(
+                host.mapManager,
+                npcEcs.getLevel(ecsId) | 0,
+                tileX,
+                tileY,
+            );
             host.registerActorTileCandidate(
                 "npc",
                 ecsId,
-                (npcEcs.getWorldX(ecsId) >> 7) | 0,
-                (npcEcs.getWorldY(ecsId) >> 7) | 0,
-                npcEcs.getLevel(ecsId) | 0,
+                tileX,
+                tileY,
+                selectionPlane,
                 priority | 0,
             );
         }
@@ -282,10 +291,10 @@ export function shouldRenderPlayerIndex(host: WebGLOsrsRendererHost, pid: number
 
         const renderSelf = host.osrsClient.renderSelf !== false;
         const controlledServerId = host.osrsClient.controlledPlayerServerId | 0;
-        const controlledPid =
-            controlledServerId > 0
-                ? host.osrsClient.playerEcs.getIndexForServerId(controlledServerId)
-                : undefined;
+        const controlledPid = resolveControlledPlayerEcsIndex(
+            host.osrsClient.playerEcs,
+            controlledServerId,
+        );
         if (!renderSelf && controlledPid !== undefined && (pid | 0) === (controlledPid | 0)) {
             return false;
         }
@@ -298,10 +307,18 @@ export function shouldRenderPlayerIndex(host: WebGLOsrsRendererHost, pid: number
 
         host.ensureActorTileSelectionForFrame();
         const pe = host.osrsClient.playerEcs;
-        const tileKey = host.getActorTileSelectionKey(
-            (pe.getX(pid) >> 7) | 0,
-            (pe.getY(pid) >> 7) | 0,
+        const tileX = (pe.getX(pid) >> 7) | 0;
+        const tileY = (pe.getY(pid) >> 7) | 0;
+        const selectionPlane = resolveInteractionPlaneForWorldTile(
+            host.mapManager,
             pe.getLevel(pid) | 0,
+            tileX,
+            tileY,
+        );
+        const tileKey = host.getActorTileSelectionKey(
+            tileX,
+            tileY,
+            selectionPlane,
         );
         const winner = host.frameWinningActorByTile.get(tileKey);
         return winner?.kind === "player" && (winner.id | 0) === (pid | 0);
@@ -370,10 +387,18 @@ export function shouldRenderNpcFromMap(host: WebGLOsrsRendererHost, map: WebGLMa
 
         host.ensureActorTileSelectionForFrame();
         const npcEcs = host.osrsClient.npcEcs;
-        const tileKey = host.getActorTileSelectionKey(
-            (npcEcs.getWorldX(ecsId) >> 7) | 0,
-            (npcEcs.getWorldY(ecsId) >> 7) | 0,
+        const tileX = (npcEcs.getWorldX(ecsId) >> 7) | 0;
+        const tileY = (npcEcs.getWorldY(ecsId) >> 7) | 0;
+        const selectionPlane = resolveInteractionPlaneForWorldTile(
+            host.mapManager,
             npcEcs.getLevel(ecsId) | 0,
+            tileX,
+            tileY,
+        );
+        const tileKey = host.getActorTileSelectionKey(
+            tileX,
+            tileY,
+            selectionPlane,
         );
         const winner = host.frameWinningActorByTile.get(tileKey);
         return winner?.kind === "npc" && (winner.id | 0) === (ecsId | 0);
