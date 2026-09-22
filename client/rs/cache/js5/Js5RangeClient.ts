@@ -1,3 +1,4 @@
+import { runtimePerfCounters } from "../../../common/debug/RuntimePerfCounters";
 import { Sector } from "../store/Sector";
 import { GroupSpan, SparseMemoryStore } from "../store/SparseMemoryStore";
 import { validatePartialContentResponse } from "./HttpRange";
@@ -66,12 +67,16 @@ export class Js5RangeClient {
     /** Resolves once the group's data is available locally. */
     requestGroup(indexId: number, archiveId: number, urgent: boolean = true): Promise<void> {
         if (this.store.isGroupPresent(indexId, archiveId)) {
+            runtimePerfCounters.recordJs5GroupRequest(true, false);
             return Promise.resolve();
         }
         const span = this.store.getGroupSpan(indexId, archiveId);
         if (!span) {
+            runtimePerfCounters.recordJs5GroupRequest(false, false);
             return Promise.resolve();
         }
+        const pendingDedupHit = this.pending.has(groupKey(span));
+        runtimePerfCounters.recordJs5GroupRequest(false, pendingDedupHit);
         return this.requestSpan(span, urgent);
     }
 
@@ -212,6 +217,7 @@ export class Js5RangeClient {
         try {
             const bytes = await this.fetchRange(batch.start, batch.end - batch.start);
             this.downloadedBytes += bytes.byteLength;
+            runtimePerfCounters.recordJs5HttpBatch(bytes.byteLength);
             this.store.applyRange(batch.start, bytes);
             this.notifyFetched(batch.start, bytes);
             if (profile) console.info(`[js5-profile] range groups=${batch.groups.length} bytes=${bytes.byteLength} elapsed=${Math.round(performance.now() - startedAt)}ms pending=${this.pending.size} active=${this.activeFetches}`);
@@ -245,6 +251,7 @@ export class Js5RangeClient {
             console.warn(
                 `[js5] Fragmented group ${key}, falling back to chain-following fetch`,
             );
+            runtimePerfCounters.recordJs5ChainFetch();
             this.fetchGroupByChain(group);
             return;
         }
