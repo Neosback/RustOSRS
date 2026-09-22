@@ -1221,6 +1221,9 @@ function frame(): RustStaticFrameState {
         { mapKey: 2001, pass: "transparent" },
     ]);
     assert.equal(bridge.beginStaticFrame([]), false);
+    const beginCallsBeforeEmpty = wasm.beginFrameCalls;
+    bridge.beginEmptyFrame(new Float32Array([0.1, 0.2, 0.3, 1]));
+    assert.equal(wasm.beginFrameCalls, beginCallsBeforeEmpty + 1);
 
     const npcTransform = new Float32Array([
         1, 0, 0, 0,
