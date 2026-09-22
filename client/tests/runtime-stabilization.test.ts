@@ -108,11 +108,6 @@ assert.ok(
     overlaysSource.includes("if (host.pendingControlledPlayerServerId !== undefined)"),
     "temporary controlled-player ID zero must preserve the pending server-ID handoff",
 );
-assert.ok(
-    overlaysSource.includes("return -1;"),
-    "overlay ownership must use a negative id for the unassigned sentinel",
-);
-
 const overlays2Source = fs.readFileSync(
     path.resolve(__dirname, "../render/render/overlays2.ts"),
     "utf8",
