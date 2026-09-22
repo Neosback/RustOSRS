@@ -11,10 +11,15 @@ runtimePerfCounters.recordJs5HttpBatch(4096);
 runtimePerfCounters.recordJs5ChainFetch();
 runtimePerfCounters.recordRustUpload("dynamicNpc", 1200);
 runtimePerfCounters.recordRustUpload("residentPlayer", 2400);
+runtimePerfCounters.recordRustUpload("residentActor", 3600);
 runtimePerfCounters.recordResidentPlayerMiss();
 runtimePerfCounters.recordResidentPlayerHit();
 runtimePerfCounters.recordResidentPlayerEviction();
 runtimePerfCounters.setResidentPlayerEntries(12);
+runtimePerfCounters.recordResidentActorMiss();
+runtimePerfCounters.recordResidentActorHit();
+runtimePerfCounters.recordResidentActorEviction();
+runtimePerfCounters.setResidentActorEntries(20);
 
 const snapshot = runtimePerfCounters.snapshot();
 
@@ -31,9 +36,15 @@ assert.equal(snapshot.rustUploadCalls.dynamicNpc, 1);
 assert.equal(snapshot.rustUploadBytes.dynamicNpc, 1200);
 assert.equal(snapshot.rustUploadCalls.residentPlayer, 1);
 assert.equal(snapshot.rustUploadBytes.residentPlayer, 2400);
+assert.equal(snapshot.rustUploadCalls.residentActor, 1);
+assert.equal(snapshot.rustUploadBytes.residentActor, 3600);
 assert.equal(snapshot.residentPlayerMisses, 1);
 assert.equal(snapshot.residentPlayerHits, 1);
 assert.equal(snapshot.residentPlayerEvictions, 1);
 assert.equal(snapshot.residentPlayerEntries, 12);
+assert.equal(snapshot.residentActorMisses, 1);
+assert.equal(snapshot.residentActorHits, 1);
+assert.equal(snapshot.residentActorEvictions, 1);
+assert.equal(snapshot.residentActorEntries, 20);
 
 console.log("Runtime performance counters regression test passed");
