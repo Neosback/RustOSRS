@@ -1282,6 +1282,10 @@ export class RustRendererBridge {
         this.residentActorGeometryKeys.clear();
         this.residentPlayerGeometryBytes = 0;
         this.residentActorGeometryBytes = 0;
+        runtimePerfCounters.setResidentPlayerEntries(0);
+        runtimePerfCounters.setResidentPlayerBytes(0);
+        runtimePerfCounters.setResidentActorEntries(0);
+        runtimePerfCounters.setResidentActorBytes(0);
         this.uploadedPacket = undefined;
         this.globalResourcesRevision = undefined;
         this.wasm.dispose();
