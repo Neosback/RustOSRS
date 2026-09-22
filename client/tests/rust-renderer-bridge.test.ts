@@ -11,6 +11,7 @@ import {
     RustStaticGeometryPacket,
     RustStaticScenePacket,
 } from "../render/rust/RendererPacket";
+import { runtimePerfCounters } from "../common/debug/RuntimePerfCounters";
 import { getRustRendererGlobalResourceSnapshot } from "../render/rust/LiveResourceAdapter";
 import { getRustRendererRuntimeMode } from "../render/rust/RustRendererRuntime";
 
@@ -1669,8 +1670,15 @@ function frame(): RustStaticFrameState {
     );
     assert.equal(bridge.getResidentPlayerGeometryCount(), 1);
     assert.equal(wasm.selectedResidentPlayerGeometryKey, residentKey);
+    assert.ok(runtimePerfCounters.snapshot().residentPlayerBytes > 0);
 
     bridge.dispose();
+
+    const disposedPerf = runtimePerfCounters.snapshot();
+    assert.equal(disposedPerf.residentPlayerEntries, 0);
+    assert.equal(disposedPerf.residentPlayerBytes, 0);
+    assert.equal(disposedPerf.residentActorEntries, 0);
+    assert.equal(disposedPerf.residentActorBytes, 0);
 }
 
 {
