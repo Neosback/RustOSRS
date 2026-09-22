@@ -55,6 +55,21 @@ if (!hasCommand("rustup") || !hasCommand("cargo")) {
 }
 
 run("rustup", ["target", "add", "wasm32-unknown-unknown"], "Preparing Rust WASM target");
+
+// Enabling the Yarn shim makes the normal 'yarn start' command available.
+// Some system-wide Node installs may not allow Corepack to write the shim;
+// that is non-fatal because 'corepack yarn ...' still works.
+const enableResult = spawnSync("corepack", ["enable"], {
+    cwd: clientDir,
+    stdio: "inherit",
+    env: process.env,
+});
+if (enableResult.error || enableResult.status !== 0) {
+    console.warn(
+        "Corepack could not enable the global Yarn shim. Use 'corepack yarn start' instead of 'yarn start'.",
+    );
+}
+
 run("corepack", ["yarn", "install", "--immutable"], "Installing JavaScript dependencies");
 run(process.execPath, ["scripts/build-rust-renderer.mjs"], "Building Rust/WASM renderer");
 
