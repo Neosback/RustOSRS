@@ -1195,7 +1195,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
                         // Get server ID for this player
                         const serverId = pe.getServerIdForIndex?.(i);
-                        if (!serverId || serverId === controlledId) continue; // Skip controlled player (already rendered above)
+                        if (serverId === undefined || serverId === controlledId) continue; // Skip controlled player (already rendered above)
 
                         // Check if this player has hitsplats
                         const state = host.playerHitsplats.get(serverId);
