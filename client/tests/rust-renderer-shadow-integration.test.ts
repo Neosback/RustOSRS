@@ -19,6 +19,7 @@ async function main(): Promise<void> {
         isRustPrimaryRendererEnabled,
         isRustProjectileShadowEnabled,
         isRustSceneOverlayShadowEnabled,
+        isRustStructuralParityEnabled,
     } = await import("../render/rust/RustShadowIntegration");
     const {
         WebGLMapSquare,
@@ -463,6 +464,20 @@ async function main(): Promise<void> {
     assert.equal(isRustSceneOverlayShadowEnabled(primarySearch), true);
     assert.equal(isRustPresentationShadowEnabled(primarySearch), true);
     assert.equal(isRustFullDynamicShadowEnabled(primarySearch), true);
+    assert.equal(isRustStructuralParityEnabled(primarySearch), false);
+    assert.equal(
+        isRustStructuralParityEnabled(
+            "?rust-renderer=primary&rust-structural-parity=1",
+        ),
+        true,
+    );
+    assert.equal(isRustStructuralParityEnabled("?rust-renderer=shadow"), true);
+    assert.equal(
+        isRustStructuralParityEnabled(
+            "?rust-renderer=off&rust-structural-parity=1",
+        ),
+        false,
+    );
 
     assert.equal(
         isRustNpcShadowEnabled(
