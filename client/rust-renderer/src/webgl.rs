@@ -1111,7 +1111,9 @@ impl RustWebGlRenderer {
         indices: &[u32],
     ) -> Result<(), JsValue> {
         if key.is_empty() {
-            return Err(JsValue::from_str("resident player geometry key must not be empty"));
+            return Err(JsValue::from_str(
+                "resident player geometry key must not be empty",
+            ));
         }
 
         if let Some(batch) = self.resident_player_batches.get_mut(key) {
@@ -1125,12 +1127,9 @@ impl RustWebGlRenderer {
         }
 
         let mut batch = IndexedGeometryBatch::new(&self.gl)?;
-        if let Err(error) = batch.upload_geometry_with_usage(
-            &self.gl,
-            packed_vertices,
-            indices,
-            Gl::STATIC_DRAW,
-        ) {
+        if let Err(error) =
+            batch.upload_geometry_with_usage(&self.gl, packed_vertices, indices, Gl::STATIC_DRAW)
+        {
             batch.delete(&self.gl);
             return Err(error);
         }
