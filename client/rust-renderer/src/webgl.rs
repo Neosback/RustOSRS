@@ -935,11 +935,7 @@ impl RustWebGlRenderer {
 
     pub fn set_structural_parity_enabled(&mut self, enabled: bool) {
         self.structural_parity_enabled = enabled;
-        self.last_draw_hash = if enabled {
-            DRAW_HASH_OFFSET_BASIS
-        } else {
-            0
-        };
+        self.last_draw_hash = if enabled { DRAW_HASH_OFFSET_BASIS } else { 0 };
     }
 
     pub fn structural_parity_enabled(&self) -> bool {
