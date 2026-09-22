@@ -115,6 +115,7 @@ async function main(): Promise<void> {
         drawSequenceMatch: true,
         staticParityMatch: true,
         expectedWorldEntityGhostPasses: 0,
+        structuralParityEnabled: false,
         npcParityEnabled: false,
         playerParityEnabled: false,
         gfxParityEnabled: false,
