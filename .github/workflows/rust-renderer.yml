@@ -11,7 +11,9 @@ on:
       - "client/game/worker/**"
       - "client/game/OsrsClientApp.tsx"
       - "client/common/debug/RuntimePerfCounters.ts"
+      - "client/common/utils/BoundedLru.ts"
       - "client/rs/cache/js5/Js5RangeClient.ts"
+      - "client/tests/worker-cache-lru.test.ts"
       - "client/rs/model/**"
       - "client/tests/runtime-perf-counters.test.ts"
       - "client/tests/rust-renderer-shadow-integration.test.ts"
@@ -37,7 +39,9 @@ on:
       - "client/game/worker/**"
       - "client/game/OsrsClientApp.tsx"
       - "client/common/debug/RuntimePerfCounters.ts"
+      - "client/common/utils/BoundedLru.ts"
       - "client/rs/cache/js5/Js5RangeClient.ts"
+      - "client/tests/worker-cache-lru.test.ts"
       - "client/rs/model/**"
       - "client/tests/runtime-perf-counters.test.ts"
       - "client/tests/rust-renderer-shadow-integration.test.ts"
@@ -103,6 +107,8 @@ jobs:
         run: yarn exec tsx tests/runtime-stabilization.test.ts
       - name: Runtime performance counter regressions
         run: yarn exec tsx tests/runtime-perf-counters.test.ts
+      - name: Worker bounded-cache regressions
+        run: yarn exec tsx tests/worker-cache-lru.test.ts
       - name: Production client build
         env:
           CI: "false"
