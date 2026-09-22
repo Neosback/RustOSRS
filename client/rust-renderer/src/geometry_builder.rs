@@ -298,7 +298,9 @@ impl VertexBatchBuilder {
             ));
         }
         if vertices_y.len() != vertices_x.len() || vertices_z.len() != vertices_x.len() {
-            return Err("terrain batch vertex coordinate arrays must have equal lengths".to_string());
+            return Err(
+                "terrain batch vertex coordinate arrays must have equal lengths".to_string(),
+            );
         }
 
         let face_count = faces_a.len();
