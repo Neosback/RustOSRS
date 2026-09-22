@@ -38,10 +38,10 @@
     "xxhash-wasm": "^1.1.0"
   },
   "scripts": {
-    "start": "yarn build:rust-renderer && node scripts/run-craco.mjs development start",
+    "start": "node scripts/build-rust-renderer.mjs && node scripts/run-craco.mjs development start",
     "start:pico": "node scripts/run-craco.mjs development start",
     "dev": "yarn start",
-    "build": "yarn build:rust-renderer && node scripts/run-craco.mjs production build",
+    "build": "node scripts/build-rust-renderer.mjs && node scripts/run-craco.mjs production build",
     "build:pico": "node scripts/run-craco.mjs production build",
     "build:rust-renderer": "node scripts/build-rust-renderer.mjs",
     "check:rust-renderer-abi": "node scripts/check-rust-renderer-abi.mjs",
