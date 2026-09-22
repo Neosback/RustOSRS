@@ -577,6 +577,7 @@ pub struct RustWebGlRenderer {
     material_count: i32,
     last_stats: DrawStats,
     last_draw_hash: u32,
+    structural_parity_enabled: bool,
     terrain_only_pass: bool,
     terrain_batch_kind: u32,
 }
@@ -921,7 +922,8 @@ impl RustWebGlRenderer {
             texture_layer_count: 1,
             material_count: 1,
             last_stats: DrawStats::default(),
-            last_draw_hash: DRAW_HASH_OFFSET_BASIS,
+            last_draw_hash: 0,
+            structural_parity_enabled: false,
             terrain_only_pass: false,
             terrain_batch_kind: 0,
         })
@@ -929,6 +931,19 @@ impl RustWebGlRenderer {
 
     pub fn abi_version(&self) -> u32 {
         crate::RENDERER_ABI_VERSION
+    }
+
+    pub fn set_structural_parity_enabled(&mut self, enabled: bool) {
+        self.structural_parity_enabled = enabled;
+        self.last_draw_hash = if enabled {
+            DRAW_HASH_OFFSET_BASIS
+        } else {
+            0
+        };
+    }
+
+    pub fn structural_parity_enabled(&self) -> bool {
+        self.structural_parity_enabled
     }
 
     /// Selects a resident static map slot, preserving the previously active
@@ -1939,7 +1954,11 @@ impl RustWebGlRenderer {
         }
         self.prepare_default_frame(sky_rgba);
         self.last_stats = DrawStats::default();
-        self.last_draw_hash = DRAW_HASH_OFFSET_BASIS;
+        self.last_draw_hash = if self.structural_parity_enabled {
+            DRAW_HASH_OFFSET_BASIS
+        } else {
+            0
+        };
         Ok(())
     }
 
@@ -2150,7 +2169,11 @@ impl RustWebGlRenderer {
 
         if clear_frame {
             self.prepare_default_frame(sky_rgba);
-            self.last_draw_hash = DRAW_HASH_OFFSET_BASIS;
+            self.last_draw_hash = if self.structural_parity_enabled {
+                DRAW_HASH_OFFSET_BASIS
+            } else {
+                0
+            };
         } else {
             self.prepare_viewport();
         }
@@ -2274,15 +2297,18 @@ impl RustWebGlRenderer {
         let roof_limit = roof_plane_limit.clamp(0.0, 3.0) as u8;
 
         let flags = u32::from(discard_alpha) | (u32::from(use_lod) << 1);
-        let mut draw_hash = hash_visible_draw_ranges(
-            self.last_draw_hash,
-            self.static_map_key,
-            flags,
-            self.terrain_batch_kind,
-            &pass.draw_ranges,
-            Some(&pass.range_planes),
-            roof_limit,
-        );
+        let mut draw_hash = self.last_draw_hash;
+        if self.structural_parity_enabled {
+            draw_hash = hash_visible_draw_ranges(
+                draw_hash,
+                self.static_map_key,
+                flags,
+                self.terrain_batch_kind,
+                &pass.draw_ranges,
+                Some(&pass.range_planes),
+                roof_limit,
+            );
+        }
 
         self.gl
             .bind_vertex_array(Some(&self.static_map.terrain_batch.vao));
@@ -2306,15 +2332,17 @@ impl RustWebGlRenderer {
                     continue;
                 };
                 let batch_pass = batch.pass(use_lod, discard_alpha);
-                draw_hash = hash_visible_draw_ranges(
-                    draw_hash,
-                    self.static_map_key,
-                    flags,
-                    batch_kind,
-                    &batch_pass.draw_ranges,
-                    Some(&batch_pass.range_planes),
-                    roof_limit,
-                );
+                if self.structural_parity_enabled {
+                    draw_hash = hash_visible_draw_ranges(
+                        draw_hash,
+                        self.static_map_key,
+                        flags,
+                        batch_kind,
+                        &batch_pass.draw_ranges,
+                        Some(&batch_pass.range_planes),
+                        roof_limit,
+                    );
+                }
                 self.gl.bind_vertex_array(Some(&batch.vao));
                 let batch_stats = submit_draw_ranges(
                     &self.gl,
@@ -2330,7 +2358,9 @@ impl RustWebGlRenderer {
             }
         }
 
-        self.last_draw_hash = draw_hash;
+        if self.structural_parity_enabled {
+            self.last_draw_hash = draw_hash;
+        }
         self.gl.bind_vertex_array(None);
         if clear_frame {
             self.last_stats = stats;
@@ -2751,15 +2781,17 @@ impl RustWebGlRenderer {
 
         let ranges = [DrawRange::new(0, index_count, 1)];
         let flags = u32::from(transparent);
-        self.last_draw_hash = hash_visible_draw_ranges(
-            self.last_draw_hash,
-            self.static_map_key,
-            flags,
-            DYNAMIC_PROJECTILE_BATCH_KIND,
-            &ranges,
-            None,
-            3,
-        );
+        if self.structural_parity_enabled {
+            self.last_draw_hash = hash_visible_draw_ranges(
+                self.last_draw_hash,
+                self.static_map_key,
+                flags,
+                DYNAMIC_PROJECTILE_BATCH_KIND,
+                &ranges,
+                None,
+                3,
+            );
+        }
 
         self.gl.bind_vertex_array(Some(&projectile_vao));
         let stats = submit_draw_ranges(&self.gl, &ranges, index_count, None, None, 3, false);
@@ -2985,15 +3017,17 @@ impl RustWebGlRenderer {
             .uniform1i(Some(&self.npc_program.water_mask_sampler), 5);
 
         let flags = u32::from(transparent);
-        self.last_draw_hash = hash_visible_draw_ranges(
-            self.last_draw_hash,
-            self.static_map_key,
-            flags,
-            batch_kind,
-            &ranges,
-            None,
-            3,
-        );
+        if self.structural_parity_enabled {
+            self.last_draw_hash = hash_visible_draw_ranges(
+                self.last_draw_hash,
+                self.static_map_key,
+                flags,
+                batch_kind,
+                &ranges,
+                None,
+                3,
+            );
+        }
 
         self.gl.bind_vertex_array(Some(&npc_vao));
         let stats = submit_draw_ranges(
@@ -3225,15 +3259,17 @@ impl RustWebGlRenderer {
 
         let range = [DrawRange::new(0, index_count, instance_count)];
         let flags = u32::from(transparent);
-        self.last_draw_hash = hash_visible_draw_ranges(
-            self.last_draw_hash,
-            self.static_map_key,
-            flags,
-            DYNAMIC_PLAYER_BATCH_KIND,
-            &range,
-            None,
-            3,
-        );
+        if self.structural_parity_enabled {
+            self.last_draw_hash = hash_visible_draw_ranges(
+                self.last_draw_hash,
+                self.static_map_key,
+                flags,
+                DYNAMIC_PLAYER_BATCH_KIND,
+                &range,
+                None,
+                3,
+            );
+        }
 
         self.gl.bind_vertex_array(Some(&player_vao));
         let stats = submit_draw_ranges(&self.gl, &range, index_count, None, None, 3, false);
