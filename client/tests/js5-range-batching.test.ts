@@ -54,6 +54,59 @@ async function testBatchingAndWarmBlock(): Promise<void> {
     }
 }
 
+
+async function testUrgentTrafficDoesNotStarveBackground(): Promise<void> {
+    const sectorCount = 4200;
+    const index = new ArrayBuffer(6 * 6);
+    const idx = new DataView(index);
+    const sectors = [1, 600, 1200, 1800, 2400, 3000];
+    for (let id = 0; id < sectors.length; id++) {
+        const sector = sectors[id];
+        idx.setUint8(id * 6 + 2, 1);
+        idx.setUint8(id * 6 + 4, sector >> 8);
+        idx.setUint8(id * 6 + 5, sector & 255);
+    }
+    const store = new SparseMemoryStore(
+        new ArrayBuffer(sectorCount * 520),
+        [index],
+        PresenceBitset.forSectorCount(sectorCount, false),
+    );
+    const originalFetch = globalThis.fetch;
+    const requestedStarts: number[] = [];
+    globalThis.fetch = async (_url, options) => {
+        const range = (options!.headers as Record<string, string>).Range;
+        const [, start, end] = /bytes=(\d+)-(\d+)/.exec(range)!;
+        requestedStarts.push(Number(start));
+        return new Response(new Uint8Array(Number(end) - Number(start) + 1), {
+            status: 206,
+            headers: {
+                "Content-Range": `bytes ${start}-${end}/${store.dataFile.byteLength}`,
+            },
+        });
+    };
+    try {
+        const client = new Js5RangeClient("https://example.test/cache", store, 1);
+        const requests = [
+            client.requestGroup(0, 0, true),
+            client.requestGroup(0, 1, true),
+            client.requestGroup(0, 2, true),
+            client.requestGroup(0, 3, true),
+            client.requestGroup(0, 4, true),
+            client.requestGroup(0, 5, false),
+        ];
+        await Promise.all(requests);
+        assert.equal(requestedStarts.length, 6);
+        const backgroundBlock = Math.floor((sectors[5] * 520) / (512 * 520)) * (512 * 520);
+        assert.equal(
+            requestedStarts[4],
+            backgroundBlock,
+            "background JS5 work must receive service after the bounded urgent burst",
+        );
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+}
+
 async function testTransientServerFailureRetries(): Promise<void> {
     const store = createStore();
     const originalFetch = globalThis.fetch;
@@ -95,6 +148,7 @@ async function testPermanentClientFailureDoesNotRetry(): Promise<void> {
 
 async function main(): Promise<void> {
     await testBatchingAndWarmBlock();
+    await testUrgentTrafficDoesNotStarveBackground();
     await testTransientServerFailureRetries();
     await testPermanentClientFailureDoesNotRetry();
     console.log("JS5 range batching tests passed");
