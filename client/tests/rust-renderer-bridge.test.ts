@@ -92,6 +92,8 @@ class MockWasm implements RustRendererWasm {
     }> = [];
     renderFrameCalls = 0;
     beginFrameCalls = 0;
+    cullBackFaceState = true;
+    cullBackFaceCalls: boolean[] = [];
     structuralParityEnabledState = false;
     presentationEnabledState = false;
     presentationMsaaEnabledState = false;
@@ -552,6 +554,11 @@ class MockWasm implements RustRendererWasm {
             color: new Float32Array(color),
             filled,
         });
+    }
+
+    set_cull_back_face(enabled: boolean): void {
+        this.cullBackFaceState = enabled;
+        this.cullBackFaceCalls.push(enabled);
     }
 
     begin_static_frame(_skyRgba: Float32Array): void {
@@ -1326,9 +1333,11 @@ function frame(): RustStaticFrameState {
     const beginCallsBeforeSplit = wasm.beginFrameCalls;
 
     assert.equal(
-        bridge.beginStaticFrame([firstFrame, secondFrame]),
+        bridge.beginStaticFrame([firstFrame, secondFrame], false),
         true,
     );
+    assert.equal(wasm.cullBackFaceState, false);
+    assert.deepEqual(wasm.cullBackFaceCalls.slice(-1), [false]);
     assert.equal(wasm.beginFrameCalls, beginCallsBeforeSplit + 1);
     assert.deepEqual(wasm.passSequence, []);
 
