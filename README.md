@@ -9,6 +9,7 @@ This repository is **client-only**. It does not include a game server or RuneSca
 - Node.js 22.x (22.5 or newer)
 - Corepack (included with the supported Node 22 releases)
 - Rust via rustup
+- A native C build toolchain (Apple Command Line Tools on macOS, build-essential/base-devel equivalent on Linux)
 - A modern browser with WebGL2
 - Cache data, either local or hosted over HTTP
 - A compatible WebSocket game server for login/gameplay
@@ -29,6 +30,9 @@ nvm use
 
 # Install Rust if rustup is not already available:
 # https://rustup.rs/
+#
+# If 'cc --version' fails on macOS:
+# xcode-select --install
 
 cd client
 node scripts/bootstrap.mjs
@@ -46,6 +50,9 @@ nvm use
 
 # Install Rust if rustup is not already available:
 # https://rustup.rs/
+#
+# A native compiler is also required. For Debian/Ubuntu, for example:
+# sudo apt install build-essential
 
 cd client
 node scripts/bootstrap.mjs
@@ -59,7 +66,7 @@ The bootstrap command:
 4. installs the exact Yarn dependencies from `yarn.lock`,
 5. builds the Rust/WASM renderer (including the matching `wasm-bindgen-cli` if needed).
 
-You can rerun it safely.
+You can rerun it safely. The first bootstrap can take longer because a matching `wasm-bindgen-cli` may be compiled and installed locally by Cargo.
 
 ## Cache setup
 
