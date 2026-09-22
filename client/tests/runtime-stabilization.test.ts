@@ -95,4 +95,58 @@ assert.ok(
     "player/NPC tile arbitration must use bridge-aware interaction planes",
 );
 
+
+const overlaysSource = fs.readFileSync(
+    path.resolve(__dirname, "../render/render/overlays.ts"),
+    "utf8",
+);
+assert.ok(
+    overlaysSource.includes("if (actual >= 0)"),
+    "controlled player server id 0 must remain valid for overlay ownership",
+);
+assert.ok(
+    overlaysSource.includes("return -1;"),
+    "overlay ownership must use a negative id for the unassigned sentinel",
+);
+
+const overlays2Source = fs.readFileSync(
+    path.resolve(__dirname, "../render/render/overlays2.ts"),
+    "utf8",
+);
+assert.ok(
+    !overlays2Source.includes("controlledId > 0"),
+    "controlled player server id 0 must survive hitsplat cleanup",
+);
+
+const overlays3Source = fs.readFileSync(
+    path.resolve(__dirname, "../render/render/overlays3.ts"),
+    "utf8",
+);
+assert.ok(
+    !overlays3Source.includes("controlledId > 0"),
+    "controlled player server id 0 must survive health-bar cleanup",
+);
+
+const overlays4Source = fs.readFileSync(
+    path.resolve(__dirname, "../render/render/overlays4.ts"),
+    "utf8",
+);
+assert.ok(
+    !overlays4Source.includes("targetId > 0"),
+    "player overlay events must accept server id 0",
+);
+assert.ok(
+    !overlays4Source.includes("controlledId <= 0"),
+    "server id 0 must not be treated as an unassigned controlled player",
+);
+
+const frameRenderSource = fs.readFileSync(
+    path.resolve(__dirname, "../render/render/frame/render.ts"),
+    "utf8",
+);
+assert.ok(
+    !frameRenderSource.includes("playerServerId > 0"),
+    "server id 0 controlled-player overlays must render",
+);
+
 console.log("Runtime stabilization regression test passed");
