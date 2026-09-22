@@ -205,7 +205,7 @@ export function trimActorHealthBars(host: WebGLOsrsRendererHost,
             // Drop entries for despawned actors.
             if (opts.kind === "player") {
                 const isControlledPlayer =
-                    controlledId > 0 && (serverId | 0) === (controlledId | 0);
+                    controlledId >= 0 && (serverId | 0) === (controlledId | 0);
                 const missing = playerEcs.getIndexForServerId(serverId) === undefined;
                 if (missing && !isControlledPlayer) {
                     removeIds.push(serverId);
