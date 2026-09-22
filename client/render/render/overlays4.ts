@@ -252,9 +252,9 @@ export function registerHitsplat(host: WebGLOsrsRendererHost, event: HitsplatEve
         const damage2 = typeof event.damage2 === "number" ? event.damage2 | 0 : -1;
         const targetId = event.targetId | 0;
         if (event.targetType === "player") {
-            if (targetId > 0) {
+            if (targetId >= 0) {
                 const controlledId = host.osrsClient.controlledPlayerServerId | 0;
-                if (controlledId <= 0) {
+                if (controlledId < 0) {
                     host.pendingControlledPlayerServerId = targetId;
                 } else if (host.pendingControlledPlayerServerId !== undefined) {
                     host.pendingControlledPlayerServerId = undefined;
