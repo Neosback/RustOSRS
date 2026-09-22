@@ -184,6 +184,7 @@ import {
     createPlayerProgram,
     createProjectileProgram,
 } from "../shaders/Shaders";
+import { isRustPrimaryRendererActive } from "../rust/RustShadowIntegration";
 import { KNOWN_WATER_TEXTURE_IDS } from "../water/WaterTextureIds";
 import type { WebGLOsrsRendererHost } from "./hostInterface";
 import { RENDER_CONSTANTS } from "./constants";
@@ -350,7 +351,12 @@ export function onResize(host: WebGLOsrsRendererHost, width: number, height: num
             // Trigger framebuffer recreation
             host.needsFramebufferUpdate = true;
 
-            host.initTextureFramebuffer(width, height);
+            // Rust-primary owns scene/presentation targets. Creating the legacy
+            // Pico texture framebuffer here only to delete it on the next frame
+            // causes needless GPU churn on every resize.
+            if (!isRustPrimaryRendererActive(host)) {
+                host.initTextureFramebuffer(width, height);
+            }
         } catch (e) {
             console.warn("[webgl] onResize error", e);
         }
