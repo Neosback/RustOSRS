@@ -16,6 +16,8 @@ on:
       - "client/tests/worker-cache-lru.test.ts"
       - "client/tests/map-file-loader-errors.test.ts"
       - "client/tests/terrain-batch-bridge.test.ts"
+      - "client/tests/plane-resolver.test.ts"
+      - "client/game/scene/**"
       - "client/tests/js5-*.test.ts"
       - "client/rs/model/**"
       - "client/tests/runtime-perf-counters.test.ts"
@@ -47,6 +49,8 @@ on:
       - "client/tests/worker-cache-lru.test.ts"
       - "client/tests/map-file-loader-errors.test.ts"
       - "client/tests/terrain-batch-bridge.test.ts"
+      - "client/tests/plane-resolver.test.ts"
+      - "client/game/scene/**"
       - "client/tests/js5-*.test.ts"
       - "client/rs/model/**"
       - "client/tests/runtime-perf-counters.test.ts"
@@ -119,6 +123,8 @@ jobs:
         run: yarn exec tsx tests/map-file-loader-errors.test.ts
       - name: Terrain batch bridge regressions
         run: yarn exec tsx tests/terrain-batch-bridge.test.ts
+      - name: Plane resolver regressions
+        run: yarn exec tsx tests/plane-resolver.test.ts
       - name: JS5 range scheduling regressions
         run: yarn exec tsx tests/js5-range-batching.test.ts
       - name: Worker JS5 coordinator regressions
