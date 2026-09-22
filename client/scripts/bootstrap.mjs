@@ -84,4 +84,6 @@ if (doctorResult.status !== 0) {
     throw new Error("Environment doctor reported missing requirements");
 }
 
-console.log("\nRustOSRS bootstrap complete. Start the client with: yarn start");
+console.log(
+    "\nRustOSRS bootstrap complete. Start with 'yarn start' or, if the Yarn shim is unavailable, 'corepack yarn start'.",
+);
