@@ -637,6 +637,7 @@ export async function initRustRendererShadow(
             drawSequenceMatch: true,
             staticParityMatch: true,
             expectedWorldEntityGhostPasses: 0,
+            structuralParityEnabled: runtime.bridge.isStructuralParityEnabled(),
             npcParityEnabled: false,
             playerParityEnabled: false,
             gfxParityEnabled: false,
@@ -1240,17 +1241,24 @@ function finalizeRustShadowFrame(
     const stats = hasFrames
         ? runtime.bridge.getLastStats()
         : { drawCalls: 0, submittedIndices: 0 };
-    const drawHash = hasFrames
-        ? runtime.bridge.getLastDrawHash()
-        : 0;
-    const expectedDrawHash = hasFrames
-        ? state.expectedDrawHash >>> 0
-        : 0;
+    const structuralParityEnabled = state.structuralParityEnabled;
+    const drawHash =
+        structuralParityEnabled && hasFrames
+            ? runtime.bridge.getLastDrawHash()
+            : 0;
+    const expectedDrawHash =
+        structuralParityEnabled && hasFrames
+            ? state.expectedDrawHash >>> 0
+            : 0;
     const drawStatsMatch =
-        stats.drawCalls === state.expectedStats.drawCalls
-        && stats.submittedIndices === state.expectedStats.submittedIndices;
+        !structuralParityEnabled
+        || (
+            stats.drawCalls === state.expectedStats.drawCalls
+            && stats.submittedIndices === state.expectedStats.submittedIndices
+        );
     const drawSequenceMatch =
-        drawHash === expectedDrawHash;
+        !structuralParityEnabled
+        || drawHash === expectedDrawHash;
 
     runtime.bridge.presentFrame();
 
@@ -1285,6 +1293,7 @@ function finalizeRustShadowFrame(
         staticParityMatch: drawStatsMatch && drawSequenceMatch,
         expectedWorldEntityGhostPasses:
             state.expectedWorldEntityGhostPasses,
+        structuralParityEnabled: state.structuralParityEnabled,
         npcParityEnabled: state.npcParityEnabled,
         playerParityEnabled: state.playerParityEnabled,
         gfxParityEnabled: state.gfxParityEnabled,
@@ -1353,24 +1362,26 @@ export function mirrorRustNpcDrawRanges(
             transparent,
         });
 
-        addStats(
-            state.expectedStats,
-            countExpectedDrawRanges(
+        if (state.structuralParityEnabled) {
+            addStats(
+                state.expectedStats,
+                countExpectedDrawRanges(
+                    ranges,
+                    undefined,
+                    3,
+                ),
+            );
+            state.expectedDrawHash = hashExpectedDrawRanges(
+                state.expectedDrawHash,
+                mapKey,
+                transparent,
+                false,
+                5,
                 ranges,
                 undefined,
                 3,
-            ),
-        );
-        state.expectedDrawHash = hashExpectedDrawRanges(
-            state.expectedDrawHash,
-            mapKey,
-            transparent,
-            false,
-            5,
-            ranges,
-            undefined,
-            3,
-        );
+            );
+        }
         state.mirroredNpcPasses++;
     } catch (error) {
         disableShadow(host, "NPC draw mirror", error);
@@ -1424,21 +1435,23 @@ export function mirrorRustDynamicNpcGeometry(
             `npc:${transparent ? "alpha" : "opaque"}:${geometry.key}`,
         );
 
-        const ranges: DrawRange[] = [[0, indices.length, 1]];
-        addStats(
-            state.expectedStats,
-            countExpectedDrawRanges(ranges, undefined, 3),
-        );
-        state.expectedDrawHash = hashExpectedDrawRanges(
-            state.expectedDrawHash,
-            mapKey,
-            transparent,
-            false,
-            6,
-            ranges,
-            undefined,
-            3,
-        );
+        if (state.structuralParityEnabled) {
+            const ranges: DrawRange[] = [[0, indices.length, 1]];
+            addStats(
+                state.expectedStats,
+                countExpectedDrawRanges(ranges, undefined, 3),
+            );
+            state.expectedDrawHash = hashExpectedDrawRanges(
+                state.expectedDrawHash,
+                mapKey,
+                transparent,
+                false,
+                6,
+                ranges,
+                undefined,
+                3,
+            );
+        }
         state.mirroredNpcPasses++;
     } catch (error) {
         disableShadow(host, "dynamic NPC draw mirror", error);
@@ -1488,21 +1501,23 @@ export function mirrorRustGfxGeometry(
             geometryKey,
         );
 
-        const ranges: DrawRange[] = [[0, indices.length, 1]];
-        addStats(
-            state.expectedStats,
-            countExpectedDrawRanges(ranges, undefined, 3),
-        );
-        state.expectedDrawHash = hashExpectedDrawRanges(
-            state.expectedDrawHash,
-            mapKey,
-            transparent,
-            false,
-            8,
-            ranges,
-            undefined,
-            3,
-        );
+        if (state.structuralParityEnabled) {
+            const ranges: DrawRange[] = [[0, indices.length, 1]];
+            addStats(
+                state.expectedStats,
+                countExpectedDrawRanges(ranges, undefined, 3),
+            );
+            state.expectedDrawHash = hashExpectedDrawRanges(
+                state.expectedDrawHash,
+                mapKey,
+                transparent,
+                false,
+                8,
+                ranges,
+                undefined,
+                3,
+            );
+        }
         state.mirroredGfxPasses++;
     } catch (error) {
         disableShadow(host, "GFX draw mirror", error);
@@ -1554,21 +1569,23 @@ export function mirrorRustProjectileGeometry(
             geometryKey,
         );
 
-        const ranges: DrawRange[] = [[0, indices.length, 1]];
-        addStats(
-            state.expectedStats,
-            countExpectedDrawRanges(ranges, undefined, 3),
-        );
-        state.expectedDrawHash = hashExpectedDrawRanges(
-            state.expectedDrawHash,
-            mapKey,
-            transparent,
-            false,
-            9,
-            ranges,
-            undefined,
-            3,
-        );
+        if (state.structuralParityEnabled) {
+            const ranges: DrawRange[] = [[0, indices.length, 1]];
+            addStats(
+                state.expectedStats,
+                countExpectedDrawRanges(ranges, undefined, 3),
+            );
+            state.expectedDrawHash = hashExpectedDrawRanges(
+                state.expectedDrawHash,
+                mapKey,
+                transparent,
+                false,
+                9,
+                ranges,
+                undefined,
+                3,
+            );
+        }
         state.mirroredProjectilePasses++;
     } catch (error) {
         disableShadow(host, "projectile draw mirror", error);
@@ -1626,22 +1643,24 @@ export function mirrorRustPlayerGeometry(
             geometryKey,
         );
 
-        const instances = slots.length > 1 ? slots.length : 1;
-        const ranges: DrawRange[] = [[0, indices.length, instances]];
-        addStats(
-            state.expectedStats,
-            countExpectedDrawRanges(ranges, undefined, 3),
-        );
-        state.expectedDrawHash = hashExpectedDrawRanges(
-            state.expectedDrawHash,
-            mapKey,
-            transparent,
-            false,
-            7,
-            ranges,
-            undefined,
-            3,
-        );
+        if (state.structuralParityEnabled) {
+            const instances = slots.length > 1 ? slots.length : 1;
+            const ranges: DrawRange[] = [[0, indices.length, instances]];
+            addStats(
+                state.expectedStats,
+                countExpectedDrawRanges(ranges, undefined, 3),
+            );
+            state.expectedDrawHash = hashExpectedDrawRanges(
+                state.expectedDrawHash,
+                mapKey,
+                transparent,
+                false,
+                7,
+                ranges,
+                undefined,
+                3,
+            );
+        }
         state.mirroredPlayerPasses++;
     } catch (error) {
         disableShadow(host, "player draw mirror", error);
@@ -1669,22 +1688,24 @@ export function completeRustOpaqueActorShadowPass(
     try {
         state.phase = "transparent-static";
         runtime.bridge.renderTransparentStaticMaps(state.frames);
-        const roofPlaneLimit =
-            state.frames[0]?.roofPlaneLimit ?? 3;
-        for (
-            let i = state.mirroredStaticMaps.length - 1;
-            i >= 0;
-            i--
-        ) {
-            const entry = state.mirroredStaticMaps[i];
-            state.expectedDrawHash = hashExpectedMapStaticPass(
-                state.expectedDrawHash,
-                entry.map,
-                entry.useLod,
-                true,
-                roofPlaneLimit,
-                entry.worldEntityGhostPass,
-            );
+        if (state.structuralParityEnabled) {
+            const roofPlaneLimit =
+                state.frames[0]?.roofPlaneLimit ?? 3;
+            for (
+                let i = state.mirroredStaticMaps.length - 1;
+                i >= 0;
+                i--
+            ) {
+                const entry = state.mirroredStaticMaps[i];
+                state.expectedDrawHash = hashExpectedMapStaticPass(
+                    state.expectedDrawHash,
+                    entry.map,
+                    entry.useLod,
+                    true,
+                    roofPlaneLimit,
+                    entry.worldEntityGhostPass,
+                );
+            }
         }
         state.phase = "transparent-actors";
     } catch (error) {
@@ -1815,6 +1836,8 @@ export function renderRustStaticShadowFrame(
             );
         }
 
+        const structuralParityEnabled =
+            runtime.bridge.isStructuralParityEnabled();
         const count = host.mapManager.visibleMapCount | 0;
         if (count <= 0) {
             // Do not leave the detached/default framebuffer or the previous map
@@ -1836,6 +1859,7 @@ export function renderRustStaticShadowFrame(
                 drawSequenceMatch: true,
                 staticParityMatch: true,
                 expectedWorldEntityGhostPasses: 0,
+                structuralParityEnabled,
                 npcParityEnabled: isRustNpcShadowEnabled(),
                 playerParityEnabled: isRustPlayerShadowEnabled(),
                 gfxParityEnabled: isRustGfxShadowEnabled(),
@@ -1913,18 +1937,20 @@ export function renderRustStaticShadowFrame(
                 getWorldEntityGhostSceneHslOverride(host, map);
             const worldEntityGhostPass =
                 !!worldEntityGhostSceneHslOverride;
-            if (worldEntityGhostPass) {
-                expectedWorldEntityGhostPasses++;
+            if (structuralParityEnabled) {
+                if (worldEntityGhostPass) {
+                    expectedWorldEntityGhostPasses++;
+                }
+                addStats(
+                    expectedStats,
+                    countExpectedMapStaticDraws(
+                        map,
+                        useLod,
+                        roofPlaneLimit,
+                        worldEntityGhostPass,
+                    ),
+                );
             }
-            addStats(
-                expectedStats,
-                countExpectedMapStaticDraws(
-                    map,
-                    useLod,
-                    roofPlaneLimit,
-                    worldEntityGhostPass,
-                ),
-            );
 
             let worldEntityTransform: Float32Array =
                 WebGLMapSquare.IDENTITY_MAT4;
@@ -1937,11 +1963,13 @@ export function renderRustStaticShadowFrame(
                 }
             }
 
-            mirroredStaticMaps.push({
-                map,
-                useLod,
-                worldEntityGhostPass,
-            });
+            if (structuralParityEnabled) {
+                mirroredStaticMaps.push({
+                    map,
+                    useLod,
+                    worldEntityGhostPass,
+                });
+            }
             frames.push({
                 mapKey,
                 viewMatrix: camera.viewMatrix,
@@ -1963,16 +1991,20 @@ export function renderRustStaticShadowFrame(
             });
         }
 
-        let expectedDrawHash = RUST_DRAW_HASH_OFFSET_BASIS;
-        for (const entry of mirroredStaticMaps) {
-            expectedDrawHash = hashExpectedMapStaticPass(
-                expectedDrawHash,
-                entry.map,
-                entry.useLod,
-                false,
-                roofPlaneLimit,
-                entry.worldEntityGhostPass,
-            );
+        let expectedDrawHash = structuralParityEnabled
+            ? RUST_DRAW_HASH_OFFSET_BASIS
+            : 0;
+        if (structuralParityEnabled) {
+            for (const entry of mirroredStaticMaps) {
+                expectedDrawHash = hashExpectedMapStaticPass(
+                    expectedDrawHash,
+                    entry.map,
+                    entry.useLod,
+                    false,
+                    roofPlaneLimit,
+                    entry.worldEntityGhostPass,
+                );
+            }
         }
 
         const npcParityEnabled = isRustNpcShadowEnabled();
@@ -1997,6 +2029,7 @@ export function renderRustStaticShadowFrame(
             visibleMaps: count,
             eligibleMaps,
             expectedWorldEntityGhostPasses,
+            structuralParityEnabled,
             pixelReference:
                 dynamicParityEnabled || overlayParityEnabled
                     ? undefined
@@ -2033,16 +2066,18 @@ export function renderRustStaticShadowFrame(
         }
 
         runtime.bridge.renderTransparentStaticMaps(frames);
-        for (let i = mirroredStaticMaps.length - 1; i >= 0; i--) {
-            const entry = mirroredStaticMaps[i];
-            state.expectedDrawHash = hashExpectedMapStaticPass(
-                state.expectedDrawHash,
-                entry.map,
-                entry.useLod,
-                true,
-                roofPlaneLimit,
-                entry.worldEntityGhostPass,
-            );
+        if (state.structuralParityEnabled) {
+            for (let i = mirroredStaticMaps.length - 1; i >= 0; i--) {
+                const entry = mirroredStaticMaps[i];
+                state.expectedDrawHash = hashExpectedMapStaticPass(
+                    state.expectedDrawHash,
+                    entry.map,
+                    entry.useLod,
+                    true,
+                    roofPlaneLimit,
+                    entry.worldEntityGhostPass,
+                );
+            }
         }
         state.phase = overlayParityEnabled
             ? "scene-overlays"
