@@ -40,6 +40,10 @@ import { useSafariLandscapeLock } from "./useSafariLandscapeLock";
 import { useViewportCssVars } from "./useViewportCssVars";
 import { renderDataLoaderSerializer } from "./worker/RenderDataLoader";
 import { RenderDataWorkerPool } from "./worker/RenderDataWorkerPool";
+import {
+    canShareSparseCacheMemory,
+    resolveRenderWorkerCount,
+} from "./worker/RenderWorkerPolicy";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -184,13 +188,32 @@ function OsrsClientApp() {
         setClientPreference("iosInstallHintDismissed", true);
     }, []);
 
-    // A normal scene spans up to four map squares, so desktop can build one
-    // complete scene window in a single worker wave without taking every core.
+    // A normal scene spans up to four map squares, so an isolated desktop can
+    // build one complete scene window in a single worker wave. Sparse DAT2 is a
+    // full-size backing buffer, though, so never clone it into multiple workers
+    // when SharedArrayBuffer is unavailable.
     const workerPoolNonce = readWorkerPoolNonce();
-    const workerCount = useMemo(() => {
-        const cores = navigator.hardwareConcurrency || 2;
-        return checkMobile() || isIos ? 2 : Math.max(2, Math.min(4, cores - 1));
-    }, []);
+    const sharedCacheMemoryAvailable = canShareSparseCacheMemory();
+    const workerCount = useMemo(
+        () =>
+            resolveRenderWorkerCount({
+                hardwareConcurrency: navigator.hardwareConcurrency || 2,
+                mobile: checkMobile() || isIos,
+                sharedCacheMemoryAvailable,
+            }),
+        [sharedCacheMemoryAvailable],
+    );
+
+    useEffect(() => {
+        console.info(
+            `[runtime] renderWorkers=${workerCount} sharedSparseCache=${sharedCacheMemoryAvailable} crossOriginIsolated=${globalThis.crossOriginIsolated === true}`,
+        );
+        if (!sharedCacheMemoryAvailable) {
+            console.warn(
+                "[runtime] Shared sparse cache unavailable; using one render worker to avoid cloning DAT2 per worker.",
+            );
+        }
+    }, [sharedCacheMemoryAvailable, workerCount]);
 
     const workerPool = useMemo(() => {
         void workerPoolNonce;
