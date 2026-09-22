@@ -372,7 +372,7 @@ export class SceneBuffer {
                 if (useRustTerrainBatch) {
                     levelTerrainTiles.push(tile);
                 } else {
-                    emitTerrainTile(tile);
+                    this.addTerrainTile(tile, vertexOffset, vertexOffset);
                 }
             };
             for (let x = startX; x < endX; x++) {
