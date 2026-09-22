@@ -230,6 +230,7 @@ export class GfxRenderer {
                         mirrorRustGfxGeometry(
                             this.renderer,
                             map,
+                            `spot:${transparent ? "alpha" : "opaque"}:${spotId}:${frameIdx}`,
                             rustGeometry.vertices,
                             rustGeometry.indices,
                             (baseOffset + (inst.slot | 0)) | 0,
