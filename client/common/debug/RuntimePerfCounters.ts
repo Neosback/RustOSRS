@@ -4,7 +4,8 @@ export type RuntimeUploadCategory =
     | "dynamicGfx"
     | "dynamicProjectile"
     | "dynamicPlayer"
-    | "residentPlayer";
+    | "residentPlayer"
+    | "residentActor";
 
 export interface RuntimePerfSnapshot {
     workerCount: number;
@@ -23,6 +24,10 @@ export interface RuntimePerfSnapshot {
     residentPlayerMisses: number;
     residentPlayerEvictions: number;
     residentPlayerEntries: number;
+    residentActorHits: number;
+    residentActorMisses: number;
+    residentActorEvictions: number;
+    residentActorEntries: number;
 }
 
 const uploadCategories: RuntimeUploadCategory[] = [
@@ -32,6 +37,7 @@ const uploadCategories: RuntimeUploadCategory[] = [
     "dynamicProjectile",
     "dynamicPlayer",
     "residentPlayer",
+    "residentActor",
 ];
 
 function emptyNumberRecord(): Record<RuntimeUploadCategory, number> {
@@ -57,6 +63,10 @@ class RuntimePerfCounters {
     private residentPlayerMisses = 0;
     private residentPlayerEvictions = 0;
     private residentPlayerEntries = 0;
+    private residentActorHits = 0;
+    private residentActorMisses = 0;
+    private residentActorEvictions = 0;
+    private residentActorEntries = 0;
 
     setWorkerPolicy(workerCount: number, sharedSparseCache: boolean): void {
         this.workerCount = Math.max(0, workerCount | 0);
@@ -103,6 +113,22 @@ class RuntimePerfCounters {
         this.residentPlayerEntries = Math.max(0, entries | 0);
     }
 
+    recordResidentActorHit(): void {
+        this.residentActorHits++;
+    }
+
+    recordResidentActorMiss(): void {
+        this.residentActorMisses++;
+    }
+
+    recordResidentActorEviction(): void {
+        this.residentActorEvictions++;
+    }
+
+    setResidentActorEntries(entries: number): void {
+        this.residentActorEntries = Math.max(0, entries | 0);
+    }
+
     snapshot(): RuntimePerfSnapshot {
         return {
             workerCount: this.workerCount,
@@ -121,6 +147,10 @@ class RuntimePerfCounters {
             residentPlayerMisses: this.residentPlayerMisses,
             residentPlayerEvictions: this.residentPlayerEvictions,
             residentPlayerEntries: this.residentPlayerEntries,
+            residentActorHits: this.residentActorHits,
+            residentActorMisses: this.residentActorMisses,
+            residentActorEvictions: this.residentActorEvictions,
+            residentActorEntries: this.residentActorEntries,
         };
     }
 
@@ -136,6 +166,9 @@ class RuntimePerfCounters {
         this.residentPlayerHits = 0;
         this.residentPlayerMisses = 0;
         this.residentPlayerEvictions = 0;
+        this.residentActorHits = 0;
+        this.residentActorMisses = 0;
+        this.residentActorEvictions = 0;
     }
 }
 
