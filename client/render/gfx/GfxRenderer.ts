@@ -1,4 +1,6 @@
 import { vec2 } from "gl-matrix";
+
+import { lruGet, lruSet } from "../../common/utils/BoundedLru";
 import PicoGL, { DrawCall, Texture } from "picogl";
 
 import { WebGLMapSquare } from "../WebGLMapSquare";
@@ -20,7 +22,9 @@ export class GfxRenderer {
     // Reusable Maps to avoid per-frame allocations
     private reusableGroupsMap = new Map<string, Array<{ slot: number; yOffUnits: number }>>();
     private reusableYOffsetMap = new Map<number, Array<{ slot: number; yOffUnits: number }>>();
-    // Frame index cache to avoid recomputing cumulative offsets (null = no frame lengths)
+    private static readonly FRAME_OFFSET_CACHE_MAX_ENTRIES = 256;
+
+    // Frame index cache to avoid recomputing cumulative offsets (null = no frame lengths).
     private frameOffsetCache = new Map<number, number[] | null>();
 
     constructor(
@@ -289,14 +293,21 @@ export class GfxRenderer {
      * Cached per spotId to avoid recomputation.
      */
     private getFrameOffsets(spotId: number): number[] | null {
-        let offsets = this.frameOffsetCache.get(spotId);
-        if (offsets !== undefined) {
-            return offsets;
+        const cached = lruGet(this.frameOffsetCache, spotId);
+        if (cached !== undefined) {
+            return cached;
         }
+
+        let offsets: number[] | null;
 
         const lengths = this.cache.getFrameLengths(spotId);
         if (!lengths || lengths.length === 0) {
-            this.frameOffsetCache.set(spotId, null);
+            lruSet(
+                this.frameOffsetCache,
+                spotId,
+                null,
+                GfxRenderer.FRAME_OFFSET_CACHE_MAX_ENTRIES,
+            );
             return null;
         }
 
@@ -307,7 +318,12 @@ export class GfxRenderer {
             acc += Math.max(1, lengths[i] | 0);
             offsets[i] = acc;
         }
-        this.frameOffsetCache.set(spotId, offsets);
+        lruSet(
+            this.frameOffsetCache,
+            spotId,
+            offsets,
+            GfxRenderer.FRAME_OFFSET_CACHE_MAX_ENTRIES,
+        );
         return offsets;
     }
 
