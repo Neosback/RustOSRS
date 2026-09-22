@@ -138,6 +138,7 @@ async function main(): Promise<void> {
         isRustFullDynamicStructuralParityMatch({
             ...structuralBase,
             enabled: true,
+            structuralParityEnabled: true,
             npcParityEnabled: true,
             playerParityEnabled: true,
             gfxParityEnabled: true,
