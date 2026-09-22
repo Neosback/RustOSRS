@@ -1402,6 +1402,7 @@ export function mirrorRustDynamicNpcGeometry(
             },
             packedVertexWords(vertices),
             unsignedIndexWords(indices),
+            `npc:${transparent ? "alpha" : "opaque"}:${geometry.key}`,
         );
 
         const ranges: DrawRange[] = [[0, indices.length, 1]];
@@ -1428,6 +1429,7 @@ export function mirrorRustDynamicNpcGeometry(
 export function mirrorRustGfxGeometry(
     host: WebGLOsrsRendererHost,
     map: WebGLMapSquare,
+    geometryKey: string,
     vertices: Uint8Array,
     indices: Int32Array,
     actorDataOffset: number,
@@ -1464,6 +1466,7 @@ export function mirrorRustGfxGeometry(
             },
             packedVertexWords(vertices),
             unsignedIndexWords(indices),
+            geometryKey,
         );
 
         const ranges: DrawRange[] = [[0, indices.length, 1]];
@@ -1490,6 +1493,7 @@ export function mirrorRustGfxGeometry(
 export function mirrorRustProjectileGeometry(
     host: WebGLOsrsRendererHost,
     map: WebGLMapSquare,
+    geometryKey: string,
     vertices: Uint8Array,
     indices: Int32Array,
     projectileDataOffset: number,
@@ -1528,6 +1532,7 @@ export function mirrorRustProjectileGeometry(
             },
             packedVertexWords(vertices),
             unsignedIndexWords(indices),
+            geometryKey,
         );
 
         const ranges: DrawRange[] = [[0, indices.length, 1]];
