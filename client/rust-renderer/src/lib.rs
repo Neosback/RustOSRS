@@ -47,4 +47,4 @@ pub use geometry_builder::RustVertexBufferBuilder;
 pub use webgl::RustWebGlRenderer;
 
 /// Increment only for a breaking renderer packet/layout change.
-pub const RENDERER_ABI_VERSION: u32 = 23;
+pub const RENDERER_ABI_VERSION: u32 = 24;
