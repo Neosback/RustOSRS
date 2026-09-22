@@ -24,10 +24,12 @@ export interface RuntimePerfSnapshot {
     residentPlayerMisses: number;
     residentPlayerEvictions: number;
     residentPlayerEntries: number;
+    residentPlayerBytes: number;
     residentActorHits: number;
     residentActorMisses: number;
     residentActorEvictions: number;
     residentActorEntries: number;
+    residentActorBytes: number;
 }
 
 const uploadCategories: RuntimeUploadCategory[] = [
@@ -63,10 +65,12 @@ class RuntimePerfCounters {
     private residentPlayerMisses = 0;
     private residentPlayerEvictions = 0;
     private residentPlayerEntries = 0;
+    private residentPlayerBytes = 0;
     private residentActorHits = 0;
     private residentActorMisses = 0;
     private residentActorEvictions = 0;
     private residentActorEntries = 0;
+    private residentActorBytes = 0;
 
     setWorkerPolicy(workerCount: number, sharedSparseCache: boolean): void {
         this.workerCount = Math.max(0, workerCount | 0);
@@ -113,6 +117,10 @@ class RuntimePerfCounters {
         this.residentPlayerEntries = Math.max(0, entries | 0);
     }
 
+    setResidentPlayerBytes(bytes: number): void {
+        this.residentPlayerBytes = Math.max(0, Number.isFinite(bytes) ? bytes : 0);
+    }
+
     recordResidentActorHit(): void {
         this.residentActorHits++;
     }
@@ -127,6 +135,10 @@ class RuntimePerfCounters {
 
     setResidentActorEntries(entries: number): void {
         this.residentActorEntries = Math.max(0, entries | 0);
+    }
+
+    setResidentActorBytes(bytes: number): void {
+        this.residentActorBytes = Math.max(0, Number.isFinite(bytes) ? bytes : 0);
     }
 
     snapshot(): RuntimePerfSnapshot {
@@ -147,10 +159,12 @@ class RuntimePerfCounters {
             residentPlayerMisses: this.residentPlayerMisses,
             residentPlayerEvictions: this.residentPlayerEvictions,
             residentPlayerEntries: this.residentPlayerEntries,
+            residentPlayerBytes: this.residentPlayerBytes,
             residentActorHits: this.residentActorHits,
             residentActorMisses: this.residentActorMisses,
             residentActorEvictions: this.residentActorEvictions,
             residentActorEntries: this.residentActorEntries,
+            residentActorBytes: this.residentActorBytes,
         };
     }
 
