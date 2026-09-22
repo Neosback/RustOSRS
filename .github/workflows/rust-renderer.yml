@@ -21,6 +21,8 @@ on:
       - "client/scripts/test-rust-stage5-parity.mjs"
       - "client/package.json"
       - "client/craco.config.js"
+      - "client/vercel.json"
+      - "client/tests/runtime-stabilization.test.ts"
       - "client/yarn.lock"
       - ".github/workflows/rust-renderer.yml"
   pull_request:
@@ -41,6 +43,8 @@ on:
       - "client/scripts/test-rust-stage5-parity.mjs"
       - "client/package.json"
       - "client/craco.config.js"
+      - "client/vercel.json"
+      - "client/tests/runtime-stabilization.test.ts"
       - "client/yarn.lock"
       - ".github/workflows/rust-renderer.yml"
 
@@ -87,6 +91,8 @@ jobs:
         run: yarn install --immutable
       - name: TypeScript typecheck
         run: yarn typecheck
+      - name: Runtime stabilization regressions
+        run: yarn exec tsx tests/runtime-stabilization.test.ts
       - name: Production client build
         env:
           CI: "false"
