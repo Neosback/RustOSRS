@@ -1,3 +1,4 @@
+import { runtimePerfCounters } from "../../common/debug/RuntimePerfCounters";
 import {
     RUST_RENDERER_ABI_VERSION,
     RustStaticGeometryPacket,
@@ -454,6 +455,7 @@ export class RustRendererBridge {
             );
         }
 
+        runtimePerfCounters.recordRustUpload("actorData", values.byteLength);
         this.wasm.upload_actor_data(values, width, height);
     }
 
@@ -725,6 +727,10 @@ export class RustRendererBridge {
         }
 
         this.wasm.select_static_map(pass.mapKey);
+        runtimePerfCounters.recordRustUpload(
+            "dynamicNpc",
+            vertices.byteLength + indices.byteLength,
+        );
         this.wasm.upload_dynamic_npc_geometry(vertices, indices);
         this.wasm.render_active_dynamic_npc_pass(
             pass.viewMatrix,
@@ -769,6 +775,10 @@ export class RustRendererBridge {
         }
 
         this.wasm.select_static_map(pass.mapKey);
+        runtimePerfCounters.recordRustUpload(
+            "dynamicGfx",
+            vertices.byteLength + indices.byteLength,
+        );
         this.wasm.upload_dynamic_gfx_geometry(vertices, indices);
         this.wasm.render_active_gfx_pass(
             pass.viewMatrix,
@@ -819,6 +829,10 @@ export class RustRendererBridge {
         }
 
         this.wasm.select_static_map(pass.mapKey);
+        runtimePerfCounters.recordRustUpload(
+            "dynamicProjectile",
+            vertices.byteLength + indices.byteLength,
+        );
         this.wasm.upload_dynamic_projectile_geometry(vertices, indices);
         this.wasm.render_active_projectile_pass(
             pass.viewMatrix,
@@ -876,6 +890,10 @@ export class RustRendererBridge {
             this.wasm.select_resident_player_geometry(geometryKey);
         } else {
             this.wasm.select_dynamic_player_geometry();
+            runtimePerfCounters.recordRustUpload(
+                "dynamicPlayer",
+                vertices.byteLength + indices.byteLength,
+            );
             this.wasm.upload_dynamic_player_geometry(vertices, indices);
         }
         this.wasm.render_active_player_pass(
@@ -906,11 +924,13 @@ export class RustRendererBridge {
         indices: Uint32Array,
     ): void {
         if (this.residentPlayerGeometryKeys.has(geometryKey)) {
+            runtimePerfCounters.recordResidentPlayerHit();
             this.residentPlayerGeometryKeys.delete(geometryKey);
             this.residentPlayerGeometryKeys.set(geometryKey, true);
             return;
         }
 
+        runtimePerfCounters.recordResidentPlayerMiss();
         while (
             this.residentPlayerGeometryKeys.size
             >= RustRendererBridge.PLAYER_GEOMETRY_CACHE_MAX_ENTRIES
@@ -920,15 +940,23 @@ export class RustRendererBridge {
                 | undefined;
             if (oldest === undefined) break;
             this.residentPlayerGeometryKeys.delete(oldest);
+            runtimePerfCounters.recordResidentPlayerEviction();
             this.wasm.release_resident_player_geometry(oldest);
         }
 
+        runtimePerfCounters.recordRustUpload(
+            "residentPlayer",
+            vertices.byteLength + indices.byteLength,
+        );
         this.wasm.upload_resident_player_geometry(
             geometryKey,
             vertices,
             indices,
         );
         this.residentPlayerGeometryKeys.set(geometryKey, true);
+        runtimePerfCounters.setResidentPlayerEntries(
+            this.residentPlayerGeometryKeys.size,
+        );
     }
 
     getResidentPlayerGeometryCount(): number {
