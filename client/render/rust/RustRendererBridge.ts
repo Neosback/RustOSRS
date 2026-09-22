@@ -602,6 +602,10 @@ export class RustRendererBridge {
         );
     }
 
+    beginEmptyFrame(skyRgba: Float32Array): void {
+        this.wasm.begin_static_frame(skyRgba);
+    }
+
     beginStaticFrame(
         frames: readonly RustResidentMapFrameState[],
     ): boolean {

@@ -242,5 +242,32 @@ assertIncludes(
     "host.textureFramebuffer = undefined;",
     "primary Pico offscreen texture framebuffer cleanup",
 );
+const settings = source("render/render/settings.ts");
+assertIncludes(
+    settings,
+    "if (!isRustPrimaryRendererActive(host)) {\n                host.initTextureFramebuffer(width, height);",
+    "Rust-primary resize must not allocate the legacy presentation framebuffer",
+);
+
+const widgetsOverlay = source("ui/devoverlay/WidgetsOverlay.ts");
+assertIncludes(
+    widgetsOverlay,
+    'this.overlayCanvas.style.zIndex = "2";',
+    "widget canvas must remain above the Rust scene and Pico overlay canvases",
+);
+
+const emptyFrameCalls =
+    rustIntegration.match(/runtime\.bridge\.beginEmptyFrame\(host\.skyColor as Float32Array\);/g) ?? [];
+if (emptyFrameCalls.length < 2) {
+    throw new Error(
+        "Rust-primary empty/streaming frames must clear deterministically for zero-visible and zero-resident cases",
+    );
+}
+
+assertIncludes(
+    frame,
+    "(host.osrsClient.widgetManager?.rootInterface ?? -1) === WELCOME_SCREEN_GROUP_ID",
+    "Welcome Screen backdrop behavior must remain explicit",
+);
 
 console.log("Rust-primary Pico scene ownership contract is stable");

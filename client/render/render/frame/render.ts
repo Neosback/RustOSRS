@@ -1758,6 +1758,8 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
 
         if ((host.osrsClient.widgetManager?.rootInterface ?? -1) === WELCOME_SCREEN_GROUP_ID) {
             // Keep the loaded scene hot, but hide its final image behind the Welcome Screen.
+            // In Rust-primary mode the widget canvas is explicitly stacked above this
+            // Pico overlay, so the black backdrop does not hide the Welcome Screen UI.
             host.app.disable(PicoGL.SCISSOR_TEST);
             host.app.clearColor(0, 0, 0, 1);
             host.app.defaultDrawFramebuffer().clear();

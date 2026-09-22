@@ -157,6 +157,10 @@ export class WidgetsOverlay implements Overlay {
         this.overlayCanvas.style.height = "100%";
         this.overlayCanvas.style.pointerEvents = "none";
         this.overlayCanvas.style.background = "transparent";
+        // Rust-primary uses z=0 for the scene canvas and z=1 for the Pico
+        // input/in-world overlay canvas. Widgets must stay above both so an
+        // opaque Pico backdrop (for example the Welcome Screen) cannot hide UI.
+        this.overlayCanvas.style.zIndex = "2";
         this.attachOverlayCanvas();
 
         // Initialize GL renderer for widgets

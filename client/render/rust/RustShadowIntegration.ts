@@ -1791,6 +1791,10 @@ export function renderRustStaticShadowFrame(
 
         const count = host.mapManager.visibleMapCount | 0;
         if (count <= 0) {
+            // Do not leave the detached/default framebuffer or the previous map
+            // visible while streaming has no visible scene yet.
+            runtime.bridge.beginEmptyFrame(host.skyColor as Float32Array);
+            runtime.bridge.presentFrame();
             publishDiagnostics(host, {
                 ...getRustRendererShadowDiagnostics(host),
                 visibleMaps: 0,
@@ -1985,6 +1989,10 @@ export function renderRustStaticShadowFrame(
         };
 
         if (frames.length === 0) {
+            // Visible maps can precede their Rust residency by a frame while
+            // streaming. Clear the Rust-owned target instead of presenting a
+            // stale or never-initialized presentation texture.
+            runtime.bridge.beginEmptyFrame(host.skyColor as Float32Array);
             finalizeRustShadowFrame(host, runtime, state);
             return;
         }
