@@ -1828,6 +1828,7 @@ export class PlayerRenderer {
                         mirrorRustPlayerGeometry(
                             r,
                             map,
+                            `opaque:${batchKey}`,
                             counts.opaqueVertices,
                             counts.opaqueIndices,
                             baseOffsetPlayer,
@@ -1889,6 +1890,7 @@ export class PlayerRenderer {
                     mirrorRustPlayerGeometry(
                         r,
                         map,
+                        `opaque:${batchKey}`,
                         counts.opaqueVertices,
                         counts.opaqueIndices,
                         baseOffsetPlayer,
@@ -2212,6 +2214,7 @@ export class PlayerRenderer {
                             mirrorRustPlayerGeometry(
                                 r,
                                 map,
+                                `alpha:${batchKey}`,
                                 counts.alphaVertices,
                                 counts.alphaIndices,
                                 baseOffset,
@@ -2273,6 +2276,7 @@ export class PlayerRenderer {
                         mirrorRustPlayerGeometry(
                             r,
                             map,
+                            `alpha:${batchKey}`,
                             counts.alphaVertices,
                             counts.alphaIndices,
                             baseOffset,
