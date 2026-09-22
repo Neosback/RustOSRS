@@ -81,4 +81,18 @@ assert.ok(
     "controlled player should reuse the bounded animation geometry cache",
 );
 
+
+const tick2Source = fs.readFileSync(
+    path.resolve(__dirname, "../render/render/tick2.ts"),
+    "utf8",
+);
+assert.ok(
+    !tick2Source.includes("controlledServerId > 0"),
+    "controlled player server id 0 must remain valid in final player visibility checks",
+);
+assert.ok(
+    tick2Source.includes("resolveInteractionPlaneForWorldTile"),
+    "player/NPC tile arbitration must use bridge-aware interaction planes",
+);
+
 console.log("Runtime stabilization regression test passed");
