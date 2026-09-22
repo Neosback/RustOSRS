@@ -1935,6 +1935,15 @@ impl RustWebGlRenderer {
         self.render_reference(view_projection, clear_rgba, brightness)
     }
 
+    pub fn set_cull_back_face(&self, enabled: bool) {
+        if enabled {
+            self.gl.enable(Gl::CULL_FACE);
+            self.gl.cull_face(Gl::BACK);
+        } else {
+            self.gl.disable(Gl::CULL_FACE);
+        }
+    }
+
     pub fn begin_static_frame(&mut self, sky_rgba: &[f32]) -> Result<(), JsValue> {
         require_vec4(sky_rgba, "sky_rgba")?;
         if self.presentation_enabled {
