@@ -1247,7 +1247,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
                         }
 
                         // Add health bar for this player
-                        if (serverId > 0 && healthBars.length < healthBarMaxEntries) {
+                        if (serverId >= 0 && healthBars.length < healthBarMaxEntries) {
                             host.appendActorHealthBars(
                                 host.playerHealthBars,
                                 serverId,
@@ -1612,7 +1612,7 @@ export function render(host: WebGLOsrsRendererHost, time: number, deltaTime: num
                     const ms = host.osrsClient.playerMovementSync;
                     for (let i = 0; i < n; i++) {
                         const serverId = pe.getServerIdForIndex(i);
-                        if (serverId === undefined || (serverId | 0) <= 0) continue;
+                        if (serverId === undefined || (serverId | 0) < 0) continue;
                         const st = ms.getState(serverId | 0);
                         if (!st) continue;
                         // PERF: Reuse existing entry or create new one
