@@ -1,3 +1,4 @@
+import { lruGet, lruSet } from "../../../common/utils/BoundedLru";
 import { Archive } from "../../cache/Archive";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
@@ -54,6 +55,8 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
     clearCache(): void {}
 }
 
+const DAT2_FRAME_MAP_CACHE_MAX = 64;
+
 export class Dat2SeqFrameLoader implements SeqFrameLoader {
     frameMaps: Map<number, SeqFrameMap> = new Map();
 
@@ -68,7 +71,7 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
         const frameMapId = id >> 16;
         const frameId = id & 0xffff;
 
-        let frameMap = this.frameMaps.get(frameMapId);
+        let frameMap = lruGet(this.frameMaps, frameMapId);
         if (!frameMap) {
             let archive: Archive;
             try {
@@ -89,7 +92,7 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
             }
 
             frameMap = new SeqFrameMap(frames);
-            this.frameMaps.set(frameMapId, frameMap);
+            lruSet(this.frameMaps, frameMapId, frameMap, DAT2_FRAME_MAP_CACHE_MAX);
         }
 
         return frameMap.frames[frameId];
