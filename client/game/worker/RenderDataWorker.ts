@@ -308,7 +308,11 @@ const worker = {
     },
     setCustomContent(payload: Parameters<typeof loadFromPayload>[0]): void {
         loadFromPayload(payload);
-        void workerStatePromise?.then((state) => state.objTypeLoader.clearCache());
+        void workerStatePromise?.then((state) => {
+            if (state) {
+                clearCache(state);
+            }
+        });
     },
     initCache(cache: LoadedCache, npcInstances: NpcInstance[]) {
         workerStatePromise = initWorker(cache, npcInstances);
@@ -316,8 +320,12 @@ const worker = {
     initDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         dataLoader.init();
     },
-    resetDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
+    async resetDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         dataLoader.reset();
+        const workerState = await workerStatePromise;
+        if (workerState) {
+            clearCache(workerState);
+        }
     },
     async load<I, D>(
         dataLoader: RenderDataLoader<I, D>,
@@ -362,8 +370,6 @@ const worker = {
                 loadedTextureIds: new Set(loadedTextureIds),
             }),
         );
-
-        clearCache(workerState);
 
         return Transfer<NpcGeometryData>(data, transferables);
     },
