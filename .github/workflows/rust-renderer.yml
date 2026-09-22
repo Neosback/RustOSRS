@@ -15,6 +15,7 @@ on:
       - "client/rs/cache/js5/Js5RangeClient.ts"
       - "client/tests/worker-cache-lru.test.ts"
       - "client/tests/map-file-loader-errors.test.ts"
+      - "client/tests/terrain-batch-bridge.test.ts"
       - "client/rs/model/**"
       - "client/tests/runtime-perf-counters.test.ts"
       - "client/tests/rust-renderer-shadow-integration.test.ts"
@@ -44,6 +45,7 @@ on:
       - "client/rs/cache/js5/Js5RangeClient.ts"
       - "client/tests/worker-cache-lru.test.ts"
       - "client/tests/map-file-loader-errors.test.ts"
+      - "client/tests/terrain-batch-bridge.test.ts"
       - "client/rs/model/**"
       - "client/tests/runtime-perf-counters.test.ts"
       - "client/tests/rust-renderer-shadow-integration.test.ts"
@@ -113,6 +115,8 @@ jobs:
         run: yarn exec tsx tests/worker-cache-lru.test.ts
       - name: Map file loader error regressions
         run: yarn exec tsx tests/map-file-loader-errors.test.ts
+      - name: Terrain batch bridge regressions
+        run: yarn exec tsx tests/terrain-batch-bridge.test.ts
       - name: Production client build
         env:
           CI: "false"
