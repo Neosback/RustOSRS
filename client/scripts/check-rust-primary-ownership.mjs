@@ -242,5 +242,10 @@ assertIncludes(
     "host.textureFramebuffer = undefined;",
     "primary Pico offscreen texture framebuffer cleanup",
 );
+assertIncludes(
+    frame,
+    "!rustPrimaryRendererEnabled\n            && (host.osrsClient.widgetManager?.rootInterface ?? -1) === WELCOME_SCREEN_GROUP_ID",
+    "welcome-screen opaque clear must not mask the Rust-primary canvas",
+);
 
 console.log("Rust-primary Pico scene ownership contract is stable");
