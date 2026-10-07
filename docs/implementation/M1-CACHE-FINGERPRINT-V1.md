@@ -1,6 +1,6 @@
 # M1 Cache Fingerprint v1
 
-Status: **M1 contract draft, slice 2**  
+Status: **M1 contract verified by transport spike**  
 Algorithm ID: `rustosrs-cache-v1`
 
 The cache fingerprint identifies logical cache contents independently of physical `.dat2` sector layout or download container format.
@@ -21,9 +21,11 @@ Use SHA-256 and the ASCII domain separator:
 
 `rustosrs-cache-v1\0`
 
-Enumerate all present logical indices in ascending numeric order, excluding index `255` as a normal content index because it is represented through each index's reference-table bytes.
+Enumerate all present content indices in ascending numeric order, excluding index `255` as a normal content index because it is represented through each content index's reference-table bytes.
 
-For each index:
+A logical master-index slot that explicitly represents no content index is not emitted as an empty content index. This matters for the build-241 target: OpenRS2 reports 25 logical archive slots, but slots `16` and `23` are empty placeholders, so the disk cache contains 23 physical content indices plus `255`.
+
+For each present content index:
 
 1. append index ID as unsigned 16-bit big-endian;
 2. obtain the exact encoded reference-table archive for that index from index `255`;
@@ -47,19 +49,37 @@ No semantic decoding is required to calculate the fingerprint.
 
 ## 4. Completeness
 
-Fingerprinting must fail closed if an index/reference table/group declared present by the cache metadata cannot be read.
+Fingerprinting must fail closed if a present content index/reference table/group declared by the cache metadata cannot be read.
 
 A partial cache must not accidentally receive the fingerprint of a complete cache.
 
+An explicitly empty logical master-index slot is different from a missing group in a declared content index. The former contributes no content-index record; the latter is a completeness failure.
+
 The importer may also report a separate completeness summary for diagnostics.
 
-## 5. Performance
+## 5. Verified vectors
 
-The algorithm intentionally scans the logical cache once. For the initial build-241 profile, OpenRS2 reports roughly 182 MiB, making a one-time strong digest acceptable.
+The M1 executable transport spike established two regression vectors using `rune-fs 0.2.0` behind the private `osrs-cache` wrapper.
+
+### Bundled revision-180 fixture
+
+`ad37f18dedd911eba2085d06029f2edf5db3c6285e56f7cb38eddd1cdce04636`
+
+### Initial build-241 target
+
+OpenRS2 cache `2727`:
+
+`ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38`
+
+The build-241 spike enumerated exactly `117584` groups and reproduced this fingerprint after representative map/model/config decompression succeeded.
+
+## 6. Performance
+
+The algorithm intentionally scans the logical cache once. For the initial build-241 profile, the source reports roughly 182 MiB, making a one-time strong digest acceptable.
 
 Implementations may cache the result in a sidecar keyed by cheap filesystem/stat metadata, but the sidecar is only an optimization. When its validity is uncertain, recompute the canonical fingerprint.
 
-## 6. Source snapshot identity
+## 7. Source snapshot identity
 
 An external source ID such as `openrs2:2727` is recorded separately from the cache fingerprint.
 
@@ -67,7 +87,7 @@ The source ID answers "which published snapshot was requested?". The fingerprint
 
 Both belong in provenance.
 
-## 7. XTEA key fingerprint
+## 8. XTEA key fingerprint
 
 Encrypted location decode inputs use a separate algorithm ID: `rustosrs-xtea-v1`.
 
@@ -81,6 +101,8 @@ Persist only the resulting SHA-256 digest in decoded-artifact invalidation/prove
 
 For a target/source where no XTEA key is required, record the explicit sentinel state `none-required`, not four zero keys unless zero keys are actually the transport input.
 
-## 8. Dependency implications
+## 9. Dependency implications
 
 A chosen transport dependency must expose enough information to enumerate indices, reference tables, archive/group IDs, and exact encoded logical bytes. If it hides any of those behind a higher-level definition API, it is insufficient for `rustosrs-cache-v1` without an additional lower-level layer.
+
+The M1 spike proved that `rune-fs 0.2.0` exposes enough of this surface for the two verified vectors. Final dependency acceptance remains an ADR decision rather than part of this fingerprint contract.
