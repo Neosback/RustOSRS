@@ -1,0 +1,86 @@
+package dev.openrune.definition.codec
+
+import dev.openrune.definition.BuilderDefinitionCodec
+import dev.openrune.definition.type.AmbienceType
+import dev.openrune.definition.type.builders.AmbienceTypeBuilder
+import dev.openrune.definition.type.RandomSound
+import dev.openrune.definition.util.readIntList
+import io.netty.buffer.ByteBuf
+import io.netty.buffer.Unpooled
+
+class AmbienceCodec : BuilderDefinitionCodec<AmbienceType, AmbienceTypeBuilder> {
+
+    override fun builder(id: Int) = AmbienceTypeBuilder(id)
+
+    override fun build(builder: AmbienceTypeBuilder) = builder.build()
+
+    override fun AmbienceTypeBuilder.read(opcode: Int, buffer: ByteBuf) {
+        when (opcode) {
+
+            1 -> {
+                val count = buffer.readUnsignedByte().toInt()
+                sequentialSounds = IntArray(count) { buffer.readUnsignedShort() }
+            }
+
+            2 -> {
+                val delayMin = buffer.readUnsignedShort()
+                val delayMax = buffer.readUnsignedShort()
+                val count = buffer.readUnsignedByte().toInt()
+                val sounds = readIntList(count) { buffer.readUnsignedShort() }
+
+                randomSounds = RandomSound(delayMin, delayMax, soundIds = sounds)
+            }
+
+            3 -> {
+                val f = fade ?: AmbienceType.SoundFade()
+                f.inSpeed = buffer.readUnsignedByte().toInt()
+                f.inDuration = buffer.readUnsignedShort()
+                fade = f
+            }
+
+            4 -> {
+                val f = fade ?: AmbienceType.SoundFade()
+                f.outSpeed = buffer.readUnsignedByte().toInt()
+                f.outDuration = buffer.readUnsignedShort()
+                fade = f
+            }
+        }
+    }
+
+    override fun ByteBuf.encode(definition: AmbienceType) {
+
+        definition.sequentialSounds?.let { sounds ->
+            writeByte(1)
+            writeByte(sounds.size)
+            sounds.forEach { writeShort(it) }
+        }
+
+        definition.randomSounds?.let {
+            if (it.soundIds.isNotEmpty()) {
+                writeByte(2)
+                writeShort(it.minDelay)
+                writeShort(it.maxDelay)
+                writeByte(it.soundIds.size)
+                it.soundIds.forEach { s -> writeShort(s) }
+            }
+        }
+
+        definition.fade?.let {
+            if (it.inSpeed != null) {
+                writeByte(3)
+                writeByte(it.inSpeed!!)
+                writeShort(it.inDuration!!)
+            }
+
+            if (it.outSpeed != null) {
+                writeByte(4)
+                writeByte(it.outSpeed!!)
+                writeShort(it.outDuration!!)
+            }
+        }
+
+        writeByte(0)
+    }
+
+    override fun createDefinition() = AmbienceType()
+}

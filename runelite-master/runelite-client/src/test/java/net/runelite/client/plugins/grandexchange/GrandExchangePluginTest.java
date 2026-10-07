@@ -1,0 +1,215 @@
+/*
+ * Copyright (c) 2020, Adam <Adam@sigterm.info>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+package net.runelite.client.plugins.grandexchange;
+
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import com.google.inject.Guice;
+import com.google.inject.testing.fieldbinder.Bind;
+import com.google.inject.testing.fieldbinder.BoundFieldModule;
+import java.lang.reflect.Type;
+import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
+import javax.inject.Inject;
+import net.runelite.api.ChatMessageType;
+import net.runelite.api.Client;
+import net.runelite.api.GameState;
+import net.runelite.api.GrandExchangeOffer;
+import net.runelite.api.GrandExchangeOfferState;
+import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.GrandExchangeOfferChanged;
+import net.runelite.api.gameval.ItemID;
+import net.runelite.client.Notifier;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.config.Notification;
+import net.runelite.client.config.RuneLiteConfig;
+import net.runelite.client.game.ItemManager;
+import net.runelite.client.input.KeyManager;
+import net.runelite.client.input.MouseManager;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.http.api.RuneLiteAPI;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import org.mockito.Mock;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import org.mockito.junit.MockitoJUnitRunner;
+
+@RunWith(MockitoJUnitRunner.class)
+public class GrandExchangePluginTest
+{
+	@Inject
+	private GrandExchangePlugin grandExchangePlugin;
+
+	@Mock
+	@Bind
+	private GrandExchangeConfig grandExchangeConfig;
+
+	@Mock
+	@Bind
+	private Notifier notifier;
+
+	@Mock
+	@Bind
+	private ConfigManager configManager;
+
+	@Mock
+	@Bind
+	private ItemManager itemManager;
+
+	@Mock
+	@Bind
+	private KeyManager keyManager;
+
+	@Mock
+	@Bind
+	private MouseManager mouseManager;
+
+	@Mock
+	@Bind
+	private Client client;
+
+	@Mock
+	@Bind
+	private RuneLiteConfig runeLiteConfig;
+
+	@Mock
+	@Bind
+	private ScheduledExecutorService scheduledExecutorService;
+
+	@Mock
+	@Bind
+	private ClientToolbar clientToolbar;
+
+	@Bind
+	private final Gson gson = RuneLiteAPI.GSON;
+
+	@Before
+	public void setUp()
+	{
+		Guice.createInjector(BoundFieldModule.of(this)).injectMembers(this);
+	}
+
+	@Test
+	public void testCancelTrade()
+	{
+		SavedOffer savedOffer = new SavedOffer();
+		savedOffer.setItemId(ItemID.ABYSSAL_WHIP);
+		savedOffer.setQuantitySold(1);
+		savedOffer.setTotalQuantity(10);
+		savedOffer.setPrice(1000);
+		savedOffer.setSpent(25);
+		savedOffer.setState(GrandExchangeOfferState.BUYING);
+		when(configManager.getRSProfileConfiguration("geoffer", "0")).thenReturn(gson.toJson(savedOffer));
+
+		GrandExchangeOffer grandExchangeOffer = mock(GrandExchangeOffer.class);
+		when(grandExchangeOffer.getQuantitySold()).thenReturn(1);
+		when(grandExchangeOffer.getItemId()).thenReturn(ItemID.ABYSSAL_WHIP);
+		when(grandExchangeOffer.getTotalQuantity()).thenReturn(10);
+		when(grandExchangeOffer.getPrice()).thenReturn(1000L);
+		when(grandExchangeOffer.getSpent()).thenReturn(25L);
+		when(grandExchangeOffer.getState()).thenReturn(GrandExchangeOfferState.CANCELLED_BUY);
+		grandExchangePlugin.updateTradeHistory(0, grandExchangeOffer);
+
+		Trade trade = runSaveTrade();
+		assertTrue(trade.isBuy());
+		assertEquals(ItemID.ABYSSAL_WHIP, trade.getItemId());
+		assertEquals(1, trade.getQuantity());
+		assertEquals(25, trade.getPrice());
+		assertNotNull(trade.getTime());
+	}
+
+	private Trade runSaveTrade()
+	{
+		ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+		verify(scheduledExecutorService).execute(taskCaptor.capture());
+		taskCaptor.getValue().run();
+
+		ArgumentCaptor<String> historyCaptor = ArgumentCaptor.forClass(String.class);
+		verify(configManager).setRSProfileConfiguration(
+			eq(GrandExchangeConfig.CONFIG_GROUP), eq("tradeHistory"), historyCaptor.capture());
+
+		//CHECKSTYLE:OFF
+		Type type = new TypeToken<List<Trade>>() {}.getType();
+		//CHECKSTYLE:ON
+		List<Trade> trades = gson.fromJson(historyCaptor.getValue(), type);
+		assertEquals(1, trades.size());
+		return trades.get(0);
+	}
+
+	@Test
+	public void testHop()
+	{
+		when(client.getGameState()).thenReturn(GameState.HOPPING);
+
+		GrandExchangeOffer grandExchangeOffer = mock(GrandExchangeOffer.class);
+		when(grandExchangeOffer.getState()).thenReturn(GrandExchangeOfferState.EMPTY);
+
+		GrandExchangeOfferChanged grandExchangeOfferChanged = new GrandExchangeOfferChanged();
+		grandExchangeOfferChanged.setOffer(grandExchangeOffer);
+
+		grandExchangePlugin.onGrandExchangeOfferChanged(grandExchangeOfferChanged);
+
+		verify(configManager, never()).unsetRSProfileConfiguration(anyString(), anyString());
+	}
+
+	@Test
+	public void testNotifyPartial()
+	{
+		when(grandExchangeConfig.enableNotifications()).thenReturn(Notification.ON);
+
+		ChatMessage chatMessage = new ChatMessage();
+		chatMessage.setType(ChatMessageType.GAMEMESSAGE);
+		chatMessage.setMessage("<col=006060>Grand Exchange: Bought 200 / 80,000 x Acorn.</col>");
+
+		grandExchangePlugin.onChatMessage(chatMessage);
+
+		verify(notifier).notify(any(Notification.class), anyString());
+	}
+
+	@Test
+	public void testNotifyComplete()
+	{
+		when(grandExchangeConfig.notifyOnOfferComplete()).thenReturn(Notification.ON);
+
+		ChatMessage chatMessage = new ChatMessage();
+		chatMessage.setType(ChatMessageType.GAMEMESSAGE);
+		chatMessage.setMessage("<col=006000>Grand Exchange: Finished buying 1 x Acorn.</col>");
+
+		grandExchangePlugin.onChatMessage(chatMessage);
+
+		verify(notifier).notify(any(Notification.class), anyString());
+	}
+}

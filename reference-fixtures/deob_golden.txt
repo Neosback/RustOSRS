@@ -1,0 +1,162 @@
+tileShape2D=0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1;1,0,0,0,1,1,0,0,1,1,1,0,1,1,1,1;1,1,0,0,1,1,0,0,1,0,0,0,1,0,0,0;0,0,1,1,0,0,1,1,0,0,0,1,0,0,0,1;0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1;1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,1;1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0;0,0,0,0,0,0,0,0,1,0,0,0,1,1,0,0;1,1,1,1,1,1,1,1,0,1,1,1,0,0,1,1;1,1,1,1,1,1,0,0,1,0,0,0,1,0,0,0;0,0,0,0,0,0,1,1,0,1,1,1,0,1,1,1;0,0,0,0,0,0,0,0,0,1,1,0,1,1,1,1
+tileRotation2D=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15;12,8,4,0,13,9,5,1,14,10,6,2,15,11,7,3;15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0;3,7,11,15,2,6,10,14,1,5,9,13,0,4,8,12
+field800=1,2,4,8
+field804=16,32,64,128
+field802=1,0,-1,0
+field798=0,-1,0,1
+field803=1,-1,-1,1
+field805=-1,-1,1,1
+tri shape=0 rot=0 nverts=4 vx=0,128,128,0 vy=64,64,64,64 vz=0,0,128,128 faces=2 fx=1,0 fy=2,1 fz=3,3 ca=1001,1000 cb=1002,1001 cc=1003,1003 tex=null flat=true
+tri shape=0 rot=1 nverts=4 vx=0,128,128,0 vy=64,64,64,64 vz=0,0,128,128 faces=2 fx=0,3 fy=1,0 fz=2,2 ca=1000,1003 cb=1001,1000 cc=1002,1002 tex=null flat=true
+tri shape=0 rot=2 nverts=4 vx=0,128,128,0 vy=64,64,64,64 vz=0,0,128,128 faces=2 fx=3,2 fy=0,3 fz=1,1 ca=1003,1002 cb=1000,1003 cc=1001,1001 tex=null flat=true
+tri shape=0 rot=3 nverts=4 vx=0,128,128,0 vy=64,64,64,64 vz=0,0,128,128 faces=2 fx=2,1 fy=3,2 fz=0,0 ca=1002,1001 cb=1003,1002 cc=1000,1000 tex=null flat=true
+tri shape=1 rot=0 nverts=4 vx=0,128,128,0 vy=64,64,64,64 vz=0,0,128,128 faces=2 fx=1,0 fy=2,1 fz=3,3 ca=2001,2000 cb=2002,2001 cc=2003,2003 tex=null flat=true
+tri shape=1 rot=1 nverts=4 vx=0,128,128,0 vy=64,64,64,64 vz=0,0,128,128 faces=2 fx=0,3 fy=1,0 fz=2,2 ca=2000,2003 cb=2001,2000 cc=2002,2002 tex=null flat=true
+tri shape=1 rot=2 nverts=4 vx=0,128,128,0 vy=64,64,64,64 vz=0,0,128,128 faces=2 fx=3,2 fy=0,3 fz=1,1 ca=2003,2002 cb=2000,2003 cc=2001,2001 tex=null flat=true
+tri shape=1 rot=3 nverts=4 vx=0,128,128,0 vy=64,64,64,64 vz=0,0,128,128 faces=2 fx=2,1 fy=3,2 fz=0,0 ca=2002,2001 cb=2003,2002 cc=2000,2000 tex=null flat=true
+tri shape=2 rot=0 nverts=4 vx=0,128,128,0 vy=64,64,64,64 vz=0,0,128,128 faces=2 fx=1,0 fy=2,1 fz=3,3 ca=1001,2000 cb=1002,2001 cc=1003,2003 tex=null flat=true
+tri shape=2 rot=1 nverts=4 vx=0,128,128,0 vy=64,64,64,64 vz=0,0,128,128 faces=2 fx=0,3 fy=1,0 fz=2,2 ca=1000,2003 cb=1001,2000 cc=1002,2002 tex=null flat=true
+tri shape=2 rot=2 nverts=4 vx=0,128,128,0 vy=64,64,64,64 vz=0,0,128,128 faces=2 fx=3,2 fy=0,3 fz=1,1 ca=1003,2002 cb=1000,2003 cc=1001,2001 tex=null flat=true
+tri shape=2 rot=3 nverts=4 vx=0,128,128,0 vy=64,64,64,64 vz=0,0,128,128 faces=2 fx=2,1 fy=3,2 fz=0,0 ca=1002,2001 cb=1003,2002 cc=1000,2000 tex=null flat=true
+tri shape=3 rot=0 nverts=5 vx=0,128,128,0,64 vy=64,64,64,64,64 vz=0,0,128,128,128 faces=3 fx=0,0,0 fy=1,2,4 fz=2,4,3 ca=1000,1000,2000 cb=1001,1002,2002 cc=1002,1002,2003 tex=null flat=true
+tri shape=3 rot=1 nverts=5 vx=0,128,128,0,128 vy=64,64,64,64,64 vz=0,0,128,128,64 faces=3 fx=3,3,3 fy=0,1,4 fz=1,4,2 ca=1003,1003,2003 cb=1000,1001,2001 cc=1001,1001,2002 tex=null flat=true
+tri shape=3 rot=2 nverts=5 vx=0,128,128,0,64 vy=64,64,64,64,64 vz=0,0,128,128,0 faces=3 fx=2,2,2 fy=3,0,4 fz=0,4,1 ca=1002,1002,2002 cb=1003,1000,2000 cc=1000,1000,2001 tex=null flat=true
+tri shape=3 rot=3 nverts=5 vx=0,128,128,0,0 vy=64,64,64,64,64 vz=0,0,128,128,64 faces=3 fx=1,1,1 fy=2,3,4 fz=3,4,0 ca=1001,1001,2001 cb=1002,1003,2001 cc=1003,1001,2000 tex=null flat=true
+tri shape=4 rot=0 nverts=5 vx=0,128,128,0,64 vy=64,64,64,64,64 vz=0,0,128,128,128 faces=3 fx=0,0,1 fy=1,4,2 fz=4,3,4 ca=1000,1000,2001 cb=1001,1002,2002 cc=1002,1003,2002 tex=null flat=true
+tri shape=4 rot=1 nverts=5 vx=0,128,128,0,128 vy=64,64,64,64,64 vz=0,0,128,128,64 faces=3 fx=3,3,0 fy=0,4,1 fz=4,2,4 ca=1003,1003,2000 cb=1000,1001,2001 cc=1001,1002,2001 tex=null flat=true
+tri shape=4 rot=2 nverts=5 vx=0,128,128,0,64 vy=64,64,64,64,64 vz=0,0,128,128,0 faces=3 fx=2,2,3 fy=3,4,0 fz=4,1,4 ca=1002,1002,2003 cb=1003,1000,2000 cc=1000,1001,2000 tex=null flat=true
+tri shape=4 rot=3 nverts=5 vx=0,128,128,0,0 vy=64,64,64,64,64 vz=0,0,128,128,64 faces=3 fx=1,1,2 fy=2,4,3 fz=4,0,4 ca=1001,1001,2002 cb=1002,1001,2003 cc=1001,1000,2001 tex=null flat=true
+tri shape=5 rot=0 nverts=5 vx=0,128,128,0,64 vy=64,64,64,64,64 vz=0,0,128,128,128 faces=3 fx=0,0,0 fy=4,1,2 fz=3,2,4 ca=1000,2000,2000 cb=1002,2001,2002 cc=1003,2002,2002 tex=null flat=true
+tri shape=5 rot=1 nverts=5 vx=0,128,128,0,128 vy=64,64,64,64,64 vz=0,0,128,128,64 faces=3 fx=3,3,3 fy=4,0,1 fz=2,1,4 ca=1003,2003,2003 cb=1001,2000,2001 cc=1002,2001,2001 tex=null flat=true
+tri shape=5 rot=2 nverts=5 vx=0,128,128,0,64 vy=64,64,64,64,64 vz=0,0,128,128,0 faces=3 fx=2,2,2 fy=4,3,0 fz=1,0,4 ca=1002,2002,2002 cb=1000,2003,2000 cc=1001,2000,2000 tex=null flat=true
+tri shape=5 rot=3 nverts=5 vx=0,128,128,0,0 vy=64,64,64,64,64 vz=0,0,128,128,64 faces=3 fx=1,1,1 fy=4,2,3 fz=0,3,4 ca=1001,2001,2001 cb=1001,2002,2003 cc=1000,2003,2001 tex=null flat=true
+tri shape=6 rot=0 nverts=5 vx=0,128,128,0,64 vy=64,64,64,64,64 vz=0,0,128,128,128 faces=3 fx=1,0,0 fy=2,1,4 fz=4,4,3 ca=1001,2000,2000 cb=1002,2001,2002 cc=1002,2002,2003 tex=null flat=true
+tri shape=6 rot=1 nverts=5 vx=0,128,128,0,128 vy=64,64,64,64,64 vz=0,0,128,128,64 faces=3 fx=0,3,3 fy=1,0,4 fz=4,4,2 ca=1000,2003,2003 cb=1001,2000,2001 cc=1001,2001,2002 tex=null flat=true
+tri shape=6 rot=2 nverts=5 vx=0,128,128,0,64 vy=64,64,64,64,64 vz=0,0,128,128,0 faces=3 fx=3,2,2 fy=0,3,4 fz=4,4,1 ca=1003,2002,2002 cb=1000,2003,2000 cc=1000,2000,2001 tex=null flat=true
+tri shape=6 rot=3 nverts=5 vx=0,128,128,0,0 vy=64,64,64,64,64 vz=0,0,128,128,64 faces=3 fx=2,1,1 fy=3,2,4 fz=4,4,0 ca=1002,2001,2001 cb=1003,2002,2001 cc=1001,2001,2000 tex=null flat=true
+tri shape=7 rot=0 nverts=6 vx=0,128,128,0,64,64 vy=64,64,64,64,64,64 vz=0,0,128,128,0,128 faces=4 fx=4,4,0,0 fy=1,2,4,5 fz=2,5,5,3 ca=1000,1000,2000,2000 cb=1001,1002,2000,2002 cc=1002,1002,2002,2003 tex=null flat=true
+tri shape=7 rot=1 nverts=6 vx=0,128,128,0,0,128 vy=64,64,64,64,64,64 vz=0,0,128,128,64,64 faces=4 fx=4,4,3,3 fy=0,1,4,5 fz=1,5,5,2 ca=1001,1001,2003,2003 cb=1000,1001,2001,2001 cc=1001,1001,2001,2002 tex=null flat=true
+tri shape=7 rot=2 nverts=6 vx=0,128,128,0,64,64 vy=64,64,64,64,64,64 vz=0,0,128,128,128,0 faces=4 fx=4,4,2,2 fy=3,0,4,5 fz=0,5,5,1 ca=1002,1002,2002,2002 cb=1003,1000,2002,2000 cc=1000,1000,2000,2001 tex=null flat=true
+tri shape=7 rot=3 nverts=6 vx=0,128,128,0,128,0 vy=64,64,64,64,64,64 vz=0,0,128,128,64,64 faces=4 fx=4,4,1,1 fy=2,3,4,5 fz=3,5,5,0 ca=1001,1001,2001,2001 cb=1002,1003,2001,2001 cc=1003,1001,2001,2000 tex=null flat=true
+tri shape=8 rot=0 nverts=6 vx=0,128,128,0,64,0 vy=64,64,64,64,64,64 vz=0,0,128,128,0,64 faces=4 fx=4,4,4,0 fy=1,2,3,4 fz=2,3,5,5 ca=1000,1000,1000,2000 cb=1001,1002,1003,2000 cc=1002,1003,1001,2001 tex=null flat=true
+tri shape=8 rot=1 nverts=6 vx=0,128,128,0,0,64 vy=64,64,64,64,64,64 vz=0,0,128,128,64,128 faces=4 fx=4,4,4,3 fy=0,1,2,4 fz=1,2,5,5 ca=1001,1001,1001,2003 cb=1000,1001,1002,2001 cc=1001,1002,1002,2002 tex=null flat=true
+tri shape=8 rot=2 nverts=6 vx=0,128,128,0,64,128 vy=64,64,64,64,64,64 vz=0,0,128,128,128,64 faces=4 fx=4,4,4,2 fy=3,0,1,4 fz=0,1,5,5 ca=1002,1002,1002,2002 cb=1003,1000,1001,2002 cc=1000,1001,1001,2001 tex=null flat=true
+tri shape=8 rot=3 nverts=6 vx=0,128,128,0,128,64 vy=64,64,64,64,64,64 vz=0,0,128,128,64,0 faces=4 fx=4,4,4,1 fy=2,3,0,4 fz=3,0,5,5 ca=1001,1001,1001,2001 cb=1002,1003,1000,2001 cc=1003,1000,1000,2000 tex=null flat=true
+tri shape=9 rot=0 nverts=6 vx=0,128,128,0,64,0 vy=64,64,64,64,64,64 vz=0,0,128,128,0,64 faces=4 fx=0,4,4,4 fy=4,1,2,3 fz=5,2,3,5 ca=1000,2000,2000,2000 cb=1000,2001,2002,2003 cc=1001,2002,2003,2001 tex=null flat=true
+tri shape=9 rot=1 nverts=6 vx=0,128,128,0,0,64 vy=64,64,64,64,64,64 vz=0,0,128,128,64,128 faces=4 fx=3,4,4,4 fy=4,0,1,2 fz=5,1,2,5 ca=1003,2001,2001,2001 cb=1001,2000,2001,2002 cc=1002,2001,2002,2002 tex=null flat=true
+tri shape=9 rot=2 nverts=6 vx=0,128,128,0,64,128 vy=64,64,64,64,64,64 vz=0,0,128,128,128,64 faces=4 fx=2,4,4,4 fy=4,3,0,1 fz=5,0,1,5 ca=1002,2002,2002,2002 cb=1002,2003,2000,2001 cc=1001,2000,2001,2001 tex=null flat=true
+tri shape=9 rot=3 nverts=6 vx=0,128,128,0,128,64 vy=64,64,64,64,64,64 vz=0,0,128,128,64,0 faces=4 fx=1,4,4,4 fy=4,2,3,0 fz=5,3,0,5 ca=1001,2001,2001,2001 cb=1001,2002,2003,2000 cc=1000,2003,2000,2000 tex=null flat=true
+tri shape=10 rot=0 nverts=6 vx=0,128,128,0,64,32 vy=64,64,64,64,64,64 vz=0,0,128,128,96,64 faces=6 fx=0,1,1,0,5,4 fy=1,4,2,5,4,2 fz=5,5,4,3,3,3 ca=1000,1001,1001,2000,2001,2002 cb=1001,1002,1002,2001,2002,2002 cc=1001,1001,1002,2003,2003,2003 tex=null flat=true
+tri shape=10 rot=1 nverts=6 vx=0,128,128,0,96,64 vy=64,64,64,64,64,64 vz=0,0,128,128,64,96 faces=6 fx=3,0,0,3,5,4 fy=0,4,1,5,4,1 fz=5,5,4,2,2,2 ca=1003,1000,1000,2003,2002,2001 cb=1000,1001,1001,2002,2001,2001 cc=1002,1002,1001,2002,2002,2002 tex=null flat=true
+tri shape=10 rot=2 nverts=6 vx=0,128,128,0,64,96 vy=64,64,64,64,64,64 vz=0,0,128,128,32,64 faces=6 fx=2,3,3,2,5,4 fy=3,4,0,5,4,0 fz=5,5,4,1,1,1 ca=1002,1003,1003,2002,2001,2000 cb=1003,1000,1000,2001,2000,2000 cc=1001,1001,1000,2001,2001,2001 tex=null flat=true
+tri shape=10 rot=3 nverts=6 vx=0,128,128,0,32,64 vy=64,64,64,64,64,64 vz=0,0,128,128,64,32 faces=6 fx=1,2,2,1,5,4 fy=2,4,3,5,4,3 fz=5,5,4,0,0,0 ca=1001,1002,1002,2001,2000,2001 cb=1002,1001,1003,2000,2001,2003 cc=1000,1000,1001,2000,2000,2000 tex=null flat=true
+tri shape=11 rot=0 nverts=6 vx=0,128,128,0,64,32 vy=64,64,64,64,64,64 vz=0,0,128,128,96,64 faces=6 fx=0,1,1,0,5,4 fy=1,4,2,5,4,2 fz=5,5,4,3,3,3 ca=2000,2001,2001,1000,1001,1002 cb=2001,2002,2002,1001,1002,1002 cc=2001,2001,2002,1003,1003,1003 tex=null flat=true
+tri shape=11 rot=1 nverts=6 vx=0,128,128,0,96,64 vy=64,64,64,64,64,64 vz=0,0,128,128,64,96 faces=6 fx=3,0,0,3,5,4 fy=0,4,1,5,4,1 fz=5,5,4,2,2,2 ca=2003,2000,2000,1003,1002,1001 cb=2000,2001,2001,1002,1001,1001 cc=2002,2002,2001,1002,1002,1002 tex=null flat=true
+tri shape=11 rot=2 nverts=6 vx=0,128,128,0,64,96 vy=64,64,64,64,64,64 vz=0,0,128,128,32,64 faces=6 fx=2,3,3,2,5,4 fy=3,4,0,5,4,0 fz=5,5,4,1,1,1 ca=2002,2003,2003,1002,1001,1000 cb=2003,2000,2000,1001,1000,1000 cc=2001,2001,2000,1001,1001,1001 tex=null flat=true
+tri shape=11 rot=3 nverts=6 vx=0,128,128,0,32,64 vy=64,64,64,64,64,64 vz=0,0,128,128,64,32 faces=6 fx=1,2,2,1,5,4 fy=2,4,3,5,4,3 fz=5,5,4,0,0,0 ca=2001,2002,2002,1001,1000,1001 cb=2002,2001,2003,1000,1001,1003 cc=2000,2000,2001,1000,1000,1000 tex=null flat=true
+tri shape=12 rot=0 nverts=6 vx=0,128,128,0,32,96 vy=64,64,64,64,64,64 vz=0,0,128,128,32,32 faces=6 fx=0,0,0,4,5,1 fy=5,1,4,5,2,2 fz=4,5,3,3,3,5 ca=2000,2000,1000,1000,1001,1001 cb=2001,2001,1000,1001,1002,1002 cc=2000,2001,1003,1003,1003,1001 tex=null flat=true
+tri shape=12 rot=1 nverts=6 vx=0,128,128,0,32,32 vy=64,64,64,64,64,64 vz=0,0,128,128,96,32 faces=6 fx=3,3,3,4,5,0 fy=5,0,4,5,1,1 fz=4,5,2,2,2,5 ca=2003,2003,1003,1003,1000,1000 cb=2000,2000,1003,1000,1001,1001 cc=2003,2000,1002,1002,1002,1000 tex=null flat=true
+tri shape=12 rot=2 nverts=6 vx=0,128,128,0,96,32 vy=64,64,64,64,64,64 vz=0,0,128,128,96,96 faces=6 fx=2,2,2,4,5,3 fy=5,3,4,5,0,0 fz=4,5,1,1,1,5 ca=2002,2002,1002,1002,1003,1003 cb=2003,2003,1002,1003,1000,1000 cc=2002,2003,1001,1001,1001,1003 tex=null flat=true
+tri shape=12 rot=3 nverts=6 vx=0,128,128,0,96,96 vy=64,64,64,64,64,64 vz=0,0,128,128,32,96 faces=6 fx=1,1,1,4,5,2 fy=5,2,4,5,3,3 fz=4,5,0,0,0,5 ca=2001,2001,1001,1001,1002,1002 cb=2002,2002,1001,1002,1003,1003 cc=2001,2002,1000,1000,1000,1002 tex=null flat=true
+slope vx=256,384,384,256 vy=64,96,128,80 vz=384,384,512,512 ca=1001,1000
+sethsl rgb=0 hue=0 sat=0 light=0 mult=1
+sethsl rgb=255 hue=170 sat=255 light=127 mult=255
+sethsl rgb=16711680 hue=0 sat=255 light=127 mult=255
+sethsl rgb=65280 hue=85 sat=255 light=127 mult=255
+sethsl rgb=255 hue=170 sat=255 light=127 mult=255
+sethsl rgb=8421504 hue=0 sat=0 light=128 mult=1
+sethsl rgb=13148232 hue=14 sat=136 light=136 mult=128
+sethsl rgb=1193046 hue=39 sat=167 light=52 mult=68
+m817 h=0 s=0 l=0 -> 0
+m817 h=255 s=255 l=255 -> 64639
+m817 h=128 s=200 l=100 -> 33586
+m817 h=10 s=250 l=220 -> 2158
+m817 h=200 s=30 l=250 -> 51325
+m2086 hsl=9029 b=96 -> 9011
+m2086 hsl=65535 b=0 -> 65410
+m2086 hsl=65535 b=200 -> 65534
+m2086 hsl=4096 b=96 -> 4098
+m2086 hsl=-1 b=96 -> 12345678
+m5263 hsl=9029 l=100 -> 9013
+m5263 hsl=65535 l=200 -> 65534
+m5263 hsl=4096 l=0 -> 4098
+m5263 hsl=4096 l=300 -> 4098
+m5264 l=0 -> 2
+m5264 l=1 -> 2
+m5264 l=2 -> 2
+m5264 l=100 -> 100
+m5264 l=126 -> 126
+m5264 l=127 -> 126
+m5264 l=200 -> 126
+contour flat y=0
+contour slope y=-28
+tolit c1=4638 c2=4638 c3=4638
+nudge o=1 in=16,0 xOffset=17 f3196=0 yOffset=16 f3194=0
+nudge o=1 in=0,-16 xOffset=1 f3196=-16 yOffset=0 f3194=-16
+nudge o=1 in=8,-8 xOffset=9 f3196=-8 yOffset=8 f3194=-8
+nudge o=2 in=16,0 xOffset=16 f3196=-1 yOffset=16 f3194=0
+nudge o=2 in=0,-16 xOffset=0 f3196=-17 yOffset=0 f3194=-16
+nudge o=2 in=8,-8 xOffset=8 f3196=-9 yOffset=8 f3194=-8
+nudge o=4 in=16,0 xOffset=15 f3196=0 yOffset=16 f3194=0
+nudge o=4 in=0,-16 xOffset=-1 f3196=-16 yOffset=0 f3194=-16
+nudge o=4 in=8,-8 xOffset=7 f3196=-8 yOffset=8 f3194=-8
+nudge o=8 in=16,0 xOffset=16 f3196=1 yOffset=16 f3194=0
+nudge o=8 in=0,-16 xOffset=0 f3196=-15 yOffset=0 f3194=-16
+nudge o=8 in=8,-8 xOffset=8 f3196=-7 yOffset=8 f3194=-8
+nudge o=16 in=16,0 xOffset=16 f3196=0 yOffset=16 f3194=0
+nudge o=16 in=0,-16 xOffset=0 f3196=-16 yOffset=0 f3194=-16
+nudge o=16 in=8,-8 xOffset=8 f3196=-8 yOffset=8 f3194=-8
+nudge o=32 in=16,0 xOffset=16 f3196=0 yOffset=16 f3194=0
+nudge o=32 in=0,-16 xOffset=0 f3196=-16 yOffset=0 f3194=-16
+nudge o=32 in=8,-8 xOffset=8 f3196=-8 yOffset=8 f3194=-8
+nudge o=64 in=16,0 xOffset=16 f3196=0 yOffset=16 f3194=0
+nudge o=64 in=0,-16 xOffset=0 f3196=-16 yOffset=0 f3194=-16
+nudge o=64 in=8,-8 xOffset=8 f3196=-8 yOffset=8 f3194=-8
+nudge o=128 in=16,0 xOffset=16 f3196=0 yOffset=16 f3194=0
+nudge o=128 in=0,-16 xOffset=0 f3196=-16 yOffset=0 f3194=-16
+nudge o=128 in=8,-8 xOffset=8 f3196=-8 yOffset=8 f3194=-8
+nudge o=256 in=16,0 xOffset=16 f3196=0 yOffset=16 f3194=0
+nudge o=256 in=0,-16 xOffset=0 f3196=-16 yOffset=0 f3194=-16
+nudge o=256 in=8,-8 xOffset=8 f3196=-8 yOffset=8 f3194=-8
+wall t=0 o=0 x=1344 y=167936 z=100 oA=1 oB=0
+wall t=1 o=0 x=1344 y=167936 z=100 oA=16 oB=0
+wall t=2 o=0 x=1344 y=167936 z=100 oA=1 oB=2
+wall t=3 o=0 x=1344 y=167936 z=100 oA=16 oB=0
+decor t=4 o=0 x=1344 y=167936 z=100 o=1 o2=0 xOff=1 f3196=0
+decor t=5 o=0 x=1344 y=167936 z=100 o=1 o2=0 xOff=17 f3196=0
+decor t=6 o=0 x=1344 y=167936 z=100 o=256 o2=0 xOff=8 f3196=-8
+decor t=7 o=0 x=1344 y=167936 z=100 o=256 o2=2 xOff=0 f3196=0
+decor t=8 o=0 x=1344 y=167936 z=100 o=256 o2=0 xOff=8 f3196=-8
+wall t=0 o=1 x=1344 y=167936 z=100 oA=2 oB=0
+wall t=1 o=1 x=1344 y=167936 z=100 oA=32 oB=0
+wall t=2 o=1 x=1344 y=167936 z=100 oA=2 oB=4
+wall t=3 o=1 x=1344 y=167936 z=100 oA=32 oB=0
+decor t=4 o=1 x=1344 y=167936 z=100 o=2 o2=0 xOff=0 f3196=-1
+decor t=5 o=1 x=1344 y=167936 z=100 o=2 o2=0 xOff=0 f3196=-17
+decor t=6 o=1 x=1344 y=167936 z=100 o=256 o2=1 xOff=-8 f3196=-8
+decor t=7 o=1 x=1344 y=167936 z=100 o=256 o2=3 xOff=0 f3196=0
+decor t=8 o=1 x=1344 y=167936 z=100 o=256 o2=1 xOff=-8 f3196=-8
+wall t=0 o=2 x=1344 y=167936 z=100 oA=4 oB=0
+wall t=1 o=2 x=1344 y=167936 z=100 oA=64 oB=0
+wall t=2 o=2 x=1344 y=167936 z=100 oA=4 oB=8
+wall t=3 o=2 x=1344 y=167936 z=100 oA=64 oB=0
+decor t=4 o=2 x=1344 y=167936 z=100 o=4 o2=0 xOff=-1 f3196=0
+decor t=5 o=2 x=1344 y=167936 z=100 o=4 o2=0 xOff=-17 f3196=0
+decor t=6 o=2 x=1344 y=167936 z=100 o=256 o2=2 xOff=-8 f3196=8
+decor t=7 o=2 x=1344 y=167936 z=100 o=256 o2=0 xOff=0 f3196=0
+decor t=8 o=2 x=1344 y=167936 z=100 o=256 o2=2 xOff=-8 f3196=8
+wall t=0 o=3 x=1344 y=167936 z=100 oA=8 oB=0
+wall t=1 o=3 x=1344 y=167936 z=100 oA=128 oB=0
+wall t=2 o=3 x=1344 y=167936 z=100 oA=8 oB=1
+wall t=3 o=3 x=1344 y=167936 z=100 oA=128 oB=0
+decor t=4 o=3 x=1344 y=167936 z=100 o=8 o2=0 xOff=0 f3196=1
+decor t=5 o=3 x=1344 y=167936 z=100 o=8 o2=0 xOff=0 f3196=17
+decor t=6 o=3 x=1344 y=167936 z=100 o=256 o2=3 xOff=8 f3196=8
+decor t=7 o=3 x=1344 y=167936 z=100 o=256 o2=1 xOff=0 f3196=0
+decor t=8 o=3 x=1344 y=167936 z=100 o=256 o2=3 xOff=8 f3196=8
+floor t=22 x=86016 y=167936 z=100
+roof t=14 cx=1344 cy=2624 z=100 sx=10 ex=10 edge=0 edgeOr=0
+walldiag t=9 cx=3904 cy=5184 z=100 edge=0
+gate2x1 same=true cx=6528 cy=7744 e0=4 e1=1
+cap5 sixthAccepted=false count=5
+DONE

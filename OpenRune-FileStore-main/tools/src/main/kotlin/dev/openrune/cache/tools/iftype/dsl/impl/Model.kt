@@ -1,0 +1,104 @@
+package dev.openrune.cache.tools.iftype.dsl.impl
+
+import dev.openrune.cache.tools.iftype.dsl.BaseComponent
+import dev.openrune.definition.type.widget.ComponentTypeBuilder
+
+object Model {
+
+    fun applyModel(name: String, bld: ModelComponent) = bld.apply(name)
+
+    open class ModelComponent : BaseComponent() {
+        var modelId: Int = -1
+        var modelKind: Int = 1
+        var secondaryModelId: Int = -1
+        var secondaryModelKind: Int = 1
+        var offsetX2d: Int = 0
+        var offsetY2d: Int = 0
+        var rotationX: Int = 0
+        var rotationZ: Int = 0
+        var rotationY: Int = 0
+        var modelZoom: Int = 100
+        var animation: Int = -1
+        var secondaryAnimation: Int = -1
+        var modelHeightOverride: Int = 0
+        var orthogonal: Boolean = false
+
+        fun modelId(bld: () -> Int) {
+            modelId = bld()
+        }
+
+        fun modelKind(bld: () -> Int) {
+            modelKind = bld()
+        }
+
+        fun secondaryModelId(bld: () -> Int) {
+            secondaryModelId = bld()
+        }
+
+        fun secondaryModelKind(bld: () -> Int) {
+            secondaryModelKind = bld()
+        }
+
+        fun secondaryAnimation(bld: () -> Int) {
+            secondaryAnimation = bld()
+        }
+
+        fun offsetX2d(bld: () -> Int) {
+            offsetX2d = bld()
+        }
+
+        fun offsetY2d(bld: () -> Int) {
+            offsetY2d = bld()
+        }
+
+        fun rotationX(bld: () -> Int) {
+            rotationX = bld()
+        }
+
+        fun rotationZ(bld: () -> Int) {
+            rotationZ = bld()
+        }
+
+        fun rotationY(bld: () -> Int) {
+            rotationY = bld()
+        }
+
+        fun modelZoom(bld: () -> Int) {
+            modelZoom = bld()
+        }
+
+        fun animation(bld: () -> Int) {
+            animation = bld()
+        }
+
+        fun modelHeightOverride(bld: () -> Int) {
+            modelHeightOverride = bld()
+        }
+
+        fun orthogonal(bld: () -> Boolean) {
+            orthogonal = bld()
+        }
+
+        fun apply(componentName : String): ComponentTypeBuilder {
+            return ComponentTypeBuilder(componentName).apply {
+                applyCommonProperties(this)
+                type = 6
+                model = this@ModelComponent.modelId
+                modelKind = this@ModelComponent.modelKind
+                secondaryModel = this@ModelComponent.secondaryModelId
+                secondaryModelKind = this@ModelComponent.secondaryModelKind
+                modelX = this@ModelComponent.offsetX2d
+                modelY = this@ModelComponent.offsetY2d
+                modelAngleX = this@ModelComponent.rotationX
+                modelAngleZ = this@ModelComponent.rotationZ
+                modelAngleY = this@ModelComponent.rotationY
+                modelZoom = this@ModelComponent.modelZoom
+                modelAnim = this@ModelComponent.animation
+                secondaryModelAnim = this@ModelComponent.secondaryAnimation
+                modelObjWidth = this@ModelComponent.modelHeightOverride
+                modelOrthog = this@ModelComponent.orthogonal
+            }
+        }
+
+    }
+}

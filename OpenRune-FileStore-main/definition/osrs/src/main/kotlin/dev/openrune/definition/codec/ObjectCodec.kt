@@ -1,0 +1,413 @@
+package dev.openrune.definition.codec
+
+import com.github.michaelbull.logging.InlineLogger
+import dev.openrune.definition.EntityOpsLoader
+import dev.openrune.definition.util.IntBackedList
+import dev.openrune.definition.util.readIntList
+import dev.openrune.definition.util.readString
+import dev.openrune.definition.util.writeString
+import dev.openrune.definition.BuilderDefinitionCodec
+import dev.openrune.definition.revisionIsOrAfter
+import dev.openrune.definition.writeColoursTextures
+import dev.openrune.definition.writeParameters
+import dev.openrune.definition.writeTransforms
+import dev.openrune.definition.type.ObjectType
+import dev.openrune.definition.type.builders.ObjectTypeBuilder
+import io.netty.buffer.ByteBuf
+import io.netty.buffer.Unpooled
+
+class ObjectCodec(private val revision: Int) : BuilderDefinitionCodec<ObjectType, ObjectTypeBuilder> {
+    private val entityOpsLoader = EntityOpsLoader(revision)
+
+    override fun builder(id: Int) = ObjectTypeBuilder(id)
+
+    override fun build(builder: ObjectTypeBuilder) = builder.build()
+
+    override fun ObjectTypeBuilder.read(opcode: Int, buffer: ByteBuf) {
+        when (opcode) {
+            1 -> {
+                val length: Int = buffer.readUnsignedByte().toInt()
+                if (length > 0) {
+                    val types = IntBackedList(length)
+                    val models = readIntList(length) {
+                        val model = buffer.readUnsignedShort()
+                        types.add(buffer.readUnsignedByte().toInt())
+                        model
+                    }
+                    objectTypes = types
+                    objectModels = models
+                }
+            }
+
+            2 -> name = buffer.readString()
+            5 -> {
+                val length: Int = buffer.readUnsignedByte().toInt()
+                if (length > 0) {
+                    objectTypes = null
+                    objectModels = readIntList(length) { buffer.readUnsignedShort() }
+                }
+            }
+            6 -> {
+                val length: Int = buffer.readUnsignedByte().toInt()
+                if (length > 0) {
+                    val types = IntBackedList(length)
+                    val models = readIntList(length) {
+                        val model = buffer.readInt()
+                        types.add(buffer.readUnsignedByte().toInt())
+                        model
+                    }
+                    objectTypes = types
+                    objectModels = models
+                }
+            }
+            7 -> {
+                val length: Int = buffer.readUnsignedByte().toInt()
+                if (length > 0) {
+                    objectTypes = null
+                    objectModels = readIntList(length) { buffer.readInt() }
+                }
+            }
+
+            14 -> sizeX = buffer.readUnsignedByte().toInt()
+            15 -> sizeY = buffer.readUnsignedByte().toInt()
+            17 -> {
+                solid = 0
+                impenetrable = false
+            }
+
+            18 -> impenetrable = false
+            19 -> interactive = buffer.readUnsignedByte().toInt()
+            21 -> clipType = 0
+            22 -> nonFlatShading = true
+            23 -> modelClipped = true
+            24 -> {
+                animationId = buffer.readUnsignedShort()
+                if (animationId == 65535) {
+                    animationId = -1
+                }
+            }
+
+            27 -> solid = 1
+            28 -> decorDisplacement = buffer.readUnsignedByte().toInt()
+            29 -> ambient = buffer.readByte().toInt()
+            39 -> contrast = buffer.readByte().toInt()
+            in 30..34 -> entityOpsLoader.decodeBaseOp(actions, buffer, opcode - 30)
+
+            40 -> readColours(buffer)
+            41 -> readTextures(buffer)
+            42 -> recolAll = buffer.readUnsignedShort()
+            61 -> category = buffer.readUnsignedShort()
+            62 -> isRotated = true
+            64 -> clipped = false
+            65 -> modelSizeX = buffer.readUnsignedShort()
+            66 -> modelSizeZ = buffer.readUnsignedShort()
+            67 -> modelSizeY = buffer.readUnsignedShort()
+            68 -> mapSceneID = buffer.readUnsignedShort()
+            69 -> clipMask = buffer.readByte().toInt()
+            70 -> offsetX = buffer.readUnsignedShort()
+            71 -> offsetZ = buffer.readUnsignedShort()
+            72 -> offsetY = buffer.readUnsignedShort()
+            73 -> obstructive = true
+            74 -> isHollow = true
+            75 -> supportsItems = buffer.readUnsignedByte().toInt()
+            77, 92 -> readTransforms(buffer, opcode == 92)
+            78 -> {
+                ambientSoundId = buffer.readUnsignedShort()
+                soundDistance = buffer.readUnsignedByte().toInt()
+                if (revisionIsOrAfter(revision, 220)) {
+                    soundRetain = buffer.readUnsignedByte().toInt()
+                }
+            }
+
+            79 -> {
+                soundMin = buffer.readUnsignedShort()
+                soundMax = buffer.readUnsignedShort()
+                soundDistance = buffer.readUnsignedByte().toInt()
+                if (revisionIsOrAfter(revision, 220)) {
+                    soundRetain = buffer.readUnsignedByte().toInt()
+                }
+                val length: Int = buffer.readUnsignedByte().toInt()
+                ambientSoundIds = readIntList(length) { buffer.readUnsignedShort() }
+            }
+            81 -> clipType = (buffer.readUnsignedByte().toInt()) * 256
+            89 -> randomizeAnimStart = true
+            60, 82 -> mapAreaId = buffer.readUnsignedShort()
+            91 -> soundDistanceFadeCurve = buffer.readUnsignedByte().toInt()
+            93 -> {
+                soundFadeInCurve = buffer.readUnsignedByte().toInt()
+                soundFadeInDuration = buffer.readUnsignedShort().toInt()
+                soundFadeOutCurve = buffer.readUnsignedByte().toInt()
+                soundFadeOutDuration = buffer.readUnsignedShort().toInt()
+            }
+            90 -> delayAnimationUpdate = true
+            95 -> soundVisibility = buffer.readUnsignedByte().toInt()
+            96 -> rasie = buffer.readUnsignedByte().toInt()
+            100 -> entityOpsLoader.decodeSubOp(actions, buffer)
+            101 -> entityOpsLoader.decodeConditionalOp(actions, buffer)
+            102 -> entityOpsLoader.decodeConditionalSubOp(actions, buffer)
+            249 -> readParameters(buffer)
+            else -> logger.info { "Unable to decode Object [${opcode}]" }
+        }
+    }
+
+    override fun ByteBuf.encode(definition: ObjectType) {
+        if (definition.objectModels != null) {
+            if (definition.objectTypes != null) {
+                writeByte(if (entityOpsLoader.supportsExtendedEntityOps()) 6 else 1)
+                writeByte(definition.objectModels!!.size)
+                if (definition.objectModels!!.isNotEmpty()) {
+                    for (i in 0 until definition.objectModels!!.size) {
+                        if (entityOpsLoader.supportsExtendedEntityOps()) {
+                            writeInt(definition.objectModels!![i])
+                        } else {
+                            writeShort(definition.objectModels!![i])
+                        }
+                        writeByte(definition.objectTypes!![i])
+                    }
+                }
+            } else {
+                writeByte(if (entityOpsLoader.supportsExtendedEntityOps()) 7 else 5)
+                writeByte(definition.objectModels!!.size)
+                if (definition.objectModels!!.isNotEmpty()) {
+                    for (i in 0 until definition.objectModels!!.size) {
+                        if (entityOpsLoader.supportsExtendedEntityOps()) {
+                            writeInt(definition.objectModels!![i])
+                        } else {
+                            writeShort(definition.objectModels!![i])
+                        }
+                    }
+                }
+            }
+        }
+
+        if (definition.name != "null") {
+            writeByte(2)
+            writeString(definition.name)
+        }
+
+
+        writeByte(14)
+        writeByte(definition.sizeX)
+
+        writeByte(15)
+        writeByte(definition.sizeY)
+
+
+        if (definition.solid == 0 && !definition.impenetrable) {
+            writeByte(17)
+        }
+
+        if (!definition.impenetrable) {
+            writeByte(18)
+        }
+
+        if (definition.interactive != -1) {
+            writeByte(19)
+            writeByte(definition.interactive)
+        }
+
+        if (definition.clipType == 0) {
+            writeByte(21)
+        }
+
+        if (definition.nonFlatShading) {
+            writeByte(22)
+        }
+
+        if (definition.modelClipped) {
+            writeByte(23)
+        }
+
+        if (definition.animationId != -1) {
+            writeByte(24)
+            writeShort(definition.animationId)
+        }
+
+        if (definition.solid == 1) {
+            writeByte(27)
+        }
+
+        writeByte(28)
+        writeByte(definition.decorDisplacement)
+
+        writeByte(29)
+        writeByte(definition.ambient)
+
+        writeByte(39)
+        writeByte(definition.contrast)
+
+
+        definition.actions.opsOrEmpty.forEachIndexed { index, action ->
+            entityOpsLoader.encodeBaseOp(this, index, action)
+        }
+
+        writeColoursTextures(
+            this,
+            definition.originalColours,
+            definition.modifiedColours,
+            definition.originalTextureColours,
+            definition.modifiedTextureColours,
+        )
+
+        if (definition.recolAll != -1) {
+            writeByte(42)
+            writeShort(definition.recolAll)
+        }
+
+        if (definition.category != -1) {
+            writeByte(61)
+            writeShort(definition.category)
+        }
+
+        if (definition.isRotated) {
+            writeByte(62)
+        }
+
+        if (!definition.clipped) {
+            writeByte(64)
+        }
+
+        writeByte(65)
+        writeShort(definition.modelSizeX)
+
+        writeByte(66)
+        writeShort(definition.modelSizeZ)
+
+        writeByte(67)
+        writeShort(definition.modelSizeY)
+
+        if (definition.mapSceneID != -1) {
+            writeByte(68)
+            writeShort(definition.mapSceneID)
+        }
+
+        if (definition.clipMask != 0) {
+            writeByte(69)
+            writeByte(definition.clipMask)
+        }
+
+        writeByte(70)
+        writeShort(definition.offsetX)
+
+        writeByte(71)
+        writeShort(definition.offsetZ)
+
+        writeByte(72)
+        writeShort(definition.offsetY)
+
+        if (definition.obstructive) {
+            writeByte(73)
+        }
+
+        if (definition.isHollow) {
+            writeByte(74)
+        }
+
+        if (definition.supportsItems != -1) {
+            writeByte(75)
+            writeByte(definition.supportsItems)
+        }
+
+        if (definition.ambientSoundId != -1) {
+            writeByte(78)
+            writeShort(definition.ambientSoundId)
+            writeByte(definition.soundDistance)
+            if (revisionIsOrAfter(revision, 220)) {
+                writeByte(definition.soundRetain)
+            }
+        }
+
+        if (definition.ambientSoundIds != null) {
+            writeByte(79)
+            writeShort(definition.soundMin)
+            writeShort(definition.soundMax)
+            writeByte(definition.soundDistance)
+            if (revisionIsOrAfter(revision, 220)) {
+                writeByte(definition.soundRetain)
+            }
+
+            writeByte(definition.ambientSoundIds!!.size)
+            for (i in definition.ambientSoundIds!!.indices) {
+                writeShort(definition.ambientSoundIds!![i])
+            }
+        }
+
+        if (definition.clipType != -1) {
+            writeByte(81)
+            writeByte(definition.clipType / 256)
+        }
+
+        if (definition.mapAreaId != -1) {
+            writeByte(82)
+            writeShort(definition.mapAreaId)
+        }
+
+        if (!definition.randomizeAnimStart) {
+            writeByte(89)
+        }
+
+        if (definition.delayAnimationUpdate) {
+            writeByte(90)
+        }
+
+        if (definition.soundDistanceFadeCurve != 0) {
+            writeByte(91)
+            writeByte(definition.soundDistanceFadeCurve)
+        }
+
+        if (definition.soundVisibility != 2) {
+            writeByte(95)
+            writeByte(definition.soundVisibility)
+        }
+
+        val defaults = listOf(0, 0, 300, 300)
+        val values = listOf(
+            definition.soundFadeInCurve,
+            definition.soundFadeOutCurve,
+            definition.soundFadeInDuration,
+            definition.soundFadeOutDuration
+        )
+
+        if (values.indices.any { values[it] != defaults[it] }) {
+            writeByte(93)
+            writeByte(definition.soundFadeInCurve)
+            writeShort(definition.soundFadeInDuration)
+            writeByte(definition.soundFadeOutCurve)
+            writeShort(definition.soundFadeOutDuration)
+        }
+
+        if (definition.rasie != 0) {
+            writeByte(96)
+            writeByte(definition.rasie)
+        }
+
+
+
+        if (entityOpsLoader.supportsExtendedEntityOps()) {
+            definition.actions.subOpsOrEmpty.forEachIndexed { index, subOps ->
+                entityOpsLoader.encodeSubOpsOpcode(this, 100, index, subOps)
+            }
+            definition.actions.conditionalOpsOrEmpty.forEachIndexed { index, conditionalOps ->
+                entityOpsLoader.encodeConditionalOpsOpcode(this, 101, index, conditionalOps)
+            }
+            definition.actions.conditionalSubOpsOrEmpty.forEachIndexed { index, conditionalSubOps ->
+                entityOpsLoader.encodeConditionalSubOpsOpcode(this, 102, index, conditionalSubOps)
+            }
+        }
+
+        writeTransforms(
+            this, 77, 92,
+            definition.multiVarBit, definition.multiVarp, definition.multiDefault, definition.transforms,
+        )
+        writeParameters(this, definition.params)
+
+        writeByte(0)
+    }
+
+    override fun createDefinition() = ObjectType()
+
+    companion object {
+        internal val logger = InlineLogger()
+    }
+}
+

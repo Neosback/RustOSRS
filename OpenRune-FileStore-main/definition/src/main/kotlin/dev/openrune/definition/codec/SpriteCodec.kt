@@ -1,0 +1,113 @@
+package dev.openrune.definition.codec
+
+import dev.openrune.definition.DefinitionCodec
+import dev.openrune.definition.game.IndexedSprite
+import dev.openrune.definition.type.SpriteType
+import io.netty.buffer.ByteBuf
+
+class SpriteCodec : DefinitionCodec<SpriteType> {
+    override fun SpriteType.read(opcode: Int, buffer: ByteBuf) {
+        buffer.readerIndex(buffer.writerIndex() - 2)
+        val size: Int = buffer.readShort().toInt()
+        buffer.readerIndex(buffer.writerIndex() - 7 - size * 8)
+
+        val originalWidth: Int = buffer.readShort().toInt()
+        val originalHeight: Int = buffer.readShort().toInt()
+
+        val paletteSize: Int = buffer.readUnsignedByte().toInt() + 1
+
+        val sprites = Array(size) { IndexedSprite() }
+        for (index in 0 until size) {
+            sprites[index].offsetX = buffer.readShort().toInt()
+        }
+        for (index in 0 until size) {
+            sprites[index].offsetY = buffer.readShort().toInt()
+        }
+        for (index in 0 until size) {
+            sprites[index].width = buffer.readShort().toInt()
+        }
+        for (index in 0 until size) {
+            sprites[index].height = buffer.readShort().toInt()
+        }
+        for (index in 0 until size) {
+            val sprite = sprites[index]
+            sprite.originalWidth = originalWidth
+            sprite.originalHeight = originalHeight
+            sprite.subWidth = originalWidth - sprite.width - sprite.offsetX
+            sprite.subHeight = originalHeight - sprite.height - sprite.offsetY
+        }
+
+        buffer.readerIndex(buffer.writerIndex() - 7 - size * 8 - (paletteSize - 1) * 3)
+        val palette = IntArray(paletteSize)
+        for (index in 1 until paletteSize) {
+            palette[index] = buffer.readUnsignedMedium()
+            if (palette[index] == 0) {
+                palette[index] = 1
+            }
+        }
+        for (index in 0 until size) {
+            sprites[index].palette = palette
+        }
+
+        buffer.readerIndex(0)
+        for (index in 0 until size) {
+            val sprite = sprites[index]
+            val area = sprite.width * sprite.height
+
+            sprite.raster = ByteArray(area)
+
+            val setting: Int = buffer.readUnsignedByte().toInt()
+            if (setting and 0x2 == 0) {
+                if (setting and 0x1 == 0) {
+                    buffer.readBytes(sprite.raster, 0, area)
+                } else {
+                    for (x in 0 until sprite.width) {
+                        for (y in 0 until sprite.height) {
+                            sprite.raster[x + y * sprite.width] = buffer.readByte()
+                        }
+                    }
+                }
+            } else {
+                var transparent = false
+                val alpha = ByteArray(area)
+                if (setting and 0x1 == 0) {
+                    buffer.readBytes(sprite.raster, 0, area)
+                    buffer.readBytes(alpha, 0, area)
+                    for (pixel in 0 until area) {
+                        transparent = transparent or (alpha[pixel].toInt() != -1)
+                    }
+                } else {
+                    for (x in 0 until sprite.width) {
+                        for (y in 0 until sprite.height) {
+                            sprite.raster[x + y * sprite.width] = buffer.readByte()
+                        }
+                    }
+                    for (x in 0 until sprite.width) {
+                        for (y in 0 until sprite.height) {
+                            val index = x + y * sprite.width
+                            alpha[index] = buffer.readByte()
+                            transparent = transparent or (alpha[index].toInt() != -1)
+                        }
+                    }
+                }
+                if (transparent) {
+                    sprite.alpha = alpha
+                }
+            }
+        }
+        this.sprites = sprites
+        val validSprites = sprites.filter { it.width > 0 && it.height > 0 }
+        width = validSprites.maxOfOrNull { it.width } ?: 1
+        height = validSprites.maxOfOrNull { it.height } ?: 1
+    }
+
+    override fun ByteBuf.encode(definition: SpriteType) {
+        TODO("Not yet implemented")
+    }
+
+    override fun createDefinition() = SpriteType(0)
+
+    override fun readLoop(definition: SpriteType, buffer: ByteBuf) {
+        definition.read(-1, buffer)
+    }
+}

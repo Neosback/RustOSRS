@@ -1,0 +1,53 @@
+# API Reference (render subset)
+
+49 classes needed for full map-scene rendering, generated from the local snapshot. See `RUNELITE_RENDER_SOURCES.md` Groups C/D (§-refs) for why each exists.
+
+- [Scene](Scene.md) — §C1 — Scene root: extended tiles/settings/heights/shapes/roofs/WorldView.
+- [Tile](Tile.md) — §C2 — Per-tile slots + bridge/render-level contract.
+- [SceneTilePaint](SceneTilePaint.md) — §C3 — Flat underlay quads (corner HSL, texture, flat flag).
+- [SceneTileModel](SceneTileModel.md) — §C4 — Shaped overlay cuts (shape/rotation/faces/colors).
+- [WallObject](WallObject.md) — §C5 — Dual-slot walls + orientation flags.
+- [DecorativeObject](DecorativeObject.md) — §C6 — Wall decor + standoff offsets.
+- [GroundObject](GroundObject.md) — §C7 — Floor decals at sampled height.
+- [GameObject](GameObject.md) — §C8 — Multi-tile objects, footprints, config word.
+- [TileObject](TileObject.md) — §C9 — Base id/position/plane contract.
+- [Renderable](Renderable.md) — §C9 — Drawable marker inherited by all locs.
+- [DynamicObject](DynamicObject.md) — §C9 — Animated locs (model swap per frame).
+- [ItemLayer](ItemLayer.md) — §C9 — Ground-item stacks (must not crash the uploader).
+- [EntityOps](EntityOps.md) — §C9 — Menu-op contract from ObjectComposition.getOps.
+- [WorldView](WorldView.md) — §C10 — TOPLEVEL/instance coords, tile-height helper.
+- [Perspective](Perspective.md) — §D1 — Tile math, trig tables, canvas projection.
+- [Constants](Constants.md) — §D2 — Sizes, tile flags, shifts.
+- [JagexColor](JagexColor.md) — §D3 — HSL pack/unpack + gamma conversion.
+- [Model](Model.md) — §D4 — Renderable mesh: faces, priorities, bias, textures, alpha.
+- [ModelData](ModelData.md) — §D4 — Mutable mesh: clones, normals, recolor, resize, toModel.
+- [Mesh](Mesh.md) — §D4 — Shared mesh base (float verts, indices, textures).
+- [Texture](Texture.md) — §D5 — Animation direction + speed.
+- [TextureProvider](TextureProvider.md) — §D5 — Texture array, brightness, default colors.
+- [ObjectComposition](ObjectComposition.md) — §D6 — Sizes, multiloc morph chain, ops.
+- [Projection](Projection.md) — §D7 — project() contract used by the sorter cull.
+- [IntProjection](IntProjection.md) — §D7 — Integer projection variant.
+- [FloatProjection](FloatProjection.md) — §D7 — Float projection variant.
+- [Client](Client.md) — §D7 — Accessor shapes only (heights, camera, provider, views).
+- [LocalPoint](LocalPoint.md) — §D7 — Scene-unit coordinates.
+- [WorldPoint](WorldPoint.md) — §D7 — Global tile coordinates.
+- [Angle](Angle.md) — §D7 — JAU angle convention.
+- [Direction](Direction.md) — §D7 — JAU cardinal bands (mirroring arbiter).
+- [WorldArea](WorldArea.md) — §D7 — Footprint rectangles.
+- [DrawCallbacks](DrawCallbacks.md) — §A10 — GPU flags, passes, per-zone/terrain/frustum hooks.
+- [Jarvis](Jarvis.md) — §F1 — Convex-hull clickboxes for picking.
+- [SimplePolygon](SimplePolygon.md) — §F1 — Hull/selection polygon container.
+- [Point](Point.md) — §F1 — 2D point used by footprints, hulls, picking.
+- [AABB](AABB.md) — §F1 — Bounding boxes for frustum/bounds checks.
+- [CollisionData](CollisionData.md) — §F2 — Per-tile collision words for the validity overlay.
+- [CollisionDataFlag](CollisionDataFlag.md) — §F2 — Collision flag constants.
+- [RuneLiteObject](RuneLiteObject.md) — §F3 — Custom scene objects: placement ghosts/markers.
+- [RuneLiteObjectController](RuneLiteObjectController.md) — §F3 — Controller side of custom scene objects.
+- [Animation](Animation.md) — §F4 — Animation state (id, frames, duration) for previews.
+- [AnimationController](AnimationController.md) — §F4 — tick()/animate(Model) skeletal posing.
+- [GraphicsObject](GraphicsObject.md) — §F4 — Spotanim FX state (id, location, cycle).
+- [ItemComposition](ItemComposition.md) — §F5 — Item models for ground-item rendering.
+- [TileItem](TileItem.md) — §F5 — Single ground item on an ItemLayer.
+- [SpritePixels](SpritePixels.md) — §F5 — Pixel container behind texture upload.
+- [VarbitComposition](VarbitComposition.md) — §F6 — Varbit bit-range for morph extraction.
+- [InstanceTemplates](InstanceTemplates.md) — §F6 — Instanced chunk templates + matcher.

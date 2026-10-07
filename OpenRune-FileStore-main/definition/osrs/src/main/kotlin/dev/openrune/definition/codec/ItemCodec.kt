@@ -1,0 +1,503 @@
+package dev.openrune.definition.codec
+
+import com.github.michaelbull.logging.InlineLogger
+import dev.openrune.definition.EntityOpsLoader
+import dev.openrune.definition.util.IntBackedList
+import dev.openrune.definition.util.readIntList
+import dev.openrune.definition.util.readString
+import dev.openrune.definition.util.writeString
+import dev.openrune.definition.BuilderDefinitionCodec
+import dev.openrune.definition.type.ObjStackability
+import dev.openrune.definition.type.ItemType
+import dev.openrune.definition.type.builders.ItemTypeBuilder
+import io.netty.buffer.ByteBuf
+import io.netty.buffer.Unpooled
+
+class ItemCodec(private val revision: Int) : BuilderDefinitionCodec<ItemType, ItemTypeBuilder> {
+    private val entityOpsLoader = EntityOpsLoader(revision)
+
+    override fun builder(id: Int) = ItemTypeBuilder(id)
+
+    override fun build(builder: ItemTypeBuilder) = builder.build()
+
+    override fun ItemTypeBuilder.read(opcode: Int, buffer: ByteBuf) {
+        when (opcode) {
+            1 -> inventoryModel = buffer.readUnsignedShort()
+            2 -> name = buffer.readString()
+            3 -> examine = buffer.readString()
+            4 -> zoom2d = buffer.readUnsignedShort()
+            5 -> xan2d = buffer.readUnsignedShort()
+            6 -> yan2d = buffer.readUnsignedShort()
+            7 -> {
+                xOffset2d = buffer.readUnsignedShort()
+                if (xOffset2d > 32767) {
+                    xOffset2d -= 65536
+                }
+            }
+
+            8 -> {
+                yOffset2d = buffer.readUnsignedShort()
+                if (yOffset2d > 32767) {
+                    yOffset2d -= 65536;
+                }
+            }
+
+            11 -> stacks = ObjStackability.Always
+            12 -> cost = buffer.readInt()
+            13 -> equipSlot = buffer.readUnsignedByte().toInt()
+            14 -> appearanceOverride1 = buffer.readUnsignedByte().toInt()
+            15 -> tradeable = false
+            16 -> members = true
+            23 -> {
+                maleModel0 = buffer.readUnsignedShort()
+                maleOffset = buffer.readUnsignedByte().toInt()
+            }
+
+            24 -> maleModel1 = buffer.readUnsignedShort()
+            25 -> {
+                femaleModel0 = buffer.readUnsignedShort()
+                femaleOffset = buffer.readUnsignedByte().toInt()
+            }
+
+            26 -> femaleModel1 = buffer.readUnsignedShort()
+            27 -> appearanceOverride2 = buffer.readByte().toInt()
+            in 30..34 -> options = options.toBuilder().also { entityOpsLoader.decodeBaseOp(it, buffer, opcode - 30) }.build()
+            in 35..39 -> interfaceOptions[opcode - 35] = buffer.readString()
+            40 -> readColours(buffer)
+            41 -> readTextures(buffer)
+            42 -> dropOptionIndex = buffer.readByte().toInt()
+            43 -> {
+                val opId = buffer.readUnsignedByte().toInt()
+                if (subops == null) {
+                    subops = arrayOfNulls(5)
+                }
+
+                val valid = opId in 0..4
+                if (valid && subops!![opId] == null) {
+                    subops!![opId] = arrayOfNulls(20)
+                }
+
+                while (true) {
+                    val subopId = buffer.readUnsignedByte().toInt() - 1
+                    if (subopId == -1) {
+                        break
+                    }
+
+                    val op = buffer.readString()
+                    if (valid && subopId in 0..19) {
+                        subops!![opId]?.set(subopId, op)
+                    }
+                }
+            }
+            44 -> inventoryModel = buffer.readInt()
+            45 -> {
+                maleModel0 = buffer.readInt()
+                maleOffset = buffer.readUnsignedByte().toInt()
+            }
+            46 -> maleModel1 = buffer.readInt()
+            47 -> maleModel2 = buffer.readInt()
+            48 -> {
+                femaleModel0 = buffer.readInt()
+                femaleOffset = buffer.readUnsignedByte().toInt()
+            }
+            49 -> femaleModel1 = buffer.readInt()
+            50 -> femaleModel2 = buffer.readInt()
+            51 -> maleHeadModel0 = buffer.readInt()
+            52 -> maleHeadModel1 = buffer.readInt()
+            53 -> femaleHeadModel0 = buffer.readInt()
+            54 -> femaleHeadModel1 = buffer.readInt()
+
+            65 -> stockMarket = true
+            75 -> weight = buffer.readUnsignedShort().toDouble()
+            78 -> maleModel2 = buffer.readUnsignedShort()
+            79 -> femaleModel2 = buffer.readUnsignedShort()
+            90 -> maleHeadModel0 = buffer.readUnsignedShort()
+            91 -> femaleHeadModel0 = buffer.readUnsignedShort()
+            92 -> maleHeadModel1 = buffer.readUnsignedShort()
+            93 -> femaleHeadModel1 = buffer.readUnsignedShort()
+            94 -> category = buffer.readUnsignedShort()
+            95 -> zan2d = buffer.readUnsignedShort()
+            97 -> noteLinkId = buffer.readUnsignedShort()
+            98 -> noteTemplateId = buffer.readUnsignedShort()
+            99 -> recolAll = buffer.readUnsignedShort()
+            in 100..109 -> {
+                if (countCo == null) {
+                    countObj = IntBackedList(IntArray(10))
+                    countCo = IntBackedList(IntArray(10))
+                }
+                countObj!![opcode - 100] = buffer.readUnsignedShort()
+                countCo!![opcode - 100] = buffer.readUnsignedShort()
+            }
+
+            110 -> resizeX = buffer.readUnsignedShort()
+            111 -> resizeY = buffer.readUnsignedShort()
+            112 -> resizeZ = buffer.readUnsignedShort()
+            113 -> ambient = buffer.readByte().toInt()
+            114 -> contrast = buffer.readByte().toInt()
+            115 -> teamCape = buffer.readByte().toInt()
+            139 -> unnotedId = buffer.readUnsignedShort()
+            140 -> notedId = buffer.readUnsignedShort()
+            148 -> placeholderLink = buffer.readUnsignedShort()
+            149 -> placeholderTemplate = buffer.readUnsignedShort()
+            160 -> stacks = ObjStackability.Never
+            161 -> {
+                val length = buffer.readUnsignedShort()
+                keepOnlyDuringSeqs = readIntList(length) { buffer.readUnsignedShort() }
+            }
+            251 -> unlockable = true
+            200 -> options = options.toBuilder().also { entityOpsLoader.decodeSubOp(it, buffer) }.build()
+            201 -> options = options.toBuilder().also { entityOpsLoader.decodeConditionalOp(it, buffer) }.build()
+            202 -> options = options.toBuilder().also { entityOpsLoader.decodeConditionalSubOp(it, buffer) }.build()
+            249 -> readParameters(buffer)
+            else -> logger.info { "Unable to decode Items [${opcode}]" }
+        }
+    }
+
+    override fun ByteBuf.encode(definition: ItemType) {
+        if (definition.inventoryModel != 0) {
+            if (entityOpsLoader.supportsExtendedEntityOps()) {
+                writeByte(44)
+                writeInt(definition.inventoryModel)
+            } else {
+                writeByte(1)
+                writeShort(definition.inventoryModel)
+            }
+        }
+
+        if (!definition.name.equals("null", ignoreCase = true)) {
+            writeByte(2)
+            writeString(definition.name)
+        }
+
+        if (!definition.examine.equals("null", ignoreCase = true)) {
+            writeByte(3)
+            writeString(definition.examine)
+        }
+
+        if (definition.zoom2d != 2000) {
+            writeByte(4)
+            writeShort(definition.zoom2d)
+        }
+
+        if (definition.xan2d != 0) {
+            writeByte(5)
+            writeShort(definition.xan2d)
+        }
+
+        if (definition.yan2d != 0) {
+            writeByte(6)
+            writeShort(definition.yan2d)
+        }
+
+        if (definition.xOffset2d != 0) {
+            writeByte(7)
+            writeShort(definition.xOffset2d)
+        }
+
+        if (definition.yOffset2d != 0) {
+            writeByte(8)
+            writeShort(definition.yOffset2d)
+        }
+
+        if (definition.stacks == ObjStackability.Always) {
+            writeByte(11)
+        }
+
+        if (definition.cost != 1) {
+            writeByte(12)
+            writeInt(definition.cost)
+        }
+
+        if (definition.equipSlot != -1) {
+            writeByte(13)
+            writeByte(definition.equipSlot)
+        }
+
+        if (definition.appearanceOverride1 != -1) {
+            writeByte(14)
+            writeByte(definition.appearanceOverride1)
+        }
+
+        if (!definition.tradeable) {
+            writeByte(15)
+        }
+
+        if (definition.members) {
+            writeByte(16)
+        }
+
+        if (entityOpsLoader.supportsExtendedEntityOps()) {
+            if (definition.maleModel0 != -1 || definition.maleOffset != 0) {
+                writeByte(45)
+                writeInt(definition.maleModel0)
+                writeByte(definition.maleOffset)
+            }
+            if (definition.maleModel1 != -1) {
+                writeByte(46)
+                writeInt(definition.maleModel1)
+            }
+            if (definition.femaleModel0 != -1 || definition.femaleOffset != 0) {
+                writeByte(48)
+                writeInt(definition.femaleModel0)
+                writeByte(definition.femaleOffset)
+            }
+            if (definition.femaleModel1 != -1) {
+                writeByte(49)
+                writeInt(definition.femaleModel1)
+            }
+        } else {
+            if (definition.maleModel0 != -1 || definition.maleOffset != 0) {
+                writeByte(23)
+                writeShort(definition.maleModel0)
+                writeByte(definition.maleOffset)
+            }
+
+            if (definition.maleModel1 != -1) {
+                writeByte(24)
+                writeShort(definition.maleModel1)
+            }
+
+            if (definition.femaleModel0 != -1 || definition.femaleOffset != 0) {
+                writeByte(25)
+                writeShort(definition.femaleModel0)
+                writeByte(definition.femaleOffset)
+            }
+
+            if (definition.femaleModel1 != -1) {
+                writeByte(26)
+                writeShort(definition.femaleModel1)
+            }
+        }
+
+        if (definition.appearanceOverride2 != 0) {
+            writeByte(27)
+            writeByte(definition.appearanceOverride2)
+        }
+
+        definition.options.opsOrEmpty.forEachIndexed { index, op ->
+            val isDefaultTake = index == 2 && op?.text == "Take"
+            if (!isDefaultTake) {
+                entityOpsLoader.encodeBaseOp(this, index, op)
+            }
+        }
+
+        val interfaceOptions = definition.interfaceOptions.map { if (it == "null") null else it }
+        if (interfaceOptions != mutableListOf(null, null, null, null, "Drop")) {
+            for (i in interfaceOptions.indices) {
+                if (interfaceOptions[i] == null) {
+                    continue
+                }
+                writeByte(i + 35)
+                writeString(interfaceOptions[i]!!)
+            }
+        }
+
+        definition.writeColoursTextures(this)
+
+        if (definition.dropOptionIndex != -2) {
+            writeByte(42)
+            writeByte(definition.dropOptionIndex)
+        }
+
+        definition.subops?.forEachIndexed { opId, subopArray ->
+            if (subopArray != null) {
+                writeByte(43)
+                writeByte(opId)
+                subopArray.forEachIndexed { subopId, op ->
+                    if (op != null) {
+                        writeByte(subopId + 1)
+                        writeString(op)
+                    }
+                }
+                writeByte(0)
+            }
+        }
+
+        if (entityOpsLoader.supportsExtendedEntityOps()) {
+            definition.options.subOpsOrEmpty.forEachIndexed { index, subOps ->
+                entityOpsLoader.encodeOpcodeSubOps(this, index, subOps)
+            }
+            definition.options.conditionalOpsOrEmpty.forEachIndexed { index, conditionalOps ->
+                entityOpsLoader.encodeOpcodeConditionalOps(this, index, conditionalOps)
+            }
+            definition.options.conditionalSubOpsOrEmpty.forEachIndexed { index, conditionalSubOps ->
+                entityOpsLoader.encodeOpcodeConditionalSubOps(this, index, conditionalSubOps)
+            }
+        }
+
+        if (definition.stockMarket) {
+            writeByte(65)
+        }
+
+        if (definition.weight != 0.0) {
+            writeByte(75)
+            writeShort(definition.weight.toInt())
+        }
+
+        if (entityOpsLoader.supportsExtendedEntityOps()) {
+            if (definition.maleModel2 != -1) {
+                writeByte(47)
+                writeInt(definition.maleModel2)
+            }
+            if (definition.femaleModel2 != -1) {
+                writeByte(50)
+                writeInt(definition.femaleModel2)
+            }
+            if (definition.maleHeadModel0 != -1) {
+                writeByte(51)
+                writeInt(definition.maleHeadModel0)
+            }
+            if (definition.maleHeadModel1 != -1) {
+                writeByte(52)
+                writeInt(definition.maleHeadModel1)
+            }
+            if (definition.femaleHeadModel0 != -1) {
+                writeByte(53)
+                writeInt(definition.femaleHeadModel0)
+            }
+            if (definition.femaleHeadModel1 != -1) {
+                writeByte(54)
+                writeInt(definition.femaleHeadModel1)
+            }
+        } else {
+            if (definition.maleModel2 != -1) {
+                writeByte(78)
+                writeShort(definition.maleModel2)
+            }
+
+            if (definition.femaleModel2 != -1) {
+                writeByte(79)
+                writeShort(definition.femaleModel2)
+            }
+
+            if (definition.maleHeadModel0 != -1) {
+                writeByte(90)
+                writeShort(definition.maleHeadModel0)
+            }
+
+            if (definition.femaleHeadModel0 != -1) {
+                writeByte(91)
+                writeShort(definition.femaleHeadModel0)
+            }
+
+            if (definition.maleHeadModel1 != -1) {
+                writeByte(92)
+                writeShort(definition.maleHeadModel1)
+            }
+
+            if (definition.femaleHeadModel1 != -1) {
+                writeByte(93)
+                writeShort(definition.femaleHeadModel1)
+            }
+        }
+
+        if (definition.category != -1) {
+            writeByte(94)
+            writeShort(definition.category)
+        }
+
+        if (definition.zan2d != 0) {
+            writeByte(95)
+            writeShort(definition.zan2d)
+        }
+
+        if (definition.noteLinkId != -1) {
+            writeByte(97)
+            writeShort(definition.noteLinkId)
+        }
+
+        if (definition.noteTemplateId != -1) {
+            writeByte(98)
+            writeShort(definition.noteTemplateId)
+        }
+
+        if (definition.recolAll != -1) {
+            writeByte(99)
+            writeShort(definition.recolAll)
+        }
+
+        if (definition.countObj != null) {
+            for (i in definition.countObj!!.indices) {
+                writeByte(100 + i)
+                writeShort(definition.countObj!![i])
+                writeShort(definition.countCo!![i])
+            }
+        }
+
+        if (definition.resizeX != 128) {
+            writeByte(110)
+            writeShort(definition.resizeX)
+        }
+
+        if (definition.resizeY != 128) {
+            writeByte(111)
+            writeShort(definition.resizeY)
+        }
+
+        if (definition.resizeZ != 128) {
+            writeByte(112)
+            writeShort(definition.resizeZ)
+        }
+
+        if (definition.ambient != 0) {
+            writeByte(113)
+            writeByte(definition.ambient)
+        }
+
+        if (definition.contrast != 0) {
+            writeByte(114)
+            writeByte(definition.contrast)
+        }
+
+        if (definition.teamCape != 0) {
+            writeByte(115)
+            writeByte(definition.teamCape)
+        }
+
+        if (definition.unnotedId != -1) {
+            writeByte(139)
+            writeShort(definition.unnotedId)
+        }
+
+        if (definition.notedId != -1) {
+            writeByte(140)
+            writeShort(definition.notedId)
+        }
+
+        if (definition.placeholderLink != -1) {
+            writeByte(148)
+            writeShort(definition.placeholderLink )
+        }
+
+        if (definition.placeholderTemplate != -1) {
+            writeByte(149)
+            writeShort(definition.placeholderTemplate)
+        }
+
+        if (definition.stacks == ObjStackability.Never) {
+            writeByte(160)
+        }
+
+        definition.keepOnlyDuringSeqs?.let { seqs ->
+            writeByte(161)
+            writeShort(seqs.size)
+            for (seq in seqs) {
+                writeShort(seq)
+            }
+        }
+
+        if (definition.unlockable) {
+            writeByte(251)
+        }
+
+        definition.writeParameters(this)
+
+        writeByte(0)
+    }
+
+    override fun createDefinition() = ItemType()
+
+    companion object {
+        internal val logger = InlineLogger()
+    }
+}
