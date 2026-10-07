@@ -40,6 +40,25 @@ osrs-reference = { path = "../osrs-reference" }
             errors = check_architecture.check_workspace(root)
             self.assertTrue(any("production crates must never depend" in error for error in errors))
 
+    def test_aliased_reference_dependency_is_still_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_manifest(
+                root,
+                "osrs-cache",
+                """
+[package]
+name = "osrs-cache"
+version = "0.0.0"
+
+[dependencies]
+reference-tool = { package = "osrs-reference", path = "../osrs-reference" }
+""",
+            )
+
+            errors = check_architecture.check_workspace(root)
+            self.assertTrue(any("production crates must never depend" in error for error in errors))
+
     def test_scene_cannot_depend_on_cache(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -73,6 +92,25 @@ version = "0.0.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wgpu = "28"
+""",
+            )
+
+            errors = check_architecture.check_workspace(root)
+            self.assertTrue(any("renderer/UI/cache-transport dependency leakage: wgpu" in error for error in errors))
+
+    def test_aliased_renderer_dependency_is_still_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_manifest(
+                root,
+                "osrs-core",
+                """
+[package]
+name = "osrs-core"
+version = "0.0.0"
+
+[dependencies]
+gpu = { package = "wgpu", version = "28" }
 """,
             )
 
