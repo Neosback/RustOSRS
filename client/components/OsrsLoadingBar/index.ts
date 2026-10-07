@@ -1,1 +1,0 @@
-export { OsrsLoadingBar } from "./OsrsLoadingBar";
