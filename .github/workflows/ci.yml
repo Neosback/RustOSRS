@@ -25,6 +25,20 @@ jobs:
       - name: Check architecture boundaries
         run: python3 scripts/check_architecture.py
 
+      - name: Test architecture guard
+        run: python3 scripts/test_check_architecture.py
+
+      - name: Bootstrap committed lockfile
+        run: |
+          cargo generate-lockfile
+          if ! git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
+            echo "::error::Cargo.lock must be committed for reproducible M0 dependency resolution"
+            echo "::group::Generated Cargo.lock"
+            cat Cargo.lock
+            echo "::endgroup::"
+            exit 1
+          fi
+
       - name: Check formatting
         run: cargo fmt --all --check
 
