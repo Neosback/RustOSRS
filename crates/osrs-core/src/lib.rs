@@ -8,5 +8,6 @@
 pub mod coords;
 pub mod definitions;
 pub mod ids;
+pub mod model;
 pub mod orientation;
 pub mod provenance;
