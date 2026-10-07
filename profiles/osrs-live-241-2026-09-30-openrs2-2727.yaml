@@ -1,0 +1,71 @@
+schema: rustosrs-target-profile/v1
+id: osrs-live-241-2026-09-30-openrs2-2727
+game_family: osrs
+profile_schema_version: 1
+decoder_schema_version: 1
+
+cache_source:
+  provider: openrs2
+  cache_id: 2727
+  uri: https://archive.openrs2.org/caches/runescape/2727
+  game: oldschool
+  environment: live
+  language: en
+  build: 241
+  timestamp: "2026-09-30 12:30:05"
+  format: VERSIONED
+  archives_present: 25
+  archives_total: 25
+  groups_present: 117584
+  groups_total: 117584
+  reported_size_mib: 182
+  xtea_keys_present: 0
+  xtea_keys_total: 0
+
+cache_fingerprint:
+  algorithm: rustosrs-cache-v1
+  value: null
+  state: compute_and_verify_on_import
+
+xtea:
+  ownership: external_decode_input
+  provider_id: openrs2-cache-2727
+  key_set_id: none-required-by-source
+  persist_raw_keys: false
+  artifact_key_fingerprint_algorithm: rustosrs-xtea-v1
+
+semantic_sources:
+  public_deob:
+    repository: melxin/runelite
+    commit: 1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc
+    status: semantic_reference_not_cache_identity
+  imported_runelite_tree:
+    tree: 5afef996a992bacc73655860681269242e90d6e8
+    status: renderer_and_api_reference
+  imported_openrune_tree:
+    tree: 55f571db4b23f2d528786e1cdfbcba0061fd201a
+    status: decoder_tooling_evidence
+  imported_rs_cache_tree:
+    tree: fae41f98352fc804e5d13d9bd2e836ab1e2635cd
+    status: transport_candidate_and_legacy_decoder_evidence
+
+revision_gates:
+  extended_object_model_ids:
+    state: required
+    note: preserve 32-bit IDs when encoded by the target
+  object_sound_layout_220_plus:
+    state: required
+  sequence_layout_226_plus:
+    state: required
+  texture_layout_233_plus:
+    state: required
+  terrain_color_builder:
+    state: blocked
+    spec: TERRAIN-004
+    note: no guessed implementation may be promoted to reference parity
+
+policy:
+  bundled_revision_180_cache_is_target: false
+  fixed_texture_count_is_semantic_truth: false
+  local_absolute_path_is_identity: false
+  external_definition_structs_cross_osrs_cache_boundary: false
