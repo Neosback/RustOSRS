@@ -1,12 +1,12 @@
 # M1 Cache Compatibility Spike
 
-Status: **M1 working document, slices 1-3 complete**  
+Status: **Accepted M1 implementation evidence; completed through ADR-0010**  
 Decision class: `IMPLEMENTATION_EVIDENCE`  
 Branch: `impl/m1-target-cache-contract`
 
 This document records the bounded M1 compatibility investigation required by `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md`.
 
-It is evidence for the eventual cache dependency ADR. It is **not** that ADR and does not yet select the final dependency strategy.
+It is evidence for `docs/adr/ADR-0010-rune-fs-private-cache-transport.md`; the ADR is the architectural decision authority.
 
 ## 1. M1 constraints
 
@@ -114,7 +114,7 @@ Relevant public pieces include:
 - compression;
 - XTEA.
 
-The M1 branch now includes a **private** `osrs-cache` transport spike using these APIs. No `runefs` type crosses the public crate boundary.
+The M1 branch includes a **private** `osrs-cache` transport layer using these APIs. No `runefs` type crosses the public crate boundary.
 
 ### 5.1 Revision-180 executable result
 
@@ -153,9 +153,9 @@ Therefore `mX_Y` / `lX_Y` name-hash resolution, although valid on the revision-1
 
 RustOSRS must make map-square-to-group resolution target/profile-aware. The absence of names in build 241 is not a `rune-fs` failure because the target reference table itself does not provide those names.
 
-## 6. Transport candidate risks
+## 6. Transport risks and accepted mitigation
 
-Executable compatibility succeeded, but the final ADR must explicitly address these risks:
+Executable compatibility succeeded, but these risks remain:
 
 - `rune-fs` describes itself as experimental;
 - its internal mmap implementation uses dependency-owned `unsafe`;
@@ -164,7 +164,7 @@ Executable compatibility succeeded, but the final ADR must explicitly address th
 - RustOSRS still needs its own production provenance/error envelope;
 - map-square resolution is not supplied by modern archive names.
 
-The dependency would therefore be accepted, if at all, only as a **private read-only transport implementation detail**.
+ADR-0010 accepts `rune-fs 0.2.0` only as a **private read-only transport implementation detail**. M3 must wrap failures with RustOSRS provenance-rich errors and may patch/replace the transport behind the same boundary if required target data cannot be obtained safely.
 
 ## 7. Target profile and fingerprint contracts
 
@@ -173,22 +173,23 @@ M1 has established:
 - `docs/implementation/M1-TARGET-PROFILE-CONTRACT.md`;
 - `docs/implementation/M1-CACHE-FINGERPRINT-V1.md`;
 - `docs/implementation/M1-DECODER-ACCEPTANCE.md`;
-- `profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml`.
+- `profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml`;
+- `osrs-cache::profile` parsing/validation and `rustosrs-target-profile-digest-v1` identity.
 
 `rustosrs-cache-v1` hashes encoded logical reference-table/group bytes in canonical order while excluding physical DAT2 sector placement.
 
 `rustosrs-xtea-v1` separately fingerprints region plus four key words without persisting raw keys.
 
-## 8. Compatibility matrix after slice 3
+## 8. Compatibility matrix after completed M1 spike
 
-| Required capability | `rs-cache` | `rune-fs` direct | OpenRune | Current evidence |
+| Required capability | `rs-cache` | `rune-fs` direct | OpenRune | M1 disposition |
 |---|---|---|---|---|
-| DAT2/index transport | wrapped | **verified** | present | `rune-fs` candidate |
+| DAT2/index transport | wrapped | **verified** | present | private `rune-fs` transport |
 | build-241 reference parsing | not tested as boundary | **verified** | present | 117584 groups exact |
 | encoded logical group read | wrapped | **verified** | present | fingerprint input works |
 | decompression | present | **verified** | present | rev180 + build241 |
-| legacy named lookup | private helper | metadata supports owned lookup | present | rev180 verified |
-| build-241 map name lookup | unavailable from target names | target publishes no map names | target-dependent | use profile-aware resolver |
+| legacy named lookup | private helper | metadata supports owned lookup | present | rev180 convenience only |
+| build-241 map name lookup | unavailable from target names | target publishes no map names | target-dependent | profile-aware resolver |
 | XTEA boundary | present | **verified on rev180** | present | caller-owned transport input |
 | location decode | partial | transport only | reference available | RustOSRS-owned decoder |
 | object decode | **insufficient** | transport only | broad | RustOSRS-owned decoder |
@@ -201,9 +202,9 @@ M1 has established:
 | cache fingerprint | no project contract | **verified** | N/A | two exact vectors |
 | provenance/error envelope | insufficient | must wrap | mixed | RustOSRS-owned |
 
-## 9. Direction entering the final M1 checkpoint
+## 9. Accepted M1 direction
 
-The evidence now supports, but does not yet formally decide, this architecture:
+ADR-0010 formalizes the architecture supported by this evidence:
 
 1. `osrs-cache` remains the only public cache boundary;
 2. use `rune-fs 0.2.0` directly as a private read-only JS5/DAT2 transport implementation;
@@ -214,17 +215,16 @@ The evidence now supports, but does not yet formally decide, this architecture:
 7. make modern map-square group resolution profile-aware rather than name-hash-dependent;
 8. preserve `TERRAIN-004` as blocked.
 
-## 10. Remaining M1 work
+## 10. M1 follow-through
 
-The executable compatibility investigation is complete.
+The executable compatibility investigation and dependency decision are complete.
 
-Before M1 itself can close:
+Completed follow-through:
 
-1. validate/implement the target-profile manifest parser and profile identity rules needed at the public boundary;
-2. write the cache dependency ADR, explicitly accepting/mitigating the `rune-fs` risks above and closing C-010;
-3. reconcile the final target-profile/cache README/API direction;
-4. run Tier A/B on the exact final M1 head;
-5. perform the M1 exit-gate audit;
-6. open/review/merge the single M1 PR.
+1. target-profile manifest parsing and profile identity rules implemented in `osrs-cache::profile`;
+2. cache dependency ADR accepted as ADR-0010;
+3. C-010 resolved in the contradiction register;
+4. target profile/fingerprint/decoder acceptance contracts reconciled with the accepted decision;
+5. final milestone status tracked in `docs/implementation/M1-EXIT-AUDIT.md`.
 
-M2 must not begin before those gates close.
+Only final branch-head CI, PR diff review, and merge remain before M1 closes. M2 must not begin before the M1 PR is merged.
