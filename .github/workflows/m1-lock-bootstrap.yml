@@ -1,0 +1,24 @@
+name: M1 Lock Bootstrap
+
+on:
+  push:
+    branches:
+      - impl/m1-target-cache-contract
+
+permissions:
+  contents: read
+
+jobs:
+  generate-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+      - name: Generate lockfile
+        run: cargo generate-lockfile
+      - name: Upload lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: m1-cargo-lock
+          path: Cargo.lock
+          if-no-files-found: error
