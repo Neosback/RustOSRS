@@ -1,6 +1,6 @@
 # M1 Exit Audit
 
-Status: **Pre-PR exit audit; implementation gates satisfied, final branch CI/PR review pending**  
+Status: **Complete; M1 implementation exit gates satisfied**  
 Milestone: **M1 - Target profile and cache contract**  
 Date: **2026-10-07**
 
@@ -106,7 +106,7 @@ Evidence:
 Key conclusions:
 
 1. high-level `rs-cache` definition structs are not accepted as canonical decoding;
-2. `rune-fs 0.2.0` is sufficient as the tested private low-level transport candidate;
+2. `rune-fs 0.2.0` is sufficient as the tested private low-level transport dependency;
 3. OpenRune supplies broad independent decoder/revision evidence but is not semantic authority;
 4. RustOSRS must own target/revision-aware semantic decoders;
 5. build 241 publishes zero nonzero map-index archive name hashes, so `mX_Y` / `lX_Y` lookup is not a universal modern API;
@@ -146,7 +146,7 @@ The old question "wrap, fork, partially reuse, or replace `rs-cache`?" is no lon
 - its underlying `rune-fs` transport is selected privately;
 - RustOSRS owns revision-aware decoding.
 
-The contradiction register must reflect this resolution before the M1 PR is opened.
+`docs/blueprint/02-CONTRADICTION-REGISTER.md` now records C-010 as `RESOLVED` and links the accepted ADR and executable evidence.
 
 ## 8. Decoder acceptance checklist gate
 
@@ -242,9 +242,10 @@ Before opening the single M1 PR:
 - [x] profile canonical digest specified and tested;
 - [x] decoder acceptance checklist complete for M3-M8 inputs;
 - [x] ADR-0010 accepted;
-- [ ] contradiction/documentation reconciliation complete;
-- [ ] final branch-head Tier A green;
-- [ ] final branch-head Tier B green;
-- [ ] PR diff reviewed for accidental scope creep/stale temporary workflow;
+- [x] contradiction/documentation reconciliation complete;
+- [x] final code branch-head Tier A green;
+- [x] final code branch-head Tier B green;
+- [x] `main...impl/m1-target-cache-contract` diff reviewed for accidental scope creep and stale temporary workflow;
+- [x] branch is 0 commits behind `main` at exit review.
 
-M2 must not begin until those remaining boxes are closed and the M1 PR is merged.
+The implementation exit gate is complete. The remaining operational step is the single M1 PR review/merge. M2 must not begin before that PR is merged.
