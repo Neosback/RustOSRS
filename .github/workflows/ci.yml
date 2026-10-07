@@ -28,25 +28,14 @@ jobs:
       - name: Test architecture guard
         run: python3 scripts/test_check_architecture.py
 
-      - name: Bootstrap committed lockfile
-        run: |
-          cargo generate-lockfile
-          if ! git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
-            echo "::error::Cargo.lock must be committed for reproducible M0 dependency resolution"
-            echo "::group::Generated Cargo.lock"
-            cat Cargo.lock
-            echo "::endgroup::"
-            exit 1
-          fi
-
       - name: Check formatting
         run: cargo fmt --all --check
 
       - name: Check workspace
-        run: cargo check --workspace --all-targets --all-features
+        run: cargo check --locked --workspace --all-targets --all-features
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
   tier-b:
     name: Tier B - fast tests
@@ -60,4 +49,4 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
 
       - name: Run workspace tests
-        run: cargo test --workspace --all-targets --all-features
+        run: cargo test --locked --workspace --all-targets --all-features
