@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
 
+# Temporary M1-only workflow. Remove before the milestone PR.
 jobs:
   build-241:
     runs-on: ubuntu-latest
