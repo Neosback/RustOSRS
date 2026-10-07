@@ -4,7 +4,7 @@
 //! rejects the transport strategy. No `rune-fs` type crosses the `osrs-cache`
 //! crate boundary.
 
-use rune_fs::{Dat2, Indices, MAIN_DATA, REFERENCE_TABLE_ID};
+use runefs::{Dat2, Indices, MAIN_DATA, REFERENCE_TABLE_ID};
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::path::Path;
@@ -13,7 +13,7 @@ const CACHE_FINGERPRINT_DOMAIN: &[u8] = b"rustosrs-cache-v1\0";
 
 #[derive(Debug)]
 pub(crate) enum TransportError {
-    RuneFs(rune_fs::Error),
+    RuneFs(runefs::Error),
     MissingIndex(u8),
     MissingGroup { index: u8, group: u32 },
     MissingNamedGroup { index: u8, name: String },
@@ -46,8 +46,8 @@ impl std::error::Error for TransportError {
     }
 }
 
-impl From<rune_fs::Error> for TransportError {
-    fn from(value: rune_fs::Error) -> Self {
+impl From<runefs::Error> for TransportError {
+    fn from(value: runefs::Error) -> Self {
         Self::RuneFs(value)
     }
 }
