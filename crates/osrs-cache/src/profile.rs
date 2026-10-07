@@ -515,21 +515,33 @@ fn bytes_to_hex(bytes: [u8; 32]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::error::Error;
+    use std::io;
     use std::path::Path;
 
     const TARGET_PROFILE_PATH: &str = "../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml";
     const TARGET_CACHE_FINGERPRINT: &str =
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
-    fn target_profile_yaml() -> String {
+    type TestResult = Result<(), Box<dyn Error>>;
+
+    fn target_profile_yaml() -> Result<String, io::Error> {
         std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(TARGET_PROFILE_PATH))
-            .expect("committed target profile must be readable")
+    }
+
+    fn rejected_profile(
+        result: Result<TargetProfile, TargetProfileError>,
+    ) -> Result<TargetProfileError, io::Error> {
+        match result {
+            Err(error) => Ok(error),
+            Ok(_) => Err(io::Error::other("profile unexpectedly validated")),
+        }
     }
 
     #[test]
-    fn committed_build_241_profile_parses_and_validates() {
-        let profile = TargetProfile::from_yaml_str(&target_profile_yaml())
-            .expect("committed target profile must validate");
+    fn committed_build_241_profile_parses_and_validates() -> TestResult {
+        let yaml = target_profile_yaml()?;
+        let profile = TargetProfile::from_yaml_str(&yaml)?;
 
         assert_eq!(profile.id, "osrs-live-241-2026-09-30-openrs2-2727");
         assert_eq!(profile.cache_source.build, 241);
@@ -540,51 +552,52 @@ mod tests {
             Some(TARGET_CACHE_FINGERPRINT)
         );
         assert_eq!(profile.identity_digest_hex_v1().len(), 64);
+        Ok(())
     }
 
     #[test]
-    fn identity_digest_ignores_yaml_comments_and_line_endings() {
-        let yaml = target_profile_yaml();
-        let baseline = TargetProfile::from_yaml_str(&yaml)
-            .expect("baseline profile must validate")
-            .identity_digest_v1();
+    fn identity_digest_ignores_yaml_comments_and_line_endings() -> TestResult {
+        let yaml = target_profile_yaml()?;
+        let baseline = TargetProfile::from_yaml_str(&yaml)?.identity_digest_v1();
         let reformatted = format!(
             "# formatting-only comment\r\n{}",
             yaml.replace('\n', "\r\n")
         );
-        let changed = TargetProfile::from_yaml_str(&reformatted)
-            .expect("reformatted profile must validate")
-            .identity_digest_v1();
+        let changed = TargetProfile::from_yaml_str(&reformatted)?.identity_digest_v1();
 
         assert_eq!(baseline, changed);
+        Ok(())
     }
 
     #[test]
-    fn invalid_cache_fingerprint_is_rejected() {
-        let yaml = target_profile_yaml().replace(TARGET_CACHE_FINGERPRINT, "ABC");
-        let error = TargetProfile::from_yaml_str(&yaml).expect_err("bad fingerprint must fail");
+    fn invalid_cache_fingerprint_is_rejected() -> TestResult {
+        let yaml = target_profile_yaml()?.replace(TARGET_CACHE_FINGERPRINT, "ABC");
+        let error = rejected_profile(TargetProfile::from_yaml_str(&yaml))?;
         assert!(error.to_string().contains("64 lowercase hexadecimal"));
+        Ok(())
     }
 
     #[test]
-    fn raw_xtea_key_persistence_is_rejected() {
-        let yaml =
-            target_profile_yaml().replace("persist_raw_keys: false", "persist_raw_keys: true");
-        let error = TargetProfile::from_yaml_str(&yaml).expect_err("raw-key persistence must fail");
+    fn raw_xtea_key_persistence_is_rejected() -> TestResult {
+        let yaml = target_profile_yaml()?
+            .replace("persist_raw_keys: false", "persist_raw_keys: true");
+        let error = rejected_profile(TargetProfile::from_yaml_str(&yaml))?;
         assert!(error.to_string().contains("never persist raw XTEA keys"));
+        Ok(())
     }
 
     #[test]
-    fn logical_and_physical_index_count_mismatch_is_rejected() {
-        let yaml = target_profile_yaml().replace(
+    fn logical_and_physical_index_count_mismatch_is_rejected() -> TestResult {
+        let yaml = target_profile_yaml()?.replace(
             "physical_content_indices: 23",
             "physical_content_indices: 24",
         );
-        let error = TargetProfile::from_yaml_str(&yaml).expect_err("count mismatch must fail");
+        let error = rejected_profile(TargetProfile::from_yaml_str(&yaml))?;
         assert!(
             error
                 .to_string()
                 .contains("must equal logical_archive_slots_present")
         );
+        Ok(())
     }
 }
