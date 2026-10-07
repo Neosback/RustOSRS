@@ -1,4 +1,8 @@
 //! OSRS cache transport and revision-aware decoding boundary.
 //!
-//! M0 establishes dependency direction only. Cache transport and decoder strategy
-//! remain an M1 decision and are intentionally not selected here.
+//! M1 is evaluating a private `rune-fs` transport layer while RustOSRS retains
+//! ownership of all revision-aware semantic decoders. The spike remains private
+//! until the M1 dependency ADR accepts or rejects it.
+
+#[allow(dead_code)]
+mod transport;
