@@ -14,6 +14,7 @@ pub const TARGET_PROFILE_DIGEST_V1: &str = "rustosrs-target-profile-digest-v1";
 pub const CACHE_FINGERPRINT_V1: &str = "rustosrs-cache-v1";
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct TargetProfile {
     pub schema: String,
     pub id: String,
@@ -31,6 +32,7 @@ pub struct TargetProfile {
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct CacheSource {
     pub provider: String,
     pub cache_id: u64,
@@ -54,6 +56,7 @@ pub struct CacheSource {
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct CacheFingerprint {
     pub algorithm: String,
     pub value: Option<String>,
@@ -61,15 +64,17 @@ pub struct CacheFingerprint {
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct TransportEvidence {
     pub dependency_candidate: String,
-    pub build_241_groups_enumerated: u64,
+    pub groups_enumerated: u64,
     pub representative_numeric_group_decompression: String,
     pub map_index_name_hashes_present: bool,
     pub note: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct XteaProfile {
     pub ownership: String,
     pub provider_id: String,
@@ -79,6 +84,7 @@ pub struct XteaProfile {
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct SemanticSource {
     #[serde(default)]
     pub repository: Option<String>,
@@ -90,6 +96,7 @@ pub struct SemanticSource {
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct RevisionGate {
     pub state: String,
     #[serde(default)]
@@ -522,6 +529,8 @@ mod tests {
     const TARGET_PROFILE_PATH: &str = "../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml";
     const TARGET_CACHE_FINGERPRINT: &str =
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
+    const TARGET_PROFILE_DIGEST: &str =
+        "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
 
     type TestResult = Result<(), Box<dyn Error>>;
 
@@ -551,7 +560,7 @@ mod tests {
             profile.cache_fingerprint.value.as_deref(),
             Some(TARGET_CACHE_FINGERPRINT)
         );
-        assert_eq!(profile.identity_digest_hex_v1().len(), 64);
+        assert_eq!(profile.identity_digest_hex_v1(), TARGET_PROFILE_DIGEST);
         Ok(())
     }
 
@@ -566,6 +575,14 @@ mod tests {
         let changed = TargetProfile::from_yaml_str(&reformatted)?.identity_digest_v1();
 
         assert_eq!(baseline, changed);
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_profile_field_is_rejected() -> TestResult {
+        let yaml = format!("{}\nunexpected_field: true\n", target_profile_yaml()?);
+        let error = rejected_profile(TargetProfile::from_yaml_str(&yaml))?;
+        assert!(error.to_string().contains("unknown field"));
         Ok(())
     }
 
