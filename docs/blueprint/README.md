@@ -1,6 +1,6 @@
 # RustOSRS Blueprint
 
-This directory is the canonical home for the RustOSRS architecture and specification program.
+This directory is the canonical architecture/specification system for RustOSRS.
 
 Root-level `RUNELITE_*.md` files are retained historical research, not implementation authority. See `docs/research/README.md` and `18-DOCUMENTATION-RECONCILIATION.md` before relying on them.
 
@@ -27,50 +27,41 @@ Root-level `RUNELITE_*.md` files are retained historical research, not implement
 | `16-VERIFICATION-ARCHITECTURE.md` | differential/golden/property/GPU/editor verification | Checkpoint 7 complete |
 | `17-IMPLEMENTATION-ROADMAP.md` | dependency-ordered implementation from workspace to full editor | Checkpoint 8 complete |
 | `18-DOCUMENTATION-RECONCILIATION.md` | canonical-vs-legacy authority map and requirement closure | Checkpoint 9 complete |
+| `19-MERGE-READINESS.md` | final consistency review and implementation handoff | Checkpoint 10 complete |
 
-## Normative supporting sets
+## Canonical supporting sets
 
 ### Semantic specifications
 
-`docs/specs/` contains 35 atomic OSRS semantic contracts covering:
+`docs/specs/` contains 35 atomic OSRS semantic contracts spanning loc placement, model construction, normals/lighting, morphs/animation/contouring, terrain, bridges/planes, face/material metadata, and coordinates.
 
-- loc placement;
-- model construction;
-- normals and lighting;
-- morphs, animation ownership, and contouring;
-- terrain;
-- planes and bridges;
-- face/material metadata;
-- coordinates.
-
-Each contract carries evidence status, source pin, scope, required behavior, invariants, failure signature, and required tests.
-
-### Verification
-
-`docs/verification/` contains:
-
-- `SOURCE-PINS.md`;
-- `PARITY-MATRIX.md`;
-- `REFERENCE-FIXTURES.md`;
-- `GOLDEN-SCENES.md`;
-- `CI-FUZZ-BENCHMARKS.md`;
-- verification registry `README.md`.
-
-Exact semantic contracts are tested exactly. Screenshot tolerance begins only at P3 reference visual parity and may never hide a failed P0/P1/P2 test.
+Each contract owns its evidence status, source pin, exact behavior, invariants, failure signature, and required verification.
 
 ### Architecture decisions
 
-Accepted ADRs currently cover:
+Accepted decisions live in `docs/adr/` and currently cover:
 
-- ADR-0001 reusable `osrs-*` crate boundaries;
-- ADR-0002 native-first editor;
-- ADR-0003 semantic/renderer/editor ownership boundaries;
-- ADR-0004 reverse-Z and raster conventions;
-- ADR-0005 8x8 zone-compiled hybrid rendering;
-- ADR-0006 Reference and Enhanced render profiles;
-- ADR-0007 eframe/egui editor shell;
-- ADR-0008 command/transaction history;
-- ADR-0009 project-save/export separation.
+- reusable `osrs-*` crate boundaries;
+- native-first editor policy;
+- semantic/renderer/editor ownership boundaries;
+- reverse-Z and raster conventions;
+- 8x8 zone-compiled hybrid rendering;
+- Reference and Enhanced render profiles;
+- eframe/egui editor shell;
+- semantic command/transaction history;
+- separation of project save/autosave/recovery from target export.
+
+### Verification
+
+`docs/verification/` is the correctness/provenance registry:
+
+- `SOURCE-PINS.md`
+- `PARITY-MATRIX.md`
+- `REFERENCE-FIXTURES.md`
+- `GOLDEN-SCENES.md`
+- `CI-FUZZ-BENCHMARKS.md`
+
+P0-P2 exact contracts are tested exactly. Screenshot tolerance starts only at P3 reference visual parity and may never hide a failed earlier-layer test.
 
 ## Canonical architecture
 
@@ -91,64 +82,51 @@ osrs-render extraction / wgpu
     |
     v
 osrs-editor eframe/egui product
+
+osrs-reference -> development/test tooling only
 ```
 
-`osrs-reference` is development/test tooling and is never a production runtime dependency.
+Key invariants:
 
-Core rules:
-
-- scene code does not depend on concrete cache implementation types;
-- renderer code does not define OSRS semantics;
-- editor code mutates semantic document state before renderer state;
+- scene semantics do not depend on concrete cache implementation types;
+- renderer code consumes semantic truth and does not define or repair OSRS semantics;
+- editor mutations change semantic document state before derived renderer state;
 - shared source assets are immutable by default;
 - GPU artifacts are generation-tagged disposable derivatives;
 - project save, autosave/recovery, and target export are distinct workflows;
-- presentation improvements never rewrite canonical semantic state.
+- enhanced presentation never rewrites canonical semantic state.
 
-## Major semantic corrections
+## Major semantic corrections carried forward
 
-The canonical system preserves the source-audited corrections established in Checkpoints 3-4:
+The implementation must preserve the source-audited corrections established by the blueprint:
 
-- eligible static `ModelData` objects can accumulate normals across separate models before final lighting;
-- normal reconciliation is not mesh welding;
-- initial region construction and pending-spawn replacement are distinct construction pipelines;
+- eligible static `ModelData` objects can reconcile coincident normals across separate models before final lighting;
+- this is normal reconciliation, not mesh welding;
+- initial region construction and pending/live replacement are distinct construction pipelines;
 - model selection has no generic fallback-to-first-model behavior;
-- mirroring includes winding semantics and is not a renderer negative-scale shortcut;
-- transform order and integer rounding are semantic contracts;
+- mirroring changes semantic geometry/winding rather than using a renderer-only negative scale;
+- transform ordering and integer rounding are semantic contracts;
 - terrain shape topology `0..12` is verified;
-- the complete terrain-color builder remains revision-gated under `TERRAIN-004`;
-- bridge behavior is not one universal plane adjustment;
-- no generic `+1/+2` floor-decoration lift exists in the audited path;
-- priority, alpha, texture metadata, authored bias, and UV inputs survive the semantic-to-render boundary;
-- decoder widths/capacities follow the selected target/profile rather than historical renderer constants.
+- bridge/source/storage/collision/render-level concepts remain distinct;
+- the audited path has no generic floor-decoration `+1/+2` lift;
+- face priority is not a simple `(priority, depth)` sort;
+- semantic texture IDs are independent of historical GPU allocation constants.
 
-## Verification model
+## Intentional unresolved gates
 
-RustOSRS uses layered parity ownership:
+The merged blueprint intentionally leaves several implementation-era gates open:
 
-```text
-P0 decode parity
-P1 semantic parity
-P2 render-structural parity
-P3 reference visual parity
-P4 enhanced presentation compatibility
-```
+- **C-010:** cache strategy is decided by the M1 target-profile compatibility spike and a new ADR;
+- **C-011:** OpenRune FileStore is evidence/tooling, not semantic authority;
+- **C-003/C-005:** historical local deob provenance remains distinct from the pinned public source;
+- **C-006:** planned fixture coverage is not claimed as already implemented;
+- **C-021 / `TERRAIN-004`:** complete terrain-color builder parity remains blocked until reproducible source/oracle provenance exists.
 
-The verification system mirrors those layers and adds editor/document verification.
-
-Consequences:
-
-- normal merging is proven by exact normal/lighting fixtures before screenshots;
-- priority behavior is proven by exact face-emission order before raster comparison;
-- bridge/source/storage/collision planes are exact semantic values;
-- golden scenes contain semantic/extraction expectations in addition to optional images;
-- async generation behavior is tested with deterministic completion ordering;
-- save/recovery/export receive failure injection;
-- fuzzing proves robustness, not parity.
+These are explicit roadmap/verification gates, not reasons to guess behavior.
 
 ## Implementation roadmap
 
-`17-IMPLEMENTATION-ROADMAP.md` defines M0-M18:
+`17-IMPLEMENTATION-ROADMAP.md` defines milestones M0-M18:
 
 ```text
 M0  workspace and CI foundation
@@ -172,46 +150,23 @@ M17 Reference parity closure
 M18 Enhanced presentation and performance hardening
 ```
 
-The first meaningful wgpu viewport is intentionally delayed until core model/scene/normal/lighting semantics and their differential fixtures exist.
+The first Reference viewport deliberately comes only after model/scene/plane/normal/lighting semantics and high-risk differential fixtures are established.
 
-### Cache decision
-
-The old research recommendation to use `rs-cache` as the foundation is **not accepted architecture**.
-
-M1 performs a bounded compatibility spike against the actual target/profile requirements and produces an ADR choosing whether to wrap, extend, fork, partially reuse, or replace `rs-cache` components. OpenRune FileStore remains independent evidence/tooling rather than semantic authority.
-
-### Terrain-color gate
-
-`TERRAIN-004` remains blocked until the complete terrain-color builder has a reproducible exact source or executable oracle.
-
-Implementation may proceed around the gate with an explicit capability/problem state, but RustOSRS may not guess the algorithm and bless its own output as reference evidence.
-
-## Documentation authority after Checkpoint 9
+## Documentation authority
 
 The canonical navigation entry is the root `index.md`.
 
-Legacy research is governed by `docs/research/README.md`.
+When documents disagree:
 
-`18-DOCUMENTATION-RECONCILIATION.md` records why old claims were demoted and maps them to current owners.
+1. use `docs/specs/` for OSRS semantic requirements;
+2. use accepted ADRs for RustOSRS-owned design decisions;
+3. use blueprint documents for architecture/product workflow;
+4. use `docs/verification/` for provenance and test ownership;
+5. use root research only for evidence discovery/history.
 
-Every normative requirement must now have a closure path:
+`REVISION_SENSITIVE` is a real implementation gate, never shorthand for “probably correct.”
 
-```text
-semantic requirement
-  -> atomic spec
-  -> source/evidence pin
-  -> parity/test owner
-  -> roadmap exit gate
-
-project-owned requirement
-  -> accepted ADR / blueprint contract
-  -> verification owner
-  -> roadmap exit gate
-```
-
-Revision-sensitive behavior terminates in an explicit unresolved gate, never an implementation guess.
-
-## Work sequence
+## Blueprint checkpoint status
 
 | Checkpoint | Scope | Status |
 |---|---|---|
@@ -225,28 +180,12 @@ Revision-sensitive behavior terminates in an explicit unresolved gate, never an 
 | 7 | Verification blueprint | Complete |
 | 8 | Implementation roadmap | Complete |
 | 9 | Documentation reconciliation | Complete |
-| 10 | Merge readiness | Not started |
+| 10 | Merge readiness | Complete |
 
-## Checkpoint 10 entry condition
+## Implementation entry point
 
-Checkpoint 10 is the final merge-readiness review for this blueprint branch.
+The blueprint phase is complete.
 
-It should:
+After this documentation set is merged, implementation begins with **M0 - Workspace and CI foundation** in `17-IMPLEMENTATION-ROADMAP.md`.
 
-- perform repository-wide consistency/link/status review;
-- confirm every new canonical document is reachable from the root index/registry;
-- check remaining contradiction items are intentional and accurately classified;
-- identify obvious housekeeping that should be fixed before merge;
-- confirm no implementation code accidentally entered the blueprint branch;
-- compare branch against `main` and review the complete changed-file set;
-- open the single blueprint PR only when the branch is internally consistent;
-- review the PR diff/status and merge when ready;
-- report the merged result and stop before beginning M0 implementation.
-
-## Current branch policy
-
-All blueprint work remains on:
-
-`blueprint/osrs-editor-foundation`
-
-No pull request should be opened until Checkpoint 10 determines the complete blueprint branch is merge-ready.
+M0 and later milestones must consume the canonical specs/ADRs/verification gates rather than reinterpret legacy research as authority.
