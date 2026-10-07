@@ -1,6 +1,6 @@
 # Contradiction and Open-Question Register
 
-Status: **Living register, reconciled through Checkpoint 7**
+Status: **Living register, reconciled through Checkpoint 9**
 
 This register records claims that must not become implementation requirements until they are resolved. It is intentionally stricter than the existing research notes.
 
@@ -171,7 +171,7 @@ Checkpoint 3 established the semantic fields that must survive decoding for obje
 
 Its older-revision lineage means passing its own test suite proves implementation health, not suitability for the RustOSRS target revision.
 
-Required resolution: define the target-revision cache contract and implementation roadmap before deciding whether to extend, wrap, fork, or replace portions of `rs-cache`.
+Checkpoint 8 places the actual decision in M1: perform a bounded target-profile compatibility spike, then accept an ADR selecting whether to wrap, extend, fork, partially reuse, or replace `rs-cache` components. Until that ADR exists, no dependency strategy is canonical.
 
 ## C-011: "FileStore is the spec" is too strong
 
@@ -185,6 +185,8 @@ Required resolution:
 - use FileStore to accelerate decoding work;
 - verify revision-sensitive opcodes/defaults against target data/deob or another primary source;
 - never make Rust semantics depend on Kotlin naming or implementation quirks.
+
+Checkpoint 9 also quarantines the legacy `RUNELITE_CACHE_STACK.md` wording through `docs/research/README.md` and `18-DOCUMENTATION-RECONCILIATION.md`.
 
 ## C-012: Fixed texture count/array assumptions may be renderer implementation details
 
@@ -366,6 +368,16 @@ The blueprint preserves separate mechanisms for:
 - RuneLite-specific roof/VIS_BELOW grouping as renderer/product state.
 
 These must not be represented as one universal `plane +/- 1` rule, including in the editor UI.
+
+## Documentation quarantine
+
+Checkpoint 9 makes the authority boundary explicit through:
+
+- canonical root `index.md`;
+- `docs/research/README.md`;
+- `docs/blueprint/18-DOCUMENTATION-RECONCILIATION.md`.
+
+Root `RUNELITE_*.md` files remain historical research and cannot resolve an item in this register by themselves.
 
 ## Resolution workflow
 
