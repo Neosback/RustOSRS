@@ -19,8 +19,11 @@ Existing root-level `RUNELITE_*.md` documents remain research inputs unless an i
 | `08-PARITY-MODEL.md` | Target profiles, truth categories, parity levels, exact-vs-tolerance rules | Checkpoint 2 complete |
 | `09-SEMANTIC-AUDIT.md` | Loc/model construction, normals, lighting, transforms, morphs, contouring, priority/alpha audit | Checkpoint 3A audit record |
 | `10-TERRAIN-MATERIAL-PLANE-AUDIT.md` | Terrain topology/materials, bridges/planes, roofs, UVs, camera/coordinates, decoder-contract audit | Checkpoint 3B complete; closes Checkpoint 3 |
-| `11-RENDERER-ARCHITECTURE.md` | renderer extraction, ownership, zone compilation, lifecycle, profiles, picking, diagnostics | Checkpoint 5 complete |
+| `11-RENDERER-ARCHITECTURE.md` | Renderer extraction, ownership, zone compilation, lifecycle, profiles, picking, diagnostics | Checkpoint 5 complete |
 | `12-GPU-DATA-PASSES.md` | GPU ABI, materials, depth/culling, ordered faces, transparency, terrain/model pipelines | Checkpoint 5 complete |
+| `13-EDITOR-ARCHITECTURE.md` | eframe/egui/Catppuccin shell, viewport, panels, selection, inspectors, multi-region/plane workflow | Checkpoint 6 complete |
+| `14-EDITOR-DOCUMENT-TRANSACTIONS.md` | semantic document, commands, transactions, undo/redo, persistence, autosave/recovery, export boundary | Checkpoint 6 complete |
+| `15-EDITOR-TOOLS-INTERACTION.md` | tool lifecycle, placement/terrain tools, gizmos, shortcuts, timeline/morph preview, interaction contracts | Checkpoint 6 complete |
 
 Canonical atomic semantic contracts live under `docs/specs/`.
 
@@ -34,6 +37,9 @@ Accepted so far:
 - `ADR-0004-reverse-z-raster-conventions.md`
 - `ADR-0005-zone-compiled-hybrid-rendering.md`
 - `ADR-0006-reference-and-enhanced-render-profiles.md`
+- `ADR-0007-eframe-egui-editor-shell.md`
+- `ADR-0008-command-transaction-history.md`
+- `ADR-0009-project-save-export-separation.md`
 
 Source provenance and revision gates live in `docs/verification/SOURCE-PINS.md`.
 
@@ -87,6 +93,30 @@ Key renderer decisions:
 - diagnostics expose priorities, alpha, bias, planes, zones, normals, depth, IDs, and path classification without mutating semantics;
 - GPU/device recreation rebuilds from current extraction state and never requires map re-import.
 
+## Editor blueprint established in Checkpoint 6
+
+Checkpoint 6 defines `osrs-editor` as the native product/composition layer over the semantic and renderer foundations.
+
+Key editor decisions:
+
+- `eframe`/`egui` is the primary native application shell, with Catppuccin as the baseline theme family;
+- the viewport reuses the eframe/egui wgpu context through an editor-owned adapter while keeping `osrs-render` egui-independent;
+- dockable panels use stable editor panel IDs so a docking library can be replaced without leaking its types through the application;
+- persistent state, session/editor state, and disposable derived runtime state are explicitly separate;
+- renderer pick IDs resolve back to stable semantic handles and stale generation results are ignored;
+- multi-region workspaces use stable world coordinates, and unloaded neighbors are never treated as empty map data;
+- source/storage/render/collision plane distinctions remain inspectable rather than being collapsed into one UI integer;
+- persistent edits execute only through semantic commands/transactions;
+- undo/redo restores exact semantic values and does not depend on GPU state;
+- interactive gestures either use reversible live transactions or non-destructive overlay previews;
+- loc movement/orientation commits only to target-representable semantic tile/orientation operations;
+- terrain strokes are deterministic, frame-rate independent, exact, and grouped by user intent;
+- project save, autosave/recovery, and target map/cache export are distinct workflows and dirty states;
+- background scene/render/validation/save/export work operates on immutable generation-tagged snapshots;
+- preview state such as morph-driving varbits/varps, animation time, deterministic tick, roof visibility, plane visibility, diagnostics, camera, and render profile is non-destructive by default;
+- unsupported/revision-sensitive behavior is surfaced through Problems/provenance UI instead of silently approximated or discarded;
+- menus, toolbars, context menus, command palette, and shortcuts route through one stable action registry.
+
 ## Planned blueprint set
 
 The final system is expected to cover:
@@ -124,7 +154,7 @@ Final semantic specs must end their evidence chain in pinned source and/or execu
 | 3 | Rendering semantic audit | Complete |
 | 4 | Canonical OSRS specifications | Complete |
 | 5 | Rust/wgpu renderer blueprint | Complete |
-| 6 | Editor blueprint | Not started |
+| 6 | Editor blueprint | Complete |
 | 7 | Verification blueprint | Not started |
 | 8 | Implementation roadmap | Not started |
 | 9 | Documentation reconciliation | Not started |
@@ -153,42 +183,51 @@ Checkpoint 5 added renderer decisions without changing semantic ownership:
 - ordered priority/transparency handling consumes semantic metadata rather than redefining it;
 - reference and enhanced profiles are presentation variants over the same semantic scene.
 
-## Semantic corrections retained by renderer design
+Checkpoint 6 added editor decisions without changing lower-level ownership:
 
-The renderer blueprint preserves the major source-audit/spec corrections:
+- eframe/egui/Catppuccin own product chrome and interaction only;
+- editor commands mutate semantic document state first;
+- background work consumes immutable generation snapshots;
+- project persistence is not a replacement cache format;
+- save/autosave/export remain distinct;
+- previews and diagnostics are non-destructive unless an explicit semantic command commits an edit.
 
-- eligible static `ModelData` objects can accumulate normals across separate models before final lighting; renderer zones consume the finalized result rather than merging normals themselves;
+## Semantic corrections retained by renderer and editor design
+
+The product blueprint preserves the major source-audit/spec corrections:
+
+- eligible static `ModelData` objects can accumulate normals across separate models before final lighting; renderer/editor layers consume the finalized semantic result rather than inventing their own normal behavior;
 - initial region construction and pending-spawn replacement are distinct construction pipelines;
-- model selection has no generic fallback-to-first-model behavior;
-- mirroring includes winding semantics and is not a renderer negative-scale shortcut;
+- model selection has no generic fallback-to-first-model behavior, including editor placement previews;
+- mirroring includes winding semantics and is not a renderer/editor negative-scale shortcut;
 - transform order, morph resolution, contouring, and face-priority semantics remain exact contracts;
 - terrain shape topology `0..12` is verified while the old `class470` pin for the complete terrain-color builder remains gated;
 - bridge behavior is not one universal plane adjustment;
 - the old generic `+1/+2` ground-decoration lift claim is not present in the audited path;
-- face priority, alpha, texture metadata, and authored face bias survive the semantic-to-render boundary;
+- face priority, alpha, texture metadata, and authored face bias survive every semantic-to-render/editor boundary;
 - decoder widths/capacities follow the selected target revision rather than old fixed-width assumptions.
 
-## Checkpoint 6 entry condition
+## Checkpoint 7 entry condition
 
-Checkpoint 6 may now design the editor product around the stable semantic and renderer boundaries.
+Checkpoint 7 may now define the verification system across semantics, renderer, editor transactions, persistence, and integrated golden scenes.
 
-The editor blueprint must define, among other things:
+The verification blueprint must define, among other things:
 
-- eframe/egui/Catppuccin shell and docking/layout;
-- viewport composition and renderer integration;
-- selection and picking behavior;
-- transform/placement tools and gizmos;
-- terrain/object/material inspectors;
-- command transactions and undo/redo;
-- project/document lifecycle;
-- autosave/recovery;
-- keyboard/mouse shortcut architecture;
-- multi-region/plane workflow;
-- render-profile and diagnostic controls;
-- error/provenance surfaces;
-- non-destructive preview state for morphs, animations, and time/tick.
+- source-pinned reference fixture organization;
+- differential Java/deob versus Rust execution;
+- unit/property/fuzz testing boundaries;
+- golden semantic and golden rendered scenes;
+- screenshot tolerance policy;
+- priority/transparency/reference-profile fixtures;
+- normal-merge, terrain, bridge, morph, animation, and contouring cases;
+- editor command apply/revert and randomized history tests;
+- autosave/recovery/project migration tests;
+- stale-generation/concurrency tests;
+- GPU validation/device-recreation tests;
+- diagnostics/provenance assertions;
+- CI test tiers and performance/regression benchmarks.
 
-Editor UX must mutate semantic document state first and treat renderer artifacts as disposable views.
+Verification must preserve the distinction between exact semantic equality and tolerance-based final image comparison.
 
 ## Current branch policy
 
