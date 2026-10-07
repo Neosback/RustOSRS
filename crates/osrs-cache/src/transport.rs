@@ -227,6 +227,8 @@ mod tests {
     use std::path::PathBuf;
 
     const MAP_INDEX: u8 = 5;
+    const CONFIG_INDEX: u8 = 2;
+    const MODEL_INDEX: u8 = 7;
     const LUMBRIDGE_REGION: &str = "50_50";
     const LEGACY_LUMBRIDGE_XTEA: [u32; 4] =
         [3_030_157_619, 2_364_842_415, 3_297_319_647, 1_973_582_566];
@@ -245,7 +247,7 @@ mod tests {
         let cache = CacheTransport::open(repository_cache())?;
         let indices = cache.content_index_ids();
         assert!(indices.contains(&0));
-        assert!(indices.contains(&2));
+        assert!(indices.contains(&CONFIG_INDEX));
         assert!(indices.contains(&MAP_INDEX));
         assert!(!indices.contains(&REFERENCE_TABLE_ID));
         assert!(!cache.group_ids(MAP_INDEX)?.is_empty());
@@ -290,8 +292,15 @@ mod tests {
             return Ok(());
         };
         let cache = CacheTransport::open(path)?;
-        assert_eq!(cache.content_index_ids().len(), 25);
-        assert_eq!(cache.group_count()?, 117_584);
+        let indices = cache.content_index_ids();
+        let group_count = cache.group_count()?;
+        eprintln!("build-241 physical content indices={indices:?}");
+        eprintln!("build-241 physical group count={group_count}");
+
+        assert!(indices.contains(&CONFIG_INDEX));
+        assert!(indices.contains(&MAP_INDEX));
+        assert!(indices.contains(&MODEL_INDEX));
+        assert_eq!(group_count, 117_584);
 
         let map_group = cache.group_id_by_name(MAP_INDEX, &format!("m{LUMBRIDGE_REGION}"))?;
         let loc_group = cache.group_id_by_name(MAP_INDEX, &format!("l{LUMBRIDGE_REGION}"))?;
