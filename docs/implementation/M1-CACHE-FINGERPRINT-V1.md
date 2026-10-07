@@ -1,6 +1,6 @@
 # M1 Cache Fingerprint v1
 
-Status: **M1 contract verified by transport spike**  
+Status: **Accepted M1 implementation contract; verified by transport spike**  
 Algorithm ID: `rustosrs-cache-v1`
 
 The cache fingerprint identifies logical cache contents independently of physical `.dat2` sector layout or download container format.
@@ -105,4 +105,4 @@ For a target/source where no XTEA key is required, record the explicit sentinel 
 
 A chosen transport dependency must expose enough information to enumerate indices, reference tables, archive/group IDs, and exact encoded logical bytes. If it hides any of those behind a higher-level definition API, it is insufficient for `rustosrs-cache-v1` without an additional lower-level layer.
 
-The M1 spike proved that `rune-fs 0.2.0` exposes enough of this surface for the two verified vectors. Final dependency acceptance remains an ADR decision rather than part of this fingerprint contract.
+The M1 spike proved that `rune-fs 0.2.0` exposes enough of this surface for the two verified vectors. ADR-0010 accepts it privately behind `osrs-cache`; the fingerprint contract remains RustOSRS-owned and does not make the dependency a semantic authority.
