@@ -6,5 +6,7 @@
 //! canonical values rather than redefining them.
 
 pub mod coords;
+pub mod definitions;
 pub mod ids;
+pub mod orientation;
 pub mod provenance;
