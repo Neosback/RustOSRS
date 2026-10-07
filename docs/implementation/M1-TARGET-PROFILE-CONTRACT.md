@@ -45,10 +45,13 @@ using `rustosrs-cache-v1`.
 
 ## 3. Profile parsing and validation
 
-`TargetProfile::from_yaml_str` performs YAML parsing followed by structural validation before a profile can drive cache decoding.
+`TargetProfile::from_yaml_str` performs strict YAML parsing followed by structural validation before a profile can drive cache decoding.
+
+All v1 profile structures use `deny_unknown_fields`. A misspelled, stale, or future field therefore fails closed instead of being silently ignored. A future schema extension that changes the accepted field set requires an explicit schema/parser change.
 
 The v1 validator rejects at least:
 
+- unknown YAML fields;
 - unknown profile schema/version;
 - empty profile/source identity fields;
 - zero decoder schema version;
@@ -106,7 +109,11 @@ The v1 digest includes:
 
 Informational prose such as evidence `status`, gate `note`, transport-evidence notes, source reported size, YAML comments, mapping insertion order, formatting, and line endings do not affect the v1 identity digest.
 
-Tier B tests prove that comment/line-ending-only YAML changes preserve the digest.
+The accepted build-241 profile digest is:
+
+`cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7`
+
+Tier B asserts that exact vector and separately proves that comment/line-ending-only YAML changes preserve the digest.
 
 ## 5. XTEA ownership
 
