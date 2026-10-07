@@ -6,8 +6,8 @@
 //! as magic integers here.
 
 use crate::ids::{
-    CategoryId, FloorOverlayId, FloorUnderlayId, FrameId, ItemId, MapIconId, MapSceneId,
-    ModelId, ObjectId, SequenceId, SkeletalAnimationId, SpriteId, TextureId, VarbitId, VarpId,
+    CategoryId, FloorOverlayId, FloorUnderlayId, FrameId, ItemId, MapIconId, MapSceneId, ModelId,
+    ObjectId, SequenceId, SkeletalAnimationId, SpriteId, TextureId, VarbitId, VarpId,
 };
 use crate::provenance::TargetProvenance;
 use core::fmt;
@@ -256,8 +256,7 @@ mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
-    const PROFILE_DIGEST: &str =
-        "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
+    const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
     const CACHE_FINGERPRINT: &str =
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
@@ -306,7 +305,7 @@ mod tests {
     fn overlay_absence_is_not_replaced_with_zero_ids() -> Result<(), Box<dyn std::error::Error>> {
         let overlay = FloorOverlayDefinition {
             identity: DefinitionIdentity::new(FloorOverlayId::new(5), provenance()?),
-            primary_rgb: Rgb24::new(0x123456).ok_or("invalid rgb")?,
+            primary_rgb: Rgb24(0x123456),
             texture: None,
             hide_underlay: true,
             secondary_rgb: None,
@@ -318,8 +317,8 @@ mod tests {
     }
 
     #[test]
-    fn texture_definition_has_no_fixed_256_entry_semantic_limit(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn texture_definition_has_no_fixed_256_entry_semantic_limit()
+    -> Result<(), Box<dyn std::error::Error>> {
         let source_sprites = (0..300).map(SpriteId::new).collect::<Vec<_>>();
         let texture = TextureDefinition {
             identity: DefinitionIdentity::new(TextureId::new(400), provenance()?),
@@ -339,8 +338,8 @@ mod tests {
     }
 
     #[test]
-    fn sequence_retains_frame_and_skeletal_inputs_without_false_exclusivity(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn sequence_retains_frame_and_skeletal_inputs_without_false_exclusivity()
+    -> Result<(), Box<dyn std::error::Error>> {
         let sequence = SequenceDefinition {
             identity: DefinitionIdentity::new(SequenceId::new(12), provenance()?),
             frame_ids: vec![FrameId::new(0x0012_0034)],
@@ -359,13 +358,16 @@ mod tests {
         };
 
         assert_eq!(sequence.frame_ids, vec![FrameId::new(0x0012_0034)]);
-        assert_eq!(sequence.skeletal_animation, Some(SkeletalAnimationId::new(900)));
+        assert_eq!(
+            sequence.skeletal_animation,
+            Some(SkeletalAnimationId::new(900))
+        );
         Ok(())
     }
 
     #[test]
-    fn definition_values_are_hashable_and_clone_without_shared_mutation(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn definition_values_are_hashable_and_clone_without_shared_mutation()
+    -> Result<(), Box<dyn std::error::Error>> {
         let original = VarbitDefinition {
             identity: DefinitionIdentity::new(VarbitId::new(3), provenance()?),
             base_varp: VarpId::new(17),
