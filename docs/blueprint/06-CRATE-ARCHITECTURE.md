@@ -1,6 +1,6 @@
 # RustOSRS Crate Architecture
 
-Status: **Checkpoint 2 architecture foundation**  
+Status: **Checkpoint 2 architecture foundation, reconciled through M1**  
 Decision class: `PROJECT_DECISION`
 
 ## 1. Initial workspace crates
@@ -166,7 +166,9 @@ osrs-cache
 
 ### Dependency decision
 
-Whether `rs-cache` is used internally remains pending until the cache contract is completed. The crate boundary stays the same regardless of that decision.
+ADR-0010 accepts `rune-fs 0.2.0` as a **private read-only low-level transport dependency** behind `osrs-cache`. High-level `rs-cache` definition structs are not canonical RustOSRS data contracts, and RustOSRS owns all target/revision-aware semantic decoders.
+
+The dependency does not alter the crate law: no `rune-fs` type crosses into `osrs-core`, map archive names are not a universal transport invariant, and production M3 decode APIs must wrap transport failures in RustOSRS provenance-rich errors.
 
 ## 5. `osrs-scene`
 
