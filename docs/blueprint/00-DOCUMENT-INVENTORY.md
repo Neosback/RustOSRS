@@ -1,186 +1,169 @@
 # RustOSRS Blueprint Evidence Inventory
 
-Status: **Checkpoint 1 working document**
+Status: **Checkpoint 1 complete**
 
-This file inventories the material that existed before the RustOSRS implementation blueprint was started. It deliberately does **not** treat existing prose as specification truth.
+This inventory classifies the material that existed before the RustOSRS implementation blueprint was started. It deliberately does **not** treat existing prose as specification truth.
 
-The inventory is pinned to repository `main` commit:
+Baseline repository snapshot:
 
 `489b0603bc7c2c9fabd2614d204f809fb017d0cb`
 
-The blueprint work itself lives on:
+Blueprint branch:
 
 `blueprint/osrs-editor-foundation`
 
-## 1. Classification model
+See also:
 
-Every source used by the final blueprint must be classified before it can create an implementation requirement.
+- `01-EVIDENCE-STATUS.md`
+- `02-CONTRADICTION-REGISTER.md`
+- `03-SOURCE-GROUP-INVENTORY.md`
+
+## 1. Classification model
 
 | Class | Meaning | May directly define a final requirement? |
 |---|---|---:|
-| **Executable evidence** | A behavior was executed and its output captured or can be reproduced by a harness. | Yes, after provenance and scope are verified. |
-| **Primary source** | The imported OSRS/deob, RuneLite, FileStore, or other implementation source that contains the behavior. | Yes, after the relevant path and revision are pinned. |
-| **Generated reference** | API/reference documentation generated from primary source. | Only as a navigation aid. The underlying source remains authoritative. |
-| **Research synthesis** | Human/agent-authored Markdown describing conclusions drawn from primary sources. | No. It must be revalidated before promotion into a spec. |
-| **Port proposal** | A recommendation for Rust architecture, crate layout, wgpu state, dependency choice, UI, or implementation order. | No. It requires an architecture decision record or blueprint decision. |
-| **Hypothesis / open question** | A behavior that is uncertain, disputed, revision-sensitive, or incompletely tested. | No. |
+| **Executable evidence** | Behavior executed against a pinned reference and captured reproducibly | Yes, after provenance/scope verification |
+| **Primary source** | Imported deob, RuneLite, FileStore, cache, or implementation source containing the behavior | Yes, after relevant revision/path is pinned |
+| **Generated reference** | API/reference documentation generated from primary source | Navigation only |
+| **Research synthesis** | Human/agent-authored Markdown summarizing conclusions | No, must be revalidated |
+| **Port proposal** | Rust/wgpu/egui/dependency/architecture recommendation | No, requires project decision/ADR |
+| **Hypothesis/open question** | Uncertain, disputed, revision-sensitive, or incomplete behavior | No |
 
 ### Core rule
 
-A Markdown statement does not become true because another Markdown file cites it. Final specs must terminate their evidence chain in a pinned primary source, executable oracle, or an explicit project design decision.
+A Markdown statement does not become true because another Markdown file cites it. Final specs must terminate their evidence chain in pinned primary source, executable oracle behavior, or an explicit RustOSRS project decision.
 
 ## 2. Repository snapshot inventory
 
-The repository currently functions primarily as a reference corpus. There is no root Rust workspace yet.
-
-Important imported/reference trees at the pinned baseline:
+The repository currently functions primarily as a reference corpus. There is no root Rust implementation workspace yet.
 
 | Path | Baseline tree SHA | Classification | Blueprint treatment |
 |---|---|---|---|
-| `runelite-master/` | `5afef996a992bacc73655860681269242e90d6e8` | Primary source | RuneLite API/client/GPU implementation reference. Pin individual files used by specs. |
-| `OpenRune-FileStore-main/` | `55f571db4b23f2d528786e1cdfbcba0061fd201a` | Primary source / tooling reference | Decoder/opcode and cache-tooling reference. Do not assume its names or defaults are correct for every target revision. |
-| `rs-cache-master/` | `fae41f98352fc804e5d13d9bd2e836ab1e2635cd` | Primary source / candidate dependency | Existing Rust cache implementation. Suitability is a design decision, not settled truth. |
-| `reference-fixtures/` | `7aa46bc0c0f2611d4f999e5a310ad3243b6c0491` | Executable evidence | Preserve and expand. Fixtures need provenance metadata and direct mapping to specs/tests. |
-| `reference-shaders/` | `bcf531292db5b5a95c9d9298e9f3dc28e11309d7` | Primary-source extract | Shader behavior reference. GLSL/OpenGL behavior must be translated semantically, not transliterated blindly to WGSL/wgpu. |
-| `tools/` | `a27903aba0e68bfb0728164d686f69547ddb517a` | Verification/tooling | Contains the deob harness and RuneLite reference tooling. These should become first-class verification infrastructure. |
-| `docs/api/` | `9000331d0d84ee56462bffc07b70cef500096de9` | Generated reference | Navigation only. Never use generated prose as the sole proof for a semantic requirement. |
+| `runelite-master/` | `5afef996a992bacc73655860681269242e90d6e8` | Primary/reference implementation | Newer RuneLite API/client/GPU reference. Pin individual files used by specs. |
+| `OpenRune-FileStore-main/` | `55f571db4b23f2d528786e1cdfbcba0061fd201a` | Primary/reference implementation | Decoder/opcode/tooling reference. Not canonical without target-revision verification. |
+| `rs-cache-master/` | `fae41f98352fc804e5d13d9bd2e836ab1e2635cd` | Candidate Rust dependency/reference | Existing cache implementation. Suitability remains undecided. |
+| `reference-fixtures/` | `7aa46bc0c0f2611d4f999e5a310ad3243b6c0491` | Executable evidence | Preserve, index, add provenance, and expand. |
+| `reference-shaders/` | `bcf531292db5b5a95c9d9298e9f3dc28e11309d7` | Renderer reference/historical evidence | Classify shader families before any WGSL port. |
+| `tools/` | `a27903aba0e68bfb0728164d686f69547ddb517a` | Verification/navigation infrastructure | Promote differential testing to first-class architecture. |
+| `docs/api/` | `9000331d0d84ee56462bffc07b70cef500096de9` | Generated reference | Navigation only. Underlying source remains authoritative. |
+
+Detailed group classification is in `03-SOURCE-GROUP-INVENTORY.md`.
 
 ## 3. Existing top-level research documents
 
-All current `RUNELITE_*.md` documents are initially classified as **research synthesis**, even when they contain source pins or executed observations. Individual claims may later be promoted into atomic specs after verification.
+All current `RUNELITE_*.md` documents are initially **research synthesis**, even when they contain source pins or executed observations. Individual claims may later be promoted into atomic specs after verification.
 
 | Document | Current role | Initial disposition |
 |---|---|---|
-| `index.md` | Existing map/index of the reference corpus | Keep as legacy research index until the new blueprint index supersedes it. |
-| `RUNELITE_RENDER_SOURCES.md` | Rendering source inventory and proposed port mapping | Valuable source map. Revalidate completeness and separate OSRS semantics from RuneLite renderer implementation. |
-| `RUNELITE_GPU_PIPELINE.md` | RuneLite GPU pipeline analysis | Strong renderer research. Must not be mistaken for the only valid renderer architecture. |
-| `RUNELITE_SCENE_AND_MATERIALS.md` | Scene/material contract analysis | Strong semantic research, but several claims require re-audit before becoming specs. |
-| `RUNELITE_RUNTIME_RULES.md` | Consolidated runtime rules R1-R27 | Highest-risk document to treat as truth. Convert verified rules into atomic specs; retire rule-number authority afterward. |
-| `RUNELITE_DEOB_READING_GUIDE.md` | Deob algorithm recovery and pseudocode | Useful navigation and derivation record. Algorithms must be checked against the pinned source and/or harness. |
-| `RUNELITE_RUST_PORT_NOTES.md` | Proposed Rust/wgpu/egui architecture | Port proposal, not specification. Crate boundaries, wasm requirements, dependencies, and GPU choices need explicit ADRs. |
-| `RUNELITE_HARDEST_PARTS.md` | Risk analysis and implementation order | Useful planning input. Rebuild the risk list after semantic audit. |
-| `RUNELITE_CACHE_STACK.md` | Cache implementation comparison and recommendation | Strong dependency research, but the hybrid `rs-cache` decision is not final until cache requirements are formalized. |
+| `index.md` | Existing corpus navigation | Legacy research index until superseded |
+| `RUNELITE_RENDER_SOURCES.md` | Rendering source inventory and port mapping | Valuable map, but mixes semantics and renderer implementation |
+| `RUNELITE_GPU_PIPELINE.md` | RuneLite GPU pipeline analysis | Renderer research, not mandatory architecture |
+| `RUNELITE_SCENE_AND_MATERIALS.md` | Scene/material contract analysis | Strong research with several claims requiring re-audit |
+| `RUNELITE_RUNTIME_RULES.md` | Consolidated R1-R27 runtime claims | Highest-risk file to mistake for canonical spec |
+| `RUNELITE_DEOB_READING_GUIDE.md` | Deob algorithm recovery/pseudocode | Useful derivation/navigation layer |
+| `RUNELITE_RUST_PORT_NOTES.md` | Proposed Rust/wgpu/egui architecture | Port proposal, not specification |
+| `RUNELITE_HARDEST_PARTS.md` | Risk analysis/implementation order | Planning input only |
+| `RUNELITE_CACHE_STACK.md` | Cache implementation comparison | Strong dependency research, decision not final |
 
 ## 4. Executable evidence already present
 
 ### `reference-fixtures/deob_golden.txt`
 
-Current strengths:
+Current strengths include exact executed terrain tables/triangulation, orientation/offset tables, color functions, contouring, synthetic lighting, wall/decor/floor storage, and multi-tile placement behavior.
 
-- executed terrain shape and rotation outputs
-- orientation/vector tables
-- contour examples
-- lighting/color-related fixtures
-- direct values suitable for exact integer tests
+Current weaknesses:
 
-Current limitations:
-
-- one monolithic text fixture has weak traceability to individual future specs
-- fixture generation provenance is not encoded beside each case
-- coverage is not yet sufficient for the project's desired parity standard
-- visual scene-level parity is not represented by this file alone
-
-Required blueprint action: split or index these fixtures by semantic contract, document how each is regenerated, and attach every promoted spec to at least one executable or source-level verification path where practical.
+- monolithic fixture format
+- limited per-case provenance
+- no atomic future spec IDs
+- incomplete normals/priority/animation/morph coverage
+- no complete fixed-camera golden visual scenes
 
 ### `tools/deob-harness/`
 
-Classification: **verification infrastructure**.
+Classification: **verification infrastructure / executable oracle harness**.
 
-This is strategically important. The final architecture should favor differential Java/deob versus Rust verification for integer math, transforms, terrain construction, normals, lighting, contouring, and other semantics that are otherwise difficult to diagnose visually.
+The final architecture should use Java/deob versus Rust differential verification for integer math, transforms, terrain construction, normals, lighting, contouring, and other semantics that are difficult to diagnose visually.
 
 ### `tools/runelite-mcp/`
 
 Classification: **reference-navigation tooling**.
 
-Useful for research, but not an oracle by itself. Results must still point to pinned source material.
+It accelerates source discovery but cannot be the terminal authority for a requirement.
 
-## 5. Known claims that are not yet allowed into the final spec
+## 5. Claims explicitly quarantined
 
-The following items are explicitly quarantined until re-audited.
+The contradiction register now tracks 20 concrete issues. The highest-priority examples are:
 
-### Q1. Cross-model normal behavior / `mergeNormals`
+### Cross-model normals / `mergeNormals`
 
-Current research states that normals are per-model and that no cross-model welding/normal merging occurs. That statement is too broad to accept without a fresh audit.
+Existing research conflates separate meshes with separate lighting normals. Topological welding, vertex-normal calculation, cross-model normal accumulation, face hiding, cache ownership, and lighting conversion must be audited independently.
 
-The blueprint must separately answer:
+### Mixed source revisions
 
-1. Are meshes/topology ever welded between scene objects?
-2. Are vertex normals ever accumulated or reconciled across distinct `ModelData` instances before lighting?
-3. Which object-definition field(s), placement types, shading modes, or scene-build paths gate that behavior?
-4. Does the behavior vary by revision or static/dynamic path?
-5. What exact wall/corner fixture proves the answer?
+The corpus uses October 2026 RuneLite material together with January 2026 melxin/deob and historical compute/priority shaders. Cross-revision evidence must be carried explicitly into every promoted spec.
 
-Until those questions are settled, any existing "no normal welding" or "creases between models are authentic" statement is research only.
+### Cache dependency selection
 
-### Q2. Editor-prefixed crate architecture
+`rs-cache` is a useful candidate but has material known gaps and older-revision lineage. The cache contract must be specified before dependency selection becomes normative.
 
-The existing `editor_core`, `editor_cache`, `editor_render`, `editor_app` proposal couples reusable OSRS semantics to the editor product name. Because the foundation may later support a Rust OSRS client/reference renderer, the blueprint will evaluate reusable `osrs-*` crates with the editor as a consumer.
+### Renderer versus semantic behavior
 
-No crate map is final yet.
+Reverse-Z, MSAA, anisotropy, GPU allocation strategy, colorblind processing, region filtering, thread count, and similar RuneLite GPU/plugin features are renderer/editor policy unless separately proven to encode OSRS semantic behavior.
 
-### Q3. WebAssembly as a foundation requirement
+### Editor-prefixed reusable architecture
 
-Existing notes require `editor_core` to compile for `wasm32-unknown-unknown` and propose browser fallbacks. The project goal currently centers on a leading-class native map editor using Rust, wgpu, eframe/egui, and Catppuccin. Web support may be valuable, but it must not distort core architecture unless explicitly accepted as a product requirement.
+Existing `editor_*` crate proposals are not final because the reusable foundation should remain suitable for a possible future Rust OSRS client/reference implementation.
 
-Status: **design decision pending**.
+### Mandatory wasm support
 
-### Q4. `rs-cache` as the runtime cache foundation
+Not yet accepted as a product requirement. Native editor quality is the current priority; web constraints require an explicit ADR before influencing core architecture.
 
-The current hybrid recommendation is plausible and backed by useful research, but dependency selection will be made only after the final cache contract lists all required revision, model, texture, overlay, underlay, morph, animation, XTEA, and write/export capabilities.
+## 6. Evidence hierarchy
 
-Status: **candidate, not selected**.
+When sources disagree, investigate in this provisional order:
 
-### Q5. RuneLite GPU behavior versus OSRS semantic behavior
+1. reproducible behavior from the exact targeted OSRS/deob snapshot
+2. exact primary-source path responsible for that behavior
+3. corroborating primary implementations where semantically comparable
+4. executed golden fixture generated from pinned source
+5. generated API documentation
+6. existing research Markdown
+7. assumption or visual intuition
 
-RuneLite's GPU plugin is invaluable reference material, but it contains renderer policy in addition to OSRS content semantics. The blueprint will classify every requirement into one of three domains:
-
-- **OSRS semantic parity**: accidental differences are bugs.
-- **Renderer policy**: deliberate visual/technical improvements are allowed and documented.
-- **Editor policy**: UX/workflow behavior owned entirely by RustOSRS.
-
-This boundary is mandatory before implementation.
-
-## 6. Evidence hierarchy for the final blueprint
-
-When sources disagree, use this provisional order while investigating:
-
-1. Reproducible behavior from the exact targeted OSRS/deob snapshot.
-2. Exact primary-source path responsible for the behavior in that snapshot.
-3. Multiple corroborating primary implementations where they are semantically comparable.
-4. Executed golden fixture generated from the pinned source.
-5. Generated API documentation.
-6. Existing research Markdown.
-7. Assumption or visual intuition.
-
-This hierarchy does not eliminate judgment. RuneLite GPU code may intentionally differ from the software client, and imported cache libraries may encode old-revision assumptions. Conflicts must be recorded rather than silently resolved.
+This hierarchy does not erase revision differences. Conflicts are recorded rather than silently averaged together.
 
 ## 7. Promotion rule for future specs
 
-A behavior may be promoted from research to a normative spec only when the spec records:
+A behavior may become normative only when its spec records, where applicable:
 
-- semantic domain: OSRS parity, renderer policy, or editor policy
-- status: verified, derived, project decision, disputed, or pending
-- target/source revision or pinned tree/blob
-- exact source path and method/field/table where applicable
+- semantic domain: OSRS semantic, renderer policy, or editor policy
+- evidence status
+- target/source revision
+- exact source tree/blob/path/method/field/table/opcode
 - inputs and outputs
 - coordinate/unit conventions
-- integer/rounding/overflow semantics where applicable
-- invariants and known exceptions
-- failure appearance or diagnostic symptom
+- integer/rounding/overflow semantics
+- invariants and exceptions
+- expected failure symptom
 - required unit/differential/integration/golden test
 - related specs and ADRs
 
 A final implementation requirement must never cite only another summary document.
 
-## 8. Checkpoint 1 remaining work
+## 8. Checkpoint 1 completion
 
-Before Checkpoint 1 is complete:
+Checkpoint 1 produced:
 
-- inventory generated API/reference groups without pretending each generated page is independent evidence
-- inventory shader families and verification tools at group level
-- record source pin/provenance information needed to reproduce the imported trees
-- identify duplicate, superseded, contradictory, and revision-sensitive claims across the current Markdown set
-- create the blueprint documentation index and evidence-status vocabulary
-- produce the first contradiction/open-question register for Checkpoint 2 and the semantic audit
+- a pinned baseline inventory of all major imported/reference groups
+- classification of all existing top-level research documents
+- an evidence/status vocabulary
+- a mixed-revision handling rule
+- group-level inventory of shaders, generated API docs, fixtures, and verification tooling
+- a 20-item contradiction/open-question register
+- a canonical `docs/blueprint/` index
+- explicit quarantine of architecture/dependency assumptions that previously appeared settled
 
-No implementation code should be scaffolded during this checkpoint.
+No Rust implementation was scaffolded and no pull request was opened.
+
+The branch is now ready for **Checkpoint 2: truth model + architecture**, where project charter, parity boundaries, crate architecture, dependency direction, and ADR conventions will be defined without resolving the rendering semantic disputes prematurely.
