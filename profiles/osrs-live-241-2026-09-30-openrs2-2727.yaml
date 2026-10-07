@@ -31,7 +31,7 @@ cache_fingerprint:
 
 transport_evidence:
   dependency_candidate: rune-fs-0.2.0
-  build_241_groups_enumerated: 117584
+  groups_enumerated: 117584
   representative_numeric_group_decompression: verified
   map_index_name_hashes_present: false
   note: >-
