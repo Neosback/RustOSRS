@@ -98,7 +98,10 @@ impl FixtureManifest {
             return Err(ManifestError::EmptyField("expected"));
         }
         if self.expected_sha256.len() != 64
-            || !self.expected_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !self
+                .expected_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
         {
             return Err(ManifestError::InvalidExpectedSha256);
         }
@@ -123,10 +126,17 @@ impl fmt::Display for ManifestError {
             Self::UnsupportedSchemaVersion(version) => {
                 write!(formatter, "unsupported fixture schema version {version}")
             }
-            Self::EmptyField(field) => write!(formatter, "fixture field `{field}` must not be empty"),
-            Self::MissingOwnedSpecs => write!(formatter, "fixture must own at least one canonical spec"),
+            Self::EmptyField(field) => {
+                write!(formatter, "fixture field `{field}` must not be empty")
+            }
+            Self::MissingOwnedSpecs => {
+                write!(formatter, "fixture must own at least one canonical spec")
+            }
             Self::InvalidExpectedSha256 => {
-                write!(formatter, "expected_sha256 must be exactly 64 hexadecimal characters")
+                write!(
+                    formatter,
+                    "expected_sha256 must be exactly 64 hexadecimal characters"
+                )
             }
         }
     }
