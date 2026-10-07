@@ -23,6 +23,20 @@ impl VertexIndex {
     }
 }
 
+/// Stable face index used by derived animation groups.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FaceIndex(u32);
+
+impl FaceIndex {
+    pub const fn new(value: u32) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
 /// Stable texture-triangle index used by an optional per-face mapping selector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TextureTriangleIndex(u32);
@@ -79,17 +93,17 @@ impl FacePriority {
     }
 }
 
-/// ModelData encoding family identified without assigning unsupported chronology.
+/// ModelData encoding family identified by the audited final two source bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModelEncoding {
     /// Encoding without one of the audited two-byte sentinel trailers.
     Legacy,
     /// Trailer bytes `FF FF`.
     TrailerFfFf,
-    /// Trailer bytes `FE FF`.
-    TrailerFeFf,
-    /// Trailer bytes `FD FF`.
-    TrailerFdFf,
+    /// Trailer bytes `FF FE`.
+    TrailerFfFe,
+    /// Trailer bytes `FF FD`.
+    TrailerFfFd,
 }
 
 /// Decode-format identity retained for provenance and differential fixtures.
@@ -98,8 +112,6 @@ pub struct ModelFormatIdentity {
     pub encoding: ModelEncoding,
     /// Version byte/value when the selected encoding exposes one.
     pub version: Option<u8>,
-    /// Whether the decoded source carries skeletal vertex information.
-    pub skeletal: bool,
 }
 
 /// Optional texture-triangle mapping parameters retained from target model data.
@@ -131,6 +143,16 @@ pub struct TextureTriangle {
 pub struct SkeletalVertexData {
     pub bone_ids: Vec<i32>,
     pub weights: Vec<i32>,
+}
+
+/// Derived animation grouping state built from source vertex/face skin metadata.
+///
+/// Group construction and animation execution are later responsibilities. M2
+/// only provides a representation that does not overwrite source skin arrays.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AnimationGroups {
+    pub vertex_groups: Vec<Vec<VertexIndex>>,
+    pub face_alpha_groups: Vec<Vec<FaceIndex>>,
 }
 
 /// Construction payload accepted at the cache-decoder -> semantic boundary.
@@ -286,6 +308,7 @@ impl SourceModel {
         WorkingModel {
             data: self.data.clone(),
             normals: ModelNormalState::Uncomputed,
+            animation_groups: None,
         }
     }
 }
@@ -332,6 +355,7 @@ pub enum ModelNormalState {
 pub struct WorkingModel {
     data: ModelSemanticData,
     normals: ModelNormalState,
+    animation_groups: Option<AnimationGroups>,
 }
 
 impl WorkingModel {
@@ -441,6 +465,10 @@ impl WorkingModel {
 
     pub fn normal_state(&self) -> &ModelNormalState {
         &self.normals
+    }
+
+    pub fn animation_groups(&self) -> Option<&AnimationGroups> {
+        self.animation_groups.as_ref()
     }
 }
 
@@ -650,9 +678,8 @@ mod tests {
         Ok(SourceModelParts {
             identity: DefinitionIdentity::new(ModelId::new(77), provenance()?),
             format: ModelFormatIdentity {
-                encoding: ModelEncoding::TrailerFdFf,
+                encoding: ModelEncoding::TrailerFfFd,
                 version: Some(15),
-                skeletal: false,
             },
             vertices: vec![
                 ModelPoint::new(0, 0, 0),
@@ -680,6 +707,15 @@ mod tests {
         assert_eq!(FacePriority::new(0).map(FacePriority::get), Some(0));
         assert_eq!(FacePriority::new(11).map(FacePriority::get), Some(11));
         assert_eq!(FacePriority::new(12), None);
+    }
+
+    #[test]
+    fn model_encoding_names_preserve_audited_trailer_byte_order() {
+        let format = ModelFormatIdentity {
+            encoding: ModelEncoding::TrailerFfFd,
+            version: Some(15),
+        };
+        assert_eq!(format.encoding, ModelEncoding::TrailerFfFd);
     }
 
     #[test]
@@ -853,6 +889,30 @@ mod tests {
             .and_then(|values| values[0])
             .unwrap_or_default();
         assert_ne!(normals.base_vertex_normals[0], merged);
+    }
+
+    #[test]
+    fn animation_groups_do_not_replace_source_skin_metadata(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut parts = minimal_parts()?;
+        parts.vertex_skins = Some(vec![3, 3, 8]);
+        parts.face_skins = Some(vec![4]);
+        let source = SourceModel::from_parts(parts)?;
+        let mut working = source.to_working_copy();
+        working.animation_groups = Some(AnimationGroups {
+            vertex_groups: vec![vec![VertexIndex::new(0), VertexIndex::new(1)]],
+            face_alpha_groups: vec![vec![FaceIndex::new(0)]],
+        });
+
+        assert_eq!(source.vertex_skins(), Some(&[3, 3, 8][..]));
+        assert_eq!(source.face_skins(), Some(&[4][..]));
+        assert_eq!(
+            working
+                .animation_groups()
+                .map(|groups| groups.vertex_groups[0].as_slice()),
+            Some(&[VertexIndex::new(0), VertexIndex::new(1)][..])
+        );
+        Ok(())
     }
 
     #[test]
