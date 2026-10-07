@@ -81,11 +81,7 @@ impl FacePriority {
     pub const ZERO: Self = Self(0);
 
     pub const fn new(value: u8) -> Option<Self> {
-        if value <= 11 {
-            Some(Self(value))
-        } else {
-            None
-        }
+        if value <= 11 { Some(Self(value)) } else { None }
     }
 
     pub const fn get(self) -> u8 {
@@ -568,11 +564,7 @@ fn validate_parts(parts: &SourceModelParts) -> Result<(), ModelValidationError> 
     require_optional_len("face_biases", face_count, &parts.face_biases)?;
     require_optional_len("vertex_skins", vertex_count, &parts.vertex_skins)?;
     require_optional_len("face_skins", face_count, &parts.face_skins)?;
-    require_optional_len(
-        "skeletal_vertices",
-        vertex_count,
-        &parts.skeletal_vertices,
-    )?;
+    require_optional_len("skeletal_vertices", vertex_count, &parts.skeletal_vertices)?;
 
     for (face_index, face) in parts.faces.iter().copied().enumerate() {
         for vertex in face.indices() {
@@ -731,8 +723,7 @@ mod tests {
     }
 
     #[test]
-    fn present_optional_arrays_preserve_entry_sentinels_and_signed_alpha(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn optional_entries_preserve_sentinels() -> Result<(), Box<dyn std::error::Error>> {
         let mut parts = minimal_parts()?;
         parts.face_alphas = Some(vec![-1]);
         parts.face_textures = Some(vec![None]);
@@ -798,7 +789,10 @@ mod tests {
         let source = SourceModel::from_parts(parts)?;
 
         assert_eq!(source.texture_triangles()[0].mapping.speed, Some(7));
-        assert_eq!(source.face_textures(), Some(&[Some(TextureId::new(999))][..]));
+        assert_eq!(
+            source.face_textures(),
+            Some(&[Some(TextureId::new(999))][..])
+        );
         assert_eq!(
             source.texture_face_selectors(),
             Some(&[Some(TextureTriangleIndex::new(0))][..])
@@ -823,8 +817,7 @@ mod tests {
     }
 
     #[test]
-    fn source_and_working_copy_do_not_share_mutable_geometry(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn working_copy_is_independent() -> Result<(), Box<dyn std::error::Error>> {
         let source = SourceModel::from_parts(minimal_parts()?)?;
         let original = source.vertices()[0];
         let mut working = source.to_working_copy();
@@ -836,19 +829,21 @@ mod tests {
     }
 
     #[test]
-    fn geometry_and_render_type_mutation_invalidate_normals(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn mutation_invalidates_normals() -> Result<(), Box<dyn std::error::Error>> {
         let source = SourceModel::from_parts(minimal_parts()?)?;
         let mut working = source.to_working_copy();
         working.normals = ModelNormalState::Computed(ModelNormals {
             base_vertex_normals: vec![VertexNormal::default(); 3],
             face_normals: None,
-            merged_vertex_normals: Some(vec![Some(VertexNormal {
-                x: 1,
-                y: 2,
-                z: 3,
-                magnitude: 4,
-            }); 3]),
+            merged_vertex_normals: Some(vec![
+                Some(VertexNormal {
+                    x: 1,
+                    y: 2,
+                    z: 3,
+                    magnitude: 4,
+                });
+                3
+            ]),
         });
 
         let _ = working.vertices_mut();
@@ -892,8 +887,7 @@ mod tests {
     }
 
     #[test]
-    fn animation_groups_do_not_replace_source_skin_metadata(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn groups_preserve_source_skins() -> Result<(), Box<dyn std::error::Error>> {
         let mut parts = minimal_parts()?;
         parts.vertex_skins = Some(vec![3, 3, 8]);
         parts.face_skins = Some(vec![4]);
