@@ -232,6 +232,10 @@ mod tests {
     const LUMBRIDGE_REGION: &str = "50_50";
     const LEGACY_LUMBRIDGE_XTEA: [u32; 4] =
         [3_030_157_619, 2_364_842_415, 3_297_319_647, 1_973_582_566];
+    const LEGACY_CACHE_FINGERPRINT: &str =
+        "ad37f18dedd911eba2085d06029f2edf5db3c6285e56f7cb38eddd1cdce04636";
+    const BUILD_241_CACHE_FINGERPRINT: &str =
+        "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
     fn repository_cache() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../rs-cache-master/data/osrs_cache")
@@ -281,8 +285,7 @@ mod tests {
         let first = cache.fingerprint_v1()?;
         let second = cache.fingerprint_v1()?;
         assert_eq!(first, second);
-        assert_eq!(first.to_hex().len(), 64);
-        eprintln!("legacy rustosrs-cache-v1={}", first.to_hex());
+        assert_eq!(first.to_hex(), LEGACY_CACHE_FINGERPRINT);
         Ok(())
     }
 
@@ -315,11 +318,7 @@ mod tests {
             .filter(|metadata| metadata.name_hash != 0)
             .count();
         eprintln!("build-241 map groups with nonzero name hashes={named_group_count}");
-        eprintln!(
-            "build-241 m50_50 hash={}, l50_50 hash={}",
-            jagex_name_hash(&format!("m{LUMBRIDGE_REGION}")),
-            jagex_name_hash(&format!("l{LUMBRIDGE_REGION}"))
-        );
+        assert_eq!(named_group_count, 0);
 
         let map_groups = cache.group_ids(MAP_INDEX)?;
         let Some(map_group) = map_groups.first().copied() else {
@@ -345,15 +344,10 @@ mod tests {
                 .read_decoded_group(MODEL_INDEX, model_group, None)?
                 .is_empty()
         );
-        assert!(
-            !cache
-                .read_decoded_group(CONFIG_INDEX, 6, None)?
-                .is_empty()
-        );
+        assert!(!cache.read_decoded_group(CONFIG_INDEX, 6, None)?.is_empty());
 
         let fingerprint = cache.fingerprint_v1()?;
-        assert_eq!(fingerprint.to_hex().len(), 64);
-        eprintln!("build-241 rustosrs-cache-v1={}", fingerprint.to_hex());
+        assert_eq!(fingerprint.to_hex(), BUILD_241_CACHE_FINGERPRINT);
         Ok(())
     }
 }
