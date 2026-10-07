@@ -18,11 +18,7 @@ pub struct LocOrientation(u8);
 
 impl LocOrientation {
     pub const fn new(value: u8) -> Option<Self> {
-        if value <= 3 {
-            Some(Self(value))
-        } else {
-            None
-        }
+        if value <= 3 { Some(Self(value)) } else { None }
     }
 
     pub const fn get(self) -> u8 {
@@ -47,11 +43,7 @@ pub struct ModelOrientation(u8);
 
 impl ModelOrientation {
     pub const fn new(value: u8) -> Option<Self> {
-        if value <= 7 {
-            Some(Self(value))
-        } else {
-            None
-        }
+        if value <= 7 { Some(Self(value)) } else { None }
     }
 
     pub const fn get(self) -> u8 {
@@ -109,11 +101,7 @@ impl QuarterTurn {
         match self {
             Self::Turn0 => point,
             Self::Turn1 => ModelPoint::new(point.z, point.y, point.x.wrapping_neg()),
-            Self::Turn2 => ModelPoint::new(
-                point.x.wrapping_neg(),
-                point.y,
-                point.z.wrapping_neg(),
-            ),
+            Self::Turn2 => ModelPoint::new(point.x.wrapping_neg(), point.y, point.z.wrapping_neg()),
             Self::Turn3 => ModelPoint::new(point.z.wrapping_neg(), point.y, point.x),
         }
     }
