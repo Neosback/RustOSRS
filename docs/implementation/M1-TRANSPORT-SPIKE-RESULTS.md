@@ -1,14 +1,14 @@
 # M1 Executable Transport Spike Results
 
-Status: **M1 slice 3 complete evidence**  
+Status: **Accepted M1 implementation evidence; ADR-0010 adopted the tested direction**  
 Decision class: `IMPLEMENTATION_EVIDENCE`  
 Candidate tested: `rune-fs 0.2.0` behind private `osrs-cache` code
 
-This file records the executable evidence collected before the M1 cache dependency ADR. It is not the ADR itself.
+This file records the executable evidence that informed the M1 cache dependency decision. The architectural decision itself is `docs/adr/ADR-0010-rune-fs-private-cache-transport.md`.
 
 ## 1. Spike implementation
 
-The branch temporarily wired `rune-fs 0.2.0` and `sha2` into `osrs-cache` and added a private `transport` module. No `runefs` type crosses the crate boundary.
+The branch wired `rune-fs 0.2.0` and `sha2` into `osrs-cache` and added a private `transport` module. No `runefs` type crosses the crate boundary.
 
 The spike implements/tests:
 
@@ -21,7 +21,7 @@ The spike implements/tests:
 - caller-owned XTEA before decompression;
 - `rustosrs-cache-v1` full-cache hashing.
 
-The code remains private because final dependency acceptance belongs to the M1 ADR.
+The transport code remains private under ADR-0010. Production M3 APIs will add RustOSRS-owned repository/decode/error boundaries around it.
 
 ## 2. Rust/toolchain result
 
@@ -58,7 +58,7 @@ Verified fingerprint:
 
 `ad37f18dedd911eba2085d06029f2edf5db3c6285e56f7cb38eddd1cdce04636`
 
-This vector is now asserted exactly in the Rust test rather than testing only self-consistency.
+This vector is asserted exactly in the Rust test rather than testing only self-consistency.
 
 ## 4. Build-241 target spike
 
@@ -70,7 +70,7 @@ Target source:
 - capture timestamp `2026-09-30 12:30:05`;
 - OpenRS2 reports `117584 / 117584` groups.
 
-The target was downloaded from the pinned OpenRS2 disk export in a temporary M1-only GitHub Actions workflow. The large cache is not vendored into RustOSRS.
+The target was downloaded from the pinned OpenRS2 disk export in a temporary M1-only GitHub Actions workflow. The large cache is not vendored into RustOSRS, and that temporary workflow was removed before the milestone PR.
 
 ### 4.1 Logical versus physical indices
 
@@ -82,7 +82,7 @@ The disk export therefore contains 23 physical content index files:
 
 plus index `255`.
 
-This is valid and is now reflected in `rustosrs-cache-v1`: explicitly empty logical slots do not become synthetic empty content-index records.
+This is valid and is reflected in `rustosrs-cache-v1`: explicitly empty logical slots do not become synthetic empty content-index records.
 
 ### 4.2 Reference/group enumeration
 
@@ -120,7 +120,7 @@ The build-241 spike successfully read and decompressed representative groups fro
 - model index `7`;
 - config index `2` (group `6`).
 
-This establishes that the candidate can parse build-241 index/reference metadata, follow DAT2 sector chains, and decode target compression containers for representative semantic inputs.
+This establishes that the selected private transport can parse build-241 index/reference metadata, follow DAT2 sector chains, and decode target compression containers for representative semantic inputs.
 
 ### 4.5 Build-241 fingerprint
 
@@ -128,7 +128,7 @@ Verified `rustosrs-cache-v1` fingerprint:
 
 `ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38`
 
-The value is now recorded in the target profile and asserted by the target-cache test whenever `RUSTOSRS_TARGET_CACHE_DIR` is supplied.
+The value is recorded in the target profile and asserted by the target-cache test whenever `RUSTOSRS_TARGET_CACHE_DIR` is supplied.
 
 ## 5. XTEA conclusion
 
@@ -141,9 +141,9 @@ The legacy executable test and the independent OpenRune audit agree on the bound
 
 The build-241 OpenRS2 source reports no XTEA key set for this snapshot, so the modern compatibility test does not fabricate zero keys merely to exercise the code path.
 
-## 6. Candidate assessment after executable proof
+## 6. Accepted dependency direction
 
-The executable evidence supports the following direction for the final ADR:
+ADR-0010 adopts the direction supported by this executable evidence:
 
 1. depend on `rune-fs` directly rather than high-level `rs-cache`;
 2. keep it private behind `osrs-cache`;
@@ -152,19 +152,19 @@ The executable evidence supports the following direction for the final ADR:
 5. wrap transport failures in RustOSRS provenance-rich errors before production decode APIs are exposed;
 6. do not make map archive names a transport invariant.
 
-Remaining risks that the ADR must explicitly accept/mitigate:
+Accepted risks explicitly carried by ADR-0010:
 
 - dependency documentation labels the API experimental;
 - dependency-internal memory mapping uses `unsafe`;
 - dependency code contains some assert/panic paths for malformed/inconsistent cache state;
 - not every reference-table field is retained by `rune-fs` today;
-- RustOSRS still needs its own target-profile parser/validation and production provenance envelope.
+- production provenance/error wrapping remains RustOSRS-owned M3 work.
 
-None of those risks invalidated the read-only revision-180 or build-241 compatibility spikes.
+The target-profile parser/validator is now implemented separately in `osrs-cache::profile`, so that previous spike follow-up is closed.
 
 ## 7. Evidence disposition
 
-The temporary workflow that downloaded the 182 MiB target cache is an M1 investigation tool only. It must be removed before the milestone PR so ordinary PR CI does not depend on a large external download.
+The temporary workflow that downloaded the 182 MiB target cache was removed before the milestone PR, so ordinary PR CI does not depend on a large external download.
 
 The permanent regression evidence retained in the branch is:
 
@@ -172,7 +172,8 @@ The permanent regression evidence retained in the branch is:
 - exact revision-180 fingerprint vector;
 - exact build-241 fingerprint in the target profile and optional target-cache test;
 - target profile/source pin;
+- target-profile parser/validator and canonical profile digest;
 - fingerprint contract;
 - this result record.
 
-Final dependency selection remains deferred to the next M1 checkpoint/ADR.
+Final dependency selection is no longer deferred: ADR-0010 accepts the private `rune-fs 0.2.0` transport strategy while keeping RustOSRS-owned decoders as the semantic boundary.
