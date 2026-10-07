@@ -60,6 +60,7 @@ semantic_id!(
     SkeletalAnimationId,
     "Canonical skeletal animation definition/resource ID."
 );
+semantic_id!(ItemId, "Canonical item definition ID used by sequence overrides.");
 semantic_id!(SoundId, "Canonical object sound-effect ID.");
 semantic_id!(MapSceneId, "Canonical object map-scene metadata ID.");
 semantic_id!(MapIconId, "Canonical object map-icon metadata ID.");
@@ -104,5 +105,6 @@ mod tests {
         assert_eq!(SpriteId::new(u32::MAX).get(), u32::MAX);
         assert_eq!(FrameId::new(0x1234_5678).get(), 0x1234_5678);
         assert_eq!(SkeletalAnimationId::new(900_000).get(), 900_000);
+        assert_eq!(ItemId::new(4151).get(), 4151);
     }
 }
