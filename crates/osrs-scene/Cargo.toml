@@ -1,0 +1,12 @@
+[package]
+name = "osrs-scene"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+osrs-core = { path = "../osrs-core" }
+
+[lints]
+workspace = true
