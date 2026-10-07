@@ -14,8 +14,10 @@ cache_source:
   build: 241
   timestamp: "2026-09-30 12:30:05"
   format: VERSIONED
-  archives_present: 25
-  archives_total: 25
+  logical_archive_slots_present: 25
+  logical_archive_slots_total: 25
+  empty_logical_indices: [16, 23]
+  physical_content_indices: 23
   groups_present: 117584
   groups_total: 117584
   reported_size_mib: 182
@@ -24,8 +26,17 @@ cache_source:
 
 cache_fingerprint:
   algorithm: rustosrs-cache-v1
-  value: null
-  state: compute_and_verify_on_import
+  value: ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38
+  state: verified_by_m1_transport_spike
+
+transport_evidence:
+  dependency_candidate: rune-fs-0.2.0
+  build_241_groups_enumerated: 117584
+  representative_numeric_group_decompression: verified
+  map_index_name_hashes_present: false
+  note: >-
+    Index 5 in this target publishes no nonzero archive name hashes, so modern
+    map-square-to-group resolution must not assume mX_Y/lX_Y name lookup.
 
 xtea:
   ownership: external_decode_input
@@ -47,7 +58,7 @@ semantic_sources:
     status: decoder_tooling_evidence
   imported_rs_cache_tree:
     tree: fae41f98352fc804e5d13d9bd2e836ab1e2635cd
-    status: transport_candidate_and_legacy_decoder_evidence
+    status: legacy_transport_and_decoder_evidence
 
 revision_gates:
   extended_object_model_ids:
