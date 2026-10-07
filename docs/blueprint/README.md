@@ -19,8 +19,10 @@ Existing root-level `RUNELITE_*.md` documents remain research inputs unless an i
 | `08-PARITY-MODEL.md` | Target profiles, truth categories, parity levels, exact-vs-tolerance rules | Checkpoint 2 complete |
 | `09-SEMANTIC-AUDIT.md` | Loc/model construction, normals, lighting, transforms, morphs, contouring, priority/alpha audit | Checkpoint 3A audit record |
 | `10-TERRAIN-MATERIAL-PLANE-AUDIT.md` | Terrain topology/materials, bridges/planes, roofs, UVs, camera/coordinates, decoder-contract audit | Checkpoint 3B complete; closes Checkpoint 3 |
+| `11-RENDERER-ARCHITECTURE.md` | renderer extraction, ownership, zone compilation, lifecycle, profiles, picking, diagnostics | Checkpoint 5 complete |
+| `12-GPU-DATA-PASSES.md` | GPU ABI, materials, depth/culling, ordered faces, transparency, terrain/model pipelines | Checkpoint 5 complete |
 
-Canonical atomic semantic contracts now live under `docs/specs/`.
+Canonical atomic semantic contracts live under `docs/specs/`.
 
 Architecture decisions live in `docs/adr/`.
 
@@ -29,6 +31,9 @@ Accepted so far:
 - `ADR-0001-reusable-osrs-crate-boundaries.md`
 - `ADR-0002-native-first-editor.md`
 - `ADR-0003-semantic-renderer-editor-boundaries.md`
+- `ADR-0004-reverse-z-raster-conventions.md`
+- `ADR-0005-zone-compiled-hybrid-rendering.md`
+- `ADR-0006-reference-and-enhanced-render-profiles.md`
 
 Source provenance and revision gates live in `docs/verification/SOURCE-PINS.md`.
 
@@ -60,6 +65,27 @@ The spec set covers:
 - local-unit, angular, and coordinate-space contracts.
 
 Each atomic spec carries an evidence status, source pin, required behavior, scope, integer semantics where relevant, invariants, failure signature, required tests, and related spec links.
+
+## Renderer blueprint established in Checkpoint 5
+
+Checkpoint 5 defines `osrs-render` as a reconstructible compiler/presentation layer over immutable semantic generations.
+
+Key renderer decisions:
+
+- semantic scene -> immutable render extraction -> render-world compiler -> GPU cache -> frame plan;
+- GPU artifacts are generation-tagged and disposable;
+- 8x8 tile zones are the primary static compilation/dirty unit;
+- camera-dependent priority/transparency remains in an ordered side path instead of being erased by static batching;
+- reverse-Z uses `Depth32Float`, clear `0.0`, `GreaterEqual`, CCW fronts, and back-face culling;
+- authored face bias is retained and reference mode initially applies the audited clip-depth bias strategy;
+- texture capacity is renderer-managed through paged texture arrays rather than a semantic fixed-count assumption;
+- animation uses explicit deterministic tick state, not wall-clock-only time;
+- reference and enhanced profiles share one semantic scene;
+- reference mode preserves semantic baked lighting/color and deterministic parity settings;
+- enhanced mode may add MSAA, anisotropy, smoother presentation, and non-destructive visual improvements;
+- picking uses generation-scoped renderer IDs mapped back to stable semantic handles;
+- diagnostics expose priorities, alpha, bias, planes, zones, normals, depth, IDs, and path classification without mutating semantics;
+- GPU/device recreation rebuilds from current extraction state and never requires map re-import.
 
 ## Planned blueprint set
 
@@ -97,7 +123,7 @@ Final semantic specs must end their evidence chain in pinned source and/or execu
 | 2 | Truth model + architecture | Complete |
 | 3 | Rendering semantic audit | Complete |
 | 4 | Canonical OSRS specifications | Complete |
-| 5 | Rust/wgpu renderer blueprint | Not started |
+| 5 | Rust/wgpu renderer blueprint | Complete |
 | 6 | Editor blueprint | Not started |
 | 7 | Verification blueprint | Not started |
 | 8 | Implementation roadmap | Not started |
@@ -120,40 +146,49 @@ Checkpoint 2 established:
 - native desktop is first-class; wasm support is deferred;
 - editor non-client scope does not prohibit future client reuse of shared crates.
 
-## Checkpoint 3 semantic corrections retained by Checkpoint 4
+Checkpoint 5 added renderer decisions without changing semantic ownership:
 
-The canonical spec set preserves the major source-audit corrections:
+- reverse-Z and canonical raster conventions are renderer policy;
+- zone compilation and GPU buffers are disposable derivatives;
+- ordered priority/transparency handling consumes semantic metadata rather than redefining it;
+- reference and enhanced profiles are presentation variants over the same semantic scene.
 
-- eligible static `ModelData` objects can accumulate normals across separate models before final lighting; separate mesh topology does not imply independent lighting normals;
+## Semantic corrections retained by renderer design
+
+The renderer blueprint preserves the major source-audit/spec corrections:
+
+- eligible static `ModelData` objects can accumulate normals across separate models before final lighting; renderer zones consume the finalized result rather than merging normals themselves;
 - initial region construction and pending-spawn replacement are distinct construction pipelines;
 - model selection has no generic fallback-to-first-model behavior;
 - mirroring includes winding semantics and is not a renderer negative-scale shortcut;
-- transform order, morph resolution, contouring, and face-priority semantics are exact contracts;
-- terrain shape topology `0..12` is verified while the old `class470` pin for the complete terrain-color builder is stale;
+- transform order, morph resolution, contouring, and face-priority semantics remain exact contracts;
+- terrain shape topology `0..12` is verified while the old `class470` pin for the complete terrain-color builder remains gated;
 - bridge behavior is not one universal plane adjustment;
 - the old generic `+1/+2` ground-decoration lift claim is not present in the audited path;
-- RuneLite roof IDs/removal ranges, extended-scene capacity, reverse-Z, zone upload strategy, and similar mechanisms remain renderer/runtime policy unless independently proven otherwise;
-- face priority, alpha, texture metadata, and authored face bias survive the semantic-to-render boundary even when Rust uses a different GPU implementation;
+- face priority, alpha, texture metadata, and authored face bias survive the semantic-to-render boundary;
 - decoder widths/capacities follow the selected target revision rather than old fixed-width assumptions.
 
-## Checkpoint 5 entry condition
+## Checkpoint 6 entry condition
 
-Checkpoint 5 may now design the Rust/wgpu renderer against the canonical semantic interface.
+Checkpoint 6 may now design the editor product around the stable semantic and renderer boundaries.
 
-It must not redefine any `OSRS_SEMANTIC` requirement to make GPU implementation easier. Where the renderer intentionally differs from reference presentation, the decision must be ADR-backed and parity-testable beneath that presentation layer.
+The editor blueprint must define, among other things:
 
-Checkpoint 5 is expected to define, among other things:
+- eframe/egui/Catppuccin shell and docking/layout;
+- viewport composition and renderer integration;
+- selection and picking behavior;
+- transform/placement tools and gizmos;
+- terrain/object/material inspectors;
+- command transactions and undo/redo;
+- project/document lifecycle;
+- autosave/recovery;
+- keyboard/mouse shortcut architecture;
+- multi-region/plane workflow;
+- render-profile and diagnostic controls;
+- error/provenance surfaces;
+- non-destructive preview state for morphs, animations, and time/tick.
 
-- render-neutral scene-to-GPU contracts;
-- wgpu resource ownership and lifetime;
-- static/dynamic geometry paths;
-- priority/transparency strategy;
-- depth convention and authored bias application;
-- terrain/model material representation;
-- texture animation;
-- scene streaming/dirty rebuild strategy;
-- picking support required by the editor;
-- diagnostic render modes and GPU validation boundaries.
+Editor UX must mutate semantic document state first and treat renderer artifacts as disposable views.
 
 ## Current branch policy
 
