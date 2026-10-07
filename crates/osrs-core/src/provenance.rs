@@ -23,7 +23,9 @@ impl Digest256 {
 
     pub fn from_lower_hex(value: &str) -> Result<Self, DigestParseError> {
         if value.len() != 64 {
-            return Err(DigestParseError::Length { actual: value.len() });
+            return Err(DigestParseError::Length {
+                actual: value.len(),
+            });
         }
 
         let bytes = value.as_bytes();
@@ -32,8 +34,11 @@ impl Digest256 {
         while index < decoded.len() {
             let high = lower_hex_nibble(bytes[index * 2])
                 .ok_or(DigestParseError::InvalidLowerHex { index: index * 2 })?;
-            let low = lower_hex_nibble(bytes[index * 2 + 1])
-                .ok_or(DigestParseError::InvalidLowerHex { index: index * 2 + 1 })?;
+            let low = lower_hex_nibble(bytes[index * 2 + 1]).ok_or(
+                DigestParseError::InvalidLowerHex {
+                    index: index * 2 + 1,
+                },
+            )?;
             decoded[index] = (high << 4) | low;
             index += 1;
         }
@@ -204,8 +209,7 @@ const fn lower_hex_nibble(byte: u8) -> Option<u8> {
 mod tests {
     use super::*;
 
-    const PROFILE_DIGEST: &str =
-        "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
+    const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
     const CACHE_FINGERPRINT: &str =
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
@@ -247,12 +251,8 @@ mod tests {
     fn target_provenance_preserves_m1_identity() -> Result<(), Box<dyn std::error::Error>> {
         let profile = ProfileDigest::from_lower_hex(PROFILE_DIGEST)?;
         let cache = CacheFingerprint::from_lower_hex(CACHE_FINGERPRINT)?;
-        let provenance = TargetProvenance::new(
-            "osrs-live-241-2026-09-30-openrs2-2727",
-            profile,
-            cache,
-            1,
-        )?;
+        let provenance =
+            TargetProvenance::new("osrs-live-241-2026-09-30-openrs2-2727", profile, cache, 1)?;
 
         assert_eq!(
             provenance.profile_id(),
