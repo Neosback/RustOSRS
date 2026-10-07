@@ -1,6 +1,6 @@
 # Contradiction and Open-Question Register
 
-Status: **Living register, reconciled through Checkpoint 6**
+Status: **Living register, reconciled through Checkpoint 7**
 
 This register records claims that must not become implementation requirements until they are resolved. It is intentionally stricter than the existing research notes.
 
@@ -89,7 +89,9 @@ Several documents identify sources primarily by `/Users/...` filesystem location
 
 Checkpoint 3 added imported tree/blob pins and a provisional public deob upstream commit, but the historical local deob source used by the harness is still not exactly identified.
 
-Required closure is documented in `docs/verification/SOURCE-PINS.md`.
+Checkpoint 7 now requires every newly promoted fixture to carry an exact source/harness manifest, so this unresolved historical path cannot silently contaminate future fixture provenance.
+
+Required closure is documented in `docs/verification/SOURCE-PINS.md` and `REFERENCE-FIXTURES.md`.
 
 ## C-006: Deob golden fixture coverage is strong but incomplete for the highest-risk semantics
 
@@ -110,7 +112,9 @@ It does not yet provide complete differential coverage for:
 - bridge/plane combinations at scene level;
 - the complete terrain color-builder path under an exact source pin.
 
-Required resolution: Checkpoint 7 must define and implementation later add the missing differential/golden fixture matrix.
+Checkpoint 7 resolved the **planning gap** by defining the complete spec-to-fixture matrix, fixture manifest contract, golden scene catalog, and CI tiers in `docs/verification/`. The **coverage gap itself remains open** until implementation adds the required fixtures/tests and advances the corresponding `PARITY-MATRIX.md` rows to `EXISTING`.
+
+`TERRAIN-004` remains separately blocked on source/oracle provenance rather than ordinary fixture implementation.
 
 ## C-007: `editor_*` crate naming conflicts with reusable OSRS foundation goals
 
@@ -295,7 +299,7 @@ Checkpoint 3/4 established:
 - animation is applied to a working/shared model path rather than mutating the immutable source cache;
 - contouring occurs on the appropriate working representation.
 
-Differential morph/animation fixtures remain required by Checkpoint 7 verification planning.
+The differential morph/animation fixture families are now explicitly defined in Checkpoint 7, while their implementation remains future work.
 
 ## C-020: Priority rendering evidence spans software semantics and RuneLite GPU strategy
 
@@ -312,7 +316,7 @@ The canonical split is:
 - transparency and authored bias remain preserved inputs;
 - Rust renderer strategy is proven against crafted priority/transparency fixtures rather than copied structurally from RuneLite.
 
-Fixture implementation remains future work, but the semantic/renderer ownership contradiction is closed.
+Checkpoint 7 defines the exact all-priority/threshold fixture and composed golden scene. Fixture implementation remains future work, but the semantic/renderer ownership contradiction is closed.
 
 ## C-021: The old `class470` terrain-builder source pin is stale
 
@@ -338,7 +342,9 @@ Required resolution before normative promotion:
 - identify the actual target source method/file and pin it; or
 - add an end-to-end terrain-color differential fixture that proves the complete builder behavior against an exact source snapshot.
 
-Until then, `TERRAIN-004` remains revision-gated and the old 11x11/color-builder prose remains research.
+Checkpoint 7 deliberately marks the corresponding parity row and `GS-012-terrain-color-border` golden scene as `BLOCKED` rather than assigning guessed expected values.
+
+Until closure, `TERRAIN-004` remains revision-gated and the old 11x11/color-builder prose remains research.
 
 ## C-022: Bridge behavior was conflated into one adjusted-plane rule
 
