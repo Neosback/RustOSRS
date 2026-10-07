@@ -1,6 +1,6 @@
 # M1 Cache Compatibility Spike
 
-Status: **M1 working document, slice 1**  
+Status: **M1 working document, slice 2**  
 Decision class: `IMPLEMENTATION_EVIDENCE`  
 Branch: `impl/m1-target-cache-contract`
 
@@ -15,9 +15,9 @@ M1 must decide how `osrs-cache` obtains cache bytes and revision-aware decoded a
 The selected design must support the fields and artifacts needed by M3-M8, including:
 
 - terrain/map archives;
-- encrypted location archives;
+- location archives and XTEA where a profile requires it;
 - object definitions and morph selectors;
-- 32-bit/newer model IDs where present in the target;
+- 32-bit/newer model IDs where present;
 - floor underlays and overlays;
 - model data;
 - textures/material inputs;
@@ -26,340 +26,283 @@ The selected design must support the fields and artifacts needed by M3-M8, inclu
 - target/revision provenance;
 - deterministic cache identity and decoded-artifact invalidation.
 
-The candidate implementations under audit are pinned by the RustOSRS imported trees:
+Imported candidates/evidence are pinned by:
 
 - `rs-cache-master/` tree `fae41f98352fc804e5d13d9bd2e836ab1e2635cd`;
 - `OpenRune-FileStore-main/` tree `55f571db4b23f2d528786e1cdfbcba0061fd201a`.
 
 OpenRune is independent decoder/tooling evidence. It is not semantic authority.
 
-## 2. Target snapshot gate
+## 2. Initial target snapshot is now pinned
 
-The repository contains an OSRS cache under:
+The initial target source is OpenRS2 cache **2727**:
 
-`rs-cache-master/data/osrs_cache/`
+- game: `oldschool`;
+- environment: `live`;
+- language: `en`;
+- build: `241`;
+- timestamp: `2026-09-30 12:30:05`;
+- format: `VERSIONED`;
+- archives: `25 / 25`;
+- groups: `117584 / 117584`;
+- source-reported XTEA keys: `0 / 0`;
+- reported size: about `182 MiB`.
 
-`rs-cache` documents that bundled integration cache as **OSRS revision 180**.
+The exact source pin is stored in:
 
-That cache is useful for transport and regression experiments, but it is not a valid target for the modern RustOSRS editor because the canonical semantic evidence and required fields include behavior introduced long after revision 180.
+`profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml`
 
-Therefore:
+The source URI is:
 
-- revision 180 may be used as a transport fixture;
-- revision 180 must not become `TargetProfile` merely because it is already committed;
-- M1 cannot claim its final "initial target profile is explicit and reproducible" exit gate until a modern target cache/source snapshot is pinned.
+`https://archive.openrs2.org/caches/runescape/2727`
 
-This is currently the primary open gate for completion of M1.
+The large cache payload is not vendored into RustOSRS.
 
-## 3. `rs-cache` capability audit
+The repository's bundled `rs-cache-master/data/osrs_cache/` remains OSRS revision 180 and is only a legacy transport/regression fixture. It must never be inferred as the target from its presence in the repository.
 
-### 3.1 Low-level cache transport
+The target-source portion of the M1 reproducibility gate is therefore closed. The remaining cache-identity work is to implement/verify `rustosrs-cache-v1` against downloaded logical cache bytes.
 
-`rs-cache` provides a read-only cache abstraction backed by `rune-fs` with:
+## 3. `rs-cache` decoder capability audit
+
+### 3.1 Useful transport behavior
+
+`rs-cache` demonstrates a viable read-only flow based on `rune-fs`:
 
 - DAT2/index access;
-- archive lookup by numeric ID;
-- archive lookup by name hash;
-- archive decompression through `Buffer::decode()`;
-- XTEA keys passed to encoded location archive buffers;
-- cache checksum generation;
-- typed index/archive-not-found transport errors.
+- numeric archive reads;
+- name-hash lookup internally;
+- decompression through typed encoded/decoded buffers;
+- caller-supplied XTEA keys;
+- typed missing-index/archive errors.
 
-This portion remains a plausible candidate for reuse behind `osrs-cache` and requires a focused transport spike in the next M1 slice.
-
-Important architectural condition: external transport types must remain private to `osrs-cache`; they must never leak into `osrs-core` or `osrs-scene`.
+However, its useful name-hash helper and raw archive helper are crate-private. That weakens the case for adopting the high-level `rs-cache` crate merely as transport.
 
 ### 3.2 Location/map support
 
 Present:
 
-- map archive lookup as `mX_Y`;
-- location archive lookup as `lX_Y`;
-- caller-supplied `[u32; 4]` XTEA keys;
+- `mX_Y` / `lX_Y` lookup in its own loaders;
 - smart-delta location IDs;
-- location type and orientation;
-- four terrain planes;
-- tile height byte;
-- overlay ID/path/rotation;
-- tile settings;
-- underlay ID.
+- location type/orientation;
+- terrain height/overlay/settings/underlay inputs;
+- caller-provided XTEA keys.
 
-Concerns:
+Problems:
 
-1. `LocationDefinition.pos` is constructed from `region_x + local_x` and `region_y + local_y`, while the same type's `region_base_coords()` uses `region << 6`. The `pos` values therefore must not be accepted as canonical world-tile coordinates without correction/differential verification.
-2. Map representation is an old-revision convenience structure rather than a raw, revision-tagged decode contract.
-3. No target revision/provenance is attached to the decoded result.
+1. `LocationDefinition.pos` constructs `region_x + local_x` / `region_y + local_y` while its own base coordinate helper uses `region << 6`; this must not become canonical coordinates.
+2. decoded data has no target/profile provenance;
+3. representation is tied to an old cache rather than a revision-aware decode contract.
 
-Assessment: **transport useful; decoders require ownership by RustOSRS or substantial replacement.**
+### 3.3 Object definitions are not acceptable unchanged
 
-### 3.3 Object definitions
+The imported decoder has useful historical fields but hard blockers.
 
-Present in `rs-cache`:
+#### Extended model IDs
 
-- model IDs and optional model types;
-- size X/Y;
-- interact/projectile flags;
-- contour flag/value;
-- `nonFlatShading`-like field (`merge_normals` naming);
-- animation ID;
-- decoration displacement;
-- ambient/contrast;
-- recolor/retexture pairs;
-- mirror/rotated flag;
-- model resize and offset fields;
-- clip/blocking fields;
-- opcode 77/92 transform-related fields;
-- parameters.
+Its object model IDs are `u16` and it handles old object model opcodes `1/5` only.
 
-Blocking compatibility problems:
+OpenRune independently shows target-era extended forms:
 
-#### 32-bit model IDs
+- opcode `6`: 32-bit model ID + model type;
+- opcode `7`: 32-bit model ID list without explicit type list.
 
-`ObjectModelData.models` is `Vec<u16>` and only object opcodes `1` and `5` are decoded.
-
-The imported OpenRune OSRS codec independently shows extended object model opcodes:
-
-- opcode `6`: model ID is a 32-bit integer plus model type;
-- opcode `7`: model ID is a 32-bit integer with no explicit type array.
-
-Therefore `rs-cache` object decoding cannot preserve newer model IDs unchanged.
+RustOSRS must preserve these when present.
 
 #### Morph fallback loss
 
-For opcode `92`, `rs-cache` reads the extra/default transform ID into a temporary `_var` and discards it instead of preserving it as the fallback branch.
+For opcode `92`, `rs-cache` reads the explicit default transform and discards it into a temporary value. This violates `MORPH-001`.
 
-That is incompatible with canonical `MORPH-001`, which requires the explicit fallback/null transform branch to survive decoding.
+#### Unknown opcode handling
 
-#### Revision handling
-
-The object decoder has no revision/profile input and uses an `unreachable!()` default for unknown opcodes.
-
-A newer valid opcode can therefore become a panic instead of a revision-tagged decode error.
-
-Assessment: **not acceptable unchanged as the canonical object decoder.**
+The decoder defaults to `unreachable!()`. A valid target-era opcode can therefore become a panic instead of a provenance-rich revision error.
 
 ### 3.4 Missing decoder families
 
 The audited `rs-cache` OSRS definition tree does not contain canonical decoder modules for:
 
 - model data;
-- floor underlay definitions;
-- floor overlay definitions;
-- texture definitions;
+- floor underlay;
+- floor overlay;
+- textures;
 - varbits;
 - varps;
 - sequences/animations.
 
-This is a structural gap, not merely a field-name mismatch.
-
 ### 3.5 Error/provenance quality
 
-Positive:
-
-- low-level transport can distinguish missing indices/archives and I/O failures.
-
-Insufficient for RustOSRS:
+Low-level missing archive/index errors are useful. Higher-level parse/provenance is insufficient:
 
 - parse errors can collapse to `unknown parser error`;
-- object unknown opcodes use `unreachable!()`;
-- decoded definitions do not carry target/cache identity;
-- decoder errors do not include the full required context tuple such as cache fingerprint, index/archive/file, definition ID, decoder schema, revision gate, and byte offset.
+- valid new opcodes can panic;
+- target/cache identity is not attached;
+- decoder schema/revision/byte offset is not retained.
 
-Assessment: **transport errors may be wrapped; decoder errors must be RustOSRS-owned.**
+Conclusion: **do not adopt the `rs-cache` OSRS definition layer as canonical decoding.**
 
-## 4. OpenRune FileStore capability audit
+## 4. `rune-fs` direct transport audit
 
-OpenRune provides substantially broader independent decoder coverage than `rs-cache`.
+`rs-cache 0.9.0` depends on `rune-fs 0.2.0`. The public `rune-fs` API is materially better aligned with the boundary RustOSRS needs than the high-level `rs-cache` API.
 
-Observed OSRS/reference codecs include:
+Publicly available low-level pieces include:
 
-- `ObjectCodec`;
-- `OverlayCodec`;
-- `UnderlayCodec`;
-- `SequenceCodec`;
-- `TextureCodec`;
-- `VarBitCodec`;
-- var/varp-related codecs/types;
-- `ModelCodec` and a large model representation.
+- `Dat2`;
+- `Indices` / `Index`;
+- `ArchiveRef`;
+- `IndexMetadata` / `ArchiveMetadata`;
+- encoded/decoded `Buffer`;
+- compression codecs;
+- XTEA helpers.
 
-### 4.1 Revision awareness
+This is enough in principle to build RustOSRS-owned name lookup, logical archive reads, fingerprinting, and decoders without importing third-party definition structs.
 
-OpenRune explicitly passes revision values into several codecs and gates format changes.
+### 4.1 Strengths
 
-Examples observed in this slice:
+- MIT license;
+- Rust 2024, MSRV below RustOSRS's pinned toolchain;
+- read-only cache orientation matches the first editor ingestion requirement;
+- metadata exposes archive ID, name hash, CRC, version, entry count, file IDs and optional hashes/whirlpool data;
+- encoded buffers can receive caller-owned XTEA keys before decode;
+- public XTEA implementation is independent of higher-level `rs-cache` definitions;
+- `Dat2` reads logical archive bytes through validated sector chains.
 
-- object sound fields change at revision `220`;
-- sequence opcode ownership changes at revision `226`;
-- texture format changes after revision `232`;
-- object model opcodes `6/7` preserve 32-bit IDs.
+### 4.2 Risks requiring the next code spike
 
-This is useful evidence that RustOSRS must keep revision/profile behavior explicit instead of treating one decoder layout as timeless.
+- project documentation calls the API experimental;
+- `Dat2` uses `memmap2` and contains dependency-internal `unsafe` for memory mapping;
+- some malformed conditions still use panic/assert patterns (for example index extension mismatch / buffer length assertion);
+- reference metadata parsing contains TODO/skip behavior for some codec size fields;
+- production error context is not RustOSRS's required provenance envelope;
+- compatibility with the build-241 OpenRS2 target must be proven rather than assumed from the revision-180 fixture.
 
-### 4.2 Object/morph coverage
+Preliminary transport direction: **test `rune-fs` directly, not `rs-cache`, as the candidate dependency behind a RustOSRS-owned transport wrapper.**
 
-OpenRune preserves:
+## 5. OpenRune decoder audit
 
-- object model/type lists;
-- older and extended 32-bit model-ID forms;
-- `nonFlatShading`;
-- clipping/model clipping;
-- recolors/retextures;
-- transforms/morph selectors;
-- revision-gated fields.
+OpenRune has substantially broader independent decoder coverage than `rs-cache`.
 
-Its shared transform helper preserves:
+Observed codecs/types include:
 
-- varbit selector;
-- varp selector;
-- transform list;
-- explicit default/fallback transform for the extended opcode.
+- object;
+- underlay/overlay;
+- varbit/varp;
+- sequence;
+- texture;
+- model.
 
-That makes it materially stronger reference evidence than the current `rs-cache` object decoder.
+### 5.1 Revision-aware evidence
 
-### 4.3 Model coverage
+Observed implementation gates include:
 
-OpenRune's `ModelCodec` recognizes multiple model encodings and preserves inputs including:
+- object sound layout change at revision 220;
+- sequence opcode ownership change at revision 226;
+- texture format change after revision 232;
+- extended object model opcodes with 32-bit IDs.
 
-- vertex and face counts;
-- compressed vertex deltas;
-- face types;
-- priorities/default priority;
-- alpha;
-- face/vertex skins;
-- materials/textures;
-- texture triangles and multiple texture mapping types;
-- versioned model footer flags;
-- optional particle/billboard/skeletal data.
+These thresholds are useful evidence, not automatic project truth. Target build 241 samples must exercise/corroborate production gates.
 
-This does not make OpenRune the semantic oracle, but it demonstrates that the data surface required by RustOSRS cannot be supplied by the current `rs-cache` definition layer alone.
+### 5.2 Morph/model coverage
 
-### 4.4 Floor, texture, and animation coverage
+OpenRune preserves varbit, varp, transform list, and explicit fallback transform. Its large model codec handles multiple model encodings and inputs including priorities, alpha, skins, materials and texture mapping structures.
 
-Observed:
+Conclusion: **strong decoder/reference evidence; not a semantic authority or direct Rust dependency.**
 
-- underlay RGB decoding;
-- overlay primary RGB, texture, hide-underlay, secondary RGB, and water field;
-- texture average color, transparency, source file, animation direction/speed with a format gate at revision 232/233;
-- sequence frame IDs/delays, interleave data, priorities, equipment overrides, skeletal animation ID/ranges/sounds, and revision-gated opcode movement.
+## 6. OpenRune FileStore transport audit
 
-Concerns:
+OpenRune's read-only filesystem independently demonstrates another valid JS5 transport shape.
 
-- several encode paths are explicitly `TODO`;
-- unknown opcode behavior in some codecs logs rather than necessarily failing hard;
-- field naming/semantics must still be checked against pinned deob/RuneLite evidence;
-- revision thresholds are implementation evidence, not automatically project truth.
+Its `ReadOnlyCache`:
 
-Assessment: **strong reference/porting source, not a dependency or authority decision yet.**
+- reads archive/reference metadata;
+- handles reference-table protocol versions 5 through 7;
+- preserves name/whirlpool/size/hash flags;
+- reconstructs multi-file archives;
+- applies XTEA only to map index (`5`) archive decompression when keys are supplied;
+- supports caller-provided archive/region key maps;
+- rejects writes in the read-only implementation.
 
-## 5. Compatibility matrix, slice 1
+Its XTEA implementation uses the expected 32 rounds and four-word key contract.
 
-| Required M1 capability | `rs-cache` imported snapshot | OpenRune imported snapshot | Current conclusion |
-|---|---|---|---|
-| DAT2/index transport | Present | Not audited yet in this slice | Continue transport spike |
-| archive-by-name | Present | Not audited yet | `rs-cache` candidate transport strength |
-| XTEA location boundary | Present, caller supplies keys | Not audited yet | Boundary shape is viable |
-| location stream decode | Present | Not audited yet | `rs-cache` decode needs coordinate verification |
-| terrain/map tile decode | Present | Not audited yet | old-revision representation only |
-| object definitions | Partial | Broad | own/replace decoder layer |
-| varbit/varp morph selectors | Partial, fallback loss | Present | `rs-cache` insufficient unchanged |
-| 32-bit object model IDs | **Absent** | **Present** | blocker for `rs-cache` object decoder |
-| underlay definitions | Absent | Present | RustOSRS decoder required |
-| overlay definitions | Absent | Present | RustOSRS decoder required |
-| model data | Absent | Broad `ModelCodec` | RustOSRS decoder required |
-| texture definitions | Absent | Present, revision-gated | RustOSRS decoder required |
-| sequences/animations | Absent | Present, revision-gated | RustOSRS decoder required |
-| structured target provenance | Absent | Revision integer in some codecs | RustOSRS-owned |
-| decode error context | Insufficient | Mixed | RustOSRS-owned |
-| preserved revision distinctions | Weak/fixed old assumptions | Much stronger | must be first-class in RustOSRS |
+This corroborates the architectural boundary chosen for RustOSRS: **XTEA belongs at archive decode/decompression, not inside object/location semantics.**
 
-## 6. `TargetProfile` contract requirements
+OpenRune transport is Kotlin and is not proposed as the Rust production dependency. Its null-return/runtime-exception behavior is also not the error model RustOSRS should copy.
 
-M1 should define the profile before broad decoder implementation. The profile contract must contain or derive the following information.
+## 7. Target profile and fingerprint contracts
 
-### 6.1 Stable profile identity
+Slice 2 adds:
 
-- stable profile ID/name;
-- profile schema version;
-- decoder schema version;
-- game family (`osrs` for the initial product target).
+- `docs/implementation/M1-TARGET-PROFILE-CONTRACT.md`;
+- `docs/implementation/M1-CACHE-FINGERPRINT-V1.md`;
+- `profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml`.
 
-A human-readable revision number alone is not sufficient identity.
+`rustosrs-cache-v1` hashes logical encoded reference-table and group bytes in canonical index/group order, independent of physical DAT2 sector layout.
 
-### 6.2 Cache/source identity
+`rustosrs-xtea-v1` hashes region identity plus the four key words and stores only the digest in artifact invalidation/provenance.
 
-The profile must point to an exact cache source identity rather than a local filesystem path.
+## 8. M3-M8 decoder acceptance checklist
 
-The eventual cache fingerprint format should be versioned and deterministic. It must identify the logical cache contents from stable cache metadata/reference tables and/or content hashes, and be reproducible on another machine.
+Slice 2 adds:
 
-The profile may record a display/source URI, but machine-local paths are non-authoritative.
+`docs/implementation/M1-DECODER-ACCEPTANCE.md`
 
-### 6.3 Semantic evidence pins
+It covers acceptance fields and failure/provenance requirements for:
 
-The profile must reference the exact semantic evidence set used to interpret revision-sensitive fields, including pinned repository/tree/blob identities where applicable.
+- transport;
+- terrain/map tiles;
+- locations;
+- object definitions;
+- underlays/overlays;
+- varbits/varps;
+- model data;
+- textures;
+- sequences;
+- frame/skeleton resources;
+- decode error provenance.
 
-For the initial 2026 semantic baseline, the existing public deob pin `melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc` is a useful semantic source pin, but it does **not** identify a cache snapshot by itself.
+This closes the M1 planning requirement that every semantic field needed by M3-M8 has an explicit decoder acceptance owner.
 
-### 6.4 Revision gates
+## 9. Compatibility matrix, current
 
-Revision-dependent decoder behavior must be represented explicitly and tested.
+| Required capability | `rs-cache` | `rune-fs` direct | OpenRune | Current conclusion |
+|---|---|---|---|---|
+| DAT2/index transport | Wrapped | **Present** | Present | spike `rune-fs` on target |
+| encoded logical group read | Wrapped | **Present** | Present | needed for fingerprint |
+| reference metadata | Partial access | **Public** | Present | `rune-fs` candidate strength |
+| archive-by-name | crate-private helper | metadata enables RustOSRS lookup | Present | own lookup in `osrs-cache` |
+| XTEA boundary | Present | **Present** | Present | caller-owned transport input |
+| location decode | Partial/coordinate concern | N/A transport | reference available | RustOSRS-owned decoder |
+| object decode | **Insufficient** | N/A | Broad | RustOSRS-owned decoder |
+| 32-bit model IDs | **Absent** | N/A | Present | required target gate |
+| underlay/overlay | Absent | N/A | Present | RustOSRS-owned |
+| model decode | Absent | N/A | Broad | RustOSRS-owned |
+| texture decode | Absent | N/A | revision-gated | RustOSRS-owned |
+| varbit/varp | Absent/partial morph fields | N/A | Present | RustOSRS-owned |
+| sequences | Absent | N/A | revision-gated | RustOSRS-owned |
+| Rust production dependency fit | too high-level | **candidate** | Kotlin evidence only | test `rune-fs` directly |
+| provenance/error envelope | insufficient | must wrap | insufficient/mixed | RustOSRS-owned |
 
-Do not infer target behavior from:
+## 10. Current preliminary direction
 
-- the bundled revision-180 cache;
-- `TEXTURE_COUNT=256`;
-- old research prose;
-- a local absolute path;
-- an OpenRune threshold without corroboration.
+The evidence now points more narrowly than the original research recommendation:
 
-### 6.5 XTEA ownership
+1. `osrs-cache` remains the only public cache boundary;
+2. do **not** use `rs-cache` definition structs/decoders as canonical data;
+3. test `rune-fs 0.2.0` directly as a private low-level transport dependency;
+4. implement revision-aware canonical decoders in RustOSRS;
+5. use OpenRune and pinned deob/RuneLite sources as implementation evidence/oracles;
+6. pin build 241 / OpenRS2 2727 as the first target source;
+7. preserve `TERRAIN-004` as blocked despite the newer target selection.
 
-XTEA keys are external decoding inputs for encrypted location archives.
+This is still preliminary until the direct `rune-fs` code spike runs against both the bundled rev-180 fixture and the build-241 target.
 
-The target profile should identify the **key provider/key-set identity**, but should not require secret/raw XTEA keys to be serialized into a project profile.
+## 11. Remaining M1 work
 
-Decoded location artifact invalidation must include the region and a non-secret fingerprint of the exact key tuple used, because changing keys can change whether/how the location archive decodes.
+Before the dependency ADR can be accepted:
 
-### 6.6 Decoded-artifact invalidation identity
+1. add a bounded direct `rune-fs` transport spike inside `osrs-cache` tests/tools;
+2. prove numeric read, reference metadata, name-hash lookup, decompression and legacy XTEA against the bundled revision-180 fixture;
+3. download/use OpenRS2 2727 in a non-vendored test/spike path and prove target build-241 enumeration/read/fingerprint compatibility;
+4. implement/validate target-profile manifest parsing or equivalent contract enforcement;
+5. produce the cache dependency ADR and close C-010;
+6. run Tier A/B and final M1 exit audit.
 
-A decoded artifact must never be reused merely because its numeric definition/archive ID is the same.
-
-Its cache key must include at least:
-
-- target profile identity/digest;
-- cache fingerprint;
-- decoder schema/version;
-- logical index/archive/file or definition identity;
-- revision-gate identity where relevant;
-- XTEA-key fingerprint for encrypted locations.
-
-The concrete Rust type/API belongs to the remaining M1/M2 work.
-
-## 7. Preliminary direction, not yet an ADR
-
-The current evidence makes the old "use `rs-cache` as the cache layer and fill a few gaps" recommendation too broad.
-
-The leading direction after slice 1 is:
-
-1. keep `osrs-cache` as the only public cache boundary;
-2. consider `rs-cache`/`rune-fs` only for low-level read-only transport if the next transport spike passes;
-3. own canonical revision-aware decoders inside RustOSRS;
-4. use OpenRune plus pinned deob/RuneLite sources as decoder implementation evidence and differential references;
-5. do not expose either external project's definition structs beyond `osrs-cache`.
-
-This is **preliminary**. The final dependency ADR is intentionally deferred until:
-
-- low-level transport compatibility is tested;
-- dependency/safety/licensing implications are reviewed;
-- a modern target cache snapshot is pinned;
-- the full decoder acceptance checklist is built.
-
-## 8. Next M1 slice
-
-The next bounded slice should:
-
-1. audit `rs-cache`/`rune-fs` transport against the bundled rev-180 cache without adopting its decoders;
-2. audit OpenRune's FileStore transport/XTEA behavior;
-3. define the versioned target-profile manifest shape;
-4. define cache fingerprint v1 and XTEA-key fingerprint rules;
-5. build the M3-M8 decoder acceptance checklist from canonical specs;
-6. identify and pin a modern target cache snapshot before the M1 exit gate can close.
+M2 must not begin before those gates close.
