@@ -49,8 +49,9 @@ def dependency_names(node: object) -> set[str]:
     return found
 
 
-def load_manifest(crate: str) -> dict[str, object] | None:
-    manifest_path = CRATES / crate / "Cargo.toml"
+def load_manifest(crates_root: Path, crate: str) -> dict[str, object] | None:
+    """Load a crate manifest from an explicit workspace crate root."""
+    manifest_path = crates_root / crate / "Cargo.toml"
     if not manifest_path.exists():
         return None
 
@@ -58,11 +59,12 @@ def load_manifest(crate: str) -> dict[str, object] | None:
         return tomllib.load(handle)
 
 
-def main() -> int:
+def check_workspace(crates_root: Path = CRATES) -> list[str]:
+    """Return dependency-boundary violations for the supplied crates directory."""
     errors: list[str] = []
 
     for crate, allowed in ALLOWED_INTERNAL.items():
-        manifest = load_manifest(crate)
+        manifest = load_manifest(crates_root, crate)
         if manifest is None:
             continue
 
@@ -86,6 +88,11 @@ def main() -> int:
                     + ", ".join(forbidden)
                 )
 
+    return errors
+
+
+def main() -> int:
+    errors = check_workspace()
     if errors:
         print("Architecture dependency check failed:", file=sys.stderr)
         for error in errors:
