@@ -1,8 +1,11 @@
-//! OSRS cache transport and revision-aware decoding boundary.
+//! OSRS cache transport, target-profile, and revision-aware decoding boundary.
 //!
-//! M1 is evaluating a private `rune-fs` transport layer while RustOSRS retains
-//! ownership of all revision-aware semantic decoders. The spike remains private
-//! until the M1 dependency ADR accepts or rejects it.
+//! M1 accepts a private `rune-fs` transport layer while RustOSRS retains
+//! ownership of all revision-aware semantic decoders. The transport stays
+//! private; `TargetProfile` is the validated cache/revision input contract for
+//! later decoding milestones.
+
+pub mod profile;
 
 #[allow(dead_code)]
 mod transport;
