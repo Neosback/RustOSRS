@@ -1,4 +1,11 @@
-//! OSRS cache transport and revision-aware decoding boundary.
+//! OSRS cache transport, target-profile, and revision-aware decoding boundary.
 //!
-//! M0 establishes dependency direction only. Cache transport and decoder strategy
-//! remain an M1 decision and are intentionally not selected here.
+//! M1 accepts a private `rune-fs` transport layer while RustOSRS retains
+//! ownership of all revision-aware semantic decoders. The transport stays
+//! private; `TargetProfile` is the validated cache/revision input contract for
+//! later decoding milestones.
+
+pub mod profile;
+
+#[allow(dead_code)]
+mod transport;

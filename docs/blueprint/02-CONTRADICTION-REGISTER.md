@@ -1,6 +1,6 @@
 # Contradiction and Open-Question Register
 
-Status: **Living register, reconciled through Checkpoint 9**
+Status: **Living register, reconciled through M1 cache-contract decision**
 
 This register records claims that must not become implementation requirements until they are resolved. It is intentionally stricter than the existing research notes.
 
@@ -155,23 +155,20 @@ The editor product remains explicitly non-client for its initial milestones, whi
 ## C-010: `rs-cache` is a candidate foundation, not an accepted decoder contract
 
 **Severity:** P1  
-**Status:** `REVISION_SENSITIVE`
+**Status:** `RESOLVED`
 
-Current research shows useful existing Rust I/O/loaders but also material gaps:
+Resolved in M1 by `docs/adr/ADR-0010-rune-fs-private-cache-transport.md`, `docs/implementation/M1-CACHE-COMPATIBILITY-SPIKE.md`, and `docs/implementation/M1-TRANSPORT-SPIKE-RESULTS.md`.
 
-- varbit-driven transforms;
-- newer model-id widths/opcodes;
-- ModelData;
-- texture/material definitions;
-- overlay/underlay definitions;
-- sequence/spotanim definitions;
-- revision-sensitive newer fields.
+Executable spikes against the bundled revision-180 regression cache and OpenRS2 build-241 target established that:
 
-Checkpoint 3 established the semantic fields that must survive decoding for object placement, model construction, terrain/materials, morphs, animation, face metadata, and texture animation.
+- the high-level `rs-cache` definition layer is not accepted as canonical because it omits or loses target-era fields and decoder families required by RustOSRS;
+- `rune-fs 0.2.0` is selected as the private read-only low-level JS5/DAT2/index/reference/group/compression/XTEA transport dependency behind `osrs-cache`;
+- RustOSRS owns revision-aware semantic decoders and canonical output representations;
+- no `rune-fs` type may cross the public `osrs-cache -> osrs-core` boundary;
+- build 241 map index `5` contains no nonzero archive name hashes, so modern map-square resolution is target/profile-aware rather than based on a universal `mX_Y` / `lX_Y` lookup;
+- dependency error/panic/reference-metadata risks are explicitly accepted and mitigated by ADR-0010, with provenance-rich wrapping required before M3 exposes production decode APIs.
 
-Its older-revision lineage means passing its own test suite proves implementation health, not suitability for the RustOSRS target revision.
-
-Checkpoint 8 places the actual decision in M1: perform a bounded target-profile compatibility spike, then accept an ADR selecting whether to wrap, extend, fork, partially reuse, or replace `rs-cache` components. Until that ADR exists, no dependency strategy is canonical.
+C-010 is closed at the dependency-selection/planning level. Target decoder implementation and opcode/field verification remain owned by M3-M8 through `docs/implementation/M1-DECODER-ACCEPTANCE.md`. `TERRAIN-004` remains a separate unresolved gate under C-021.
 
 ## C-011: "FileStore is the spec" is too strong
 
@@ -202,7 +199,7 @@ The canonical rule is now:
 - texture storage capacity is renderer policy;
 - unsupported adapter limits must produce diagnostics/fallback selection, not silent texture loss.
 
-Target-revision decoder limits remain a separate cache compatibility concern under C-010.
+Target-revision decoder limits remain decoder acceptance work under ADR-0010 and `docs/implementation/M1-DECODER-ACCEPTANCE.md`.
 
 ## C-013: Reverse-Z is a renderer policy, not OSRS semantic parity
 
