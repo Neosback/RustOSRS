@@ -60,7 +60,10 @@ semantic_id!(
     SkeletalAnimationId,
     "Canonical skeletal animation definition/resource ID."
 );
-semantic_id!(ItemId, "Canonical item definition ID used by sequence overrides.");
+semantic_id!(
+    ItemId,
+    "Canonical item definition ID used by sequence overrides."
+);
 semantic_id!(SoundId, "Canonical object sound-effect ID.");
 semantic_id!(MapSceneId, "Canonical object map-scene metadata ID.");
 semantic_id!(MapIconId, "Canonical object map-icon metadata ID.");
