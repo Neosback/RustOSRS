@@ -8,9 +8,10 @@ Existing root-level `RUNELITE_*.md` documents remain research inputs until indiv
 
 | Document | Purpose | Current status |
 |---|---|---|
-| `00-DOCUMENT-INVENTORY.md` | Inventory and classification of the pre-blueprint corpus | Checkpoint 1 |
+| `00-DOCUMENT-INVENTORY.md` | Inventory and classification of the pre-blueprint corpus | Checkpoint 1 complete |
 | `01-EVIDENCE-STATUS.md` | Evidence/status vocabulary and promotion rules | Foundation |
 | `02-CONTRADICTION-REGISTER.md` | Conflicts, revision hazards, and open questions that block normative specs | Active register |
+| `03-SOURCE-GROUP-INVENTORY.md` | Group-level source, shader, fixture, tooling, and provenance inventory | Checkpoint 1 complete |
 
 ## Planned blueprint set
 
@@ -42,7 +43,7 @@ Final semantic specs must end their evidence chain in pinned source and/or execu
 | Checkpoint | Scope | Status |
 |---|---|---|
 | 0 | Repository audit | Complete |
-| 1 | Documentation/evidence inventory | In progress |
+| 1 | Documentation/evidence inventory | Complete |
 | 2 | Truth model + architecture | Not started |
 | 3 | Rendering semantic audit | Not started |
 | 4 | Canonical OSRS specifications | Not started |
