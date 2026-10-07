@@ -44,7 +44,10 @@ macro_rules! semantic_id {
 }
 
 semantic_id!(ObjectId, "Canonical object/loc definition ID.");
-semantic_id!(ModelId, "Canonical model definition ID, including target-era 32-bit values.");
+semantic_id!(
+    ModelId,
+    "Canonical model definition ID, including target-era 32-bit values."
+);
 semantic_id!(TextureId, "Canonical semantic texture definition ID.");
 semantic_id!(SequenceId, "Canonical animation sequence definition ID.");
 semantic_id!(VarbitId, "Canonical varbit definition ID.");
@@ -80,6 +83,9 @@ mod tests {
         ids.insert(TextureId::new(2));
         ids.insert(TextureId::new(9));
 
-        assert_eq!(ids.into_iter().collect::<Vec<_>>(), vec![TextureId::new(2), TextureId::new(9)]);
+        assert_eq!(
+            ids.into_iter().collect::<Vec<_>>(),
+            vec![TextureId::new(2), TextureId::new(9)]
+        );
     }
 }
