@@ -579,8 +579,8 @@ mod tests {
 
     #[test]
     fn raw_xtea_key_persistence_is_rejected() -> TestResult {
-        let yaml = target_profile_yaml()?
-            .replace("persist_raw_keys: false", "persist_raw_keys: true");
+        let yaml =
+            target_profile_yaml()?.replace("persist_raw_keys: false", "persist_raw_keys: true");
         let error = rejected_profile(TargetProfile::from_yaml_str(&yaml))?;
         assert!(error.to_string().contains("never persist raw XTEA keys"));
         Ok(())
