@@ -61,3 +61,6 @@ Numbers are monotonic and never reused.
 | `ADR-0004-reverse-z-raster-conventions.md` | reverse-Z, canonical CCW winding, back-face culling, authored-bias reference strategy |
 | `ADR-0005-zone-compiled-hybrid-rendering.md` | 8x8 zone static compilation plus dynamic/ordered rendering path |
 | `ADR-0006-reference-and-enhanced-render-profiles.md` | explicit deterministic reference profile and higher-quality enhanced editor profile |
+| `ADR-0007-eframe-egui-editor-shell.md` | native eframe/egui shell with shared wgpu viewport and isolated docking abstraction |
+| `ADR-0008-command-transaction-history.md` | semantic command transactions, exact undo/redo, and snapshot-based background work |
+| `ADR-0009-project-save-export-separation.md` | editor project persistence/autosave are distinct from target map/cache export |
