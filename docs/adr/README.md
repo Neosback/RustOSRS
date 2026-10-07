@@ -64,3 +64,4 @@ Numbers are monotonic and never reused.
 | `ADR-0007-eframe-egui-editor-shell.md` | native eframe/egui shell with shared wgpu viewport and isolated docking abstraction |
 | `ADR-0008-command-transaction-history.md` | semantic command transactions, exact undo/redo, and snapshot-based background work |
 | `ADR-0009-project-save-export-separation.md` | editor project persistence/autosave are distinct from target map/cache export |
+| `ADR-0010-rune-fs-private-cache-transport.md` | `rune-fs` is a private read-only transport dependency; RustOSRS owns revision-aware decoders |
