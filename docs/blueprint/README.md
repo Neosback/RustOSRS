@@ -1,8 +1,8 @@
 # RustOSRS Blueprint
 
-This directory is the canonical home for the new RustOSRS architecture and specification program.
+This directory is the canonical home for the RustOSRS architecture and specification program.
 
-Existing root-level `RUNELITE_*.md` documents remain research inputs until individual claims are revalidated and promoted.
+Existing root-level `RUNELITE_*.md` documents remain research inputs unless an individual claim has been revalidated and promoted into `docs/specs/` or an accepted ADR.
 
 ## Current blueprint documents
 
@@ -17,8 +17,10 @@ Existing root-level `RUNELITE_*.md` documents remain research inputs until indiv
 | `06-CRATE-ARCHITECTURE.md` | Reusable `osrs-*` crates and dependency rules | Checkpoint 2 complete |
 | `07-ARCHITECTURE-INVARIANTS.md` | Enforceable architecture guardrails | Checkpoint 2 complete |
 | `08-PARITY-MODEL.md` | Target profiles, truth categories, parity levels, exact-vs-tolerance rules | Checkpoint 2 complete |
-| `09-SEMANTIC-AUDIT.md` | Loc/model construction, normals, lighting, transforms, morphs, contouring, priority/alpha audit | Checkpoint 3A complete |
-| `10-TERRAIN-MATERIAL-PLANE-AUDIT.md` | Terrain topology/materials, bridges/planes, roofs, UVs, camera/coordinates, decoder-contract audit | Checkpoint 3B complete |
+| `09-SEMANTIC-AUDIT.md` | Loc/model construction, normals, lighting, transforms, morphs, contouring, priority/alpha audit | Checkpoint 3A audit record |
+| `10-TERRAIN-MATERIAL-PLANE-AUDIT.md` | Terrain topology/materials, bridges/planes, roofs, UVs, camera/coordinates, decoder-contract audit | Checkpoint 3B complete; closes Checkpoint 3 |
+
+Canonical atomic semantic contracts now live under `docs/specs/`.
 
 Architecture decisions live in `docs/adr/`.
 
@@ -29,6 +31,35 @@ Accepted so far:
 - `ADR-0003-semantic-renderer-editor-boundaries.md`
 
 Source provenance and revision gates live in `docs/verification/SOURCE-PINS.md`.
+
+## Canonical semantic spec set
+
+Checkpoint 4 promoted verified audit findings into stable atomic specification IDs.
+
+Current registry:
+
+- `docs/specs/README.md`
+- `docs/specs/loc-placement.md`
+- `docs/specs/model-build.md`
+- `docs/specs/normals-lighting.md`
+- `docs/specs/morph-animation-contouring.md`
+- `docs/specs/terrain.md`
+- `docs/specs/planes-bridges.md`
+- `docs/specs/face-materials.md`
+- `docs/specs/coordinates.md`
+
+The spec set covers:
+
+- loc type dispatch, wall/decor placement, footprints, initial-vs-runtime construction, placement side effects, and floor-decoration height behavior;
+- exact model selection, mirroring/winding, transform order, static `nonFlatShading` ownership, and cache immutability;
+- base normals, cross-model normal accumulation, scene ModelData finalization, merged-normal precedence, and reference object lighting;
+- varbit/varp morph resolution, dynamic model ownership, animation-state model resolution, and exact integer contouring;
+- terrain shapes `0..12`, flat/shaped terrain contracts, floor definition decoding, and the explicit terrain-color revision gate;
+- collision/source/storage/render plane separation and structural bridge relinking;
+- semantic face metadata, priority meaning, alpha, authored face bias, and texture/material inputs;
+- local-unit, angular, and coordinate-space contracts.
+
+Each atomic spec carries an evidence status, source pin, required behavior, scope, integer semantics where relevant, invariants, failure signature, required tests, and related spec links.
 
 ## Planned blueprint set
 
@@ -55,6 +86,8 @@ A root research document may help locate evidence, but it cannot be the terminal
 
 Final semantic specs must end their evidence chain in pinned source and/or executable reference behavior. Project-owned renderer/editor behavior must end in an explicit architecture decision.
 
+`REVISION_SENSITIVE` is a real implementation gate. It must not be treated as shorthand for "probably correct." The current full terrain-color/11x11 builder is the primary example: its component inputs are partially verified, but the stale `class470` source attribution prevents unconditional promotion.
+
 ## Work sequence
 
 | Checkpoint | Scope | Status |
@@ -63,7 +96,7 @@ Final semantic specs must end their evidence chain in pinned source and/or execu
 | 1 | Documentation/evidence inventory | Complete |
 | 2 | Truth model + architecture | Complete |
 | 3 | Rendering semantic audit | Complete |
-| 4 | Canonical OSRS specifications | Not started |
+| 4 | Canonical OSRS specifications | Complete |
 | 5 | Rust/wgpu renderer blueprint | Not started |
 | 6 | Editor blueprint | Not started |
 | 7 | Verification blueprint | Not started |
@@ -75,50 +108,52 @@ Final semantic specs must end their evidence chain in pinned source and/or execu
 
 Checkpoint 2 established:
 
-- reusable lower-level crates are OSRS-owned, not editor-owned
-- `osrs-scene` does not depend on a concrete cache implementation
-- `osrs-render` consumes semantic truth rather than defining it
-- `osrs-editor` is the first composition root and owns product workflow only
-- `osrs-reference` is development/test infrastructure, never a production runtime dependency
-- shared decoded assets are immutable by default
-- semantic edits precede render invalidation/GPU updates
-- revision-sensitive behavior must remain explicit through a target/parity model
-- exact semantic tests cannot be replaced by screenshot tolerance
-- native desktop is first-class; wasm support is deferred
-- editor non-client scope does not prohibit future client reuse of shared crates
+- reusable lower-level crates are OSRS-owned, not editor-owned;
+- `osrs-scene` does not depend on a concrete cache implementation;
+- `osrs-render` consumes semantic truth rather than defining it;
+- `osrs-editor` is the first composition root and owns product workflow only;
+- `osrs-reference` is development/test infrastructure, never a production runtime dependency;
+- shared decoded assets are immutable by default;
+- semantic edits precede render invalidation/GPU updates;
+- revision-sensitive behavior remains explicit through a target/parity model;
+- exact semantic tests cannot be replaced by screenshot tolerance;
+- native desktop is first-class; wasm support is deferred;
+- editor non-client scope does not prohibit future client reuse of shared crates.
 
-## Checkpoint 3 semantic corrections
+## Checkpoint 3 semantic corrections retained by Checkpoint 4
 
-Checkpoint 3 source-level verification established several implementation-critical corrections to the pre-blueprint research:
+The canonical spec set preserves the major source-audit corrections:
 
-- eligible static `ModelData` objects can merge/accumulate normals across separate models before final lighting; separate mesh topology does not imply independent lighting normals
-- initial region construction and pending-spawn replacement are distinct model-construction pipelines
-- model selection, mirroring, transform order, morph resolution, contouring, and priority semantics must remain exact semantic contracts
-- terrain shape topology `0..12` is independently verified, while the old `class470` pin for the complete terrain-color builder is stale and the complete 11x11/color-build path remains revision-gated
-- bridge behavior is not one universal plane adjustment; source/storage plane, collision plane, render level, linked-below state, and renderer roof/VIS_BELOW grouping are separate mechanisms
-- the old generic `+1/+2` ground-decoration lift claim is not present in the audited placement/storage/upload path
-- RuneLite roof IDs/removal ranges, the 184x184 extended scene, reverse-Z, zone upload strategy, and similar mechanisms must be classified as renderer/runtime policy rather than cache truth unless independently proven otherwise
-- object/terrain UV behavior, texture-animation inputs, transparency, authored face bias, and face priority metadata must survive the semantic-to-render boundary even if Rust uses a different GPU implementation
-- decoder widths/capacities must follow the selected target revision rather than being frozen to older 16-bit/fixed-array assumptions
+- eligible static `ModelData` objects can accumulate normals across separate models before final lighting; separate mesh topology does not imply independent lighting normals;
+- initial region construction and pending-spawn replacement are distinct construction pipelines;
+- model selection has no generic fallback-to-first-model behavior;
+- mirroring includes winding semantics and is not a renderer negative-scale shortcut;
+- transform order, morph resolution, contouring, and face-priority semantics are exact contracts;
+- terrain shape topology `0..12` is verified while the old `class470` pin for the complete terrain-color builder is stale;
+- bridge behavior is not one universal plane adjustment;
+- the old generic `+1/+2` ground-decoration lift claim is not present in the audited path;
+- RuneLite roof IDs/removal ranges, extended-scene capacity, reverse-Z, zone upload strategy, and similar mechanisms remain renderer/runtime policy unless independently proven otherwise;
+- face priority, alpha, texture metadata, and authored face bias survive the semantic-to-render boundary even when Rust uses a different GPU implementation;
+- decoder widths/capacities follow the selected target revision rather than old fixed-width assumptions.
 
-A completed audit does not promote every claim to `VERIFIED`. `REVISION_SENSITIVE` rows remain blocked from normative specs until their source/fixture requirements are satisfied.
+## Checkpoint 5 entry condition
 
-## Checkpoint 4 entry condition
+Checkpoint 5 may now design the Rust/wgpu renderer against the canonical semantic interface.
 
-Checkpoint 4 may now convert verified audit rows into atomic OSRS specifications.
+It must not redefine any `OSRS_SEMANTIC` requirement to make GPU implementation easier. Where the renderer intentionally differs from reference presentation, the decision must be ADR-backed and parity-testable beneath that presentation layer.
 
-Each specification must carry:
+Checkpoint 5 is expected to define, among other things:
 
-- evidence status
-- semantic domain
-- exact source pin(s)
-- required behavior and integer semantics
-- known scope/exceptions
-- fixture/test ownership
-- failure signature
-- cross-links to related specs
-
-Renderer-reference behavior must remain visibly distinct from OSRS semantic truth, and project-owned choices must remain ADR-backed.
+- render-neutral scene-to-GPU contracts;
+- wgpu resource ownership and lifetime;
+- static/dynamic geometry paths;
+- priority/transparency strategy;
+- depth convention and authored bias application;
+- terrain/model material representation;
+- texture animation;
+- scene streaming/dirty rebuild strategy;
+- picking support required by the editor;
+- diagnostic render modes and GPU validation boundaries.
 
 ## Current branch policy
 
