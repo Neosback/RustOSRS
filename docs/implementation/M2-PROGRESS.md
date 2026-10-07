@@ -1,6 +1,6 @@
 # M2 Semantic Foundation Progress
 
-Status: **M2 in progress; M2A complete pending CI**  
+Status: **M2 in progress; M2A complete**  
 Milestone: **M2 - `osrs-core` semantic foundation**  
 Branch: `impl/m2-core-semantic-foundation`
 
@@ -93,6 +93,13 @@ Tests cover:
 - ID ordering/hash/value behavior;
 - digest lower-hex parsing/round trip;
 - M1 target provenance preservation and invalid-input rejection.
+
+Verification result:
+
+- Tier A architecture, formatting, workspace check, and strict Clippy: **PASS**;
+- Tier B workspace tests: **PASS**.
+
+The status-only completion commit is required to pass the same Tier A/B workflow before the checkpoint is reported complete.
 
 ## M2 work intentionally not started in this slice
 
