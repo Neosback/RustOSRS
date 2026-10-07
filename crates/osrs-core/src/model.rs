@@ -64,8 +64,14 @@ impl Triangle {
 pub struct FacePriority(u8);
 
 impl FacePriority {
+    pub const ZERO: Self = Self(0);
+
     pub const fn new(value: u8) -> Option<Self> {
-        if value <= 11 { Some(Self(value)) } else { None }
+        if value <= 11 {
+            Some(Self(value))
+        } else {
+            None
+        }
     }
 
     pub const fn get(self) -> u8 {
@@ -324,13 +330,17 @@ pub enum ModelNormalState {
 /// Owned mutable model state used by exact semantic transformations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkingModel {
-    pub(crate) data: ModelSemanticData,
-    pub(crate) normals: ModelNormalState,
+    data: ModelSemanticData,
+    normals: ModelNormalState,
 }
 
 impl WorkingModel {
     pub fn identity(&self) -> &DefinitionIdentity<ModelId> {
         &self.data.identity
+    }
+
+    pub const fn format(&self) -> ModelFormatIdentity {
+        self.data.format
     }
 
     pub fn vertices(&self) -> &[ModelPoint] {
@@ -361,6 +371,10 @@ impl WorkingModel {
         &mut self.data.face_colors
     }
 
+    pub const fn default_priority(&self) -> FacePriority {
+        self.data.default_priority
+    }
+
     pub fn face_render_types(&self) -> Option<&[i8]> {
         self.data.face_render_types.as_deref()
     }
@@ -381,12 +395,48 @@ impl WorkingModel {
             .get_or_insert_with(|| vec![default; self.data.faces.len()])
     }
 
+    pub fn face_priorities(&self) -> Option<&[FacePriority]> {
+        self.data.face_priorities.as_deref()
+    }
+
+    pub fn face_alphas(&self) -> Option<&[i8]> {
+        self.data.face_alphas.as_deref()
+    }
+
+    pub fn face_alphas_mut(&mut self) -> Option<&mut [i8]> {
+        self.data.face_alphas.as_deref_mut()
+    }
+
     pub fn face_textures(&self) -> Option<&[Option<TextureId>]> {
         self.data.face_textures.as_deref()
     }
 
     pub fn face_textures_mut(&mut self) -> Option<&mut [Option<TextureId>]> {
         self.data.face_textures.as_deref_mut()
+    }
+
+    pub fn texture_face_selectors(&self) -> Option<&[Option<TextureTriangleIndex>]> {
+        self.data.texture_face_selectors.as_deref()
+    }
+
+    pub fn face_biases(&self) -> Option<&[i8]> {
+        self.data.face_biases.as_deref()
+    }
+
+    pub fn texture_triangles(&self) -> &[TextureTriangle] {
+        &self.data.texture_triangles
+    }
+
+    pub fn vertex_skins(&self) -> Option<&[i32]> {
+        self.data.vertex_skins.as_deref()
+    }
+
+    pub fn face_skins(&self) -> Option<&[i32]> {
+        self.data.face_skins.as_deref()
+    }
+
+    pub fn skeletal_vertices(&self) -> Option<&[Option<SkeletalVertexData>]> {
+        self.data.skeletal_vertices.as_deref()
     }
 
     pub fn normal_state(&self) -> &ModelNormalState {
@@ -611,7 +661,7 @@ mod tests {
             ],
             faces: vec![Triangle::new(0, 1, 2)],
             face_colors: vec![500],
-            default_priority: FacePriority::new(0).ok_or("priority")?,
+            default_priority: FacePriority::ZERO,
             face_render_types: None,
             face_priorities: None,
             face_alphas: None,
@@ -797,10 +847,12 @@ mod tests {
             })]),
         };
 
-        assert_ne!(
-            normals.base_vertex_normals[0],
-            normals.merged_vertex_normals.as_ref().and_then(|values| values[0]) .unwrap_or_default()
-        );
+        let merged = normals
+            .merged_vertex_normals
+            .as_ref()
+            .and_then(|values| values[0])
+            .unwrap_or_default();
+        assert_ne!(normals.base_vertex_normals[0], merged);
     }
 
     #[test]
