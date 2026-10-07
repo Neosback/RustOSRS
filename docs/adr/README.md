@@ -50,3 +50,14 @@ Accepted ADRs are immutable historical records except for typo/link corrections.
 `ADR-NNNN-short-title.md`
 
 Numbers are monotonic and never reused.
+
+## Accepted ADRs
+
+| ADR | Decision |
+|---|---|
+| `ADR-0001-reusable-osrs-crate-boundaries.md` | reusable `osrs-*` crate boundaries and dependency direction |
+| `ADR-0002-native-first-editor.md` | native desktop is first-class; wasm is deferred |
+| `ADR-0003-semantic-renderer-editor-boundaries.md` | semantic, renderer, and editor ownership boundaries |
+| `ADR-0004-reverse-z-raster-conventions.md` | reverse-Z, canonical CCW winding, back-face culling, authored-bias reference strategy |
+| `ADR-0005-zone-compiled-hybrid-rendering.md` | 8x8 zone static compilation plus dynamic/ordered rendering path |
+| `ADR-0006-reference-and-enhanced-render-profiles.md` | explicit deterministic reference profile and higher-quality enhanced editor profile |
