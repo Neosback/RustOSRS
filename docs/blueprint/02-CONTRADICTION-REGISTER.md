@@ -1,6 +1,6 @@
 # Contradiction and Open-Question Register
 
-Status: **Checkpoint 1 working register**
+Status: **Checkpoint 2 active register**
 
 This register records claims that must not become implementation requirements until they are resolved. It is intentionally stricter than the existing research notes.
 
@@ -128,48 +128,38 @@ Required resolution: expand the harness/fixtures as each semantic spec is promot
 ## C-007: `editor_*` crate naming conflicts with reusable OSRS foundation goals
 
 **Severity:** P2  
-**Status:** `PROJECT_DECISION` pending Checkpoint 2
+**Status:** `RESOLVED`
 
-Existing port notes place scene, math, cache, rendering, and application concerns under editor-prefixed crates.
+Resolved by `docs/adr/ADR-0001-reusable-osrs-crate-boundaries.md` and `docs/blueprint/06-CRATE-ARCHITECTURE.md`.
 
-The desired foundation may later support a Rust OSRS client/reference renderer, so reusable semantic layers should not be conceptually owned by the editor.
+The accepted primary crate direction is:
 
-Candidate direction, not yet final:
-
-- `osrs-cache`
 - `osrs-core`
+- `osrs-cache`
 - `osrs-scene`
 - `osrs-render`
 - `osrs-reference`
 - `osrs-editor`
 
-Final dependency rules belong in Checkpoint 2 ADRs.
+Reusable lower layers are OSRS-owned, not editor-owned. Additional crate splits require demonstrated value and an ADR.
 
 ## C-008: Mandatory wasm support is not yet a product requirement
 
 **Severity:** P2  
-**Status:** `PROJECT_DECISION` pending
+**Status:** `RESOLVED`
 
-Existing notes require the core to compile for wasm and prescribe browser-specific fallbacks/dependencies.
+Resolved by `docs/adr/ADR-0002-native-first-editor.md`.
 
-The current product objective is a leading-class native Rust map editor. Web compatibility may remain desirable, but it must not distort semantic architecture, threading, file I/O, diagnostics, or rendering design without an explicit decision.
-
-Required resolution: ADR defining native-first versus native+web support and which crates, if any, carry wasm compatibility as a hard constraint.
+RustOSRS is native-first. wasm support is deferred, not forbidden. Natural portability is welcome, but wasm compatibility is not a hard acceptance gate and must not distort native editor architecture without a future superseding ADR.
 
 ## C-009: Existing "map editor, not a client" non-scope is too broad for foundation architecture
 
 **Severity:** P2  
-**Status:** `PROJECT_DECISION` pending
+**Status:** `RESOLVED`
 
-Networking, game widgets, live entities, and official-world connectivity are correctly outside the map editor product scope.
+Resolved by `docs/blueprint/04-PROJECT-CHARTER.md`, `docs/blueprint/06-CRATE-ARCHITECTURE.md`, and ADR-0001.
 
-However, reusable scene/cache/render crates should not encode assumptions that make a future Rust client/reference implementation unnecessarily difficult.
-
-Required resolution:
-
-- editor product remains explicitly non-client
-- reusable crates remain client-capable where this does not compromise correctness or maintainability
-- game-specific runtime systems stay outside editor milestones rather than being architecturally forbidden from the foundation
+The editor product remains explicitly non-client for its initial milestones, while reusable cache/core/scene/render crates remain suitable for a future Rust client/reference application where doing so does not compromise correctness or maintainability.
 
 ## C-010: `rs-cache` is a candidate foundation, not an accepted decoder contract
 
@@ -225,6 +215,8 @@ Required resolution:
 
 RuneLite GPU's reverse-Z behavior is a strong wgpu design candidate, but it is renderer policy. Object placement, priorities, face metadata, sorting, and scene semantics must remain testable independently of it.
 
+Checkpoint 2 resolved the ownership boundary through ADR-0003, but the concrete reverse-Z renderer decision remains open for Checkpoint 5.
+
 Required resolution: renderer ADR documenting reverse-Z, coordinate mapping, culling/front-face rules, and parity tests.
 
 ## C-014: Camera defaults and pitch bands are mixed semantic/editor concerns
@@ -252,26 +244,20 @@ Required resolution: promote only features that serve editor requirements, with 
 ## C-016: Generated API docs must never become sole proof
 
 **Severity:** P1  
-**Status:** `PROJECT_DECISION`
+**Status:** `RESOLVED`
 
-`docs/api/` contains generated render-relevant API pages and is useful for navigation. Generated Javadocs describe API surfaces, not necessarily construction semantics or exact deob behavior.
+Resolved by `docs/blueprint/01-EVIDENCE-STATUS.md` and invariant A2 in `docs/blueprint/07-ARCHITECTURE-INVARIANTS.md`.
 
-Required rule: final specs cite the underlying source path/blob, not only generated pages.
+`docs/api/` is navigation/reference material only. Final semantic specs must cite underlying pinned source and/or executable evidence.
 
 ## C-017: Existing "all verified" language hides different verification strengths
 
 **Severity:** P1  
-**Status:** `DISPUTED`
+**Status:** `RESOLVED`
 
-The research corpus uses "verified" for multiple meanings:
+Resolved by the status/evidence vocabulary in `docs/blueprint/01-EVIDENCE-STATUS.md`.
 
-- source inspected
-- output executed in the deob harness
-- RuneLite API/Javadoc observed
-- renderer state mapped conceptually to wgpu
-- proposed Rust behavior not yet rendered
-
-Checkpoint 1 replaces this with the status vocabulary in `01-EVIDENCE-STATUS.md`.
+The canonical blueprint now distinguishes `VERIFIED`, `DERIVED`, `PROJECT_DECISION`, `RESEARCH`, `HYPOTHESIS`, `DISPUTED`, `REVISION_SENSITIVE`, `DEFERRED`, and `OBSOLETE` rather than treating all source inspection or conceptual mapping as equivalent verification.
 
 ## C-018: Ground-decoration lift and similar visual claims need source-path verification
 
@@ -322,7 +308,7 @@ For every item resolved later:
 1. add exact source pins
 2. state chosen target behavior
 3. add/update an atomic spec or ADR
-4. attach a test/fixture requirement
+4. attach a test/fixture requirement where applicable
 5. mark the register item `RESOLVED` and link the resolving document
 
 Nothing in this register should be "resolved" only by rewriting prose.
