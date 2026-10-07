@@ -186,6 +186,8 @@ version = "0.0.0"
 dependencies = [
  "osrs-core",
  "rune-fs",
+ "serde",
+ "serde_yaml_ng",
  "sha2",
 ]
 
