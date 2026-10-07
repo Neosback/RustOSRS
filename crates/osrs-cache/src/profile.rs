@@ -198,11 +198,7 @@ impl TargetProfile {
         digest_u64(&mut digest, "cache_source.cache_id", source.cache_id);
         digest_field(&mut digest, "cache_source.uri", &source.uri);
         digest_field(&mut digest, "cache_source.game", &source.game);
-        digest_field(
-            &mut digest,
-            "cache_source.environment",
-            &source.environment,
-        );
+        digest_field(&mut digest, "cache_source.environment", &source.environment);
         digest_field(&mut digest, "cache_source.language", &source.language);
         digest_u64(&mut digest, "cache_source.build", u64::from(source.build));
         digest_field(&mut digest, "cache_source.timestamp", &source.timestamp);
@@ -231,8 +227,16 @@ impl TargetProfile {
             "cache_source.physical_content_indices",
             u64::from(source.physical_content_indices),
         );
-        digest_u64(&mut digest, "cache_source.groups_present", source.groups_present);
-        digest_u64(&mut digest, "cache_source.groups_total", source.groups_total);
+        digest_u64(
+            &mut digest,
+            "cache_source.groups_present",
+            source.groups_present,
+        );
+        digest_u64(
+            &mut digest,
+            "cache_source.groups_total",
+            source.groups_total,
+        );
         digest_u64(
             &mut digest,
             "cache_source.xtea_keys_present",
@@ -375,11 +379,9 @@ impl TargetProfile {
                 self.cache_fingerprint.algorithm
             ));
         }
-        let value = self
-            .cache_fingerprint
-            .value
-            .as_deref()
-            .ok_or_else(|| TargetProfileError::Validation("cache fingerprint is required".into()))?;
+        let value = self.cache_fingerprint.value.as_deref().ok_or_else(|| {
+            TargetProfileError::Validation("cache fingerprint is required".into())
+        })?;
         if !is_lower_hex_sha256(value) {
             return validation_error(
                 "cache fingerprint must be exactly 64 lowercase hexadecimal characters",
@@ -416,7 +418,10 @@ impl TargetProfile {
             return validation_error("semantic_sources must not be empty");
         }
         for (name, source) in &self.semantic_sources {
-            let has_commit = source.commit.as_ref().is_some_and(|value| !value.is_empty());
+            let has_commit = source
+                .commit
+                .as_ref()
+                .is_some_and(|value| !value.is_empty());
             let has_tree = source.tree.as_ref().is_some_and(|value| !value.is_empty());
             if !has_commit && !has_tree {
                 return validation_error(format!(
@@ -424,9 +429,7 @@ impl TargetProfile {
                 ));
             }
             if source.status.trim().is_empty() {
-                return validation_error(format!(
-                    "semantic source {name:?} must include a status"
-                ));
+                return validation_error(format!("semantic source {name:?} must include a status"));
             }
         }
         Ok(())
@@ -446,9 +449,7 @@ impl TargetProfile {
         }
         for (name, gate) in &self.revision_gates {
             if gate.state.trim().is_empty() {
-                return validation_error(format!(
-                    "revision gate {name:?} must include a state"
-                ));
+                return validation_error(format!("revision gate {name:?} must include a state"));
             }
         }
         Ok(())
@@ -516,8 +517,7 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    const TARGET_PROFILE_PATH: &str =
-        "../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml";
+    const TARGET_PROFILE_PATH: &str = "../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml";
     const TARGET_CACHE_FINGERPRINT: &str =
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
@@ -548,7 +548,10 @@ mod tests {
         let baseline = TargetProfile::from_yaml_str(&yaml)
             .expect("baseline profile must validate")
             .identity_digest_v1();
-        let reformatted = format!("# formatting-only comment\r\n{}", yaml.replace('\n', "\r\n"));
+        let reformatted = format!(
+            "# formatting-only comment\r\n{}",
+            yaml.replace('\n', "\r\n")
+        );
         let changed = TargetProfile::from_yaml_str(&reformatted)
             .expect("reformatted profile must validate")
             .identity_digest_v1();
@@ -565,15 +568,23 @@ mod tests {
 
     #[test]
     fn raw_xtea_key_persistence_is_rejected() {
-        let yaml = target_profile_yaml().replace("persist_raw_keys: false", "persist_raw_keys: true");
+        let yaml =
+            target_profile_yaml().replace("persist_raw_keys: false", "persist_raw_keys: true");
         let error = TargetProfile::from_yaml_str(&yaml).expect_err("raw-key persistence must fail");
         assert!(error.to_string().contains("never persist raw XTEA keys"));
     }
 
     #[test]
     fn logical_and_physical_index_count_mismatch_is_rejected() {
-        let yaml = target_profile_yaml().replace("physical_content_indices: 23", "physical_content_indices: 24");
+        let yaml = target_profile_yaml().replace(
+            "physical_content_indices: 23",
+            "physical_content_indices: 24",
+        );
         let error = TargetProfile::from_yaml_str(&yaml).expect_err("count mismatch must fail");
-        assert!(error.to_string().contains("must equal logical_archive_slots_present"));
+        assert!(
+            error
+                .to_string()
+                .contains("must equal logical_archive_slots_present")
+        );
     }
 }
