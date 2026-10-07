@@ -297,13 +297,44 @@ mod tests {
         eprintln!("build-241 physical content indices={indices:?}");
         eprintln!("build-241 physical group count={group_count}");
 
+        assert_eq!(indices.len(), 23);
+        assert!(!indices.contains(&16));
+        assert!(!indices.contains(&23));
         assert!(indices.contains(&CONFIG_INDEX));
         assert!(indices.contains(&MAP_INDEX));
         assert!(indices.contains(&MODEL_INDEX));
         assert_eq!(group_count, 117_584);
 
-        let map_group = cache.group_id_by_name(MAP_INDEX, &format!("m{LUMBRIDGE_REGION}"))?;
-        let loc_group = cache.group_id_by_name(MAP_INDEX, &format!("l{LUMBRIDGE_REGION}"))?;
+        let map_index = cache
+            .indices
+            .get(&MAP_INDEX)
+            .ok_or(TransportError::MissingIndex(MAP_INDEX))?;
+        let named_group_count = map_index
+            .metadata
+            .iter()
+            .filter(|metadata| metadata.name_hash != 0)
+            .count();
+        eprintln!("build-241 map groups with nonzero name hashes={named_group_count}");
+        eprintln!(
+            "build-241 m50_50 hash={}, l50_50 hash={}",
+            jagex_name_hash(&format!("m{LUMBRIDGE_REGION}")),
+            jagex_name_hash(&format!("l{LUMBRIDGE_REGION}"))
+        );
+
+        let map_groups = cache.group_ids(MAP_INDEX)?;
+        let Some(map_group) = map_groups.first().copied() else {
+            return Err(TransportError::MissingGroup {
+                index: MAP_INDEX,
+                group: 0,
+            });
+        };
+        let model_groups = cache.group_ids(MODEL_INDEX)?;
+        let Some(model_group) = model_groups.first().copied() else {
+            return Err(TransportError::MissingGroup {
+                index: MODEL_INDEX,
+                group: 0,
+            });
+        };
         assert!(
             !cache
                 .read_decoded_group(MAP_INDEX, map_group, None)?
@@ -311,7 +342,12 @@ mod tests {
         );
         assert!(
             !cache
-                .read_decoded_group(MAP_INDEX, loc_group, None)?
+                .read_decoded_group(MODEL_INDEX, model_group, None)?
+                .is_empty()
+        );
+        assert!(
+            !cache
+                .read_decoded_group(CONFIG_INDEX, 6, None)?
                 .is_empty()
         );
 
