@@ -1,0 +1,39 @@
+name: M1 Build 241 Transport Spike
+
+on:
+  push:
+    branches:
+      - impl/m1-target-cache-contract
+    paths:
+      - .github/workflows/m1-target-cache-spike.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build-241:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - name: Download pinned OpenRS2 cache 2727
+        run: |
+          curl --fail --location --retry 3 \
+            --output /tmp/openrs2-2727.zip \
+            https://archive.openrs2.org/caches/runescape/2727/disk.zip
+          mkdir -p /tmp/openrs2-2727
+          unzip -q /tmp/openrs2-2727.zip -d /tmp/openrs2-2727
+          test -f /tmp/openrs2-2727/cache/main_file_cache.dat2
+
+      - name: Run build 241 transport contract
+        env:
+          RUSTOSRS_TARGET_CACHE_DIR: /tmp/openrs2-2727/cache
+        run: >-
+          cargo test --locked -p osrs-cache
+          configured_build_241_cache_matches_pinned_source_shape
+          -- --nocapture
