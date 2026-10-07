@@ -69,7 +69,10 @@ impl MapTile {
     pub fn to_scene(self, scene_origin: Self) -> Option<SceneTile> {
         let x = self.x.checked_sub(scene_origin.x)?;
         let y = self.y.checked_sub(scene_origin.y)?;
-        Some(SceneTile::new(u32::try_from(x).ok()?, u32::try_from(y).ok()?))
+        Some(SceneTile::new(
+            u32::try_from(x).ok()?,
+            u32::try_from(y).ok()?,
+        ))
     }
 }
 
@@ -258,8 +261,14 @@ macro_rules! typed_plane {
 }
 
 typed_plane!(SourcePlane, "Encoded/source plane from map/location data.");
-typed_plane!(StoragePlane, "Plane on which a tile is stored after semantic relinking.");
-typed_plane!(RenderLevel, "Semantic render/height level, distinct from storage and collision planes.");
+typed_plane!(
+    StoragePlane,
+    "Plane on which a tile is stored after semantic relinking."
+);
+typed_plane!(
+    RenderLevel,
+    "Semantic render/height level, distinct from storage and collision planes."
+);
 
 /// Collision plane can be absent when a semantic adjustment would move below plane zero.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -362,9 +371,18 @@ mod tests {
     fn plane_types_reject_out_of_range_values_and_remain_distinct() {
         assert_eq!(PlaneIndex::new(3).map(PlaneIndex::get), Some(3));
         assert_eq!(PlaneIndex::new(4), None);
-        assert_eq!(SourcePlane::new(2).map(|value| value.index().get()), Some(2));
-        assert_eq!(StoragePlane::new(2).map(|value| value.index().get()), Some(2));
-        assert_eq!(RenderLevel::new(2).map(|value| value.index().get()), Some(2));
+        assert_eq!(
+            SourcePlane::new(2).map(|value| value.index().get()),
+            Some(2)
+        );
+        assert_eq!(
+            StoragePlane::new(2).map(|value| value.index().get()),
+            Some(2)
+        );
+        assert_eq!(
+            RenderLevel::new(2).map(|value| value.index().get()),
+            Some(2)
+        );
         assert_eq!(CollisionPlane::from_index(4), None);
         assert_eq!(CollisionPlane::None, CollisionPlane::None);
     }
