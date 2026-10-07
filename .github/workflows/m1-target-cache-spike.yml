@@ -29,6 +29,14 @@ jobs:
           mkdir -p /tmp/openrs2-2727
           unzip -q /tmp/openrs2-2727.zip -d /tmp/openrs2-2727
           test -f /tmp/openrs2-2727/cache/main_file_cache.dat2
+          printf '%s\n' 'Physical idx files:'
+          find /tmp/openrs2-2727/cache -maxdepth 1 -type f -name 'main_file_cache.idx*' -printf '%f\n' | sort -V
+
+      - name: Print legacy fingerprint
+        run: >-
+          cargo test --locked -p osrs-cache
+          fingerprint_v1_is_deterministic_for_legacy_fixture
+          -- --nocapture
 
       - name: Run build 241 transport contract
         env:
