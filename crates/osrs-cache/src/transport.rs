@@ -28,7 +28,10 @@ impl fmt::Display for TransportError {
                 write!(f, "cache group {group} is not present in index {index}")
             }
             Self::MissingNamedGroup { index, name } => {
-                write!(f, "cache group named {name:?} is not present in index {index}")
+                write!(
+                    f,
+                    "cache group named {name:?} is not present in index {index}"
+                )
             }
         }
     }
@@ -109,9 +112,11 @@ impl CacheTransport {
     }
 
     pub(crate) fn group_count(&self) -> Result<usize> {
-        self.content_index_ids().into_iter().try_fold(0usize, |total, index| {
-            self.group_ids(index).map(|groups| total + groups.len())
-        })
+        self.content_index_ids()
+            .into_iter()
+            .try_fold(0usize, |total, index| {
+                self.group_ids(index).map(|groups| total + groups.len())
+            })
     }
 
     pub(crate) fn group_id_by_name(&self, index_id: u8, name: &str) -> Result<u32> {
@@ -183,12 +188,13 @@ impl CacheTransport {
         for index_id in self.content_index_ids() {
             digest.update(u16::from(index_id).to_be_bytes());
 
-            let reference_archive = reference_index.archive_refs.get(&u32::from(index_id)).ok_or(
-                TransportError::MissingGroup {
+            let reference_archive = reference_index
+                .archive_refs
+                .get(&u32::from(index_id))
+                .ok_or(TransportError::MissingGroup {
                     index: REFERENCE_TABLE_ID,
                     group: u32::from(index_id),
-                },
-            )?;
+                })?;
             let reference_bytes = self.data.read(reference_archive)?.finalize();
             update_hashed_blob(&mut digest, &reference_bytes);
 
@@ -222,16 +228,11 @@ mod tests {
 
     const MAP_INDEX: u8 = 5;
     const LUMBRIDGE_REGION: &str = "50_50";
-    const LEGACY_LUMBRIDGE_XTEA: [u32; 4] = [
-        3_030_157_619,
-        2_364_842_415,
-        3_297_319_647,
-        1_973_582_566,
-    ];
+    const LEGACY_LUMBRIDGE_XTEA: [u32; 4] =
+        [3_030_157_619, 2_364_842_415, 3_297_319_647, 1_973_582_566];
 
     fn repository_cache() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../rs-cache-master/data/osrs_cache")
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../rs-cache-master/data/osrs_cache")
     }
 
     #[test]
@@ -266,11 +267,8 @@ mod tests {
     fn legacy_cache_supports_lumbridge_xtea_boundary() -> Result<()> {
         let cache = CacheTransport::open(repository_cache())?;
         let loc_group = cache.group_id_by_name(MAP_INDEX, &format!("l{LUMBRIDGE_REGION}"))?;
-        let decoded = cache.read_decoded_group(
-            MAP_INDEX,
-            loc_group,
-            Some(LEGACY_LUMBRIDGE_XTEA),
-        )?;
+        let decoded =
+            cache.read_decoded_group(MAP_INDEX, loc_group, Some(LEGACY_LUMBRIDGE_XTEA))?;
         assert!(!decoded.is_empty());
         Ok(())
     }
@@ -297,8 +295,16 @@ mod tests {
 
         let map_group = cache.group_id_by_name(MAP_INDEX, &format!("m{LUMBRIDGE_REGION}"))?;
         let loc_group = cache.group_id_by_name(MAP_INDEX, &format!("l{LUMBRIDGE_REGION}"))?;
-        assert!(!cache.read_decoded_group(MAP_INDEX, map_group, None)?.is_empty());
-        assert!(!cache.read_decoded_group(MAP_INDEX, loc_group, None)?.is_empty());
+        assert!(
+            !cache
+                .read_decoded_group(MAP_INDEX, map_group, None)?
+                .is_empty()
+        );
+        assert!(
+            !cache
+                .read_decoded_group(MAP_INDEX, loc_group, None)?
+                .is_empty()
+        );
 
         let fingerprint = cache.fingerprint_v1()?;
         assert_eq!(fingerprint.to_hex().len(), 64);
