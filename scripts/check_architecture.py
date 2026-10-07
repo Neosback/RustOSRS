@@ -34,13 +34,18 @@ CORE_FORBIDDEN = {
 
 
 def dependency_names(node: object) -> set[str]:
-    """Collect dependencies, including target-specific dependency sections."""
+    """Collect dependency identities, including aliases and target-specific sections."""
     found: set[str] = set()
 
     if isinstance(node, dict):
         for key, value in node.items():
             if key in DEPENDENCY_SECTIONS and isinstance(value, dict):
-                found.update(value.keys())
+                for dependency_name, dependency_spec in value.items():
+                    found.add(dependency_name)
+                    if isinstance(dependency_spec, dict):
+                        package = dependency_spec.get("package")
+                        if isinstance(package, str):
+                            found.add(package)
             found.update(dependency_names(value))
     elif isinstance(node, list):
         for value in node:
