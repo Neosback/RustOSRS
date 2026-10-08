@@ -17,7 +17,7 @@ pub use reader::BinaryReader;
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use super::{ArchiveFileProvenance, DecoderContext};
+    use super::{ArchiveFileProvenance, DecoderContext, DecoderContextError};
     use crate::profile::{TargetProfile, TargetProfileError};
 
     const TARGET_PROFILE_YAML: &str =
