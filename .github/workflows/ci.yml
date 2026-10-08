@@ -12,6 +12,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  m4-checkpoint1:
+    name: M4 checkpoint 1 decoder substrate
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/impl/m4-model-decode-construction' &&
+      !contains(github.event.head_commit.message, 'feat: add M4 decoder substrate')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - name: Apply checkpoint 1
+        run: |
+          python3 scripts/m4_checkpoint1.py
+          cargo fmt --all
+
+      - name: Verify checkpoint 1
+        run: |
+          cargo check --locked --workspace --all-targets --all-features
+          cargo test --locked -p osrs-cache
+          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: Commit checkpoint 1
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/osrs-cache/src/decode/error.rs crates/osrs-cache/src/decode/reader.rs docs/implementation/M4-PROGRESS.md
+          git commit -m "feat: add M4 decoder substrate"
+          git push origin HEAD:impl/m4-model-decode-construction
+
   tier-a:
     name: Tier A - static quality
     runs-on: ubuntu-latest
