@@ -236,11 +236,7 @@ impl ModelSourceRepository {
         )
     }
 
-    pub fn cached(
-        &self,
-        model_id: ModelId,
-        variant: RawModelVariant,
-    ) -> Option<Arc<SourceModel>> {
+    pub fn cached(&self, model_id: ModelId, variant: RawModelVariant) -> Option<Arc<SourceModel>> {
         self.raw_models.get(&self.key(model_id, variant))
     }
 
@@ -404,8 +400,8 @@ mod tests {
     }
 
     #[test]
-    fn cache_rejects_model_and_target_identity_mismatch()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn cache_rejects_model_and_target_identity_mismatch() -> Result<(), Box<dyn std::error::Error>>
+    {
         let context = test_support::target_context()?;
         let target = context.target_provenance().clone();
         let key = RawModelCacheKey::new(
@@ -438,8 +434,8 @@ mod tests {
     }
 
     #[test]
-    fn working_copy_mutation_cannot_change_cached_source()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn working_copy_mutation_cannot_change_cached_source() -> Result<(), Box<dyn std::error::Error>>
+    {
         let context = test_support::target_context()?;
         let target = context.target_provenance().clone();
         let model_id = ModelId::new(99);
