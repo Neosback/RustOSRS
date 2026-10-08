@@ -1,6 +1,6 @@
 # M4 Progress: Model Decode and Exact Construction
 
-Status: **Checkpoint 4 implementation complete; final clean-head CI pending**  
+Status: **Checkpoint 4 complete**  
 Branch: `impl/m4-model-decode-construction`  
 Baseline: M3 squash merge `6e350afeb73c96f1b1ccd050ef427028e3015987`
 
@@ -73,7 +73,7 @@ That primitive drives ModelData vertex-coordinate deltas and face-index delta st
 - [x] mirror vertices plus face winding;
 - [x] preserve the untyped/type-10 special-case behavior from pinned source;
 - [x] implementation head `7191ee7a6607049ec6782260af90c291f6a3a55e` passed Tier A/B/C;
-- [ ] final documentation-complete exact-head CI readback.
+- [x] documentation-complete head `0a0256ac3bd81711294be642a825df6c652debd4` passed Tier A/B/C.
 
 ### Checkpoint 5: exact instance transform pipeline
 
@@ -286,5 +286,7 @@ Implementation head `7191ee7a6607049ec6782260af90c291f6a3a55e` passed the comple
 - Tier A static quality: architecture boundaries, architecture-guard tests, rustfmt, workspace check, and strict clippy all passed;
 - Tier B workspace tests passed, including the new exact construction fixtures;
 - Tier C checked-in M3 parity fixtures and deterministic decoder fuzz smoke passed.
+
+Documentation-complete head `0a0256ac3bd81711294be642a825df6c652debd4` also passed Tier A/B/C in workflow run `37806446505`.
 
 Checkpoint 5 instance-transform work has not started.
