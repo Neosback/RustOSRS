@@ -284,8 +284,12 @@ pub fn mirror_source_model(source: &SourceModel) -> Result<SourceModel, ModelCon
 /// deduplicated by exact XYZ equality in first-seen order. Optional face arrays
 /// are materialized only when the reference constructor would materialize them,
 /// with reference zero/default sentinels for source models that omit an array.
-pub fn combine_source_models(models: &[&SourceModel]) -> Result<AssembledModel, ModelConstructionError> {
-    let first = *models.first().ok_or(ModelConstructionError::EmptyCombination)?;
+pub fn combine_source_models(
+    models: &[&SourceModel],
+) -> Result<AssembledModel, ModelConstructionError> {
+    let first = *models
+        .first()
+        .ok_or(ModelConstructionError::EmptyCombination)?;
     for model in &models[1..] {
         if model.identity().provenance != first.identity().provenance {
             return Err(ModelConstructionError::TargetProvenanceMismatch {
@@ -299,14 +303,18 @@ pub fn combine_source_models(models: &[&SourceModel]) -> Result<AssembledModel, 
         return Ok(AssembledModel::from_source(first));
     }
 
-    let has_render_types = models.iter().any(|model| model.face_render_types().is_some());
+    let has_render_types = models
+        .iter()
+        .any(|model| model.face_render_types().is_some());
     let has_alphas = models.iter().any(|model| model.face_alphas().is_some());
     let has_face_skins = models.iter().any(|model| model.face_skins().is_some());
     let has_textures = models.iter().any(|model| model.face_textures().is_some());
     let has_selectors = models
         .iter()
         .any(|model| model.texture_face_selectors().is_some());
-    let has_skeletal = models.iter().any(|model| model.skeletal_vertices().is_some());
+    let has_skeletal = models
+        .iter()
+        .any(|model| model.skeletal_vertices().is_some());
     let has_biases = models.iter().any(|model| model.face_biases().is_some());
 
     let mut uniform_priority = None;
@@ -331,7 +339,10 @@ pub fn combine_source_models(models: &[&SourceModel]) -> Result<AssembledModel, 
         .sum();
 
     let mut assembled = AssembledModel {
-        sources: models.iter().map(|model| source_descriptor(model)).collect(),
+        sources: models
+            .iter()
+            .map(|model| source_descriptor(model))
+            .collect(),
         vertices: Vec::new(),
         faces: Vec::with_capacity(total_faces),
         face_colors: Vec::with_capacity(total_faces),
@@ -352,10 +363,11 @@ pub fn combine_source_models(models: &[&SourceModel]) -> Result<AssembledModel, 
     let mut vertex_lookup = HashMap::<ModelPoint, u32>::new();
 
     for model in models {
-        let texture_base = u32::try_from(assembled.texture_triangles.len())
-            .map_err(|_| ModelConstructionError::IndexOverflow {
+        let texture_base = u32::try_from(assembled.texture_triangles.len()).map_err(|_| {
+            ModelConstructionError::IndexOverflow {
                 field: "texture triangle count",
-            })?;
+            }
+        })?;
 
         for (face_index, face) in model.faces().iter().copied().enumerate() {
             let a = map_vertex(&mut assembled, &mut vertex_lookup, model, face.a.get())?;
@@ -365,7 +377,11 @@ pub fn combine_source_models(models: &[&SourceModel]) -> Result<AssembledModel, 
             assembled.face_colors.push(model.face_colors()[face_index]);
 
             if let Some(output) = assembled.face_render_types.as_mut() {
-                output.push(model.face_render_types().map_or(0, |values| values[face_index]));
+                output.push(
+                    model
+                        .face_render_types()
+                        .map_or(0, |values| values[face_index]),
+                );
             }
             if let Some(output) = assembled.face_priorities.as_mut() {
                 output.push(
@@ -378,7 +394,11 @@ pub fn combine_source_models(models: &[&SourceModel]) -> Result<AssembledModel, 
                 output.push(model.face_alphas().map_or(0, |values| values[face_index]));
             }
             if let Some(output) = assembled.face_textures.as_mut() {
-                output.push(model.face_textures().map_or(None, |values| values[face_index]));
+                output.push(
+                    model
+                        .face_textures()
+                        .map_or(None, |values| values[face_index]),
+                );
             }
             if let Some(output) = assembled.texture_face_selectors.as_mut() {
                 let selector = model
@@ -465,7 +485,11 @@ fn map_vertex(
         .vertex_skins
         .as_mut()
         .expect("combined model always owns vertex skins")
-        .push(source.vertex_skins().map_or(0, |values| values[source_index as usize]));
+        .push(
+            source
+                .vertex_skins()
+                .map_or(0, |values| values[source_index as usize]),
+        );
     if let Some(output) = assembled.skeletal_vertices.as_mut() {
         output.push(
             source
@@ -490,8 +514,7 @@ mod tests {
     };
     use crate::provenance::{CacheFingerprint, ProfileDigest, TargetProvenance};
 
-    const PROFILE_DIGEST: &str =
-        "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
+    const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
     const CACHE_FINGERPRINT: &str =
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
@@ -504,7 +527,10 @@ mod tests {
         )?)
     }
 
-    fn object(models: Option<ObjectModels>, is_rotated: bool) -> Result<ObjectDefinition, Box<dyn std::error::Error>> {
+    fn object(
+        models: Option<ObjectModels>,
+        is_rotated: bool,
+    ) -> Result<ObjectDefinition, Box<dyn std::error::Error>> {
         Ok(ObjectDefinition {
             identity: DefinitionIdentity::new(ObjectId::new(1), provenance()?),
             name: Some("fixture".to_owned()),
@@ -621,7 +647,10 @@ mod tests {
 
         let empty = object(Some(ObjectModels::Untyped(Vec::new())), false)?;
         assert_eq!(select_object_model(&empty, LocType::new(10), 0), None);
-        assert_eq!(select_object_model(&object(None, false)?, LocType::new(10), 0), None);
+        assert_eq!(
+            select_object_model(&object(None, false)?, LocType::new(10), 0),
+            None
+        );
         Ok(())
     }
 
@@ -740,22 +769,28 @@ mod tests {
         );
         assert_eq!(
             combined.texture_face_selectors(),
-            Some(&[
-                Some(TextureTriangleIndex::new(0)),
-                Some(TextureTriangleIndex::new(1)),
-            ][..])
+            Some(
+                &[
+                    Some(TextureTriangleIndex::new(0)),
+                    Some(TextureTriangleIndex::new(1)),
+                ][..]
+            )
         );
         assert_eq!(
             combined.face_priorities(),
-            Some(&[
-                FacePriority::new(2).ok_or("priority")?,
-                FacePriority::new(3).ok_or("priority")?,
-            ][..])
+            Some(
+                &[
+                    FacePriority::new(2).ok_or("priority")?,
+                    FacePriority::new(3).ok_or("priority")?,
+                ][..]
+            )
         );
         // Duplicate coordinate (10,0,0) keeps the first source's vertex skin.
         assert_eq!(combined.vertex_skins(), Some(&[5, 6, 7, 8, 9][..]));
         assert_eq!(
-            combined.skeletal_vertices().and_then(|values| values[1].as_ref()),
+            combined
+                .skeletal_vertices()
+                .and_then(|values| values[1].as_ref()),
             None
         );
         assert_eq!(combined.sources().len(), 2);
@@ -806,8 +841,14 @@ mod tests {
 
         let combined = combine_source_models(&[&first, &second])?;
         assert_eq!(combined.texture_triangles().len(), 2);
-        assert_eq!(combined.texture_triangles()[0], first.texture_triangles()[0]);
-        assert_eq!(combined.texture_triangles()[1], second.texture_triangles()[0]);
+        assert_eq!(
+            combined.texture_triangles()[0],
+            first.texture_triangles()[0]
+        );
+        assert_eq!(
+            combined.texture_triangles()[1],
+            second.texture_triangles()[0]
+        );
         Ok(())
     }
 }
