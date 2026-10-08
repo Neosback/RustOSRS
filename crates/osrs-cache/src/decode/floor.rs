@@ -32,8 +32,8 @@ pub fn decode_floor_underlay(
         }
     }
 
-    reader.finish()?;
     let rgb = rgb24(&reader, "underlay rgb", rgb, None)?;
+    reader.finish()?;
     Ok(FloorUnderlayDefinition {
         identity: DefinitionIdentity::new(id, context.target_provenance().clone()),
         rgb,
@@ -80,11 +80,11 @@ pub fn decode_floor_overlay(
         }
     }
 
-    reader.finish()?;
     let primary_rgb = rgb24(&reader, "overlay primary rgb", primary_rgb, Some(1))?;
     let secondary_rgb = secondary_rgb
         .map(|value| rgb24(&reader, "overlay secondary rgb", value, Some(7)))
         .transpose()?;
+    reader.finish()?;
 
     Ok(FloorOverlayDefinition {
         identity: DefinitionIdentity::new(id, context.target_provenance().clone()),
@@ -129,7 +129,7 @@ mod tests {
         )?;
 
         assert_eq!(definition.identity.id, FloorUnderlayId::new(42));
-        assert_eq!(definition.identity.provenance, *context.target_provenance());
+        assert_eq!(&definition.identity.provenance, context.target_provenance());
         assert_eq!(definition.rgb.get(), 0x12_34_56);
         Ok(())
     }
@@ -146,7 +146,8 @@ mod tests {
     }
 
     #[test]
-    fn overlay_decodes_target_opcodes_and_preserves_absence() -> Result<(), Box<dyn std::error::Error>> {
+    fn overlay_decodes_target_opcodes_and_preserves_absence()
+    -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 4, Some(11));
         let bytes = [
@@ -164,7 +165,8 @@ mod tests {
     }
 
     #[test]
-    fn overlay_defaults_match_target_constructor_semantics() -> Result<(), Box<dyn std::error::Error>> {
+    fn overlay_defaults_match_target_constructor_semantics()
+    -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 4, Some(12));
         let definition =
@@ -178,7 +180,8 @@ mod tests {
     }
 
     #[test]
-    fn overlay_opcode_nine_consumes_one_nonsemantic_byte() -> Result<(), Box<dyn std::error::Error>> {
+    fn overlay_opcode_nine_consumes_one_nonsemantic_byte()
+    -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 4, Some(13));
         let definition = decode_floor_overlay(
