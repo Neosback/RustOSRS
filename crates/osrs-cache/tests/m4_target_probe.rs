@@ -6,9 +6,8 @@ use osrs_core::model::ModelEncoding;
 use std::collections::BTreeMap;
 use std::env;
 
-const TARGET_PROFILE_YAML: &str = include_str!(
-    "../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml"
-);
+const TARGET_PROFILE_YAML: &str =
+    include_str!("../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
 
 fn family(bytes: &[u8]) -> &'static str {
     match bytes.get(bytes.len().saturating_sub(2)..) {
@@ -20,7 +19,7 @@ fn family(bytes: &[u8]) -> &'static str {
 }
 
 #[test]
-#[ignore = "downloads/scans the pinned target cache in a dedicated temporary workflow"]
+#[ignore = "requires the separately downloaded pinned target cache"]
 fn probe_and_decode_build_241_models() -> Result<(), Box<dyn std::error::Error>> {
     let cache_dir = env::var("RUSTOSRS_TARGET_CACHE_DIR")?;
     let profile = TargetProfile::from_yaml_str(TARGET_PROFILE_YAML)?;
@@ -62,13 +61,8 @@ fn probe_and_decode_build_241_models() -> Result<(), Box<dyn std::error::Error>>
             }
 
             let source = ArchiveFileProvenance::new(7, group_id, Some(file_id));
-            let model = decode_model_data(
-                &file.bytes,
-                &context,
-                &source,
-                ModelId::new(group_id),
-            )
-            .map_err(|error| format!("model {group_id} file {file_id}: {error}"))?;
+            let model = decode_model_data(&file.bytes, &context, &source, ModelId::new(group_id))
+                .map_err(|error| format!("model {group_id} file {file_id}: {error}"))?;
 
             let decoded_kind = match model.format().encoding {
                 ModelEncoding::TrailerFfFd => "fffd",
