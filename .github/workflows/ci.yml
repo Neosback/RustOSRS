@@ -12,65 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  audit-xtea-validation:
-    name: M3 XTEA validation closure
-    if: github.event_name == 'push' && github.ref == 'refs/heads/impl/m3-cache-definition-decoding' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Install pinned Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v2
-
-      - name: Apply XTEA validation closure
-        run: |
-          python3 scripts/m3_xtea_closure.py
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('crates/osrs-cache/src/transport.rs')
-          text = path.read_text()
-          synthetic = '''    #[test]
-              fn xtea_container_is_deciphered_before_declared_output_validation() -> TransportResult<()> {
-                  let keys = [0x1020_3040, 0x5060_7080, 0x90a0_b0c0, 0xd0e0_f000];
-                  let mut encoded = vec![2, 0, 0, 0, 8, 0, 0, 0, 64];
-                  encoded.extend_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
-                  runefs::xtea::encipher(&mut encoded[5..], &keys);
-
-                  let prepared = prepare_encoded_container_for_decode(encoded, Some(keys), 1024, 64)?;
-                  assert_eq!(&prepared[5..9], &64u32.to_be_bytes());
-                  validate_encoded_container(&prepared, 1024, 64)?;
-                  Ok(())
-              }
-
-          '''
-          # The closure script runs before rustfmt, so its inserted test has normal source indentation.
-          synthetic = synthetic.replace('    fn ', 'fn ', 1) if False else synthetic
-          start = text.find('    #[test]\n    fn xtea_container_is_deciphered_before_declared_output_validation()')
-          end = text.find('    #[test]\n    fn container_validation_rejects_unbounded_declared_output_before_decode()', start)
-          if start < 0 or end < 0:
-              raise SystemExit('synthetic XTEA test boundaries not found')
-          text = text[:start] + text[end:]
-          path.write_text(text)
-          PY
-          cargo fmt --all
-
-      - name: Verify XTEA validation closure
-        run: |
-          cargo check --locked --workspace --all-targets --all-features
-          cargo test --locked -p osrs-cache
-          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-
-      - name: Commit XTEA validation closure
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/osrs-cache/src/transport.rs
-          git commit -m "fix: validate XTEA containers after decipher"
-          git push origin HEAD:impl/m3-cache-definition-decoding
-
   tier-a:
     name: Tier A - static quality
     runs-on: ubuntu-latest
