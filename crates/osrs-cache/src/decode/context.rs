@@ -1,7 +1,6 @@
 use crate::profile::{TargetProfile, TargetProfileError};
 use osrs_core::provenance::{
-    CacheFingerprint, Digest256, DigestParseError, ProfileDigest, ProvenanceError,
-    TargetProvenance,
+    CacheFingerprint, Digest256, DigestParseError, ProfileDigest, ProvenanceError, TargetProvenance,
 };
 use std::collections::BTreeMap;
 use std::fmt;
@@ -25,9 +24,8 @@ impl DecoderContext {
             .validate()
             .map_err(DecoderContextError::InvalidProfile)?;
 
-        let profile_digest = ProfileDigest::from_digest(Digest256::from_bytes(
-            profile.identity_digest_v1(),
-        ));
+        let profile_digest =
+            ProfileDigest::from_digest(Digest256::from_bytes(profile.identity_digest_v1()));
         let cache_fingerprint = profile
             .cache_fingerprint
             .value
@@ -91,7 +89,9 @@ pub enum DecoderContextError {
 impl fmt::Display for DecoderContextError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidProfile(error) => write!(formatter, "invalid decoder target profile: {error}"),
+            Self::InvalidProfile(error) => {
+                write!(formatter, "invalid decoder target profile: {error}")
+            }
             Self::MissingCacheFingerprint => {
                 formatter.write_str("decoder target profile is missing its cache fingerprint")
             }
@@ -127,15 +127,13 @@ mod tests {
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
     #[test]
-    fn target_profile_becomes_canonical_decoder_context() -> Result<(), Box<dyn std::error::Error>> {
+    fn target_profile_becomes_canonical_decoder_context() -> Result<(), Box<dyn std::error::Error>>
+    {
         let context = test_support::target_context()?;
         let target = context.target_provenance();
 
         assert_eq!(context.build(), 241);
-        assert_eq!(
-            target.profile_id(),
-            "osrs-live-241-2026-09-30-openrs2-2727"
-        );
+        assert_eq!(target.profile_id(), "osrs-live-241-2026-09-30-openrs2-2727");
         assert_eq!(target.profile_digest().to_string(), TARGET_PROFILE_DIGEST);
         assert_eq!(
             target.cache_fingerprint().to_string(),
