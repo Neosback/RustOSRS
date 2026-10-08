@@ -954,12 +954,13 @@ impl CacheTransport {
         max_decoded_bytes: usize,
     ) -> TransportResult<Vec<u8>> {
         let encoded = self.read_encoded_group_limited(index_id, group_id, max_encoded_bytes)?;
-        validate_encoded_container(&encoded, max_encoded_bytes, max_decoded_bytes)?;
-        let mut buffer = Buffer::<Encoded>::from(encoded);
-        if let Some(keys) = xtea {
-            buffer = buffer.with_xtea_keys(keys);
-        }
-        let decoded = buffer.decode()?.finalize();
+        let prepared = prepare_encoded_container_for_decode(
+            encoded,
+            xtea,
+            max_encoded_bytes,
+            max_decoded_bytes,
+        )?;
+        let decoded = Buffer::<Encoded>::from(prepared).decode()?.finalize();
         if decoded.len() > max_decoded_bytes {
             return Err(TransportError::LimitExceeded {
                 field: "decoded group bytes",
@@ -1000,11 +1001,24 @@ impl CacheTransport {
     }
 }
 
-fn validate_encoded_container(
-    encoded: &[u8],
+fn prepare_encoded_container_for_decode(
+    mut encoded: Vec<u8>,
+    xtea: Option<[u32; 4]>,
     max_encoded_bytes: usize,
     max_decoded_bytes: usize,
-) -> TransportResult<()> {
+) -> TransportResult<Vec<u8>> {
+    validate_encoded_container_envelope(&encoded, max_encoded_bytes)?;
+    if let Some(keys) = xtea {
+        runefs::xtea::decipher(&mut encoded[5..], &keys);
+    }
+    validate_encoded_container(&encoded, max_encoded_bytes, max_decoded_bytes)?;
+    Ok(encoded)
+}
+
+fn validate_encoded_container_envelope(
+    encoded: &[u8],
+    max_encoded_bytes: usize,
+) -> TransportResult<(u8, usize, usize)> {
     if encoded.len() > max_encoded_bytes {
         return Err(TransportError::LimitExceeded {
             field: "encoded group bytes",
@@ -1032,25 +1046,11 @@ fn validate_encoded_container(
             limit: max_encoded_bytes,
         });
     }
-
-    let (header_len, decoded_len) = if compression == 0 {
-        (5usize, compressed_len)
-    } else {
-        if encoded.len() < 9 {
-            return Err(TransportError::MalformedContainer(
-                "compressed container is missing decompressed length".to_owned(),
-            ));
-        }
-        let decoded_len =
-            u32::from_be_bytes([encoded[5], encoded[6], encoded[7], encoded[8]]) as usize;
-        (9usize, decoded_len)
-    };
-    if decoded_len > max_decoded_bytes {
-        return Err(TransportError::LimitExceeded {
-            field: "declared decoded group bytes",
-            requested: decoded_len,
-            limit: max_decoded_bytes,
-        });
+    let header_len = if compression == 0 { 5usize } else { 9usize };
+    if encoded.len() < header_len {
+        return Err(TransportError::MalformedContainer(
+            "compressed container is missing decompressed length".to_owned(),
+        ));
     }
     let payload_end = header_len.checked_add(compressed_len).ok_or_else(|| {
         TransportError::MalformedContainer("payload end overflowed usize".to_owned())
@@ -1066,6 +1066,28 @@ fn validate_encoded_container(
         return Err(TransportError::MalformedContainer(format!(
             "container has {trailing} trailing bytes; expected zero or two-byte version"
         )));
+    }
+    Ok((compression, compressed_len, header_len))
+}
+
+fn validate_encoded_container(
+    encoded: &[u8],
+    max_encoded_bytes: usize,
+    max_decoded_bytes: usize,
+) -> TransportResult<()> {
+    let (compression, compressed_len, _) =
+        validate_encoded_container_envelope(encoded, max_encoded_bytes)?;
+    let decoded_len = if compression == 0 {
+        compressed_len
+    } else {
+        u32::from_be_bytes([encoded[5], encoded[6], encoded[7], encoded[8]]) as usize
+    };
+    if decoded_len > max_decoded_bytes {
+        return Err(TransportError::LimitExceeded {
+            field: "declared decoded group bytes",
+            requested: decoded_len,
+            limit: max_decoded_bytes,
+        });
     }
     Ok(())
 }
@@ -1145,8 +1167,8 @@ mod tests {
             MAP_INDEX,
             loc_group,
             Some(LEGACY_LUMBRIDGE_XTEA),
-            usize::MAX,
-            usize::MAX,
+            DEFAULT_MAX_ENCODED_GROUP_BYTES,
+            DEFAULT_MAX_DECODED_GROUP_BYTES,
         )?;
         assert!(!decoded.is_empty());
         Ok(())
