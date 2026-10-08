@@ -255,8 +255,8 @@ mod tests {
     use crate::decode::test_support;
 
     #[test]
-    fn reader_decodes_big_endian_primitives_and_smart_values(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn reader_decodes_big_endian_primitives_and_smart_values()
+    -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = test_support::source();
         let bytes = [
@@ -289,8 +289,8 @@ mod tests {
     }
 
     #[test]
-    fn truncated_reads_return_contextual_error_without_advancing(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn truncated_reads_return_contextual_error_without_advancing()
+    -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 6, Some(17));
         let bytes = [0xaa, 0xbb, 0xcc];
@@ -315,8 +315,8 @@ mod tests {
     }
 
     #[test]
-    fn null_terminated_fields_are_bounded_and_zero_copy(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn null_terminated_fields_are_bounded_and_zero_copy() -> Result<(), Box<dyn std::error::Error>>
+    {
         let context = test_support::target_context()?;
         let source = test_support::source();
         let bytes = b"door\0rest";
@@ -330,8 +330,8 @@ mod tests {
     }
 
     #[test]
-    fn null_terminated_field_limit_and_missing_terminator_are_typed(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn null_terminated_field_limit_and_missing_terminator_are_typed()
+    -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = test_support::source();
 
@@ -364,11 +364,12 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_opcode_error_carries_opcode_and_byte_span(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn unsupported_opcode_error_carries_opcode_and_byte_span()
+    -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = test_support::source();
-        let reader = BinaryReader::new(&[92], &context, &source);
+        let bytes = [92];
+        let reader = BinaryReader::new(&bytes, &context, &source);
         let error = reader.unsupported_opcode("object-definition", 92, 0, 1);
 
         assert_eq!(error.opcode(), Some(92));
