@@ -118,7 +118,6 @@ impl std::error::Error for DecoderContextError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::decode::test_support;
 
     const TARGET_PROFILE_DIGEST: &str =
