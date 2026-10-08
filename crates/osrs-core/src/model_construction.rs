@@ -199,6 +199,7 @@ pub enum ModelConstructionError {
     IndexOverflow {
         field: &'static str,
     },
+    MissingCombinedVertexSkins,
     InvalidMirroredModel(ModelValidationError),
 }
 
@@ -217,6 +218,9 @@ impl fmt::Display for ModelConstructionError {
             ),
             Self::IndexOverflow { field } => {
                 write!(formatter, "combined model {field} exceeded u32 index space")
+            }
+            Self::MissingCombinedVertexSkins => {
+                formatter.write_str("combined model lost its required vertex-skin output array")
             }
             Self::InvalidMirroredModel(error) => error.fmt(formatter),
         }
@@ -397,7 +401,7 @@ pub fn combine_source_models(
                 output.push(
                     model
                         .face_textures()
-                        .map_or(None, |values| values[face_index]),
+                        .and_then(|values| values[face_index]),
                 );
             }
             if let Some(output) = assembled.texture_face_selectors.as_mut() {
@@ -481,20 +485,19 @@ fn map_vertex(
     assembled.vertices.push(point);
     lookup.insert(point, index);
 
-    assembled
-        .vertex_skins
-        .as_mut()
-        .expect("combined model always owns vertex skins")
-        .push(
-            source
-                .vertex_skins()
-                .map_or(0, |values| values[source_index as usize]),
-        );
+    let Some(vertex_skins) = assembled.vertex_skins.as_mut() else {
+        return Err(ModelConstructionError::MissingCombinedVertexSkins);
+    };
+    vertex_skins.push(
+        source
+            .vertex_skins()
+            .map_or(0, |values| values[source_index as usize]),
+    );
     if let Some(output) = assembled.skeletal_vertices.as_mut() {
         output.push(
             source
                 .skeletal_vertices()
-                .map_or(None, |values| values[source_index as usize].clone()),
+                .and_then(|values| values[source_index as usize].clone()),
         );
     }
 
@@ -634,11 +637,10 @@ mod tests {
         let rotated = object(Some(ObjectModels::Untyped(ids.clone())), true)?;
 
         assert_eq!(select_object_model(&normal, LocType::new(4), 7), None);
-        assert_eq!(
-            select_object_model(&normal, LocType::new(10), 7)
+        assert!(
+            !select_object_model(&normal, LocType::new(10), 7)
                 .ok_or("untyped type-10 selection missing")?
-                .mirror(),
-            false
+                .mirror()
         );
         let selected = select_object_model(&rotated, LocType::new(10), 7)
             .ok_or("rotated untyped type-10 selection missing")?;
