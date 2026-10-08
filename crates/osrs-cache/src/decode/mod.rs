@@ -7,6 +7,7 @@
 mod context;
 mod error;
 mod floor;
+mod map;
 mod object;
 mod reader;
 mod sequence;
@@ -19,6 +20,11 @@ pub use error::{
     XteaProvenanceError,
 };
 pub use floor::{decode_floor_overlay, decode_floor_underlay};
+pub use map::{
+    DecodedLocation, DecodedLocations, DecodedTerrain, EncodedTerrainOverlay, EncodedTerrainTile,
+    EncodedTileHeight, LOCATION_FILE_ID, MAP_INDEX_ID, MODERN_MAP_LAYOUT_MIN_BUILD, MapSquareFiles,
+    MapSquareResolutionError, TERRAIN_FILE_ID, decode_locations, decode_terrain, resolve_map_square,
+};
 pub use object::decode_object_definition;
 pub use reader::BinaryReader;
 pub use sequence::decode_sequence_definition;
