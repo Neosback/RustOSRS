@@ -1,6 +1,6 @@
 # M4 Progress: Model Decode and Exact Construction
 
-Status: **Checkpoint 3 complete**  
+Status: **Checkpoint 4 implementation complete; final clean-head CI pending**  
 Branch: `impl/m4-model-decode-construction`  
 Baseline: M3 squash merge `6e350afeb73c96f1b1ccd050ef427028e3015987`
 
@@ -66,12 +66,14 @@ That primitive drives ModelData vertex-coordinate deltas and face-index delta st
 
 ### Checkpoint 4: selection, combination, and mirror semantics
 
-- close `MODEL-BUILD-001`;
-- close `MODEL-BUILD-002`;
-- exact typed/untyped selection;
-- exact multi-model combine;
-- mirror vertices plus winding;
-- untyped/type-10 special-case behavior from pinned source.
+- [x] close `MODEL-BUILD-001` construction semantics;
+- [x] close `MODEL-BUILD-002` mirror semantics;
+- [x] implement exact typed/untyped selection;
+- [x] implement exact multi-model combination;
+- [x] mirror vertices plus face winding;
+- [x] preserve the untyped/type-10 special-case behavior from pinned source;
+- [x] implementation head `7191ee7a6607049ec6782260af90c291f6a3a55e` passed Tier A/B/C;
+- [ ] final documentation-complete exact-head CI readback.
 
 ### Checkpoint 5: exact instance transform pipeline
 
@@ -151,7 +153,7 @@ RawModelCacheKey = build + TargetProvenance + ModelId + RawModelVariant
 - `Unmirrored`: authoritative decode loaded directly from target model index `7`;
 - `Mirrored`: a separate derived-cache slot reserved for the audited mirror geometry/winding operation owned by Checkpoint 4.
 
-Checkpoint 3 does not implement mirroring. It establishes the cache-key and ownership boundary required to prevent mirrored/unmirrored aliasing before Checkpoint 4 authors any mirrored geometry.
+Checkpoint 3 did not implement mirroring. It established the cache-key and ownership boundary required to prevent mirrored/unmirrored aliasing before Checkpoint 4 authored mirrored geometry.
 
 ### Ownership and admission rules
 
@@ -182,4 +184,107 @@ The retained ignored test loaded every build-241 model through `ModelSourceRepos
 - empty model files remained `0`;
 - texture render-type and face-bias/skeletal coverage remained unchanged from Checkpoint 2.
 
-The temporary target-cache workflow was removed immediately after capturing this proof. Checkpoint 4 selection, combination, and mirror construction has not started.
+The temporary target-cache workflow was removed immediately after capturing this proof.
+
+## Checkpoint 4 exact construction result
+
+Checkpoint 4 separates pure semantic construction from cache acquisition. `osrs-core::model_construction` owns selection, raw mirroring, and multi-model combination. `osrs-cache::object_model` only resolves the selected model IDs through `ModelSourceRepository`, obtains the required raw variant, and returns an owned pre-transform `AssembledModel`.
+
+### Exact selection semantics
+
+The pinned `ObjectComposition.getModelData(type, orientation)` behavior is preserved directly:
+
+- an untyped opcode-5-style model table is accepted only when the requested loc type is exactly `10`;
+- an absent or empty untyped model-ID list produces semantic absence;
+- every untyped model ID is retained in source order for later combination;
+- a typed opcode-1-style table requires an exact loc-type match;
+- a typed miss produces semantic absence;
+- there is no fallback to the first model, nearest type, or type `10`.
+
+`resolve_object_model` returns `Ok(None)` for those legitimate semantic misses instead of creating fallback geometry.
+
+### Exact raw mirror semantics
+
+Typed models use the pinned rule:
+
+```text
+mirror = isRotated XOR (orientation > 3)
+```
+
+The accepted untyped/type-10 path deliberately does not reuse that formula. Pinned source initializes its mirror flag from `isRotated` and only toggles it for requested type `2` with orientation greater than `3`. Because the same branch has already rejected every requested type other than `10`, that toggle is unreachable for a valid untyped selection. RustOSRS therefore uses:
+
+```text
+untyped type-10 mirror = isRotated
+```
+
+The mirror operation itself follows the pinned `ModelData` operation rather than renderer policy:
+
+- negate every model-local Z coordinate with wrapping signed-integer behavior;
+- swap face index A with face index C to reverse winding;
+- leave the immutable unmirrored source untouched;
+- do not use renderer-side negative scale as a substitute;
+- do not rewind texture-triangle metadata, because the pinned mirror method does not do so.
+
+The cache-backed resolver now populates `RawModelVariant::Mirrored` on demand. Mirrored and unmirrored entries remain distinct reusable raw variants under the Checkpoint 3 revision/profile/model/variant key.
+
+### Construction order
+
+The pre-transform path is now explicit:
+
+1. select exact model ID or IDs;
+2. load each authoritative unmirrored raw source;
+3. obtain/cache the mirrored raw variant for each source when the selection requires it;
+4. combine the selected raw variants when more than one model ID is present;
+5. hand the owned `AssembledModel` to the later instance-transform pipeline.
+
+Checkpoint 5 still owns type-4 special rotation/translation, ordinary orientation turns, recolor, retexture, resize, and final definition translation.
+
+### Exact multi-model combination
+
+The pinned `ModelData(ModelData[], int)` plus its vertex lookup helper establish the combination behavior implemented in `combine_source_models`:
+
+- vertices are admitted lazily from faces and render-type-0 texture triangles;
+- vertex deduplication uses exact X/Y/Z equality;
+- the first matching coordinate wins, preserving deterministic first-seen order;
+- later duplicate coordinates do not overwrite the first admitted vertex skin or skeletal metadata;
+- face topology is remapped through the deduplicated vertex table;
+- texture-face selectors are offset by the accumulated texture-triangle count from earlier source models;
+- per-face priority output is materialized when any source already has per-face priorities or uniform source priorities differ;
+- when that output exists, a source without a per-face priority array contributes its uniform default priority;
+- optional render type, alpha, face skin, texture, selector, and authored face-bias outputs are materialized only when required by the reference-constructor contract;
+- missing values use the corresponding reference zero/default/sentinel semantics;
+- multi-model construction materializes vertex-skin output, with missing source skin values represented by the reference integer default `0`;
+- skeletal vertex output is materialized only when at least one source carries skeletal metadata;
+- every contributing source identity and format is retained, rather than inventing a synthetic singular `ModelId` for combined geometry;
+- source target provenance must match across all constituents.
+
+Complex texture mapping for render types `1..=3` keeps the canonical preservation policy established in Checkpoint 2. Those three source words are not treated as model-vertex indices and are not destructively remapped. Only render-type-0 texture triangle vertex triplets participate in the model vertex dedup/remap pass.
+
+### Checkpoint 4 fixtures and CI
+
+The exact construction unit fixtures cover:
+
+- typed exact-match selection and typed miss behavior;
+- all four typed `isRotated` / `orientation > 3` XOR combinations;
+- untyped non-type-10 rejection;
+- untyped type-10 all-model selection;
+- untyped mirror behavior independent of high orientation;
+- absent and empty model-list semantic absence;
+- Z mirroring plus A/C face-winding reversal;
+- wrapping signed negation at `i32::MIN`;
+- immutable-source control during mirror construction;
+- exact XYZ deduplication and first-seen vertex order;
+- face-index remapping;
+- texture-selector offsetting;
+- differing uniform-priority expansion to per-face priorities;
+- first-source vertex skin/skeletal ownership on duplicate coordinates;
+- preservation of all contributing source descriptors;
+- complex texture-mapping preservation without model-vertex remapping.
+
+Implementation head `7191ee7a6607049ec6782260af90c291f6a3a55e` passed the complete ordinary CI chain in workflow run `37805786555`:
+
+- Tier A static quality: architecture boundaries, architecture-guard tests, rustfmt, workspace check, and strict clippy all passed;
+- Tier B workspace tests passed, including the new exact construction fixtures;
+- Tier C checked-in M3 parity fixtures and deterministic decoder fuzz smoke passed.
+
+Checkpoint 5 instance-transform work has not started.
