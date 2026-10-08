@@ -1,10 +1,10 @@
 # M2 Semantic Foundation Progress
 
-Status: **M2 in progress; M2A, M2B, and M2C complete**  
+Status: **M2 implementation complete; pending PR merge**  
 Milestone: **M2 - `osrs-core` semantic foundation**  
 Branch: `impl/m2-core-semantic-foundation`
 
-This record tracks bounded implementation slices inside M2. It does not mark the milestone complete until all M2 deliverables and exit gates in `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` are satisfied.
+This record tracks the bounded implementation slices that completed M2. Final exit-gate mapping is recorded in `docs/implementation/M2-EXIT-AUDIT.md`.
 
 ## M2A - Identity, coordinates, planes, and target provenance
 
@@ -255,14 +255,27 @@ Result on code head `d49c81e0ec5bb285d7af671d2446e9d3c7fe932a`:
 
 ---
 
-## Remaining M2 work
+## M2 exit/cleanup audit
 
-M2 is **not complete**. The next bounded slice is the **M2 exit/cleanup audit**, and it has not started in this checkpoint. It must:
+The final audit reconciled the milestone with every deliverable and verification gate in `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` and the directly owned `COORD-001..003` and `FACE-001` requirements.
 
-1. reconcile the implemented M2 API against every M2 deliverable and exit gate in `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md`;
-2. verify `COORD-001..003` and the M2-owned `FACE-001` representation requirements are covered without pulling M3/M4/M7 behavior forward;
-3. review source-model immutability, equality/hash behavior, mutation invalidation, and any remaining M2-owned pure integer/value helper gaps;
-4. remove or tighten any accidental public API that would permit later cache/scene/render layers to bypass the semantic boundary;
-5. run the final M2 Tier A/B gate on the exact milestone head and produce the M2 exit record.
+One concrete gap was found and closed: the roadmap requires tile constants **and centers** to be exact. `crates/osrs-core/src/coordinate_math.rs` now provides checked integer `tile_center` and `footprint_center` helpers using `origin_local + footprint_tiles * 64`, with tests for 1x1, 2x3, 3x2, negative coordinates, zero-size rejection, and overflow.
 
-M3 must not begin until the complete M2 milestone is merged.
+The audit confirmed:
+
+- source model values remain immutable through the public API and hash/compare deterministically;
+- optional face arrays retain absence/default semantics;
+- raw model face/texture/bias data and object-authored recolor/retexture transform inputs remain at their correct semantic ownership boundaries;
+- no cache transport, scene ownership, renderer, GPU, or editor type leaks into `osrs-core`;
+- M3/M4/M6/M7/M8 behavior has not been implemented prematurely.
+
+The full gate-by-gate closure and carryovers are recorded in `docs/implementation/M2-EXIT-AUDIT.md`.
+
+Code head with the center-helper closure:
+
+- Tier A architecture, formatting, workspace check, and strict Clippy: **PASS**;
+- Tier B workspace tests: **PASS**.
+
+The documentation-finalized branch head must remain green before the PR is merged.
+
+M3 must not begin until M2 is merged.
