@@ -10,8 +10,8 @@ mod reader;
 
 pub use context::{DecoderContext, DecoderContextError};
 pub use error::{
-    ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult,
-    XteaKeyProvenance, XteaProvenanceError,
+    ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult, XteaKeyProvenance,
+    XteaProvenanceError,
 };
 pub use reader::BinaryReader;
 
