@@ -1,0 +1,51 @@
+name: M4 Complex Texture Validation Fix
+
+on:
+  push:
+    branches:
+      - impl/m4-model-decode-construction
+    paths:
+      - .github/workflows/m4-complex-texture-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: impl/m4-model-decode-construction
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+      - name: Patch canonical complex-texture validation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('crates/osrs-core/src/model.rs')
+          s = p.read_text()
+          old = '''    for (triangle_index, triangle) in parts.texture_triangles.iter().enumerate() {\n        for vertex in triangle.vertices.indices() {\n            if vertex.get() as usize >= vertex_count {\n                return Err(ModelValidationError::TextureTriangleVertexOutOfRange {\n                    triangle: triangle_index,\n                    vertex: vertex.get(),\n                    vertex_count,\n                });\n            }\n        }\n    }'''
+          new = '''    for (triangle_index, triangle) in parts.texture_triangles.iter().enumerate() {\n        // Only render type 0 encodes an explicit triangle in model-vertex index space.\n        // Target FF FD complex mappings (types 1..=3) reuse the three raw source\n        // words for mapping parameters and may legitimately exceed vertex_count.\n        if triangle.render_type == 0 {\n            for vertex in triangle.vertices.indices() {\n                if vertex.get() as usize >= vertex_count {\n                    return Err(ModelValidationError::TextureTriangleVertexOutOfRange {\n                        triangle: triangle_index,\n                        vertex: vertex.get(),\n                        vertex_count,\n                    });\n                }\n            }\n        }\n    }'''
+          assert s.count(old) == 1
+          s = s.replace(old, new)
+
+          anchor = '''    #[test]\n    fn validation_rejects_bad_texture_selector() -> Result<(), Box<dyn std::error::Error>> {'''
+          test = '''    #[test]\n    fn complex_texture_raw_triplet_is_not_geometry_topology()\n    -> Result<(), Box<dyn std::error::Error>> {\n        let mut parts = minimal_parts()?;\n        parts.texture_triangles = vec![TextureTriangle {\n            render_type: 2,\n            vertices: Triangle::new(32_769, 65_535, 4_096),\n            mapping: TextureMappingParameters::default(),\n        }];\n        let source = SourceModel::from_parts(parts)?;\n        assert_eq!(source.texture_triangles()[0].vertices.a.get(), 32_769);\n\n        let mut type_zero = minimal_parts()?;\n        type_zero.texture_triangles = vec![TextureTriangle {\n            render_type: 0,\n            vertices: Triangle::new(0, 1, 32_769),\n            mapping: TextureMappingParameters::default(),\n        }];\n        let result = SourceModel::from_parts(type_zero);\n        let Err(ModelValidationError::TextureTriangleVertexOutOfRange { vertex, .. }) = result else {\n            return Err("type-0 out-of-range texture triangle unexpectedly succeeded".into());\n        };\n        assert_eq!(vertex, 32_769);\n        Ok(())\n    }\n\n'''
+          assert s.count(anchor) == 1
+          s = s.replace(anchor, test + anchor)
+          p.write_text(s)
+          PY
+      - name: Verify
+        run: |
+          cargo fmt --all
+          cargo check --locked --workspace --all-targets --all-features
+          cargo test --locked -p osrs-core
+          cargo test --locked -p osrs-cache --lib
+          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Commit verified semantic fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add crates/osrs-core/src/model.rs
+          git commit -m "fix: distinguish complex texture mapping data"
+          git push origin HEAD:impl/m4-model-decode-construction
