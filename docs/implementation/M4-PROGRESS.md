@@ -1,6 +1,6 @@
 # M4 Progress: Model Decode and Exact Construction
 
-Status: **Checkpoint 1 in progress**  
+Status: **Checkpoint 1 complete**  
 Branch: `impl/m4-model-decode-construction`  
 Baseline: M3 squash merge `6e350afeb73c96f1b1ccd050ef427028e3015987`
 
@@ -44,7 +44,7 @@ That primitive drives ModelData vertex-coordinate deltas and face-index delta st
 - [x] add model ID to the standard decode provenance subject;
 - [x] add checked absolute/forked cursors for parallel ModelData streams;
 - [x] add exact signed short-smart primitive and boundary tests;
-- [ ] final branch CI readback.
+- [x] final clean-head Tier A/B/C CI readback on `cb7dfcff664c0f996802d6a6cf67100e9d0b8c6f`.
 
 ### Checkpoint 2: raw ModelData format decode
 
@@ -89,6 +89,6 @@ That primitive drives ModelData vertex-coordinate deltas and face-index delta st
 - M4 exit audit;
 - Tier A-C clean head before PR/merge.
 
-## Current checkpoint result
+## Checkpoint 1 result
 
-Checkpoint 1 deliberately does not claim raw model decoding yet. It closes the shared cursor/provenance primitives that every format decoder needs and records the exact pinned dispatch contract before format-specific parsing begins.
+Checkpoint 1 deliberately does not claim raw model decoding yet. It closes the shared cursor/provenance primitives that every format decoder needs, records the exact pinned dispatch contract before format-specific parsing begins, and preserves all M3 regression gates on the clean branch head.
