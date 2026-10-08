@@ -211,7 +211,10 @@ mod tests {
         assert_eq!(definition.texture, None);
         assert!(definition.hide_underlay);
         assert_eq!(definition.secondary_rgb, None);
-        assert_eq!(definition.primary_hsl, OverlayHsl::from_rgb(definition.primary_rgb));
+        assert_eq!(
+            definition.primary_hsl,
+            OverlayHsl::from_rgb(definition.primary_rgb)
+        );
         assert_eq!(definition.secondary_hsl, None);
         Ok(())
     }
