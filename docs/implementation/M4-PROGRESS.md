@@ -1,6 +1,6 @@
 # M4 Progress: Model Decode and Exact Construction
 
-Status: **Checkpoint 2 implementation complete; clean-head CI pending**  
+Status: **Checkpoint 2 complete**  
 Branch: `impl/m4-model-decode-construction`  
 Baseline: M3 squash merge `6e350afeb73c96f1b1ccd050ef427028e3015987`
 
@@ -53,7 +53,7 @@ That primitive drives ModelData vertex-coordinate deltas and face-index delta st
 - [x] implement every encountered build-241 format branch without destructive metadata filtering;
 - [x] preserve vertices, topology, face metadata, texture triangles/mapping, skins, skeletal inputs, format identity, and provenance;
 - [x] add malformed/truncated format tests;
-- [ ] final clean-head Tier A/B/C CI readback.
+- [x] clean implementation head `43607c47de339db2e08255bf148e7ee1b7ac89d7` passed Tier A/B/C.
 
 ### Checkpoint 3: model source repository and reusable raw variants
 
@@ -130,4 +130,4 @@ The retained ignored test `crates/osrs-cache/tests/m4_target_probe.rs` reproduce
 - Model format identity records `TrailerFfFd` or `TrailerFfFe`; no separate version is invented when the target encoding provides no verified version field.
 - Every malformed/truncated failure remains inside the standard target/cache/archive/file plus `Model(id)` provenance envelope.
 
-Temporary target/download and write-capable checkpoint workflows are removed after capturing this evidence. Checkpoint 3 repository/caching/variant work has not started.
+Temporary target/download and write-capable checkpoint workflows were removed after capturing this evidence. Checkpoint 3 repository/caching/variant work has not started.
