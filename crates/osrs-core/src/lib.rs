@@ -11,5 +11,6 @@ pub mod definitions;
 pub mod floor_color;
 pub mod ids;
 pub mod model;
+pub mod model_construction;
 pub mod orientation;
 pub mod provenance;
