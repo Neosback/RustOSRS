@@ -1,8 +1,26 @@
 # Semantic Parity Verification Matrix
 
-Status: **Checkpoint 7 verification plan**
+Status: **Implementation tracking through M3**
 
 This matrix maps every canonical semantic specification to its required verification family. Coverage status describes checked-in test/fixture implementation state, not source-evidence certainty.
+
+## M3 P0 decode coverage
+
+M3 closes cache transport and byte-to-canonical decoding prerequisites without claiming later scene/model/runtime semantics. The following checked-in artifacts are the concrete M3 verification anchors:
+
+| M3 family | Exact verification artifact | Coverage |
+|---|---|---|
+| object definitions, including 32-bit model IDs and opcode-92 fallback/null | `reference-fixtures/decode/m3-p0.txt`, `crates/osrs-cache/tests/m3_decode_fixtures.rs`, decoder unit tests | EXISTING |
+| floor underlay/overlay decode and post-decode HSL/hue-multiplier state | `reference-fixtures/decode/m3-p0.txt`, `crates/osrs-cache/tests/m3_decode_fixtures.rs`, `crates/osrs-core/src/floor_color.rs`, floor unit tests | EXISTING |
+| varbit/varp definition inputs | `reference-fixtures/decode/m3-p0.txt`, `crates/osrs-cache/tests/m3_decode_fixtures.rs`, vars unit tests | EXISTING |
+| build-241 texture definition inputs | `reference-fixtures/decode/m3-p0.txt`, `crates/osrs-cache/tests/m3_decode_fixtures.rs`, texture unit tests | EXISTING |
+| build-241 sequence metadata | `reference-fixtures/decode/m3-p0.txt`, `crates/osrs-cache/tests/m3_decode_fixtures.rs`, sequence unit tests | EXISTING |
+| raw terrain tile stream | `reference-fixtures/decode/m3-p0.txt`, `crates/osrs-cache/tests/m3_decode_fixtures.rs`, map unit tests | EXISTING |
+| raw location smart/delta stream | `reference-fixtures/decode/m3-p0.txt`, `crates/osrs-cache/tests/m3_decode_fixtures.rs`, map unit tests | EXISTING |
+| malformed/unknown decoder inputs | `crates/osrs-cache/tests/m3_fuzz_smoke.rs` plus decoder/reader unit tests | EXISTING |
+| cache transport bounds, safe logical-file split, fingerprint/XTEA boundaries | `crates/osrs-cache/src/transport.rs` unit tests | EXISTING |
+
+These rows verify the P0 acquisition/decode layer only. They do **not** promote `MORPH-001`, `TEXTURE-001`, `LOC-PLACEMENT-*`, model construction, scene placement, animation execution, or renderer behavior to `EXISTING` before their owning milestones.
 
 ## Placement
 
@@ -49,10 +67,10 @@ This matrix maps every canonical semantic specification to its required verifica
 |---|---|---|---|
 | `TERRAIN-001` | all 13 shapes x 4 rotations | exact vertices, faces, color source, texture IDs | EXISTING |
 | `TERRAIN-002` | flat diagonal, four distinct corners, sentinel, flat-vs-shaped choice | exact topology/representation | PARTIAL |
-| `TERRAIN-003` | RGB/HSL boundaries, hue multiplier clamp, overlay defaults/opcodes/secondary | exact decoded integers/defaults | PARTIAL |
+| `TERRAIN-003` | RGB/HSL boundaries, hue multiplier clamp, overlay defaults/opcodes/secondary | exact decoded integers/defaults | EXISTING |
 | `TERRAIN-004` | full slope/11x11/overlay/jitter builder | exact end-to-end terrain color output | BLOCKED |
 
-`TERRAIN-004` remains blocked until the builder source or an equivalent exact executable oracle is reproducibly pinned.
+`TERRAIN-003` is linked to the M3 checked-in decode fixture family and exact `floor_color` unit vectors above. `TERRAIN-004` remains blocked until the builder source or an equivalent exact executable oracle is reproducibly pinned.
 
 ## Planes and bridges
 
