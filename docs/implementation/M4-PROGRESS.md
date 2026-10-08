@@ -1,6 +1,6 @@
 # M4 Progress: Model Decode and Exact Construction
 
-Status: **Checkpoint 3 implementation complete; final clean-head CI pending**  
+Status: **Checkpoint 3 complete**  
 Branch: `impl/m4-model-decode-construction`  
 Baseline: M3 squash merge `6e350afeb73c96f1b1ccd050ef427028e3015987`
 
@@ -62,7 +62,7 @@ That primitive drives ModelData vertex-coordinate deltas and face-index delta st
 - [x] establish distinct mirrored raw variant keys;
 - [x] prove immutable decoded source ownership and working-copy isolation;
 - [x] sweep all `62,043` pinned build-241 models through the repository layer;
-- [ ] final clean-head Tier A/B/C CI readback after evidence documentation and temporary-workflow removal.
+- [x] cleanup/evidence head `74f4991ce41d9625a9fe0f6ec91b4e87cf956e2d` passed Tier A/B/C after temporary-workflow removal.
 
 ### Checkpoint 4: selection, combination, and mirror semantics
 
