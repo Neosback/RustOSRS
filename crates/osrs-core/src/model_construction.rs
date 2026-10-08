@@ -398,11 +398,7 @@ pub fn combine_source_models(
                 output.push(model.face_alphas().map_or(0, |values| values[face_index]));
             }
             if let Some(output) = assembled.face_textures.as_mut() {
-                output.push(
-                    model
-                        .face_textures()
-                        .and_then(|values| values[face_index]),
-                );
+                output.push(model.face_textures().and_then(|values| values[face_index]));
             }
             if let Some(output) = assembled.texture_face_selectors.as_mut() {
                 let selector = model
