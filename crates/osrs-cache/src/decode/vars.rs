@@ -88,7 +88,8 @@ mod tests {
     use crate::decode::{ByteSpan, DecodeErrorKind, test_support};
 
     #[test]
-    fn varbit_decodes_backing_varp_and_inclusive_bit_range() -> Result<(), Box<dyn std::error::Error>> {
+    fn varbit_decodes_backing_varp_and_inclusive_bit_range()
+    -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 14, Some(123));
         let definition = decode_varbit(
@@ -99,7 +100,7 @@ mod tests {
         )?;
 
         assert_eq!(definition.identity.id, VarbitId::new(123));
-        assert_eq!(definition.identity.provenance, *context.target_provenance());
+        assert_eq!(&definition.identity.provenance, context.target_provenance());
         assert_eq!(definition.base_varp, VarpId::new(0x1234));
         assert_eq!(definition.start_bit, 3);
         assert_eq!(definition.end_bit, 7);
@@ -108,7 +109,8 @@ mod tests {
     }
 
     #[test]
-    fn varbit_defaults_match_reference_zero_initialization() -> Result<(), Box<dyn std::error::Error>> {
+    fn varbit_defaults_match_reference_zero_initialization()
+    -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 14, Some(124));
         let definition = decode_varbit(VarbitId::new(124), &[0], &context, &source)?;
@@ -123,12 +125,7 @@ mod tests {
     fn varp_decodes_client_type_and_default() -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 16, Some(33));
-        let decoded = decode_varp(
-            VarpId::new(33),
-            &[5, 0xab, 0xcd, 0],
-            &context,
-            &source,
-        )?;
+        let decoded = decode_varp(VarpId::new(33), &[5, 0xab, 0xcd, 0], &context, &source)?;
         let defaulted = decode_varp(VarpId::new(34), &[0], &context, &source)?;
 
         assert_eq!(decoded.client_type, 0xabcd);
