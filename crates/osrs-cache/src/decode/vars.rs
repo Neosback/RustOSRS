@@ -1,4 +1,4 @@
-use super::{ArchiveFileProvenance, BinaryReader, DecodeResult, DecoderContext};
+use super::{ArchiveFileProvenance, BinaryReader, DecodeResult, DecodeSubject, DecoderContext};
 use osrs_core::definitions::{DefinitionIdentity, VarbitDefinition, VarpDefinition};
 use osrs_core::ids::{VarbitId, VarpId};
 
@@ -13,7 +13,8 @@ pub fn decode_varbit(
     context: &DecoderContext,
     source: &ArchiveFileProvenance,
 ) -> DecodeResult<VarbitDefinition> {
-    let mut reader = BinaryReader::new(bytes, context, source);
+    let mut reader =
+        BinaryReader::new(bytes, context, source).with_subject(DecodeSubject::Varbit(id.get()));
     let mut base_varp = VarpId::new(0);
     let mut start_bit = 0_u8;
     let mut end_bit = 0_u8;
@@ -55,7 +56,8 @@ pub fn decode_varp(
     context: &DecoderContext,
     source: &ArchiveFileProvenance,
 ) -> DecodeResult<VarpDefinition> {
-    let mut reader = BinaryReader::new(bytes, context, source);
+    let mut reader =
+        BinaryReader::new(bytes, context, source).with_subject(DecodeSubject::Varp(id.get()));
     let mut client_type = 0_u16;
 
     loop {

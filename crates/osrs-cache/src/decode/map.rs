@@ -1,4 +1,6 @@
-use super::{ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecoderContext};
+use super::{
+    ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecodeSubject, DecoderContext,
+};
 use osrs_core::coords::{RegionCoord, RegionTile, SourcePlane};
 use osrs_core::ids::ObjectId;
 use std::fmt;
@@ -198,7 +200,11 @@ pub fn decode_terrain(
     source: &ArchiveFileProvenance,
     region: RegionCoord,
 ) -> DecodeResult<DecodedTerrain> {
-    let mut reader = BinaryReader::new(bytes, context, source);
+    let mut reader =
+        BinaryReader::new(bytes, context, source).with_subject(DecodeSubject::TerrainRegion {
+            x: region.x,
+            y: region.y,
+        });
     let mut tiles = Vec::with_capacity(TERRAIN_TILE_COUNT);
 
     for plane_value in 0..SOURCE_PLANE_COUNT {
@@ -316,7 +322,11 @@ pub fn decode_locations(
     source: &ArchiveFileProvenance,
     region: RegionCoord,
 ) -> DecodeResult<DecodedLocations> {
-    let mut reader = BinaryReader::new(bytes, context, source);
+    let mut reader =
+        BinaryReader::new(bytes, context, source).with_subject(DecodeSubject::LocationRegion {
+            x: region.x,
+            y: region.y,
+        });
     let mut locations = Vec::new();
     let mut object_id = -1i64;
 

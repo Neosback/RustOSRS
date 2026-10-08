@@ -1,4 +1,4 @@
-use super::{ArchiveFileProvenance, BinaryReader, DecodeResult, DecoderContext};
+use super::{ArchiveFileProvenance, BinaryReader, DecodeResult, DecodeSubject, DecoderContext};
 use osrs_core::definitions::{
     DefinitionIdentity, LocType, ModelScale, ModelTranslation, ObjectDefinition, ObjectModels,
     ObjectMorphs, ObjectPlacementFlags, RecolorPair, RetexturePair, TypedObjectModel,
@@ -25,7 +25,8 @@ pub fn decode_object_definition(
     let extended_object_model_ids = context.requires_revision_gate(EXTENDED_OBJECT_MODEL_IDS_GATE);
     let object_sound_layout_220_plus =
         context.requires_revision_gate(OBJECT_SOUND_LAYOUT_220_PLUS_GATE);
-    let mut reader = BinaryReader::new(bytes, context, source);
+    let mut reader = BinaryReader::new(bytes, context, source)
+        .with_subject(DecodeSubject::ObjectDefinition(id.get()));
 
     let mut name = None;
     let mut models = None;
@@ -623,6 +624,7 @@ mod tests {
         assert_eq!(error.opcode(), Some(250));
         assert_eq!(error.span(), ByteSpan::new(0, 1));
         assert_eq!(error.source_provenance(), &source);
+        assert_eq!(error.subject(), Some(&DecodeSubject::ObjectDefinition(999)));
         assert_eq!(
             error.kind(),
             &DecodeErrorKind::UnsupportedOpcode {

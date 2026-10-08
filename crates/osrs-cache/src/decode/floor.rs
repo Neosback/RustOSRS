@@ -1,4 +1,6 @@
-use super::{ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecoderContext};
+use super::{
+    ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecodeSubject, DecoderContext,
+};
 use osrs_core::definitions::{
     DefinitionIdentity, FloorOverlayDefinition, FloorUnderlayDefinition, Rgb24,
 };
@@ -13,7 +15,8 @@ pub fn decode_floor_underlay(
     context: &DecoderContext,
     source: &ArchiveFileProvenance,
 ) -> DecodeResult<FloorUnderlayDefinition> {
-    let mut reader = BinaryReader::new(bytes, context, source);
+    let mut reader = BinaryReader::new(bytes, context, source)
+        .with_subject(DecodeSubject::FloorUnderlay(id.get()));
     let mut rgb = 0_u32;
 
     loop {
@@ -52,7 +55,8 @@ pub fn decode_floor_overlay(
     context: &DecoderContext,
     source: &ArchiveFileProvenance,
 ) -> DecodeResult<FloorOverlayDefinition> {
-    let mut reader = BinaryReader::new(bytes, context, source);
+    let mut reader = BinaryReader::new(bytes, context, source)
+        .with_subject(DecodeSubject::FloorOverlay(id.get()));
     let mut primary_rgb = 0_u32;
     let mut texture = None;
     let mut hide_underlay = true;

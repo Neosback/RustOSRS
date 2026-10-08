@@ -121,6 +121,36 @@ impl ByteSpan {
     }
 }
 
+/// Semantic artifact identity being decoded when a failure occurred.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum DecodeSubject {
+    ObjectDefinition(u32),
+    FloorUnderlay(u32),
+    FloorOverlay(u32),
+    Varbit(u32),
+    Varp(u32),
+    Texture(u32),
+    Sequence(u32),
+    TerrainRegion { x: i32, y: i32 },
+    LocationRegion { x: i32, y: i32 },
+}
+
+impl fmt::Display for DecodeSubject {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ObjectDefinition(id) => write!(formatter, "object-definition:{id}"),
+            Self::FloorUnderlay(id) => write!(formatter, "floor-underlay:{id}"),
+            Self::FloorOverlay(id) => write!(formatter, "floor-overlay:{id}"),
+            Self::Varbit(id) => write!(formatter, "varbit:{id}"),
+            Self::Varp(id) => write!(formatter, "varp:{id}"),
+            Self::Texture(id) => write!(formatter, "texture:{id}"),
+            Self::Sequence(id) => write!(formatter, "sequence:{id}"),
+            Self::TerrainRegion { x, y } => write!(formatter, "terrain-region:{x},{y}"),
+            Self::LocationRegion { x, y } => write!(formatter, "location-region:{x},{y}"),
+        }
+    }
+}
+
 /// Stable RustOSRS-owned categories for malformed/unsupported cache data.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecodeErrorKind {
@@ -188,6 +218,7 @@ struct DecodeErrorContext {
     target: TargetProvenance,
     build: u32,
     source: ArchiveFileProvenance,
+    subject: Option<DecodeSubject>,
     span: ByteSpan,
     opcode: Option<u32>,
 }
@@ -203,6 +234,7 @@ impl DecodeError {
     pub(crate) fn new(
         decoder_context: &DecoderContext,
         source: &ArchiveFileProvenance,
+        subject: Option<DecodeSubject>,
         span: ByteSpan,
         opcode: Option<u32>,
         kind: DecodeErrorKind,
@@ -213,6 +245,7 @@ impl DecodeError {
                 target: decoder_context.target_provenance().clone(),
                 build: decoder_context.build(),
                 source: source.clone(),
+                subject,
                 span,
                 opcode,
             }),
@@ -233,6 +266,10 @@ impl DecodeError {
 
     pub fn source_provenance(&self) -> &ArchiveFileProvenance {
         &self.context.source
+    }
+
+    pub fn subject(&self) -> Option<&DecodeSubject> {
+        self.context.subject.as_ref()
     }
 
     pub fn span(&self) -> ByteSpan {
@@ -262,6 +299,9 @@ impl fmt::Display for DecodeError {
         )?;
         if let Some(file_id) = source.file_id() {
             write!(formatter, ", file={file_id}")?;
+        }
+        if let Some(subject) = &self.context.subject {
+            write!(formatter, ", subject={subject}")?;
         }
         write!(
             formatter,
@@ -302,6 +342,7 @@ mod tests {
         let error = DecodeError::new(
             &context,
             &source,
+            Some(DecodeSubject::ObjectDefinition(999)),
             ByteSpan::new(19, 1),
             Some(92),
             DecodeErrorKind::UnsupportedOpcode {
@@ -312,6 +353,7 @@ mod tests {
 
         assert_eq!(error.build(), 241);
         assert_eq!(error.source_provenance(), &source);
+        assert_eq!(error.subject(), Some(&DecodeSubject::ObjectDefinition(999)));
         assert_eq!(error.span(), ByteSpan::new(19, 1));
         assert_eq!(error.opcode(), Some(92));
         assert_eq!(
@@ -322,6 +364,7 @@ mod tests {
         assert!(rendered.contains("index=5"));
         assert!(rendered.contains("group=12345"));
         assert!(rendered.contains("file=7"));
+        assert!(rendered.contains("subject=object-definition:999"));
         assert!(rendered.contains("opcode=92"));
         assert!(rendered.contains("decoder_schema=1"));
         assert!(rendered.contains("xtea_provider=openrs2-cache-2727"));

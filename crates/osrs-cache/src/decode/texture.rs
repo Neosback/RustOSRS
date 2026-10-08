@@ -1,4 +1,6 @@
-use super::{ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecoderContext};
+use super::{
+    ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecodeSubject, DecoderContext,
+};
 use osrs_core::definitions::{DefinitionIdentity, TextureDefinition};
 use osrs_core::ids::{SpriteId, TextureId};
 
@@ -15,7 +17,8 @@ pub fn decode_texture_definition(
     context: &DecoderContext,
     source: &ArchiveFileProvenance,
 ) -> DecodeResult<TextureDefinition> {
-    let mut reader = BinaryReader::new(bytes, context, source);
+    let mut reader =
+        BinaryReader::new(bytes, context, source).with_subject(DecodeSubject::Texture(id.get()));
     if !context.requires_revision_gate(TEXTURE_LAYOUT_233_PLUS_GATE) {
         return Err(reader.invalid_value(
             "texture layout",

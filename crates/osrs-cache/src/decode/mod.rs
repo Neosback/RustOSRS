@@ -16,8 +16,8 @@ mod vars;
 
 pub use context::{DecoderContext, DecoderContextError};
 pub use error::{
-    ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult, XteaKeyProvenance,
-    XteaProvenanceError,
+    ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult, DecodeSubject,
+    XteaKeyProvenance, XteaProvenanceError,
 };
 pub use floor::{decode_floor_overlay, decode_floor_underlay};
 pub use map::{

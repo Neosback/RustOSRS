@@ -1,4 +1,6 @@
-use super::{ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecoderContext};
+use super::{
+    ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecodeSubject, DecoderContext,
+};
 use osrs_core::definitions::{DefinitionIdentity, SequenceDefinition, SequenceRange};
 use osrs_core::ids::{FrameId, ItemId, SequenceId, SkeletalAnimationId};
 
@@ -15,7 +17,8 @@ pub fn decode_sequence_definition(
     context: &DecoderContext,
     source: &ArchiveFileProvenance,
 ) -> DecodeResult<SequenceDefinition> {
-    let mut reader = BinaryReader::new(bytes, context, source);
+    let mut reader =
+        BinaryReader::new(bytes, context, source).with_subject(DecodeSubject::Sequence(id.get()));
     if !context.requires_revision_gate(SEQUENCE_LAYOUT_226_PLUS_GATE) {
         return Err(reader.invalid_value(
             "sequence layout",

@@ -1,5 +1,6 @@
 use super::{
-    ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult, DecoderContext,
+    ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult, DecodeSubject,
+    DecoderContext,
 };
 
 const CP1252_ASCII_EXTENSION: [char; 32] = [
@@ -16,6 +17,7 @@ pub struct BinaryReader<'a> {
     offset: usize,
     context: &'a DecoderContext,
     source: &'a ArchiveFileProvenance,
+    subject: Option<DecodeSubject>,
 }
 
 impl<'a> BinaryReader<'a> {
@@ -29,7 +31,13 @@ impl<'a> BinaryReader<'a> {
             offset: 0,
             context,
             source,
+            subject: None,
         }
+    }
+
+    pub fn with_subject(mut self, subject: DecodeSubject) -> Self {
+        self.subject = Some(subject);
+        self
     }
 
     pub const fn offset(&self) -> usize {
@@ -270,6 +278,7 @@ impl<'a> BinaryReader<'a> {
         DecodeError::new(
             self.context,
             self.source,
+            self.subject.clone(),
             ByteSpan::new(offset, length),
             opcode,
             kind,
@@ -410,10 +419,12 @@ mod tests {
         let context = test_support::target_context()?;
         let source = test_support::source();
         let bytes = [92];
-        let reader = BinaryReader::new(&bytes, &context, &source);
+        let reader = BinaryReader::new(&bytes, &context, &source)
+            .with_subject(DecodeSubject::ObjectDefinition(17));
         let error = reader.unsupported_opcode("object-definition", 92, 0, 1);
 
         assert_eq!(error.opcode(), Some(92));
+        assert_eq!(error.subject(), Some(&DecodeSubject::ObjectDefinition(17)));
         assert_eq!(error.span(), ByteSpan::new(0, 1));
         assert_eq!(
             error.kind(),
