@@ -2,6 +2,11 @@ use super::{
     ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult, DecoderContext,
 };
 
+const CP1252_ASCII_EXTENSION: [char; 32] = [
+    '€', '\0', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\0', 'Ž', '\0', '\0', '‘',
+    '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\0', 'ž', 'Ÿ',
+];
+
 /// Bounds-checked big-endian reader used by revision-aware cache decoders.
 ///
 /// The reader never panics on malformed/truncated input. Every failure carries
@@ -183,6 +188,29 @@ impl<'a> BinaryReader<'a> {
         }
     }
 
+    /// Read the client's NUL-terminated CP1252-like cache string format.
+    ///
+    /// Bytes 128..159 use the pinned client's extension table. Undefined
+    /// extension entries decode to `?`, matching the target client. Other
+    /// nonzero bytes map directly to their same-valued Unicode scalar.
+    pub fn read_cp1252_string(&mut self, field: &'static str) -> DecodeResult<String> {
+        let max_length = self.remaining();
+        let bytes = self.read_null_terminated_bytes(field, max_length)?;
+        let mut decoded = String::with_capacity(bytes.len());
+
+        for &byte in bytes {
+            let character = if (128..160).contains(&byte) {
+                let extension = CP1252_ASCII_EXTENSION[usize::from(byte - 128)];
+                if extension == '\0' { '?' } else { extension }
+            } else {
+                char::from(byte)
+            };
+            decoded.push(character);
+        }
+
+        Ok(decoded)
+    }
+
     pub fn finish(self) -> DecodeResult<()> {
         if self.remaining() == 0 {
             return Ok(());
@@ -325,6 +353,19 @@ mod tests {
         assert_eq!(reader.read_null_terminated_bytes("name", 16)?, b"door");
         assert_eq!(reader.offset(), 5);
         assert_eq!(reader.read_bytes(4)?, b"rest");
+        reader.finish()?;
+        Ok(())
+    }
+
+    #[test]
+    fn cp1252_strings_match_target_extension_and_undefined_byte_behavior()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let context = test_support::target_context()?;
+        let source = test_support::source();
+        let bytes = [b'A', 128, 129, 130, 159, 255, 0];
+        let mut reader = BinaryReader::new(&bytes, &context, &source);
+
+        assert_eq!(reader.read_cp1252_string("name")?, "A€?‚Ÿÿ");
         reader.finish()?;
         Ok(())
     }
