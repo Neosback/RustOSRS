@@ -7,6 +7,7 @@
 mod context;
 mod error;
 mod floor;
+mod object;
 mod reader;
 mod vars;
 
@@ -16,6 +17,7 @@ pub use error::{
     XteaProvenanceError,
 };
 pub use floor::{decode_floor_overlay, decode_floor_underlay};
+pub use object::decode_object_definition;
 pub use reader::BinaryReader;
 pub use vars::{decode_varbit, decode_varp};
 
