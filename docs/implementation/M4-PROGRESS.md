@@ -1,6 +1,6 @@
 # M4 Progress: Model Decode and Exact Construction
 
-Status: **Checkpoint 2 complete**  
+Status: **Checkpoint 3 implementation complete; final clean-head CI pending**  
 Branch: `impl/m4-model-decode-construction`  
 Baseline: M3 squash merge `6e350afeb73c96f1b1ccd050ef427028e3015987`
 
@@ -57,10 +57,12 @@ That primitive drives ModelData vertex-coordinate deltas and face-index delta st
 
 ### Checkpoint 3: model source repository and reusable raw variants
 
-- read model index `7` through `CacheRepository`;
-- add profile/revision-aware raw model cache identity;
-- establish distinct mirrored raw variant keys;
-- prove immutable decoded source ownership.
+- [x] read model index `7` through `CacheRepository`;
+- [x] add profile/revision-aware raw model cache identity;
+- [x] establish distinct mirrored raw variant keys;
+- [x] prove immutable decoded source ownership and working-copy isolation;
+- [x] sweep all `62,043` pinned build-241 models through the repository layer;
+- [ ] final clean-head Tier A/B/C CI readback after evidence documentation and temporary-workflow removal.
 
 ### Checkpoint 4: selection, combination, and mirror semantics
 
@@ -130,4 +132,54 @@ The retained ignored test `crates/osrs-cache/tests/m4_target_probe.rs` reproduce
 - Model format identity records `TrailerFfFd` or `TrailerFfFe`; no separate version is invented when the target encoding provides no verified version field.
 - Every malformed/truncated failure remains inside the standard target/cache/archive/file plus `Model(id)` provenance envelope.
 
-Temporary target/download and write-capable checkpoint workflows were removed after capturing this evidence. Checkpoint 3 repository/caching/variant work has not started.
+Temporary target/download and write-capable Checkpoint 2 workflows were removed after capturing this evidence.
+
+## Checkpoint 3 repository and ownership result
+
+`ModelSourceRepository` now binds the verified `CacheRepository` transport to model index `7` and the target-aware ModelData decoder. The reusable raw-model cache stores immutable `Arc<SourceModel>` entries rather than mutable instance geometry.
+
+The exact raw cache identity is:
+
+```text
+RawModelCacheKey = build + TargetProvenance + ModelId + RawModelVariant
+```
+
+`TargetProvenance` already contains the profile ID, profile digest, cache fingerprint, and decoder schema version. Build is retained explicitly in the repository key so revision identity is not inferred from naming conventions.
+
+`RawModelVariant` currently distinguishes:
+
+- `Unmirrored`: authoritative decode loaded directly from target model index `7`;
+- `Mirrored`: a separate derived-cache slot reserved for the audited mirror geometry/winding operation owned by Checkpoint 4.
+
+Checkpoint 3 does not implement mirroring. It establishes the cache-key and ownership boundary required to prevent mirrored/unmirrored aliasing before Checkpoint 4 authors any mirrored geometry.
+
+### Ownership and admission rules
+
+- repeated requests for one unmirrored model return the same shared `Arc<SourceModel>`;
+- an externally supplied derived model cannot replace the authoritative unmirrored cache entry;
+- mirrored and unmirrored variants have distinct keys even for the same model ID;
+- admitted model ID must exactly match the cache key;
+- admitted model target provenance must exactly match the repository key;
+- re-admitting semantically identical data under the same key reuses the existing shared entry;
+- conflicting semantic data under the same key is rejected;
+- `SourceModel::to_working_copy()` produces owned mutable state, and mutation of that working copy leaves the cached source unchanged.
+
+These rules establish the M4 foundation for `MODEL-BUILD-005` without forcing deep copies of immutable source assets.
+
+### Pinned target repository sweep
+
+A temporary read-only verification workflow ran on commit `f3f46d874ce33c634fc47f4372700698c3835f8b` using OpenRS2 cache 2727. Workflow run `37790526558`, job `113356389991`, completed successfully.
+
+The retained ignored test loaded every build-241 model through `ModelSourceRepository::load_unmirrored` and asserted the repository behavior in addition to the existing decode checks:
+
+- all `62,043` model groups loaded and were retained as unmirrored repository entries;
+- encoded family counts remained `35,103` `FF FD` and `26,940` `FF FE`;
+- decoded family counts exactly matched encoded family counts;
+- repeated loading of the same model returned the same `Arc` allocation;
+- the corresponding mirrored slot remained absent before Checkpoint 4 construction;
+- repository cached-variant count exactly matched the `62,043` target model groups;
+- multi-file model groups remained `0`;
+- empty model files remained `0`;
+- texture render-type and face-bias/skeletal coverage remained unchanged from Checkpoint 2.
+
+The temporary target-cache workflow was removed immediately after capturing this proof. Checkpoint 4 selection, combination, and mirror construction has not started.
