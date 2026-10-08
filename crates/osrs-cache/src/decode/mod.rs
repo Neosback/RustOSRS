@@ -18,7 +18,7 @@ pub use reader::BinaryReader;
 #[cfg(test)]
 pub(crate) mod test_support {
     use super::{ArchiveFileProvenance, DecoderContext, DecoderContextError};
-    use crate::profile::{TargetProfile, TargetProfileError};
+    use crate::profile::TargetProfile;
 
     const TARGET_PROFILE_YAML: &str =
         include_str!("../../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
@@ -31,10 +31,5 @@ pub(crate) mod test_support {
 
     pub(crate) fn source() -> ArchiveFileProvenance {
         ArchiveFileProvenance::new(2, 6, Some(0))
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn target_profile() -> Result<TargetProfile, TargetProfileError> {
-        TargetProfile::from_yaml_str(TARGET_PROFILE_YAML)
     }
 }
