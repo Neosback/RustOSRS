@@ -39,9 +39,7 @@ fn probe_and_decode_build_241_models() -> Result<(), Box<dyn std::error::Error>>
     let mut empty_models = 0usize;
 
     for group_id in groups.iter().copied() {
-        let metadata = repository
-            .cache_repository()
-            .group_metadata(7, group_id)?;
+        let metadata = repository.cache_repository().group_metadata(7, group_id)?;
         if metadata.file_ids.len() != 1 {
             multi_file_groups += 1;
         }
