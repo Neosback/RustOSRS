@@ -1,4 +1,4 @@
-use super::{ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeErrorKind, DecodeResult, DecoderContext};
+use super::{ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecoderContext};
 use osrs_core::coords::{RegionCoord, RegionTile, SourcePlane};
 use osrs_core::ids::ObjectId;
 use std::fmt;
@@ -110,8 +110,7 @@ pub fn resolve_map_square(
         });
     }
 
-    if !(0..=REGION_AXIS_LIMIT).contains(&region.x)
-        || !(0..=REGION_AXIS_LIMIT).contains(&region.y)
+    if !(0..=REGION_AXIS_LIMIT).contains(&region.x) || !(0..=REGION_AXIS_LIMIT).contains(&region.y)
     {
         return Err(MapSquareResolutionError::RegionOutOfRange {
             profile_id: profile_id.to_owned(),
@@ -364,9 +363,7 @@ pub fn decode_locations(
             if packed_position > MAX_PACKED_LOCATION_POSITION {
                 return Err(reader.invalid_value(
                     "location packed position",
-                    format!(
-                        "packed position {packed_position} exceeds four 64x64 source planes"
-                    ),
+                    format!("packed position {packed_position} exceeds four 64x64 source planes"),
                     ByteSpan::new(reader.offset(), 0),
                     None,
                 ));
@@ -440,7 +437,7 @@ fn read_extended_smart(reader: &mut BinaryReader<'_>) -> DecodeResult<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::decode::test_support;
+    use crate::decode::{DecodeErrorKind, test_support};
 
     fn push_unsigned_short_smart(bytes: &mut Vec<u8>, value: u16) {
         if value < 128 {
@@ -521,8 +518,14 @@ mod tests {
         assert_eq!(decoded.len(), TERRAIN_TILE_COUNT);
 
         let first = decoded.tiles()[0];
-        assert_eq!(first.tile, RegionTile::new(0, 0).ok_or("invalid fixture tile")?);
-        assert_eq!(first.source_plane, SourcePlane::new(0).ok_or("invalid fixture plane")?);
+        assert_eq!(
+            first.tile,
+            RegionTile::new(0, 0).ok_or("invalid fixture tile")?
+        );
+        assert_eq!(
+            first.source_plane,
+            SourcePlane::new(0).ok_or("invalid fixture plane")?
+        );
         assert_eq!(first.height, EncodedTileHeight::Explicit(7));
         assert_eq!(
             first.overlay,
@@ -536,7 +539,10 @@ mod tests {
         assert_eq!(first.underlay_id, 8);
 
         let second = decoded.tiles()[1];
-        assert_eq!(second.tile, RegionTile::new(0, 1).ok_or("invalid fixture tile")?);
+        assert_eq!(
+            second.tile,
+            RegionTile::new(0, 1).ok_or("invalid fixture tile")?
+        );
         assert_eq!(second.height, EncodedTileHeight::Default);
         assert_eq!(second.overlay, None);
         assert_eq!(second.settings, 0);
@@ -572,19 +578,20 @@ mod tests {
         push_unsigned_short_smart(&mut bytes, 0); // end positions for object
         push_unsigned_short_smart(&mut bytes, 0); // end object stream
 
-        let decoded = decode_locations(
-            &bytes,
-            &context,
-            &source,
-            RegionCoord::new(50, 50),
-        )?;
+        let decoded = decode_locations(&bytes, &context, &source, RegionCoord::new(50, 50))?;
         assert_eq!(decoded.region(), RegionCoord::new(50, 50));
         assert_eq!(decoded.len(), 1);
 
         let location = decoded.locations()[0];
         assert_eq!(location.object_id, ObjectId::new(65_536));
-        assert_eq!(location.tile, RegionTile::new(10, 20).ok_or("invalid fixture tile")?);
-        assert_eq!(location.source_plane, SourcePlane::new(2).ok_or("invalid fixture plane")?);
+        assert_eq!(
+            location.tile,
+            RegionTile::new(10, 20).ok_or("invalid fixture tile")?
+        );
+        assert_eq!(
+            location.source_plane,
+            SourcePlane::new(2).ok_or("invalid fixture plane")?
+        );
         assert_eq!(location.loc_type, 10);
         assert_eq!(location.orientation, 3);
         Ok(())
@@ -599,12 +606,7 @@ mod tests {
         push_unsigned_short_smart(&mut bytes, 1); // object id 0
         push_unsigned_short_smart(&mut bytes, 16_385); // packed position becomes 16384 / plane 4
 
-        let error = match decode_locations(
-            &bytes,
-            &context,
-            &source,
-            RegionCoord::new(50, 50),
-        ) {
+        let error = match decode_locations(&bytes, &context, &source, RegionCoord::new(50, 50)) {
             Err(error) => error,
             Ok(_) => return Err("out-of-range packed position unexpectedly decoded".into()),
         };
