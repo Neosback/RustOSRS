@@ -50,3 +50,20 @@ jobs:
 
       - name: Run workspace tests
         run: cargo test --locked --workspace --all-targets --all-features
+
+  tier-c:
+    name: Tier C - M3 decode parity
+    runs-on: ubuntu-latest
+    needs: tier-b
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - name: Run checked-in P0 decode fixtures
+        run: cargo test --locked -p osrs-cache --test m3_decode_fixtures
+
+      - name: Run deterministic decoder fuzz smoke
+        run: cargo test --locked -p osrs-cache --test m3_fuzz_smoke

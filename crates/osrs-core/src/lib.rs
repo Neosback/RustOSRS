@@ -8,6 +8,7 @@
 pub mod coordinate_math;
 pub mod coords;
 pub mod definitions;
+pub mod floor_color;
 pub mod ids;
 pub mod model;
 pub mod orientation;
