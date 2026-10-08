@@ -742,7 +742,10 @@ mod tests {
     fn validation_rejects_parallel_array_mismatch() -> Result<(), Box<dyn std::error::Error>> {
         let mut parts = minimal_parts()?;
         parts.face_alphas = Some(vec![0, 1]);
-        let error = SourceModel::from_parts(parts).expect_err("mismatched alpha array must fail");
+        let result = SourceModel::from_parts(parts);
+        let Err(error) = result else {
+            return Err("mismatched alpha array unexpectedly succeeded".into());
+        };
         assert_eq!(
             error,
             ModelValidationError::ParallelArrayLength {
@@ -758,7 +761,10 @@ mod tests {
     fn validation_rejects_bad_topology() -> Result<(), Box<dyn std::error::Error>> {
         let mut parts = minimal_parts()?;
         parts.faces[0] = Triangle::new(0, 1, 99);
-        let error = SourceModel::from_parts(parts).expect_err("bad vertex index must fail");
+        let result = SourceModel::from_parts(parts);
+        let Err(error) = result else {
+            return Err("bad vertex index unexpectedly succeeded".into());
+        };
         assert_eq!(
             error,
             ModelValidationError::FaceVertexOutOfRange {
@@ -804,7 +810,10 @@ mod tests {
     fn validation_rejects_bad_texture_selector() -> Result<(), Box<dyn std::error::Error>> {
         let mut parts = minimal_parts()?;
         parts.texture_face_selectors = Some(vec![Some(TextureTriangleIndex::new(0))]);
-        let error = SourceModel::from_parts(parts).expect_err("missing texture triangle must fail");
+        let result = SourceModel::from_parts(parts);
+        let Err(error) = result else {
+            return Err("missing texture triangle unexpectedly succeeded".into());
+        };
         assert_eq!(
             error,
             ModelValidationError::TextureSelectorOutOfRange {
@@ -920,7 +929,10 @@ mod tests {
             None,
             None,
         ]);
-        let error = SourceModel::from_parts(parts).expect_err("mismatched influences must fail");
+        let result = SourceModel::from_parts(parts);
+        let Err(error) = result else {
+            return Err("mismatched skeletal influences unexpectedly succeeded".into());
+        };
         assert_eq!(
             error,
             ModelValidationError::SkeletalInfluenceLength {
