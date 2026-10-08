@@ -6,6 +6,4 @@
 
 pub mod decode;
 pub mod profile;
-
-#[allow(dead_code)]
-mod transport;
+pub mod transport;
