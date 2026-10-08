@@ -5,6 +5,7 @@
 //! are normalized to `Option`/enums at the decoder boundary rather than stored
 //! as magic integers here.
 
+use crate::floor_color::{OverlayHsl, UnderlayHsl};
 use crate::ids::{
     CategoryId, FloorOverlayId, FloorUnderlayId, FrameId, ItemId, MapIconId, MapSceneId, ModelId,
     ObjectId, SequenceId, SkeletalAnimationId, SpriteId, TextureId, VarbitId, VarpId,
@@ -172,14 +173,15 @@ pub struct ObjectDefinition {
     pub actions: [Option<String>; 5],
 }
 
-/// Canonical floor-underlay definition.
+/// Canonical floor-underlay definition including exact post-decode HSL state.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FloorUnderlayDefinition {
     pub identity: DefinitionIdentity<FloorUnderlayId>,
     pub rgb: Rgb24,
+    pub hsl: UnderlayHsl,
 }
 
-/// Canonical floor-overlay definition.
+/// Canonical floor-overlay definition including primary/secondary post-decode HSL.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FloorOverlayDefinition {
     pub identity: DefinitionIdentity<FloorOverlayId>,
@@ -187,6 +189,8 @@ pub struct FloorOverlayDefinition {
     pub texture: Option<TextureId>,
     pub hide_underlay: bool,
     pub secondary_rgb: Option<Rgb24>,
+    pub primary_hsl: OverlayHsl,
+    pub secondary_hsl: Option<OverlayHsl>,
 }
 
 /// Canonical varbit definition. Bit-range interpretation is verified by M3.
@@ -303,16 +307,20 @@ mod tests {
 
     #[test]
     fn overlay_absence_is_not_replaced_with_zero_ids() -> Result<(), Box<dyn std::error::Error>> {
+        let primary_rgb = Rgb24(0x123456);
         let overlay = FloorOverlayDefinition {
             identity: DefinitionIdentity::new(FloorOverlayId::new(5), provenance()?),
-            primary_rgb: Rgb24(0x123456),
+            primary_rgb,
             texture: None,
             hide_underlay: true,
             secondary_rgb: None,
+            primary_hsl: OverlayHsl::from_rgb(primary_rgb),
+            secondary_hsl: None,
         };
 
         assert_eq!(overlay.texture, None);
         assert_eq!(overlay.secondary_rgb, None);
+        assert_eq!(overlay.secondary_hsl, None);
         Ok(())
     }
 
