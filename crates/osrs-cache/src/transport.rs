@@ -219,7 +219,10 @@ impl fmt::Display for CacheError {
                 write!(formatter, "{operation} failed: {detail}")
             }
             CacheErrorKind::DependencyPanic { operation } => {
-                write!(formatter, "{operation} panicked inside private transport dependency")
+                write!(
+                    formatter,
+                    "{operation} panicked inside private transport dependency"
+                )
             }
             CacheErrorKind::MissingIndex => formatter.write_str("index is not present"),
             CacheErrorKind::MissingGroup => formatter.write_str("group is not present"),
@@ -391,13 +394,8 @@ impl CacheRepository {
         index_id: u8,
         group_id: u32,
     ) -> Result<CacheGroupBytes, CacheError> {
-        let bytes = self.read_dependency_group(
-            "read encoded group",
-            index_id,
-            group_id,
-            None,
-            false,
-        )?;
+        let bytes =
+            self.read_dependency_group("read encoded group", index_id, group_id, None, false)?;
         Ok(CacheGroupBytes {
             provenance: ArchiveFileProvenance::new(index_id, group_id, None),
             bytes,
@@ -411,13 +409,7 @@ impl CacheRepository {
         xtea: Option<&XteaInput>,
     ) -> Result<CacheGroupBytes, CacheError> {
         let keys = xtea.map(|input| input.keys);
-        let bytes = self.read_dependency_group(
-            "decode group",
-            index_id,
-            group_id,
-            keys,
-            true,
-        )?;
+        let bytes = self.read_dependency_group("decode group", index_id, group_id, keys, true)?;
         let mut provenance = ArchiveFileProvenance::new(index_id, group_id, None);
         if let Some(input) = xtea {
             provenance = provenance.with_xtea(input.provenance.clone());
@@ -530,9 +522,7 @@ impl CacheRepository {
             | CacheErrorKind::DependencyFailure { .. }
             | CacheErrorKind::DependencyPanic { .. }
             | CacheErrorKind::LimitExceeded { .. }
-            | CacheErrorKind::MalformedContainer { .. } => {
-                error.at_group(index_id, group_id)
-            }
+            | CacheErrorKind::MalformedContainer { .. } => error.at_group(index_id, group_id),
             _ => error.at_group(index_id, group_id),
         })
     }
@@ -667,16 +657,18 @@ fn split_group_files(
             detail: "chunk/file table entry count overflowed usize".to_owned(),
         }
     })?;
-    let table_bytes = table_values.checked_mul(4).ok_or_else(|| {
-        CacheErrorKind::MalformedFileTable {
-            detail: "chunk/file table byte size overflowed usize".to_owned(),
-        }
-    })?;
-    let trailer_bytes = table_bytes.checked_add(1).ok_or_else(|| {
-        CacheErrorKind::MalformedFileTable {
-            detail: "chunk/file trailer size overflowed usize".to_owned(),
-        }
-    })?;
+    let table_bytes =
+        table_values
+            .checked_mul(4)
+            .ok_or_else(|| CacheErrorKind::MalformedFileTable {
+                detail: "chunk/file table byte size overflowed usize".to_owned(),
+            })?;
+    let trailer_bytes =
+        table_bytes
+            .checked_add(1)
+            .ok_or_else(|| CacheErrorKind::MalformedFileTable {
+                detail: "chunk/file trailer size overflowed usize".to_owned(),
+            })?;
     let table_start = decoded.len().checked_sub(trailer_bytes).ok_or_else(|| {
         CacheErrorKind::MalformedFileTable {
             detail: "chunk table extends before start of decoded group".to_owned(),
@@ -694,11 +686,10 @@ fn split_group_files(
                     detail: "chunk size accumulator overflowed i64".to_owned(),
                 }
             })?;
-            let chunk_size = usize::try_from(chunk_size).map_err(|_| {
-                CacheErrorKind::MalformedFileTable {
+            let chunk_size =
+                usize::try_from(chunk_size).map_err(|_| CacheErrorKind::MalformedFileTable {
                     detail: "chunk table produced a negative file segment size".to_owned(),
-                }
-            })?;
+                })?;
             *total = total.checked_add(chunk_size).ok_or_else(|| {
                 CacheErrorKind::MalformedFileTable {
                     detail: "logical file length overflowed usize".to_owned(),
@@ -716,7 +707,9 @@ fn split_group_files(
             detail: "chunk table length did not match trailer".to_owned(),
         });
     }
-    let combined = totals.iter().try_fold(0usize, |sum, value| sum.checked_add(*value));
+    let combined = totals
+        .iter()
+        .try_fold(0usize, |sum, value| sum.checked_add(*value));
     if combined != Some(table_start) {
         return Err(CacheErrorKind::MalformedFileTable {
             detail: "logical file lengths do not exactly cover decoded data area".to_owned(),
@@ -738,11 +731,10 @@ fn split_group_files(
                     detail: "chunk size accumulator overflowed i64".to_owned(),
                 }
             })?;
-            let chunk_size = usize::try_from(chunk_size).map_err(|_| {
-                CacheErrorKind::MalformedFileTable {
+            let chunk_size =
+                usize::try_from(chunk_size).map_err(|_| CacheErrorKind::MalformedFileTable {
                     detail: "chunk table produced a negative file segment size".to_owned(),
-                }
-            })?;
+                })?;
             let end = data_offset.checked_add(chunk_size).ok_or_else(|| {
                 CacheErrorKind::MalformedFileTable {
                     detail: "decoded data cursor overflowed usize".to_owned(),
@@ -772,14 +764,16 @@ fn split_group_files(
 }
 
 fn read_table_i32(decoded: &[u8], offset: &mut usize) -> Result<i32, CacheErrorKind> {
-    let end = offset.checked_add(4).ok_or_else(|| CacheErrorKind::MalformedFileTable {
-        detail: "chunk table cursor overflowed usize".to_owned(),
-    })?;
-    let bytes = decoded.get(*offset..end).ok_or_else(|| {
-        CacheErrorKind::MalformedFileTable {
+    let end = offset
+        .checked_add(4)
+        .ok_or_else(|| CacheErrorKind::MalformedFileTable {
+            detail: "chunk table cursor overflowed usize".to_owned(),
+        })?;
+    let bytes = decoded
+        .get(*offset..end)
+        .ok_or_else(|| CacheErrorKind::MalformedFileTable {
             detail: "truncated chunk table".to_owned(),
-        }
-    })?;
+        })?;
     *offset = end;
     Ok(i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
@@ -875,11 +869,13 @@ impl CacheTransport {
             .into_iter()
             .try_fold(0usize, |total, index| {
                 self.group_ids(index).and_then(|groups| {
-                    total.checked_add(groups.len()).ok_or(TransportError::LimitExceeded {
-                        field: "group count",
-                        requested: usize::MAX,
-                        limit: usize::MAX - total,
-                    })
+                    total
+                        .checked_add(groups.len())
+                        .ok_or(TransportError::LimitExceeded {
+                            field: "group count",
+                            requested: usize::MAX,
+                            limit: usize::MAX - total,
+                        })
                 })
             })
     }
@@ -901,11 +897,7 @@ impl CacheTransport {
             })
     }
 
-    fn group_metadata(
-        &self,
-        index_id: u8,
-        group_id: u32,
-    ) -> TransportResult<CacheGroupMetadata> {
+    fn group_metadata(&self, index_id: u8, group_id: u32) -> TransportResult<CacheGroupMetadata> {
         let index = self
             .indices
             .get(&index_id)
@@ -999,11 +991,7 @@ impl CacheTransport {
         index_id: u8,
         max_encoded_bytes: usize,
     ) -> TransportResult<Vec<u8>> {
-        self.read_encoded_group_limited(
-            REFERENCE_TABLE_ID,
-            u32::from(index_id),
-            max_encoded_bytes,
-        )
+        self.read_encoded_group_limited(REFERENCE_TABLE_ID, u32::from(index_id), max_encoded_bytes)
     }
 
     fn fingerprint_v1(&self, max_encoded_bytes: usize) -> TransportResult<ComputedFingerprint> {
@@ -1051,8 +1039,8 @@ fn validate_encoded_container(
             "unsupported OSRS compression id {compression}"
         )));
     }
-    let compressed_len = u32::from_be_bytes([encoded[1], encoded[2], encoded[3], encoded[4]])
-        as usize;
+    let compressed_len =
+        u32::from_be_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]) as usize;
     if compressed_len > max_encoded_bytes {
         return Err(TransportError::LimitExceeded {
             field: "compressed payload bytes",
@@ -1080,9 +1068,9 @@ fn validate_encoded_container(
             limit: max_decoded_bytes,
         });
     }
-    let payload_end = header_len
-        .checked_add(compressed_len)
-        .ok_or_else(|| TransportError::MalformedContainer("payload end overflowed usize".to_owned()))?;
+    let payload_end = header_len.checked_add(compressed_len).ok_or_else(|| {
+        TransportError::MalformedContainer("payload end overflowed usize".to_owned())
+    })?;
     if payload_end > encoded.len() {
         return Err(TransportError::MalformedContainer(format!(
             "declared compressed payload ends at {payload_end}, container length is {}",
@@ -1157,13 +1145,8 @@ mod tests {
         let cache = CacheTransport::open(repository_cache())?;
         let map_group = cache.group_id_by_name(MAP_INDEX, &format!("m{LUMBRIDGE_REGION}"))?;
         let encoded = cache.read_encoded_group_limited(MAP_INDEX, map_group, usize::MAX)?;
-        let decoded = cache.read_decoded_group(
-            MAP_INDEX,
-            map_group,
-            None,
-            usize::MAX,
-            usize::MAX,
-        )?;
+        let decoded =
+            cache.read_decoded_group(MAP_INDEX, map_group, None, usize::MAX, usize::MAX)?;
         assert!(!encoded.is_empty());
         assert!(!decoded.is_empty());
         Ok(())
@@ -1202,10 +1185,7 @@ mod tests {
         decoded.push(1);
 
         let files = split_group_files(&decoded, &[0, 7], 8);
-        assert_eq!(
-            files,
-            Ok(vec![(0, b"abc".to_vec()), (7, b"de".to_vec())])
-        );
+        assert_eq!(files, Ok(vec![(0, b"abc".to_vec()), (7, b"de".to_vec())]));
     }
 
     #[test]
