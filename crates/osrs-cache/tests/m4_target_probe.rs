@@ -28,6 +28,9 @@ fn probe_build_241_model_families() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut counts = BTreeMap::<&'static str, usize>::new();
     let mut samples = BTreeMap::<&'static str, Vec<u32>>::new();
+    let mut texture_render_types = BTreeMap::<u8, usize>::new();
+    let mut texture_type_samples = BTreeMap::<u8, Vec<u32>>::new();
+    let mut shortest_by_family = BTreeMap::<&'static str, (usize, u32, Vec<u8>)>::new();
     let mut multi_file_groups = 0usize;
     let mut empty_models = 0usize;
     let mut shortest = usize::MAX;
@@ -53,11 +56,42 @@ fn probe_build_241_model_families() -> Result<(), Box<dyn std::error::Error>> {
             if entry.len() < 12 {
                 entry.push(group_id);
             }
+
+            let replace_shortest = shortest_by_family
+                .get(kind)
+                .is_none_or(|(length, _, _)| file.bytes.len() < *length);
+            if replace_shortest {
+                shortest_by_family.insert(
+                    kind,
+                    (file.bytes.len(), group_id, file.bytes.iter().copied().take(256).collect()),
+                );
+            }
+
+            if kind == "fffd" {
+                if file.bytes.len() < 26 {
+                    return Err(format!("FFFD model {group_id} shorter than footer").into());
+                }
+                let footer = file.bytes.len() - 26;
+                let texture_count = usize::from(file.bytes[footer + 4]);
+                if texture_count > footer {
+                    return Err(format!("FFFD model {group_id} texture prefix exceeds footer").into());
+                }
+                for &render_type in &file.bytes[..texture_count] {
+                    *texture_render_types.entry(render_type).or_default() += 1;
+                    let type_samples = texture_type_samples.entry(render_type).or_default();
+                    if type_samples.len() < 12 && !type_samples.contains(&group_id) {
+                        type_samples.push(group_id);
+                    }
+                }
+            }
         }
     }
 
     println!("M4_MODEL_PROBE counts={counts:?}");
     println!("M4_MODEL_PROBE samples={samples:?}");
+    println!("M4_MODEL_PROBE texture_render_types={texture_render_types:?}");
+    println!("M4_MODEL_PROBE texture_type_samples={texture_type_samples:?}");
+    println!("M4_MODEL_PROBE shortest_by_family={shortest_by_family:?}");
     println!(
         "M4_MODEL_PROBE multi_file_groups={multi_file_groups} empty_models={empty_models} shortest={shortest} longest={longest}"
     );
