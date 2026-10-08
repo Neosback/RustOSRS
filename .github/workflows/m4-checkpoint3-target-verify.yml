@@ -1,0 +1,36 @@
+name: M4 Checkpoint 3 Target Verify
+
+on:
+  push:
+    branches:
+      - impl/m4-model-decode-construction
+    paths:
+      - .github/workflows/m4-checkpoint3-target-verify.yml
+      - crates/osrs-cache/src/model_repository.rs
+      - crates/osrs-cache/tests/m4_target_probe.rs
+
+permissions:
+  contents: read
+
+jobs:
+  target-model-repository:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - name: Download pinned OpenRS2 cache 2727
+        run: |
+          curl --fail --location --retry 3 \
+            https://archive.openrs2.org/caches/runescape/2727/disk.zip \
+            --output /tmp/cache.zip
+          mkdir -p /tmp/openrs2
+          unzip -q /tmp/cache.zip -d /tmp/openrs2
+
+      - name: Sweep target model repository
+        env:
+          RUSTOSRS_TARGET_CACHE_DIR: /tmp/openrs2/cache
+        run: cargo test --locked -p osrs-cache --test m4_target_probe -- --ignored --nocapture
