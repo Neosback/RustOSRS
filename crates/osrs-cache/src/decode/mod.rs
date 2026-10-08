@@ -6,14 +6,18 @@
 
 mod context;
 mod error;
+mod floor;
 mod reader;
+mod vars;
 
 pub use context::{DecoderContext, DecoderContextError};
 pub use error::{
     ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult, XteaKeyProvenance,
     XteaProvenanceError,
 };
+pub use floor::{decode_floor_overlay, decode_floor_underlay};
 pub use reader::BinaryReader;
+pub use vars::{decode_varbit, decode_varp};
 
 #[cfg(test)]
 pub(crate) mod test_support {
