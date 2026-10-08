@@ -2,6 +2,7 @@ use super::{ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, Decoder
 use osrs_core::definitions::{
     DefinitionIdentity, FloorOverlayDefinition, FloorUnderlayDefinition, Rgb24,
 };
+use osrs_core::floor_color::{OverlayHsl, UnderlayHsl};
 use osrs_core::ids::{FloorOverlayId, FloorUnderlayId, TextureId};
 
 /// Decode a floor-underlay definition using the build-241-compatible opcode
@@ -37,6 +38,7 @@ pub fn decode_floor_underlay(
     Ok(FloorUnderlayDefinition {
         identity: DefinitionIdentity::new(id, context.target_provenance().clone()),
         rgb,
+        hsl: UnderlayHsl::from_rgb(rgb),
     })
 }
 
@@ -86,12 +88,19 @@ pub fn decode_floor_overlay(
         .transpose()?;
     reader.finish()?;
 
+    // Match the target postDecode ordering: secondary is derived first and
+    // copied aside, then primary is derived and becomes the active HSL state.
+    let secondary_hsl = secondary_rgb.map(OverlayHsl::from_rgb);
+    let primary_hsl = OverlayHsl::from_rgb(primary_rgb);
+
     Ok(FloorOverlayDefinition {
         identity: DefinitionIdentity::new(id, context.target_provenance().clone()),
         primary_rgb,
         texture,
         hide_underlay,
         secondary_rgb,
+        primary_hsl,
+        secondary_hsl,
     })
 }
 
@@ -118,7 +127,8 @@ mod tests {
     use crate::decode::{DecodeErrorKind, test_support};
 
     #[test]
-    fn underlay_preserves_rgb_and_target_provenance() -> Result<(), Box<dyn std::error::Error>> {
+    fn underlay_preserves_rgb_postdecode_hsl_and_target_provenance()
+    -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 1, Some(42));
         let definition = decode_floor_underlay(
@@ -131,21 +141,33 @@ mod tests {
         assert_eq!(definition.identity.id, FloorUnderlayId::new(42));
         assert_eq!(&definition.identity.provenance, context.target_provenance());
         assert_eq!(definition.rgb.get(), 0x12_34_56);
+        assert_eq!(
+            definition.hsl,
+            UnderlayHsl {
+                weighted_hue: 39,
+                saturation: 167,
+                lightness: 52,
+                hue_multiplier: 68,
+            }
+        );
         Ok(())
     }
 
     #[test]
-    fn underlay_default_rgb_is_exact_zero() -> Result<(), Box<dyn std::error::Error>> {
+    fn underlay_default_rgb_has_minimum_hue_multiplier() -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 1, Some(7));
         let definition = decode_floor_underlay(FloorUnderlayId::new(7), &[0], &context, &source)?;
 
         assert_eq!(definition.rgb.get(), 0);
+        assert_eq!(definition.hsl.hue_multiplier, 1);
+        assert_eq!(definition.hsl.saturation, 0);
+        assert_eq!(definition.hsl.lightness, 0);
         Ok(())
     }
 
     #[test]
-    fn overlay_decodes_target_opcodes_and_preserves_absence()
+    fn overlay_decodes_target_opcodes_and_preserves_postdecode_order()
     -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 4, Some(11));
@@ -159,11 +181,27 @@ mod tests {
         assert_eq!(definition.texture, Some(TextureId::new(7)));
         assert!(!definition.hide_underlay);
         assert_eq!(definition.secondary_rgb.map(Rgb24::get), Some(0xab_cd_ef));
+        assert_eq!(
+            definition.primary_hsl,
+            OverlayHsl {
+                hue: 149,
+                saturation: 167,
+                lightness: 52,
+            }
+        );
+        assert_eq!(
+            definition.secondary_hsl,
+            Some(OverlayHsl {
+                hue: 149,
+                saturation: 170,
+                lightness: 205,
+            })
+        );
         Ok(())
     }
 
     #[test]
-    fn overlay_defaults_match_target_constructor_semantics()
+    fn overlay_defaults_match_target_constructor_and_postdecode_semantics()
     -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 4, Some(12));
@@ -173,6 +211,8 @@ mod tests {
         assert_eq!(definition.texture, None);
         assert!(definition.hide_underlay);
         assert_eq!(definition.secondary_rgb, None);
+        assert_eq!(definition.primary_hsl, OverlayHsl::from_rgb(definition.primary_rgb));
+        assert_eq!(definition.secondary_hsl, None);
         Ok(())
     }
 
