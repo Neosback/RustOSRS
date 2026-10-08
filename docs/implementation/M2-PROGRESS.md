@@ -1,6 +1,6 @@
 # M2 Semantic Foundation Progress
 
-Status: **M2 in progress; M2A and M2B complete**  
+Status: **M2 in progress; M2A, M2B, and M2C complete**  
 Milestone: **M2 - `osrs-core` semantic foundation**  
 Branch: `impl/m2-core-semantic-foundation`
 
@@ -164,17 +164,105 @@ Result on the code head:
 
 ---
 
+## M2C - Canonical source model and working model ownership
+
+Implemented in:
+
+- `crates/osrs-core/src/model.rs`;
+- `crates/osrs-core/src/lib.rs`.
+
+### Source model representation
+
+M2C introduces a validated, cache-independent `SourceModel` boundary with explicit semantic types for:
+
+- vertices and triangle topology;
+- vertex, face, and texture-triangle indices;
+- face colors;
+- reference face priorities constrained to `0..=11`;
+- optional face render-type, priority, alpha, texture, texture-selector, and authored face-bias arrays;
+- texture triangles and retained mapping parameters;
+- vertex and face skin metadata;
+- per-vertex skeletal bone/weight source data;
+- source model-format identity and optional format version.
+
+Optional source arrays preserve **absence**. `None` means the source array did not exist; present arrays retain entry-level absence/sentinels where the target semantics require them. In particular, signed alpha bytes such as `-1` are preserved rather than normalized during admission.
+
+The audited ModelData trailer names retain source byte order explicitly: `FF FF`, `FF FE`, and `FF FD`. The type names make no unsupported claim about chronology.
+
+### Validation boundary
+
+`SourceModel::from_parts` rejects malformed canonical model state before it can become a shared source asset. Current validation covers:
+
+- face-parallel array lengths;
+- vertex-parallel array lengths;
+- face vertex references;
+- texture-triangle vertex references;
+- texture-face selector bounds;
+- skeletal bone/weight count agreement.
+
+This validation is semantic shape/topology validation only. M3/M4 still own target decoding and exact construction behavior.
+
+### Immutable source vs mutable working state
+
+A validated `SourceModel` exposes read access only. `to_working_copy()` produces a deep owned `WorkingModel`, so later transforms cannot mutate the cached/shared source asset.
+
+`WorkingModel` carries explicit derived state rather than overloading source arrays:
+
+- `ModelNormalState::Uncomputed` vs computed normal data;
+- base vertex normals;
+- flat face normals;
+- optional merged vertex-normal slots for cross-model accumulation;
+- derived animation groups separate from original vertex/face skin arrays.
+
+Geometry/topology and render-type mutation invalidates derived normal state through the working-model API. Cross-model merged normals therefore remain separate from base normals and do not imply topology welding.
+
+### Scope held for later milestones
+
+M2C deliberately does **not** implement:
+
+- model cache decoding;
+- typed/untyped object model selection;
+- mirror, resize, recolor, retexture, translation, or orientation transform order;
+- base-normal calculation or cross-model normal-merge algorithms;
+- final lighting;
+- animation-group construction or animation execution;
+- contouring;
+- renderer/GPU packing.
+
+Those remain owned by M3/M4/M7/M8 and the renderer milestones defined in the roadmap.
+
+### M2C verification
+
+Tests cover:
+
+- face-priority domain enforcement;
+- audited model-trailer byte-order vocabulary;
+- optional-array absence preservation;
+- entry-level texture/sentinel and signed-alpha preservation;
+- parallel-array validation;
+- invalid topology rejection;
+- texture mapping/selector retention and bounds validation;
+- source/working-copy independence;
+- normal-state invalidation after geometry/render-type mutation;
+- separation of base and merged normal state;
+- derived animation groups without destroying source skin metadata;
+- skeletal bone/weight validation.
+
+Result on code head `d49c81e0ec5bb285d7af671d2446e9d3c7fe932a`:
+
+- Tier A architecture, formatting, workspace check, and strict Clippy: **PASS**;
+- Tier B workspace tests: **PASS**.
+
+---
+
 ## Remaining M2 work
 
-M2 is **not complete**. Remaining work includes:
+M2 is **not complete**. The next bounded slice is the **M2 exit/cleanup audit**, and it has not started in this checkpoint. It must:
 
-1. canonical source-model geometry/topology representation;
-2. `FACE-001` metadata preservation, including optional-array absence/default semantics;
-3. texture-triangle/mapping source structures and authored face-bias storage;
-4. vertex/face skin and animation-group source metadata;
-5. base/merged-normal working structures at the correct semantic ownership boundary;
-6. any remaining pure integer helper required for M2-owned semantic representation without pulling M4 construction behavior early;
-7. final source-model immutability/hash/comparison controls;
-8. M2 exit audit against `COORD-001..003`, `FACE-001` representation requirements, and the roadmap gates.
+1. reconcile the implemented M2 API against every M2 deliverable and exit gate in `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md`;
+2. verify `COORD-001..003` and the M2-owned `FACE-001` representation requirements are covered without pulling M3/M4/M7 behavior forward;
+3. review source-model immutability, equality/hash behavior, mutation invalidation, and any remaining M2-owned pure integer/value helper gaps;
+4. remove or tighten any accidental public API that would permit later cache/scene/render layers to bypass the semantic boundary;
+5. run the final M2 Tier A/B gate on the exact milestone head and produce the M2 exit record.
 
 M3 must not begin until the complete M2 milestone is merged.
