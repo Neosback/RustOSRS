@@ -227,7 +227,7 @@ impl DecodeError {
         &self.context.target
     }
 
-    pub const fn build(&self) -> u32 {
+    pub fn build(&self) -> u32 {
         self.context.build
     }
 
@@ -235,11 +235,11 @@ impl DecodeError {
         &self.context.source
     }
 
-    pub const fn span(&self) -> ByteSpan {
+    pub fn span(&self) -> ByteSpan {
         self.context.span
     }
 
-    pub const fn opcode(&self) -> Option<u32> {
+    pub fn opcode(&self) -> Option<u32> {
         self.context.opcode
     }
 }
@@ -250,9 +250,12 @@ impl fmt::Display for DecodeError {
         let source = &self.context.source;
         write!(
             formatter,
-            "{} [profile={}, build={}, index={}, group={}",
+            "{} [profile={}, profile_digest={}, cache_fingerprint={}, decoder_schema={}, build={}, index={}, group={}",
             self.kind,
             target.profile_id(),
+            target.profile_digest(),
+            target.cache_fingerprint(),
+            target.decoder_schema_version(),
             self.context.build,
             source.index_id(),
             source.group_id()
@@ -291,8 +294,8 @@ mod tests {
     use crate::decode::test_support;
 
     #[test]
-    fn decode_error_preserves_target_archive_and_opcode_context(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn decode_error_preserves_target_archive_and_opcode_context()
+    -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let xtea = XteaKeyProvenance::new("openrs2-cache-2727", "sha256:example")?;
         let source = ArchiveFileProvenance::new(5, 12_345, Some(7)).with_xtea(xtea);
@@ -320,6 +323,7 @@ mod tests {
         assert!(rendered.contains("group=12345"));
         assert!(rendered.contains("file=7"));
         assert!(rendered.contains("opcode=92"));
+        assert!(rendered.contains("decoder_schema=1"));
         assert!(rendered.contains("xtea_provider=openrs2-cache-2727"));
         Ok(())
     }
