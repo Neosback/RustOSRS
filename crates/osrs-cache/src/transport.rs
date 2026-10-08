@@ -539,9 +539,9 @@ impl CacheRepository {
                 operation: "cache metadata",
                 detail: error,
             },
-            TransportError::MissingIndex(_) => CacheErrorKind::MissingIndex,
-            TransportError::MissingGroup { .. } => CacheErrorKind::MissingGroup,
-            TransportError::MissingMetadata { .. } => CacheErrorKind::MissingMetadata,
+            TransportError::MissingIndex => CacheErrorKind::MissingIndex,
+            TransportError::MissingGroup => CacheErrorKind::MissingGroup,
+            TransportError::MissingMetadata => CacheErrorKind::MissingMetadata,
             TransportError::LimitExceeded {
                 field,
                 requested,
@@ -595,9 +595,9 @@ fn dependency_call<T>(
                 TransportError::Dependency(detail) => {
                     CacheErrorKind::DependencyFailure { operation, detail }
                 }
-                TransportError::MissingIndex(_) => CacheErrorKind::MissingIndex,
-                TransportError::MissingGroup { .. } => CacheErrorKind::MissingGroup,
-                TransportError::MissingMetadata { .. } => CacheErrorKind::MissingMetadata,
+                TransportError::MissingIndex => CacheErrorKind::MissingIndex,
+                TransportError::MissingGroup => CacheErrorKind::MissingGroup,
+                TransportError::MissingMetadata => CacheErrorKind::MissingMetadata,
                 TransportError::LimitExceeded {
                     field,
                     requested,
@@ -781,15 +781,9 @@ fn read_table_i32(decoded: &[u8], offset: &mut usize) -> Result<i32, CacheErrorK
 #[derive(Debug)]
 enum TransportError {
     Dependency(String),
-    MissingIndex(u8),
-    MissingGroup {
-        index: u8,
-        group: u32,
-    },
-    MissingMetadata {
-        index: u8,
-        group: u32,
-    },
+    MissingIndex,
+    MissingGroup,
+    MissingMetadata,
     LimitExceeded {
         field: &'static str,
         requested: usize,
@@ -858,12 +852,13 @@ impl CacheTransport {
         let index = self
             .indices
             .get(&index_id)
-            .ok_or(TransportError::MissingIndex(index_id))?;
+            .ok_or(TransportError::MissingIndex)?;
         let mut ids: Vec<u32> = index.metadata.iter().map(|metadata| metadata.id).collect();
         ids.sort_unstable();
         Ok(ids)
     }
 
+    #[cfg(test)]
     fn group_count(&self) -> TransportResult<usize> {
         self.content_index_ids()
             .into_iter()
@@ -880,43 +875,35 @@ impl CacheTransport {
             })
     }
 
+    #[cfg(test)]
     fn group_id_by_name(&self, index_id: u8, name: &str) -> TransportResult<u32> {
         let index = self
             .indices
             .get(&index_id)
-            .ok_or(TransportError::MissingIndex(index_id))?;
+            .ok_or(TransportError::MissingIndex)?;
         let hash = jagex_name_hash(name);
         index
             .metadata
             .iter()
             .find(|metadata| metadata.name_hash == hash)
             .map(|metadata| metadata.id)
-            .ok_or(TransportError::MissingGroup {
-                index: index_id,
-                group: 0,
-            })
+            .ok_or(TransportError::MissingGroup)
     }
 
     fn group_metadata(&self, index_id: u8, group_id: u32) -> TransportResult<CacheGroupMetadata> {
         let index = self
             .indices
             .get(&index_id)
-            .ok_or(TransportError::MissingIndex(index_id))?;
+            .ok_or(TransportError::MissingIndex)?;
         let metadata = index
             .metadata
             .iter()
             .find(|metadata| metadata.id == group_id)
-            .ok_or(TransportError::MissingMetadata {
-                index: index_id,
-                group: group_id,
-            })?;
+            .ok_or(TransportError::MissingMetadata)?;
         let archive = index
             .archive_refs
             .get(&group_id)
-            .ok_or(TransportError::MissingGroup {
-                index: index_id,
-                group: group_id,
-            })?;
+            .ok_or(TransportError::MissingGroup)?;
         Ok(CacheGroupMetadata {
             index_id,
             group_id,
@@ -934,14 +921,11 @@ impl CacheTransport {
         let index = self
             .indices
             .get(&index_id)
-            .ok_or(TransportError::MissingIndex(index_id))?;
+            .ok_or(TransportError::MissingIndex)?;
         index
             .archive_refs
             .get(&group_id)
-            .ok_or(TransportError::MissingGroup {
-                index: index_id,
-                group: group_id,
-            })
+            .ok_or(TransportError::MissingGroup)
     }
 
     fn read_encoded_group_limited(
@@ -1091,6 +1075,7 @@ fn update_hashed_blob(digest: &mut Sha256, bytes: &[u8]) {
     digest.update(Sha256::digest(bytes));
 }
 
+#[cfg(test)]
 fn jagex_name_hash(name: &str) -> i32 {
     name.chars().fold(0i32, |hash, character| {
         hash.wrapping_mul(31).wrapping_add(character as i32)
@@ -1240,7 +1225,7 @@ mod tests {
         let map_index = cache
             .indices
             .get(&MAP_INDEX)
-            .ok_or(TransportError::MissingIndex(MAP_INDEX))?;
+            .ok_or(TransportError::MissingIndex)?;
         let named_group_count = map_index
             .metadata
             .iter()
@@ -1251,19 +1236,13 @@ mod tests {
 
         let map_groups = cache.group_ids(MAP_INDEX)?;
         let Some(map_group) = map_groups.first().copied() else {
-            return Err(TransportError::MissingGroup {
-                index: MAP_INDEX,
-                group: 0,
-            });
+            return Err(TransportError::MissingGroup);
         };
         let metadata = cache.group_metadata(MAP_INDEX, map_group)?;
         assert_eq!(metadata.file_ids, vec![0, 1]);
         let model_groups = cache.group_ids(MODEL_INDEX)?;
         let Some(model_group) = model_groups.first().copied() else {
-            return Err(TransportError::MissingGroup {
-                index: MODEL_INDEX,
-                group: 0,
-            });
+            return Err(TransportError::MissingGroup);
         };
         assert!(
             !cache
