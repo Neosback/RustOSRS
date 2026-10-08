@@ -1,6 +1,5 @@
 use super::{
-    ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult,
-    DecodeSubject, DecoderContext,
+    ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecodeSubject, DecoderContext,
 };
 use osrs_core::coords::ModelPoint;
 use osrs_core::definitions::DefinitionIdentity;
@@ -12,6 +11,12 @@ use osrs_core::model::{
 
 const FFFD_FOOTER_LEN: usize = 26;
 const FFFE_FOOTER_LEN: usize = 23;
+
+type DecodedVertexData = (
+    Vec<ModelPoint>,
+    Option<Vec<i32>>,
+    Option<Vec<Option<SkeletalVertexData>>>,
+);
 
 /// Decode one target-era ModelData payload into immutable canonical source data.
 ///
@@ -64,7 +69,10 @@ fn decode_fffd(
     if bytes.len() < FFFD_FOOTER_LEN {
         return Err(root.invalid_value(
             "FF FD model length",
-            format!("{} bytes is shorter than the {FFFD_FOOTER_LEN}-byte footer", bytes.len()),
+            format!(
+                "{} bytes is shorter than the {FFFD_FOOTER_LEN}-byte footer",
+                bytes.len()
+            ),
             ByteSpan::new(0, bytes.len()),
             None,
         ));
@@ -176,7 +184,12 @@ fn decode_fffd(
     let complex_textures_offset = offset;
     offset = checked_add(
         offset,
-        checked_mul(complex_texture_count, 6, &root, "complex texture vertex bytes")?,
+        checked_mul(
+            complex_texture_count,
+            6,
+            &root,
+            "complex texture vertex bytes",
+        )?,
         &root,
         "complex texture triangles",
     )?;
@@ -199,7 +212,12 @@ fn decode_fffd(
     let texture_speed_offset = offset;
     let speed_bytes = checked_add(
         checked_mul(complex_texture_count, 2, &root, "texture speed bytes")?,
-        checked_mul(cube_texture_count, 2, &root, "cube texture translation bytes")?,
+        checked_mul(
+            cube_texture_count,
+            2,
+            &root,
+            "cube texture translation bytes",
+        )?,
         &root,
         "texture speed/translation bytes",
     )?;
@@ -241,8 +259,8 @@ fn decode_fffd(
     let mut face_alphas = has_face_alphas.then(|| Vec::with_capacity(face_count));
     let mut face_skins = has_face_skins.then(|| Vec::with_capacity(face_count));
     let mut face_textures = has_face_textures.then(|| Vec::with_capacity(face_count));
-    let mut texture_face_selectors = (has_face_textures && texture_count > 0)
-        .then(|| Vec::with_capacity(face_count));
+    let mut texture_face_selectors =
+        (has_face_textures && texture_count > 0).then(|| Vec::with_capacity(face_count));
 
     for face in 0..face_count {
         face_colors.push(colors.read_u16_be()?);
@@ -329,7 +347,10 @@ fn decode_fffe(
     if bytes.len() < FFFE_FOOTER_LEN {
         return Err(root.invalid_value(
             "FF FE model length",
-            format!("{} bytes is shorter than the {FFFE_FOOTER_LEN}-byte footer", bytes.len()),
+            format!(
+                "{} bytes is shorter than the {FFFE_FOOTER_LEN}-byte footer",
+                bytes.len()
+            ),
             ByteSpan::new(0, bytes.len()),
             None,
         ));
@@ -428,29 +449,27 @@ fn decode_fffe(
     let mut skins_reader = root.fork_at(face_skins_offset)?;
 
     let mut face_colors = Vec::with_capacity(face_count);
-    let mut face_render_types = has_packed_face_info.then(|| Vec::with_capacity(face_count));
+    let mut packed_render_types = Vec::with_capacity(face_count);
     let mut decoded_priorities = face_priorities;
     let mut face_alphas = has_face_alphas.then(|| Vec::with_capacity(face_count));
     let mut face_skins = has_face_skins.then(|| Vec::with_capacity(face_count));
-    let mut face_textures = has_packed_face_info.then(|| Vec::with_capacity(face_count));
-    let mut texture_face_selectors = has_packed_face_info.then(|| Vec::with_capacity(face_count));
+    let mut packed_face_textures = Vec::with_capacity(face_count);
+    let mut packed_texture_selectors = Vec::with_capacity(face_count);
 
     for face in 0..face_count {
         let raw_color = colors.read_u16_be()?;
         if has_packed_face_info {
             let info = packed.read_u8()?;
-            face_render_types.as_mut().expect("allocated above").push(if info & 1 == 1 { 1 } else { 0 });
+            packed_render_types.push(if info & 1 == 1 { 1 } else { 0 });
             if info & 2 == 2 {
                 let texture = (raw_color != u16::MAX).then(|| TextureId::new(u32::from(raw_color)));
-                face_textures.as_mut().expect("allocated above").push(texture);
-                texture_face_selectors
-                    .as_mut()
-                    .expect("allocated above")
+                packed_face_textures.push(texture);
+                packed_texture_selectors
                     .push(texture.map(|_| TextureTriangleIndex::new(u32::from(info >> 2))));
                 face_colors.push(127);
             } else {
-                face_textures.as_mut().expect("allocated above").push(None);
-                texture_face_selectors.as_mut().expect("allocated above").push(None);
+                packed_face_textures.push(None);
+                packed_texture_selectors.push(None);
                 face_colors.push(raw_color);
             }
         } else {
@@ -466,6 +485,10 @@ fn decode_fffe(
             values.push(i32::from(skins_reader.read_u8()?));
         }
     }
+
+    let face_render_types = has_packed_face_info.then_some(packed_render_types);
+    let face_textures = has_packed_face_info.then_some(packed_face_textures);
+    let texture_face_selectors = has_packed_face_info.then_some(packed_texture_selectors);
 
     let faces = decode_faces(
         &root,
@@ -523,11 +546,7 @@ fn decode_vertices(
     metadata_end: usize,
     has_vertex_skins: bool,
     has_skeletal: bool,
-) -> DecodeResult<(
-    Vec<ModelPoint>,
-    Option<Vec<i32>>,
-    Option<Vec<Option<SkeletalVertexData>>>,
-)> {
+) -> DecodeResult<DecodedVertexData> {
     let mut flags = root.fork_at(flags_offset)?;
     let mut xs = root.fork_at(x_offset)?;
     let mut ys = root.fork_at(y_offset)?;
@@ -541,9 +560,21 @@ fn decode_vertices(
 
     for _ in 0..vertex_count {
         let flag = flags.read_u8()?;
-        let dx = if flag & 1 != 0 { xs.read_short_smart()? } else { 0 };
-        let dy = if flag & 2 != 0 { ys.read_short_smart()? } else { 0 };
-        let dz = if flag & 4 != 0 { zs.read_short_smart()? } else { 0 };
+        let dx = if flag & 1 != 0 {
+            xs.read_short_smart()?
+        } else {
+            0
+        };
+        let dy = if flag & 2 != 0 {
+            ys.read_short_smart()?
+        } else {
+            0
+        };
+        let dz = if flag & 4 != 0 {
+            zs.read_short_smart()?
+        } else {
+            0
+        };
         x = x.wrapping_add(dx);
         y = y.wrapping_add(dy);
         z = z.wrapping_add(dz);
@@ -943,7 +974,7 @@ fn expect_offset(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::decode::test_support;
+    use crate::decode::{DecodeErrorKind, test_support};
 
     fn model_source() -> ArchiveFileProvenance {
         ArchiveFileProvenance::new(7, 53_512, Some(0))
@@ -953,8 +984,8 @@ mod tests {
     fn decodes_pinned_target_fffd_sample_exactly() -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let bytes = [
-            0, 5, 1, 1, 64, 65, 65, 0, 0, 63, 65, 65, 0, 0, 0, 3, 0, 1, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 3, 0, 0, 0, 0, 255, 253,
+            0, 5, 1, 1, 64, 65, 65, 0, 0, 63, 65, 65, 0, 0, 0, 3, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            2, 0, 0, 0, 1, 0, 3, 0, 0, 0, 0, 255, 253,
         ];
         let model = decode_model_data(&bytes, &context, &model_source(), ModelId::new(53_512))?;
 
@@ -979,7 +1010,9 @@ mod tests {
     fn decodes_minimal_fffe_payload() -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let mut bytes = vec![0u8];
-        bytes.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        bytes.extend_from_slice(&[
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]);
         bytes.extend_from_slice(&[255, 254]);
         let model = decode_model_data(&bytes, &context, &model_source(), ModelId::new(596))?;
         assert_eq!(model.format().encoding, ModelEncoding::TrailerFfFe);
@@ -989,23 +1022,36 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_target_absent_formats_fail_explicitly() -> Result<(), Box<dyn std::error::Error>> {
+    fn unsupported_target_absent_formats_fail_explicitly() -> Result<(), Box<dyn std::error::Error>>
+    {
         let context = test_support::target_context()?;
         for bytes in [&[0u8, 0xff, 0xff][..], &[0u8, 0, 0][..]] {
-            let error = decode_model_data(bytes, &context, &model_source(), ModelId::new(9))
-                .expect_err("unsupported model family unexpectedly decoded");
+            let error = match decode_model_data(bytes, &context, &model_source(), ModelId::new(9)) {
+                Err(error) => error,
+                Ok(_) => return Err("unsupported model family unexpectedly decoded".into()),
+            };
             assert_eq!(error.subject(), Some(&DecodeSubject::Model(9)));
-            assert!(matches!(error.kind(), DecodeErrorKind::InvalidValue { field: "model encoding", .. }));
+            assert!(matches!(
+                error.kind(),
+                DecodeErrorKind::InvalidValue {
+                    field: "model encoding",
+                    ..
+                }
+            ));
         }
         Ok(())
     }
 
     #[test]
-    fn truncated_target_formats_fail_with_model_provenance() -> Result<(), Box<dyn std::error::Error>> {
+    fn truncated_target_formats_fail_with_model_provenance()
+    -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         for bytes in [&[0xff, 0xfd][..], &[0xff, 0xfe][..]] {
-            let error = decode_model_data(bytes, &context, &model_source(), ModelId::new(42))
-                .expect_err("truncated model unexpectedly decoded");
+            let error = match decode_model_data(bytes, &context, &model_source(), ModelId::new(42))
+            {
+                Err(error) => error,
+                Ok(_) => return Err("truncated model unexpectedly decoded".into()),
+            };
             assert_eq!(error.subject(), Some(&DecodeSubject::Model(42)));
             assert!(matches!(error.kind(), DecodeErrorKind::InvalidValue { .. }));
         }
