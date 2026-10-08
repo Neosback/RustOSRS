@@ -296,7 +296,10 @@ fn decode_retextures(reader: &mut BinaryReader<'_>) -> DecodeResult<Vec<Retextur
     Ok(pairs)
 }
 
-fn decode_morphs(reader: &mut BinaryReader<'_>, explicit_fallback: bool) -> DecodeResult<ObjectMorphs> {
+fn decode_morphs(
+    reader: &mut BinaryReader<'_>,
+    explicit_fallback: bool,
+) -> DecodeResult<ObjectMorphs> {
     let transform_varbit = nullable_varbit_id(reader.read_u16_be()?);
     let transform_varp = nullable_varp_id(reader.read_u16_be()?);
     let fallback = if explicit_fallback {
@@ -380,8 +383,7 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 6, Some(100));
-        let definition =
-            decode_object_definition(ObjectId::new(100), &[0], &context, &source)?;
+        let definition = decode_object_definition(ObjectId::new(100), &[0], &context, &source)?;
 
         assert_eq!(definition.identity.id, ObjectId::new(100));
         assert_eq!(definition.identity.provenance, *context.target_provenance());
@@ -447,8 +449,8 @@ mod tests {
     }
 
     #[test]
-    fn extended_model_opcodes_preserve_full_u32_identity()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn extended_model_opcodes_preserve_full_u32_identity() -> Result<(), Box<dyn std::error::Error>>
+    {
         let context = test_support::target_context()?;
         assert!(context.requires_revision_gate(EXTENDED_OBJECT_MODEL_IDS_GATE));
         let source = ArchiveFileProvenance::new(2, 6, Some(103));
@@ -486,12 +488,11 @@ mod tests {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 6, Some(105));
         let bytes = [
-            2, b'D', b'o', b'o', b'r', 0, 14, 2, 15, 3, 17, 22, 23, 28, 24, 29, 0xfe, 39,
-            0xfe, 62, 64, 65, 0, 140, 66, 0, 141, 67, 0, 142, 70, 0xff, 0xf6, 71, 0, 20,
-            72, 0xff, 0xe2, 73, 74, 75, 2, 21, 24, 0xff, 0xff, 0,
+            2, b'D', b'o', b'o', b'r', 0, 14, 2, 15, 3, 17, 22, 23, 28, 24, 29, 0xfe, 39, 0xfe, 62,
+            64, 65, 0, 140, 66, 0, 141, 67, 0, 142, 70, 0xff, 0xf6, 71, 0, 20, 72, 0xff, 0xe2, 73,
+            74, 75, 2, 21, 24, 0xff, 0xff, 0,
         ];
-        let definition =
-            decode_object_definition(ObjectId::new(105), &bytes, &context, &source)?;
+        let definition = decode_object_definition(ObjectId::new(105), &bytes, &context, &source)?;
 
         assert_eq!(definition.name.as_deref(), Some("Door"));
         assert_eq!((definition.size_x, definition.size_y), (2, 3));
@@ -534,16 +535,18 @@ mod tests {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 6, Some(106));
         let bytes = [
-            30, b'O', b'p', b'e', b'n', 0, 31, b'h', b'I', b'D', b'D', b'E', b'N', 0, 40, 1,
-            0, 1, 0, 2, 41, 1, 0, 3, 0, 4, 61, 0, 5, 68, 0, 6, 82, 0, 7, 0,
+            30, b'O', b'p', b'e', b'n', 0, 31, b'h', b'I', b'D', b'D', b'E', b'N', 0, 40, 1, 0, 1,
+            0, 2, 41, 1, 0, 3, 0, 4, 61, 0, 5, 68, 0, 6, 82, 0, 7, 0,
         ];
-        let definition =
-            decode_object_definition(ObjectId::new(106), &bytes, &context, &source)?;
+        let definition = decode_object_definition(ObjectId::new(106), &bytes, &context, &source)?;
 
         assert_eq!(definition.actions[0].as_deref(), Some("Open"));
         assert_eq!(definition.actions[1], None);
         assert_eq!(definition.recolors, vec![RecolorPair { from: 1, to: 2 }]);
-        assert_eq!(definition.retextures, vec![RetexturePair { from: 3, to: 4 }]);
+        assert_eq!(
+            definition.retextures,
+            vec![RetexturePair { from: 3, to: 4 }]
+        );
         assert_eq!(definition.category, Some(CategoryId::new(5)));
         assert_eq!(definition.map_scene, Some(MapSceneId::new(6)));
         assert_eq!(definition.map_icon, Some(MapIconId::new(7)));
@@ -597,12 +600,11 @@ mod tests {
         assert!(context.requires_revision_gate(OBJECT_SOUND_LAYOUT_220_PLUS_GATE));
         let source = ArchiveFileProvenance::new(2, 6, Some(109));
         let bytes = [
-            19, 3, 69, 4, 78, 0, 10, 20, 30, 79, 0, 1, 0, 2, 3, 4, 2, 0, 11, 0, 12, 89,
-            90, 91, 5, 93, 6, 0, 7, 8, 0, 9, 94, 95, 10, 249, 2, 1, 0, 0, 1, b'x',
-            0, 0, 0, 0, 2, 0, 0, 0, 42, 14, 4, 0,
+            19, 3, 69, 4, 78, 0, 10, 20, 30, 79, 0, 1, 0, 2, 3, 4, 2, 0, 11, 0, 12, 89, 90, 91, 5,
+            93, 6, 0, 7, 8, 0, 9, 94, 95, 10, 249, 2, 1, 0, 0, 1, b'x', 0, 0, 0, 0, 2, 0, 0, 0, 42,
+            14, 4, 0,
         ];
-        let definition =
-            decode_object_definition(ObjectId::new(109), &bytes, &context, &source)?;
+        let definition = decode_object_definition(ObjectId::new(109), &bytes, &context, &source)?;
 
         assert_eq!(definition.size_x, 4);
         Ok(())
@@ -612,12 +614,8 @@ mod tests {
     fn unknown_opcode_is_typed_and_contextual() -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 6, Some(999));
-        let error = match decode_object_definition(
-            ObjectId::new(999),
-            &[250, 0],
-            &context,
-            &source,
-        ) {
+        let error = match decode_object_definition(ObjectId::new(999), &[250, 0], &context, &source)
+        {
             Err(error) => error,
             Ok(_) => return Err("unknown object opcode unexpectedly decoded".into()),
         };
