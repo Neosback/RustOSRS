@@ -9,6 +9,8 @@ mod error;
 mod floor;
 mod object;
 mod reader;
+mod sequence;
+mod texture;
 mod vars;
 
 pub use context::{DecoderContext, DecoderContextError};
@@ -19,6 +21,8 @@ pub use error::{
 pub use floor::{decode_floor_overlay, decode_floor_underlay};
 pub use object::decode_object_definition;
 pub use reader::BinaryReader;
+pub use sequence::decode_sequence_definition;
+pub use texture::decode_texture_definition;
 pub use vars::{decode_varbit, decode_varp};
 
 #[cfg(test)]
