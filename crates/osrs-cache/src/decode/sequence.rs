@@ -99,8 +99,8 @@ pub fn decode_sequence_definition(
             }
             13 => {
                 let encoded = reader.read_i32_be()?;
-                skeletal_animation = (encoded >= 0)
-                    .then(|| SkeletalAnimationId::new(encoded as u32));
+                skeletal_animation =
+                    (encoded >= 0).then(|| SkeletalAnimationId::new(encoded as u32));
             }
             14 => {
                 // Build 241 skeletal event map. Each entry is:
@@ -147,7 +147,8 @@ pub fn decode_sequence_definition(
     reader.finish()?;
 
     let has_blend_structure = interleave.is_some() || skeletal_mask.is_some();
-    let precedence_animating = precedence_animating.unwrap_or(if has_blend_structure { 2 } else { 0 });
+    let precedence_animating =
+        precedence_animating.unwrap_or(if has_blend_structure { 2 } else { 0 });
     let priority = priority.unwrap_or(if has_blend_structure { 2 } else { 0 });
 
     Ok(SequenceDefinition {
@@ -174,8 +175,8 @@ mod tests {
     use crate::decode::{DecodeErrorKind, test_support};
 
     #[test]
-    fn defaults_match_target_constructor_and_postdecode()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn defaults_match_target_constructor_and_postdecode() -> Result<(), Box<dyn std::error::Error>>
+    {
         let context = test_support::target_context()?;
         assert!(context.requires_revision_gate(SEQUENCE_LAYOUT_226_PLUS_GATE));
         let source = ArchiveFileProvenance::new(2, 12, Some(1));
@@ -227,12 +228,8 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 12, Some(3));
-        let sequence = decode_sequence_definition(
-            SequenceId::new(3),
-            &[3, 3, 1, 4, 7, 0],
-            &context,
-            &source,
-        )?;
+        let sequence =
+            decode_sequence_definition(SequenceId::new(3), &[3, 3, 1, 4, 7, 0], &context, &source)?;
 
         assert_eq!(sequence.interleave, Some(vec![1, 4, 7]));
         assert_eq!(sequence.precedence_animating, 2);
@@ -265,8 +262,7 @@ mod tests {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 12, Some(5));
         let bytes = [
-            6, 0x10, 0x37, 7, 0xff, 0xff, 13, 0, 0, 3, 0x84, 15, 0, 10, 0, 20, 17, 3, 0, 7,
-            255, 0,
+            6, 0x10, 0x37, 7, 0xff, 0xff, 13, 0, 0, 3, 0x84, 15, 0, 10, 0, 20, 17, 3, 0, 7, 255, 0,
         ];
         let sequence = decode_sequence_definition(SequenceId::new(5), &bytes, &context, &source)?;
 
@@ -280,7 +276,9 @@ mod tests {
             sequence.skeletal_range,
             Some(SequenceRange { start: 10, end: 20 })
         );
-        let mask = sequence.skeletal_mask.expect("opcode 17 should create a mask");
+        let mask = sequence
+            .skeletal_mask
+            .expect("opcode 17 should create a mask");
         assert_eq!(mask.len(), 256);
         assert!(mask[0]);
         assert!(mask[7]);
@@ -291,8 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn negative_cached_model_id_is_semantic_absence()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn negative_cached_model_id_is_semantic_absence() -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 12, Some(6));
         let sequence = decode_sequence_definition(
