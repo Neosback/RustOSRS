@@ -22,6 +22,9 @@ pub fn decode_object_definition(
     context: &DecoderContext,
     source: &ArchiveFileProvenance,
 ) -> DecodeResult<ObjectDefinition> {
+    let extended_object_model_ids = context.requires_revision_gate(EXTENDED_OBJECT_MODEL_IDS_GATE);
+    let object_sound_layout_220_plus =
+        context.requires_revision_gate(OBJECT_SOUND_LAYOUT_220_PLUS_GATE);
     let mut reader = BinaryReader::new(bytes, context, source);
 
     let mut name = None;
@@ -61,11 +64,21 @@ pub fn decode_object_definition(
             2 => name = Some(reader.read_cp1252_string()?),
             5 => models = decode_untyped_models_u16(&mut reader)?,
             6 => {
-                require_extended_model_ids(&reader, opcode, opcode_offset)?;
+                require_extended_model_ids(
+                    &reader,
+                    extended_object_model_ids,
+                    opcode,
+                    opcode_offset,
+                )?;
                 models = decode_typed_models_u32(&mut reader)?;
             }
             7 => {
-                require_extended_model_ids(&reader, opcode, opcode_offset)?;
+                require_extended_model_ids(
+                    &reader,
+                    extended_object_model_ids,
+                    opcode,
+                    opcode_offset,
+                )?;
                 models = decode_untyped_models_u32(&mut reader)?;
             }
             14 => size_x = u16::from(reader.read_u8()?),
@@ -116,8 +129,8 @@ pub fn decode_object_definition(
             74 => solid = true,
             75 => support_items = Some(reader.read_u8()?),
             77 | 92 => morphs = Some(decode_morphs(&mut reader, opcode == 92)?),
-            78 => consume_ambient_sound(&mut reader)?,
-            79 => consume_random_sounds(&mut reader)?,
+            78 => consume_ambient_sound(&mut reader, object_sound_layout_220_plus)?,
+            79 => consume_random_sounds(&mut reader, object_sound_layout_220_plus)?,
             81 => contour_clip = Some(u32::from(reader.read_u8()?) * 256),
             82 => map_icon = Some(MapIconId::new(u32::from(reader.read_u16_be()?))),
             89 | 90 | 94 => {
@@ -185,13 +198,11 @@ pub fn decode_object_definition(
 
 fn require_extended_model_ids(
     reader: &BinaryReader<'_>,
+    enabled: bool,
     opcode: u8,
     opcode_offset: usize,
 ) -> DecodeResult<()> {
-    if reader
-        .context()
-        .requires_revision_gate(EXTENDED_OBJECT_MODEL_IDS_GATE)
-    {
+    if enabled {
         Ok(())
     } else {
         Err(reader.unsupported_opcode(
@@ -308,26 +319,20 @@ fn decode_morphs(reader: &mut BinaryReader<'_>, explicit_fallback: bool) -> Deco
     })
 }
 
-fn consume_ambient_sound(reader: &mut BinaryReader<'_>) -> DecodeResult<()> {
+fn consume_ambient_sound(reader: &mut BinaryReader<'_>, post_220: bool) -> DecodeResult<()> {
     reader.skip(2)?;
     reader.skip(1)?;
-    if reader
-        .context()
-        .requires_revision_gate(OBJECT_SOUND_LAYOUT_220_PLUS_GATE)
-    {
+    if post_220 {
         reader.skip(1)?;
     }
     Ok(())
 }
 
-fn consume_random_sounds(reader: &mut BinaryReader<'_>) -> DecodeResult<()> {
+fn consume_random_sounds(reader: &mut BinaryReader<'_>, post_220: bool) -> DecodeResult<()> {
     reader.skip(2)?;
     reader.skip(2)?;
     reader.skip(1)?;
-    if reader
-        .context()
-        .requires_revision_gate(OBJECT_SOUND_LAYOUT_220_PLUS_GATE)
-    {
+    if post_220 {
         reader.skip(1)?;
     }
     let count = usize::from(reader.read_u8()?);
@@ -481,9 +486,9 @@ mod tests {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 6, Some(105));
         let bytes = [
-            2, b'D', b'o', b'o', b'r', 0, 14, 2, 15, 3, 17, 23, 28, 24, 29, 0xfe, 39, 0xfe,
-            62, 64, 65, 0, 140, 66, 0, 141, 67, 0, 142, 70, 0xff, 0xf6, 71, 0, 20, 72,
-            0xff, 0xe2, 73, 74, 75, 2, 21, 24, 0xff, 0xff, 0,
+            2, b'D', b'o', b'o', b'r', 0, 14, 2, 15, 3, 17, 22, 23, 28, 24, 29, 0xfe, 39,
+            0xfe, 62, 64, 65, 0, 140, 66, 0, 141, 67, 0, 142, 70, 0xff, 0xf6, 71, 0, 20,
+            72, 0xff, 0xe2, 73, 74, 75, 2, 21, 24, 0xff, 0xff, 0,
         ];
         let definition =
             decode_object_definition(ObjectId::new(105), &bytes, &context, &source)?;
@@ -499,6 +504,7 @@ mod tests {
         assert_eq!(definition.decoration_displacement, 24);
         assert_eq!(definition.support_items, Some(2));
         assert!(definition.is_rotated);
+        assert!(definition.non_flat_shading);
         assert_eq!(definition.contour_clip, Some(0));
         assert_eq!(definition.animation, None);
         assert_eq!(definition.ambient, -2);
@@ -568,9 +574,7 @@ mod tests {
 
         let opcode_92 = decode_object_definition(
             ObjectId::new(108),
-            &[
-                92, 0xff, 0xff, 0, 9, 0, 200, 0, 0xff, 0xff, 0,
-            ],
+            &[92, 0xff, 0xff, 0, 9, 0, 200, 0, 0xff, 0xff, 0],
             &context,
             &source,
         )?;
