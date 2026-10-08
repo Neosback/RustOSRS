@@ -276,9 +276,10 @@ mod tests {
             sequence.skeletal_range,
             Some(SequenceRange { start: 10, end: 20 })
         );
-        let mask = sequence
-            .skeletal_mask
-            .expect("opcode 17 should create a mask");
+        let mask = match sequence.skeletal_mask {
+            Some(mask) => mask,
+            None => return Err("opcode 17 did not create a skeletal mask".into()),
+        };
         assert_eq!(mask.len(), 256);
         assert!(mask[0]);
         assert!(mask[7]);
@@ -324,13 +325,15 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 12, Some(8));
-        let error = decode_sequence_definition(
+        let error = match decode_sequence_definition(
             SequenceId::new(8),
             &[18, b'n', b'a', b'm', b'e', 0, 0],
             &context,
             &source,
-        )
-        .expect_err("pinned build-241 client has no opcode 18 sequence branch");
+        ) {
+            Err(error) => error,
+            Ok(_) => return Err("opcode 18 unexpectedly decoded for build 241".into()),
+        };
 
         assert_eq!(error.opcode(), Some(18));
         assert_eq!(error.span(), ByteSpan::new(0, 1));
