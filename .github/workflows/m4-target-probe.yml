@@ -1,0 +1,39 @@
+name: M4 Target Model Probe
+
+on:
+  push:
+    branches:
+      - impl/m4-model-decode-construction
+    paths:
+      - .github/workflows/m4-target-probe.yml
+      - crates/osrs-cache/tests/m4_target_probe.rs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m4-target-probe
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - name: Download pinned OpenRS2 cache 2727
+        run: |
+          curl --fail --location --retry 3 \
+            https://archive.openrs2.org/caches/runescape/2727/disk.zip \
+            --output /tmp/cache.zip
+          mkdir -p /tmp/openrs2
+          unzip -q /tmp/cache.zip -d /tmp/openrs2
+
+      - name: Probe model trailer families
+        env:
+          RUSTOSRS_TARGET_CACHE_DIR: /tmp/openrs2/cache
+        run: cargo test --locked -p osrs-cache --test m4_target_probe -- --ignored --nocapture
