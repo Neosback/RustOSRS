@@ -138,8 +138,7 @@ mod tests {
     fn underlay_default_rgb_is_exact_zero() -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 1, Some(7));
-        let definition =
-            decode_floor_underlay(FloorUnderlayId::new(7), &[0], &context, &source)?;
+        let definition = decode_floor_underlay(FloorUnderlayId::new(7), &[0], &context, &source)?;
 
         assert_eq!(definition.rgb.get(), 0);
         Ok(())
@@ -153,8 +152,7 @@ mod tests {
         let bytes = [
             1, 0x12, 0x34, 0x56, 2, 7, 5, 7, 0xab, 0xcd, 0xef, 8, 9, 0x42, 0,
         ];
-        let definition =
-            decode_floor_overlay(FloorOverlayId::new(11), &bytes, &context, &source)?;
+        let definition = decode_floor_overlay(FloorOverlayId::new(11), &bytes, &context, &source)?;
 
         assert_eq!(definition.identity.id, FloorOverlayId::new(11));
         assert_eq!(definition.primary_rgb.get(), 0x12_34_56);
@@ -169,8 +167,7 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 4, Some(12));
-        let definition =
-            decode_floor_overlay(FloorOverlayId::new(12), &[0], &context, &source)?;
+        let definition = decode_floor_overlay(FloorOverlayId::new(12), &[0], &context, &source)?;
 
         assert_eq!(definition.primary_rgb.get(), 0);
         assert_eq!(definition.texture, None);
@@ -180,8 +177,8 @@ mod tests {
     }
 
     #[test]
-    fn overlay_opcode_nine_consumes_one_nonsemantic_byte()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn overlay_opcode_nine_consumes_one_nonsemantic_byte() -> Result<(), Box<dyn std::error::Error>>
+    {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 4, Some(13));
         let definition = decode_floor_overlay(
@@ -200,12 +197,8 @@ mod tests {
     fn unknown_floor_opcode_is_typed_and_contextual() -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 4, Some(99));
-        let error = match decode_floor_overlay(
-            FloorOverlayId::new(99),
-            &[99, 0],
-            &context,
-            &source,
-        ) {
+        let error = match decode_floor_overlay(FloorOverlayId::new(99), &[99, 0], &context, &source)
+        {
             Err(error) => error,
             Ok(_) => return Err("unknown overlay opcode unexpectedly decoded".into()),
         };
