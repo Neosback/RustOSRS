@@ -193,9 +193,9 @@ impl<'a> BinaryReader<'a> {
     /// Bytes 128..159 use the pinned client's extension table. Undefined
     /// extension entries decode to `?`, matching the target client. Other
     /// nonzero bytes map directly to their same-valued Unicode scalar.
-    pub fn read_cp1252_string(&mut self, field: &'static str) -> DecodeResult<String> {
+    pub fn read_cp1252_string(&mut self) -> DecodeResult<String> {
         let max_length = self.remaining();
-        let bytes = self.read_null_terminated_bytes(field, max_length)?;
+        let bytes = self.read_null_terminated_bytes("cp1252 string", max_length)?;
         let mut decoded = String::with_capacity(bytes.len());
 
         for &byte in bytes {
@@ -365,7 +365,7 @@ mod tests {
         let bytes = [b'A', 128, 129, 130, 159, 255, 0];
         let mut reader = BinaryReader::new(&bytes, &context, &source);
 
-        assert_eq!(reader.read_cp1252_string("name")?, "A€?‚Ÿÿ");
+        assert_eq!(reader.read_cp1252_string()?, "A€?‚Ÿÿ");
         reader.finish()?;
         Ok(())
     }
