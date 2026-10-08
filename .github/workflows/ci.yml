@@ -12,6 +12,222 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  audit-decode-subject:
+    name: M3 decode subject closure
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/impl/m3-cache-definition-decoding' &&
+      !contains(github.event.head_commit.message, 'fix: preserve decode subject identity')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - name: Add semantic subject identity to decode errors
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one match, found {count}')
+              return text.replace(old, new, 1)
+
+          error_path = Path('crates/osrs-cache/src/decode/error.rs')
+          text = error_path.read_text()
+          marker = '/// Stable RustOSRS-owned categories for malformed/unsupported cache data.\n'
+          subject = '''/// Semantic artifact identity being decoded when a failure occurred.\n#[derive(Debug, Clone, PartialEq, Eq, Hash)]\npub enum DecodeSubject {\n    ObjectDefinition(u32),\n    FloorUnderlay(u32),\n    FloorOverlay(u32),\n    Varbit(u32),\n    Varp(u32),\n    Texture(u32),\n    Sequence(u32),\n    TerrainRegion { x: i32, y: i32 },\n    LocationRegion { x: i32, y: i32 },\n}\n\nimpl fmt::Display for DecodeSubject {\n    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {\n        match self {\n            Self::ObjectDefinition(id) => write!(formatter, "object-definition:{id}"),\n            Self::FloorUnderlay(id) => write!(formatter, "floor-underlay:{id}"),\n            Self::FloorOverlay(id) => write!(formatter, "floor-overlay:{id}"),\n            Self::Varbit(id) => write!(formatter, "varbit:{id}"),\n            Self::Varp(id) => write!(formatter, "varp:{id}"),\n            Self::Texture(id) => write!(formatter, "texture:{id}"),\n            Self::Sequence(id) => write!(formatter, "sequence:{id}"),\n            Self::TerrainRegion { x, y } => write!(formatter, "terrain-region:{x},{y}"),\n            Self::LocationRegion { x, y } => write!(formatter, "location-region:{x},{y}"),\n        }\n    }\n}\n\n'''
+          if subject in text:
+              raise SystemExit('decode subject block already exists')
+          text = replace_once(text, marker, subject + marker, 'insert DecodeSubject')
+          text = replace_once(
+              text,
+              '    source: ArchiveFileProvenance,\n    span: ByteSpan,',
+              '    source: ArchiveFileProvenance,\n    subject: Option<DecodeSubject>,\n    span: ByteSpan,',
+              'DecodeErrorContext subject field',
+          )
+          text = replace_once(
+              text,
+              '        source: &ArchiveFileProvenance,\n        span: ByteSpan,',
+              '        source: &ArchiveFileProvenance,\n        subject: Option<DecodeSubject>,\n        span: ByteSpan,',
+              'DecodeError::new subject parameter',
+          )
+          text = replace_once(
+              text,
+              '                source: source.clone(),\n                span,',
+              '                source: source.clone(),\n                subject,\n                span,',
+              'DecodeErrorContext subject initialization',
+          )
+          text = replace_once(
+              text,
+              '    pub fn source_provenance(&self) -> &ArchiveFileProvenance {\n        &self.context.source\n    }\n\n    pub fn span(&self) -> ByteSpan {',
+              '    pub fn source_provenance(&self) -> &ArchiveFileProvenance {\n        &self.context.source\n    }\n\n    pub fn subject(&self) -> Option<&DecodeSubject> {\n        self.context.subject.as_ref()\n    }\n\n    pub fn span(&self) -> ByteSpan {',
+              'DecodeError subject accessor',
+          )
+          text = replace_once(
+              text,
+              '        if let Some(file_id) = source.file_id() {\n            write!(formatter, ", file={file_id}")?;\n        }\n        write!(',
+              '        if let Some(file_id) = source.file_id() {\n            write!(formatter, ", file={file_id}")?;\n        }\n        if let Some(subject) = &self.context.subject {\n            write!(formatter, ", subject={subject}")?;\n        }\n        write!(',
+              'DecodeError display subject',
+          )
+          text = replace_once(
+              text,
+              '            &source,\n            ByteSpan::new(19, 1),',
+              '            &source,\n            Some(DecodeSubject::ObjectDefinition(999)),\n            ByteSpan::new(19, 1),',
+              'DecodeError test constructor subject',
+          )
+          text = replace_once(
+              text,
+              '        assert_eq!(error.source_provenance(), &source);\n        assert_eq!(error.span(), ByteSpan::new(19, 1));',
+              '        assert_eq!(error.source_provenance(), &source);\n        assert_eq!(error.subject(), Some(&DecodeSubject::ObjectDefinition(999)));\n        assert_eq!(error.span(), ByteSpan::new(19, 1));',
+              'DecodeError test subject assertion',
+          )
+          text = replace_once(
+              text,
+              '        assert!(rendered.contains("file=7"));\n        assert!(rendered.contains("opcode=92"));',
+              '        assert!(rendered.contains("file=7"));\n        assert!(rendered.contains("subject=object-definition:999"));\n        assert!(rendered.contains("opcode=92"));',
+              'DecodeError rendered subject assertion',
+          )
+          error_path.write_text(text)
+
+          reader_path = Path('crates/osrs-cache/src/decode/reader.rs')
+          text = reader_path.read_text()
+          text = replace_once(
+              text,
+              '    ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult, DecoderContext,\n',
+              '    ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult, DecodeSubject,\n    DecoderContext,\n',
+              'reader DecodeSubject import',
+          )
+          text = replace_once(
+              text,
+              '    source: &\'a ArchiveFileProvenance,\n}',
+              '    source: &\'a ArchiveFileProvenance,\n    subject: Option<DecodeSubject>,\n}',
+              'reader subject field',
+          )
+          text = replace_once(
+              text,
+              '            context,\n            source,\n        }\n    }\n\n    pub const fn offset(&self) -> usize {',
+              '            context,\n            source,\n            subject: None,\n        }\n    }\n\n    pub fn with_subject(mut self, subject: DecodeSubject) -> Self {\n        self.subject = Some(subject);\n        self\n    }\n\n    pub const fn offset(&self) -> usize {',
+              'reader with_subject builder',
+          )
+          text = replace_once(
+              text,
+              '            self.source,\n            ByteSpan::new(offset, length),',
+              '            self.source,\n            self.subject.clone(),\n            ByteSpan::new(offset, length),',
+              'reader error subject forwarding',
+          )
+          text = replace_once(
+              text,
+              '        let reader = BinaryReader::new(&bytes, &context, &source);\n        let error = reader.unsupported_opcode("object-definition", 92, 0, 1);',
+              '        let reader = BinaryReader::new(&bytes, &context, &source)\n            .with_subject(DecodeSubject::ObjectDefinition(17));\n        let error = reader.unsupported_opcode("object-definition", 92, 0, 1);',
+              'reader subject test setup',
+          )
+          text = replace_once(
+              text,
+              '        assert_eq!(error.opcode(), Some(92));\n        assert_eq!(error.span(), ByteSpan::new(0, 1));',
+              '        assert_eq!(error.opcode(), Some(92));\n        assert_eq!(error.subject(), Some(&DecodeSubject::ObjectDefinition(17)));\n        assert_eq!(error.span(), ByteSpan::new(0, 1));',
+              'reader subject test assertion',
+          )
+          reader_path.write_text(text)
+
+          mod_path = Path('crates/osrs-cache/src/decode/mod.rs')
+          text = mod_path.read_text()
+          text = replace_once(
+              text,
+              '    ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult, XteaKeyProvenance,\n',
+              '    ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult, DecodeSubject,\n    XteaKeyProvenance,\n',
+              'decode module subject re-export',
+          )
+          mod_path.write_text(text)
+
+          def patch_decoder(path, import_old, import_new, subjects):
+              p = Path(path)
+              t = p.read_text()
+              t = replace_once(t, import_old, import_new, f'{path} import')
+              old = 'let mut reader = BinaryReader::new(bytes, context, source);'
+              for label, subject_expr in subjects:
+                  if old not in t:
+                      raise SystemExit(f'{path} {label}: reader constructor not found')
+                  t = t.replace(old, f'let mut reader = BinaryReader::new(bytes, context, source)\n        .with_subject({subject_expr});', 1)
+              p.write_text(t)
+
+          patch_decoder(
+              'crates/osrs-cache/src/decode/object.rs',
+              'use super::{ArchiveFileProvenance, BinaryReader, DecodeResult, DecoderContext};',
+              'use super::{ArchiveFileProvenance, BinaryReader, DecodeResult, DecodeSubject, DecoderContext};',
+              [('object', 'DecodeSubject::ObjectDefinition(id.get())')],
+          )
+          patch_decoder(
+              'crates/osrs-cache/src/decode/floor.rs',
+              'use super::{ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecoderContext};',
+              'use super::{\n    ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecodeSubject, DecoderContext,\n};',
+              [
+                  ('underlay', 'DecodeSubject::FloorUnderlay(id.get())'),
+                  ('overlay', 'DecodeSubject::FloorOverlay(id.get())'),
+              ],
+          )
+          patch_decoder(
+              'crates/osrs-cache/src/decode/vars.rs',
+              'use super::{ArchiveFileProvenance, BinaryReader, DecodeResult, DecoderContext};',
+              'use super::{ArchiveFileProvenance, BinaryReader, DecodeResult, DecodeSubject, DecoderContext};',
+              [
+                  ('varbit', 'DecodeSubject::Varbit(id.get())'),
+                  ('varp', 'DecodeSubject::Varp(id.get())'),
+              ],
+          )
+          patch_decoder(
+              'crates/osrs-cache/src/decode/texture.rs',
+              'use super::{ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecoderContext};',
+              'use super::{\n    ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecodeSubject, DecoderContext,\n};',
+              [('texture', 'DecodeSubject::Texture(id.get())')],
+          )
+          patch_decoder(
+              'crates/osrs-cache/src/decode/sequence.rs',
+              'use super::{ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecoderContext};',
+              'use super::{\n    ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecodeSubject, DecoderContext,\n};',
+              [('sequence', 'DecodeSubject::Sequence(id.get())')],
+          )
+          patch_decoder(
+              'crates/osrs-cache/src/decode/map.rs',
+              'use super::{ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecoderContext};',
+              'use super::{\n    ArchiveFileProvenance, BinaryReader, ByteSpan, DecodeResult, DecodeSubject, DecoderContext,\n};',
+              [
+                  ('terrain', 'DecodeSubject::TerrainRegion { x: region.x, y: region.y }'),
+                  ('locations', 'DecodeSubject::LocationRegion { x: region.x, y: region.y }'),
+              ],
+          )
+
+          object_path = Path('crates/osrs-cache/src/decode/object.rs')
+          text = object_path.read_text()
+          text = replace_once(
+              text,
+              '        assert_eq!(error.source_provenance(), &source);\n        assert_eq!(',
+              '        assert_eq!(error.source_provenance(), &source);\n        assert_eq!(error.subject(), Some(&DecodeSubject::ObjectDefinition(999)));\n        assert_eq!(',
+              'object decoder subject assertion',
+          )
+          object_path.write_text(text)
+          PY
+          cargo fmt --all
+
+      - name: Verify decode-subject patch
+        run: |
+          cargo check --locked --workspace --all-targets --all-features
+          cargo test --locked -p osrs-cache
+
+      - name: Commit decode-subject patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/osrs-cache/src/decode
+          git commit -m "fix: preserve decode subject identity"
+          git push origin HEAD:impl/m3-cache-definition-decoding
+
   tier-a:
     name: Tier A - static quality
     runs-on: ubuntu-latest
