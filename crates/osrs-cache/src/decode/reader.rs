@@ -40,6 +40,40 @@ impl<'a> BinaryReader<'a> {
         self
     }
 
+    /// Move this reader to an absolute byte offset without losing provenance.
+    ///
+    /// ModelData uses several independent cursors over one byte slice. Keeping
+    /// cursor movement inside this checked reader prevents decoder-local slicing
+    /// arithmetic from becoming a panic surface.
+    pub fn seek(&mut self, offset: usize) -> DecodeResult<()> {
+        if offset <= self.bytes.len() {
+            self.offset = offset;
+            return Ok(());
+        }
+        Err(self.error_at(
+            self.bytes.len(),
+            0,
+            None,
+            DecodeErrorKind::InvalidValue {
+                field: "reader offset",
+                detail: format!("offset {offset} exceeds input length {}", self.bytes.len()),
+            },
+        ))
+    }
+
+    /// Create an independent checked cursor over the same bytes and provenance.
+    pub fn fork_at(&self, offset: usize) -> DecodeResult<Self> {
+        let mut fork = Self {
+            bytes: self.bytes,
+            offset: self.offset,
+            context: self.context,
+            source: self.source,
+            subject: self.subject.clone(),
+        };
+        fork.seek(offset)?;
+        Ok(fork)
+    }
+
     pub const fn offset(&self) -> usize {
         self.offset
     }
@@ -146,6 +180,18 @@ impl<'a> BinaryReader<'a> {
             self.read_u8().map(u16::from)
         } else {
             self.read_u16_be().map(|value| value - 32_768)
+        }
+    }
+
+    /// RuneScape signed short-smart primitive used by ModelData delta streams.
+    ///
+    /// This matches the pinned client's `Buffer.readShortSmart()` exactly:
+    /// one-byte values subtract 64 and two-byte values subtract 49152.
+    pub fn read_short_smart(&mut self) -> DecodeResult<i32> {
+        if self.peek_u8()? < 128 {
+            self.read_u8().map(|value| i32::from(value) - 64)
+        } else {
+            self.read_u16_be().map(|value| i32::from(value) - 49_152)
         }
     }
 
@@ -322,6 +368,55 @@ mod tests {
         assert_eq!(reader.read_unsigned_short_smart()?, 128);
         assert_eq!(reader.read_unsigned_short_smart()?, 32_767);
         reader.finish()?;
+        Ok(())
+    }
+
+    #[test]
+    fn signed_short_smart_matches_modeldata_delta_domain() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let context = test_support::target_context()?;
+        let source = test_support::source();
+        let bytes = [0, 63, 64, 127, 0x80, 0x00, 0xbf, 0xff, 0xff, 0xff];
+        let mut reader = BinaryReader::new(&bytes, &context, &source);
+
+        assert_eq!(reader.read_short_smart()?, -64);
+        assert_eq!(reader.read_short_smart()?, -1);
+        assert_eq!(reader.read_short_smart()?, 0);
+        assert_eq!(reader.read_short_smart()?, 63);
+        assert_eq!(reader.read_short_smart()?, -16_384);
+        assert_eq!(reader.read_short_smart()?, -1);
+        assert_eq!(reader.read_short_smart()?, 16_383);
+        reader.finish()?;
+        Ok(())
+    }
+
+    #[test]
+    fn forked_model_cursor_is_independent_bounded_and_preserves_subject()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let context = test_support::target_context()?;
+        let source = ArchiveFileProvenance::new(7, 123, Some(0));
+        let bytes = [10, 20, 30, 40];
+        let mut reader =
+            BinaryReader::new(&bytes, &context, &source).with_subject(DecodeSubject::Model(123));
+        let mut fork = reader.fork_at(2)?;
+
+        assert_eq!(fork.read_u8()?, 30);
+        assert_eq!(reader.offset(), 0);
+        reader.seek(4)?;
+        assert_eq!(reader.remaining(), 0);
+        let error = match reader.seek(5) {
+            Err(error) => error,
+            Ok(()) => return Err("out-of-range model cursor unexpectedly succeeded".into()),
+        };
+        assert_eq!(error.subject(), Some(&DecodeSubject::Model(123)));
+        assert_eq!(error.span(), ByteSpan::new(4, 0));
+        assert!(matches!(
+            error.kind(),
+            DecodeErrorKind::InvalidValue {
+                field: "reader offset",
+                ..
+            }
+        ));
         Ok(())
     }
 
