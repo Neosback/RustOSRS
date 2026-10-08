@@ -98,13 +98,15 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(9, 0, Some(19));
-        let error = decode_texture_definition(
+        let error = match decode_texture_definition(
             TextureId::new(19),
             &[0, 1, 0, 2, 0, 0, 0, 99],
             &context,
             &source,
-        )
-        .expect_err("target texture layout must reject trailing bytes");
+        ) {
+            Err(error) => error,
+            Ok(_) => return Err("target texture with trailing bytes unexpectedly decoded".into()),
+        };
 
         assert_eq!(error.span(), ByteSpan::new(7, 1));
         Ok(())
