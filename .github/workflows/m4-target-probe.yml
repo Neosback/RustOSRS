@@ -33,7 +33,7 @@ jobs:
           mkdir -p /tmp/openrs2
           unzip -q /tmp/cache.zip -d /tmp/openrs2
 
-      - name: Probe model trailer families
+      - name: Sweep target model decoder
         env:
           RUSTOSRS_TARGET_CACHE_DIR: /tmp/openrs2/cache
         run: cargo test --locked -p osrs-cache --test m4_target_probe -- --ignored --nocapture
