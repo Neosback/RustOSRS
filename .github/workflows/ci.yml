@@ -12,56 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  audit-transport-fix:
-    name: M3 transport warning fix
-    if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/impl/m3-cache-definition-decoding' &&
-      !contains(github.event.head_commit.message, 'fix: remove dead transport internals')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Install pinned Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v2
-
-      - name: Refine private transport errors
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          path = Path('crates/osrs-cache/src/transport.rs')
-          text = path.read_text()
-          text = re.sub(r'TransportError::MissingIndex\([^\n)]*\)', 'TransportError::MissingIndex', text)
-          text = re.sub(r'TransportError::MissingGroup\s*\{[^}]*\}', 'TransportError::MissingGroup', text)
-          text = re.sub(r'TransportError::MissingMetadata\s*\{[^}]*\}', 'TransportError::MissingMetadata', text)
-          text = re.sub(
-              r'    MissingIndex\(u8\),\n    MissingGroup \{\n        index: u8,\n        group: u32,\n    \},\n    MissingMetadata \{\n        index: u8,\n        group: u32,\n    \},',
-              '    MissingIndex,\n    MissingGroup,\n    MissingMetadata,',
-              text,
-          )
-          text = text.replace('    fn group_count(&self)', '    #[cfg(test)]\n    fn group_count(&self)')
-          text = text.replace('    fn group_id_by_name(&self', '    #[cfg(test)]\n    fn group_id_by_name(&self')
-          text = text.replace('fn jagex_name_hash(name: &str)', '#[cfg(test)]\nfn jagex_name_hash(name: &str)')
-          path.write_text(text)
-          PY
-          cargo fmt --all
-
-      - name: Verify warning fix compiles
-        run: cargo check --locked --workspace --all-targets --all-features
-
-      - name: Commit warning fix
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/osrs-cache/src/transport.rs
-          git commit -m "fix: remove dead transport internals"
-          git push origin HEAD:impl/m3-cache-definition-decoding
-
   tier-a:
     name: Tier A - static quality
     runs-on: ubuntu-latest
