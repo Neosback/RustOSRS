@@ -40,12 +40,14 @@ impl FixtureRepository {
         manifest_relative_path: impl AsRef<Path>,
     ) -> Result<LoadedFixture, FixtureLoadError> {
         let manifest_path = self.resolve_existing("manifest", manifest_relative_path.as_ref())?;
-        let manifest_text = fs::read_to_string(&manifest_path).map_err(|error| FixtureLoadError::Io {
-            operation: "read fixture manifest",
-            path: manifest_path.clone(),
-            detail: error.to_string(),
-        })?;
-        let manifest = FixtureManifest::parse_yaml(&manifest_text).map_err(FixtureLoadError::Manifest)?;
+        let manifest_text =
+            fs::read_to_string(&manifest_path).map_err(|error| FixtureLoadError::Io {
+                operation: "read fixture manifest",
+                path: manifest_path.clone(),
+                detail: error.to_string(),
+            })?;
+        let manifest =
+            FixtureManifest::parse_yaml(&manifest_text).map_err(FixtureLoadError::Manifest)?;
 
         let input_path = self.resolve_existing("input", Path::new(&manifest.input))?;
         let expected_path = self.resolve_existing("expected", Path::new(&manifest.expected))?;
@@ -141,11 +143,12 @@ fn validate_relative_path(field: &'static str, path: &Path) -> Result<(), Fixtur
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
     let digest = Sha256::digest(bytes);
     let mut output = String::with_capacity(64);
     for byte in digest {
-        use std::fmt::Write as _;
-        let _ = write!(output, "{byte:02x}");
+        output.push(char::from(HEX[usize::from(byte >> 4)]));
+        output.push(char::from(HEX[usize::from(byte & 0x0f)]));
     }
     output
 }
@@ -180,7 +183,11 @@ impl fmt::Display for FixtureLoadError {
                 operation,
                 path,
                 detail,
-            } => write!(formatter, "{operation} `{}` failed: {detail}", path.display()),
+            } => write!(
+                formatter,
+                "{operation} `{}` failed: {detail}",
+                path.display()
+            ),
             Self::Manifest(error) => error.fmt(formatter),
             Self::UnsafePath { field, path } => write!(
                 formatter,
@@ -232,7 +239,10 @@ mod tests {
         Ok(root)
     }
 
-    fn write_fixture(root: &PathBuf, declared_hash: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn write_fixture(
+        root: &PathBuf,
+        declared_hash: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         fs::write(root.join("model/input.json"), b"{\"orientation\":4}\n")?;
         fs::write(root.join("model/expected.json"), b"{\"mirror\":true}\n")?;
         let manifest = format!(
@@ -264,7 +274,8 @@ normalization:
     }
 
     #[test]
-    fn loads_hash_verified_fixture_and_compares_exactly() -> Result<(), Box<dyn std::error::Error>> {
+    fn loads_hash_verified_fixture_and_compares_exactly() -> Result<(), Box<dyn std::error::Error>>
+    {
         let root = temp_root("load")?;
         let expected = b"{\"mirror\":true}\n";
         write_fixture(&root, &sha256_hex(expected))?;
