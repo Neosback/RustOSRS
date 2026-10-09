@@ -31,12 +31,12 @@ fn placement(
     })
 }
 
-fn fixed_layer_entry<'a>(
-    grid: &'a SceneGrid,
+fn fixed_layer_entry(
+    grid: &SceneGrid,
     plane: StoragePlane,
     tile: SceneTile,
     layer: SceneLayer,
-) -> Option<&'a ScenePlacedLoc> {
+) -> Option<&ScenePlacedLoc> {
     match layer {
         SceneLayer::FloorDecoration => grid.floor_decoration(plane, tile),
         SceneLayer::Boundary => grid.boundary(plane, tile),
