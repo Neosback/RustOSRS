@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "source": {
+    "path": "reference-fixtures/deob_golden.txt",
+    "git_blob": "49887733ad463572cf61bc059733b7c5f5fd26f4",
+    "classification": "historical_local_harness_corroborated_by_public_source"
+  },
+  "harness": {
+    "path": "tools/deob-harness/src/Dumper.java",
+    "git_blob": "ceefbd6e97c8e0b09c2ef196b3f9fd2e0f763236"
+  },
+  "entries": [
+    {
+      "fixture_id": "terrain.shape_gallery.all_13x4",
+      "owned_specs": ["TERRAIN-001"],
+      "prefix": "tri shape=",
+      "expected_count": 52,
+      "public_oracle": {
+        "repository": "melxin/runelite",
+        "commit": "1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc",
+        "path": "runescape-client/src/main/java/SceneTileModel.java",
+        "blob": "ce6a179cfa93e02271af87164e102ee538223718"
+      }
+    },
+    {
+      "fixture_id": "contour.synthetic.flat_slope",
+      "owned_specs": ["CONTOUR-001"],
+      "exact_lines": ["contour flat y=0", "contour slope y=-28"],
+      "public_oracle": {
+        "repository": "melxin/runelite",
+        "commit": "1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc",
+        "path": "runescape-client/src/main/java/Model.java",
+        "blob": "c2aa55c0e8fea89fae0da33d782119f8c109cacf"
+      }
+    },
+    {
+      "fixture_id": "lighting.synthetic_triangle.loc_rig",
+      "owned_specs": ["LIGHTING-001"],
+      "exact_lines": ["tolit c1=4638 c2=4638 c3=4638"],
+      "public_oracle": {
+        "repository": "melxin/runelite",
+        "commit": "1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc",
+        "path": "runescape-client/src/main/java/ModelData.java",
+        "blob": "2cc9406b2504fbd4fae0c0c952aa2d133809e928"
+      }
+    },
+    {
+      "fixture_id": "placement.wall_types.orientation_matrix",
+      "owned_specs": ["LOC-PLACEMENT-001"],
+      "prefix": "wall t=",
+      "expected_count": 16,
+      "public_oracle": {
+        "repository": "melxin/runelite",
+        "commit": "1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc",
+        "path": "runescape-client/src/main/java/Scene.java",
+        "blob": "f15260a63103952fe8f5ffbdb62f5c7c39d94565"
+      }
+    },
+    {
+      "fixture_id": "placement.decor_types.orientation_matrix",
+      "owned_specs": ["LOC-PLACEMENT-001", "LOC-PLACEMENT-002"],
+      "prefix": "decor t=",
+      "expected_count": 20,
+      "public_oracle": {
+        "repository": "melxin/runelite",
+        "commit": "1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc",
+        "path": "runescape-client/src/main/java/Scene.java",
+        "blob": "f15260a63103952fe8f5ffbdb62f5c7c39d94565"
+      }
+    },
+    {
+      "fixture_id": "placement.floor_type22.storage",
+      "owned_specs": ["LOC-PLACEMENT-001", "LOC-PLACEMENT-006"],
+      "exact_lines": ["floor t=22 x=86016 y=167936 z=100"],
+      "public_oracle": {
+        "repository": "melxin/runelite",
+        "commit": "1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc",
+        "path": "runescape-client/src/main/java/Scene.java",
+        "blob": "f15260a63103952fe8f5ffbdb62f5c7c39d94565"
+      }
+    },
+    {
+      "fixture_id": "placement.game_object.footprint_and_capacity",
+      "owned_specs": ["LOC-PLACEMENT-003"],
+      "exact_lines": [
+        "roof t=14 cx=1344 cy=2624 z=100 sx=10 ex=10 edge=0 edgeOr=0",
+        "walldiag t=9 cx=3904 cy=5184 z=100 edge=0",
+        "gate2x1 same=true cx=6528 cy=7744 e0=4 e1=1",
+        "cap5 sixthAccepted=false count=5"
+      ],
+      "public_oracle": {
+        "repository": "melxin/runelite",
+        "commit": "1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc",
+        "path": "runescape-client/src/main/java/Scene.java",
+        "blob": "f15260a63103952fe8f5ffbdb62f5c7c39d94565"
+      }
+    }
+  ]
+}
