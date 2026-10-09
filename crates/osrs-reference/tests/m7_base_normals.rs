@@ -2,7 +2,9 @@ use osrs_core::{
     coords::ModelPoint,
     definitions::DefinitionIdentity,
     ids::ModelId,
-    model::{FacePriority, ModelEncoding, ModelFormatIdentity, SourceModel, SourceModelParts, Triangle},
+    model::{
+        FacePriority, ModelEncoding, ModelFormatIdentity, SourceModel, SourceModelParts, Triangle,
+    },
     normals::calculate_base_normals,
     provenance::{CacheFingerprint, ProfileDigest, TargetProvenance},
 };
@@ -39,7 +41,10 @@ fn source_pinned_base_normal_fixtures_match_production_exactly() -> Result<(), B
         let source_before = source.clone();
         let working = source.to_working_copy();
         let normals = calculate_base_normals(&working);
-        assert_eq!(source, source_before, "base normal generation mutated source");
+        assert_eq!(
+            source, source_before,
+            "base normal generation mutated source"
+        );
 
         let actual = NormalizedExpectedCase::BaseNormals {
             vertex_normals: normals
