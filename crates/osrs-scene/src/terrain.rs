@@ -458,7 +458,7 @@ mod tests {
     }
 
     #[test]
-    fn overlay_texture_applies_only_to_overlay_owned_faces() {
+    fn overlay_texture_applies_only_to_overlay_owned_faces() -> Result<(), TerrainBuildError> {
         let surface = ShapedTerrainSurface::build(ShapedTerrainInput {
             shape: 2,
             rotation: 0,
@@ -469,10 +469,10 @@ mod tests {
             overlay_colors: TerrainCorners::new(20, 21, 22, 23),
             underlay_rgb: 0,
             overlay_rgb: 0,
-        })
-        .expect("valid shape");
+        })?;
         assert_eq!(surface.faces[0].texture_id, None);
         assert_eq!(surface.faces[1].texture_id, Some(42));
+        Ok(())
     }
 
     #[test]
