@@ -25,11 +25,7 @@ pub struct SceneGrid {
 pub enum SceneGridError {
     InvalidPlaneCount(u8),
     CapacityOverflow,
-    OutOfBounds {
-        plane: u8,
-        x: u32,
-        y: u32,
-    },
+    OutOfBounds { plane: u8, x: u32, y: u32 },
 }
 
 impl fmt::Display for SceneGridError {
@@ -152,11 +148,16 @@ mod tests {
         ));
         grid.set_terrain(plane, tile, surface.clone())
             .expect("in bounds");
-        assert_eq!(grid.tile(plane, tile).and_then(|value| value.terrain.as_ref()), Some(&surface));
-        assert!(grid
-            .tile(StoragePlane::new(1).expect("valid plane"), tile)
-            .and_then(|value| value.terrain.as_ref())
-            .is_none());
+        assert_eq!(
+            grid.tile(plane, tile)
+                .and_then(|value| value.terrain.as_ref()),
+            Some(&surface)
+        );
+        assert!(
+            grid.tile(StoragePlane::new(1).expect("valid plane"), tile)
+                .and_then(|value| value.terrain.as_ref())
+                .is_none()
+        );
     }
 
     #[test]
