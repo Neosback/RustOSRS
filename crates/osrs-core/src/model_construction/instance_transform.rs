@@ -123,12 +123,7 @@ fn resize_vertices(vertices: &mut [crate::coords::ModelPoint], scale: ModelScale
     }
 }
 
-fn translate_vertices(
-    vertices: &mut [crate::coords::ModelPoint],
-    x: i32,
-    y: i32,
-    z: i32,
-) {
+fn translate_vertices(vertices: &mut [crate::coords::ModelPoint], x: i32, y: i32, z: i32) {
     for vertex in vertices {
         vertex.x = vertex.x.wrapping_add(x);
         vertex.y = vertex.y.wrapping_add(y);
