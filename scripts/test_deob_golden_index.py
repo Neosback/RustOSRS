@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -16,6 +17,12 @@ def require_hex(value: str, length: int, label: str) -> None:
     )
 
 
+def git_blob_sha1(path: Path) -> str:
+    payload = path.read_bytes()
+    header = f"blob {len(payload)}\0".encode("ascii")
+    return hashlib.sha1(header + payload).hexdigest()
+
+
 def main() -> None:
     index = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
     assert index["schema_version"] == 1
@@ -24,11 +31,21 @@ def main() -> None:
     harness = index["harness"]
     require_hex(source["git_blob"], 40, "historical source git_blob")
     require_hex(harness["git_blob"], 40, "historical harness git_blob")
+    assert (
+        source["classification"]
+        == "historical_local_harness_corroborated_by_public_source"
+    )
 
     source_path = ROOT / source["path"]
     harness_path = ROOT / harness["path"]
     assert source_path.is_file(), f"missing historical source {source_path}"
     assert harness_path.is_file(), f"missing historical harness {harness_path}"
+    assert git_blob_sha1(source_path) == source["git_blob"], (
+        "historical deob_golden.txt bytes no longer match the indexed Git blob identity"
+    )
+    assert git_blob_sha1(harness_path) == harness["git_blob"], (
+        "historical Dumper.java bytes no longer match the indexed Git blob identity"
+    )
 
     lines = source_path.read_text(encoding="utf-8").splitlines()
     fixture_ids: set[str] = set()
