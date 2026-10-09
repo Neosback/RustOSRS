@@ -382,8 +382,8 @@ mod tests {
     }
 
     #[test]
-    fn link_below_shifts_tiles_and_only_qualifying_game_object_planes()
-    -> Result<(), SceneGridError> {
+    fn link_below_shifts_tiles_and_only_qualifying_game_object_planes() -> Result<(), SceneGridError>
+    {
         let mut grid = SceneGrid::new(2, 1, 4)?;
         let anchor = SceneTile::new(0, 0);
 
@@ -404,12 +404,7 @@ mod tests {
                     SceneTile::new(1, 0),
                     storage,
                 ));
-                tile.push_game_object(SceneGameObject::new(
-                    ObjectId::new(11),
-                    1,
-                    anchor,
-                    storage,
-                ));
+                tile.push_game_object(SceneGameObject::new(ObjectId::new(11), 1, anchor, storage));
             }
             grid.set_tile(storage, anchor, tile)?;
         }
