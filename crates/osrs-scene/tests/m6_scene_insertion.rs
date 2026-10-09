@@ -60,9 +60,9 @@ fn every_loc_dispatch_path_lands_in_its_semantic_scene_layer() -> Result<(), Box
 
         match expected_layer {
             SceneLayer::GameObject => {
-                let stored = grid
-                    .game_object(plane, tile)
-                    .ok_or_else(|| io::Error::other(format!("missing game object type {loc_type}")))?;
+                let stored = grid.game_object(plane, tile).ok_or_else(|| {
+                    io::Error::other(format!("missing game object type {loc_type}"))
+                })?;
                 assert_eq!(stored.object_id(), ObjectId::new(u32::from(loc_type)));
                 assert_eq!(stored.placement(), Some(plan));
             }
@@ -104,8 +104,8 @@ fn dual_boundary_keeps_both_semantic_arms_after_storage() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn rotated_non_square_game_object_occupies_exact_transposed_footprint()
--> Result<(), Box<dyn Error>> {
+fn rotated_non_square_game_object_occupies_exact_transposed_footprint() -> Result<(), Box<dyn Error>>
+{
     let mut grid = SceneGrid::new(8, 8, 1)?;
     let plane = plane0()?;
     let start = SceneTile::new(1, 1);
