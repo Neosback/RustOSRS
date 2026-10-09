@@ -137,33 +137,40 @@ mod tests {
     }
 
     #[test]
-    fn terrain_storage_is_plane_and_tile_exact() {
-        let mut grid = SceneGrid::new(2, 3, 4).expect("valid grid");
-        let plane = StoragePlane::new(2).expect("valid plane");
+    fn terrain_storage_is_plane_and_tile_exact() -> Result<(), SceneGridError> {
+        let mut grid = SceneGrid::new(2, 3, 4)?;
+        let Some(plane) = StoragePlane::new(2) else {
+            unreachable!("test storage plane is within 0..=3");
+        };
         let tile = SceneTile::new(1, 2);
         let surface = TerrainSurface::Flat(FlatTerrainSurface::new(
             TerrainCorners::new(1, 2, 3, 4),
             TerrainCorners::new(10, 11, 12, 13),
             Some(7),
         ));
-        grid.set_terrain(plane, tile, surface.clone())
-            .expect("in bounds");
+        grid.set_terrain(plane, tile, surface.clone())?;
         assert_eq!(
             grid.tile(plane, tile)
                 .and_then(|value| value.terrain.as_ref()),
             Some(&surface)
         );
+        let Some(other_plane) = StoragePlane::new(1) else {
+            unreachable!("test storage plane is within 0..=3");
+        };
         assert!(
-            grid.tile(StoragePlane::new(1).expect("valid plane"), tile)
+            grid.tile(other_plane, tile)
                 .and_then(|value| value.terrain.as_ref())
                 .is_none()
         );
+        Ok(())
     }
 
     #[test]
-    fn out_of_bounds_access_does_not_alias_storage() {
-        let mut grid = SceneGrid::new(2, 2, 1).expect("valid grid");
-        let plane = StoragePlane::new(0).expect("valid plane");
+    fn out_of_bounds_access_does_not_alias_storage() -> Result<(), SceneGridError> {
+        let mut grid = SceneGrid::new(2, 2, 1)?;
+        let Some(plane) = StoragePlane::new(0) else {
+            unreachable!("test storage plane is within 0..=3");
+        };
         let terrain = TerrainSurface::Flat(FlatTerrainSurface::new(
             TerrainCorners::new(0, 0, 0, 0),
             TerrainCorners::new(0, 0, 0, 0),
@@ -177,5 +184,6 @@ mod tests {
                 y: 0,
             })
         );
+        Ok(())
     }
 }
