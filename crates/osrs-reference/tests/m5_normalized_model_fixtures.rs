@@ -99,14 +99,20 @@ fn mirror_and_type4_fixtures_preserve_order_sensitive_integer_outputs()
     match transform_input.case {
         NormalizedInputCase::ModelTransform {
             vertices,
+            face_colors,
+            face_textures,
             requested_type,
             orientation,
             ..
         } => {
             assert_eq!(requested_type, 4);
             assert_eq!(orientation, 5);
-            assert_eq!(vertices[2].x, i32::MIN);
-            assert_eq!(vertices[2].z, i32::MIN);
+            assert_eq!(vertices.len(), 3);
+            assert_eq!((vertices[0].x, vertices[0].y, vertices[0].z), (128, 64, 0));
+            assert_eq!((vertices[1].x, vertices[1].y, vertices[1].z), (0, 0, 0));
+            assert_eq!((vertices[2].x, vertices[2].y, vertices[2].z), (0, 128, 0));
+            assert_eq!(face_colors, [100]);
+            assert_eq!(face_textures, [Some(7)]);
         }
         _ => return Err("transform input decoded as the wrong normalized case".into()),
     }
@@ -121,15 +127,12 @@ fn mirror_and_type4_fixtures_preserve_order_sensitive_integer_outputs()
             assert_eq!(vertices.len(), 3);
             assert_eq!(
                 (vertices[0].x, vertices[0].y, vertices[0].z),
-                (477, 393, -963)
+                (-262, 27, -115)
             );
-            assert_eq!((vertices[1].x, vertices[1].y, vertices[1].z), (20, -7, 186));
-            assert_eq!(
-                (vertices[2].x, vertices[2].y, vertices[2].z),
-                (-1_073_741_799, 3, 45)
-            );
-            assert_eq!(face_colors, [12]);
-            assert_eq!(face_textures, [Some(22)]);
+            assert_eq!((vertices[1].x, vertices[1].y, vertices[1].z), (-80, -5, -25));
+            assert_eq!((vertices[2].x, vertices[2].y, vertices[2].z), (-80, 59, -25));
+            assert_eq!(face_colors, [300]);
+            assert_eq!(face_textures, [Some(9)]);
         }
         _ => return Err("transform expected output decoded as the wrong normalized case".into()),
     }
