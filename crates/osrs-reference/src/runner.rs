@@ -79,16 +79,23 @@ pub fn run_fixture(fixture: &LoadedFixture) -> Result<(), FixtureRunError> {
     }
 
     if fixture.manifest.execution == FixtureExecution::EvidenceOnly {
-        if input.kind() != NormalizedFixtureKind::PriorityOrder {
-            return Err(failure(
-                &fixture_id,
-                format!(
-                    "evidence_only is not permitted for implemented fixture kind {:?}",
-                    input.kind()
-                ),
-            ));
+        match input.kind() {
+            NormalizedFixtureKind::BaseNormals
+            | NormalizedFixtureKind::NormalMerge
+            | NormalizedFixtureKind::PlaneLinkBelow
+            | NormalizedFixtureKind::PriorityOrder => return Ok(()),
+            NormalizedFixtureKind::ModelSelection
+            | NormalizedFixtureKind::ModelMirror
+            | NormalizedFixtureKind::ModelTransform => {
+                return Err(failure(
+                    &fixture_id,
+                    format!(
+                        "evidence_only is not permitted for implemented fixture kind {:?}",
+                        input.kind()
+                    ),
+                ));
+            }
         }
-        return Ok(());
     }
 
     let actual = execute_input(&fixture_id, input)?;
@@ -239,6 +246,18 @@ fn execute_input(
                     .collect(),
             })
         }
+        NormalizedInputCase::BaseNormals { .. } => Err(failure(
+            fixture_id,
+            "base_normals has no production executor yet; manifest must use evidence_only",
+        )),
+        NormalizedInputCase::NormalMerge { .. } => Err(failure(
+            fixture_id,
+            "normal_merge has no production executor yet; manifest must use evidence_only",
+        )),
+        NormalizedInputCase::PlaneLinkBelow { .. } => Err(failure(
+            fixture_id,
+            "plane_link_below has no production executor yet; manifest must use evidence_only",
+        )),
         NormalizedInputCase::PriorityOrder { .. } => Err(failure(
             fixture_id,
             "priority_order has no production executor yet; manifest must use evidence_only",
