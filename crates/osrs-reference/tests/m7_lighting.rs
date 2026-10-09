@@ -3,7 +3,7 @@ use osrs_core::{
     definitions::{DefinitionIdentity, ModelTranslation},
     ids::{ModelId, TextureId},
     lighting::{
-        LitFaceColors, LightingParameters, adjust_hsl_lightness, clamp_texture_lightness,
+        LightingParameters, LitFaceColors, adjust_hsl_lightness, clamp_texture_lightness,
         light_model_data,
     },
     model::{
@@ -16,8 +16,7 @@ use osrs_core::{
 use std::error::Error;
 
 const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
-const CACHE_FINGERPRINT: &str =
-    "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
+const CACHE_FINGERPRINT: &str = "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 const BASE_TRIANGLE: [ModelPoint; 3] = [
     ModelPoint::new(0, 0, 0),
     ModelPoint::new(128, 0, 0),
@@ -26,7 +25,15 @@ const BASE_TRIANGLE: [ModelPoint; 3] = [
 
 #[test]
 fn historical_loc_rig_triangle_matches_checked_in_golden() -> Result<(), Box<dyn Error>> {
-    let model = working_triangle(9_001, BASE_TRIANGLE, Triangle::new(0, 1, 2), None, false, None, false)?;
+    let model = working_triangle(
+        9_001,
+        BASE_TRIANGLE,
+        Triangle::new(0, 1, 2),
+        None,
+        false,
+        None,
+        false,
+    )?;
     let lit = light_model_data(&model, LightingParameters::for_loc(0, 0))?;
 
     assert_eq!(
@@ -97,7 +104,10 @@ fn flat_and_textured_faces_follow_distinct_reference_paths() -> Result<(), Box<d
             c: 76,
         }]
     );
-    assert_eq!(textured_lit.texture_triangles, vec![Triangle::new(0, 1, 2)]);
+    assert_eq!(
+        textured_lit.texture_triangles,
+        vec![Triangle::new(0, 1, 2)]
+    );
     assert_eq!(textured_lit.texture_faces, Some(vec![Some(0)]));
 
     let textured_flat = working_triangle(
@@ -109,11 +119,14 @@ fn flat_and_textured_faces_follow_distinct_reference_paths() -> Result<(), Box<d
         None,
         false,
     )?;
-    let textured_flat_lit =
-        light_model_data(&textured_flat, LightingParameters::for_loc(0, 0))?;
+    let textured_flat_lit = light_model_data(&textured_flat, LightingParameters::for_loc(0, 0))?;
     assert_eq!(
         textured_flat_lit.face_colors,
-        vec![LitFaceColors { a: 72, b: 0, c: -1 }]
+        vec![LitFaceColors {
+            a: 72,
+            b: 0,
+            c: -1
+        }]
     );
     Ok(())
 }
@@ -140,12 +153,7 @@ fn merged_normal_takes_precedence_and_changes_final_lighting() -> Result<(), Box
         false,
     )?;
 
-    let outcome = merge_model_normals(
-        &mut left,
-        &mut opposite,
-        ModelTranslation::ZERO,
-        false,
-    );
+    let outcome = merge_model_normals(&mut left, &mut opposite, ModelTranslation::ZERO, false);
     assert_eq!(outcome.matched_vertex_pairs(), 3);
 
     let control_lit = light_model_data(&control, LightingParameters::for_loc(0, 0))?;
@@ -157,9 +165,16 @@ fn merged_normal_takes_precedence_and_changes_final_lighting() -> Result<(), Box
 }
 
 #[test]
-fn loc_ambient_and_contrast_extremes_keep_signed_integer_semantics()
--> Result<(), Box<dyn Error>> {
-    let model = working_triangle(9_301, BASE_TRIANGLE, Triangle::new(0, 1, 2), None, false, None, false)?;
+fn loc_ambient_and_contrast_extremes_keep_signed_integer_semantics() -> Result<(), Box<dyn Error>> {
+    let model = working_triangle(
+        9_301,
+        BASE_TRIANGLE,
+        Triangle::new(0, 1, 2),
+        None,
+        false,
+        None,
+        false,
+    )?;
 
     let minimum = light_model_data(&model, LightingParameters::for_loc(-128, -3_200))?;
     let maximum = light_model_data(&model, LightingParameters::for_loc(127, 3_175))?;
@@ -170,8 +185,7 @@ fn loc_ambient_and_contrast_extremes_keep_signed_integer_semantics()
 }
 
 #[test]
-fn alpha_sentinels_override_authored_render_type_during_lighting()
--> Result<(), Box<dyn Error>> {
+fn alpha_sentinels_override_authored_render_type_during_lighting() -> Result<(), Box<dyn Error>> {
     let hidden = working_triangle(
         9_401,
         BASE_TRIANGLE,
@@ -182,7 +196,10 @@ fn alpha_sentinels_override_authored_render_type_during_lighting()
         false,
     )?;
     let hidden_lit = light_model_data(&hidden, LightingParameters::for_loc(0, 0))?;
-    assert_eq!(hidden_lit.face_colors[0], LitFaceColors { a: 0, b: 0, c: -2 });
+    assert_eq!(
+        hidden_lit.face_colors[0],
+        LitFaceColors { a: 0, b: 0, c: -2 }
+    );
 
     let constant = working_triangle(
         9_402,
@@ -194,7 +211,14 @@ fn alpha_sentinels_override_authored_render_type_during_lighting()
         false,
     )?;
     let constant_lit = light_model_data(&constant, LightingParameters::for_loc(0, 0))?;
-    assert_eq!(constant_lit.face_colors[0], LitFaceColors { a: 128, b: 0, c: -1 });
+    assert_eq!(
+        constant_lit.face_colors[0],
+        LitFaceColors {
+            a: 128,
+            b: 0,
+            c: -1
+        }
+    );
     Ok(())
 }
 
