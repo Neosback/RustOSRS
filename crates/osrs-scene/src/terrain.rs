@@ -214,7 +214,9 @@ impl ShapedTerrainSurface {
 
         let face_codes = FACE_CODES[usize::from(input.shape)];
         let mut faces = Vec::with_capacity(face_codes.len() / 4);
-        for chunk in face_codes.chunks_exact(4) {
+        let (face_chunks, remainder) = face_codes.as_chunks::<4>();
+        debug_assert!(remainder.is_empty());
+        for chunk in face_chunks {
             let source = if chunk[0] == 0 {
                 TerrainColorSource::Underlay
             } else {
