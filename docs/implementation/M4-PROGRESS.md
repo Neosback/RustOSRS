@@ -1,6 +1,6 @@
 # M4 Progress: Model Decode and Exact Construction
 
-Status: **Checkpoint 4 complete**  
+Status: **Checkpoint 5 implementation complete; final clean-head CI pending**  
 Branch: `impl/m4-model-decode-construction`  
 Baseline: M3 squash merge `6e350afeb73c96f1b1ccd050ef427028e3015987`
 
@@ -77,14 +77,16 @@ That primitive drives ModelData vertex-coordinate deltas and face-index delta st
 
 ### Checkpoint 5: exact instance transform pipeline
 
-- type-4 `256` JAU recenter and `(45, 0, -45)` translation;
-- ordinary orientation quarter turns;
-- recolor;
-- retexture;
-- resize;
-- final definition translation;
-- combined order-sensitive exact integer fixture;
-- two-instance source immutability control.
+- [x] type-4 `256` JAU rotation and `(45, 0, -45)` translation;
+- [x] ordinary orientation quarter turns after masking orientation to `0..=3`;
+- [x] recolor in authored pair order;
+- [x] retexture in authored pair order, including signed-short `-1` sentinel behavior;
+- [x] resize with exact integer arithmetic and `128` identity scale;
+- [x] final definition translation;
+- [x] combined order-sensitive exact integer fixture;
+- [x] two-instance source immutability control;
+- [x] implementation head `5be9a15ed842587c52d799a41f54069f99ff4679` passed Tier A/B/C in workflow run `37878918588`;
+- [ ] final documentation-complete exact-head CI readback.
 
 ### Checkpoint 6: M4 verification closure
 
@@ -188,7 +190,7 @@ The temporary target-cache workflow was removed immediately after capturing this
 
 ## Checkpoint 4 exact construction result
 
-Checkpoint 4 separates pure semantic construction from cache acquisition. `osrs-core::model_construction` owns selection, raw mirroring, and multi-model combination. `osrs-cache::object_model` only resolves the selected model IDs through `ModelSourceRepository`, obtains the required raw variant, and returns an owned pre-transform `AssembledModel`.
+Checkpoint 4 separates pure semantic construction from cache acquisition. `osrs-core::model_construction` owns selection, raw mirroring, and multi-model combination. `osrs-cache::object_model` resolves the selected model IDs through `ModelSourceRepository`, obtains the required raw variant, and produces an owned `AssembledModel` for the instance-transform stage.
 
 ### Exact selection semantics
 
@@ -229,15 +231,13 @@ The cache-backed resolver now populates `RawModelVariant::Mirrored` on demand. M
 
 ### Construction order
 
-The pre-transform path is now explicit:
+The raw construction path is explicit:
 
 1. select exact model ID or IDs;
 2. load each authoritative unmirrored raw source;
 3. obtain/cache the mirrored raw variant for each source when the selection requires it;
 4. combine the selected raw variants when more than one model ID is present;
-5. hand the owned `AssembledModel` to the later instance-transform pipeline.
-
-Checkpoint 5 still owns type-4 special rotation/translation, ordinary orientation turns, recolor, retexture, resize, and final definition translation.
+5. clone/copy only into the owned `AssembledModel` that receives Checkpoint 5 instance transforms.
 
 ### Exact multi-model combination
 
@@ -289,4 +289,82 @@ Implementation head `7191ee7a6607049ec6782260af90c291f6a3a55e` passed the comple
 
 Documentation-complete head `0a0256ac3bd81711294be642a825df6c652debd4` also passed Tier A/B/C in workflow run `37806446505`.
 
-Checkpoint 5 instance-transform work has not started.
+## Checkpoint 5 exact instance-transform result
+
+Checkpoint 5 closes the instance-specific `ModelData` mutation stage after raw selection/mirroring/combination and before later scene/render ownership. `osrs-core::model_construction::apply_object_model_instance_transforms` owns the pure semantic transform algorithm. `osrs-cache::object_model::resolve_object_model` now applies that algorithm to its owned assembled result before returning it.
+
+### Exact pinned stage order
+
+Pinned `ObjectComposition.getModelData(type, orientation)` establishes this order, which RustOSRS preserves without matrix fusion or renderer-side substitution:
+
+1. if loc type is `4` and the original orientation is greater than `3`, rotate by `256` JAU;
+2. immediately translate by `(45, 0, -45)`;
+3. mask orientation with `orientation & 3`;
+4. apply the ordinary quarter-turn operation for orientations `1`, `2`, or `3`;
+5. apply recolor pairs sequentially in authored order;
+6. apply retexture pairs sequentially in authored order;
+7. resize X/Y/Z using definition scale values when they differ from `128`;
+8. apply final definition translation.
+
+The type-4 special transform deliberately evaluates `orientation > 3` before the orientation mask. Reordering that check after masking would make the special path unreachable and is therefore semantically wrong.
+
+### Exact integer transform semantics
+
+Pinned `ModelData` methods define the geometry operations directly:
+
+- quarter turn 1: `x = z`, `z = -old_x`;
+- quarter turn 2: `x = -x`, `z = -z`;
+- quarter turn 3: `z = old_x`, `x = -old_z`;
+- general rotation: `x' = (sin*z + cos*x) >> 16`, `z' = (cos*z - sin*x) >> 16`;
+- resize: `x = x*scaleX/128`, `y = scaleY*y/128`, `z = scaleZ*z/128`;
+- translation: direct signed integer addition.
+
+The pinned `Rasterizer3D` table generator yields `sin[256] == 46340` and `cos[256] == 46340`. Checkpoint 5 uses those exact integer table values rather than runtime floating-point trigonometry.
+
+Java `int` arithmetic wraps on overflow. RustOSRS therefore uses explicit wrapping multiplication, addition, subtraction, and negation where the pinned Java expression can overflow. The signed right shift remains arithmetic, and Rust signed integer division truncates toward zero like Java division. The result is deterministic in debug and release builds without relying on Rust overflow configuration.
+
+### Recolor and retexture semantics
+
+Recolor and retexture pairs are deliberately processed sequentially instead of being converted to a lookup map. This preserves chained authored replacements such as `100 -> 200` followed by `200 -> 300`.
+
+Canonical texture absence is represented by `None`, while the pinned `ModelData.faceTextures` array represents absence with signed short `-1`. Definition retexture words are retained as raw `u16`, so `0xFFFF` corresponds to that signed short sentinel. The transform stage therefore preserves exact equality semantics:
+
+- `from == 0xFFFF` can match canonical `None`;
+- `to == 0xFFFF` produces canonical `None`;
+- ordinary texture IDs remain `Some(TextureId)`.
+
+This avoids silently changing pinned signed-short behavior merely because the decoder normalized the source sentinel at the canonical boundary.
+
+### Ownership and resolver behavior
+
+The raw `SourceModel` and repository-cached raw variants remain immutable. Instance transforms mutate only the owned `AssembledModel` created for a specific object request. Two requests can therefore use the same cached raw source with different orientations/definition transforms without cross-instance contamination.
+
+The cache-backed resolution path is now:
+
+1. exact typed/untyped selection;
+2. load authoritative unmirrored or cached mirrored raw variants;
+3. exact multi-model combination if needed;
+4. exact instance transform pipeline;
+5. return the transformed owned semantic model.
+
+Legitimate selection misses still return `Ok(None)` before any instance transform is attempted.
+
+### Checkpoint 5 fixtures and implementation CI
+
+`crates/osrs-core/tests/m4_instance_transform.rs` covers:
+
+- a combined order-sensitive type-4/high-orientation fixture exercising the `256`-JAU rotation, special offset, ordinary quarter turn, recolor chain, retexture chain, non-identity resize, and final translation in one exact integer result;
+- ordinary orientations `0..=3` plus a high orientation proving the mask occurs only after the type-4 special check;
+- wrapping negation at `i32::MIN`;
+- sequential recolor and retexture replacement behavior;
+- raw signed-short texture sentinel conversions between `0xFFFF` and canonical `None`;
+- two independently transformed instances created from the same immutable source;
+- source vertex/color/texture immutability after transformed instances are produced.
+
+Implementation head `5be9a15ed842587c52d799a41f54069f99ff4679` passed the complete ordinary CI chain in workflow run `37878918588`:
+
+- Tier A static quality passed architecture boundaries, architecture-guard tests, rustfmt, workspace check, and strict clippy;
+- Tier B workspace tests passed, including the new exact Checkpoint 5 transform fixtures;
+- Tier C checked-in M3 parity fixtures and deterministic decoder fuzz smoke passed.
+
+Checkpoint 6 verification closure has not started.
