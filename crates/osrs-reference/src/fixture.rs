@@ -293,10 +293,8 @@ notes: parser smoke test
 
     #[test]
     fn rejects_invalid_blob_identity() {
-        let input = VALID_MANIFEST.replace(
-            "2cc9406b2504fbd4fae0c0c952aa2d133809e928",
-            "not-a-blob",
-        );
+        let input =
+            VALID_MANIFEST.replace("2cc9406b2504fbd4fae0c0c952aa2d133809e928", "not-a-blob");
         assert!(matches!(
             FixtureManifest::parse_yaml(&input),
             Err(ManifestError::InvalidHexId {
