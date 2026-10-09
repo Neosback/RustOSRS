@@ -295,10 +295,18 @@ fn execute_plane_link_below(
             game_objects,
         } = source_tile;
         let plane_value = normalized_plane_value(fixture_id, plane, "source tile")?;
-        let source_plane = SourcePlane::new(plane_value)
-            .expect("validated normalized plane must map to source plane");
-        let storage_plane = StoragePlane::new(plane_value)
-            .expect("validated normalized plane must map to storage plane");
+        let source_plane = SourcePlane::new(plane_value).ok_or_else(|| {
+            failure(
+                fixture_id,
+                format!("source tile plane {plane_value} cannot map to source plane"),
+            )
+        })?;
+        let storage_plane = StoragePlane::new(plane_value).ok_or_else(|| {
+            failure(
+                fixture_id,
+                format!("source tile plane {plane_value} cannot map to storage plane"),
+            )
+        })?;
         let label_slot = &mut tile_labels[usize::from(plane_value)];
         if label_slot.is_some() {
             return Err(failure(
@@ -325,13 +333,18 @@ fn execute_plane_link_below(
             })?;
             let object_id = u32::try_from(object_labels.len())
                 .map_err(|_| failure(fixture_id, "too many plane fixture game objects"))?;
+            let object_storage_plane = StoragePlane::new(object_plane).ok_or_else(|| {
+                failure(
+                    fixture_id,
+                    format!("game-object plane {object_plane} cannot map to storage plane"),
+                )
+            })?;
             object_labels.push(object.id);
             tile.push_game_object(SceneGameObject::new(
                 ObjectId::new(object_id),
                 object.tag_type,
                 SceneTile::new(start_x, start_y),
-                StoragePlane::new(object_plane)
-                    .expect("validated normalized plane must map to storage plane"),
+                object_storage_plane,
             ));
         }
         grid.set_tile(storage_plane, anchor, tile)
@@ -343,7 +356,12 @@ fn execute_plane_link_below(
 
     let mut stored_tiles = Vec::with_capacity(4);
     for plane_value in 0..=3 {
-        let storage_plane = StoragePlane::new(plane_value).expect("0..=3 plane is valid");
+        let storage_plane = StoragePlane::new(plane_value).ok_or_else(|| {
+            failure(
+                fixture_id,
+                format!("output plane {plane_value} cannot map to storage plane"),
+            )
+        })?;
         let Some(tile) = grid.tile(storage_plane, anchor) else {
             stored_tiles.push(None);
             continue;
@@ -362,8 +380,10 @@ fn execute_plane_link_below(
         }));
     }
 
-    let plane0 = StoragePlane::new(0).expect("plane zero is valid");
-    let plane3 = StoragePlane::new(3).expect("plane three is valid");
+    let plane0 = StoragePlane::new(0)
+        .ok_or_else(|| failure(fixture_id, "plane zero cannot map to storage plane"))?;
+    let plane3 = StoragePlane::new(3)
+        .ok_or_else(|| failure(fixture_id, "plane three cannot map to storage plane"))?;
     let linked_below = grid
         .tile(plane0, anchor)
         .and_then(SemanticTile::linked_below)
