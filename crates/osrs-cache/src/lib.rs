@@ -5,5 +5,7 @@
 //! semantic codecs exposed by this crate.
 
 pub mod decode;
+pub mod model_repository;
+pub mod object_model;
 pub mod profile;
 pub mod transport;

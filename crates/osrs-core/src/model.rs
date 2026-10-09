@@ -579,13 +579,18 @@ fn validate_parts(parts: &SourceModelParts) -> Result<(), ModelValidationError> 
     }
 
     for (triangle_index, triangle) in parts.texture_triangles.iter().enumerate() {
-        for vertex in triangle.vertices.indices() {
-            if vertex.get() as usize >= vertex_count {
-                return Err(ModelValidationError::TextureTriangleVertexOutOfRange {
-                    triangle: triangle_index,
-                    vertex: vertex.get(),
-                    vertex_count,
-                });
+        // Only render type 0 encodes an explicit triangle in model-vertex index space.
+        // Target FF FD complex mappings (types 1..=3) reuse the three raw source
+        // words for mapping parameters and may legitimately exceed vertex_count.
+        if triangle.render_type == 0 {
+            for vertex in triangle.vertices.indices() {
+                if vertex.get() as usize >= vertex_count {
+                    return Err(ModelValidationError::TextureTriangleVertexOutOfRange {
+                        triangle: triangle_index,
+                        vertex: vertex.get(),
+                        vertex_count,
+                    });
+                }
             }
         }
     }
@@ -803,6 +808,33 @@ mod tests {
             source.texture_face_selectors(),
             Some(&[Some(TextureTriangleIndex::new(0))][..])
         );
+        Ok(())
+    }
+
+    #[test]
+    fn complex_texture_raw_triplet_is_not_geometry_topology()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut parts = minimal_parts()?;
+        parts.texture_triangles = vec![TextureTriangle {
+            render_type: 2,
+            vertices: Triangle::new(32_769, 65_535, 4_096),
+            mapping: TextureMappingParameters::default(),
+        }];
+        let source = SourceModel::from_parts(parts)?;
+        assert_eq!(source.texture_triangles()[0].vertices.a.get(), 32_769);
+
+        let mut type_zero = minimal_parts()?;
+        type_zero.texture_triangles = vec![TextureTriangle {
+            render_type: 0,
+            vertices: Triangle::new(0, 1, 32_769),
+            mapping: TextureMappingParameters::default(),
+        }];
+        let result = SourceModel::from_parts(type_zero);
+        let Err(ModelValidationError::TextureTriangleVertexOutOfRange { vertex, .. }) = result
+        else {
+            return Err("type-0 out-of-range texture triangle unexpectedly succeeded".into());
+        };
+        assert_eq!(vertex, 32_769);
         Ok(())
     }
 

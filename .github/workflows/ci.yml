@@ -52,7 +52,7 @@ jobs:
         run: cargo test --locked --workspace --all-targets --all-features
 
   tier-c:
-    name: Tier C - M3 decode parity
+    name: Tier C - semantic parity
     runs-on: ubuntu-latest
     needs: tier-b
     steps:
@@ -62,8 +62,19 @@ jobs:
       - name: Install pinned Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
 
-      - name: Run checked-in P0 decode fixtures
+      - name: Run checked-in M3 P0 decode fixtures
         run: cargo test --locked -p osrs-cache --test m3_decode_fixtures
 
-      - name: Run deterministic decoder fuzz smoke
+      - name: Run M3 deterministic decoder fuzz smoke
         run: cargo test --locked -p osrs-cache --test m3_fuzz_smoke
+
+      - name: Run checked-in M4 fixture inventory
+        run: cargo test --locked -p osrs-core --test m4_fixture_manifest
+
+      - name: Run M4 exact model construction fixtures
+        run: |
+          cargo test --locked -p osrs-core --lib model_construction::tests
+          cargo test --locked -p osrs-core --test m4_instance_transform
+
+      - name: Run M4 model decoder fuzz smoke
+        run: cargo test --locked -p osrs-cache --test m4_model_fuzz_smoke

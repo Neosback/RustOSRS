@@ -131,6 +131,7 @@ pub enum DecodeSubject {
     Varp(u32),
     Texture(u32),
     Sequence(u32),
+    Model(u32),
     TerrainRegion { x: i32, y: i32 },
     LocationRegion { x: i32, y: i32 },
 }
@@ -145,6 +146,7 @@ impl fmt::Display for DecodeSubject {
             Self::Varp(id) => write!(formatter, "varp:{id}"),
             Self::Texture(id) => write!(formatter, "texture:{id}"),
             Self::Sequence(id) => write!(formatter, "sequence:{id}"),
+            Self::Model(id) => write!(formatter, "model:{id}"),
             Self::TerrainRegion { x, y } => write!(formatter, "terrain-region:{x},{y}"),
             Self::LocationRegion { x, y } => write!(formatter, "location-region:{x},{y}"),
         }
@@ -369,6 +371,14 @@ mod tests {
         assert!(rendered.contains("decoder_schema=1"));
         assert!(rendered.contains("xtea_provider=openrs2-cache-2727"));
         Ok(())
+    }
+
+    #[test]
+    fn model_subject_renders_stable_identity() {
+        assert_eq!(
+            DecodeSubject::Model(u32::MAX).to_string(),
+            "model:4294967295"
+        );
     }
 
     #[test]

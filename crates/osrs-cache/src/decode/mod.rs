@@ -8,6 +8,7 @@ mod context;
 mod error;
 mod floor;
 mod map;
+mod model;
 mod object;
 mod reader;
 mod sequence;
@@ -26,6 +27,7 @@ pub use map::{
     MapSquareResolutionError, TERRAIN_FILE_ID, decode_locations, decode_terrain,
     resolve_map_square,
 };
+pub use model::decode_model_data;
 pub use object::decode_object_definition;
 pub use reader::BinaryReader;
 pub use sequence::decode_sequence_definition;
