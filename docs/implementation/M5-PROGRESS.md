@@ -1,6 +1,6 @@
 # M5 Progress: Reference Fixture Infrastructure
 
-Status: **IN PROGRESS**  
+Status: **COMPLETE - PR READY**  
 Milestone: `M5 - Reference fixture infrastructure`  
 Branch: `impl/m5-reference-fixture-infrastructure`  
 Baseline: M4 squash merge `4d3d21dbe449cd345cf46ccbab651bec6366d585`
@@ -18,7 +18,7 @@ Production crates must not depend on `osrs-reference`. Ordinary verification rem
 3. **Repository-wide fixture inventory/runner and dedicated M5 CI gate** - COMPLETE
 4. **Explicit regeneration command and isolated oracle/deob adapters** - COMPLETE
 5. **Historical `deob_golden.txt` indexing plus FACE-002 priority evidence** - COMPLETE
-6. **M5 verification closure, parity links, exit audit, and milestone PR** - NOT STARTED
+6. **M5 verification closure, parity links, exit audit, and milestone PR preparation** - COMPLETE
 
 Completed checkpoints must not silently pull later responsibilities forward.
 
@@ -143,7 +143,9 @@ Status: **COMPLETE**
 Implementation validation head: `0e8f38ab41c3fcf4ce9b0283e243ac87f39cb338`  
 Implementation CI: `37905951808`  
 Documentation validation head: `28ca80c9d5f8213cb5c53eda97ca01381c46e97f`  
-Documentation-head CI: `37906255568`
+Documentation-head CI: `37906255568`  
+Final documentation-complete head: `a813c1986a0bd86ece519e08a6cd0b03a5e7bfcc`  
+Final CI: `37906492886`
 
 ### Historical `deob_golden.txt` index
 
@@ -264,7 +266,7 @@ The first three execute against production semantics. The fourth remains integri
 
 ### Validation
 
-Implementation head `0e8f38ab41c3fcf4ce9b0283e243ac87f39cb338` passed workflow `37905951808`:
+Final Checkpoint 5 head `a813c1986a0bd86ece519e08a6cd0b03a5e7bfcc` passed workflow `37906492886`:
 
 - Tier A: PASS
   - architecture boundaries;
@@ -281,46 +283,97 @@ Implementation head `0e8f38ab41c3fcf4ce9b0283e243ac87f39cb338` passed workflow `
   - all existing M3/M4 semantic gates;
   - M5 repository-wide normalized fixture runner over all four fixtures.
 
-Documentation head `28ca80c9d5f8213cb5c53eda97ca01381c46e97f` passed the same full chain in workflow `37906255568`.
+### Checkpoint 5 scope
 
-### Checkpoint 5 diff against Checkpoint 4
+Permanent Checkpoint 5 changes are confined to reference infrastructure/evidence and CI/documentation. No `osrs-core`, `osrs-cache`, `osrs-scene`, renderer, editor, or production semantic implementation changed.
 
-The Checkpoint 5 branch remains based directly on Checkpoint 4 head `817a74304512c564b90e6b6fbd58b2cd9eed32e3`, with no production semantic crate changes.
+---
 
-Permanent Checkpoint 5 changes are confined to reference infrastructure/evidence and CI:
+## Checkpoint 6 - verification closure, parity links, source pins, and exit audit
 
-- `.github/workflows/ci.yml`;
-- `crates/osrs-reference/src/fixture.rs`;
-- `crates/osrs-reference/src/runner.rs`;
-- `crates/osrs-reference/src/schema.rs`;
-- `crates/osrs-reference/tests/m5_fixture_runner.rs`;
-- `reference-fixtures/historical/deob_golden.index.json`;
-- `reference-fixtures/manifest/M5-PRIORITY-MIGRATION-v1.md`;
-- `reference-fixtures/manifest/priority-all-0-11-threshold-crossing.yaml`;
-- priority input/expected JSON artifacts;
-- `scripts/test_deob_golden_index.py`;
-- this progress record.
+Status: **COMPLETE - PR READY**
 
-No `osrs-core`, `osrs-cache`, `osrs-scene`, renderer, editor, or production semantic implementation changed.
+Checkpoint 6 performed the M5 milestone closure without adding later semantic behavior.
 
-### Deferred to Checkpoint 6 and later milestones
+### Parity-matrix closure
 
-Checkpoint 5 does not:
+`docs/verification/PARITY-MATRIX.md` now tracks through M5 and links concrete M5 fixture/evidence IDs to the relevant rows.
 
-- implement scene placement from historical rows;
-- implement contouring or lighting;
-- implement renderer face-priority ordering;
-- promote `FACE-002`, placement, contour, or lighting rows to `EXISTING`;
-- claim the historical local source tree is byte-identical to the public deob commit;
-- regenerate or replace `deob_golden.txt`;
-- open an M5 pull request.
+Key linkage rules:
 
-Checkpoint 6 owns final M5 verification closure, parity-matrix links/status wording, source-pin cleanup, exit audit, and the milestone PR process.
+- `model.selection.typed_exact.orientation_4` links to `MODEL-BUILD-001` and `MODEL-BUILD-002`;
+- `model.mirror.geometry_winding` links to `MODEL-BUILD-002`;
+- `model.transform.type4_order` links to `MODEL-BUILD-003` and `COORD-002`;
+- `priority.all_0_11.threshold_crossing` links to `FACE-002` as evidence-only;
+- indexed historical IDs link terrain, contour, lighting, and placement evidence without promoting later production executors.
+
+Status discipline is preserved:
+
+- `FACE-002` remains `REQUIRED`;
+- placement rows retain their prior production status;
+- `CONTOUR-001` remains `PARTIAL`;
+- `LIGHTING-001` remains `PARTIAL`;
+- no M6/M7 semantic implementation is claimed.
+
+### Source-pin closure
+
+`docs/verification/SOURCE-PINS.md` was reconciled with the actual M5 harness state.
+
+The old absolute local source path is retained only as historical provenance. The current harness requires an explicit Git checkout and exact expected commit.
+
+The M5 public pins were revalidated against `melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`, including:
+
+- `ObjectComposition.java` -> `079451cd9a6dcfd2666efd15b0524250eaafe4c4`;
+- `ModelData.java` -> `2cc9406b2504fbd4fae0c0c952aa2d133809e928`;
+- `Model.java` -> `c2aa55c0e8fea89fae0da33d782119f8c109cacf`;
+- `Rasterizer3D.java` -> `f32216b5e564c6a03a173438e3b19004c27c1c9e`;
+- `Scene.java` -> `f15260a63103952fe8f5ffbdb62f5c7c39d94565`;
+- `SceneTileModel.java` -> `ce6a179cfa93e02271af87164e102ee538223718`.
+
+Whole-snapshot equivalence for the historical developer-machine checkout remains explicitly unresolved and is not overstated.
+
+### Exit audit
+
+`docs/implementation/M5-EXIT-AUDIT.md` records closure of all canonical M5 roadmap gates:
+
+1. ordinary CI is offline against checked-in expected outputs;
+2. normalized fixtures have exact source/harness/hash provenance;
+3. regeneration is candidate-only and cannot silently accept expected-output changes;
+4. relevant parity rows link concrete fixture/test IDs;
+5. historical evidence retains its correct provenance classification;
+6. architecture/scope remains reference-only rather than adding later production semantics.
+
+### Scope audit
+
+Relative to M4 `main`, M5 is confined to:
+
+- `osrs-reference` fixture infrastructure;
+- fixture evidence/manifests/indexes;
+- reference/deob tooling;
+- verification scripts;
+- CI gates;
+- M5/provenance/parity documentation.
+
+No `osrs-core`, `osrs-cache`, `osrs-scene`, renderer, editor, or production semantic implementation is added by M5.
+
+### Final validation process
+
+Checkpoint 6 closure is followed by:
+
+1. exact branch-vs-`main` review;
+2. final push-triggered Tier A/B/C validation on the exact branch head;
+3. one M5 pull request;
+4. exact PR changed-file/diff review;
+5. PR-triggered CI on the exact PR head;
+6. squash merge only if every required gate is green and `main` has not unexpectedly moved;
+7. verification of the resulting `main` merge commit.
+
+M6 is not part of this checkpoint.
 
 ---
 
 ## Current milestone boundary
 
-M5 Checkpoint 5 is complete. Checkpoint 6 has not started.
+M5 implementation and documentation are complete and ready for final validation and the milestone PR/merge process.
 
-No M5 pull request should be opened until Checkpoint 6 milestone exit.
+M6 has not started. After M5 is merged, stop and wait for explicit user instruction before creating or starting any M6 branch.
