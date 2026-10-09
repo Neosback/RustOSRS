@@ -112,11 +112,8 @@ mod tests {
 
     #[test]
     fn smooth_triangle_accumulates_exact_reference_vertex_normals() {
-        let normals = calculate_base_normals_from_parts(
-            &TRIANGLE_VERTICES,
-            &[Triangle::new(0, 1, 2)],
-            None,
-        );
+        let normals =
+            calculate_base_normals_from_parts(&TRIANGLE_VERTICES, &[Triangle::new(0, 1, 2)], None);
         assert_eq!(
             normals.base_vertex_normals,
             vec![
@@ -171,24 +168,20 @@ mod tests {
         assert_eq!(normals.base_vertex_normals[1].magnitude, 1);
         assert_eq!(normals.base_vertex_normals[2].magnitude, 2);
         assert_eq!(normals.base_vertex_normals[3].magnitude, 1);
-        assert!(normals
-            .base_vertex_normals
-            .iter()
-            .all(|normal| normal.x == 0 && normal.y < 0 && normal.z == 0));
+        assert!(
+            normals
+                .base_vertex_normals
+                .iter()
+                .all(|normal| normal.x == 0 && normal.y < 0 && normal.z == 0)
+        );
     }
 
     #[test]
     fn winding_reversal_reverses_the_exact_normal_direction() {
-        let forward = calculate_base_normals_from_parts(
-            &TRIANGLE_VERTICES,
-            &[Triangle::new(0, 1, 2)],
-            None,
-        );
-        let reversed = calculate_base_normals_from_parts(
-            &TRIANGLE_VERTICES,
-            &[Triangle::new(0, 2, 1)],
-            None,
-        );
+        let forward =
+            calculate_base_normals_from_parts(&TRIANGLE_VERTICES, &[Triangle::new(0, 1, 2)], None);
+        let reversed =
+            calculate_base_normals_from_parts(&TRIANGLE_VERTICES, &[Triangle::new(0, 2, 1)], None);
         assert_eq!(forward.base_vertex_normals[0].y, -256);
         assert_eq!(reversed.base_vertex_normals[0].y, 256);
     }
@@ -200,7 +193,10 @@ mod tests {
             &[Triangle::new(0, 1, 2)],
             Some(&[2]),
         );
-        assert_eq!(normals.base_vertex_normals, vec![VertexNormal::default(); 3]);
+        assert_eq!(
+            normals.base_vertex_normals,
+            vec![VertexNormal::default(); 3]
+        );
         assert_eq!(normals.face_normals, None);
     }
 }
