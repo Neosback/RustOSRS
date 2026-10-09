@@ -44,8 +44,7 @@ fn with_trailer(mut bytes: Vec<u8>, trailer: [u8; 2]) -> Vec<u8> {
 }
 
 #[test]
-fn arbitrary_bounded_bytes_never_panic_m4_model_decoder()
-    -> Result<(), Box<dyn std::error::Error>>
+fn arbitrary_bounded_bytes_never_panic_m4_model_decoder() -> Result<(), Box<dyn std::error::Error>>
 {
     let context = context()?;
 
@@ -61,7 +60,11 @@ fn arbitrary_bounded_bytes_never_panic_m4_model_decoder()
     for bytes in corpus {
         exercise(&bytes, &context, model_id);
         model_id += 1;
-        exercise(&with_trailer(bytes.clone(), [0xff, 0xfd]), &context, model_id);
+        exercise(
+            &with_trailer(bytes.clone(), [0xff, 0xfd]),
+            &context,
+            model_id,
+        );
         model_id += 1;
         exercise(&with_trailer(bytes, [0xff, 0xfe]), &context, model_id);
         model_id += 1;
