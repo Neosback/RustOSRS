@@ -6,6 +6,7 @@
 //! while keeping renderer/editor policy outside this crate.
 
 pub mod placement;
+pub mod placement_height;
 pub mod planes;
 pub mod scene;
 pub mod side_effects;
@@ -16,6 +17,9 @@ pub use placement::{
     DIAGONAL_WALL_FLAGS, FloorDecorationPlan, Footprint, GameObjectPlan, ModelRequest,
     PlacementError, PlacementInput, PlacementKind, PlacementPlan, STRAIGHT_WALL_FLAGS, SceneLayer,
     WallDecorationPlan, plan_placement,
+};
+pub use placement_height::{
+    PlacementHeightError, PlacementHeightInput, sample_placement_height,
 };
 pub use planes::{PlacementPlanes, collision_plane};
 pub use scene::{SceneGameObject, SceneGrid, SceneGridError, ScenePlacedLoc, SemanticTile};
