@@ -87,3 +87,6 @@ jobs:
 
       - name: Run M5 repository-wide normalized fixture runner
         run: cargo test --locked -p osrs-reference --test m5_fixture_runner
+
+      - name: Run M6 semantic scene suite
+        run: cargo test --locked -p osrs-scene
