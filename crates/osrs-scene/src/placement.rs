@@ -172,7 +172,8 @@ pub fn plan_placement(input: PlacementInput) -> Result<PlacementPlan, PlacementE
     let definition_footprint = Footprint::rotated(input.size_x, input.size_y, input.orientation);
     let kind = placement_kind(input, definition_footprint);
     let model_center = footprint_center(input.tile, definition_footprint, input.sampled_height)?;
-    let storage_center = footprint_center(input.tile, kind.storage_footprint(), input.sampled_height)?;
+    let storage_center =
+        footprint_center(input.tile, kind.storage_footprint(), input.sampled_height)?;
 
     Ok(PlacementPlan {
         source_loc_type: input.loc_type,
@@ -359,7 +360,8 @@ mod tests {
     }
 
     #[test]
-    fn non_square_definition_footprint_rotates_without_corner_drift() -> Result<(), PlacementError> {
+    fn non_square_definition_footprint_rotates_without_corner_drift() -> Result<(), PlacementError>
+    {
         let expected = [
             (Footprint::new(2, 3), 1408, 2752),
             (Footprint::new(3, 2), 1472, 2688),
@@ -390,7 +392,8 @@ mod tests {
     }
 
     #[test]
-    fn one_by_one_storage_paths_keep_definition_model_center_distinct() -> Result<(), PlacementError> {
+    fn one_by_one_storage_paths_keep_definition_model_center_distinct() -> Result<(), PlacementError>
+    {
         for loc_type in [9, 12, 14, 21] {
             let plan = plan_placement(input(loc_type, 0))?;
             let PlacementKind::GameObject(game) = plan.kind else {
@@ -435,8 +438,8 @@ mod tests {
     }
 
     #[test]
-    fn wall_decoration_displacement_uses_exact_full_half_and_opposite_rules(
-    ) -> Result<(), PlacementError> {
+    fn wall_decoration_displacement_uses_exact_full_half_and_opposite_rules()
+    -> Result<(), PlacementError> {
         let mut full = input(5, 0);
         full.existing_wall_displacement = Some(34);
         let PlacementKind::WallDecoration(type5) = plan_placement(full)?.kind else {
