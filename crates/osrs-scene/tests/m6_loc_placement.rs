@@ -41,7 +41,8 @@ fn historical_wall_and_decor_orientation_matrix_matches_planner() -> Result<(), 
     for line in wall_lines {
         let loc_type = u8::try_from(value(line, "t")?)?;
         let orientation = u8::try_from(value(line, "o")?)?;
-        let PlacementKind::Boundary(plan) = plan_placement(input(loc_type, orientation, None))?.kind
+        let PlacementKind::Boundary(plan) =
+            plan_placement(input(loc_type, orientation, None))?.kind
         else {
             return Err(io::Error::other(format!("{line} did not produce boundary plan")).into());
         };
@@ -57,8 +58,16 @@ fn historical_wall_and_decor_orientation_matrix_matches_planner() -> Result<(), 
         else {
             return Err(io::Error::other(format!("{line} did not produce decor plan")).into());
         };
-        assert_eq!(i32::from(plan.orientation_flag), value(line, "o")?, "{line}");
-        assert_eq!(i32::from(plan.orientation_parameter), value(line, "o2")?, "{line}");
+        assert_eq!(
+            i32::from(plan.orientation_flag),
+            value(line, "o")?,
+            "{line}"
+        );
+        assert_eq!(
+            i32::from(plan.orientation_parameter),
+            value(line, "o2")?,
+            "{line}"
+        );
 
         if matches!(loc_type, 6..=8) {
             assert_eq!(plan.offset_x, value(line, "xOff")?, "{line}");
@@ -70,8 +79,8 @@ fn historical_wall_and_decor_orientation_matrix_matches_planner() -> Result<(), 
 }
 
 #[test]
-fn all_decor_orientations_apply_full_half_default_and_existing_wall_displacement(
-) -> Result<(), Box<dyn Error>> {
+fn all_decor_orientations_apply_full_half_default_and_existing_wall_displacement()
+-> Result<(), Box<dyn Error>> {
     let cardinal = [(1, 0), (0, -1), (-1, 0), (0, 1)];
     let diagonal = [(1, -1), (-1, -1), (-1, 1), (1, 1)];
 
@@ -102,7 +111,9 @@ fn all_decor_orientations_apply_full_half_default_and_existing_wall_displacement
             let PlacementKind::WallDecoration(default_half) =
                 plan_placement(input(loc_type, orientation, None))?.kind
             else {
-                return Err(io::Error::other("half-displacement type did not produce decor plan").into());
+                return Err(
+                    io::Error::other("half-displacement type did not produce decor plan").into(),
+                );
             };
             assert_eq!(
                 (default_half.offset_x, default_half.offset_z),
@@ -112,7 +123,9 @@ fn all_decor_orientations_apply_full_half_default_and_existing_wall_displacement
             let PlacementKind::WallDecoration(existing_half) =
                 plan_placement(input(loc_type, orientation, Some(34)))?.kind
             else {
-                return Err(io::Error::other("half-displacement type did not produce decor plan").into());
+                return Err(
+                    io::Error::other("half-displacement type did not produce decor plan").into(),
+                );
             };
             assert_eq!(
                 (existing_half.offset_x, existing_half.offset_z),
