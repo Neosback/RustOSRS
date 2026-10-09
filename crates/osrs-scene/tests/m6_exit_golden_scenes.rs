@@ -4,10 +4,10 @@ use osrs_core::{
     ids::ObjectId,
 };
 use osrs_scene::{
-    FlatTerrainSurface, PlacementHeightInput, PlacementInput, PlacementKind, SceneGrid, SceneLayer,
-    SemanticTile, ShapedTerrainInput, ShapedTerrainSurface, TerrainCorners, TerrainSurface,
-    REFERENCE_TERRAIN_SKIP_COLOR, flat_paint_is_reference_skipped, plan_placement,
-    sample_placement_height,
+    FlatTerrainSurface, PlacementHeightInput, PlacementInput, PlacementKind,
+    REFERENCE_TERRAIN_SKIP_COLOR, SceneGrid, SceneLayer, SemanticTile, ShapedTerrainInput,
+    ShapedTerrainSurface, TerrainCorners, TerrainSurface, flat_paint_is_reference_skipped,
+    plan_placement, sample_placement_height,
 };
 use std::{error::Error, io};
 
@@ -98,8 +98,8 @@ fn terrain_surface_choice_preserves_flat_diagonal_sentinel_and_shaped_identity()
 }
 
 #[test]
-fn golden_wall_and_decor_orientation_scene_survives_semantic_storage()
--> Result<(), Box<dyn Error>> {
+fn golden_wall_and_decor_orientation_scene_survives_semantic_storage() -> Result<(), Box<dyn Error>>
+{
     let plane = storage_plane(0)?;
     let mut grid = SceneGrid::new(36, 1, 1)?;
 
@@ -128,7 +128,10 @@ fn golden_wall_and_decor_orientation_scene_survives_semantic_storage()
                         .boundary(plane, tile)
                         .ok_or_else(|| io::Error::other("missing boundary in golden scene"))?;
                     assert_eq!(stored.placement(), plan);
-                    assert!(matches!(stored.placement().kind, PlacementKind::Boundary(_)));
+                    assert!(matches!(
+                        stored.placement().kind,
+                        PlacementKind::Boundary(_)
+                    ));
                 }
                 SceneLayer::WallDecoration => {
                     let stored = grid
@@ -267,7 +270,15 @@ fn golden_region_border_fixture_preserves_world_scene_and_local_identity()
     let plane = storage_plane(0)?;
     assert!(grid.insert_placement(plane, ObjectId::new(2001), plan_a)?);
     assert!(grid.insert_placement(plane, ObjectId::new(2002), plan_b)?);
-    assert_eq!(grid.game_object(plane, scene_a).map(|value| value.object_id()), Some(ObjectId::new(2001)));
-    assert_eq!(grid.game_object(plane, scene_b).map(|value| value.object_id()), Some(ObjectId::new(2002)));
+    assert_eq!(
+        grid.game_object(plane, scene_a)
+            .map(|value| value.object_id()),
+        Some(ObjectId::new(2001))
+    );
+    assert_eq!(
+        grid.game_object(plane, scene_b)
+            .map(|value| value.object_id()),
+        Some(ObjectId::new(2002))
+    );
     Ok(())
 }
