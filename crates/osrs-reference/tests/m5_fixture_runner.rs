@@ -9,7 +9,7 @@ fn repository() -> Result<FixtureRepository, Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn discovers_and_executes_every_checked_in_yaml_fixture() -> Result<(), Box<dyn std::error::Error>>
+fn discovers_and_validates_every_checked_in_yaml_fixture() -> Result<(), Box<dyn std::error::Error>>
 {
     let inventory = FixtureInventory::discover(&repository()?)?;
     let ids = inventory
@@ -24,11 +24,12 @@ fn discovers_and_executes_every_checked_in_yaml_fixture() -> Result<(), Box<dyn 
             "model.mirror.geometry_winding",
             "model.selection.typed_exact.orientation_4",
             "model.transform.type4_order",
+            "priority.all_0_11.threshold_crossing",
         ]
     );
 
     let report = run_inventory(&inventory)?;
-    assert_eq!(report.len(), 3);
+    assert_eq!(report.len(), 4);
     assert_eq!(report.fixture_ids(), ids);
     Ok(())
 }
