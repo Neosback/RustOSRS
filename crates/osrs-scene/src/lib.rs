@@ -8,6 +8,7 @@
 pub mod placement;
 pub mod planes;
 pub mod scene;
+pub mod side_effects;
 pub mod terrain;
 
 pub use placement::{
@@ -18,6 +19,10 @@ pub use placement::{
 };
 pub use planes::{PlacementPlanes, collision_plane};
 pub use scene::{SceneGameObject, SceneGrid, SceneGridError, ScenePlacedLoc, SemanticTile};
+pub use side_effects::{
+    CollisionSideEffect, DefinitionSideEffectInputs, SceneSideEffectPlan,
+    plan_definition_side_effects, plan_side_effects,
+};
 pub use terrain::{
     FlatTerrainSurface, ShapedTerrainInput, ShapedTerrainSurface, TerrainBuildError,
     TerrainColorSource, TerrainCorner, TerrainCorners, TerrainFace, TerrainSurface, TerrainVertex,
