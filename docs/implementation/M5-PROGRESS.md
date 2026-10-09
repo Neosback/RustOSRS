@@ -17,7 +17,7 @@ Production crates must not depend on `osrs-reference`. Ordinary verification rem
 2. **Canonical normalized schemas and first source-pinned model fixtures** - COMPLETE
 3. **Repository-wide fixture inventory/runner and dedicated M5 CI gate** - COMPLETE
 4. **Explicit regeneration command and isolated oracle/deob adapters** - COMPLETE
-5. **Historical `deob_golden.txt` indexing plus FACE-002 priority evidence** - IMPLEMENTATION COMPLETE; FINAL DOCUMENTATION-HEAD CI PENDING
+5. **Historical `deob_golden.txt` indexing plus FACE-002 priority evidence** - COMPLETE
 6. **M5 verification closure, parity links, exit audit, and milestone PR** - NOT STARTED
 
 Completed checkpoints must not silently pull later responsibilities forward.
@@ -138,10 +138,12 @@ Tier A runs `scripts/test_reference_regeneration.py` to verify the regeneration 
 
 ## Checkpoint 5 - historical evidence index and priority contract
 
-Status: **IMPLEMENTATION COMPLETE; FINAL DOCUMENTATION-HEAD CI PENDING**
+Status: **COMPLETE**
 
 Implementation validation head: `0e8f38ab41c3fcf4ce9b0283e243ac87f39cb338`  
-Implementation CI: `37905951808`
+Implementation CI: `37905951808`  
+Documentation validation head: `28ca80c9d5f8213cb5c53eda97ca01381c46e97f`  
+Documentation-head CI: `37906255568`
 
 ### Historical `deob_golden.txt` index
 
@@ -279,6 +281,8 @@ Implementation head `0e8f38ab41c3fcf4ce9b0283e243ac87f39cb338` passed workflow `
   - all existing M3/M4 semantic gates;
   - M5 repository-wide normalized fixture runner over all four fixtures.
 
+Documentation head `28ca80c9d5f8213cb5c53eda97ca01381c46e97f` passed the same full chain in workflow `37906255568`.
+
 ### Checkpoint 5 diff against Checkpoint 4
 
 The Checkpoint 5 branch remains based directly on Checkpoint 4 head `817a74304512c564b90e6b6fbd58b2cd9eed32e3`, with no production semantic crate changes.
@@ -317,6 +321,6 @@ Checkpoint 6 owns final M5 verification closure, parity-matrix links/status word
 
 ## Current milestone boundary
 
-M5 Checkpoint 5 implementation is complete. The documentation-complete branch head must pass the full Tier A/B/C chain before Checkpoint 5 is closed.
+M5 Checkpoint 5 is complete. Checkpoint 6 has not started.
 
 No M5 pull request should be opened until Checkpoint 6 milestone exit.
