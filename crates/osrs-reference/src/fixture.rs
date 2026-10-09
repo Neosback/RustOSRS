@@ -266,7 +266,10 @@ notes: parser smoke test
             "parity_level: P1\n",
             "parity_level: P1\nexecution: evidence_only\n",
         );
-        let manifest = FixtureManifest::parse_yaml(&input).expect("evidence-only manifest");
+        let result = FixtureManifest::parse_yaml(&input);
+        let Ok(manifest) = result else {
+            panic!("valid evidence-only fixture manifest failed to parse");
+        };
         assert_eq!(manifest.execution, FixtureExecution::EvidenceOnly);
     }
 
