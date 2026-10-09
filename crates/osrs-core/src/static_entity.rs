@@ -16,8 +16,8 @@
 use crate::{
     definitions::{LocType, ObjectDefinition, ObjectModels},
     lighting::{LightingError, LightingParameters, ReferenceLitModel, light_model_data},
-    model::WorkingModel,
-    normals::ensure_base_normals,
+    model::{ModelNormalState, WorkingModel},
+    normals::calculate_base_normals,
 };
 use std::collections::HashMap;
 
@@ -42,7 +42,7 @@ impl InitialStaticEntityKey {
         orientation: u8,
     ) -> Self {
         let mut raw = (definition.identity.id.get() as i32).wrapping_shl(10);
-        if matches!(definition.models, Some(ObjectModels::Typed(_))) {
+        if matches!(definition.models.as_ref(), Some(ObjectModels::Typed(_))) {
             raw = raw.wrapping_add(i32::from(requested_type.get()).wrapping_shl(3));
         }
         raw = raw.wrapping_add(i32::from(orientation));
@@ -172,7 +172,10 @@ impl InitialStaticEntityCache {
         let cached = if definition.non_flat_shading {
             // The pinned getEntity path calculates base normals before caching
             // ModelData, then copies that cached semantic state per scene use.
-            ensure_base_normals(&mut model);
+            if matches!(model.normal_state(), ModelNormalState::Uncomputed) {
+                let normals = calculate_base_normals(&model);
+                model.set_computed_normals(normals);
+            }
             CachedInitialStaticEntity::ModelData { model, lighting }
         } else {
             CachedInitialStaticEntity::Lit(light_model_data(&model, lighting)?)
