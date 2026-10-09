@@ -1,8 +1,7 @@
-//! Exact pre-instance object model selection, mirroring, and combination.
+//! Exact object model selection, mirroring, combination, and instance transforms.
 //!
-//! This module owns the cache-independent `MODEL-BUILD-001/002` rules. It does
-//! not load cache bytes and it does not apply the later instance transform
-//! pipeline owned by M4 Checkpoint 5.
+//! This module owns the cache-independent `MODEL-BUILD-001..003` rules. It does
+//! not load cache bytes; cache-backed acquisition remains in `osrs-cache`.
 
 use crate::coords::ModelPoint;
 use crate::definitions::{DefinitionIdentity, LocType, ObjectDefinition, ObjectModels};
@@ -13,6 +12,9 @@ use crate::model::{
 };
 use std::collections::HashMap;
 use std::fmt;
+
+mod instance_transform;
+pub use instance_transform::apply_object_model_instance_transforms;
 
 /// Audited raw-model selection before cache loading or instance transforms.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,9 +86,9 @@ impl ModelSourceDescriptor {
 
 /// Owned model assembled from one or more immutable raw source variants.
 ///
-/// This is the object-construction result before Checkpoint 5's orientation,
-/// recolor/retexture, resize, and translation operations. A combined model has
-/// no fake singular `ModelId`; every contributing source identity is retained.
+/// The same owned representation is used immediately after combination and
+/// after the exact instance transform pipeline. A combined model has no fake
+/// singular `ModelId`; every contributing source identity is retained.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssembledModel {
     sources: Vec<ModelSourceDescriptor>,
