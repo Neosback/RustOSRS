@@ -17,11 +17,7 @@ impl fmt::Display for ExactMismatch {
         write!(
             formatter,
             "fixture output differs at byte {} (expected_len={}, actual_len={}, expected={:?}, actual={:?})",
-            self.offset,
-            self.expected_len,
-            self.actual_len,
-            self.expected_byte,
-            self.actual_byte
+            self.offset, self.expected_len, self.actual_len, self.expected_byte, self.actual_byte
         )
     }
 }
