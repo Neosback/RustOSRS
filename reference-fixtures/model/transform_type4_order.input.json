@@ -4,58 +4,58 @@
     "kind": "model_transform",
     "vertices": [
       {
-        "x": 1000,
-        "y": 200,
-        "z": -300
+        "x": 128,
+        "y": 64,
+        "z": 0
       },
       {
-        "x": -128,
+        "x": 0,
         "y": 0,
-        "z": 64
+        "z": 0
       },
       {
-        "x": -2147483648,
-        "y": 5,
-        "z": -2147483648
+        "x": 0,
+        "y": 128,
+        "z": 0
       }
     ],
     "face_colors": [
-      10
+      100
     ],
     "face_textures": [
-      20
+      7
     ],
     "requested_type": 4,
     "orientation": 5,
     "recolors": [
       {
-        "from": 10,
-        "to": 11
+        "from": 100,
+        "to": 200
       },
       {
-        "from": 11,
-        "to": 12
+        "from": 200,
+        "to": 300
       }
     ],
     "retextures": [
       {
-        "from": 20,
-        "to": 21
+        "from": 7,
+        "to": 8
       },
       {
-        "from": 21,
-        "to": 22
+        "from": 8,
+        "to": 9
       }
     ],
     "scale": {
-      "x": 64,
-      "y": 256,
+      "x": 256,
+      "y": 64,
       "z": 128
     },
     "translation": {
-      "x": 3,
-      "y": -7,
-      "z": 11
+      "x": 10,
+      "y": -5,
+      "z": 20
     }
   }
 }
