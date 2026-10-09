@@ -7,3 +7,4 @@
 pub mod comparator;
 pub mod fixture;
 pub mod loader;
+pub mod schema;
