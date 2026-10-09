@@ -8,9 +8,7 @@
 use crate::{
     coords::ModelPoint,
     definitions::ModelTranslation,
-    model::{
-        FaceNormal, ModelNormalState, ModelNormals, Triangle, VertexNormal, WorkingModel,
-    },
+    model::{FaceNormal, ModelNormalState, ModelNormals, Triangle, VertexNormal, WorkingModel},
 };
 
 /// Result of one exact cross-model normal reconciliation pass.
@@ -106,15 +104,15 @@ pub fn merge_model_normals(
         apply_merge_contributions(right, &right_base, &left_base, &matched_pairs, false);
     }
 
-    let (hidden_left_faces, hidden_right_faces) =
-        if matched_pairs.len() >= 3 && hide_matched_faces {
-            (
-                hide_fully_matched_faces(left, &matched_left),
-                hide_fully_matched_faces(right, &matched_right),
-            )
-        } else {
-            (0, 0)
-        };
+    let (hidden_left_faces, hidden_right_faces) = if matched_pairs.len() >= 3 && hide_matched_faces
+    {
+        (
+            hide_fully_matched_faces(left, &matched_left),
+            hide_fully_matched_faces(right, &matched_right),
+        )
+    } else {
+        (0, 0)
+    };
 
     NormalMergeOutcome {
         matched_vertex_pairs: matched_pairs.len(),
@@ -420,7 +418,8 @@ mod tests {
     }
 
     #[test]
-    fn positive_translation_matches_after_left_coordinate_subtraction() -> Result<(), Box<dyn Error>> {
+    fn positive_translation_matches_after_left_coordinate_subtraction() -> Result<(), Box<dyn Error>>
+    {
         let mut left = working_triangle(
             7_101,
             [
@@ -433,7 +432,11 @@ mod tests {
         let outcome = merge_model_normals(
             &mut left,
             &mut right,
-            ModelTranslation { x: 128, y: 0, z: 0 },
+            ModelTranslation {
+                x: 128,
+                y: 0,
+                z: 0,
+            },
             false,
         );
         assert_eq!(outcome.matched_vertex_pairs(), 3);
@@ -443,7 +446,8 @@ mod tests {
     }
 
     #[test]
-    fn repeated_reconciliation_accumulates_from_existing_merged_slots() -> Result<(), Box<dyn Error>> {
+    fn repeated_reconciliation_accumulates_from_existing_merged_slots() -> Result<(), Box<dyn Error>>
+    {
         let mut left = working_triangle(7_201, TRIANGLE_VERTICES)?;
         let mut right = working_triangle(7_202, TRIANGLE_VERTICES)?;
         let translation = ModelTranslation::ZERO;

@@ -20,16 +20,26 @@ const CACHE_FINGERPRINT: &str = "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b
 
 const CASES: [(&[u8], &[u8]); 3] = [
     (
-        include_bytes!("../../../reference-fixtures/normals/merge_coincident_triangle_hide_false.input.json"),
-        include_bytes!("../../../reference-fixtures/normals/merge_coincident_triangle_hide_false.expected.json"),
+        include_bytes!(
+            "../../../reference-fixtures/normals/merge_coincident_triangle_hide_false.input.json"
+        ),
+        include_bytes!(
+            "../../../reference-fixtures/normals/merge_coincident_triangle_hide_false.expected.json"
+        ),
     ),
     (
-        include_bytes!("../../../reference-fixtures/normals/merge_coincident_triangle_hide_true.input.json"),
-        include_bytes!("../../../reference-fixtures/normals/merge_coincident_triangle_hide_true.expected.json"),
+        include_bytes!(
+            "../../../reference-fixtures/normals/merge_coincident_triangle_hide_true.input.json"
+        ),
+        include_bytes!(
+            "../../../reference-fixtures/normals/merge_coincident_triangle_hide_true.expected.json"
+        ),
     ),
     (
         include_bytes!("../../../reference-fixtures/normals/merge_translated_negative.input.json"),
-        include_bytes!("../../../reference-fixtures/normals/merge_translated_negative.expected.json"),
+        include_bytes!(
+            "../../../reference-fixtures/normals/merge_translated_negative.expected.json"
+        ),
     ),
 ];
 
@@ -85,7 +95,10 @@ fn source_pinned_normal_merge_fixtures_match_production_exactly() -> Result<(), 
     Ok(())
 }
 
-fn source_model(model_id: u32, model: NormalizedNormalModel) -> Result<SourceModel, Box<dyn Error>> {
+fn source_model(
+    model_id: u32,
+    model: NormalizedNormalModel,
+) -> Result<SourceModel, Box<dyn Error>> {
     let vertices = model
         .vertices
         .into_iter()
