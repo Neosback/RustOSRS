@@ -1,0 +1,25 @@
+fixture_id: planes.link_below.four_plane_column
+schema_version: 1
+owned_specs:
+  - PLANES-003
+parity_level: P1
+execution: evidence_only
+oracle:
+  kind: melxin-deob-source
+  repository: melxin/runelite
+  commit: 1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc
+  files:
+    - path: runescape-client/src/main/java/Scene.java
+      blob: f15260a63103952fe8f5ffbdb62f5c7c39d94565
+      symbol: setLinkBelow
+harness:
+  path: reference-fixtures/manifest/M5-SEMANTIC-EVIDENCE-MIGRATION-v1.md
+  revision: 2e1ac34d309ce6f9c0c401e462746e31377cacec
+input: planes/link_below_four_plane_column.input.json
+expected: planes/link_below_four_plane_column.expected.json
+expected_sha256: e2138b068ce1252a524276c9ce3fe8f4f12d986ef1a2c5b84c38a2d26c65b043
+normalization:
+  - preserve stable source tile labels and scene coordinate inputs
+  - preserve storage slot order separately from each tile stored plane field
+  - preserve game object tag type, anchor coordinates, and stored plane exactly
+notes: Source-pinned four-plane structural relinking evidence. Production scene relinking belongs to M6.

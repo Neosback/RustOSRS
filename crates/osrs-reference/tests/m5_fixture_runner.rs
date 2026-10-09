@@ -25,12 +25,18 @@ fn discovers_and_validates_every_checked_in_yaml_fixture() -> Result<(), Box<dyn
             "model.mirror.geometry_winding",
             "model.selection.typed_exact.orientation_4",
             "model.transform.type4_order",
+            "normals.base.flat_triangle",
+            "normals.base.smooth_triangle",
+            "normals.merge.coincident_triangle.hide_false",
+            "normals.merge.coincident_triangle.hide_true",
+            "normals.merge.translated_negative",
+            "planes.link_below.four_plane_column",
             "priority.all_0_11.threshold_crossing",
         ]
     );
 
     let report = run_inventory(&inventory)?;
-    assert_eq!(report.len(), 4);
+    assert_eq!(report.len(), 10);
     assert_eq!(report.fixture_ids(), ids);
     Ok(())
 }

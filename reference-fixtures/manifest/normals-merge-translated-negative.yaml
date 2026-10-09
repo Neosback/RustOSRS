@@ -1,0 +1,25 @@
+fixture_id: normals.merge.translated_negative
+schema_version: 1
+owned_specs:
+  - NORMALS-002
+parity_level: P1
+execution: evidence_only
+oracle:
+  kind: melxin-deob-source
+  repository: melxin/runelite
+  commit: 1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc
+  files:
+    - path: runescape-client/src/main/java/ModelData.java
+      blob: 2cc9406b2504fbd4fae0c0c952aa2d133809e928
+      symbol: method5262
+harness:
+  path: reference-fixtures/manifest/M5-SEMANTIC-EVIDENCE-MIGRATION-v1.md
+  revision: 2e1ac34d309ce6f9c0c401e462746e31377cacec
+input: normals/merge_translated_negative.input.json
+expected: normals/merge_translated_negative.expected.json
+expected_sha256: 701e419e4c0a0a832b3099784fd726d65acbeaca23f958388b8e8d70f52dddd6
+normalization:
+  - preserve separate left and right model identity
+  - preserve exact integer translation and nullable merged-normal storage
+  - preserve absent face render type arrays when no vertices match
+notes: Source-pinned translated no-match normal-merge control. Production cross-model normal merging belongs to M7.

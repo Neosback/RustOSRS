@@ -1,0 +1,25 @@
+fixture_id: normals.merge.coincident_triangle.hide_false
+schema_version: 1
+owned_specs:
+  - NORMALS-002
+parity_level: P1
+execution: evidence_only
+oracle:
+  kind: melxin-deob-source
+  repository: melxin/runelite
+  commit: 1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc
+  files:
+    - path: runescape-client/src/main/java/ModelData.java
+      blob: 2cc9406b2504fbd4fae0c0c952aa2d133809e928
+      symbol: method5262
+harness:
+  path: reference-fixtures/manifest/M5-SEMANTIC-EVIDENCE-MIGRATION-v1.md
+  revision: 2e1ac34d309ce6f9c0c401e462746e31377cacec
+input: normals/merge_coincident_triangle_hide_false.input.json
+expected: normals/merge_coincident_triangle_hide_false.expected.json
+expected_sha256: 35cb9988c6511c8bb6f9a1e592c5f54c80c109dbc17b3a7b80617d17339b4a3b
+normalization:
+  - preserve separate left and right model identity
+  - preserve exact integer translation and vertex order
+  - preserve absent face render type arrays when hiding is disabled
+notes: Source-pinned coincident normal-merge positive control. Production cross-model normal merging belongs to M7.
