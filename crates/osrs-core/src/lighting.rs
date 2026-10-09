@@ -102,7 +102,10 @@ impl fmt::Display for LightingError {
                 ),
             },
             Self::MissingFaceNormal(face) => {
-                write!(formatter, "reference flat face {face} has no computed face normal")
+                write!(
+                    formatter,
+                    "reference flat face {face} has no computed face normal"
+                )
             }
             Self::TextureSelectorOutOfBounds { face, selector } => write!(
                 formatter,
@@ -147,9 +150,7 @@ pub fn light_model_data(
         .wrapping_add(parameters.light_x.wrapping_mul(parameters.light_x))
         .wrapping_add(parameters.light_y.wrapping_mul(parameters.light_y));
     let light_vector_magnitude = f64::from(light_vector_squared).sqrt() as i32;
-    let scaled_contrast = light_vector_magnitude
-        .wrapping_mul(parameters.contrast)
-        >> 8;
+    let scaled_contrast = light_vector_magnitude.wrapping_mul(parameters.contrast) >> 8;
 
     let mut face_colors = vec![LitFaceColors::default(); model.faces().len()];
 
@@ -209,7 +210,8 @@ pub fn light_model_data(
                 1 => {
                     let normal = face_normal(normals, face_index)?;
                     let light = flat_light(normal, parameters, scaled_contrast, face_index)?;
-                    colors.a = adjust_hsl_lightness(i32::from(model.face_colors()[face_index]), light);
+                    colors.a =
+                        adjust_hsl_lightness(i32::from(model.face_colors()[face_index]), light);
                     colors.c = -1;
                 }
                 3 => {
@@ -333,7 +335,10 @@ fn vertex_light(
             vertex: Some(vertex),
         });
     }
-    let quotient = java_div(reference_dot(parameters, normal.x, normal.y, normal.z), divisor);
+    let quotient = java_div(
+        reference_dot(parameters, normal.x, normal.y, normal.z),
+        divisor,
+    );
     Ok(quotient.wrapping_add(parameters.ambient))
 }
 
@@ -350,7 +355,10 @@ fn flat_light(
             vertex: None,
         });
     }
-    let quotient = java_div(reference_dot(parameters, normal.x, normal.y, normal.z), divisor);
+    let quotient = java_div(
+        reference_dot(parameters, normal.x, normal.y, normal.z),
+        divisor,
+    );
     Ok(quotient.wrapping_add(parameters.ambient))
 }
 
