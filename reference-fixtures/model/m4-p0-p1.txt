@@ -1,0 +1,14 @@
+# schema: rustosrs-m4-model-fixture/v1
+# target: osrs-live-241-2026-09-30-openrs2-2727
+# semantic_source: melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc
+#
+# name|spec|executable_artifact
+#
+typed_selection|MODEL-BUILD-001|osrs-core::model_construction::tests::typed_selection_requires_exact_type_and_uses_xor_mirror_rule
+untyped_type10_selection|MODEL-BUILD-001|osrs-core::model_construction::tests::untyped_selection_is_type_10_only_and_keeps_special_mirror_behavior
+mirror_geometry_winding|MODEL-BUILD-002|osrs-core::model_construction::tests::mirror_negates_z_and_reverses_face_winding_without_mutating_source
+multi_model_combine|MODEL-BUILD-001|osrs-core::model_construction::tests::combination_deduplicates_vertices_and_offsets_texture_selectors
+complex_texture_preservation|MODEL-BUILD-001|osrs-core::model_construction::tests::complex_texture_mapping_is_preserved_without_vertex_remap
+type4_transform_order|MODEL-BUILD-003+COORD-002|osrs-core/tests/m4_instance_transform.rs::combined_pipeline_matches_reference_order_exactly
+ordinary_orientation|MODEL-BUILD-003+COORD-002|osrs-core/tests/m4_instance_transform.rs::ordinary_orientation_masks_to_quarter_turns
+instance_source_isolation|MODEL-BUILD-005-PARTIAL|osrs-core/tests/m4_instance_transform.rs::two_instances_transform_independently_from_one_source
