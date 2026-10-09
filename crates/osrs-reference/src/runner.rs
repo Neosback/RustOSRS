@@ -1,5 +1,6 @@
 //! Offline execution of normalized fixtures against production semantic code.
 
+use crate::fixture::FixtureExecution;
 use crate::inventory::FixtureInventory;
 use crate::loader::LoadedFixture;
 use crate::schema::{
@@ -44,7 +45,9 @@ impl FixtureRunReport {
     }
 }
 
-/// Execute every discovered normalized fixture through production semantic code.
+/// Validate every discovered normalized fixture and execute production-backed
+/// fixtures through their owning semantic code. Evidence-only fixtures remain
+/// schema/hash/provenance gated but are not falsely treated as implemented.
 pub fn run_inventory(inventory: &FixtureInventory) -> Result<FixtureRunReport, FixtureRunError> {
     let mut fixture_ids = Vec::with_capacity(inventory.len());
     for fixture in inventory.fixtures() {
@@ -54,7 +57,8 @@ pub fn run_inventory(inventory: &FixtureInventory) -> Result<FixtureRunReport, F
     Ok(FixtureRunReport { fixture_ids })
 }
 
-/// Execute one already integrity-verified fixture and require exact typed output equality.
+/// Validate one integrity-verified fixture and, when its production owner
+/// exists, require exact typed output equality.
 pub fn run_fixture(fixture: &LoadedFixture) -> Result<(), FixtureRunError> {
     let fixture_id = fixture.manifest.fixture_id.clone();
     let input = NormalizedFixtureInput::parse(&fixture.input)
@@ -71,6 +75,10 @@ pub fn run_fixture(fixture: &LoadedFixture) -> Result<(), FixtureRunError> {
                 expected.kind()
             ),
         ));
+    }
+
+    if fixture.manifest.execution == FixtureExecution::EvidenceOnly {
+        return Ok(());
     }
 
     let actual = execute_input(&fixture_id, input)?;
@@ -221,6 +229,10 @@ fn execute_input(
                     .collect(),
             })
         }
+        NormalizedInputCase::PriorityOrder { .. } => Err(failure(
+            fixture_id,
+            "priority_order has no production executor yet; manifest must use evidence_only",
+        )),
     }
 }
 
