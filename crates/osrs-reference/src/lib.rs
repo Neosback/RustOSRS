@@ -6,5 +6,7 @@
 
 pub mod comparator;
 pub mod fixture;
+pub mod inventory;
 pub mod loader;
+pub mod runner;
 pub mod schema;
