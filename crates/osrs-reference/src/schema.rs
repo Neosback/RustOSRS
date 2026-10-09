@@ -16,6 +16,9 @@ pub enum NormalizedFixtureKind {
     ModelSelection,
     ModelMirror,
     ModelTransform,
+    BaseNormals,
+    NormalMerge,
+    PlaneLinkBelow,
     PriorityOrder,
 }
 
@@ -87,6 +90,20 @@ pub enum NormalizedInputCase {
         scale: NormalizedModelScale,
         translation: NormalizedModelTranslation,
     },
+    BaseNormals {
+        model: NormalizedNormalModel,
+    },
+    NormalMerge {
+        left: NormalizedNormalModel,
+        right: NormalizedNormalModel,
+        translation: NormalizedModelTranslation,
+        hide_matched_faces: bool,
+    },
+    PlaneLinkBelow {
+        x: i32,
+        y: i32,
+        source_tiles: Vec<NormalizedPlaneTile>,
+    },
     PriorityOrder {
         faces: Vec<NormalizedPriorityFace>,
     },
@@ -98,6 +115,9 @@ impl NormalizedInputCase {
             Self::ModelSelection { .. } => NormalizedFixtureKind::ModelSelection,
             Self::ModelMirror { .. } => NormalizedFixtureKind::ModelMirror,
             Self::ModelTransform { .. } => NormalizedFixtureKind::ModelTransform,
+            Self::BaseNormals { .. } => NormalizedFixtureKind::BaseNormals,
+            Self::NormalMerge { .. } => NormalizedFixtureKind::NormalMerge,
+            Self::PlaneLinkBelow { .. } => NormalizedFixtureKind::PlaneLinkBelow,
             Self::PriorityOrder { .. } => NormalizedFixtureKind::PriorityOrder,
         }
     }
@@ -118,6 +138,21 @@ pub enum NormalizedExpectedCase {
         face_colors: Vec<u16>,
         face_textures: Vec<Option<u32>>,
     },
+    BaseNormals {
+        vertex_normals: Vec<NormalizedVertexNormal>,
+        face_normals: Option<Vec<Option<NormalizedNormalVector>>>,
+    },
+    NormalMerge {
+        left_merged_vertex_normals: Option<Vec<Option<NormalizedVertexNormal>>>,
+        right_merged_vertex_normals: Option<Vec<Option<NormalizedVertexNormal>>>,
+        left_face_render_types: Option<Vec<u8>>,
+        right_face_render_types: Option<Vec<u8>>,
+    },
+    PlaneLinkBelow {
+        stored_tiles: Vec<Option<NormalizedStoredPlaneTile>>,
+        linked_below_label: String,
+        top_slot_cleared: bool,
+    },
     PriorityOrder {
         ordered_face_ids: Vec<u32>,
         avg12: i32,
@@ -132,6 +167,9 @@ impl NormalizedExpectedCase {
             Self::ModelSelection { .. } => NormalizedFixtureKind::ModelSelection,
             Self::ModelMirror { .. } => NormalizedFixtureKind::ModelMirror,
             Self::ModelTransform { .. } => NormalizedFixtureKind::ModelTransform,
+            Self::BaseNormals { .. } => NormalizedFixtureKind::BaseNormals,
+            Self::NormalMerge { .. } => NormalizedFixtureKind::NormalMerge,
+            Self::PlaneLinkBelow { .. } => NormalizedFixtureKind::PlaneLinkBelow,
             Self::PriorityOrder { .. } => NormalizedFixtureKind::PriorityOrder,
         }
     }
@@ -195,6 +233,58 @@ pub struct NormalizedModelTranslation {
     pub x: i32,
     pub y: i32,
     pub z: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedNormalModel {
+    pub vertices: Vec<NormalizedModelPoint>,
+    pub faces: Vec<NormalizedTriangle>,
+    pub face_render_types: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedVertexNormal {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+    pub magnitude: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedNormalVector {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedPlaneTile {
+    pub label: String,
+    pub plane: i32,
+    pub game_objects: Vec<NormalizedPlaneGameObject>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedStoredPlaneTile {
+    pub storage_plane: u8,
+    pub label: String,
+    pub plane: i32,
+    pub game_objects: Vec<NormalizedPlaneGameObject>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedPlaneGameObject {
+    pub id: String,
+    pub tag_type: u8,
+    pub start_x: i32,
+    pub start_y: i32,
+    pub plane: i32,
 }
 
 /// Renderer-independent priority-order oracle input. `depth_bucket` is the
@@ -264,6 +354,41 @@ mod tests {
 }"#,
         )?;
         assert_eq!(document.kind(), NormalizedFixtureKind::ModelSelection);
+        Ok(())
+    }
+
+    #[test]
+    fn parses_normal_merge_document() -> Result<(), Box<dyn std::error::Error>> {
+        let document = NormalizedFixtureInput::parse(
+            br#"{
+  "schema_version": 1,
+  "case": {
+    "kind": "normal_merge",
+    "left": {"vertices": [], "faces": [], "face_render_types": null},
+    "right": {"vertices": [], "faces": [], "face_render_types": null},
+    "translation": {"x": 0, "y": 0, "z": 0},
+    "hide_matched_faces": false
+  }
+}"#,
+        )?;
+        assert_eq!(document.kind(), NormalizedFixtureKind::NormalMerge);
+        Ok(())
+    }
+
+    #[test]
+    fn parses_plane_link_below_document() -> Result<(), Box<dyn std::error::Error>> {
+        let document = NormalizedFixtureInput::parse(
+            br#"{
+  "schema_version": 1,
+  "case": {
+    "kind": "plane_link_below",
+    "x": 10,
+    "y": 20,
+    "source_tiles": []
+  }
+}"#,
+        )?;
+        assert_eq!(document.kind(), NormalizedFixtureKind::PlaneLinkBelow);
         Ok(())
     }
 
