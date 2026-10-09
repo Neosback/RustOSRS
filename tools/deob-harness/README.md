@@ -1,47 +1,64 @@
-# deob-harness — run the deobfuscated client headless for golden data
+# deob-harness — run the deobfuscated client headless for oracle candidates
 
-`src/Dumper.java` (default package, so package-private deob members are
-reachable) executes the real engine algorithms and prints `KEY=value` lines.
-`run.sh` builds everything and refreshes
-`reference-fixtures/deob_golden.txt` (162 lines).
+`src/Dumper.java` (default package, so package-private deob members are reachable) executes the real engine algorithms and prints `KEY=value` lines.
 
-## What it dumps (machine-checked, exit 0)
+This harness is a **low-level development adapter**. It no longer contains a machine-specific RuneLite path, downloads dependencies, or writes directly to `reference-fixtures/deob_golden.txt`.
 
-- `tileShape2D` / `tileRotation2D` — full tables from `Scene` static init
-- `field800/804/802/798/803/805` — wall orientation/offset tables from `Tiles`
-- `tri shape=R rot=R …` — 52/52 `SceneTileModel` triangulations (shapes 0–12 ×
-  rotations 0–3): vertex positions, heights, faces, both color sets, texture
-  ids, flat flag — plus one sloped-height case proving midpoint averaging
-- `sethsl`, `m817`, `m2086`, `m5263`, `m5264` sweeps — color-function fixtures
-- `contour flat/slope` — `Model.contourGround` on synthetic heightmaps
-  (slope case hand-verified: bilinear gives −28 exactly)
-- `tolit` — `ModelData.toModel` loc-rig lighting on a synthetic triangle
-- `nudge …` — 27-row `WallDecoration.method6262` offset table (all orientation
-  flags × sample inputs)
-- `wall`/`decor`/`floor` — live `Scene` storage for wall types 0–3, decor
-  types 4–8, and floor 22: positions, orientation flags, both offset pairs
-  (exact `class150` call shapes, config words included)
-- `roof`/`walldiag`/`gate2x1`/`cap5` — game-object path storage: 1×1 roof and
-  diagonal-wall centers, multi-tile footprint sharing (same object on both
-  tiles) with edge masks, and the 5-per-tile capacity gate
+Use the pinned public entry point instead:
 
-## Build notes (the three workarounds, all documented)
+```sh
+python3 tools/reference-fixtures/regenerate.py \
+  --adapter melxin-deob-golden \
+  --checkout /path/to/melxin-runelite \
+  --bcprov /path/to/bcprov-jdk15on-1.52.jar \
+  --candidate /tmp/rustosrs-deob-golden.candidate.txt
+```
 
-1. `bcprov-jdk15on-1.52.jar` (Maven Central, fetched once by `run.sh`):
-   compile-only dep for the client's TLS classes, never loaded at runtime.
-2. `stubs/netscape/javascript/JSObject.java`: the deob tree's vendored stub
-   lacks a `getWindow` overload for its own `Client` type, and `javac`
-   resolves that package from JDK module `jdk.jsobject` before any
-   sourcepath — so the stub is compiled with `--patch-module` (compile only,
-   never at runtime). Reference tree untouched.
-3. Closure compilation: `javac -sourcepath` over `runescape-client` +
-   `injection-annotations` compiles only what `Dumper` reaches; warnings
-   suppressed (`-nowarn`, deprecation noise only).
+The public adapter pins `melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`. `run.sh` receives that expected commit and validates the checkout HEAD before compilation.
+
+## Candidate-only safety
+
+`run.sh` requires an explicit output path and refuses:
+
+- a source checkout whose HEAD does not match the requested exact commit;
+- missing source roots;
+- a missing caller-supplied `bcprov` jar;
+- an already-existing candidate output;
+- any output path inside this repository's `reference-fixtures/` directory.
+
+It does not clone, fetch, download Maven artifacts, or modify the supplied deob checkout.
+
+## What it dumps
+
+The current historical harness emits the same source-derived families used by `deob_golden.txt`:
+
+- `tileShape2D` / `tileRotation2D` — full tables from `Scene` static init;
+- `field800/804/802/798/803/805` — wall orientation/offset tables from `Tiles`;
+- `tri shape=R rot=R …` — all `SceneTileModel` triangulations plus a sloped-height control;
+- `sethsl`, `m817`, `m2086`, `m5263`, `m5264` color sweeps;
+- `contour flat/slope` synthetic `Model.contourGround` cases;
+- `tolit` synthetic `ModelData.toModel` lighting;
+- `nudge …` wall-decoration offset cases;
+- `wall` / `decor` / `floor` scene-storage cases;
+- `roof` / `walldiag` / `gate2x1` / `cap5` game-object storage cases.
+
+Checkpoint 5 owns indexing/migration of useful historical rows into canonical manifests. Checkpoint 4 does not reinterpret their provenance.
+
+## Build notes
+
+The caller supplies `bcprov-jdk15on-1.52.jar`; it is a compile-only dependency for client TLS classes and is never loaded at harness runtime.
+
+`stubs/netscape/javascript/JSObject.java` handles the deob tree's `JSObject` compile mismatch through `--patch-module`. The reference checkout is not edited.
+
+`javac -sourcepath` compiles only the closure reached by `Dumper.java` from:
+
+- `runescape-client/src/main/java`;
+- `injection-annotations/src/main/java`.
+
+Warnings are suppressed because the deob closure contains legacy/deprecation noise.
 
 ## Extending
 
-Add sections to `Dumper.main` using only side-effect-free deob calls
-(pure tables, constructors, static functions, synthetic models). Never
-touch `Client`, networking, or anything requiring a session — the harness
-must stay runnable with zero game state. Re-run `run.sh` after any snapshot
-update and diff the fixtures.
+Add sections to `Dumper.main` using only deterministic, side-effect-free deob calls: pure tables, constructors, static functions, or synthetic models. Never touch live `Client` state, networking, credentials, or anything requiring a game session.
+
+Regenerated output must remain a candidate until reviewed and explicitly promoted through the canonical fixture manifest/hash workflow.
