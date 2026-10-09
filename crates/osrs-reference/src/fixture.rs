@@ -16,6 +16,18 @@ pub enum ParityLevel {
     P4,
 }
 
+/// How ordinary M5 verification consumes the checked-in fixture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FixtureExecution {
+    /// Execute the normalized input through an implemented production semantic path.
+    #[default]
+    Semantic,
+    /// Validate schema, provenance, inventory inclusion, and expected hash only.
+    /// Used when the oracle contract intentionally precedes its production owner.
+    EvidenceOnly,
+}
+
 /// Source file contributing to the reference oracle for a fixture.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct OracleFile {
@@ -51,6 +63,8 @@ pub struct FixtureManifest {
     pub schema_version: u32,
     pub owned_specs: Vec<String>,
     pub parity_level: ParityLevel,
+    #[serde(default)]
+    pub execution: FixtureExecution,
     pub oracle: OracleManifest,
     pub harness: HarnessManifest,
     pub input: String,
@@ -206,7 +220,7 @@ impl Error for ManifestError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{FixtureManifest, ManifestError, ParityLevel};
+    use super::{FixtureExecution, FixtureManifest, ManifestError, ParityLevel};
 
     const VALID_MANIFEST: &str = r#"
 fixture_id: normals.merge.coincident_triangle.hide_false
@@ -242,7 +256,18 @@ notes: parser smoke test
 
         assert_eq!(manifest.schema_version, 1);
         assert_eq!(manifest.parity_level, ParityLevel::P1);
+        assert_eq!(manifest.execution, FixtureExecution::Semantic);
         assert_eq!(manifest.owned_specs, ["NORMALS-002"]);
+    }
+
+    #[test]
+    fn parses_evidence_only_execution() {
+        let input = VALID_MANIFEST.replace(
+            "parity_level: P1\n",
+            "parity_level: P1\nexecution: evidence_only\n",
+        );
+        let manifest = FixtureManifest::parse_yaml(&input).expect("evidence-only manifest");
+        assert_eq!(manifest.execution, FixtureExecution::EvidenceOnly);
     }
 
     #[test]
