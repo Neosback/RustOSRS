@@ -119,7 +119,10 @@ fn mirror_and_type4_fixtures_preserve_order_sensitive_integer_outputs()
             face_textures,
         } => {
             assert_eq!(vertices.len(), 3);
-            assert_eq!((vertices[0].x, vertices[0].y, vertices[0].z), (477, 393, -963));
+            assert_eq!(
+                (vertices[0].x, vertices[0].y, vertices[0].z),
+                (477, 393, -963)
+            );
             assert_eq!((vertices[1].x, vertices[1].y, vertices[1].z), (20, -7, 186));
             assert_eq!(
                 (vertices[2].x, vertices[2].y, vertices[2].z),
