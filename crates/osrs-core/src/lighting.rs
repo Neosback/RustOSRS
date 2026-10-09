@@ -380,9 +380,7 @@ fn java_div(numerator: i32, denominator: i32) -> i32 {
     }
 }
 
-fn compact_texture_triangles(
-    model: &WorkingModel,
-) -> Result<CompactedTextureData, LightingError> {
+fn compact_texture_triangles(model: &WorkingModel) -> Result<CompactedTextureData, LightingError> {
     let Some(selectors) = model.texture_face_selectors() else {
         return Ok((Vec::new(), None));
     };
