@@ -4,8 +4,9 @@ use crate::fixture::FixtureExecution;
 use crate::inventory::FixtureInventory;
 use crate::loader::LoadedFixture;
 use crate::schema::{
-    NormalizedExpectedCase, NormalizedFixtureExpected, NormalizedFixtureInput, NormalizedInputCase,
-    NormalizedModelPoint, NormalizedModelSelection, NormalizedObjectModels, NormalizedTriangle,
+    NormalizedExpectedCase, NormalizedFixtureExpected, NormalizedFixtureInput, NormalizedFixtureKind,
+    NormalizedInputCase, NormalizedModelPoint, NormalizedModelSelection, NormalizedObjectModels,
+    NormalizedTriangle,
 };
 use osrs_core::coords::ModelPoint;
 use osrs_core::definitions::{
@@ -78,6 +79,15 @@ pub fn run_fixture(fixture: &LoadedFixture) -> Result<(), FixtureRunError> {
     }
 
     if fixture.manifest.execution == FixtureExecution::EvidenceOnly {
+        if input.kind() != NormalizedFixtureKind::PriorityOrder {
+            return Err(failure(
+                &fixture_id,
+                format!(
+                    "evidence_only is not permitted for implemented fixture kind {:?}",
+                    input.kind()
+                ),
+            ));
+        }
         return Ok(());
     }
 
