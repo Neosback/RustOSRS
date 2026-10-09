@@ -9,13 +9,13 @@ Baseline: M4 squash merge `4d3d21dbe449cd345cf46ccbab651bec6366d585`
 
 M5 turns `osrs-reference` into a development/test-only reference fixture system before scene, normals, lighting, and other high-risk semantic work depends on differential evidence.
 
-Production crates must not depend on `osrs-reference`. Ordinary verification must remain offline and deterministic. Oracle execution and fixture regeneration are separate development workflows and must never silently rewrite checked-in expected outputs during CI.
+Production crates must not depend on `osrs-reference`. Ordinary verification remains offline and deterministic. Oracle execution and fixture regeneration are separate development workflows and must never silently rewrite checked-in expected outputs during CI.
 
 ## Checkpoint plan
 
 1. **Fixture loader/comparator/provenance foundation** - COMPLETE
 2. **Canonical normalized fixture schemas and first migrated source-pinned fixtures** - COMPLETE
-3. **Exact fixture inventory/runner integration and dedicated M5 CI gates** - IMPLEMENTATION COMPLETE; FINAL DOCUMENTATION-HEAD CI PENDING
+3. **Exact fixture inventory/runner integration and dedicated M5 CI gates** - COMPLETE
 4. Explicit regeneration command and isolated oracle/harness adapters - NOT STARTED
 5. Historical `deob_golden.txt` indexing/migration plus additional priority semantic families - NOT STARTED
 6. M5 verification closure, parity links, exit audit, and milestone PR - NOT STARTED
@@ -57,8 +57,6 @@ Documentation-complete head: `38117bbbb511bafed527fe5acb6bc335bcc9e330`
 Implementation CI: `37899385456`  
 Documentation-head CI: `37899649831`
 
-### Normalized schema
-
 `crates/osrs-reference/src/schema.rs` defines normalized schema version `1` for:
 
 - typed/untyped model selection;
@@ -77,20 +75,18 @@ Checkpoint 2 introduced three manifest/input/expected families:
 
 1. `model.selection.typed_exact.orientation_4`
    - owns `MODEL-BUILD-001`, `MODEL-BUILD-002`;
-   - expected selected model ID `200` and mirror `true`;
+   - selected model ID `200`, mirror `true`;
    - expected SHA-256 `e21314f355237d336ac5c5eb1497e477238384824d653e5ca20fff2442c86024`.
 2. `model.mirror.geometry_winding`
    - owns `MODEL-BUILD-002`;
-   - proves exact model-local Z negation and face A/C winding swap;
+   - exact model-local Z negation and face A/C winding swap;
    - expected SHA-256 `5880185db6949fb6f6a10feb2b84c0600032cd80073a0bdf24d1e868e8e6bde1`.
 3. `model.transform.type4_order`
    - owns `MODEL-BUILD-003`, `COORD-002`;
    - source-pinned to `ObjectComposition`, `ModelData`, and `Rasterizer3D`;
-   - its manually normalized artifact was later corrected by Checkpoint 3 after executable runner validation exposed that the original v1 vector did not reproduce the M4 test it cited. The corrected canonical details are recorded below.
+   - its original manually normalized v1 vector was later corrected by Checkpoint 3 after executable runner validation proved it did not reproduce the cited M4 test.
 
-### Manual migration provenance
-
-`reference-fixtures/manifest/M5-MODEL-MIGRATION-v1.md` records the original manual source-pinned migration. It deliberately does not claim Java/deob executable generation.
+`reference-fixtures/manifest/M5-MODEL-MIGRATION-v1.md` records the original manual source-pinned migration and deliberately does not claim Java/deob executable generation.
 
 Pinned oracle source:
 
@@ -99,16 +95,18 @@ Pinned oracle source:
 - `ModelData.java` blob `2cc9406b2504fbd4fae0c0c952aa2d133809e928`
 - `Rasterizer3D.java` blob `f32216b5e564c6a03a173438e3b19004c27c1c9e`
 
-Checkpoint 2 validated manifest/schema/hash integrity but intentionally did not yet execute every normalized fixture through production semantics. Checkpoint 3 owns that stronger gate.
+Checkpoint 2 validated schema, provenance shape, path integrity, and expected hashes. Repository-wide semantic execution was deliberately deferred to Checkpoint 3.
 
 ---
 
 ## Checkpoint 3 - repository-wide fixture runner and dedicated M5 CI gate
 
-Status: **IMPLEMENTATION COMPLETE; FINAL DOCUMENTATION-HEAD CI PENDING**
+Status: **COMPLETE**
 
 Implementation validation head: `eb4d6ee8909a8170374a5e90e419d0639399c5c3`  
-Implementation CI workflow: `37901677283`
+Implementation CI: `37901677283`  
+Documentation validation head: `b9c97271e51fbca63b1a0c1910f3389d80d12db8`  
+Documentation-head CI: `37901932522`
 
 ### Deterministic inventory
 
@@ -120,24 +118,21 @@ Discovery rules:
 2. recursively discover every `.yaml` manifest;
 3. reject symlink entries in the manifest tree;
 4. sort manifests deterministically by root-relative path;
-5. load every manifest through the Checkpoint 1 `FixtureRepository`;
-6. therefore validate paths, manifest provenance, and expected SHA-256 before execution;
-7. reject duplicate fixture IDs;
-8. reject an empty YAML inventory.
+5. load every manifest through `FixtureRepository` so path, provenance, and expected SHA-256 checks run before execution;
+6. reject duplicate fixture IDs;
+7. reject an empty YAML inventory.
 
-A newly checked-in YAML fixture therefore cannot silently escape the repository-wide M5 test merely because an author forgot to add it to a hand-maintained list.
+A newly checked-in YAML fixture therefore cannot silently escape the repository-wide M5 gate because an author forgot to add it to a hand-maintained list.
 
 ### Exact semantic runner
 
-`crates/osrs-reference/src/runner.rs` executes each integrity-verified normalized fixture through the real production semantic functions while keeping the runner itself in the development-only reference crate.
+`crates/osrs-reference/src/runner.rs` executes each integrity-verified normalized fixture through production `osrs-core` semantics:
 
-Current mappings:
+- `model_selection` -> `select_object_model`;
+- `model_mirror` -> `mirror_source_model`;
+- `model_transform` -> `apply_object_model_instance_transforms`.
 
-- `model_selection` -> `osrs_core::model_construction::select_object_model`;
-- `model_mirror` -> `osrs_core::model_construction::mirror_source_model`;
-- `model_transform` -> `osrs_core::model_construction::apply_object_model_instance_transforms`.
-
-The runner then normalizes only the fields owned by that fixture family and requires exact typed equality with the checked-in expected document. It does not introduce tolerance, sorting, hidden mirror/placement stages, renderer-space conversion, or fallback acceptance.
+The runner normalizes only the fields owned by each fixture family and requires exact typed equality with the checked-in expected document. It introduces no tolerance, sorting, hidden mirror/placement stage, renderer-space conversion, or fallback acceptance.
 
 `crates/osrs-reference/tests/m5_fixture_runner.rs` asserts the deterministic current inventory:
 
@@ -149,21 +144,21 @@ and requires all three to execute successfully.
 
 ### Dedicated Tier C gate
 
-`.github/workflows/ci.yml` now includes:
+`.github/workflows/ci.yml` now runs:
 
 `cargo test --locked -p osrs-reference --test m5_fixture_runner`
 
-as `Run M5 repository-wide normalized fixture runner` in Tier C after the existing M3/M4 semantic gates.
+as `Run M5 repository-wide normalized fixture runner` after the existing M3/M4 semantic gates.
 
 Ordinary CI remains offline with respect to oracle execution and regeneration.
 
-### Checkpoint 3 caught and corrected a Checkpoint 2 migration defect
+### Runner-detected correction to the Checkpoint 2 transform migration
 
-The first repository-wide execution run correctly failed `model.transform.type4_order` while all M4 production transform tests remained green. The failure proved that the Checkpoint 2 v1 transform artifact was hash-consistent but was not an exact normalization of the executable M4 case it cited.
+The first repository-wide execution correctly failed `model.transform.type4_order` while M4 production transform tests remained green. The failure proved the Checkpoint 2 v1 transform artifact was hash-consistent but not an exact normalization of the executable M4 case it cited.
 
-The M4 source case was re-read from commit `384b1274d40bbc8b4acd383ee31364b82a2e08cc`, test `combined_pipeline_matches_reference_order_exactly`.
+The cited M4 case was re-read from commit `384b1274d40bbc8b4acd383ee31364b82a2e08cc`, test `combined_pipeline_matches_reference_order_exactly`.
 
-The corrected normalized input is now exactly:
+Correct normalized input:
 
 - vertices `(128, 64, 0)`, `(0, 0, 0)`, `(0, 128, 0)`;
 - face color `100`;
@@ -182,38 +177,25 @@ Correct expected output:
 - face texture `9`;
 - expected SHA-256 `e40dcd4a67048e4d05d7baee3340d8aa4d96f1ae13bf4f3af4bae71d0f2b78fc`.
 
-`reference-fixtures/manifest/M5-MODEL-MIGRATION-v2.md` records this correction explicitly. Its Git blob identity is `146c3c5fac2611d8cb9968353de30436defc1a85`.
+`reference-fixtures/manifest/M5-MODEL-MIGRATION-v2.md` records the correction explicitly. Its Git blob is `146c3c5fac2611d8cb9968353de30436defc1a85`. The type-4 manifest points to that v2 record; v1 remains checked in as historical provenance.
 
-The type-4 manifest now points to this v2 record. The v1 record is retained as historical provenance rather than rewritten.
-
-No production transform code changed. The runner remained strict. The correction changed the fixture to the actual cited executable source case instead of weakening equality or accepting a newly observed output as an oracle.
+No production transform code changed. The runner remained strict. The artifact was corrected to the actual cited executable source case rather than weakening equality or accepting the runner's previous observed output as a new oracle.
 
 ### Validation
 
 Implementation head `eb4d6ee8909a8170374a5e90e419d0639399c5c3` passed workflow `37901677283`:
 
 - Tier A: PASS
-  - architecture boundaries;
-  - architecture guard;
-  - rustfmt;
-  - locked workspace check;
-  - strict clippy.
-- Tier B: PASS
-  - full workspace tests;
-  - repository-wide M5 runner passes all three fixtures.
-- Tier C: PASS
-  - M3 P0 decode fixtures;
-  - M3 deterministic decoder fuzz smoke;
-  - M4 fixture inventory;
-  - M4 exact model construction/instance transforms;
-  - M4 model decoder fuzz smoke;
-  - dedicated M5 repository-wide normalized fixture runner.
+- Tier B: PASS, including repository-wide fixture execution
+- Tier C: PASS, including the dedicated M5 runner plus all existing M3/M4 gates
+
+Documentation validation head `b9c97271e51fbca63b1a0c1910f3389d80d12db8` passed the same full chain in workflow `37901932522`.
 
 ### Checkpoint 3 implementation diff against Checkpoint 2
 
-Implementation head is 14 commits ahead and 0 behind Checkpoint 2 documentation head `38117bbbb511bafed527fe5acb6bc335bcc9e330`.
+Implementation head was 14 commits ahead and 0 behind Checkpoint 2 documentation head `38117bbbb511bafed527fe5acb6bc335bcc9e330`.
 
-Permanent implementation changes are confined to:
+Permanent implementation changes were confined to:
 
 1. `.github/workflows/ci.yml`
 2. `crates/osrs-reference/src/inventory.rs`
@@ -228,17 +210,16 @@ Permanent implementation changes are confined to:
 
 No `osrs-core`, `osrs-cache`, `osrs-scene`, renderer, editor, or production semantic implementation changed.
 
-### Explicit non-goals / deferred work
+### Deferred work
 
 Checkpoint 3 does not implement:
 
 - Java/deob executable regeneration;
-- an oracle source checkout/downloader;
-- external source-root mutation;
+- oracle source checkout/downloader behavior;
 - automatic expected-output rewriting;
 - historical `deob_golden.txt` migration;
-- normal, lighting, placement, bridge/plane, or face-priority semantic fixtures;
-- parity-matrix promotion for those later semantic families.
+- normal, lighting, placement, bridge/plane, or face-priority semantic fixture families;
+- parity-matrix promotion for those later families.
 
 Those remain owned by Checkpoints 4-6.
 
@@ -246,6 +227,6 @@ Those remain owned by Checkpoints 4-6.
 
 ## Current milestone boundary
 
-Checkpoint 3 implementation is complete. The documentation-complete branch head must pass the full Tier A/B/C chain before Checkpoint 3 is closed.
+M5 Checkpoint 3 is complete. Checkpoint 4 has not started.
 
 No M5 pull request should be opened until the milestone exit checkpoint.
