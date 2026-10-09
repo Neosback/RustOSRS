@@ -204,9 +204,14 @@ impl fmt::Display for NormalizedSchemaError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Utf8(detail) => write!(formatter, "normalized fixture is not UTF-8: {detail}"),
-            Self::Syntax(detail) => write!(formatter, "invalid normalized fixture document: {detail}"),
+            Self::Syntax(detail) => {
+                write!(formatter, "invalid normalized fixture document: {detail}")
+            }
             Self::UnsupportedSchemaVersion(version) => {
-                write!(formatter, "unsupported normalized fixture schema version {version}")
+                write!(
+                    formatter,
+                    "unsupported normalized fixture schema version {version}"
+                )
             }
         }
     }
@@ -216,9 +221,7 @@ impl Error for NormalizedSchemaError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        NormalizedFixtureInput, NormalizedFixtureKind, NormalizedSchemaError,
-    };
+    use super::{NormalizedFixtureInput, NormalizedFixtureKind, NormalizedSchemaError};
 
     #[test]
     fn parses_typed_model_selection_document() -> Result<(), Box<dyn std::error::Error>> {
