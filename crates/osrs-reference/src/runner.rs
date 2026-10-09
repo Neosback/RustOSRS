@@ -3,9 +3,8 @@
 use crate::inventory::FixtureInventory;
 use crate::loader::LoadedFixture;
 use crate::schema::{
-    NormalizedExpectedCase, NormalizedFixtureExpected, NormalizedFixtureInput,
-    NormalizedInputCase, NormalizedModelPoint, NormalizedModelSelection, NormalizedObjectModels,
-    NormalizedTriangle,
+    NormalizedExpectedCase, NormalizedFixtureExpected, NormalizedFixtureInput, NormalizedInputCase,
+    NormalizedModelPoint, NormalizedModelSelection, NormalizedObjectModels, NormalizedTriangle,
 };
 use osrs_core::coords::ModelPoint;
 use osrs_core::definitions::{
@@ -23,10 +22,8 @@ use osrs_core::model_construction::{
 use osrs_core::provenance::{CacheFingerprint, ProfileDigest, TargetProvenance};
 use std::fmt;
 
-const PROFILE_DIGEST: &str =
-    "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
-const CACHE_FINGERPRINT: &str =
-    "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
+const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
+const CACHE_FINGERPRINT: &str = "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixtureRunReport {
@@ -109,29 +106,22 @@ fn execute_input(
                 ModelTranslation::ZERO,
             )
             .map_err(|detail| failure(fixture_id, detail))?;
-            let selection = select_object_model(
-                &definition,
-                LocType::new(requested_type),
-                orientation,
-            )
-            .map(|selection| NormalizedModelSelection {
-                model_ids: selection
-                    .model_ids()
-                    .iter()
-                    .map(|model_id| model_id.get())
-                    .collect(),
-                mirror: selection.mirror(),
-            });
+            let selection =
+                select_object_model(&definition, LocType::new(requested_type), orientation).map(
+                    |selection| NormalizedModelSelection {
+                        model_ids: selection
+                            .model_ids()
+                            .iter()
+                            .map(|model_id| model_id.get())
+                            .collect(),
+                        mirror: selection.mirror(),
+                    },
+                );
             Ok(NormalizedExpectedCase::ModelSelection { selection })
         }
         NormalizedInputCase::ModelMirror { vertices, faces } => {
-            let source = source_model(
-                vertices,
-                faces.clone(),
-                vec![0; faces.len()],
-                None,
-            )
-            .map_err(|detail| failure(fixture_id, detail))?;
+            let source = source_model(vertices, faces.clone(), vec![0; faces.len()], None)
+                .map_err(|detail| failure(fixture_id, detail))?;
             let mirrored = mirror_source_model(&source)
                 .map_err(|error| failure(fixture_id, format!("mirror source model: {error}")))?;
             Ok(NormalizedExpectedCase::ModelMirror {
@@ -245,9 +235,9 @@ fn convert_models(models: NormalizedObjectModels) -> ObjectModels {
                 })
                 .collect(),
         ),
-        NormalizedObjectModels::Untyped { model_ids } => ObjectModels::Untyped(
-            model_ids.into_iter().map(ModelId::new).collect(),
-        ),
+        NormalizedObjectModels::Untyped { model_ids } => {
+            ObjectModels::Untyped(model_ids.into_iter().map(ModelId::new).collect())
+        }
     }
 }
 
