@@ -4,9 +4,9 @@ use crate::fixture::FixtureExecution;
 use crate::inventory::FixtureInventory;
 use crate::loader::LoadedFixture;
 use crate::schema::{
-    NormalizedExpectedCase, NormalizedFixtureExpected, NormalizedFixtureInput, NormalizedFixtureKind,
-    NormalizedInputCase, NormalizedModelPoint, NormalizedModelSelection, NormalizedObjectModels,
-    NormalizedTriangle,
+    NormalizedExpectedCase, NormalizedFixtureExpected, NormalizedFixtureInput,
+    NormalizedFixtureKind, NormalizedInputCase, NormalizedModelPoint, NormalizedModelSelection,
+    NormalizedObjectModels, NormalizedTriangle,
 };
 use osrs_core::coords::ModelPoint;
 use osrs_core::definitions::{
