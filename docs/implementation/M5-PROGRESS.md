@@ -94,13 +94,7 @@ Documentation-head CI: `37901932522`
 Closeout head: `cda2dd13214fd342b1f0c1b6e17f2e65c32e6b5e`  
 Closeout CI: `37902148092`
 
-Checkpoint 3 added deterministic recursive discovery of every YAML manifest under `reference-fixtures/manifest/`, with:
-
-- deterministic path ordering;
-- symlink rejection;
-- path/provenance/hash verification through `FixtureRepository`;
-- duplicate fixture-ID rejection;
-- empty-inventory rejection.
+Checkpoint 3 added deterministic recursive discovery of every YAML manifest under `reference-fixtures/manifest/`, with deterministic ordering, symlink rejection, path/provenance/hash verification, duplicate-ID rejection, and empty-inventory rejection.
 
 The exact semantic runner maps normalized model fixtures to real production functions:
 
@@ -112,18 +106,7 @@ Tier C permanently runs:
 
 `cargo test --locked -p osrs-reference --test m5_fixture_runner`
 
-### Checkpoint 3 fixture correction
-
-The first repository-wide execution correctly exposed that the Checkpoint 2 manual `model.transform.type4_order` artifact did not reproduce the executable M4 test it cited. Production transform code remained green and unchanged.
-
-The corrected canonical input now matches M4 test `combined_pipeline_matches_reference_order_exactly` and yields:
-
-- vertices `(-262, 27, -115)`, `(-80, -5, -25)`, `(-80, 59, -25)`;
-- face color `300`;
-- face texture `9`;
-- expected SHA-256 `e40dcd4a67048e4d05d7baee3340d8aa4d96f1ae13bf4f3af4bae71d0f2b78fc`.
-
-`M5-MODEL-MIGRATION-v2.md` records the correction. The original v1 record remains historical evidence rather than being rewritten.
+The first repository-wide execution also exposed and corrected the manually normalized `model.transform.type4_order` artifact without changing production model-transform code. `M5-MODEL-MIGRATION-v2.md` preserves that correction trail.
 
 ---
 
@@ -138,31 +121,18 @@ Documentation-head CI: `37903891175`
 
 Checkpoint 4 separated oracle execution from ordinary tests and made regeneration candidate-only.
 
-### Public development command
+`tools/reference-fixtures/regenerate.py` exposes adapter `melxin-deob-golden`, pins `melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`, and requires explicit local source/dependency/output paths.
 
-`tools/reference-fixtures/regenerate.py` exposes adapter `melxin-deob-golden` and pins:
+Both the Python entry point and `tools/deob-harness/run.sh`:
 
-`melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`
+- refuse output paths inside `reference-fixtures/`;
+- refuse silently overwriting existing candidates;
+- provide no `--accept` mode;
+- do not clone or download dependencies during ordinary operation;
+- do not edit manifests or expected hashes;
+- do not run in ordinary CI.
 
-It requires explicit local paths for the pinned checkout, caller-supplied compile-only bcprov jar, candidate output, and optional isolated work directory.
-
-It does not clone source, download dependencies, edit manifests, update expected hashes, or accept generated output.
-
-### Candidate-only safety boundary
-
-Both the Python entry point and `tools/deob-harness/run.sh` refuse output paths inside `reference-fixtures/` and refuse silently overwriting an existing candidate. There is no `--accept` mode.
-
-The deob harness now:
-
-- has no developer-machine absolute RuneLite path;
-- requires exact expected Git commit verification;
-- requires explicit source roots and caller-supplied bcprov jar;
-- uses isolated build state;
-- does not download Maven artifacts itself;
-- writes only the requested external candidate;
-- reports candidate SHA-256 and byte length.
-
-Tier A runs `scripts/test_reference_regeneration.py` to verify the safety contract entirely offline. Ordinary CI never executes Java/deob oracle code.
+Tier A runs `scripts/test_reference_regeneration.py` to verify the regeneration safety contract entirely offline.
 
 ---
 
@@ -170,8 +140,8 @@ Tier A runs `scripts/test_reference_regeneration.py` to verify the safety contra
 
 Status: **IMPLEMENTATION COMPLETE; FINAL DOCUMENTATION-HEAD CI PENDING**
 
-Implementation validation head: `feac12faef49bf8d7aefc90e5231987d97c7a80e`  
-Implementation CI: `37905055308`
+Implementation validation head: `0e8f38ab41c3fcf4ce9b0283e243ac87f39cb338`  
+Implementation CI: `37905951808`
 
 ### Historical `deob_golden.txt` index
 
@@ -184,13 +154,13 @@ Historical source identity:
 - `reference-fixtures/deob_golden.txt` Git blob `49887733ad463572cf61bc059733b7c5f5fd26f4`;
 - `tools/deob-harness/src/Dumper.java` Git blob `ceefbd6e97c8e0b09c2ef196b3f9fd2e0f763236`.
 
-The index deliberately classifies this evidence as historical local-harness output corroborated by pinned public source. It does **not** claim the original developer-machine source tree was byte-identical to the public upstream commit.
+The index deliberately classifies this evidence as `historical_local_harness_corroborated_by_public_source`. It does **not** claim the original developer-machine source tree was byte-identical to the pinned public upstream commit.
 
 Indexed semantic families:
 
 1. `terrain.shape_gallery.all_13x4`
    - owns `TERRAIN-001`;
-   - exactly 52 `tri shape=` lines;
+   - exactly 52 `tri shape=` rows;
    - public `SceneTileModel.java` blob `ce6a179cfa93e02271af87164e102ee538223718`.
 2. `contour.synthetic.flat_slope`
    - owns `CONTOUR-001`;
@@ -211,19 +181,26 @@ Indexed semantic families:
    - exact floor-decoration storage row.
 7. `placement.game_object.footprint_and_capacity`
    - owns `LOC-PLACEMENT-003`;
-   - indexes roof-like type 14, type 9, 2x1 shared footprint/edge masks, and five-object capacity evidence.
+   - indexes type-14/type-9 centers, 2x1 shared footprint/edge masks, and five-object capacity evidence.
 
 Placement families are corroborated by pinned public `Scene.java` blob `f15260a63103952fe8f5ffbdb62f5c7c39d94565`.
 
-`scripts/test_deob_golden_index.py` gates this index offline. It verifies exact source/harness identities, unique stable IDs, public source-pin shape, exact-line uniqueness, and expected prefix counts. Tier A runs this test on every push/PR.
+`scripts/test_deob_golden_index.py` gates this index offline. It verifies:
 
-The historical index is evidence preparation for M6-M8. It does not promote unimplemented scene, contour, or lighting semantics to `EXISTING`.
+- exact Git blob identities recomputed from the checked-in `deob_golden.txt` and `Dumper.java` bytes;
+- the historical evidence classification;
+- unique stable fixture IDs;
+- public source-pin shape;
+- exact-line uniqueness;
+- expected prefix counts.
+
+The historical index prepares evidence for M6-M8. It does not promote scene, contour, or lighting semantics to `EXISTING`.
 
 ### `FACE-002` priority-order fixture
 
-The historical dump contains no face-priority emission-order oracle. Checkpoint 5 therefore does **not** fabricate one from unrelated historical rows.
+The historical dump contains no face-priority emission-order oracle, so Checkpoint 5 does not fabricate one from unrelated historical rows.
 
-Instead, the new canonical fixture is source-pinned directly to:
+The canonical priority fixture is source-pinned directly to:
 
 - `melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`;
 - `runescape-client/src/main/java/Model.java`;
@@ -241,7 +218,7 @@ Artifacts:
 - `reference-fixtures/manifest/priority-all-0-11-threshold-crossing.yaml`;
 - `reference-fixtures/manifest/M5-PRIORITY-MIGRATION-v1.md`.
 
-The crafted input includes priorities `0..11`, deliberately distinct threshold bands, priority-10 and priority-11 queues, and representative alpha metadata.
+The crafted case covers priorities `0..11`, distinct threshold bands, priority-10 and priority-11 queues, and representative signed alpha metadata.
 
 Exact thresholds:
 
@@ -257,18 +234,20 @@ Expected-output SHA-256:
 
 `773a8f503cd998944f79b1195f034a5c64bb8504d9e1fee471e9ecf2808ba787`
 
-The ordering intentionally proves that the reference implementation drains priority `10` before switching to priority `11`; it does not globally merge both special queues by depth.
+The ordering proves that the reference routine drains priority `10` before switching to priority `11`; it does not globally merge both special queues by depth.
 
-### Evidence-only execution mode
+### Evidence-only execution boundary
 
 Checkpoint 5 adds explicit manifest execution classification:
 
 - `semantic` is the default and requires an implemented production executor;
-- `evidence_only` validates manifest provenance, schema, expected SHA-256, deterministic inventory inclusion, and input/expected kind equality without falsely executing a production path that does not exist.
+- `evidence_only` validates schema, provenance, expected SHA-256, deterministic inventory inclusion, and input/expected kind equality without pretending an unimplemented production path exists.
 
-The priority fixture is `execution: evidence_only` because the renderer-owned priority-order implementation belongs to a later milestone. If it is accidentally changed to semantic today, the runner fails explicitly because no priority production executor exists.
+The priority fixture is `execution: evidence_only` because ordered renderer face emission belongs to a later milestone. The runner explicitly rejects `priority_order` as semantic until that owner exists.
 
-This means the fixture contract is ready now while `FACE-002` itself remains **REQUIRED**, not `EXISTING`.
+The runner also refuses to use `evidence_only` to bypass any fixture kind that already has an M5 production semantic executor. A regression test proves that an implemented model fixture cannot be downgraded to evidence-only.
+
+`FACE-002` therefore remains **REQUIRED**, not `EXISTING`.
 
 ### Normalized inventory
 
@@ -279,33 +258,32 @@ The M5 repository-wide YAML inventory now contains four canonical fixtures:
 3. `model.transform.type4_order`
 4. `priority.all_0_11.threshold_crossing`
 
-The first three execute against production semantics. The fourth is integrity/provenance/schema/hash gated as evidence-only.
+The first three execute against production semantics. The fourth remains integrity/provenance/schema/hash gated as evidence-only.
 
 ### Validation
 
-Implementation head `feac12faef49bf8d7aefc90e5231987d97c7a80e` passed workflow `37905055308`:
+Implementation head `0e8f38ab41c3fcf4ce9b0283e243ac87f39cb338` passed workflow `37905951808`:
 
 - Tier A: PASS
   - architecture boundaries;
   - architecture guard;
   - reference regeneration safety;
-  - historical deob golden index gate;
+  - historical deob golden index and exact historical Git blob verification;
   - rustfmt;
   - locked workspace check;
   - strict clippy.
 - Tier B: PASS
-  - complete workspace tests, including evidence-only manifest/schema/hash validation.
+  - complete workspace tests;
+  - evidence-only semantic-bypass regression.
 - Tier C: PASS
   - all existing M3/M4 semantic gates;
   - M5 repository-wide normalized fixture runner over all four fixtures.
 
-An earlier implementation head failed only because a new unit test used `expect()`, which strict clippy forbids. The test was rewritten without lint suppression; the corrected head above is fully green.
+### Checkpoint 5 diff against Checkpoint 4
 
-### Checkpoint 5 implementation diff against Checkpoint 4
+The Checkpoint 5 branch remains based directly on Checkpoint 4 head `817a74304512c564b90e6b6fbd58b2cd9eed32e3`, with no production semantic crate changes.
 
-Implementation head is 12 commits ahead and 0 behind Checkpoint 4 documentation head `817a74304512c564b90e6b6fbd58b2cd9eed32e3`.
-
-Implementation changes are confined to reference infrastructure/evidence and CI:
+Permanent Checkpoint 5 changes are confined to reference infrastructure/evidence and CI:
 
 - `.github/workflows/ci.yml`;
 - `crates/osrs-reference/src/fixture.rs`;
@@ -316,7 +294,8 @@ Implementation changes are confined to reference infrastructure/evidence and CI:
 - `reference-fixtures/manifest/M5-PRIORITY-MIGRATION-v1.md`;
 - `reference-fixtures/manifest/priority-all-0-11-threshold-crossing.yaml`;
 - priority input/expected JSON artifacts;
-- `scripts/test_deob_golden_index.py`.
+- `scripts/test_deob_golden_index.py`;
+- this progress record.
 
 No `osrs-core`, `osrs-cache`, `osrs-scene`, renderer, editor, or production semantic implementation changed.
 
@@ -324,7 +303,7 @@ No `osrs-core`, `osrs-cache`, `osrs-scene`, renderer, editor, or production sema
 
 Checkpoint 5 does not:
 
-- implement scene placement from the historical rows;
+- implement scene placement from historical rows;
 - implement contouring or lighting;
 - implement renderer face-priority ordering;
 - promote `FACE-002`, placement, contour, or lighting rows to `EXISTING`;
