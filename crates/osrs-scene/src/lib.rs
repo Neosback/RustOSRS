@@ -12,7 +12,7 @@ pub mod terrain;
 pub use placement::{
     BoundaryPlan, CARDINAL_OFFSET_X, CARDINAL_OFFSET_Z, DIAGONAL_OFFSET_X, DIAGONAL_OFFSET_Z,
     DIAGONAL_WALL_FLAGS, FloorDecorationPlan, Footprint, GameObjectPlan, ModelRequest,
-    PlacementError, PlacementInput, PlacementKind, PlacementPlan, SceneLayer, STRAIGHT_WALL_FLAGS,
+    PlacementError, PlacementInput, PlacementKind, PlacementPlan, STRAIGHT_WALL_FLAGS, SceneLayer,
     WallDecorationPlan, plan_placement,
 };
 pub use scene::{SceneGrid, SceneGridError, SemanticTile};
