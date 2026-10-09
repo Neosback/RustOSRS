@@ -16,3 +16,4 @@ pub mod model_construction;
 pub mod normals;
 pub mod orientation;
 pub mod provenance;
+pub mod static_entity;
