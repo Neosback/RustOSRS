@@ -1,6 +1,6 @@
 # Semantic Parity Verification Matrix
 
-Status: **Implementation tracking through M6 Checkpoint 4 semantic scene insertion and queries**
+Status: **Implementation tracking through M6 Checkpoint 5 definition-driven side-effect planning**
 
 This matrix maps every canonical semantic specification to its required verification family. Coverage status describes checked-in production test/fixture implementation state, not source-evidence certainty.
 
@@ -58,16 +58,17 @@ At M5 exit, the repository-wide normalized runner validated all ten canonical YA
 
 The historical index exposes stable fixture IDs for `terrain.shape_gallery.all_13x4`, `contour.synthetic.flat_slope`, `lighting.synthetic_triangle.loc_rig`, `placement.wall_types.orientation_matrix`, `placement.decor_types.orientation_matrix`, `placement.floor_type22.storage`, and `placement.game_object.footprint_and_capacity`.
 
-## M6 scene insertion coverage
+## M6 scene insertion and side-effect planning coverage
 
-M6 Checkpoint 4 connects the existing exact placement planner to production semantic tile storage without advancing later collision, clipping, occlusion, model-building, or renderer ownership.
+M6 Checkpoint 4 connects the exact placement planner to production semantic tile storage. Checkpoint 5 adds definition-driven side-effect planning without prematurely copying the reference client's private collision, shadow, or occlusion bit-grid layouts.
 
-| M6 insertion family | Exact verification artifact | Coverage |
+| M6 insertion/side-effect family | Exact verification artifact | Coverage |
 |---|---|---|
 | fixed scene-layer insertion and query for loc types `0..22` plus representative `>=12` | `crates/osrs-scene/tests/m6_scene_insertion.rs`, `crates/osrs-scene/src/placement.rs` unit tests | EXISTING |
 | game-object full-footprint insertion, shared identity, edge masks, five-object capacity, atomic rejection | `crates/osrs-scene/src/scene.rs` unit tests, `crates/osrs-scene/tests/m6_scene_insertion.rs`, pinned `Scene.newGameObject` | EXISTING for storage; sloped height sampling remains pending |
 | floor-decoration storage at supplied flat and synthetic slope heights | `crates/osrs-scene/tests/m6_scene_insertion.rs` | EXISTING |
-| stored placement metadata for later definition-driven collision/clipping/occlusion side effects | `ScenePlacedLoc`, `SceneGameObject::placement`, scene insertion tests | PARTIAL; side-effect mutation formulas remain unimplemented |
+| definition-driven collision operation selection, including floor-decoration special case and definition-footprint collision for visually 1x1 type `9` | `crates/osrs-scene/src/side_effects.rs` unit tests, pinned `FriendSystem.addObjects` | EXISTING at operation-plan level |
+| definition clipping/model-clipping/ground-obstruction inputs and audited wall-displacement metadata retained for deterministic later side-grid mutation | `DefinitionSideEffectInputs`, `SceneSideEffectPlan`, side-effect planner unit tests | PARTIAL; concrete shadow/occlusion/collision bit-grid mutations remain intentionally unimplemented |
 | multi-tile game-object plane identity under link-below mutation | `crates/osrs-scene/src/scene.rs` unit tests | EXISTING |
 
 ## Placement
@@ -81,7 +82,7 @@ M6 Checkpoint 4 connects the existing exact placement planner to production sema
 | `LOC-PLACEMENT-005` | definition-driven collision/clipping/occlusion/wall metadata cases | exact side-effect state per promoted sub-contract | PARTIAL |
 | `LOC-PLACEMENT-006` | floor decoration flat+slope cases; indexed evidence ID `placement.floor_type22.storage` | exact semantic Z, no implicit lift | EXISTING |
 
-`LOC-PLACEMENT-003` remains `PARTIAL`: exact rotated footprints, centers, atomic footprint storage, capacity, and edge masks are covered, but the production scene builder does not yet own exact sloped terrain center sampling. `LOC-PLACEMENT-005` is also only `PARTIAL`: Checkpoint 4 preserves the canonical placement metadata needed for later side-effect regeneration but does not implement collision, clipping, or occlusion mutation formulas. `LOC-PLACEMENT-004` remains later runtime/replacement work.
+`LOC-PLACEMENT-003` remains `PARTIAL`: exact rotated footprints, centers, atomic footprint storage, capacity, and edge masks are covered, but the production scene builder does not yet own exact sloped terrain center sampling. `LOC-PLACEMENT-005` remains `PARTIAL`: Checkpoint 5 now source-pins and tests exact collision-operation selection plus audited wall-displacement updates, while preserving clipping/model-clipping/ground-obstruction inputs verbatim; concrete collision, shadow/clipping, and occlusion bit-grid mutation formulas remain outside the promoted contract. `LOC-PLACEMENT-004` remains later runtime/replacement work.
 
 ## Model construction
 
