@@ -1,6 +1,9 @@
 //! Bounded semantic tile storage for M6 scene construction.
 
-use crate::terrain::TerrainSurface;
+use crate::{
+    placement::{PlacementKind, PlacementPlan},
+    terrain::TerrainSurface,
+};
 use osrs_core::{
     coords::{SceneTile, SourcePlane, StoragePlane},
     ids::ObjectId,
@@ -8,17 +11,52 @@ use osrs_core::{
 use std::{error::Error, fmt};
 
 const GAME_OBJECT_TAG_TYPE: u8 = 2;
+const GAME_OBJECTS_PER_TILE: usize = 5;
 
-/// Semantic game-object state owned by the scene tile stack.
+/// One fixed-layer semantic location placement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScenePlacedLoc {
+    object_id: ObjectId,
+    placement: PlacementPlan,
+}
+
+impl ScenePlacedLoc {
+    pub const fn new(object_id: ObjectId, placement: PlacementPlan) -> Self {
+        Self {
+            object_id,
+            placement,
+        }
+    }
+
+    pub const fn object_id(self) -> ObjectId {
+        self.object_id
+    }
+
+    pub const fn placement(self) -> PlacementPlan {
+        self.placement
+    }
+}
+
+/// Semantic game-object occupancy owned by the scene tile stack.
+///
+/// A production placement receives an internal instance identity so every tile
+/// covered by one footprint can retain the same semantic object identity while
+/// still preserving the reference per-tile edge mask.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SceneGameObject {
+    instance_id: Option<u64>,
     object_id: ObjectId,
     tag_type: u8,
     start: SceneTile,
+    end: SceneTile,
     plane: StoragePlane,
+    edge_mask: u8,
+    placement: Option<PlacementPlan>,
 }
 
 impl SceneGameObject {
+    /// Construct a minimal game-object record for evidence/tests that do not
+    /// originate from the production placement planner.
     pub const fn new(
         object_id: ObjectId,
         tag_type: u8,
@@ -26,10 +64,35 @@ impl SceneGameObject {
         plane: StoragePlane,
     ) -> Self {
         Self {
+            instance_id: None,
             object_id,
             tag_type,
             start,
+            end: start,
             plane,
+            edge_mask: 0,
+            placement: None,
+        }
+    }
+
+    fn from_placement(
+        instance_id: u64,
+        object_id: ObjectId,
+        plane: StoragePlane,
+        start: SceneTile,
+        end: SceneTile,
+        edge_mask: u8,
+        placement: PlacementPlan,
+    ) -> Self {
+        Self {
+            instance_id: Some(instance_id),
+            object_id,
+            tag_type: GAME_OBJECT_TAG_TYPE,
+            start,
+            end,
+            plane,
+            edge_mask,
+            placement: Some(placement),
         }
     }
 
@@ -45,8 +108,24 @@ impl SceneGameObject {
         self.start
     }
 
+    pub const fn end(&self) -> SceneTile {
+        self.end
+    }
+
     pub const fn plane(&self) -> StoragePlane {
         self.plane
+    }
+
+    pub const fn edge_mask(&self) -> u8 {
+        self.edge_mask
+    }
+
+    pub const fn placement(&self) -> Option<PlacementPlan> {
+        self.placement
+    }
+
+    pub const fn instance_id(&self) -> Option<u64> {
+        self.instance_id
     }
 }
 
@@ -56,6 +135,9 @@ pub struct SemanticTile {
     source_plane: Option<SourcePlane>,
     storage_plane: StoragePlane,
     pub terrain: Option<TerrainSurface>,
+    floor_decoration: Option<ScenePlacedLoc>,
+    boundary: Option<ScenePlacedLoc>,
+    wall_decoration: Option<ScenePlacedLoc>,
     game_objects: Vec<SceneGameObject>,
     linked_below: Option<Box<SemanticTile>>,
 }
@@ -66,6 +148,9 @@ impl SemanticTile {
             source_plane,
             storage_plane,
             terrain: None,
+            floor_decoration: None,
+            boundary: None,
+            wall_decoration: None,
             game_objects: Vec::new(),
             linked_below: None,
         }
@@ -77,6 +162,18 @@ impl SemanticTile {
 
     pub const fn storage_plane(&self) -> StoragePlane {
         self.storage_plane
+    }
+
+    pub const fn floor_decoration(&self) -> Option<&ScenePlacedLoc> {
+        self.floor_decoration.as_ref()
+    }
+
+    pub const fn boundary(&self) -> Option<&ScenePlacedLoc> {
+        self.boundary.as_ref()
+    }
+
+    pub const fn wall_decoration(&self) -> Option<&ScenePlacedLoc> {
+        self.wall_decoration.as_ref()
     }
 
     pub fn game_objects(&self) -> &[SceneGameObject] {
@@ -99,18 +196,31 @@ impl SemanticTile {
         &mut self,
         storage_plane: StoragePlane,
         anchor: SceneTile,
-    ) -> Result<(), SceneGridError> {
+    ) -> Result<Vec<GameObjectPlaneUpdate>, SceneGridError> {
         self.storage_plane = storage_plane;
+        let mut updates = Vec::new();
         for object in &mut self.game_objects {
             if object.tag_type == GAME_OBJECT_TAG_TYPE && object.start == anchor {
                 let value = object.plane.index().get();
                 if value > 0 {
                     object.plane = storage_plane_from_index(value - 1)?;
+                    if let Some(instance_id) = object.instance_id {
+                        updates.push(GameObjectPlaneUpdate {
+                            instance_id,
+                            plane: object.plane,
+                        });
+                    }
                 }
             }
         }
-        Ok(())
+        Ok(updates)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GameObjectPlaneUpdate {
+    instance_id: u64,
+    plane: StoragePlane,
 }
 
 /// Dense scene-storage grid with explicit plane count and bounds.
@@ -124,6 +234,7 @@ pub struct SceneGrid {
     plane_count: u8,
     plane_len: usize,
     tiles: Vec<Option<SemanticTile>>,
+    next_game_object_instance: u64,
 }
 
 /// Grid construction or access failure.
@@ -179,6 +290,7 @@ impl SceneGrid {
             plane_count,
             plane_len,
             tiles: vec![None; len],
+            next_game_object_instance: 1,
         })
     }
 
@@ -202,6 +314,39 @@ impl SceneGrid {
     pub fn tile_mut(&mut self, plane: StoragePlane, tile: SceneTile) -> Option<&mut SemanticTile> {
         self.index(plane, tile)
             .and_then(|index| self.tiles[index].as_mut())
+    }
+
+    pub fn floor_decoration(
+        &self,
+        plane: StoragePlane,
+        tile: SceneTile,
+    ) -> Option<&ScenePlacedLoc> {
+        self.tile(plane, tile)
+            .and_then(SemanticTile::floor_decoration)
+    }
+
+    pub fn boundary(&self, plane: StoragePlane, tile: SceneTile) -> Option<&ScenePlacedLoc> {
+        self.tile(plane, tile).and_then(SemanticTile::boundary)
+    }
+
+    pub fn wall_decoration(
+        &self,
+        plane: StoragePlane,
+        tile: SceneTile,
+    ) -> Option<&ScenePlacedLoc> {
+        self.tile(plane, tile)
+            .and_then(SemanticTile::wall_decoration)
+    }
+
+    /// Query the game object anchored at one tile, matching the reference
+    /// `getGameObject` identity rule rather than returning an arbitrary overlap.
+    pub fn game_object(&self, plane: StoragePlane, tile: SceneTile) -> Option<&SceneGameObject> {
+        self.tile(plane, tile).and_then(|semantic_tile| {
+            semantic_tile
+                .game_objects
+                .iter()
+                .find(|object| object.tag_type == GAME_OBJECT_TAG_TYPE && object.start == tile)
+        })
     }
 
     pub fn set_tile(
@@ -228,19 +373,41 @@ impl SceneGrid {
         tile: SceneTile,
         terrain: TerrainSurface,
     ) -> Result<(), SceneGridError> {
-        let Some(index) = self.index(plane, tile) else {
-            return Err(SceneGridError::OutOfBounds {
-                plane: plane.index().get(),
-                x: tile.x,
-                y: tile.y,
-            });
-        };
-        let source_plane = SourcePlane::new(plane.index().get())
-            .ok_or(SceneGridError::InvalidPlaneIndex(plane.index().get()))?;
-        let semantic_tile =
-            self.tiles[index].get_or_insert_with(|| SemanticTile::new(Some(source_plane), plane));
-        semantic_tile.terrain = Some(terrain);
+        self.ensure_tile(plane, tile)?.terrain = Some(terrain);
         Ok(())
+    }
+
+    /// Insert one already-planned initial semantic location.
+    ///
+    /// Fixed layers replace their one tile slot. Game objects first preflight
+    /// the complete footprint, then insert atomically across every covered tile
+    /// with the exact reference five-object capacity and per-tile edge masks.
+    pub fn insert_placement(
+        &mut self,
+        plane: StoragePlane,
+        object_id: ObjectId,
+        placement: PlacementPlan,
+    ) -> Result<bool, SceneGridError> {
+        match placement.kind {
+            PlacementKind::FloorDecoration(_) => {
+                self.ensure_tile(plane, placement_anchor(placement))?
+                    .floor_decoration = Some(ScenePlacedLoc::new(object_id, placement));
+                Ok(true)
+            }
+            PlacementKind::Boundary(_) => {
+                self.ensure_tile(plane, placement_anchor(placement))?.boundary =
+                    Some(ScenePlacedLoc::new(object_id, placement));
+                Ok(true)
+            }
+            PlacementKind::WallDecoration(_) => {
+                self.ensure_tile(plane, placement_anchor(placement))?
+                    .wall_decoration = Some(ScenePlacedLoc::new(object_id, placement));
+                Ok(true)
+            }
+            PlacementKind::GameObject(game) => {
+                self.insert_game_object(plane, object_id, placement, game.storage_footprint)
+            }
+        }
     }
 
     /// Apply the exact four-plane structural relinking from `Scene.setLinkBelow`.
@@ -277,6 +444,79 @@ impl SceneGrid {
         Ok(())
     }
 
+    fn insert_game_object(
+        &mut self,
+        plane: StoragePlane,
+        object_id: ObjectId,
+        placement: PlacementPlan,
+        footprint: crate::placement::Footprint,
+    ) -> Result<bool, SceneGridError> {
+        let start = placement_anchor(placement);
+        let width = u32::from(footprint.width);
+        let depth = u32::from(footprint.depth);
+        if width == 0 || depth == 0 {
+            return Ok(false);
+        }
+        let Some(end_x) = start.x.checked_add(width - 1) else {
+            return Ok(false);
+        };
+        let Some(end_y) = start.y.checked_add(depth - 1) else {
+            return Ok(false);
+        };
+        if end_x >= self.width || end_y >= self.height {
+            return Ok(false);
+        }
+        let end = SceneTile::new(end_x, end_y);
+
+        for x in start.x..=end.x {
+            for y in start.y..=end.y {
+                let tile = SceneTile::new(x, y);
+                if self
+                    .tile(plane, tile)
+                    .is_some_and(|value| value.game_objects.len() >= GAME_OBJECTS_PER_TILE)
+                {
+                    return Ok(false);
+                }
+            }
+        }
+
+        let instance_id = self.next_game_object_instance;
+        self.next_game_object_instance = self
+            .next_game_object_instance
+            .checked_add(1)
+            .ok_or(SceneGridError::CapacityOverflow)?;
+
+        for x in start.x..=end.x {
+            for y in start.y..=end.y {
+                let tile = SceneTile::new(x, y);
+                let edge_mask = game_object_edge_mask(tile, start, end);
+                let object = SceneGameObject::from_placement(
+                    instance_id,
+                    object_id,
+                    plane,
+                    start,
+                    end,
+                    edge_mask,
+                    placement,
+                );
+                self.ensure_tile(plane, tile)?.push_game_object(object);
+            }
+        }
+        Ok(true)
+    }
+
+    fn ensure_tile(
+        &mut self,
+        plane: StoragePlane,
+        tile: SceneTile,
+    ) -> Result<&mut SemanticTile, SceneGridError> {
+        let index = self.required_index(plane, tile)?;
+        let source_plane = SourcePlane::new(plane.index().get())
+            .ok_or(SceneGridError::InvalidPlaneIndex(plane.index().get()))?;
+        Ok(self.tiles[index]
+            .get_or_insert_with(|| SemanticTile::new(Some(source_plane), plane)))
+    }
+
     fn move_tile_down(
         &mut self,
         source_index: usize,
@@ -285,11 +525,25 @@ impl SceneGrid {
         anchor: SceneTile,
     ) -> Result<(), SceneGridError> {
         let mut moved = self.tiles[source_index].take();
-        if let Some(tile) = moved.as_mut() {
-            tile.relocate_down(target_plane, anchor)?;
-        }
+        let updates = match moved.as_mut() {
+            Some(tile) => tile.relocate_down(target_plane, anchor)?,
+            None => Vec::new(),
+        };
         self.tiles[target_index] = moved;
+        for update in updates {
+            self.propagate_game_object_plane(update);
+        }
         Ok(())
+    }
+
+    fn propagate_game_object_plane(&mut self, update: GameObjectPlaneUpdate) {
+        for tile in self.tiles.iter_mut().flatten() {
+            for object in &mut tile.game_objects {
+                if object.instance_id == Some(update.instance_id) {
+                    object.plane = update.plane;
+                }
+            }
+        }
     }
 
     fn required_index(
@@ -319,6 +573,34 @@ impl SceneGrid {
     }
 }
 
+fn placement_anchor(placement: PlacementPlan) -> SceneTile {
+    let footprint = placement.kind.storage_footprint();
+    let center_x = placement.storage_center.x.units();
+    let center_z = placement.storage_center.z.units();
+    let offset_x = i32::from(footprint.width) * 64;
+    let offset_z = i32::from(footprint.depth) * 64;
+    let x = (center_x - offset_x).div_euclid(128);
+    let y = (center_z - offset_z).div_euclid(128);
+    SceneTile::new(x as u32, y as u32)
+}
+
+const fn game_object_edge_mask(tile: SceneTile, start: SceneTile, end: SceneTile) -> u8 {
+    let mut mask = 0;
+    if tile.x > start.x {
+        mask |= 1;
+    }
+    if tile.x < end.x {
+        mask |= 4;
+    }
+    if tile.y > start.y {
+        mask |= 8;
+    }
+    if tile.y < end.y {
+        mask |= 2;
+    }
+    mask
+}
+
 fn storage_plane_from_index(value: u8) -> Result<StoragePlane, SceneGridError> {
     StoragePlane::new(value).ok_or(SceneGridError::InvalidPlaneIndex(value))
 }
@@ -326,7 +608,11 @@ fn storage_plane_from_index(value: u8) -> Result<StoragePlane, SceneGridError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::terrain::{FlatTerrainSurface, TerrainCorners};
+    use crate::{
+        placement::{PlacementInput, plan_placement},
+        terrain::{FlatTerrainSurface, TerrainCorners},
+    };
+    use osrs_core::definitions::LocType;
 
     #[test]
     fn grid_rejects_invalid_plane_counts() {
@@ -382,6 +668,90 @@ mod tests {
                 y: 0,
             })
         );
+        Ok(())
+    }
+
+    #[test]
+    fn game_object_footprint_is_atomic_and_uses_reference_edge_masks()
+    -> Result<(), Box<dyn Error>> {
+        let mut grid = SceneGrid::new(64, 64, 1)?;
+        let plane = storage_plane_from_index(0)?;
+        let placement = plan_placement(PlacementInput {
+            loc_type: LocType::new(10),
+            orientation: 0,
+            tile: SceneTile::new(50, 60),
+            size_x: 2,
+            size_y: 1,
+            sampled_height: 100,
+            existing_wall_displacement: None,
+        })?;
+        assert!(grid.insert_placement(plane, ObjectId::new(1), placement)?);
+
+        let left = grid
+            .tile(plane, SceneTile::new(50, 60))
+            .and_then(|tile| tile.game_objects().first());
+        let right = grid
+            .tile(plane, SceneTile::new(51, 60))
+            .and_then(|tile| tile.game_objects().first());
+        assert_eq!(left.map(SceneGameObject::edge_mask), Some(4));
+        assert_eq!(right.map(SceneGameObject::edge_mask), Some(1));
+        assert_eq!(left.and_then(SceneGameObject::instance_id), right.and_then(SceneGameObject::instance_id));
+        assert_eq!(left.map(SceneGameObject::start), Some(SceneTile::new(50, 60)));
+        assert_eq!(right.map(SceneGameObject::end), Some(SceneTile::new(51, 60)));
+        Ok(())
+    }
+
+    #[test]
+    fn game_object_capacity_rejects_sixth_without_partial_insertion()
+    -> Result<(), Box<dyn Error>> {
+        let mut grid = SceneGrid::new(2, 1, 1)?;
+        let plane = storage_plane_from_index(0)?;
+        for object_id in 0..5 {
+            let placement = plan_placement(PlacementInput {
+                loc_type: LocType::new(10),
+                orientation: 0,
+                tile: SceneTile::new(0, 0),
+                size_x: 1,
+                size_y: 1,
+                sampled_height: 0,
+                existing_wall_displacement: None,
+            })?;
+            assert!(grid.insert_placement(plane, ObjectId::new(object_id), placement)?);
+        }
+        let sixth = plan_placement(PlacementInput {
+            loc_type: LocType::new(10),
+            orientation: 0,
+            tile: SceneTile::new(0, 0),
+            size_x: 2,
+            size_y: 1,
+            sampled_height: 0,
+            existing_wall_displacement: None,
+        })?;
+        assert!(!grid.insert_placement(plane, ObjectId::new(99), sixth)?);
+        assert_eq!(
+            grid.tile(plane, SceneTile::new(0, 0))
+                .map(|tile| tile.game_objects().len()),
+            Some(5)
+        );
+        assert!(grid.tile(plane, SceneTile::new(1, 0)).is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn game_object_out_of_bounds_is_atomic() -> Result<(), Box<dyn Error>> {
+        let mut grid = SceneGrid::new(2, 2, 1)?;
+        let plane = storage_plane_from_index(0)?;
+        let placement = plan_placement(PlacementInput {
+            loc_type: LocType::new(10),
+            orientation: 0,
+            tile: SceneTile::new(1, 1),
+            size_x: 2,
+            size_y: 1,
+            sampled_height: 0,
+            existing_wall_displacement: None,
+        })?;
+        assert!(!grid.insert_placement(plane, ObjectId::new(1), placement)?);
+        assert!(grid.tile(plane, SceneTile::new(1, 1)).is_none());
         Ok(())
     }
 
@@ -460,6 +830,36 @@ mod tests {
                 .map(|object| object.plane().index().get()),
             Some(0)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn inserted_multi_tile_game_object_keeps_one_plane_identity_after_link_below()
+    -> Result<(), Box<dyn Error>> {
+        let mut grid = SceneGrid::new(2, 1, 4)?;
+        let plane1 = storage_plane_from_index(1)?;
+        let placement = plan_placement(PlacementInput {
+            loc_type: LocType::new(10),
+            orientation: 0,
+            tile: SceneTile::new(0, 0),
+            size_x: 2,
+            size_y: 1,
+            sampled_height: 0,
+            existing_wall_displacement: None,
+        })?;
+        assert!(grid.insert_placement(plane1, ObjectId::new(1), placement)?);
+        grid.set_link_below(SceneTile::new(0, 0))?;
+
+        let plane0 = storage_plane_from_index(0)?;
+        let moved_anchor = grid
+            .tile(plane0, SceneTile::new(0, 0))
+            .and_then(|tile| tile.game_objects().first());
+        let overlap = grid
+            .tile(plane1, SceneTile::new(1, 0))
+            .and_then(|tile| tile.game_objects().first());
+        assert_eq!(moved_anchor.map(|object| object.plane().index().get()), Some(0));
+        assert_eq!(overlap.map(|object| object.plane().index().get()), Some(0));
+        assert_eq!(moved_anchor.and_then(SceneGameObject::instance_id), overlap.and_then(SceneGameObject::instance_id));
         Ok(())
     }
 
