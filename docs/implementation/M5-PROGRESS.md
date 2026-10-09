@@ -16,7 +16,7 @@ Production crates must not depend on `osrs-reference`. Ordinary verification rem
 1. **Fixture loader/comparator/provenance foundation** - COMPLETE
 2. **Canonical normalized fixture schemas and first migrated source-pinned fixtures** - COMPLETE
 3. **Exact fixture inventory/runner integration and dedicated M5 CI gates** - COMPLETE
-4. Explicit regeneration command and isolated oracle/harness adapters - NOT STARTED
+4. **Explicit regeneration command and isolated oracle/harness adapters** - IMPLEMENTATION COMPLETE; FINAL DOCUMENTATION-HEAD CI PENDING
 5. Historical `deob_golden.txt` indexing/migration plus additional priority semantic families - NOT STARTED
 6. M5 verification closure, parity links, exit audit, and milestone PR - NOT STARTED
 
@@ -191,6 +191,8 @@ Implementation head `eb4d6ee8909a8170374a5e90e419d0639399c5c3` passed workflow `
 
 Documentation validation head `b9c97271e51fbca63b1a0c1910f3389d80d12db8` passed the same full chain in workflow `37901932522`.
 
+Checkpoint 3 was then closed by documentation-only commit `cda2dd13214fd342b1f0c1b6e17f2e65c32e6b5e`, which also passed the full Tier A/B/C chain in workflow `37902148092`.
+
 ### Checkpoint 3 implementation diff against Checkpoint 2
 
 Implementation head was 14 commits ahead and 0 behind Checkpoint 2 documentation head `38117bbbb511bafed527fe5acb6bc335bcc9e330`.
@@ -210,23 +212,148 @@ Permanent implementation changes were confined to:
 
 No `osrs-core`, `osrs-cache`, `osrs-scene`, renderer, editor, or production semantic implementation changed.
 
+---
+
+## Checkpoint 4 - explicit candidate regeneration and isolated deob adapter
+
+Status: **IMPLEMENTATION COMPLETE; FINAL DOCUMENTATION-HEAD CI PENDING**
+
+Implementation validation head: `a6364411c473f1c4e847fe43dc6ee8bb9ae9a604`  
+Implementation CI: `37903583746`
+
+### Explicit regeneration entry point
+
+`tools/reference-fixtures/regenerate.py` is now the public development-only regeneration command.
+
+The initial adapter is:
+
+`melxin-deob-golden`
+
+It pins the public oracle checkout exactly to:
+
+`melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`
+
+The command accepts explicit paths for:
+
+- the local pinned source checkout;
+- the caller-supplied compile-only `bcprov-jdk15on-1.52.jar`;
+- an output candidate outside the checked-in fixture tree;
+- an optional isolated work directory.
+
+It does not clone source repositories, download dependencies, update manifests, update expected hashes, or accept generated output into the repository.
+
+### Candidate-only acceptance boundary
+
+Regeneration cannot write directly into `reference-fixtures/`.
+
+Both the public Python entry point and the lower-level shell harness reject candidate paths under the checked-in fixture root. Existing candidate paths are also rejected instead of silently overwritten.
+
+There is intentionally no `--accept` mode.
+
+Promoting regenerated evidence requires a separate reviewed change that explicitly updates the expected artifact, `expected_sha256`, and source/harness provenance when those identities changed. The repository-wide M5 runner must then pass against the checked-in result.
+
+This is stronger than merely asking developers not to rewrite expected output during regeneration: the command itself cannot perform that mutation.
+
+### Isolated deob harness adapter
+
+`tools/deob-harness/run.sh` no longer contains Tyler's historical absolute local RuneLite paths and no longer writes `reference-fixtures/deob_golden.txt` directly.
+
+The harness now requires:
+
+- `--checkout PATH`;
+- `--expected-commit SHA`;
+- `--bcprov JAR`;
+- `--output FILE`;
+- optional `--work-dir DIR`.
+
+Before compiling it validates:
+
+- the expected commit is exactly 40 hexadecimal characters;
+- the supplied checkout is a Git checkout;
+- checkout HEAD exactly equals the expected commit;
+- the required `runescape-client` and `injection-annotations` source roots exist;
+- the caller-supplied bcprov jar exists;
+- candidate output does not already exist;
+- candidate output is outside `reference-fixtures/`.
+
+The harness no longer downloads Maven artifacts itself. It does not mutate the reference checkout. When no work directory is supplied it creates and removes an isolated temporary build directory.
+
+After successful execution it writes only the candidate artifact and prints its SHA-256 and byte length for review.
+
+### Offline tooling gate
+
+`scripts/test_reference_regeneration.py` verifies without Java, RuneLite, Maven, or network access that:
+
+- the public adapter uses the exact pinned deob commit;
+- checked-in candidate paths are rejected;
+- external candidate paths are accepted;
+- the lower-level command receives the exact pin and candidate path;
+- the legacy machine-specific `/Users/tylercovalt` path is absent;
+- direct `reference-fixtures/deob_golden.txt` writes are absent;
+- hidden `curl` dependency acquisition is absent;
+- the shell harness retains candidate-path rejection.
+
+Tier A now runs this test as `Test reference regeneration safety`.
+
+Ordinary CI still never executes the Java/deob oracle.
+
+### Documentation
+
+- `tools/reference-fixtures/README.md` documents the candidate-only workflow and explicit promotion steps.
+- `tools/deob-harness/README.md` documents the parameterized low-level harness, exact checkout validation, no-network behavior, and Checkpoint 5 migration boundary.
+
+The three current normalized M5 model fixtures remain honestly classified as source-pinned manual normalizations. Checkpoint 4 does not retroactively claim they were generated by the Java harness.
+
+### Validation
+
+Implementation head `a6364411c473f1c4e847fe43dc6ee8bb9ae9a604` passed workflow `37903583746`:
+
+- Tier A: PASS
+  - architecture boundaries;
+  - architecture guard;
+  - offline reference-regeneration safety tests;
+  - rustfmt;
+  - locked workspace check;
+  - strict clippy.
+- Tier B: PASS
+  - complete workspace tests.
+- Tier C: PASS
+  - all existing M3/M4 semantic gates;
+  - M5 repository-wide normalized fixture runner.
+
+No oracle execution, source checkout, Java compilation, Maven access, or expected-output mutation occurs in CI.
+
+### Checkpoint 4 implementation diff against Checkpoint 3
+
+Implementation head is 6 commits ahead and 0 behind Checkpoint 3 closeout head `cda2dd13214fd342b1f0c1b6e17f2e65c32e6b5e`.
+
+Permanent implementation changes are confined to six files:
+
+1. `.github/workflows/ci.yml`
+2. `scripts/test_reference_regeneration.py`
+3. `tools/deob-harness/README.md`
+4. `tools/deob-harness/run.sh`
+5. `tools/reference-fixtures/README.md`
+6. `tools/reference-fixtures/regenerate.py`
+
+No `osrs-core`, `osrs-cache`, `osrs-scene`, renderer, editor, normalized expected artifact, or production semantic implementation changed.
+
 ### Deferred work
 
-Checkpoint 3 does not implement:
+Checkpoint 4 does not:
 
-- Java/deob executable regeneration;
-- oracle source checkout/downloader behavior;
-- automatic expected-output rewriting;
-- historical `deob_golden.txt` migration;
-- normal, lighting, placement, bridge/plane, or face-priority semantic fixture families;
-- parity-matrix promotion for those later families.
+- index or migrate `deob_golden.txt` into canonical fixture manifests;
+- add normals, lighting, loc placement, bridge/plane, or priority normalized fixture families;
+- automatically accept candidate oracle output;
+- change current fixture provenance from manual normalization to executable generation;
+- promote later semantic parity rows.
 
-Those remain owned by Checkpoints 4-6.
+Those remain owned by Checkpoints 5-6.
 
 ---
 
 ## Current milestone boundary
 
-M5 Checkpoint 3 is complete. Checkpoint 4 has not started.
+M5 Checkpoint 4 implementation is complete. The documentation-complete branch head must pass the full Tier A/B/C chain before Checkpoint 4 is closed.
 
 No M5 pull request should be opened until the milestone exit checkpoint.
