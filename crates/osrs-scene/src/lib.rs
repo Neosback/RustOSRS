@@ -6,6 +6,7 @@
 //! policy outside this crate.
 
 pub mod placement;
+pub mod planes;
 pub mod scene;
 pub mod terrain;
 
@@ -15,7 +16,8 @@ pub use placement::{
     PlacementError, PlacementInput, PlacementKind, PlacementPlan, STRAIGHT_WALL_FLAGS, SceneLayer,
     WallDecorationPlan, plan_placement,
 };
-pub use scene::{SceneGrid, SceneGridError, SemanticTile};
+pub use planes::{PlacementPlanes, collision_plane};
+pub use scene::{SceneGameObject, SceneGrid, SceneGridError, SemanticTile};
 pub use terrain::{
     FlatTerrainSurface, ShapedTerrainInput, ShapedTerrainSurface, TerrainBuildError,
     TerrainColorSource, TerrainCorner, TerrainCorners, TerrainFace, TerrainSurface, TerrainVertex,
