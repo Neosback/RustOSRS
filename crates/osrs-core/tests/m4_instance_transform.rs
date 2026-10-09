@@ -7,15 +7,11 @@ use osrs_core::ids::{ModelId, ObjectId, TextureId};
 use osrs_core::model::{
     FacePriority, ModelEncoding, ModelFormatIdentity, SourceModel, SourceModelParts, Triangle,
 };
-use osrs_core::model_construction::{
-    AssembledModel, apply_object_model_instance_transforms,
-};
+use osrs_core::model_construction::{AssembledModel, apply_object_model_instance_transforms};
 use osrs_core::provenance::{CacheFingerprint, ProfileDigest, TargetProvenance};
 
-const PROFILE_DIGEST: &str =
-    "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
-const CACHE_FINGERPRINT: &str =
-    "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
+const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
+const CACHE_FINGERPRINT: &str = "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
 fn provenance() -> Result<TargetProvenance, Box<dyn std::error::Error>> {
     Ok(TargetProvenance::new(
@@ -140,10 +136,7 @@ fn combined_pipeline_matches_reference_order_exactly() -> Result<(), Box<dyn std
         ]
     );
     assert_eq!(model.face_colors(), &[300]);
-    assert_eq!(
-        model.face_textures(),
-        Some(&[Some(TextureId::new(9))][..])
-    );
+    assert_eq!(model.face_textures(), Some(&[Some(TextureId::new(9))][..]));
 
     assert_eq!(source.vertices(), original_vertices.as_slice());
     assert_eq!(source.face_colors(), original_colors.as_slice());
@@ -170,12 +163,7 @@ fn ordinary_orientation_masks_to_quarter_turns() -> Result<(), Box<dyn std::erro
         (4, ModelPoint::new(3, 4, 5)),
     ] {
         let mut model = AssembledModel::from_source(&source);
-        apply_object_model_instance_transforms(
-            &mut model,
-            &object,
-            LocType::new(10),
-            orientation,
-        );
+        apply_object_model_instance_transforms(&mut model, &object, LocType::new(10), orientation);
         assert_eq!(model.vertices(), &[expected]);
     }
 
@@ -228,7 +216,8 @@ fn retexture_preserves_signed_short_sentinel_behavior() -> Result<(), Box<dyn st
 }
 
 #[test]
-fn two_instances_transform_independently_from_one_source() -> Result<(), Box<dyn std::error::Error>> {
+fn two_instances_transform_independently_from_one_source() -> Result<(), Box<dyn std::error::Error>>
+{
     let source = source_model(
         14,
         vec![ModelPoint::new(10, 0, 20)],
