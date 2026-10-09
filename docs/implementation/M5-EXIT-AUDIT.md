@@ -9,27 +9,29 @@ Baseline: M4 squash merge `4d3d21dbe449cd345cf46ccbab651bec6366d585`
 
 M5 is implementation-complete for its reference-fixture infrastructure scope.
 
-The milestone establishes deterministic, source-pinned, offline-consumable fixture infrastructure before M6-M8 scene, normal, lighting, contour, and related semantics depend on differential evidence. It also establishes a narrow evidence-only path for contracts whose production executor does not yet exist without allowing existing production semantics to bypass their executable fixture checks.
+The milestone establishes deterministic, source-pinned, offline-consumable fixture infrastructure before M6-M8 scene, normals, lighting, contour, and related semantics depend on differential evidence. It also establishes a narrow `evidence_only` path for contracts whose production executor does not yet exist without allowing existing production semantics to bypass executable fixture checks.
 
-This audit does not claim that later-owned semantics are already implemented merely because M5 now preserves or indexes evidence for them.
+This audit does not claim that later-owned semantics are implemented merely because M5 now preserves exact expected evidence for them.
 
 In particular:
 
+- `NORMALS-001` remains `PARTIAL`;
+- `NORMALS-002` remains `REQUIRED`;
+- `PLANES-003` remains `REQUIRED`;
 - `FACE-002` remains `REQUIRED`;
-- placement rows retain their M5-entry status;
-- contour and lighting rows retain their M5-entry status;
-- normal merging, bridge/plane scene construction, morph execution, animation execution, render extraction, GPU rendering, and editor behavior remain deferred to their owning milestones.
+- placement, contour, lighting, morph, animation, render extraction, GPU rendering, and editor behavior retain their existing later-milestone status.
 
 ## Canonical M5 roadmap gates
 
-The M5 roadmap requires:
+The canonical M5 roadmap requires:
 
 1. ordinary Rust CI to run offline against checked-in expected outputs;
 2. every new fixture to carry exact provenance;
 3. regeneration to be unable to silently rewrite accepted expected outputs without reviewable source/manifest changes;
-4. relevant `PARITY-MATRIX.md` rows to link concrete fixture/test identifiers.
+4. relevant `PARITY-MATRIX.md` rows to link concrete fixture/test identifiers;
+5. the first required fixture families to exist before later dangerous semantics are ported.
 
-All four gates are closed by the M5 branch.
+All five requirements are closed by the M5 branch.
 
 ## 1. Offline ordinary verification: PASS
 
@@ -49,51 +51,167 @@ Permanent gates include:
 
 The M5 runner recursively discovers YAML manifests under `reference-fixtures/manifest/`, sorts deterministically, rejects symlinks, verifies provenance and expected hashes, rejects duplicate fixture IDs, and rejects an empty inventory.
 
-## 2. Exact fixture provenance: PASS
+Corrected implementation head `2ecd37d1bfdcfce95ede5306b3f2c8d4aaa872d7` passed workflow `37908853111`:
 
-### Normalized semantic fixtures
+- Tier A: PASS;
+- Tier B: PASS;
+- Tier C: PASS, including the M5 runner over all ten canonical YAML fixtures.
 
-The canonical M5 inventory contains three fixtures that execute through production semantic functions:
+## 2. Canonical normalized fixture inventory: PASS
+
+The M5 inventory contains ten canonical YAML fixtures.
+
+### Production-executed semantic fixtures
 
 1. `model.selection.typed_exact.orientation_4`
-   - manifest: `reference-fixtures/manifest/model-selection-typed-orientation-4.yaml`;
    - owned specs: `MODEL-BUILD-001`, `MODEL-BUILD-002`;
    - production executor: `select_object_model`.
 2. `model.mirror.geometry_winding`
-   - manifest: `reference-fixtures/manifest/model-mirror-geometry-winding.yaml`;
    - owned spec: `MODEL-BUILD-002`;
    - production executor: `mirror_source_model`.
 3. `model.transform.type4_order`
-   - manifest: `reference-fixtures/manifest/model-transform-type4-order.yaml`;
    - owned specs: `MODEL-BUILD-003`, `COORD-002`;
    - production executor: `apply_object_model_instance_transforms`.
 
-Each manifest records:
+### Evidence-only fixtures for later production owners
+
+4. `normals.base.flat_triangle`
+   - owned spec: `NORMALS-001`;
+   - source symbol: `ModelData.calculateVertexNormals`.
+5. `normals.base.smooth_triangle`
+   - owned spec: `NORMALS-001`;
+   - source symbol: `ModelData.calculateVertexNormals`.
+6. `normals.merge.coincident_triangle.hide_false`
+   - owned spec: `NORMALS-002`;
+   - source symbol: `ModelData.method5262`.
+7. `normals.merge.coincident_triangle.hide_true`
+   - owned spec: `NORMALS-002`;
+   - source symbol: `ModelData.method5262`.
+8. `normals.merge.translated_negative`
+   - owned spec: `NORMALS-002`;
+   - source symbol: `ModelData.method5262`.
+9. `planes.link_below.four_plane_column`
+   - owned spec: `PLANES-003`;
+   - source symbol: `Scene.setLinkBelow`.
+10. `priority.all_0_11.threshold_crossing`
+   - owned spec: `FACE-002`;
+   - source symbol: `Model.method5946`.
+
+Every manifest records:
 
 - stable fixture ID;
 - schema version;
 - owned spec IDs;
 - parity level;
+- execution classification;
 - exact public oracle repository/commit/file/blob/symbol pins;
 - exact migration/harness revision;
 - normalized input and expected-output paths;
 - expected-output SHA-256;
 - explicit normalization rules.
 
-### Evidence-only normalized fixture
+## 3. Required fixture-family roadmap audit: PASS
 
-The fourth canonical YAML fixture is:
+The M5 roadmap names these first required fixture families:
 
-`priority.all_0_11.threshold_crossing`
+- model selection;
+- mirror/winding;
+- transform order;
+- base normals;
+- normal merge controls;
+- lighting controls;
+- loc dispatch/orientation;
+- plane/bridge synthetic inputs;
+- priority order crafted model.
 
-It is source-pinned to:
+M5 now closes each family without stealing later production ownership:
+
+| Roadmap family | M5 evidence |
+|---|---|
+| model selection | `model.selection.typed_exact.orientation_4` |
+| mirror/winding | `model.mirror.geometry_winding` |
+| transform order | `model.transform.type4_order` |
+| base normals | `normals.base.smooth_triangle`, `normals.base.flat_triangle` |
+| normal merge controls | coincident hide=false, coincident hide=true, translated no-match fixtures |
+| lighting controls | indexed historical evidence `lighting.synthetic_triangle.loc_rig` |
+| loc dispatch/orientation | indexed historical wall/decor/floor/game-object placement evidence |
+| plane/bridge synthetic input | `planes.link_below.four_plane_column` |
+| priority order | `priority.all_0_11.threshold_crossing` |
+
+The initial Checkpoint 6 audit caught that base-normal, normal-merge, and plane/bridge normalized families were still absent. M5 was not declared merge-ready at that point. Those missing families were added and validated before this exit audit was finalized.
+
+## 4. Evidence-only safety boundary: PASS
+
+`evidence_only` is permitted only for normalized kinds whose production owner does not yet exist:
+
+- `base_normals`;
+- `normal_merge`;
+- `plane_link_below`;
+- `priority_order`.
+
+Production-executed M5 model fixture kinds remain ineligible for `evidence_only`:
+
+- `model_selection`;
+- `model_mirror`;
+- `model_transform`.
+
+A permanent regression test proves an implemented model fixture cannot be downgraded to evidence-only.
+
+Semantic execution of the deferred evidence kinds also fails explicitly today, so the runner cannot accidentally imply those production paths exist.
+
+Therefore the new evidence strengthens future implementation contracts while leaving `NORMALS-001`, `NORMALS-002`, `PLANES-003`, and `FACE-002` at their correct production statuses.
+
+## 5. Normal fixture evidence: PASS
+
+`reference-fixtures/manifest/M5-SEMANTIC-EVIDENCE-MIGRATION-v1.md` records the exact manual source normalization from pinned public source.
+
+Pinned source:
 
 - `melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`;
-- `runescape-client/src/main/java/Model.java`;
-- blob `c2aa55c0e8fea89fae0da33d782119f8c109cacf`;
+- `ModelData.java` blob `2cc9406b2504fbd4fae0c0c952aa2d133809e928`.
+
+The base triangle uses exact integer vertices `(0,0,0)`, `(128,0,0)`, `(0,0,128)` and reference winding `(0,1,2)`.
+
+The pinned reference normal is exactly `(0,-256,0)`.
+
+The merge controls preserve:
+
+- separate left/right model identity;
+- exact translation;
+- nullable merged-normal storage;
+- exact merged normals `(0,-512,0,magnitude=2)` for coincident smooth triangles;
+- render type `2` when fully matched faces are hidden;
+- no merged storage for the translated no-match control.
+
+These are source-pinned evidence for M7, not an M5 implementation of normal generation or normal merging.
+
+## 6. Plane/link-below evidence: PASS
+
+`planes.link_below.four_plane_column` is source-pinned to:
+
+- `Scene.java` blob `f15260a63103952fe8f5ffbdb62f5c7c39d94565`;
+- symbol `setLinkBelow`.
+
+The synthetic case records:
+
+- a four-plane tile column;
+- storage shift `1 -> 0`, `2 -> 1`, `3 -> 2`;
+- exact tile-plane decrements;
+- cleared storage plane 3;
+- original plane-0 tile retained as the linked-below tile;
+- qualifying type-2 anchored game-object plane decrements;
+- non-anchor and non-type-2 negative controls that remain unchanged.
+
+This is exact source-pinned structural evidence for M6. It does not implement `osrs-scene` relinking in M5.
+
+## 7. Priority-order evidence: PASS
+
+`priority.all_0_11.threshold_crossing` is source-pinned to:
+
+- `Model.java` blob `c2aa55c0e8fea89fae0da33d782119f8c109cacf`;
 - symbol `method5946`.
 
-Its expected artifact preserves:
+It preserves:
 
 - priorities `0..11`;
 - `avg12 = 80`;
@@ -104,21 +222,13 @@ Its expected artifact preserves:
 - representative signed alpha metadata;
 - exact ordered face IDs.
 
-It is intentionally `execution: evidence_only` because the renderer-owned production priority executor does not exist yet.
+`FACE-002` remains `REQUIRED` until the renderer-owned production priority executor exists and consumes the same contract.
 
-The runner explicitly rejects `priority_order` as a semantic executor today and also rejects using `evidence_only` to bypass any fixture kind that already has an M5 production semantic executor. The downgrade-bypass regression is permanently tested.
+## 8. Historical evidence migration/indexing: PASS
 
-Therefore `FACE-002` remains `REQUIRED`.
+M5 does not relabel `reference-fixtures/deob_golden.txt` as if it were generated from the pinned public source.
 
-## 3. Historical evidence migration/indexing: PASS
-
-M5 does not rewrite or relabel the historical `reference-fixtures/deob_golden.txt` as if it were generated from the pinned public source.
-
-Instead:
-
-`reference-fixtures/historical/deob_golden.index.json`
-
-records the classification:
+`reference-fixtures/historical/deob_golden.index.json` records:
 
 `historical_local_harness_corroborated_by_public_source`
 
@@ -127,7 +237,7 @@ The historical source and harness identities are byte-gated as Git blobs:
 - `reference-fixtures/deob_golden.txt` -> `49887733ad463572cf61bc059733b7c5f5fd26f4`;
 - `tools/deob-harness/src/Dumper.java` -> `ceefbd6e97c8e0b09c2ef196b3f9fd2e0f763236`.
 
-The index exposes seven stable evidence IDs:
+Indexed IDs:
 
 1. `terrain.shape_gallery.all_13x4`;
 2. `contour.synthetic.flat_slope`;
@@ -137,28 +247,19 @@ The index exposes seven stable evidence IDs:
 6. `placement.floor_type22.storage`;
 7. `placement.game_object.footprint_and_capacity`.
 
-`scripts/test_deob_golden_index.py` verifies offline:
+`scripts/test_deob_golden_index.py` verifies the checked-in historical fixture/harness identity, classification, unique IDs, public source-pin shape, exact-line uniqueness, and expected prefix counts entirely offline.
 
-- exact checked-in historical source/harness Git blob identity;
-- historical evidence classification;
-- unique fixture IDs;
-- public source-pin structure;
-- exact-line uniqueness;
-- expected prefix counts.
+## 9. Source-pin closure: PASS
 
-This converts an opaque historical dump into reviewable indexed evidence without falsifying provenance.
+`docs/verification/SOURCE-PINS.md` reflects the actual M5 harness state.
 
-## 4. Source-pin closure: PASS
+The old absolute developer-machine path is retained only as historical provenance. The current harness requires explicit caller-supplied checkout, expected commit, dependency JAR, output path, and optional work directory.
 
-`docs/verification/SOURCE-PINS.md` now reflects the M5 implementation state rather than the pre-M5 harness state.
-
-The current harness requires explicit caller-supplied checkout, expected commit, dependency JAR, output path, and optional work directory. The old absolute developer-machine path remains documented only as historical provenance for the existing golden dump.
-
-M5 source pins were revalidated against exact public revision:
+M5 public pins were revalidated against:
 
 `melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`
 
-The M5-facing public file pins are recorded for:
+Relevant file pins include:
 
 - `ObjectComposition.java` -> `079451cd9a6dcfd2666efd15b0524250eaafe4c4`;
 - `ModelData.java` -> `2cc9406b2504fbd4fae0c0c952aa2d133809e928`;
@@ -167,50 +268,42 @@ The M5-facing public file pins are recorded for:
 - `Scene.java` -> `f15260a63103952fe8f5ffbdb62f5c7c39d94565`;
 - `SceneTileModel.java` -> `ce6a179cfa93e02271af87164e102ee538223718`.
 
-The unresolved whole-snapshot equivalence of the old developer-machine checkout remains explicit and is not needed to claim exact provenance for the individually pinned public M5 fixtures.
+Whole-snapshot equivalence for the historical developer-machine checkout remains explicitly unresolved and is not overstated.
 
 `TERRAIN-004` remains blocked and revision-sensitive. M5 does not revive the disproven `class470` attribution.
 
-## 5. Regeneration safety: PASS
+## 10. Regeneration safety: PASS
 
 `tools/reference-fixtures/regenerate.py` and `tools/deob-harness/run.sh` implement a candidate-only regeneration boundary.
 
-The workflow requires explicit source/dependency/output inputs and:
+The workflow:
 
-- rejects candidate output paths inside `reference-fixtures/`;
-- rejects silently overwriting existing candidate files;
+- rejects candidate paths inside `reference-fixtures/`;
+- rejects silent overwrite of existing candidates;
 - provides no automatic `--accept` path;
-- does not edit fixture manifests or expected hashes;
+- does not edit manifests or expected hashes;
 - does not clone/download dependencies during ordinary operation;
 - is not invoked by ordinary CI.
 
-Tier A permanently tests this safety contract offline through `scripts/test_reference_regeneration.py`.
+Tier A permanently tests this boundary through `scripts/test_reference_regeneration.py`.
 
-Any future accepted fixture change must therefore be an explicit repository diff that updates the relevant source/manifest/hash evidence rather than an ordinary test side effect.
+## 11. Parity-matrix linkage: PASS
 
-## 6. Parity-matrix linkage: PASS
+`docs/verification/PARITY-MATRIX.md` tracks through M5 and links concrete M5 fixture/evidence IDs to the relevant rows.
 
-`docs/verification/PARITY-MATRIX.md` now tracks through M5 and links concrete M5 fixture IDs to relevant semantic rows.
-
-The matrix distinguishes between:
+The matrix distinguishes:
 
 - normalized semantic fixtures executing production code;
 - evidence-only normalized fixtures;
 - indexed historical evidence.
 
-The links do not over-promote later production semantics. In particular:
+Later production status is not inflated by source evidence.
 
-- `FACE-002` stays `REQUIRED` despite the priority evidence fixture;
-- placement remains `PARTIAL` or `REQUIRED` as appropriate;
-- `CONTOUR-001` remains `PARTIAL`;
-- `LIGHTING-001` remains `PARTIAL`;
-- M6/M7 scene and lighting executors are not implied to exist.
-
-## 7. Architecture and scope audit: PASS
+## 12. Architecture and scope audit: PASS
 
 M5 remains development/test infrastructure.
 
-The branch adds or changes only:
+Changes are confined to:
 
 - `osrs-reference` fixture infrastructure;
 - checked-in fixture inputs/expected outputs/manifests/indexes;
@@ -219,37 +312,25 @@ The branch adds or changes only:
 - CI gates;
 - M5/provenance/parity documentation.
 
-It does not add M5-owned changes to:
+M5 does not add production semantic implementation to:
 
-- `osrs-core` production semantics;
-- `osrs-cache` production semantics;
-- `osrs-scene` production semantics;
-- renderer implementation;
-- editor implementation.
+- `osrs-core`;
+- `osrs-cache`;
+- `osrs-scene`;
+- renderer code;
+- editor code.
 
 Production crates remain forbidden from depending on `osrs-reference`.
 
-## 8. Required fixture-family roadmap audit
-
-The M5 roadmap lists first required families for model selection, mirror/winding, transform order, base normals, normal merge controls, lighting controls, loc dispatch/orientation, plane/bridge synthetic inputs, and priority order.
-
-M5 closes the infrastructure and canonical source/evidence foundation needed for these families without stealing implementation ownership from later milestones:
-
-- model selection, mirror/winding, and transform order have normalized executable semantic fixtures now;
-- priority order has a normalized source-pinned evidence-only fixture now;
-- terrain/placement/contour/lighting historical evidence is indexed now;
-- the remaining normal-merge, bridge/plane, richer lighting, and scene-placement normalized fixtures are intentionally produced/activated with their owning production milestones so M5 does not fabricate expected output disconnected from an implementation checkpoint.
-
-This interpretation is consistent with the M5 purpose: make the reference fixture system real before dangerous scene semantics are ported, not prematurely implement M6-M8.
-
-## 9. Deferred work
+## 13. Deferred production work
 
 M5 does not implement:
 
 - semantic scene tile storage;
 - loc placement dispatch;
-- bridge/collision/storage/render plane behavior;
-- cross-model normal merging;
+- bridge/collision/storage/render plane execution;
+- base-normal generation in production;
+- cross-model normal merging in production;
 - final reference lighting;
 - contour execution;
 - morph execution;
@@ -263,8 +344,8 @@ Those remain bound to M6 and later milestones.
 
 ## Milestone conclusion
 
-All M5 roadmap exit gates are closed by checked-in implementation and documentation.
+All M5 roadmap gates and first required fixture-family deliverables are closed by checked-in implementation and evidence.
 
-The milestone branch is ready for final exact-head Tier A/B/C validation, one M5 pull request, exact changed-file review, PR-triggered CI, and squash merge.
+The branch is ready for final documentation-head Tier A/B/C validation, one M5 pull request, exact PR changed-file review, PR-triggered CI, and squash merge.
 
-After M5 is merged, stop before M6. M6 must begin only after an explicit user instruction on a fresh implementation branch from the resulting `main`.
+After M5 is merged, stop before M6. M6 must begin only after explicit user instruction on a fresh branch from the resulting `main`.
