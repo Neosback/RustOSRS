@@ -28,6 +28,12 @@ jobs:
       - name: Test architecture guard
         run: python3 scripts/test_check_architecture.py
 
+      - name: Test reference regeneration safety
+        run: python3 scripts/test_reference_regeneration.py
+
+      - name: Test historical deob golden index
+        run: python3 scripts/test_deob_golden_index.py
+
       - name: Check formatting
         run: cargo fmt --all --check
 
@@ -78,3 +84,6 @@ jobs:
 
       - name: Run M4 model decoder fuzz smoke
         run: cargo test --locked -p osrs-cache --test m4_model_fuzz_smoke
+
+      - name: Run M5 repository-wide normalized fixture runner
+        run: cargo test --locked -p osrs-reference --test m5_fixture_runner

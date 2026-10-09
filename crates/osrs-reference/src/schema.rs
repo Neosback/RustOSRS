@@ -1,0 +1,443 @@
+//! Canonical normalized semantic fixture schemas.
+//!
+//! M5 fixtures use small typed JSON documents so exact semantic values can be
+//! compared without importing cache, renderer, editor, or oracle runtime types.
+//! The repository artifacts use JSON syntax; deserialization is intentionally
+//! kept inside this development-only crate.
+
+use serde::{Deserialize, Serialize};
+use std::{error::Error, fmt, str};
+
+/// Normalized input/output schema version currently understood by RustOSRS.
+pub const NORMALIZED_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NormalizedFixtureKind {
+    ModelSelection,
+    ModelMirror,
+    ModelTransform,
+    BaseNormals,
+    NormalMerge,
+    PlaneLinkBelow,
+    PriorityOrder,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedFixtureInput {
+    pub schema_version: u32,
+    pub case: NormalizedInputCase,
+}
+
+impl NormalizedFixtureInput {
+    pub fn parse(bytes: &[u8]) -> Result<Self, NormalizedSchemaError> {
+        let text = str::from_utf8(bytes)
+            .map_err(|error| NormalizedSchemaError::Utf8(error.to_string()))?;
+        let document: Self = serde_yaml_ng::from_str(text)
+            .map_err(|error| NormalizedSchemaError::Syntax(error.to_string()))?;
+        validate_version(document.schema_version)?;
+        Ok(document)
+    }
+
+    pub const fn kind(&self) -> NormalizedFixtureKind {
+        self.case.kind()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedFixtureExpected {
+    pub schema_version: u32,
+    pub case: NormalizedExpectedCase,
+}
+
+impl NormalizedFixtureExpected {
+    pub fn parse(bytes: &[u8]) -> Result<Self, NormalizedSchemaError> {
+        let text = str::from_utf8(bytes)
+            .map_err(|error| NormalizedSchemaError::Utf8(error.to_string()))?;
+        let document: Self = serde_yaml_ng::from_str(text)
+            .map_err(|error| NormalizedSchemaError::Syntax(error.to_string()))?;
+        validate_version(document.schema_version)?;
+        Ok(document)
+    }
+
+    pub const fn kind(&self) -> NormalizedFixtureKind {
+        self.case.kind()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum NormalizedInputCase {
+    ModelSelection {
+        models: NormalizedObjectModels,
+        is_rotated: bool,
+        requested_type: u8,
+        orientation: u8,
+    },
+    ModelMirror {
+        vertices: Vec<NormalizedModelPoint>,
+        faces: Vec<NormalizedTriangle>,
+    },
+    ModelTransform {
+        vertices: Vec<NormalizedModelPoint>,
+        face_colors: Vec<u16>,
+        face_textures: Vec<Option<u32>>,
+        requested_type: u8,
+        orientation: u8,
+        recolors: Vec<NormalizedU16Replacement>,
+        retextures: Vec<NormalizedU16Replacement>,
+        scale: NormalizedModelScale,
+        translation: NormalizedModelTranslation,
+    },
+    BaseNormals {
+        model: NormalizedNormalModel,
+    },
+    NormalMerge {
+        left: NormalizedNormalModel,
+        right: NormalizedNormalModel,
+        translation: NormalizedModelTranslation,
+        hide_matched_faces: bool,
+    },
+    PlaneLinkBelow {
+        x: i32,
+        y: i32,
+        source_tiles: Vec<NormalizedPlaneTile>,
+    },
+    PriorityOrder {
+        faces: Vec<NormalizedPriorityFace>,
+    },
+}
+
+impl NormalizedInputCase {
+    pub const fn kind(&self) -> NormalizedFixtureKind {
+        match self {
+            Self::ModelSelection { .. } => NormalizedFixtureKind::ModelSelection,
+            Self::ModelMirror { .. } => NormalizedFixtureKind::ModelMirror,
+            Self::ModelTransform { .. } => NormalizedFixtureKind::ModelTransform,
+            Self::BaseNormals { .. } => NormalizedFixtureKind::BaseNormals,
+            Self::NormalMerge { .. } => NormalizedFixtureKind::NormalMerge,
+            Self::PlaneLinkBelow { .. } => NormalizedFixtureKind::PlaneLinkBelow,
+            Self::PriorityOrder { .. } => NormalizedFixtureKind::PriorityOrder,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum NormalizedExpectedCase {
+    ModelSelection {
+        selection: Option<NormalizedModelSelection>,
+    },
+    ModelMirror {
+        vertices: Vec<NormalizedModelPoint>,
+        faces: Vec<NormalizedTriangle>,
+    },
+    ModelTransform {
+        vertices: Vec<NormalizedModelPoint>,
+        face_colors: Vec<u16>,
+        face_textures: Vec<Option<u32>>,
+    },
+    BaseNormals {
+        vertex_normals: Vec<NormalizedVertexNormal>,
+        face_normals: Option<Vec<Option<NormalizedNormalVector>>>,
+    },
+    NormalMerge {
+        left_merged_vertex_normals: Option<Vec<Option<NormalizedVertexNormal>>>,
+        right_merged_vertex_normals: Option<Vec<Option<NormalizedVertexNormal>>>,
+        left_face_render_types: Option<Vec<u8>>,
+        right_face_render_types: Option<Vec<u8>>,
+    },
+    PlaneLinkBelow {
+        stored_tiles: Vec<Option<NormalizedStoredPlaneTile>>,
+        linked_below_label: String,
+        top_slot_cleared: bool,
+    },
+    PriorityOrder {
+        ordered_face_ids: Vec<u32>,
+        avg12: i32,
+        avg34: i32,
+        avg68: i32,
+    },
+}
+
+impl NormalizedExpectedCase {
+    pub const fn kind(&self) -> NormalizedFixtureKind {
+        match self {
+            Self::ModelSelection { .. } => NormalizedFixtureKind::ModelSelection,
+            Self::ModelMirror { .. } => NormalizedFixtureKind::ModelMirror,
+            Self::ModelTransform { .. } => NormalizedFixtureKind::ModelTransform,
+            Self::BaseNormals { .. } => NormalizedFixtureKind::BaseNormals,
+            Self::NormalMerge { .. } => NormalizedFixtureKind::NormalMerge,
+            Self::PlaneLinkBelow { .. } => NormalizedFixtureKind::PlaneLinkBelow,
+            Self::PriorityOrder { .. } => NormalizedFixtureKind::PriorityOrder,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "encoding", rename_all = "snake_case", deny_unknown_fields)]
+pub enum NormalizedObjectModels {
+    Typed { entries: Vec<NormalizedTypedModel> },
+    Untyped { model_ids: Vec<u32> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedTypedModel {
+    pub loc_type: u8,
+    pub model_id: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedModelSelection {
+    pub model_ids: Vec<u32>,
+    pub mirror: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedModelPoint {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedTriangle {
+    pub a: u32,
+    pub b: u32,
+    pub c: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedU16Replacement {
+    pub from: u16,
+    pub to: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedModelScale {
+    pub x: u16,
+    pub y: u16,
+    pub z: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedModelTranslation {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedNormalModel {
+    pub vertices: Vec<NormalizedModelPoint>,
+    pub faces: Vec<NormalizedTriangle>,
+    pub face_render_types: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedVertexNormal {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+    pub magnitude: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedNormalVector {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedPlaneTile {
+    pub label: String,
+    pub plane: i32,
+    pub game_objects: Vec<NormalizedPlaneGameObject>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedStoredPlaneTile {
+    pub storage_plane: u8,
+    pub label: String,
+    pub plane: i32,
+    pub game_objects: Vec<NormalizedPlaneGameObject>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedPlaneGameObject {
+    pub id: String,
+    pub tag_type: u8,
+    pub start_x: i32,
+    pub start_y: i32,
+    pub plane: i32,
+}
+
+/// Renderer-independent priority-order oracle input. `depth_bucket` is the
+/// already computed integer bucket consumed by the reference priority routine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedPriorityFace {
+    pub id: u32,
+    pub priority: u8,
+    pub depth_bucket: i32,
+    pub alpha: Option<i8>,
+}
+
+fn validate_version(version: u32) -> Result<(), NormalizedSchemaError> {
+    if version == NORMALIZED_SCHEMA_VERSION {
+        Ok(())
+    } else {
+        Err(NormalizedSchemaError::UnsupportedSchemaVersion(version))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NormalizedSchemaError {
+    Utf8(String),
+    Syntax(String),
+    UnsupportedSchemaVersion(u32),
+}
+
+impl fmt::Display for NormalizedSchemaError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Utf8(detail) => write!(formatter, "normalized fixture is not UTF-8: {detail}"),
+            Self::Syntax(detail) => {
+                write!(formatter, "invalid normalized fixture document: {detail}")
+            }
+            Self::UnsupportedSchemaVersion(version) => {
+                write!(
+                    formatter,
+                    "unsupported normalized fixture schema version {version}"
+                )
+            }
+        }
+    }
+}
+
+impl Error for NormalizedSchemaError {}
+
+#[cfg(test)]
+mod tests {
+    use super::{NormalizedFixtureInput, NormalizedFixtureKind, NormalizedSchemaError};
+
+    #[test]
+    fn parses_typed_model_selection_document() -> Result<(), Box<dyn std::error::Error>> {
+        let document = NormalizedFixtureInput::parse(
+            br#"{
+  "schema_version": 1,
+  "case": {
+    "kind": "model_selection",
+    "models": {
+      "encoding": "typed",
+      "entries": [{"loc_type": 4, "model_id": 200}]
+    },
+    "is_rotated": false,
+    "requested_type": 4,
+    "orientation": 4
+  }
+}"#,
+        )?;
+        assert_eq!(document.kind(), NormalizedFixtureKind::ModelSelection);
+        Ok(())
+    }
+
+    #[test]
+    fn parses_normal_merge_document() -> Result<(), Box<dyn std::error::Error>> {
+        let document = NormalizedFixtureInput::parse(
+            br#"{
+  "schema_version": 1,
+  "case": {
+    "kind": "normal_merge",
+    "left": {"vertices": [], "faces": [], "face_render_types": null},
+    "right": {"vertices": [], "faces": [], "face_render_types": null},
+    "translation": {"x": 0, "y": 0, "z": 0},
+    "hide_matched_faces": false
+  }
+}"#,
+        )?;
+        assert_eq!(document.kind(), NormalizedFixtureKind::NormalMerge);
+        Ok(())
+    }
+
+    #[test]
+    fn parses_plane_link_below_document() -> Result<(), Box<dyn std::error::Error>> {
+        let document = NormalizedFixtureInput::parse(
+            br#"{
+  "schema_version": 1,
+  "case": {
+    "kind": "plane_link_below",
+    "x": 10,
+    "y": 20,
+    "source_tiles": []
+  }
+}"#,
+        )?;
+        assert_eq!(document.kind(), NormalizedFixtureKind::PlaneLinkBelow);
+        Ok(())
+    }
+
+    #[test]
+    fn parses_priority_order_document() -> Result<(), Box<dyn std::error::Error>> {
+        let document = NormalizedFixtureInput::parse(
+            br#"{
+  "schema_version": 1,
+  "case": {
+    "kind": "priority_order",
+    "faces": [{"id": 10, "priority": 10, "depth_bucket": 100, "alpha": 64}]
+  }
+}"#,
+        )?;
+        assert_eq!(document.kind(), NormalizedFixtureKind::PriorityOrder);
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_unknown_schema_version() {
+        let result = NormalizedFixtureInput::parse(
+            br#"{
+  "schema_version": 2,
+  "case": {
+    "kind": "model_mirror",
+    "vertices": [],
+    "faces": []
+  }
+}"#,
+        );
+        assert!(matches!(
+            result,
+            Err(NormalizedSchemaError::UnsupportedSchemaVersion(2))
+        ));
+    }
+
+    #[test]
+    fn rejects_unknown_fields() {
+        let result = NormalizedFixtureInput::parse(
+            br#"{
+  "schema_version": 1,
+  "extra": true,
+  "case": {
+    "kind": "model_mirror",
+    "vertices": [],
+    "faces": []
+  }
+}"#,
+        );
+        assert!(matches!(result, Err(NormalizedSchemaError::Syntax(_))));
+    }
+}

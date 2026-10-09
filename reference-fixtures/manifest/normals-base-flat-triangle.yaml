@@ -1,0 +1,25 @@
+fixture_id: normals.base.flat_triangle
+schema_version: 1
+owned_specs:
+  - NORMALS-001
+parity_level: P1
+execution: evidence_only
+oracle:
+  kind: melxin-deob-source
+  repository: melxin/runelite
+  commit: 1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc
+  files:
+    - path: runescape-client/src/main/java/ModelData.java
+      blob: 2cc9406b2504fbd4fae0c0c952aa2d133809e928
+      symbol: calculateVertexNormals
+harness:
+  path: reference-fixtures/manifest/M5-SEMANTIC-EVIDENCE-MIGRATION-v1.md
+  revision: 2e1ac34d309ce6f9c0c401e462746e31377cacec
+input: normals/base_flat_triangle.input.json
+expected: normals/base_flat_triangle.expected.json
+expected_sha256: 7d9974c420065cc63d86ef6da7b6e4de047a24263932bcf3520b35d226bebd73
+normalization:
+  - preserve signed integer model coordinates and face winding
+  - preserve render type 1 as authored flat-shading metadata
+  - preserve exact integer face-normal components and zero vertex accumulators
+notes: Source-pinned base flat-normal evidence. Production normal generation belongs to M7.

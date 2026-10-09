@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "case": {
+    "kind": "model_transform",
+    "vertices": [
+      {
+        "x": -262,
+        "y": 27,
+        "z": -115
+      },
+      {
+        "x": -80,
+        "y": -5,
+        "z": -25
+      },
+      {
+        "x": -80,
+        "y": 59,
+        "z": -25
+      }
+    ],
+    "face_colors": [
+      300
+    ],
+    "face_textures": [
+      9
+    ]
+  }
+}

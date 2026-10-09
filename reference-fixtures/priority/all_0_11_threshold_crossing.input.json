@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "case": {
+    "kind": "priority_order",
+    "faces": [
+      {"id": 0, "priority": 0, "depth_bucket": 65, "alpha": null},
+      {"id": 1, "priority": 1, "depth_bucket": 90, "alpha": null},
+      {"id": 2, "priority": 2, "depth_bucket": 70, "alpha": null},
+      {"id": 3, "priority": 3, "depth_bucket": 60, "alpha": null},
+      {"id": 4, "priority": 4, "depth_bucket": 40, "alpha": null},
+      {"id": 5, "priority": 5, "depth_bucket": 35, "alpha": null},
+      {"id": 6, "priority": 6, "depth_bucket": 30, "alpha": null},
+      {"id": 7, "priority": 7, "depth_bucket": 15, "alpha": null},
+      {"id": 8, "priority": 8, "depth_bucket": 10, "alpha": null},
+      {"id": 9, "priority": 9, "depth_bucket": 0, "alpha": null},
+      {"id": 10, "priority": 10, "depth_bucket": 100, "alpha": 64},
+      {"id": 11, "priority": 10, "depth_bucket": 55, "alpha": null},
+      {"id": 12, "priority": 10, "depth_bucket": 25, "alpha": null},
+      {"id": 13, "priority": 10, "depth_bucket": 5, "alpha": null},
+      {"id": 14, "priority": 11, "depth_bucket": 95, "alpha": -1},
+      {"id": 15, "priority": 11, "depth_bucket": 52, "alpha": null},
+      {"id": 16, "priority": 11, "depth_bucket": 22, "alpha": null},
+      {"id": 17, "priority": 11, "depth_bucket": 2, "alpha": null}
+    ]
+  }
+}

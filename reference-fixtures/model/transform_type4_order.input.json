@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "case": {
+    "kind": "model_transform",
+    "vertices": [
+      {
+        "x": 128,
+        "y": 64,
+        "z": 0
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      {
+        "x": 0,
+        "y": 128,
+        "z": 0
+      }
+    ],
+    "face_colors": [
+      100
+    ],
+    "face_textures": [
+      7
+    ],
+    "requested_type": 4,
+    "orientation": 5,
+    "recolors": [
+      {
+        "from": 100,
+        "to": 200
+      },
+      {
+        "from": 200,
+        "to": 300
+      }
+    ],
+    "retextures": [
+      {
+        "from": 7,
+        "to": 8
+      },
+      {
+        "from": 8,
+        "to": 9
+      }
+    ],
+    "scale": {
+      "x": 256,
+      "y": 64,
+      "z": 128
+    },
+    "translation": {
+      "x": 10,
+      "y": -5,
+      "z": 20
+    }
+  }
+}

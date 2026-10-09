@@ -1,0 +1,25 @@
+fixture_id: normals.base.smooth_triangle
+schema_version: 1
+owned_specs:
+  - NORMALS-001
+parity_level: P1
+execution: evidence_only
+oracle:
+  kind: melxin-deob-source
+  repository: melxin/runelite
+  commit: 1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc
+  files:
+    - path: runescape-client/src/main/java/ModelData.java
+      blob: 2cc9406b2504fbd4fae0c0c952aa2d133809e928
+      symbol: calculateVertexNormals
+harness:
+  path: reference-fixtures/manifest/M5-SEMANTIC-EVIDENCE-MIGRATION-v1.md
+  revision: 2e1ac34d309ce6f9c0c401e462746e31377cacec
+input: normals/base_smooth_triangle.input.json
+expected: normals/base_smooth_triangle.expected.json
+expected_sha256: 9538bf42b1d5503800740c8af8d329264488cdea5441b07588515a88c6a6f383
+normalization:
+  - preserve signed integer model coordinates and face winding
+  - preserve absent face render types as null
+  - preserve exact integer normal components and magnitude counts
+notes: Source-pinned base smooth-normal evidence. Production normal generation belongs to M7.

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "case": {
+    "kind": "normal_merge",
+    "left": {
+      "vertices": [
+        {"x": 0, "y": 0, "z": 0},
+        {"x": 128, "y": 0, "z": 0},
+        {"x": 0, "y": 0, "z": 128}
+      ],
+      "faces": [{"a": 0, "b": 1, "c": 2}],
+      "face_render_types": null
+    },
+    "right": {
+      "vertices": [
+        {"x": 0, "y": 0, "z": 0},
+        {"x": 128, "y": 0, "z": 0},
+        {"x": 0, "y": 0, "z": 128}
+      ],
+      "faces": [{"a": 0, "b": 1, "c": 2}],
+      "face_render_types": null
+    },
+    "translation": {"x": 1, "y": 0, "z": 0},
+    "hide_matched_faces": false
+  }
+}

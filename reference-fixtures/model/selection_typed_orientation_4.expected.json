@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "case": {
+    "kind": "model_selection",
+    "selection": {
+      "model_ids": [
+        200
+      ],
+      "mirror": true
+    }
+  }
+}

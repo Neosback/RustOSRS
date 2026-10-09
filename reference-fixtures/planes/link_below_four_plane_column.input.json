@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "case": {
+    "kind": "plane_link_below",
+    "x": 10,
+    "y": 20,
+    "source_tiles": [
+      {
+        "label": "p0",
+        "plane": 0,
+        "game_objects": [
+          {"id": "p0-anchor", "tag_type": 2, "start_x": 10, "start_y": 20, "plane": 0}
+        ]
+      },
+      {
+        "label": "p1",
+        "plane": 1,
+        "game_objects": [
+          {"id": "p1-anchor", "tag_type": 2, "start_x": 10, "start_y": 20, "plane": 1},
+          {"id": "p1-other-tile", "tag_type": 2, "start_x": 11, "start_y": 20, "plane": 1},
+          {"id": "p1-other-type", "tag_type": 1, "start_x": 10, "start_y": 20, "plane": 1}
+        ]
+      },
+      {
+        "label": "p2",
+        "plane": 2,
+        "game_objects": [
+          {"id": "p2-anchor", "tag_type": 2, "start_x": 10, "start_y": 20, "plane": 2}
+        ]
+      },
+      {
+        "label": "p3",
+        "plane": 3,
+        "game_objects": [
+          {"id": "p3-anchor", "tag_type": 2, "start_x": 10, "start_y": 20, "plane": 3}
+        ]
+      }
+    ]
+  }
+}

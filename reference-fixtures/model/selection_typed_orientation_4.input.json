@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "case": {
+    "kind": "model_selection",
+    "models": {
+      "encoding": "typed",
+      "entries": [
+        {
+          "loc_type": 2,
+          "model_id": 100
+        },
+        {
+          "loc_type": 4,
+          "model_id": 200
+        }
+      ]
+    },
+    "is_rotated": false,
+    "requested_type": 4,
+    "orientation": 4
+  }
+}

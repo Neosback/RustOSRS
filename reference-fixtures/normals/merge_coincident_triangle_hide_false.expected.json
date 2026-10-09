@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "case": {
+    "kind": "normal_merge",
+    "left_merged_vertex_normals": [
+      {"x": 0, "y": -512, "z": 0, "magnitude": 2},
+      {"x": 0, "y": -512, "z": 0, "magnitude": 2},
+      {"x": 0, "y": -512, "z": 0, "magnitude": 2}
+    ],
+    "right_merged_vertex_normals": [
+      {"x": 0, "y": -512, "z": 0, "magnitude": 2},
+      {"x": 0, "y": -512, "z": 0, "magnitude": 2},
+      {"x": 0, "y": -512, "z": 0, "magnitude": 2}
+    ],
+    "left_face_render_types": null,
+    "right_face_render_types": null
+  }
+}
