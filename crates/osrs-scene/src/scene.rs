@@ -237,8 +237,8 @@ impl SceneGrid {
         };
         let source_plane = SourcePlane::new(plane.index().get())
             .ok_or(SceneGridError::InvalidPlaneIndex(plane.index().get()))?;
-        let semantic_tile = self.tiles[index]
-            .get_or_insert_with(|| SemanticTile::new(Some(source_plane), plane));
+        let semantic_tile =
+            self.tiles[index].get_or_insert_with(|| SemanticTile::new(Some(source_plane), plane));
         semantic_tile.terrain = Some(terrain);
         Ok(())
     }
