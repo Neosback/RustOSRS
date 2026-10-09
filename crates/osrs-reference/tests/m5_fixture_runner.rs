@@ -9,8 +9,8 @@ fn repository() -> Result<FixtureRepository, Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn discovers_and_executes_every_checked_in_yaml_fixture()
--> Result<(), Box<dyn std::error::Error>> {
+fn discovers_and_executes_every_checked_in_yaml_fixture() -> Result<(), Box<dyn std::error::Error>>
+{
     let inventory = FixtureInventory::discover(&repository()?)?;
     let ids = inventory
         .fixtures()
