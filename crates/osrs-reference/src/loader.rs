@@ -225,7 +225,7 @@ impl std::error::Error for FixtureLoadError {
 mod tests {
     use super::{FixtureLoadError, FixtureRepository, sha256_hex};
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root(label: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -239,10 +239,7 @@ mod tests {
         Ok(root)
     }
 
-    fn write_fixture(
-        root: &PathBuf,
-        declared_hash: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn write_fixture(root: &Path, declared_hash: &str) -> Result<(), Box<dyn std::error::Error>> {
         fs::write(root.join("model/input.json"), b"{\"orientation\":4}\n")?;
         fs::write(root.join("model/expected.json"), b"{\"mirror\":true}\n")?;
         let manifest = format!(
