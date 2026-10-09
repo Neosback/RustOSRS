@@ -206,10 +206,7 @@ mod tests {
         assert_eq!(game.storage_footprint, Footprint::ONE_BY_ONE);
         assert_eq!(object.rotated_definition_footprint, Footprint::new(3, 2));
 
-        let plan = plan_side_effects(
-            DefinitionSideEffectInputs::new(flags(1, false), 16),
-            object,
-        );
+        let plan = plan_side_effects(DefinitionSideEffectInputs::new(flags(1, false), 16), object);
         assert_eq!(
             plan.collision,
             CollisionSideEffect::GameObject {
@@ -225,10 +222,8 @@ mod tests {
     -> Result<(), crate::placement::PlacementError> {
         for loc_type in 4..=8 {
             let decor = placement(loc_type, 2, 1, 1)?;
-            let plan = plan_side_effects(
-                DefinitionSideEffectInputs::new(flags(2, true), 31),
-                decor,
-            );
+            let plan =
+                plan_side_effects(DefinitionSideEffectInputs::new(flags(2, true), 31), decor);
             assert_eq!(plan.collision, CollisionSideEffect::None);
             assert_eq!(plan.wall_displacement, None);
         }
