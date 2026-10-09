@@ -11,9 +11,7 @@ fn value_nth(line: &str, key: &str, occurrence: usize) -> Result<i32, Box<dyn Er
         .filter_map(|part| part.strip_prefix(&prefix))
         .nth(occurrence)
         .ok_or_else(|| {
-            io::Error::other(format!(
-                "missing {key} occurrence {occurrence} in {line}"
-            ))
+            io::Error::other(format!("missing {key} occurrence {occurrence} in {line}"))
         })?;
     Ok(token.parse()?)
 }
