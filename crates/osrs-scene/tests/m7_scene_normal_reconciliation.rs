@@ -11,10 +11,8 @@ use osrs_core::{
 use osrs_scene::{Footprint, SceneModelDataGrid};
 use std::error::Error;
 
-const PROFILE_DIGEST: &str =
-    "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
-const CACHE_FINGERPRINT: &str =
-    "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
+const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
+const CACHE_FINGERPRINT: &str = "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 const BASE_TRIANGLE: [ModelPoint; 3] = [
     ModelPoint::new(0, 0, 0),
     ModelPoint::new(128, 0, 0),
@@ -56,12 +54,7 @@ fn boundary_to_game_neighbor_uses_exact_footprint_translation() -> Result<(), Bo
     )?);
     let game = scene.add_model(working_triangle(8_102, BASE_TRIANGLE)?);
     scene.set_boundary(plane(0), SceneTile::new(1, 1), boundary, None)?;
-    scene.insert_game_object(
-        plane(0),
-        SceneTile::new(2, 1),
-        Footprint::ONE_BY_ONE,
-        game,
-    )?;
+    scene.insert_game_object(plane(0), SceneTile::new(2, 1), Footprint::ONE_BY_ONE, game)?;
 
     let report = scene.reconcile_normals()?;
 
@@ -98,8 +91,8 @@ fn floor_decoration_neighbor_path_hides_fully_matched_faces() -> Result<(), Box<
 }
 
 #[test]
-fn plane_above_neighbor_uses_average_height_delta_without_face_hiding()
--> Result<(), Box<dyn Error>> {
+fn plane_above_neighbor_uses_average_height_delta_without_face_hiding() -> Result<(), Box<dyn Error>>
+{
     let mut scene = SceneModelDataGrid::new(3, 3, 2)?;
     for x in 0..=scene.width() {
         for y in 0..=scene.height() {

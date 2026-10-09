@@ -113,12 +113,18 @@ impl fmt::Display for SceneNormalError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidPlaneCount(count) => {
-                write!(formatter, "normal scene plane count {count} is outside 1..=4")
+                write!(
+                    formatter,
+                    "normal scene plane count {count} is outside 1..=4"
+                )
             }
             Self::CapacityOverflow => formatter.write_str("normal scene capacity overflow"),
             Self::CoordinateOverflow => formatter.write_str("normal scene coordinate overflow"),
             Self::OutOfBounds { plane, x, y } => {
-                write!(formatter, "normal scene tile ({x},{y}) on plane {plane} is out of bounds")
+                write!(
+                    formatter,
+                    "normal scene tile ({x},{y}) on plane {plane} is out of bounds"
+                )
             }
             Self::HeightCornerOutOfBounds { plane, x, y } => write!(
                 formatter,
@@ -126,13 +132,22 @@ impl fmt::Display for SceneNormalError {
             ),
             Self::UnknownModel(index) => write!(formatter, "unknown scene ModelData id {index}"),
             Self::ModelAlreadyClaimed(index) => {
-                write!(formatter, "scene ModelData id {index} is already owned by a renderable")
+                write!(
+                    formatter,
+                    "scene ModelData id {index} is already owned by a renderable"
+                )
             }
             Self::DuplicateBoundaryArm(index) => {
-                write!(formatter, "boundary arms cannot share scene ModelData id {index}")
+                write!(
+                    formatter,
+                    "boundary arms cannot share scene ModelData id {index}"
+                )
             }
             Self::OccupiedBoundary { plane, x, y } => {
-                write!(formatter, "boundary slot ({x},{y}) on plane {plane} is already occupied")
+                write!(
+                    formatter,
+                    "boundary slot ({x},{y}) on plane {plane} is already occupied"
+                )
             }
             Self::OccupiedFloorDecoration { plane, x, y } => write!(
                 formatter,
@@ -507,8 +522,10 @@ impl SceneModelDataGrid {
             i32::try_from(source_tile.x).map_err(|_| SceneNormalError::CoordinateOverflow)?;
         let source_y =
             i32::try_from(source_tile.y).map_err(|_| SceneNormalError::CoordinateOverflow)?;
-        let width = i32::try_from(source_width).map_err(|_| SceneNormalError::CoordinateOverflow)?;
-        let depth = i32::try_from(source_depth).map_err(|_| SceneNormalError::CoordinateOverflow)?;
+        let width =
+            i32::try_from(source_width).map_err(|_| SceneNormalError::CoordinateOverflow)?;
+        let depth =
+            i32::try_from(source_depth).map_err(|_| SceneNormalError::CoordinateOverflow)?;
         let mut scan_start_x = source_x;
         let scan_end_x = source_x
             .checked_add(width)
@@ -637,8 +654,12 @@ impl SceneModelDataGrid {
             return Ok(());
         }
         let (source_model, neighbor_model) = self.model_pair_mut(source, neighbor)?;
-        let outcome =
-            merge_model_normals(source_model, neighbor_model, translation, hide_matched_faces);
+        let outcome = merge_model_normals(
+            source_model,
+            neighbor_model,
+            translation,
+            hide_matched_faces,
+        );
         report.record_merge(outcome);
         Ok(())
     }
@@ -719,11 +740,7 @@ impl SceneModelDataGrid {
         Ok(self.tile_heights[index])
     }
 
-    fn required_tile_index(
-        &self,
-        plane: u8,
-        tile: SceneTile,
-    ) -> Result<usize, SceneNormalError> {
+    fn required_tile_index(&self, plane: u8, tile: SceneTile) -> Result<usize, SceneNormalError> {
         self.tile_index(plane, tile)
             .ok_or(SceneNormalError::OutOfBounds {
                 plane,
