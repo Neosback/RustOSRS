@@ -1,6 +1,6 @@
 # Semantic Parity Verification Matrix
 
-Status: **Implementation tracking through M6 Checkpoint 3 plane-domain/link-below semantics**
+Status: **Implementation tracking through M6 Checkpoint 4 semantic scene insertion and queries**
 
 This matrix maps every canonical semantic specification to its required verification family. Coverage status describes checked-in production test/fixture implementation state, not source-evidence certainty.
 
@@ -58,16 +58,30 @@ At M5 exit, the repository-wide normalized runner validated all ten canonical YA
 
 The historical index exposes stable fixture IDs for `terrain.shape_gallery.all_13x4`, `contour.synthetic.flat_slope`, `lighting.synthetic_triangle.loc_rig`, `placement.wall_types.orientation_matrix`, `placement.decor_types.orientation_matrix`, `placement.floor_type22.storage`, and `placement.game_object.footprint_and_capacity`.
 
+## M6 scene insertion coverage
+
+M6 Checkpoint 4 connects the existing exact placement planner to production semantic tile storage without advancing later collision, clipping, occlusion, model-building, or renderer ownership.
+
+| M6 insertion family | Exact verification artifact | Coverage |
+|---|---|---|
+| fixed scene-layer insertion and query for loc types `0..22` plus representative `>=12` | `crates/osrs-scene/tests/m6_scene_insertion.rs`, `crates/osrs-scene/src/placement.rs` unit tests | EXISTING |
+| game-object full-footprint insertion, shared identity, edge masks, five-object capacity, atomic rejection | `crates/osrs-scene/src/scene.rs` unit tests, `crates/osrs-scene/tests/m6_scene_insertion.rs`, pinned `Scene.newGameObject` | EXISTING for storage; sloped height sampling remains pending |
+| floor-decoration storage at supplied flat and synthetic slope heights | `crates/osrs-scene/tests/m6_scene_insertion.rs` | EXISTING |
+| stored placement metadata for later definition-driven collision/clipping/occlusion side effects | `ScenePlacedLoc`, `SceneGameObject::placement`, scene insertion tests | PARTIAL; side-effect mutation formulas remain unimplemented |
+| multi-tile game-object plane identity under link-below mutation | `crates/osrs-scene/src/scene.rs` unit tests | EXISTING |
+
 ## Placement
 
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
-| `LOC-PLACEMENT-001` | loc types `0..22` + representative `>=12`; walls/decor x orientations; indexed evidence IDs `placement.wall_types.orientation_matrix`, `placement.decor_types.orientation_matrix`, `placement.floor_type22.storage` | exact scene slot/type/arms/flags | PARTIAL |
-| `LOC-PLACEMENT-002` | decor types `4..8` x orientation, wall present/absent, custom displacement; indexed evidence ID `placement.decor_types.orientation_matrix` | exact integer offsets/orientation flags | PARTIAL |
-| `LOC-PLACEMENT-003` | square/non-square footprints x all orientations; sloped center samples; indexed evidence ID `placement.game_object.footprint_and_capacity` | exact footprint, center, height inputs | REQUIRED |
+| `LOC-PLACEMENT-001` | loc types `0..22` + representative `>=12`; walls/decor x orientations; indexed evidence IDs `placement.wall_types.orientation_matrix`, `placement.decor_types.orientation_matrix`, `placement.floor_type22.storage` | exact scene slot/type/arms/flags | EXISTING |
+| `LOC-PLACEMENT-002` | decor types `4..8` x orientation, wall present/absent, custom displacement; indexed evidence ID `placement.decor_types.orientation_matrix` | exact integer offsets/orientation flags | EXISTING |
+| `LOC-PLACEMENT-003` | square/non-square footprints x all orientations; sloped center samples; indexed evidence ID `placement.game_object.footprint_and_capacity` | exact footprint, center, height inputs | PARTIAL |
 | `LOC-PLACEMENT-004` | same qualifying definition through initial and pending-replacement paths | exact representation/path identity | REQUIRED |
-| `LOC-PLACEMENT-005` | definition-driven collision/clipping/occlusion/wall metadata cases | exact side-effect state per promoted sub-contract | REQUIRED |
-| `LOC-PLACEMENT-006` | floor decoration flat+slope cases; indexed evidence ID `placement.floor_type22.storage` | exact semantic Z, no implicit lift | REQUIRED |
+| `LOC-PLACEMENT-005` | definition-driven collision/clipping/occlusion/wall metadata cases | exact side-effect state per promoted sub-contract | PARTIAL |
+| `LOC-PLACEMENT-006` | floor decoration flat+slope cases; indexed evidence ID `placement.floor_type22.storage` | exact semantic Z, no implicit lift | EXISTING |
+
+`LOC-PLACEMENT-003` remains `PARTIAL`: exact rotated footprints, centers, atomic footprint storage, capacity, and edge masks are covered, but the production scene builder does not yet own exact sloped terrain center sampling. `LOC-PLACEMENT-005` is also only `PARTIAL`: Checkpoint 4 preserves the canonical placement metadata needed for later side-effect regeneration but does not implement collision, clipping, or occlusion mutation formulas. `LOC-PLACEMENT-004` remains later runtime/replacement work.
 
 ## Model construction
 
