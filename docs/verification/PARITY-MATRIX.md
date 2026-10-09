@@ -1,6 +1,6 @@
 # Semantic Parity Verification Matrix
 
-Status: **Implementation tracking through M3**
+Status: **Implementation tracking through M4**
 
 This matrix maps every canonical semantic specification to its required verification family. Coverage status describes checked-in test/fixture implementation state, not source-evidence certainty.
 
@@ -20,7 +20,24 @@ M3 closes cache transport and byte-to-canonical decoding prerequisites without c
 | malformed/unknown decoder inputs | `crates/osrs-cache/tests/m3_fuzz_smoke.rs` plus decoder/reader unit tests | EXISTING |
 | cache transport bounds, safe logical-file split, fingerprint/XTEA boundaries | `crates/osrs-cache/src/transport.rs` unit tests | EXISTING |
 
-These rows verify the P0 acquisition/decode layer only. They do **not** promote `MORPH-001`, `TEXTURE-001`, `LOC-PLACEMENT-*`, model construction, scene placement, animation execution, or renderer behavior to `EXISTING` before their owning milestones.
+These rows verify the P0 acquisition/decode layer only. They do **not** promote `MORPH-001`, `TEXTURE-001`, `LOC-PLACEMENT-*`, scene placement, animation execution, or renderer behavior to `EXISTING` before their owning milestones.
+
+## M4 P0/P1 model coverage
+
+M4 closes target-era ModelData decode plus exact pre-GPU object model selection, raw mirroring, multi-model combination, and instance transforms. The permanent M4 anchors are merge-gated in Tier C:
+
+| M4 family | Exact verification artifact | Coverage |
+|---|---|---|
+| build-241 `FF FD` / `FF FE` ModelData decode, topology, face/material metadata, skins/skeletal inputs, format identity, provenance | `crates/osrs-cache/src/decode/model.rs`, decoder unit tests, ignored exhaustive `crates/osrs-cache/tests/m4_target_probe.rs` | EXISTING |
+| exact model selection and multi-model combine | `reference-fixtures/model/m4-p0-p1.txt`, `crates/osrs-core/src/model_construction.rs` unit tests | EXISTING |
+| raw mirror selection, geometry, winding, and distinct mirrored cache variant | `reference-fixtures/model/m4-p0-p1.txt`, model-construction tests, `crates/osrs-cache/src/object_model.rs` | EXISTING |
+| exact instance transform order and integer coordinate behavior | `reference-fixtures/model/m4-p0-p1.txt`, `crates/osrs-core/tests/m4_instance_transform.rs` | EXISTING |
+| malformed/truncated/random target-model bytes | `crates/osrs-cache/tests/m4_model_fuzz_smoke.rs` | EXISTING |
+| M4 ownership subset: immutable raw/cache sources across mirror, combine, recolor/retexture, orientation, resize, translation | repository/model-construction tests and `m4_instance_transform.rs` | PARTIAL |
+
+The pinned OpenRS2 2727 target sweep decoded all `62,043` build-241 model groups through the production repository path: `35,103` `FF FD`, `26,940` `FF FE`, zero `FF FF`, zero legacy, zero empty groups, and zero multi-file model groups. Historical `FF FF`/legacy decode remains intentionally unsupported for the selected target rather than guessed from another revision.
+
+`MODEL-BUILD-004` deliberately remains `REQUIRED`: its `nonFlatShading` representation/cache split depends on the later pre-lighting normal-reconciliation/static-entity path. `MODEL-BUILD-005` is only `PARTIAL` in M4 because contouring, animation pose, and scene-normal mutation still need their owning milestone tests before the full ownership rule can be closed. `FACE-001` likewise remains `REQUIRED` until render extraction proves end-to-end optional face metadata preservation.
 
 ## Placement
 
@@ -37,11 +54,11 @@ These rows verify the P0 acquisition/decode layer only. They do **not** promote 
 
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
-| `MODEL-BUILD-001` | typed hit/miss; untyped type-10 combine; non-10 rejection; missing IDs | exact selected model IDs / `None` | REQUIRED |
-| `MODEL-BUILD-002` | typed mirror truth table + untyped special case | exact vertices, indices, winding | REQUIRED |
-| `MODEL-BUILD-003` | orientations, type-4 diagonal recenter, combined transform-order fixture | exact integer vertices + material substitutions | REQUIRED |
+| `MODEL-BUILD-001` | typed hit/miss; untyped type-10 combine; non-10 rejection; missing IDs | exact selected model IDs / `None` | EXISTING |
+| `MODEL-BUILD-002` | typed mirror truth table + untyped special case | exact vertices, indices, winding | EXISTING |
+| `MODEL-BUILD-003` | orientations, type-4 diagonal recenter, combined transform-order fixture | exact integer vertices + material substitutions | EXISTING |
 | `MODEL-BUILD-004` | `nonFlatShading` false/true path | exact semantic representation and cache state | REQUIRED |
-| `MODEL-BUILD-005` | two instances share source; mutate only one | untouched source/instance exact hash | REQUIRED |
+| `MODEL-BUILD-005` | two instances share source; mutate only one | untouched source/instance exact hash | PARTIAL |
 
 ## Normals and lighting
 
@@ -96,7 +113,7 @@ These rows verify the P0 acquisition/decode layer only. They do **not** promote 
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
 | `COORD-001` | tile/local conversions, footprint centers, terrain positions | exact integer coordinates | PARTIAL |
-| `COORD-002` | all loc orientations + special 256-JAU path | exact integer transformed vertices | REQUIRED |
+| `COORD-002` | all loc orientations + special 256-JAU path | exact integer transformed vertices | EXISTING |
 | `COORD-003` | world/scene/local/model/render conversion and region-border fixture | exact semantic coordinates; explicit renderer conversion | REQUIRED |
 
 ## Renderer-policy verification mapping
