@@ -7,7 +7,8 @@ use osrs_scene::{
 const HISTORICAL_GOLDEN: &str = include_str!("../../../reference-fixtures/deob_golden.txt");
 
 #[test]
-fn all_13_shapes_and_4_rotations_match_historical_golden_exactly() -> Result<(), TerrainBuildError> {
+fn all_13_shapes_and_4_rotations_match_historical_golden_exactly() -> Result<(), TerrainBuildError>
+{
     let expected: Vec<&str> = HISTORICAL_GOLDEN
         .lines()
         .filter(|line| line.starts_with("tri shape="))
