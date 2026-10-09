@@ -4,13 +4,22 @@ use std::{error::Error, io};
 
 const HISTORICAL_GOLDEN: &str = include_str!("../../../reference-fixtures/deob_golden.txt");
 
-fn value(line: &str, key: &str) -> Result<i32, Box<dyn Error>> {
+fn value_nth(line: &str, key: &str, occurrence: usize) -> Result<i32, Box<dyn Error>> {
     let prefix = format!("{key}=");
     let token = line
         .split_whitespace()
-        .find_map(|part| part.strip_prefix(&prefix))
-        .ok_or_else(|| io::Error::other(format!("missing {key} in {line}")))?;
+        .filter_map(|part| part.strip_prefix(&prefix))
+        .nth(occurrence)
+        .ok_or_else(|| {
+            io::Error::other(format!(
+                "missing {key} occurrence {occurrence} in {line}"
+            ))
+        })?;
     Ok(token.parse()?)
+}
+
+fn value(line: &str, key: &str) -> Result<i32, Box<dyn Error>> {
+    value_nth(line, key, 0)
 }
 
 fn input(loc_type: u8, orientation: u8, wall_displacement: Option<u16>) -> PlacementInput {
@@ -60,7 +69,7 @@ fn historical_wall_and_decor_orientation_matrix_matches_planner() -> Result<(), 
         };
         assert_eq!(
             i32::from(plan.orientation_flag),
-            value(line, "o")?,
+            value_nth(line, "o", 1)?,
             "{line}"
         );
         assert_eq!(
