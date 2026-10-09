@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "case": {
+    "kind": "base_normals",
+    "model": {
+      "vertices": [
+        {"x": 0, "y": 0, "z": 0},
+        {"x": 128, "y": 0, "z": 0},
+        {"x": 0, "y": 0, "z": 128}
+      ],
+      "faces": [
+        {"a": 0, "b": 1, "c": 2}
+      ],
+      "face_render_types": null
+    }
+  }
+}
