@@ -95,17 +95,21 @@ impl SemanticTile {
         Self::new(None, storage_plane)
     }
 
-    fn relocate_down(&mut self, storage_plane: StoragePlane, anchor: SceneTile) {
+    fn relocate_down(
+        &mut self,
+        storage_plane: StoragePlane,
+        anchor: SceneTile,
+    ) -> Result<(), SceneGridError> {
         self.storage_plane = storage_plane;
         for object in &mut self.game_objects {
             if object.tag_type == GAME_OBJECT_TAG_TYPE && object.start == anchor {
                 let value = object.plane.index().get();
                 if value > 0 {
-                    object.plane = StoragePlane::new(value - 1)
-                        .expect("decremented game-object plane must remain valid");
+                    object.plane = storage_plane_from_index(value - 1)?;
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -126,6 +130,7 @@ pub struct SceneGrid {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SceneGridError {
     InvalidPlaneCount(u8),
+    InvalidPlaneIndex(u8),
     CapacityOverflow,
     OutOfBounds { plane: u8, x: u32, y: u32 },
     LinkBelowRequiresFourPlanes(u8),
@@ -136,6 +141,9 @@ impl fmt::Display for SceneGridError {
         match self {
             Self::InvalidPlaneCount(count) => {
                 write!(formatter, "scene plane count {count} is outside 1..=4")
+            }
+            Self::InvalidPlaneIndex(plane) => {
+                write!(formatter, "scene plane index {plane} is outside 0..=3")
             }
             Self::CapacityOverflow => formatter.write_str("scene grid capacity overflow"),
             Self::OutOfBounds { plane, x, y } => write!(
@@ -227,15 +235,11 @@ impl SceneGrid {
                 y: tile.y,
             });
         };
-        if self.tiles[index].is_none() {
-            let source_plane = SourcePlane::new(plane.index().get())
-                .expect("validated storage plane must map to a valid source plane");
-            self.tiles[index] = Some(SemanticTile::new(Some(source_plane), plane));
-        }
-        self.tiles[index]
-            .as_mut()
-            .expect("scene tile was just created")
-            .terrain = Some(terrain);
+        let source_plane = SourcePlane::new(plane.index().get())
+            .ok_or(SceneGridError::InvalidPlaneIndex(plane.index().get()))?;
+        let semantic_tile = self.tiles[index]
+            .get_or_insert_with(|| SemanticTile::new(Some(source_plane), plane));
+        semantic_tile.terrain = Some(terrain);
         Ok(())
     }
 
@@ -254,35 +258,22 @@ impl SceneGrid {
             });
         }
 
-        let plane0 = storage_plane(0);
-        let plane1 = storage_plane(1);
-        let plane2 = storage_plane(2);
-        let plane3 = storage_plane(3);
-        let index0 = self
-            .index(plane0, tile)
-            .expect("validated four-plane tile must have plane-0 storage");
-        let index1 = self
-            .index(plane1, tile)
-            .expect("validated four-plane tile must have plane-1 storage");
-        let index2 = self
-            .index(plane2, tile)
-            .expect("validated four-plane tile must have plane-2 storage");
-        let index3 = self
-            .index(plane3, tile)
-            .expect("validated four-plane tile must have plane-3 storage");
+        let plane0 = storage_plane_from_index(0)?;
+        let plane1 = storage_plane_from_index(1)?;
+        let plane2 = storage_plane_from_index(2)?;
+        let plane3 = storage_plane_from_index(3)?;
+        let index0 = self.required_index(plane0, tile)?;
+        let index1 = self.required_index(plane1, tile)?;
+        let index2 = self.required_index(plane2, tile)?;
+        let index3 = self.required_index(plane3, tile)?;
 
         let old_plane0 = self.tiles[index0].take();
-        self.move_tile_down(index1, index0, plane0, tile);
-        self.move_tile_down(index2, index1, plane1, tile);
-        self.move_tile_down(index3, index2, plane2, tile);
+        self.move_tile_down(index1, index0, plane0, tile)?;
+        self.move_tile_down(index2, index1, plane1, tile)?;
+        self.move_tile_down(index3, index2, plane2, tile)?;
 
-        if self.tiles[index0].is_none() {
-            self.tiles[index0] = Some(SemanticTile::synthetic(plane0));
-        }
-        self.tiles[index0]
-            .as_mut()
-            .expect("plane-0 tile exists after link-below shift")
-            .linked_below = old_plane0.map(Box::new);
+        let plane0_tile = self.tiles[index0].get_or_insert_with(|| SemanticTile::synthetic(plane0));
+        plane0_tile.linked_below = old_plane0.map(Box::new);
         Ok(())
     }
 
@@ -292,12 +283,25 @@ impl SceneGrid {
         target_index: usize,
         target_plane: StoragePlane,
         anchor: SceneTile,
-    ) {
+    ) -> Result<(), SceneGridError> {
         let mut moved = self.tiles[source_index].take();
         if let Some(tile) = moved.as_mut() {
-            tile.relocate_down(target_plane, anchor);
+            tile.relocate_down(target_plane, anchor)?;
         }
         self.tiles[target_index] = moved;
+        Ok(())
+    }
+
+    fn required_index(
+        &self,
+        plane: StoragePlane,
+        tile: SceneTile,
+    ) -> Result<usize, SceneGridError> {
+        self.index(plane, tile).ok_or(SceneGridError::OutOfBounds {
+            plane: plane.index().get(),
+            x: tile.x,
+            y: tile.y,
+        })
     }
 
     fn index(&self, plane: StoragePlane, tile: SceneTile) -> Option<usize> {
@@ -315,8 +319,8 @@ impl SceneGrid {
     }
 }
 
-fn storage_plane(value: u8) -> StoragePlane {
-    StoragePlane::new(value).expect("0..=3 storage plane must be valid")
+fn storage_plane_from_index(value: u8) -> Result<StoragePlane, SceneGridError> {
+    StoragePlane::new(value).ok_or(SceneGridError::InvalidPlaneIndex(value))
 }
 
 #[cfg(test)]
@@ -339,7 +343,7 @@ mod tests {
     #[test]
     fn terrain_storage_is_plane_and_tile_exact() -> Result<(), SceneGridError> {
         let mut grid = SceneGrid::new(2, 3, 4)?;
-        let plane = storage_plane(2);
+        let plane = storage_plane_from_index(2)?;
         let tile = SceneTile::new(1, 2);
         let surface = TerrainSurface::Flat(FlatTerrainSurface::new(
             TerrainCorners::new(1, 2, 3, 4),
@@ -352,7 +356,7 @@ mod tests {
                 .and_then(|value| value.terrain.as_ref()),
             Some(&surface)
         );
-        let other_plane = storage_plane(1);
+        let other_plane = storage_plane_from_index(1)?;
         assert!(
             grid.tile(other_plane, tile)
                 .and_then(|value| value.terrain.as_ref())
@@ -364,7 +368,7 @@ mod tests {
     #[test]
     fn out_of_bounds_access_does_not_alias_storage() -> Result<(), SceneGridError> {
         let mut grid = SceneGrid::new(2, 2, 1)?;
-        let plane = storage_plane(0);
+        let plane = storage_plane_from_index(0)?;
         let terrain = TerrainSurface::Flat(FlatTerrainSurface::new(
             TerrainCorners::new(0, 0, 0, 0),
             TerrainCorners::new(0, 0, 0, 0),
@@ -388,8 +392,8 @@ mod tests {
         let anchor = SceneTile::new(0, 0);
 
         for value in 0..=3 {
-            let source = SourcePlane::new(value).expect("test source plane is valid");
-            let storage = storage_plane(value);
+            let source = SourcePlane::new(value).ok_or(SceneGridError::InvalidPlaneIndex(value))?;
+            let storage = storage_plane_from_index(value)?;
             let mut tile = SemanticTile::new(Some(source), storage);
             tile.push_game_object(SceneGameObject::new(
                 ObjectId::new(u32::from(value)),
@@ -412,31 +416,50 @@ mod tests {
         grid.set_link_below(anchor)?;
 
         for value in 0..=2 {
-            let tile = grid
-                .tile(storage_plane(value), anchor)
-                .expect("shifted tile must exist");
-            assert_eq!(tile.storage_plane().index().get(), value);
+            let tile = grid.tile(storage_plane_from_index(value)?, anchor);
             assert_eq!(
-                tile.source_plane().map(|plane| plane.index().get()),
+                tile.map(|value| value.storage_plane().index().get()),
+                Some(value)
+            );
+            assert_eq!(
+                tile.and_then(|value| value.source_plane())
+                    .map(|plane| plane.index().get()),
                 Some(value + 1)
             );
-            assert_eq!(tile.game_objects()[0].plane().index().get(), value);
+            assert_eq!(
+                tile.and_then(|value| value.game_objects().first())
+                    .map(|object| object.plane().index().get()),
+                Some(value)
+            );
         }
-        assert!(grid.tile(storage_plane(3), anchor).is_none());
+        assert!(grid.tile(storage_plane_from_index(3)?, anchor).is_none());
 
-        let plane0 = grid
-            .tile(storage_plane(0), anchor)
-            .expect("new plane-0 tile must exist");
-        assert_eq!(plane0.game_objects()[1].plane().index().get(), 1);
-        assert_eq!(plane0.game_objects()[2].plane().index().get(), 1);
-        let linked = plane0
-            .linked_below()
-            .expect("old plane-0 tile must be linked below");
+        let plane0 = grid.tile(storage_plane_from_index(0)?, anchor);
         assert_eq!(
-            linked.source_plane().map(|plane| plane.index().get()),
+            plane0
+                .and_then(|tile| tile.game_objects().get(1))
+                .map(|object| object.plane().index().get()),
+            Some(1)
+        );
+        assert_eq!(
+            plane0
+                .and_then(|tile| tile.game_objects().get(2))
+                .map(|object| object.plane().index().get()),
+            Some(1)
+        );
+        let linked = plane0.and_then(SemanticTile::linked_below);
+        assert_eq!(
+            linked
+                .and_then(SemanticTile::source_plane)
+                .map(|plane| plane.index().get()),
             Some(0)
         );
-        assert_eq!(linked.game_objects()[0].plane().index().get(), 0);
+        assert_eq!(
+            linked
+                .and_then(|tile| tile.game_objects().first())
+                .map(|object| object.plane().index().get()),
+            Some(0)
+        );
         Ok(())
     }
 
