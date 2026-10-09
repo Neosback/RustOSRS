@@ -463,6 +463,29 @@ impl WorkingModel {
         &self.normals
     }
 
+    /// Install freshly calculated base normals on this scene-local working copy.
+    pub(crate) fn set_computed_normals(&mut self, normals: ModelNormals) {
+        self.normals = ModelNormalState::Computed(normals);
+    }
+
+    /// Mutate already-computed normal state without exposing it outside the core crate.
+    pub(crate) fn computed_normals_mut(&mut self) -> Option<&mut ModelNormals> {
+        match &mut self.normals {
+            ModelNormalState::Uncomputed => None,
+            ModelNormalState::Computed(normals) => Some(normals),
+        }
+    }
+
+    /// Reference normal reconciliation authors render type `2` after base normals
+    /// are calculated. That operation must not invalidate the merged normal state.
+    pub(crate) fn mark_normal_merge_hidden_face(&mut self, face_index: usize) {
+        let render_types = self
+            .data
+            .face_render_types
+            .get_or_insert_with(|| vec![0; self.data.faces.len()]);
+        render_types[face_index] = 2;
+    }
+
     pub fn animation_groups(&self) -> Option<&AnimationGroups> {
         self.animation_groups.as_ref()
     }
