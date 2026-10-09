@@ -45,7 +45,8 @@ fn with_trailer(mut bytes: Vec<u8>, trailer: [u8; 2]) -> Vec<u8> {
 
 #[test]
 fn arbitrary_bounded_bytes_never_panic_m4_model_decoder()
--> Result<(), Box<dyn std::error::Error>> {
+    -> Result<(), Box<dyn std::error::Error>>
+{
     let context = context()?;
 
     let corpus = [
