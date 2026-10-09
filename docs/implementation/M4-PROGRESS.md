@@ -1,6 +1,6 @@
 # M4 Progress: Model Decode and Exact Construction
 
-Status: **Checkpoint 5 implementation complete; final clean-head CI pending**  
+Status: **Checkpoint 6 verification closure complete; final documentation-head CI pending**  
 Branch: `impl/m4-model-decode-construction`  
 Baseline: M3 squash merge `6e350afeb73c96f1b1ccd050ef427028e3015987`
 
@@ -86,15 +86,17 @@ That primitive drives ModelData vertex-coordinate deltas and face-index delta st
 - [x] combined order-sensitive exact integer fixture;
 - [x] two-instance source immutability control;
 - [x] implementation head `5be9a15ed842587c52d799a41f54069f99ff4679` passed Tier A/B/C in workflow run `37878918588`;
-- [ ] final documentation-complete exact-head CI readback.
+- [x] documentation-complete head `af0f2a442586ffa595e60133a0d8dc90891dd2d4` passed Tier A/B/C in workflow run `37879108196`.
 
 ### Checkpoint 6: M4 verification closure
 
-- model decode fuzz smoke;
-- exact P0/P1 fixtures for `MODEL-BUILD-001..003` and `COORD-002`;
-- advance parity matrix rows to `EXISTING` only with linked artifacts;
-- M4 exit audit;
-- Tier A-C clean head before PR/merge.
+- [x] add deterministic target-family model decoder fuzz smoke;
+- [x] add checked-in P0/P1 fixture manifest for `MODEL-BUILD-001..003`, `COORD-002`, and the M4 ownership subset;
+- [x] make M4 fixtures and model fuzz smoke permanent Tier C semantic-parity gates;
+- [x] advance parity rows only where linked executable evidence exists;
+- [x] add `docs/implementation/M4-EXIT-AUDIT.md`;
+- [x] implementation closure head `999bbd3d749806786c210fb60d60f34e65d6e704` passed Tier A/B/C in workflow run `37881488350`;
+- [ ] final documentation-complete exact-head CI readback before PR-ready stop.
 
 ## Checkpoint 1 result
 
@@ -367,4 +369,60 @@ Implementation head `5be9a15ed842587c52d799a41f54069f99ff4679` passed the comple
 - Tier B workspace tests passed, including the new exact Checkpoint 5 transform fixtures;
 - Tier C checked-in M3 parity fixtures and deterministic decoder fuzz smoke passed.
 
-Checkpoint 6 verification closure has not started.
+Documentation-complete head `af0f2a442586ffa595e60133a0d8dc90891dd2d4` passed Tier A/B/C in workflow run `37879108196`.
+
+## Checkpoint 6 verification closure result
+
+Checkpoint 6 converts M4 verification from implicit workspace coverage into permanent, named semantic-parity gates.
+
+### Permanent fixture inventory
+
+`reference-fixtures/model/m4-p0-p1.txt` pins eight semantic cases to executable artifacts covering:
+
+- typed selection;
+- untyped type-10 selection;
+- mirror geometry and winding;
+- multi-model combination;
+- complex texture-mapping preservation;
+- type-4 special transform order;
+- ordinary orientation transforms;
+- M4 source/instance ownership isolation.
+
+`crates/osrs-core/tests/m4_fixture_manifest.rs` gates the exact fixture inventory and spec mapping.
+
+### Model decoder fuzz smoke
+
+`crates/osrs-cache/tests/m4_model_fuzz_smoke.rs` deterministically exercises fixed malformed corpora and 512 generated bounded inputs. Each generated input is exercised as arbitrary bytes and with forced `FF FD` and `FF FE` target-family trailers. The gate asserts the M4 target decoder never panics on malformed input.
+
+### Permanent Tier C expansion
+
+Tier C is now `Tier C - semantic parity` and permanently runs:
+
+- M3 P0 decode fixtures;
+- M3 deterministic decoder fuzz smoke;
+- M4 fixture inventory;
+- M4 exact selection/mirror/combine fixtures;
+- M4 exact instance-transform fixtures;
+- M4 model decoder fuzz smoke.
+
+Implementation closure head `999bbd3d749806786c210fb60d60f34e65d6e704` passed Tier A/B/C in workflow run `37881488350`, including every new M4 Tier C gate.
+
+### Parity status at M4 exit
+
+Promoted to `EXISTING` with checked-in executable evidence:
+
+- `MODEL-BUILD-001`;
+- `MODEL-BUILD-002`;
+- `MODEL-BUILD-003`;
+- `COORD-002`.
+
+Advanced to `PARTIAL`:
+
+- `MODEL-BUILD-005`, because M4 proves raw/cache, mirror, combine, and instance-transform isolation but later contour/animation/scene-normal mutation still requires its owning tests.
+
+Deliberately retained as `REQUIRED`:
+
+- `MODEL-BUILD-004`, because the `nonFlatShading` pre-lighting representation path belongs with later scene/normals/lighting work;
+- `FACE-001`, because M4 preserves metadata semantically but has not yet proven end-to-end render extraction.
+
+The full closure rationale and carryovers are recorded in `docs/implementation/M4-EXIT-AUDIT.md`.
