@@ -31,6 +31,9 @@ jobs:
       - name: Test reference regeneration safety
         run: python3 scripts/test_reference_regeneration.py
 
+      - name: Test historical deob golden index
+        run: python3 scripts/test_deob_golden_index.py
+
       - name: Check formatting
         run: cargo fmt --all --check
 
