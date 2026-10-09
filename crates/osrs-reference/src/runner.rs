@@ -312,10 +312,16 @@ fn execute_plane_link_below(
         for object in game_objects {
             let object_plane = normalized_plane_value(fixture_id, object.plane, "game object")?;
             let start_x = u32::try_from(object.start_x).map_err(|_| {
-                failure(fixture_id, "plane fixture game-object start_x must be non-negative")
+                failure(
+                    fixture_id,
+                    "plane fixture game-object start_x must be non-negative",
+                )
             })?;
             let start_y = u32::try_from(object.start_y).map_err(|_| {
-                failure(fixture_id, "plane fixture game-object start_y must be non-negative")
+                failure(
+                    fixture_id,
+                    "plane fixture game-object start_y must be non-negative",
+                )
             })?;
             let object_id = u32::try_from(object_labels.len())
                 .map_err(|_| failure(fixture_id, "too many plane fixture game objects"))?;
@@ -361,7 +367,12 @@ fn execute_plane_link_below(
     let linked_below = grid
         .tile(plane0, anchor)
         .and_then(SemanticTile::linked_below)
-        .ok_or_else(|| failure(fixture_id, "link-below fixture produced no linked-below tile"))?;
+        .ok_or_else(|| {
+            failure(
+                fixture_id,
+                "link-below fixture produced no linked-below tile",
+            )
+        })?;
     let linked_below_label = normalized_tile_label(fixture_id, linked_below, &tile_labels)?;
     let top_slot_cleared = grid.tile(plane3, anchor).is_none();
 
