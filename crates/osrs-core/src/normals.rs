@@ -41,6 +41,15 @@ pub fn calculate_base_normals(model: &WorkingModel) -> ModelNormals {
     calculate_base_normals_from_parts(model.vertices(), model.faces(), model.face_render_types())
 }
 
+/// Ensure the model retains its calculated base normals without recomputing
+/// already-derived normal state.
+///
+/// This is the exact lifecycle operation used by the initial
+/// `nonFlatShading` entity cache before a scene-local copy is returned.
+pub fn ensure_base_normals(model: &mut WorkingModel) {
+    ensure_base_normal_state(model);
+}
+
 /// Reconcile two separate scene-local working models using the pinned
 /// `ModelData.method5262(...)` contract.
 ///
@@ -262,22 +271,22 @@ fn calculate_base_normals_from_parts(
 }
 
 fn reference_face_normal(a: ModelPoint, b: ModelPoint, c: ModelPoint) -> FaceNormal {
-    let edge1_x = b.x.wrapping_sub(a.x);
-    let edge1_y = b.y.wrapping_sub(a.y);
-    let edge1_z = b.z.wrapping_sub(a.z);
-    let edge2_x = c.x.wrapping_sub(a.x);
-    let edge2_y = c.y.wrapping_sub(a.y);
-    let edge2_z = c.z.wrapping_sub(a.z);
+    let ab_x = b.x.wrapping_sub(a.x);
+    let ab_y = b.y.wrapping_sub(a.y);
+    let ab_z = b.z.wrapping_sub(a.z);
+    let ac_x = c.x.wrapping_sub(a.x);
+    let ac_y = c.y.wrapping_sub(a.y);
+    let ac_z = c.z.wrapping_sub(a.z);
 
-    let mut normal_x = edge1_y
-        .wrapping_mul(edge2_z)
-        .wrapping_sub(edge2_y.wrapping_mul(edge1_z));
-    let mut normal_y = edge1_z
-        .wrapping_mul(edge2_x)
-        .wrapping_sub(edge2_z.wrapping_mul(edge1_x));
-    let mut normal_z = edge1_x
-        .wrapping_mul(edge2_y)
-        .wrapping_sub(edge2_x.wrapping_mul(edge1_y));
+    let mut normal_x = ab_y
+        .wrapping_mul(ac_z)
+        .wrapping_sub(ab_z.wrapping_mul(ac_y));
+    let mut normal_y = ab_z
+        .wrapping_mul(ac_x)
+        .wrapping_sub(ab_x.wrapping_mul(ac_z));
+    let mut normal_z = ab_x
+        .wrapping_mul(ac_y)
+        .wrapping_sub(ab_y.wrapping_mul(ac_x));
 
     while normal_x > 8192
         || normal_y > 8192
@@ -291,19 +300,19 @@ fn reference_face_normal(a: ModelPoint, b: ModelPoint, c: ModelPoint) -> FaceNor
         normal_z >>= 1;
     }
 
-    let squared_length = normal_x
+    let magnitude_squared = normal_x
         .wrapping_mul(normal_x)
         .wrapping_add(normal_y.wrapping_mul(normal_y))
         .wrapping_add(normal_z.wrapping_mul(normal_z));
-    let mut length = f64::from(squared_length).sqrt() as i32;
-    if length <= 0 {
-        length = 1;
+    let mut magnitude = f64::from(magnitude_squared).sqrt() as i32;
+    if magnitude <= 0 {
+        magnitude = 1;
     }
 
     FaceNormal {
-        x: normal_x.wrapping_mul(256) / length,
-        y: normal_y.wrapping_mul(256) / length,
-        z: normal_z.wrapping_mul(256) / length,
+        x: normal_x.wrapping_mul(256) / magnitude,
+        y: normal_y.wrapping_mul(256) / magnitude,
+        z: normal_z.wrapping_mul(256) / magnitude,
     }
 }
 
@@ -313,24 +322,69 @@ mod tests {
     use crate::{
         definitions::DefinitionIdentity,
         ids::ModelId,
-        model::{FacePriority, ModelEncoding, ModelFormatIdentity, SourceModel, SourceModelParts},
+        model::{
+            FacePriority, ModelEncoding, ModelFormatIdentity, SourceModel, SourceModelParts,
+        },
         provenance::{CacheFingerprint, ProfileDigest, TargetProvenance},
     };
-    use std::error::Error;
 
-    const TRIANGLE_VERTICES: [ModelPoint; 3] = [
-        ModelPoint::new(0, 0, 0),
-        ModelPoint::new(128, 0, 0),
-        ModelPoint::new(0, 0, 128),
-    ];
     const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
     const CACHE_FINGERPRINT: &str =
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
+    fn provenance() -> Result<TargetProvenance, Box<dyn std::error::Error>> {
+        Ok(TargetProvenance::new(
+            "osrs-live-241-2026-09-30-openrs2-2727",
+            ProfileDigest::from_lower_hex(PROFILE_DIGEST)?,
+            CacheFingerprint::from_lower_hex(CACHE_FINGERPRINT)?,
+            1,
+        )?)
+    }
+
+    fn working_model(
+        vertices: Vec<ModelPoint>,
+        faces: Vec<Triangle>,
+        render_types: Option<Vec<i8>>,
+    ) -> Result<WorkingModel, Box<dyn std::error::Error>> {
+        let face_count = faces.len();
+        Ok(SourceModel::from_parts(SourceModelParts {
+            identity: DefinitionIdentity::new(ModelId::new(1), provenance()?),
+            format: ModelFormatIdentity {
+                encoding: ModelEncoding::TrailerFfFd,
+                version: None,
+            },
+            vertices,
+            faces,
+            face_colors: vec![500; face_count],
+            default_priority: FacePriority::ZERO,
+            face_render_types: render_types,
+            face_priorities: None,
+            face_alphas: None,
+            face_textures: None,
+            texture_face_selectors: None,
+            face_biases: None,
+            texture_triangles: Vec::new(),
+            vertex_skins: None,
+            face_skins: None,
+            skeletal_vertices: None,
+        })?
+        .to_working_copy())
+    }
+
     #[test]
-    fn smooth_triangle_accumulates_exact_reference_vertex_normals() {
-        let normals =
-            calculate_base_normals_from_parts(&TRIANGLE_VERTICES, &[Triangle::new(0, 1, 2)], None);
+    fn smooth_triangle_accumulates_exact_reference_normal()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = working_model(
+            vec![
+                ModelPoint::new(0, 0, 0),
+                ModelPoint::new(128, 0, 0),
+                ModelPoint::new(0, 0, 128),
+            ],
+            vec![Triangle::new(0, 1, 2)],
+            None,
+        )?;
+        let normals = calculate_base_normals(&model);
+
         assert_eq!(
             normals.base_vertex_normals,
             vec![
@@ -345,19 +399,24 @@ mod tests {
         );
         assert_eq!(normals.face_normals, None);
         assert_eq!(normals.merged_vertex_normals, None);
+        Ok(())
     }
 
     #[test]
-    fn flat_triangle_preserves_vertex_zeroes_and_authors_face_normal() {
-        let normals = calculate_base_normals_from_parts(
-            &TRIANGLE_VERTICES,
-            &[Triangle::new(0, 1, 2)],
-            Some(&[1]),
-        );
-        assert_eq!(
-            normals.base_vertex_normals,
-            vec![VertexNormal::default(); 3]
-        );
+    fn flat_triangle_keeps_face_normal_and_zero_vertex_magnitudes()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = working_model(
+            vec![
+                ModelPoint::new(0, 0, 0),
+                ModelPoint::new(128, 0, 0),
+                ModelPoint::new(0, 0, 128),
+            ],
+            vec![Triangle::new(0, 1, 2)],
+            Some(vec![1]),
+        )?;
+        let normals = calculate_base_normals(&model);
+
+        assert_eq!(normals.base_vertex_normals, vec![VertexNormal::default(); 3]);
         assert_eq!(
             normals.face_normals,
             Some(vec![Some(FaceNormal {
@@ -366,113 +425,160 @@ mod tests {
                 z: 0,
             })])
         );
+        Ok(())
     }
 
     #[test]
-    fn two_triangle_quad_accumulates_shared_smooth_vertices() {
-        let vertices = [
+    fn hidden_render_type_does_not_contribute_normals()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = working_model(
+            vec![
+                ModelPoint::new(0, 0, 0),
+                ModelPoint::new(128, 0, 0),
+                ModelPoint::new(0, 0, 128),
+            ],
+            vec![Triangle::new(0, 1, 2)],
+            Some(vec![2]),
+        )?;
+        let normals = calculate_base_normals(&model);
+        assert_eq!(normals.base_vertex_normals, vec![VertexNormal::default(); 3]);
+        assert_eq!(normals.face_normals, None);
+        Ok(())
+    }
+
+    #[test]
+    fn merge_adds_cross_model_normals_without_welding_topology()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let vertices = vec![
             ModelPoint::new(0, 0, 0),
             ModelPoint::new(128, 0, 0),
-            ModelPoint::new(128, 0, 128),
             ModelPoint::new(0, 0, 128),
         ];
-        let normals = calculate_base_normals_from_parts(
-            &vertices,
-            &[Triangle::new(0, 1, 2), Triangle::new(0, 2, 3)],
-            None,
-        );
-        assert_eq!(normals.base_vertex_normals[0].magnitude, 2);
-        assert_eq!(normals.base_vertex_normals[1].magnitude, 1);
-        assert_eq!(normals.base_vertex_normals[2].magnitude, 2);
-        assert_eq!(normals.base_vertex_normals[3].magnitude, 1);
-        assert!(
-            normals
-                .base_vertex_normals
-                .iter()
-                .all(|normal| normal.x == 0 && normal.y < 0 && normal.z == 0)
-        );
-    }
+        let mut left = working_model(vertices.clone(), vec![Triangle::new(0, 1, 2)], None)?;
+        let mut right = working_model(vertices.clone(), vec![Triangle::new(0, 1, 2)], None)?;
+        let left_faces = left.faces().to_vec();
+        let right_faces = right.faces().to_vec();
 
-    #[test]
-    fn winding_reversal_reverses_the_exact_normal_direction() {
-        let forward =
-            calculate_base_normals_from_parts(&TRIANGLE_VERTICES, &[Triangle::new(0, 1, 2)], None);
-        let reversed =
-            calculate_base_normals_from_parts(&TRIANGLE_VERTICES, &[Triangle::new(0, 2, 1)], None);
-        assert_eq!(forward.base_vertex_normals[0].y, -256);
-        assert_eq!(reversed.base_vertex_normals[0].y, 256);
-    }
+        let outcome = merge_model_normals(&mut left, &mut right, ModelTranslation::ZERO, false);
 
-    #[test]
-    fn non_smooth_non_flat_render_types_do_not_contribute_base_normals() {
-        let normals = calculate_base_normals_from_parts(
-            &TRIANGLE_VERTICES,
-            &[Triangle::new(0, 1, 2)],
-            Some(&[2]),
+        assert_eq!(outcome.matched_vertex_pairs(), 3);
+        assert_eq!(left.vertices(), vertices);
+        assert_eq!(right.vertices(), vertices);
+        assert_eq!(left.faces(), left_faces);
+        assert_eq!(right.faces(), right_faces);
+        let ModelNormalState::Computed(left_normals) = left.normal_state() else {
+            return Err("left normal state was not computed".into());
+        };
+        let ModelNormalState::Computed(right_normals) = right.normal_state() else {
+            return Err("right normal state was not computed".into());
+        };
+        assert_eq!(
+            left_normals.merged_vertex_normals,
+            Some(vec![
+                Some(VertexNormal {
+                    x: 0,
+                    y: -512,
+                    z: 0,
+                    magnitude: 2,
+                });
+                3
+            ])
         );
         assert_eq!(
-            normals.base_vertex_normals,
-            vec![VertexNormal::default(); 3]
+            right_normals.merged_vertex_normals,
+            Some(vec![
+                Some(VertexNormal {
+                    x: 0,
+                    y: -512,
+                    z: 0,
+                    magnitude: 2,
+                });
+                3
+            ])
         );
-        assert_eq!(normals.face_normals, None);
+        Ok(())
     }
 
     #[test]
-    fn positive_translation_matches_after_left_coordinate_subtraction() -> Result<(), Box<dyn Error>>
-    {
-        let mut left = working_triangle(
-            7_101,
-            [
+    fn translated_negative_case_has_no_matches() -> Result<(), Box<dyn std::error::Error>> {
+        let mut left = working_model(
+            vec![
+                ModelPoint::new(0, 0, 0),
                 ModelPoint::new(128, 0, 0),
-                ModelPoint::new(256, 0, 0),
-                ModelPoint::new(128, 0, 128),
+                ModelPoint::new(0, 0, 128),
             ],
+            vec![Triangle::new(0, 1, 2)],
+            None,
         )?;
-        let mut right = working_triangle(7_102, TRIANGLE_VERTICES)?;
+        let mut right = working_model(
+            vec![
+                ModelPoint::new(256, 0, 0),
+                ModelPoint::new(384, 0, 0),
+                ModelPoint::new(256, 0, 128),
+            ],
+            vec![Triangle::new(0, 1, 2)],
+            None,
+        )?;
+
         let outcome = merge_model_normals(
             &mut left,
             &mut right,
-            ModelTranslation { x: 128, y: 0, z: 0 },
+            ModelTranslation {
+                x: -128,
+                y: 0,
+                z: 0,
+            },
             false,
         );
-        assert_eq!(outcome.matched_vertex_pairs(), 3);
-        assert_eq!(merged_at(&left, 0).magnitude, 2);
-        assert_eq!(merged_at(&right, 0).magnitude, 2);
+
+        assert_eq!(outcome.matched_vertex_pairs(), 0);
+        let ModelNormalState::Computed(left_normals) = left.normal_state() else {
+            return Err("left normal state was not computed".into());
+        };
+        let ModelNormalState::Computed(right_normals) = right.normal_state() else {
+            return Err("right normal state was not computed".into());
+        };
+        assert_eq!(left_normals.merged_vertex_normals, None);
+        assert_eq!(right_normals.merged_vertex_normals, None);
         Ok(())
     }
 
     #[test]
-    fn repeated_reconciliation_accumulates_from_existing_merged_slots() -> Result<(), Box<dyn Error>>
-    {
-        let mut left = working_triangle(7_201, TRIANGLE_VERTICES)?;
-        let mut right = working_triangle(7_202, TRIANGLE_VERTICES)?;
-        let translation = ModelTranslation::ZERO;
+    fn hide_matched_faces_authors_render_type_two_on_both_models()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let vertices = vec![
+            ModelPoint::new(0, 0, 0),
+            ModelPoint::new(128, 0, 0),
+            ModelPoint::new(0, 0, 128),
+        ];
+        let mut left = working_model(vertices.clone(), vec![Triangle::new(0, 1, 2)], None)?;
+        let mut right = working_model(vertices, vec![Triangle::new(0, 1, 2)], None)?;
 
-        let first = merge_model_normals(&mut left, &mut right, translation, false);
-        let second = merge_model_normals(&mut left, &mut right, translation, false);
-
-        assert_eq!(first.matched_vertex_pairs(), 3);
-        assert_eq!(second.matched_vertex_pairs(), 3);
-        assert_eq!(merged_at(&left, 0).y, -768);
-        assert_eq!(merged_at(&left, 0).magnitude, 3);
-        assert_eq!(merged_at(&right, 0).y, -768);
-        assert_eq!(merged_at(&right, 0).magnitude, 3);
+        let outcome = merge_model_normals(&mut left, &mut right, ModelTranslation::ZERO, true);
+        assert_eq!(outcome.matched_vertex_pairs(), 3);
+        assert_eq!(outcome.hidden_left_faces(), 1);
+        assert_eq!(outcome.hidden_right_faces(), 1);
+        assert_eq!(left.face_render_types(), Some([2].as_slice()));
+        assert_eq!(right.face_render_types(), Some([2].as_slice()));
         Ok(())
     }
 
-    fn working_triangle(
-        model_id: u32,
-        vertices: [ModelPoint; 3],
-    ) -> Result<WorkingModel, Box<dyn Error>> {
-        Ok(SourceModel::from_parts(SourceModelParts {
-            identity: DefinitionIdentity::new(ModelId::new(model_id), provenance()?),
+    #[test]
+    fn source_models_remain_immutable_through_scene_merge()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let parts = SourceModelParts {
+            identity: DefinitionIdentity::new(ModelId::new(42), provenance()?),
             format: ModelFormatIdentity {
                 encoding: ModelEncoding::TrailerFfFd,
                 version: None,
             },
-            vertices: vertices.to_vec(),
+            vertices: vec![
+                ModelPoint::new(0, 0, 0),
+                ModelPoint::new(128, 0, 0),
+                ModelPoint::new(0, 0, 128),
+            ],
             faces: vec![Triangle::new(0, 1, 2)],
-            face_colors: vec![0],
+            face_colors: vec![500],
             default_priority: FacePriority::ZERO,
             face_render_types: None,
             face_priorities: None,
@@ -484,27 +590,16 @@ mod tests {
             vertex_skins: None,
             face_skins: None,
             skeletal_vertices: None,
-        })?
-        .to_working_copy())
-    }
-
-    fn merged_at(model: &WorkingModel, vertex: usize) -> VertexNormal {
-        let ModelNormalState::Computed(normals) = model.normal_state() else {
-            unreachable!("test merge must calculate normal state");
         };
-        normals
-            .merged_vertex_normals
-            .as_ref()
-            .and_then(|values| values[vertex])
-            .unwrap_or_default()
-    }
+        let source = SourceModel::from_parts(parts)?;
+        let snapshot = source.clone();
+        let mut left = source.to_working_copy();
+        let mut right = source.to_working_copy();
 
-    fn provenance() -> Result<TargetProvenance, Box<dyn Error>> {
-        Ok(TargetProvenance::new(
-            "osrs-live-build-241",
-            ProfileDigest::from_lower_hex(PROFILE_DIGEST)?,
-            CacheFingerprint::from_lower_hex(CACHE_FINGERPRINT)?,
-            1,
-        )?)
+        let outcome = merge_model_normals(&mut left, &mut right, ModelTranslation::ZERO, true);
+        assert_eq!(outcome.matched_vertex_pairs(), 3);
+        assert_eq!(source, snapshot);
+        assert_eq!(source.face_render_types(), None);
+        Ok(())
     }
 }
