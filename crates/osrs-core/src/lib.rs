@@ -10,6 +10,7 @@ pub mod coords;
 pub mod definitions;
 pub mod floor_color;
 pub mod ids;
+pub mod lighting;
 pub mod model;
 pub mod model_construction;
 pub mod normals;
