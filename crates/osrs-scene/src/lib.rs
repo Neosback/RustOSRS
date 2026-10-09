@@ -19,9 +19,7 @@ pub use placement::{
     PlacementError, PlacementInput, PlacementKind, PlacementPlan, STRAIGHT_WALL_FLAGS, SceneLayer,
     WallDecorationPlan, plan_placement,
 };
-pub use placement_height::{
-    PlacementHeightError, PlacementHeightInput, sample_placement_height,
-};
+pub use placement_height::{PlacementHeightError, PlacementHeightInput, sample_placement_height};
 pub use planes::{PlacementPlanes, collision_plane};
 pub use scene::{SceneGameObject, SceneGrid, SceneGridError, ScenePlacedLoc, SemanticTile};
 pub use side_effects::{
@@ -33,6 +31,5 @@ pub use terrain::{
     TerrainColorSource, TerrainCorner, TerrainCorners, TerrainFace, TerrainSurface, TerrainVertex,
 };
 pub use terrain_contract::{
-    REFERENCE_TERRAIN_SKIP_COLOR, flat_paint_is_reference_skipped,
-    shaped_face_is_reference_skipped,
+    REFERENCE_TERRAIN_SKIP_COLOR, flat_paint_is_reference_skipped, shaped_face_is_reference_skipped,
 };
