@@ -89,7 +89,11 @@ fn collect_manifest_paths(
         }
         if file_type.is_dir() {
             collect_manifest_paths(&path, output)?;
-        } else if file_type.is_file() && path.extension().is_some_and(|extension| extension == "yaml") {
+        } else if file_type.is_file()
+            && path
+                .extension()
+                .is_some_and(|extension| extension == "yaml")
+        {
             output.push(path);
         }
     }
@@ -137,7 +141,9 @@ impl fmt::Display for FixtureInventoryError {
                 formatter,
                 "fixture inventory contains duplicate fixture ID `{fixture_id}`"
             ),
-            Self::EmptyInventory => formatter.write_str("fixture inventory contains no YAML manifests"),
+            Self::EmptyInventory => {
+                formatter.write_str("fixture inventory contains no YAML manifests")
+            }
         }
     }
 }
