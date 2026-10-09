@@ -432,11 +432,7 @@ mod tests {
         let outcome = merge_model_normals(
             &mut left,
             &mut right,
-            ModelTranslation {
-                x: 128,
-                y: 0,
-                z: 0,
-            },
+            ModelTranslation { x: 128, y: 0, z: 0 },
             false,
         );
         assert_eq!(outcome.matched_vertex_pairs(), 3);
