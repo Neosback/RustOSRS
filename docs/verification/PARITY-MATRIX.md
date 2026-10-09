@@ -1,6 +1,6 @@
 # Semantic Parity Verification Matrix
 
-Status: **Implementation tracking through M5 reference fixture infrastructure**
+Status: **Implementation tracking through M6 Checkpoint 3 plane-domain/link-below semantics**
 
 This matrix maps every canonical semantic specification to its required verification family. Coverage status describes checked-in production test/fixture implementation state, not source-evidence certainty.
 
@@ -50,11 +50,11 @@ M5 adds source-pinned normalized fixtures, an exact offline runner, candidate-on
 | type-4 transform order | `model.transform.type4_order`; `reference-fixtures/manifest/model-transform-type4-order.yaml` | semantic / EXISTING |
 | base normals smooth/flat | `normals.base.smooth_triangle`, `normals.base.flat_triangle`; `reference-fixtures/manifest/normals-base-*.yaml` | evidence-only; `NORMALS-001` remains PARTIAL |
 | cross-model normal merge controls | `normals.merge.coincident_triangle.hide_false`, `normals.merge.coincident_triangle.hide_true`, `normals.merge.translated_negative`; `reference-fixtures/manifest/normals-merge-*.yaml` | evidence-only; `NORMALS-002` remains REQUIRED |
-| four-plane link-below relinking | `planes.link_below.four_plane_column`; `reference-fixtures/manifest/planes-link-below-four-plane-column.yaml` | evidence-only; `PLANES-003` remains REQUIRED |
+| four-plane link-below relinking | `planes.link_below.four_plane_column`; `reference-fixtures/manifest/planes-link-below-four-plane-column.yaml` | semantic / EXISTING |
 | priority thresholds and priority-10/11 queues | `priority.all_0_11.threshold_crossing`; `reference-fixtures/manifest/priority-all-0-11-threshold-crossing.yaml` | evidence-only; `FACE-002` remains REQUIRED |
 | historical deob evidence index | `reference-fixtures/historical/deob_golden.index.json`; `scripts/test_deob_golden_index.py` | indexed historical evidence; later production rows retain their existing status |
 
-The M5 repository-wide normalized runner validates all ten canonical YAML fixtures. The first three execute production semantics. The remaining seven validate exact schema, provenance, inventory inclusion, source-derived expected output, and expected hash without pretending that M6/M7/renderer production executors exist.
+At M5 exit, the repository-wide normalized runner validated all ten canonical YAML fixtures with three production semantic executors and seven evidence-only fixtures. M6 Checkpoint 3 promotes `planes.link_below.four_plane_column` to production semantic execution, so the current runner exercises four semantic fixtures while six remain evidence-only.
 
 The historical index exposes stable fixture IDs for `terrain.shape_gallery.all_13x4`, `contour.synthetic.flat_slope`, `lighting.synthetic_triangle.loc_rig`, `placement.wall_types.orientation_matrix`, `placement.decor_types.orientation_matrix`, `placement.floor_type22.storage`, and `placement.game_object.footprint_and_capacity`.
 
@@ -114,12 +114,12 @@ M5 normal fixtures are intentionally `evidence_only`. Production normal generati
 
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
-| `PLANES-001` | API/domain guardrails + composed bridge fixture | exact distinct plane-domain values | REQUIRED |
-| `PLANES-002` | encoded planes 0..3 x bridge bit on/off | exact collision plane + unchanged source plane | REQUIRED |
-| `PLANES-003` | four-plane synthetic column + tagged game objects; M5 evidence `planes.link_below.four_plane_column` | exact tile identity/relinking/plane changes | REQUIRED |
+| `PLANES-001` | API/domain guardrails + composed bridge fixture | exact distinct plane-domain values | EXISTING |
+| `PLANES-002` | encoded planes 0..3 x bridge bit on/off | exact collision plane + unchanged source plane | EXISTING |
+| `PLANES-003` | four-plane synthetic column + tagged game objects; fixture `planes.link_below.four_plane_column` | exact tile identity/relinking/plane changes | EXISTING |
 | `PLANES-004` | renderer roof grouping toggled/replaced | semantic scene exact equality | PLANNED-GPU |
 
-`planes.link_below.four_plane_column` is `evidence_only` and source-pinned to `Scene.setLinkBelow`. Production `osrs-scene` relinking remains M6 work.
+`planes.link_below.four_plane_column` is source-pinned to `Scene.setLinkBelow` and now executes against the M6 production `osrs-scene` relinking path. Renderer roof grouping remains separate policy under `PLANES-004`.
 
 ## Face/material semantics
 
