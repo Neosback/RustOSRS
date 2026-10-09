@@ -181,7 +181,9 @@ pub enum TerrainBuildError {
 impl fmt::Display for TerrainBuildError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidShape(shape) => write!(formatter, "terrain shape {shape} is outside 0..=12"),
+            Self::InvalidShape(shape) => {
+                write!(formatter, "terrain shape {shape} is outside 0..=12")
+            }
             Self::InvalidRotation(rotation) => {
                 write!(formatter, "terrain rotation {rotation} is outside 0..=3")
             }
@@ -297,12 +299,7 @@ fn java_average(left: i32, right: i32) -> i32 {
     left.wrapping_add(right) >> 1
 }
 
-fn build_vertex(
-    code: u8,
-    base_x: i32,
-    base_z: i32,
-    input: ShapedTerrainInput,
-) -> TerrainVertex {
+fn build_vertex(code: u8, base_x: i32, base_z: i32, input: ShapedTerrainInput) -> TerrainVertex {
     let h = input.heights;
     let u = input.underlay_colors;
     let o = input.overlay_colors;
@@ -450,7 +447,10 @@ mod tests {
             Err(TerrainBuildError::InvalidShape(13))
         );
         assert_eq!(
-            ShapedTerrainSurface::build(ShapedTerrainInput { rotation: 4, ..base }),
+            ShapedTerrainSurface::build(ShapedTerrainInput {
+                rotation: 4,
+                ..base
+            }),
             Err(TerrainBuildError::InvalidRotation(4))
         );
     }
