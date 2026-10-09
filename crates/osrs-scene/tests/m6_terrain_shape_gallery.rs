@@ -11,7 +11,11 @@ fn all_13_shapes_and_4_rotations_match_historical_golden_exactly() {
         .lines()
         .filter(|line| line.starts_with("tri shape="))
         .collect();
-    assert_eq!(expected.len(), 52, "historical terrain gallery must contain 13x4 cases");
+    assert_eq!(
+        expected.len(),
+        52,
+        "historical terrain gallery must contain 13x4 cases"
+    );
 
     let mut actual = Vec::with_capacity(52);
     for shape in 0..=12 {
@@ -32,7 +36,10 @@ fn all_13_shapes_and_4_rotations_match_historical_golden_exactly() {
         }
     }
 
-    assert_eq!(actual.iter().map(String::as_str).collect::<Vec<_>>(), expected);
+    assert_eq!(
+        actual.iter().map(String::as_str).collect::<Vec<_>>(),
+        expected
+    );
 }
 
 fn format_surface(surface: &ShapedTerrainSurface) -> String {
@@ -55,17 +62,15 @@ fn format_surface(surface: &ShapedTerrainSurface) -> String {
             "null".to_owned()
         } else {
             join_faces(&surface.faces, |face| {
-                face.texture_id.map_or_else(|| "-1".to_owned(), |value| value.to_string())
+                face.texture_id
+                    .map_or_else(|| "-1".to_owned(), |value| value.to_string())
             })
         },
         surface.is_flat
     )
 }
 
-fn join_vertices(
-    vertices: &[TerrainVertex],
-    value: impl Fn(&TerrainVertex) -> i32,
-) -> String {
+fn join_vertices(vertices: &[TerrainVertex], value: impl Fn(&TerrainVertex) -> i32) -> String {
     vertices
         .iter()
         .map(|vertex| value(vertex).to_string())
