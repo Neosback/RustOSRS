@@ -1,9 +1,9 @@
 //! Deterministic semantic OSRS scene construction and mutation boundary.
 //!
 //! Scene code consumes canonical semantic inputs and must not import concrete cache
-//! implementation types. M6 begins the real semantic scene with terrain, bounded
-//! storage, and exact location-placement planning while keeping renderer/editor
-//! policy outside this crate.
+//! implementation types. M6 builds the real semantic scene with terrain, bounded
+//! storage, exact location placement, plane relinking, and queryable scene state
+//! while keeping renderer/editor policy outside this crate.
 
 pub mod placement;
 pub mod planes;
@@ -17,7 +17,7 @@ pub use placement::{
     WallDecorationPlan, plan_placement,
 };
 pub use planes::{PlacementPlanes, collision_plane};
-pub use scene::{SceneGameObject, SceneGrid, SceneGridError, SemanticTile};
+pub use scene::{SceneGameObject, SceneGrid, SceneGridError, ScenePlacedLoc, SemanticTile};
 pub use terrain::{
     FlatTerrainSurface, ShapedTerrainInput, ShapedTerrainSurface, TerrainBuildError,
     TerrainColorSource, TerrainCorner, TerrainCorners, TerrainFace, TerrainSurface, TerrainVertex,
