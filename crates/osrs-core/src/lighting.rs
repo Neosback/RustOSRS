@@ -120,6 +120,8 @@ impl fmt::Display for LightingError {
 
 impl Error for LightingError {}
 
+type CompactedTextureData = (Vec<Triangle>, Option<Vec<Option<u32>>>);
+
 /// Convert one semantic ModelData/WorkingModel into exact reference baked colors.
 ///
 /// If scene reconciliation authored a merged normal for a vertex, that merged
@@ -380,7 +382,7 @@ fn java_div(numerator: i32, denominator: i32) -> i32 {
 
 fn compact_texture_triangles(
     model: &WorkingModel,
-) -> Result<(Vec<Triangle>, Option<Vec<Option<u32>>>), LightingError> {
+) -> Result<CompactedTextureData, LightingError> {
     let Some(selectors) = model.texture_face_selectors() else {
         return Ok((Vec::new(), None));
     };
