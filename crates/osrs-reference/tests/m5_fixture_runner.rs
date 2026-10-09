@@ -36,8 +36,8 @@ fn discovers_and_validates_every_checked_in_yaml_fixture() -> Result<(), Box<dyn
 }
 
 #[test]
-fn evidence_only_cannot_disable_an_existing_semantic_executor(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn evidence_only_cannot_disable_an_existing_semantic_executor()
+-> Result<(), Box<dyn std::error::Error>> {
     let inventory = FixtureInventory::discover(&repository()?)?;
     let Some(existing) = inventory
         .fixtures()
