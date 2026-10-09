@@ -5,8 +5,8 @@ use osrs_core::{
 };
 use osrs_scene::{
     CARDINAL_OFFSET_X, CARDINAL_OFFSET_Z, DIAGONAL_OFFSET_X, DIAGONAL_OFFSET_Z,
-    DIAGONAL_WALL_FLAGS, Footprint, PlacementInput, PlacementKind, SceneGrid,
-    STRAIGHT_WALL_FLAGS, plan_placement,
+    DIAGONAL_WALL_FLAGS, Footprint, PlacementInput, PlacementKind, STRAIGHT_WALL_FLAGS, SceneGrid,
+    plan_placement,
 };
 use std::{error::Error, io};
 
@@ -114,24 +114,18 @@ fn wall_decoration_types_cover_all_orientations_and_displacement_sources()
         for loc_type in 4_u8..=8 {
             for orientation in 0_u8..=3 {
                 let tile = SceneTile::new(x, 0);
-                let plan = placement(
-                    loc_type,
-                    orientation,
-                    tile,
-                    1,
-                    1,
-                    0,
-                    wall_displacement,
-                )?;
+                let plan = placement(loc_type, orientation, tile, 1, 1, 0, wall_displacement)?;
                 assert!(grid.insert_placement(plane, ObjectId::new(x), plan)?);
 
-                let stored = grid.wall_decoration(plane, tile).ok_or_else(|| {
-                    io::Error::other("wall-decoration placement was not stored")
-                })?;
+                let stored = grid
+                    .wall_decoration(plane, tile)
+                    .ok_or_else(|| io::Error::other("wall-decoration placement was not stored"))?;
                 assert_eq!(stored.placement(), plan);
 
                 let PlacementKind::WallDecoration(decor) = stored.placement().kind else {
-                    return Err(io::Error::other("stored placement lost wall-decoration kind").into());
+                    return Err(
+                        io::Error::other("stored placement lost wall-decoration kind").into(),
+                    );
                 };
                 let index = usize::from(orientation);
                 let full_displacement = i32::from(wall_displacement.unwrap_or(16));
@@ -225,24 +219,14 @@ fn square_and_non_square_game_objects_cover_all_orientations_and_sampled_heights
     let plane = plane0()?;
     let heights = [-96, 37, 211, -305, 512, -1, 88, 999];
 
-    for (shape_index, (size_x, size_y)) in [(2_u16, 2_u16), (2_u16, 3_u16)]
-        .into_iter()
-        .enumerate()
+    for (shape_index, (size_x, size_y)) in [(2_u16, 2_u16), (2_u16, 3_u16)].into_iter().enumerate()
     {
         for orientation in 0_u8..=3 {
             let sample_index = shape_index * 4 + usize::from(orientation);
             let start_x = u32::try_from(sample_index * 4)?;
             let start = SceneTile::new(start_x, 1);
             let sampled_height = heights[sample_index];
-            let plan = placement(
-                10,
-                orientation,
-                start,
-                size_x,
-                size_y,
-                sampled_height,
-                None,
-            )?;
+            let plan = placement(10, orientation, start, size_x, size_y, sampled_height, None)?;
             let expected_footprint = Footprint::rotated(size_x, size_y, orientation);
 
             assert_eq!(plan.rotated_definition_footprint, expected_footprint);
