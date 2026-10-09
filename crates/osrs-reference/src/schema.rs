@@ -16,6 +16,7 @@ pub enum NormalizedFixtureKind {
     ModelSelection,
     ModelMirror,
     ModelTransform,
+    PriorityOrder,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,6 +87,9 @@ pub enum NormalizedInputCase {
         scale: NormalizedModelScale,
         translation: NormalizedModelTranslation,
     },
+    PriorityOrder {
+        faces: Vec<NormalizedPriorityFace>,
+    },
 }
 
 impl NormalizedInputCase {
@@ -94,6 +98,7 @@ impl NormalizedInputCase {
             Self::ModelSelection { .. } => NormalizedFixtureKind::ModelSelection,
             Self::ModelMirror { .. } => NormalizedFixtureKind::ModelMirror,
             Self::ModelTransform { .. } => NormalizedFixtureKind::ModelTransform,
+            Self::PriorityOrder { .. } => NormalizedFixtureKind::PriorityOrder,
         }
     }
 }
@@ -113,6 +118,12 @@ pub enum NormalizedExpectedCase {
         face_colors: Vec<u16>,
         face_textures: Vec<Option<u32>>,
     },
+    PriorityOrder {
+        ordered_face_ids: Vec<u32>,
+        avg12: i32,
+        avg34: i32,
+        avg68: i32,
+    },
 }
 
 impl NormalizedExpectedCase {
@@ -121,6 +132,7 @@ impl NormalizedExpectedCase {
             Self::ModelSelection { .. } => NormalizedFixtureKind::ModelSelection,
             Self::ModelMirror { .. } => NormalizedFixtureKind::ModelMirror,
             Self::ModelTransform { .. } => NormalizedFixtureKind::ModelTransform,
+            Self::PriorityOrder { .. } => NormalizedFixtureKind::PriorityOrder,
         }
     }
 }
@@ -185,6 +197,17 @@ pub struct NormalizedModelTranslation {
     pub z: i32,
 }
 
+/// Renderer-independent priority-order oracle input. `depth_bucket` is the
+/// already computed integer bucket consumed by the reference priority routine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizedPriorityFace {
+    pub id: u32,
+    pub priority: u8,
+    pub depth_bucket: i32,
+    pub alpha: Option<i8>,
+}
+
 fn validate_version(version: u32) -> Result<(), NormalizedSchemaError> {
     if version == NORMALIZED_SCHEMA_VERSION {
         Ok(())
@@ -241,6 +264,21 @@ mod tests {
 }"#,
         )?;
         assert_eq!(document.kind(), NormalizedFixtureKind::ModelSelection);
+        Ok(())
+    }
+
+    #[test]
+    fn parses_priority_order_document() -> Result<(), Box<dyn std::error::Error>> {
+        let document = NormalizedFixtureInput::parse(
+            br#"{
+  "schema_version": 1,
+  "case": {
+    "kind": "priority_order",
+    "faces": [{"id": 10, "priority": 10, "depth_bucket": 100, "alpha": 64}]
+  }
+}"#,
+        )?;
+        assert_eq!(document.kind(), NormalizedFixtureKind::PriorityOrder);
         Ok(())
     }
 
