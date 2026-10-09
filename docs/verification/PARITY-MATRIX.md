@@ -1,6 +1,6 @@
 # Semantic Parity Verification Matrix
 
-Status: **Implementation tracking through M6 Checkpoint 5 definition-driven side-effect planning**
+Status: **Implementation tracking through M6 Checkpoint 6 milestone closure**
 
 This matrix maps every canonical semantic specification to its required verification family. Coverage status describes checked-in production test/fixture implementation state, not source-evidence certainty.
 
@@ -58,18 +58,29 @@ At M5 exit, the repository-wide normalized runner validated all ten canonical YA
 
 The historical index exposes stable fixture IDs for `terrain.shape_gallery.all_13x4`, `contour.synthetic.flat_slope`, `lighting.synthetic_triangle.loc_rig`, `placement.wall_types.orientation_matrix`, `placement.decor_types.orientation_matrix`, `placement.floor_type22.storage`, and `placement.game_object.footprint_and_capacity`.
 
-## M6 scene insertion and side-effect planning coverage
+## M6 semantic scene coverage
 
-M6 Checkpoint 4 connects the exact placement planner to production semantic tile storage. Checkpoint 5 adds definition-driven side-effect planning without prematurely copying the reference client's private collision, shadow, or occlusion bit-grid layouts.
+M6 Checkpoints 1 through 5 establish exact terrain topology, typed plane semantics, structural link-below processing, loc placement/storage, and definition-driven side-effect planning. Checkpoint 6 closes the remaining fully owned semantic gaps with source-pinned placement-height sampling, explicit terrain sentinel interpretation, composed golden semantic scenes, and a permanent Tier C `osrs-scene` gate.
 
-| M6 insertion/side-effect family | Exact verification artifact | Coverage |
+| M6 semantic family | Exact verification artifact | Coverage |
 |---|---|---|
 | fixed scene-layer insertion and query for loc types `0..22` plus representative `>=12` | `crates/osrs-scene/tests/m6_scene_insertion.rs`, `crates/osrs-scene/src/placement.rs` unit tests | EXISTING |
-| game-object full-footprint insertion, shared identity, edge masks, five-object capacity, atomic rejection | `crates/osrs-scene/src/scene.rs` unit tests, `crates/osrs-scene/tests/m6_scene_insertion.rs`, pinned `Scene.newGameObject` | EXISTING for storage; sloped height sampling remains pending |
-| floor-decoration storage at supplied flat and synthetic slope heights | `crates/osrs-scene/tests/m6_scene_insertion.rs` | EXISTING |
+| game-object full-footprint insertion, shared identity, edge masks, five-object capacity, atomic rejection, exact sloped-height sampling | `crates/osrs-scene/src/scene.rs`, `crates/osrs-scene/src/placement_height.rs`, `crates/osrs-scene/tests/m6_scene_insertion.rs`, `crates/osrs-scene/tests/m6_exit_golden_scenes.rs` | EXISTING |
+| flat/shaped terrain ownership, exact flat diagonal, NE sentinel skip contract, shaped first-face sentinel contract | `crates/osrs-scene/src/terrain.rs`, `crates/osrs-scene/src/terrain_contract.rs`, `crates/osrs-scene/tests/m6_exit_golden_scenes.rs` | EXISTING |
+| floor-decoration storage at supplied flat and synthetic slope heights with no implicit lift | `crates/osrs-scene/tests/m6_scene_insertion.rs` | EXISTING |
 | definition-driven collision operation selection, including floor-decoration special case and definition-footprint collision for visually 1x1 type `9` | `crates/osrs-scene/src/side_effects.rs` unit tests, pinned `FriendSystem.addObjects` | EXISTING at operation-plan level |
 | definition clipping/model-clipping/ground-obstruction inputs and audited wall-displacement metadata retained for deterministic later side-grid mutation | `DefinitionSideEffectInputs`, `SceneSideEffectPlan`, side-effect planner unit tests | PARTIAL; concrete shadow/occlusion/collision bit-grid mutations remain intentionally unimplemented |
 | multi-tile game-object plane identity under link-below mutation | `crates/osrs-scene/src/scene.rs` unit tests | EXISTING |
+| world/scene/region/local coordinate composition across a 64-tile region border | `crates/osrs-core/src/coords.rs`, `crates/osrs-scene/tests/m6_exit_golden_scenes.rs` | EXISTING semantic side |
+
+### M6 required golden semantic scenes
+
+| Required scene | Exact artifact | Status |
+|---|---|---|
+| terrain shape gallery | `crates/osrs-scene/tests/m6_terrain_shape_gallery.rs`; historical ID `terrain.shape_gallery.all_13x4` | EXISTING |
+| wall/decor orientation scene | `m6_exit_golden_scenes::golden_wall_and_decor_orientation_scene_survives_semantic_storage`; historical placement matrix IDs | EXISTING |
+| four-plane bridge column | `m6_exit_golden_scenes::golden_four_plane_bridge_column_relinks_structurally`; normalized fixture `planes.link_below.four_plane_column` | EXISTING |
+| region-border coordinate fixture | `m6_exit_golden_scenes::golden_region_border_fixture_preserves_world_scene_and_local_identity` | EXISTING |
 
 ## Placement
 
@@ -77,12 +88,12 @@ M6 Checkpoint 4 connects the exact placement planner to production semantic tile
 |---|---|---|---|
 | `LOC-PLACEMENT-001` | loc types `0..22` + representative `>=12`; walls/decor x orientations; indexed evidence IDs `placement.wall_types.orientation_matrix`, `placement.decor_types.orientation_matrix`, `placement.floor_type22.storage` | exact scene slot/type/arms/flags | EXISTING |
 | `LOC-PLACEMENT-002` | decor types `4..8` x orientation, wall present/absent, custom displacement; indexed evidence ID `placement.decor_types.orientation_matrix` | exact integer offsets/orientation flags | EXISTING |
-| `LOC-PLACEMENT-003` | square/non-square footprints x all orientations; sloped center samples; indexed evidence ID `placement.game_object.footprint_and_capacity` | exact footprint, center, height inputs | PARTIAL |
+| `LOC-PLACEMENT-003` | square/non-square footprints x all orientations; sloped center samples; indexed evidence ID `placement.game_object.footprint_and_capacity` | exact footprint, center, height inputs | EXISTING |
 | `LOC-PLACEMENT-004` | same qualifying definition through initial and pending-replacement paths | exact representation/path identity | REQUIRED |
 | `LOC-PLACEMENT-005` | definition-driven collision/clipping/occlusion/wall metadata cases | exact side-effect state per promoted sub-contract | PARTIAL |
 | `LOC-PLACEMENT-006` | floor decoration flat+slope cases; indexed evidence ID `placement.floor_type22.storage` | exact semantic Z, no implicit lift | EXISTING |
 
-`LOC-PLACEMENT-003` remains `PARTIAL`: exact rotated footprints, centers, atomic footprint storage, capacity, and edge masks are covered, but the production scene builder does not yet own exact sloped terrain center sampling. `LOC-PLACEMENT-005` remains `PARTIAL`: Checkpoint 5 now source-pins and tests exact collision-operation selection plus audited wall-displacement updates, while preserving clipping/model-clipping/ground-obstruction inputs verbatim; concrete collision, shadow/clipping, and occlusion bit-grid mutation formulas remain outside the promoted contract. `LOC-PLACEMENT-004` remains later runtime/replacement work.
+`LOC-PLACEMENT-003` is closed by the source-pinned rotated-footprint midpoint sampler, including the exact scene-edge anchor/anchor+1 fallback and Java-style four-sample average. `LOC-PLACEMENT-005` remains `PARTIAL` by the explicit M6 roadmap exception: collision-operation selection and wall-displacement ownership are implemented, while narrower private collision/shadow/occlusion bit-grid formulas remain unpromoted. `LOC-PLACEMENT-004` remains later runtime/replacement work and is not an M6 exit gate.
 
 ## Model construction
 
@@ -119,11 +130,11 @@ M5 normal fixtures are intentionally `evidence_only`. Production normal generati
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
 | `TERRAIN-001` | all 13 shapes x 4 rotations; indexed historical evidence `terrain.shape_gallery.all_13x4` | exact vertices, faces, color source, texture IDs | EXISTING |
-| `TERRAIN-002` | flat diagonal, four distinct corners, sentinel, flat-vs-shaped choice | exact topology/representation | PARTIAL |
+| `TERRAIN-002` | flat diagonal, four distinct corners, sentinel, flat-vs-shaped choice | exact topology/representation | EXISTING |
 | `TERRAIN-003` | RGB/HSL boundaries, hue multiplier clamp, overlay defaults/opcodes/secondary | exact decoded integers/defaults | EXISTING |
 | `TERRAIN-004` | full slope/11x11/overlay/jitter builder | exact end-to-end terrain color output | BLOCKED |
 
-`TERRAIN-004` remains blocked until the builder source or an equivalent exact executable oracle is reproducibly pinned.
+`TERRAIN-002` is closed by exact flat-paint diagonal ownership, explicit flat-vs-shaped semantic representation, and source-pinned sentinel tests. `TERRAIN-004` remains blocked until the builder source or an equivalent exact executable oracle is reproducibly pinned; M6 does not infer that algorithm from plausible historical prose.
 
 ## Planes and bridges
 
@@ -134,7 +145,7 @@ M5 normal fixtures are intentionally `evidence_only`. Production normal generati
 | `PLANES-003` | four-plane synthetic column + tagged game objects; fixture `planes.link_below.four_plane_column` | exact tile identity/relinking/plane changes | EXISTING |
 | `PLANES-004` | renderer roof grouping toggled/replaced | semantic scene exact equality | PLANNED-GPU |
 
-`planes.link_below.four_plane_column` is source-pinned to `Scene.setLinkBelow` and now executes against the M6 production `osrs-scene` relinking path. Renderer roof grouping remains separate policy under `PLANES-004`.
+`planes.link_below.four_plane_column` is source-pinned to `Scene.setLinkBelow` and executes against the M6 production `osrs-scene` relinking path. Renderer roof grouping remains separate policy under `PLANES-004`.
 
 ## Face/material semantics
 
@@ -154,7 +165,9 @@ M5 normal fixtures are intentionally `evidence_only`. Production normal generati
 |---|---|---|---|
 | `COORD-001` | tile/local conversions, footprint centers, terrain positions | exact integer coordinates | PARTIAL |
 | `COORD-002` | all loc orientations + special 256-JAU path; fixture `model.transform.type4_order` | exact integer transformed vertices | EXISTING |
-| `COORD-003` | world/scene/local/model/render conversion and region-border fixture | exact semantic coordinates; explicit renderer conversion | REQUIRED |
+| `COORD-003` | world/scene/local/model/render conversion and region-border fixture | exact semantic coordinates; explicit renderer conversion | EXISTING semantic side; renderer conversion PLANNED-GPU |
+
+M6 closes the semantic side of `COORD-003` with a composed region-border fixture that crosses the 63/0 region boundary, round-trips world and scene coordinates, preserves exact 128-unit local centers, and stores both objects without changing world identity. Camera/view/clip conversion remains renderer-owned.
 
 ## Renderer-policy verification mapping
 
