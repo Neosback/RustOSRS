@@ -104,10 +104,7 @@ fn flat_and_textured_faces_follow_distinct_reference_paths() -> Result<(), Box<d
             c: 76,
         }]
     );
-    assert_eq!(
-        textured_lit.texture_triangles,
-        vec![Triangle::new(0, 1, 2)]
-    );
+    assert_eq!(textured_lit.texture_triangles, vec![Triangle::new(0, 1, 2)]);
     assert_eq!(textured_lit.texture_faces, Some(vec![Some(0)]));
 
     let textured_flat = working_triangle(
@@ -122,11 +119,7 @@ fn flat_and_textured_faces_follow_distinct_reference_paths() -> Result<(), Box<d
     let textured_flat_lit = light_model_data(&textured_flat, LightingParameters::for_loc(0, 0))?;
     assert_eq!(
         textured_flat_lit.face_colors,
-        vec![LitFaceColors {
-            a: 72,
-            b: 0,
-            c: -1
-        }]
+        vec![LitFaceColors { a: 72, b: 0, c: -1 }]
     );
     Ok(())
 }
