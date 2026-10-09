@@ -129,8 +129,14 @@ fn mirror_and_type4_fixtures_preserve_order_sensitive_integer_outputs()
                 (vertices[0].x, vertices[0].y, vertices[0].z),
                 (-262, 27, -115)
             );
-            assert_eq!((vertices[1].x, vertices[1].y, vertices[1].z), (-80, -5, -25));
-            assert_eq!((vertices[2].x, vertices[2].y, vertices[2].z), (-80, 59, -25));
+            assert_eq!(
+                (vertices[1].x, vertices[1].y, vertices[1].z),
+                (-80, -5, -25)
+            );
+            assert_eq!(
+                (vertices[2].x, vertices[2].y, vertices[2].z),
+                (-80, 59, -25)
+            );
             assert_eq!(face_colors, [300]);
             assert_eq!(face_textures, [Some(9)]);
         }
