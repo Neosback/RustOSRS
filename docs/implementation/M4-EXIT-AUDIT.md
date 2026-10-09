@@ -1,6 +1,6 @@
 # M4 Exit Audit: Model Decode and Exact Construction
 
-Status: **COMPLETE pending final documentation-head CI**  
+Status: **COMPLETE - PR READY**  
 Milestone: `M4 - Model decode and exact model construction`  
 Branch: `impl/m4-model-decode-construction`  
 Baseline: M3 squash merge `6e350afeb73c96f1b1ccd050ef427028e3015987`  
@@ -8,7 +8,7 @@ Target: `osrs-live-241-2026-09-30-openrs2-2727`
 
 ## Exit decision
 
-M4 is implementation-complete for its owned target-era model decoding and pre-GPU construction scope. The permanent semantic-parity gates pass on implementation closure head `999bbd3d749806786c210fb60d60f34e65d6e704` in workflow run `37881488350`.
+M4 is implementation-complete for its owned target-era model decoding and pre-GPU construction scope. The permanent semantic-parity gates pass on implementation closure head `999bbd3d749806786c210fb60d60f34e65d6e704` in workflow run `37881488350`, and the documentation-complete closure head `30dacfcf466f3b1024d8359b0c22c4e423580283` passed the same Tier A/B/C chain in workflow run `37881919532`.
 
 This audit does not claim later scene, normal-reconciliation, lighting, contour, animation, render-extraction, or GPU behavior. Those remain with their owning milestones.
 
@@ -285,6 +285,22 @@ Result: PASS
   - M4 exact construction fixtures: PASS
   - M4 model fuzz smoke: PASS
 
+## Documentation closure CI
+
+Documentation-complete head:
+
+`30dacfcf466f3b1024d8359b0c22c4e423580283`
+
+Workflow run:
+
+`37881919532`
+
+Result: PASS
+
+- Tier A static quality: PASS
+- Tier B full workspace tests: PASS
+- Tier C semantic parity: PASS
+
 ## Parity matrix changes justified at M4 exit
 
 Promoted to `EXISTING`:
@@ -319,6 +335,6 @@ The following are explicit later-milestone work, not M4 exit blockers:
 
 ## PR readiness
 
-M4 is ready for one milestone PR after the final documentation-complete branch head passes the ordinary Tier A/B/C chain and the branch-vs-main scope audit remains clean.
+M4 is ready for one milestone PR. The implementation and documentation closure heads have passed the ordinary Tier A/B/C chain. The remaining milestone-boundary action is the final branch-vs-main scope check followed by PR creation only after explicit user continuation.
 
 No M5 or later implementation should begin before that milestone boundary is explicitly accepted.
