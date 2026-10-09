@@ -204,6 +204,7 @@ dependencies = [
  "osrs-scene",
  "serde",
  "serde_yaml_ng",
+ "sha2",
 ]
 
 [[package]]
