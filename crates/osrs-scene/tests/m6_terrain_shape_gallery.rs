@@ -1,12 +1,13 @@
 use osrs_core::coords::SceneTile;
 use osrs_scene::{
-    ShapedTerrainInput, ShapedTerrainSurface, TerrainCorners, TerrainFace, TerrainVertex,
+    ShapedTerrainInput, ShapedTerrainSurface, TerrainBuildError, TerrainCorners, TerrainFace,
+    TerrainVertex,
 };
 
 const HISTORICAL_GOLDEN: &str = include_str!("../../../reference-fixtures/deob_golden.txt");
 
 #[test]
-fn all_13_shapes_and_4_rotations_match_historical_golden_exactly() {
+fn all_13_shapes_and_4_rotations_match_historical_golden_exactly() -> Result<(), TerrainBuildError> {
     let expected: Vec<&str> = HISTORICAL_GOLDEN
         .lines()
         .filter(|line| line.starts_with("tri shape="))
@@ -30,8 +31,7 @@ fn all_13_shapes_and_4_rotations_match_historical_golden_exactly() {
                 overlay_colors: TerrainCorners::new(2000, 2001, 2002, 2003),
                 underlay_rgb: 0,
                 overlay_rgb: 0,
-            })
-            .expect("canonical gallery input is valid");
+            })?;
             actual.push(format_surface(&surface));
         }
     }
@@ -40,6 +40,7 @@ fn all_13_shapes_and_4_rotations_match_historical_golden_exactly() {
         actual.iter().map(String::as_str).collect::<Vec<_>>(),
         expected
     );
+    Ok(())
 }
 
 fn format_surface(surface: &ShapedTerrainSurface) -> String {
