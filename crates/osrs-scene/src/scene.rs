@@ -329,11 +329,7 @@ impl SceneGrid {
         self.tile(plane, tile).and_then(SemanticTile::boundary)
     }
 
-    pub fn wall_decoration(
-        &self,
-        plane: StoragePlane,
-        tile: SceneTile,
-    ) -> Option<&ScenePlacedLoc> {
+    pub fn wall_decoration(&self, plane: StoragePlane, tile: SceneTile) -> Option<&ScenePlacedLoc> {
         self.tile(plane, tile)
             .and_then(SemanticTile::wall_decoration)
     }
@@ -395,8 +391,8 @@ impl SceneGrid {
                 Ok(true)
             }
             PlacementKind::Boundary(_) => {
-                self.ensure_tile(plane, placement_anchor(placement))?.boundary =
-                    Some(ScenePlacedLoc::new(object_id, placement));
+                self.ensure_tile(plane, placement_anchor(placement))?
+                    .boundary = Some(ScenePlacedLoc::new(object_id, placement));
                 Ok(true)
             }
             PlacementKind::WallDecoration(_) => {
@@ -513,8 +509,7 @@ impl SceneGrid {
         let index = self.required_index(plane, tile)?;
         let source_plane = SourcePlane::new(plane.index().get())
             .ok_or(SceneGridError::InvalidPlaneIndex(plane.index().get()))?;
-        Ok(self.tiles[index]
-            .get_or_insert_with(|| SemanticTile::new(Some(source_plane), plane)))
+        Ok(self.tiles[index].get_or_insert_with(|| SemanticTile::new(Some(source_plane), plane)))
     }
 
     fn move_tile_down(
@@ -672,8 +667,8 @@ mod tests {
     }
 
     #[test]
-    fn game_object_footprint_is_atomic_and_uses_reference_edge_masks()
-    -> Result<(), Box<dyn Error>> {
+    fn game_object_footprint_is_atomic_and_uses_reference_edge_masks() -> Result<(), Box<dyn Error>>
+    {
         let mut grid = SceneGrid::new(64, 64, 1)?;
         let plane = storage_plane_from_index(0)?;
         let placement = plan_placement(PlacementInput {
@@ -695,15 +690,24 @@ mod tests {
             .and_then(|tile| tile.game_objects().first());
         assert_eq!(left.map(SceneGameObject::edge_mask), Some(4));
         assert_eq!(right.map(SceneGameObject::edge_mask), Some(1));
-        assert_eq!(left.and_then(SceneGameObject::instance_id), right.and_then(SceneGameObject::instance_id));
-        assert_eq!(left.map(SceneGameObject::start), Some(SceneTile::new(50, 60)));
-        assert_eq!(right.map(SceneGameObject::end), Some(SceneTile::new(51, 60)));
+        assert_eq!(
+            left.and_then(SceneGameObject::instance_id),
+            right.and_then(SceneGameObject::instance_id)
+        );
+        assert_eq!(
+            left.map(SceneGameObject::start),
+            Some(SceneTile::new(50, 60))
+        );
+        assert_eq!(
+            right.map(SceneGameObject::end),
+            Some(SceneTile::new(51, 60))
+        );
         Ok(())
     }
 
     #[test]
-    fn game_object_capacity_rejects_sixth_without_partial_insertion()
-    -> Result<(), Box<dyn Error>> {
+    fn game_object_capacity_rejects_sixth_without_partial_insertion() -> Result<(), Box<dyn Error>>
+    {
         let mut grid = SceneGrid::new(2, 1, 1)?;
         let plane = storage_plane_from_index(0)?;
         for object_id in 0..5 {
@@ -857,9 +861,15 @@ mod tests {
         let overlap = grid
             .tile(plane1, SceneTile::new(1, 0))
             .and_then(|tile| tile.game_objects().first());
-        assert_eq!(moved_anchor.map(|object| object.plane().index().get()), Some(0));
+        assert_eq!(
+            moved_anchor.map(|object| object.plane().index().get()),
+            Some(0)
+        );
         assert_eq!(overlap.map(|object| object.plane().index().get()), Some(0));
-        assert_eq!(moved_anchor.and_then(SceneGameObject::instance_id), overlap.and_then(SceneGameObject::instance_id));
+        assert_eq!(
+            moved_anchor.and_then(SceneGameObject::instance_id),
+            overlap.and_then(SceneGameObject::instance_id)
+        );
         Ok(())
     }
 
