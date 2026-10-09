@@ -11,6 +11,7 @@ pub mod planes;
 pub mod scene;
 pub mod side_effects;
 pub mod terrain;
+pub mod terrain_contract;
 
 pub use placement::{
     BoundaryPlan, CARDINAL_OFFSET_X, CARDINAL_OFFSET_Z, DIAGONAL_OFFSET_X, DIAGONAL_OFFSET_Z,
@@ -30,4 +31,8 @@ pub use side_effects::{
 pub use terrain::{
     FlatTerrainSurface, ShapedTerrainInput, ShapedTerrainSurface, TerrainBuildError,
     TerrainColorSource, TerrainCorner, TerrainCorners, TerrainFace, TerrainSurface, TerrainVertex,
+};
+pub use terrain_contract::{
+    REFERENCE_TERRAIN_SKIP_COLOR, flat_paint_is_reference_skipped,
+    shaped_face_is_reference_skipped,
 };
