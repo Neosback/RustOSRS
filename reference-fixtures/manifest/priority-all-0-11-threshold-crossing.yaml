@@ -1,0 +1,26 @@
+fixture_id: priority.all_0_11.threshold_crossing
+schema_version: 1
+owned_specs:
+  - FACE-002
+parity_level: P2
+execution: evidence_only
+oracle:
+  kind: melxin-deob
+  repository: melxin/runelite
+  commit: 1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc
+  files:
+    - path: runescape-client/src/main/java/Model.java
+      blob: c2aa55c0e8fea89fae0da33d782119f8c109cacf
+      symbol: method5946
+harness:
+  path: reference-fixtures/manifest/M5-PRIORITY-MIGRATION-v1.md
+  revision: 727241c8ca63e4c07d4c22fda97a8fc1dd72c761
+input: priority/all_0_11_threshold_crossing.input.json
+expected: priority/all_0_11_threshold_crossing.expected.json
+expected_sha256: 773a8f503cd998944f79b1195f034a5c64bb8504d9e1fee471e9ecf2808ba787
+normalization:
+  - preserve stable input face ids
+  - depth_bucket is the integer bucket consumed by Model.method5946
+  - preserve priority-10 queue before priority-11 queue
+  - preserve raw signed alpha metadata without interpreting it for FACE-002
+notes: Source-pinned manual normalization. Evidence-only until the renderer-owned ordered face path exists.
