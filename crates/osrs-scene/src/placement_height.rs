@@ -48,10 +48,11 @@ impl fmt::Display for PlacementHeightError {
                 formatter,
                 "placement tile ({x},{y}) is outside scene {scene_width}x{scene_height}",
             ),
-            Self::HeightGridTooSmall => formatter.write_str(
-                "height grid must contain scene_width+1 by scene_height+1 samples",
-            ),
-            Self::CoordinateOverflow => formatter.write_str("placement height-sample index overflow"),
+            Self::HeightGridTooSmall => formatter
+                .write_str("height grid must contain scene_width+1 by scene_height+1 samples"),
+            Self::CoordinateOverflow => {
+                formatter.write_str("placement height-sample index overflow")
+            }
         }
     }
 }
@@ -92,7 +93,11 @@ pub fn sample_placement_height(
         .ok()
         .and_then(|value| value.checked_add(1))
         .ok_or(PlacementHeightError::CoordinateOverflow)?;
-    if heights.len() < required_x || heights.iter().take(required_x).any(|row| row.len() < required_y)
+    if heights.len() < required_x
+        || heights
+            .iter()
+            .take(required_x)
+            .any(|row| row.len() < required_y)
     {
         return Err(PlacementHeightError::HeightGridTooSmall);
     }
@@ -149,7 +154,11 @@ mod tests {
 
     fn grid(width: u32, height: u32) -> Vec<Vec<i32>> {
         (0..=width)
-            .map(|x| (0..=height).map(|y| (x as i32) * 100 + (y as i32) * 10).collect())
+            .map(|x| {
+                (0..=height)
+                    .map(|y| (x as i32) * 100 + (y as i32) * 10)
+                    .collect()
+            })
             .collect()
     }
 
