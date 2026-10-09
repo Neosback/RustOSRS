@@ -3,7 +3,7 @@ schema_version: 1
 owned_specs:
   - PLANES-003
 parity_level: P1
-execution: evidence_only
+execution: semantic
 oracle:
   kind: melxin-deob-source
   repository: melxin/runelite
@@ -22,4 +22,4 @@ normalization:
   - preserve stable source tile labels and scene coordinate inputs
   - preserve storage slot order separately from each tile stored plane field
   - preserve game object tag type, anchor coordinates, and stored plane exactly
-notes: Source-pinned four-plane structural relinking evidence. Production scene relinking belongs to M6.
+notes: Source-pinned four-plane structural relinking fixture executed against the M6 production scene path.
