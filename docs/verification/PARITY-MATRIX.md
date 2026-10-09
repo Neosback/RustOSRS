@@ -1,6 +1,6 @@
 # Semantic Parity Verification Matrix
 
-Status: **Implementation tracking through M4**
+Status: **Implementation tracking through M5 reference fixture infrastructure**
 
 This matrix maps every canonical semantic specification to its required verification family. Coverage status describes checked-in test/fixture implementation state, not source-evidence certainty.
 
@@ -39,24 +39,38 @@ The pinned OpenRS2 2727 target sweep decoded all `62,043` build-241 model groups
 
 `MODEL-BUILD-004` deliberately remains `REQUIRED`: its `nonFlatShading` representation/cache split depends on the later pre-lighting normal-reconciliation/static-entity path. `MODEL-BUILD-005` is only `PARTIAL` in M4 because contouring, animation pose, and scene-normal mutation still need their owning milestone tests before the full ownership rule can be closed. `FACE-001` likewise remains `REQUIRED` until render extraction proves end-to-end optional face metadata preservation.
 
+## M5 reference-fixture infrastructure coverage
+
+M5 adds source-pinned normalized fixtures, an exact offline runner, candidate-only regeneration, and an indexed historical evidence catalog. The M5 fixture infrastructure is itself merge-gated, but evidence for later-owned semantics does not promote those production semantics to `EXISTING`.
+
+| M5 fixture/evidence family | Exact verification artifact | Execution / coverage |
+|---|---|---|
+| typed model selection | fixture ID `model.selection.typed_exact.orientation_4`; `reference-fixtures/manifest/model-selection-typed-orientation-4.yaml`; `crates/osrs-reference/tests/m5_fixture_runner.rs` | semantic / EXISTING |
+| mirror geometry and winding | fixture ID `model.mirror.geometry_winding`; `reference-fixtures/manifest/model-mirror-geometry-winding.yaml`; M5 runner | semantic / EXISTING |
+| type-4 transform order | fixture ID `model.transform.type4_order`; `reference-fixtures/manifest/model-transform-type4-order.yaml`; M5 runner | semantic / EXISTING |
+| priority thresholds and priority-10/11 queues | fixture ID `priority.all_0_11.threshold_crossing`; `reference-fixtures/manifest/priority-all-0-11-threshold-crossing.yaml`; M5 runner | evidence-only; `FACE-002` remains REQUIRED |
+| historical deob evidence index | `reference-fixtures/historical/deob_golden.index.json`; `scripts/test_deob_golden_index.py` | indexed historical evidence; later production rows retain their existing status |
+
+The historical index exposes stable fixture IDs for `terrain.shape_gallery.all_13x4`, `contour.synthetic.flat_slope`, `lighting.synthetic_triangle.loc_rig`, `placement.wall_types.orientation_matrix`, `placement.decor_types.orientation_matrix`, `placement.floor_type22.storage`, and `placement.game_object.footprint_and_capacity`. These IDs are links to evidence, not declarations that M6-M8 production executors already exist.
+
 ## Placement
 
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
-| `LOC-PLACEMENT-001` | loc types `0..22` + representative `>=12`; walls/decor x orientations | exact scene slot/type/arms/flags | PARTIAL |
-| `LOC-PLACEMENT-002` | decor types `4..8` x orientation, wall present/absent, custom displacement | exact integer offsets/orientation flags | PARTIAL |
-| `LOC-PLACEMENT-003` | square/non-square footprints x all orientations; sloped center samples | exact footprint, center, height inputs | REQUIRED |
+| `LOC-PLACEMENT-001` | loc types `0..22` + representative `>=12`; walls/decor x orientations; indexed evidence IDs `placement.wall_types.orientation_matrix`, `placement.decor_types.orientation_matrix`, `placement.floor_type22.storage` | exact scene slot/type/arms/flags | PARTIAL |
+| `LOC-PLACEMENT-002` | decor types `4..8` x orientation, wall present/absent, custom displacement; indexed evidence ID `placement.decor_types.orientation_matrix` | exact integer offsets/orientation flags | PARTIAL |
+| `LOC-PLACEMENT-003` | square/non-square footprints x all orientations; sloped center samples; indexed evidence ID `placement.game_object.footprint_and_capacity` | exact footprint, center, height inputs | REQUIRED |
 | `LOC-PLACEMENT-004` | same qualifying definition through initial and pending-replacement paths | exact representation/path identity | REQUIRED |
 | `LOC-PLACEMENT-005` | definition-driven collision/clipping/occlusion/wall metadata cases | exact side-effect state per promoted sub-contract | REQUIRED |
-| `LOC-PLACEMENT-006` | floor decoration flat+slope cases | exact semantic Z, no implicit lift | REQUIRED |
+| `LOC-PLACEMENT-006` | floor decoration flat+slope cases; indexed evidence ID `placement.floor_type22.storage` | exact semantic Z, no implicit lift | REQUIRED |
 
 ## Model construction
 
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
-| `MODEL-BUILD-001` | typed hit/miss; untyped type-10 combine; non-10 rejection; missing IDs | exact selected model IDs / `None` | EXISTING |
-| `MODEL-BUILD-002` | typed mirror truth table + untyped special case | exact vertices, indices, winding | EXISTING |
-| `MODEL-BUILD-003` | orientations, type-4 diagonal recenter, combined transform-order fixture | exact integer vertices + material substitutions | EXISTING |
+| `MODEL-BUILD-001` | typed hit/miss; untyped type-10 combine; non-10 rejection; missing IDs; normalized fixture `model.selection.typed_exact.orientation_4` | exact selected model IDs / `None` | EXISTING |
+| `MODEL-BUILD-002` | typed mirror truth table + untyped special case; normalized fixtures `model.selection.typed_exact.orientation_4` and `model.mirror.geometry_winding` | exact vertices, indices, winding | EXISTING |
+| `MODEL-BUILD-003` | orientations, type-4 diagonal recenter, combined transform-order fixture `model.transform.type4_order` | exact integer vertices + material substitutions | EXISTING |
 | `MODEL-BUILD-004` | `nonFlatShading` false/true path | exact semantic representation and cache state | REQUIRED |
 | `MODEL-BUILD-005` | two instances share source; mutate only one | untouched source/instance exact hash | PARTIAL |
 
@@ -68,7 +82,7 @@ The pinned OpenRS2 2727 target sweep decoded all `62,043` build-241 model groups
 | `NORMALS-002` | positive, negative, translated, hide=false, hide=true merge | exact merged normals + face render types | REQUIRED |
 | `NORMALS-003` | dual-arm wall, wall/game neighbor, floor decor, plane-above | exact scene reconciliation/finalization state | REQUIRED |
 | `NORMALS-004` | merge changes final lighting vs control | exact final lit values | REQUIRED |
-| `LIGHTING-001` | known vector, flat/smooth, merged, ambient/contrast limits | exact integer lit/HSL output | PARTIAL |
+| `LIGHTING-001` | known vector, flat/smooth, merged, ambient/contrast limits; indexed historical evidence ID `lighting.synthetic_triangle.loc_rig` | exact integer lit/HSL output | PARTIAL |
 
 ## Morph, animation, contour
 
@@ -76,13 +90,13 @@ The pinned OpenRS2 2727 target sweep decoded all `62,043` build-241 model groups
 |---|---|---|---|
 | `MORPH-001` | varbit, varp, in-range, fallback, null, footprint-changing transform | exact selected definition/absence | REQUIRED |
 | `ANIMATION-001` | deterministic pose; footprint-changing morph; preserve/restart replacement | exact semantic pose/state ownership where specified | REQUIRED |
-| `CONTOUR-001` | existing control + fast paths + clip thresholds + tile border + ownership | exact integer vertex Y output | PARTIAL |
+| `CONTOUR-001` | existing control + fast paths + clip thresholds + tile border + ownership; indexed historical evidence ID `contour.synthetic.flat_slope` | exact integer vertex Y output | PARTIAL |
 
 ## Terrain
 
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
-| `TERRAIN-001` | all 13 shapes x 4 rotations | exact vertices, faces, color source, texture IDs | EXISTING |
+| `TERRAIN-001` | all 13 shapes x 4 rotations; indexed historical evidence ID `terrain.shape_gallery.all_13x4` | exact vertices, faces, color source, texture IDs | EXISTING |
 | `TERRAIN-002` | flat diagonal, four distinct corners, sentinel, flat-vs-shaped choice | exact topology/representation | PARTIAL |
 | `TERRAIN-003` | RGB/HSL boundaries, hue multiplier clamp, overlay defaults/opcodes/secondary | exact decoded integers/defaults | EXISTING |
 | `TERRAIN-004` | full slope/11x11/overlay/jitter builder | exact end-to-end terrain color output | BLOCKED |
@@ -103,17 +117,19 @@ The pinned OpenRS2 2727 target sweep decoded all `62,043` build-241 model groups
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
 | `FACE-001` | model retaining all optional face metadata into render extraction | exact field preservation | REQUIRED |
-| `FACE-002` | priorities 0..11 around avg12/avg34/avg68 with 10/11 queues | exact reference face emission order | REQUIRED |
+| `FACE-002` | priorities 0..11 around avg12/avg34/avg68 with 10/11 queues; evidence fixture `priority.all_0_11.threshold_crossing` | exact reference face emission order | REQUIRED |
 | `FACE-003` | alpha 0, ordinary values, sentinel, model+face transparency | exact interpreted metadata/order input | REQUIRED |
 | `FACE-004` | coplanar authored-bias faces | exact bias preservation; visual stable order later | PLANNED-GPU |
 | `TEXTURE-001` | explicit texture face, canonical fallback UV, projected dynamic case, animation handoff | exact/tolerance per owned stage | REQUIRED + PLANNED-GPU |
+
+`priority.all_0_11.threshold_crossing` is intentionally `execution: evidence_only`. Its manifest, source pin, schema, expected hash, thresholds, and exact ordered face IDs are checked in and validated by M5, but the renderer-owned production priority executor does not exist yet. Therefore `FACE-002` remains `REQUIRED` until its owning renderer milestone executes the same contract through production code.
 
 ## Coordinates
 
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
 | `COORD-001` | tile/local conversions, footprint centers, terrain positions | exact integer coordinates | PARTIAL |
-| `COORD-002` | all loc orientations + special 256-JAU path | exact integer transformed vertices | EXISTING |
+| `COORD-002` | all loc orientations + special 256-JAU path; normalized fixture `model.transform.type4_order` | exact integer transformed vertices | EXISTING |
 | `COORD-003` | world/scene/local/model/render conversion and region-border fixture | exact semantic coordinates; explicit renderer conversion | REQUIRED |
 
 ## Renderer-policy verification mapping
