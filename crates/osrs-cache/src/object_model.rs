@@ -1,16 +1,16 @@
 //! Cache-backed object model resolution for exact M4 construction semantics.
 //!
-//! Pure selection/mirror/combine rules live in `osrs-core`. This adapter only
-//! acquires the selected raw variants from the verified model repository and
-//! returns an owned assembled model for the later instance transform pipeline.
+//! Pure selection/mirror/combine/instance-transform rules live in `osrs-core`.
+//! This adapter acquires the selected raw variants from the verified model
+//! repository, combines them, and returns the exact transformed semantic model.
 
 use crate::model_repository::{ModelRepositoryError, ModelSourceRepository, RawModelVariant};
 use osrs_core::definitions::{LocType, ObjectDefinition};
 use osrs_core::ids::ModelId;
 use osrs_core::model::SourceModel;
 use osrs_core::model_construction::{
-    AssembledModel, ModelConstructionError, combine_source_models, mirror_source_model,
-    select_object_model,
+    AssembledModel, ModelConstructionError, apply_object_model_instance_transforms,
+    combine_source_models, mirror_source_model, select_object_model,
 };
 use std::fmt;
 use std::sync::Arc;
@@ -51,7 +51,7 @@ impl From<ModelConstructionError> for ObjectModelResolveError {
     }
 }
 
-/// Resolve one object request into an owned pre-transform semantic model.
+/// Resolve one object request into its exact transformed semantic model.
 ///
 /// `Ok(None)` is an exact semantic outcome for a missing typed match, an
 /// untyped non-type-10 request, or a definition with no model IDs. No fallback
@@ -72,7 +72,9 @@ pub fn resolve_object_model(
     }
 
     let refs: Vec<&SourceModel> = sources.iter().map(Arc::as_ref).collect();
-    Ok(Some(combine_source_models(&refs)?))
+    let mut model = combine_source_models(&refs)?;
+    apply_object_model_instance_transforms(&mut model, definition, requested_type, orientation);
+    Ok(Some(model))
 }
 
 fn load_raw_variant(
