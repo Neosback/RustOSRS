@@ -90,7 +90,10 @@ impl fmt::Display for PendingReplacementPlanError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidSceneCategory(value) => {
-                write!(formatter, "pending-spawn scene category {value} is outside 0..=3")
+                write!(
+                    formatter,
+                    "pending-spawn scene category {value} is outside 0..=3"
+                )
             }
         }
     }
