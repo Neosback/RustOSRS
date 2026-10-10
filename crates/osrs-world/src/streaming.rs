@@ -39,6 +39,8 @@ pub struct RegionGeometry {
     /// Animated locs of the region, posed at runtime.
     pub animations: Vec<AnimatedInstance>,
     pub build_ms: f32,
+    /// Presentation generation the region was built under (see [`RegionStreamer::set_presentation`]).
+    pub generation: u32,
 }
 
 /// Build one region's geometry, or `None` when the cache has no map data for it.
@@ -65,6 +67,7 @@ pub fn build_region_geometry(
         geometry,
         animations,
         build_ms: started.elapsed().as_secs_f32() * 1000.0,
+        generation: 0,
     }))
 }
 
@@ -83,6 +86,7 @@ pub enum StreamEvent {
 
 enum Request {
     Build(RegionCoord),
+    SetPresentation(TerrainPresentation, u32),
     Shutdown,
 }
 
@@ -110,14 +114,23 @@ impl RegionStreamer {
                 let _ = event_tx.send(StreamEvent::Ready {
                     textures: texture_layers(definitions.textures()),
                 });
+                let mut presentation = presentation;
+                let mut generation = 0_u32;
                 while let Ok(request) = request_rx.recv() {
                     match request {
                         Request::Shutdown => break,
+                        Request::SetPresentation(new_presentation, new_generation) => {
+                            presentation = new_presentation;
+                            generation = new_generation;
+                        }
                         Request::Build(region) => {
                             let event =
                                 match build_region_geometry(&mut definitions, region, presentation)
                                 {
-                                    Ok(Some(geometry)) => StreamEvent::Region(Box::new(geometry)),
+                                    Ok(Some(mut geometry)) => {
+                                        geometry.generation = generation;
+                                        StreamEvent::Region(Box::new(geometry))
+                                    }
                                     Ok(None) => StreamEvent::Empty(region),
                                     Err(error) => StreamEvent::Failed(region, error.to_string()),
                                 };
@@ -134,6 +147,14 @@ impl RegionStreamer {
             events: event_rx,
             worker,
         }
+    }
+
+    /// Change how later builds are presented. Regions built under an older `generation` carry
+    /// that generation in [`RegionGeometry::generation`] so the caller can discard them.
+    pub fn set_presentation(&self, presentation: TerrainPresentation, generation: u32) {
+        let _ = self
+            .requests
+            .send(Request::SetPresentation(presentation, generation));
     }
 
     /// Queue a region build.

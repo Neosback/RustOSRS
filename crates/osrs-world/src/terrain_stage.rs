@@ -17,6 +17,8 @@ pub const DEFAULT_BRIGHTNESS: f64 = 0.8;
 pub struct TerrainPresentation {
     pub brightness: f64,
     pub jitter: TerrainJitter,
+    /// Non-reference option: vertical tolerance for wall normal merging (`0` = exact client).
+    pub wall_merge_tolerance: i32,
 }
 
 impl Default for TerrainPresentation {
@@ -24,6 +26,7 @@ impl Default for TerrainPresentation {
         Self {
             brightness: DEFAULT_BRIGHTNESS,
             jitter: TerrainJitter::default(),
+            wall_merge_tolerance: 0,
         }
     }
 }

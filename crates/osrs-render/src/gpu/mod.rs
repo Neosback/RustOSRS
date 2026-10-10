@@ -130,7 +130,8 @@ impl ReferenceCamera {
 #[derive(Debug, Clone, Copy)]
 pub struct FrameParams {
     pub camera: ReferenceCamera,
-    /// Draw levels `<=` this plane whose tiles' minimum plane is `<=` it.
+    /// Current plane: a tile (and everything on it) is drawn when its minimum plane is `<=` this,
+    /// exactly like `Scene.draw` (`tile.minPlane <= Scene_plane`) over all planes.
     pub view_plane: u8,
     /// Texture animation clock: the client's `gameCycle & 127`.
     pub tick: u32,
@@ -637,7 +638,7 @@ impl SceneRenderer {
                 pass.set_bind_group(1, &zone.bind_group, &[]);
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 for range in &zone.opaque_ranges {
-                    if range.level <= params.view_plane && range.min_plane <= params.view_plane {
+                    if range.min_plane <= params.view_plane {
                         pass.draw(range.start..range.start + range.count, 0..1);
                     }
                 }
@@ -659,7 +660,7 @@ impl SceneRenderer {
                 .collect();
             alpha_zones.sort_by(|a, b| distance_squared(b).total_cmp(&distance_squared(a)));
             pass.set_pipeline(&self.alpha_pipeline);
-            for level in 0..=params.view_plane {
+            for level in 0..=3_u8 {
                 for zone in alpha_zones.iter().copied() {
                     let Some(buffer) = &zone.alpha else { continue };
                     pass.set_bind_group(1, &zone.bind_group, &[]);

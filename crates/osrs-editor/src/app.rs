@@ -47,6 +47,10 @@ pub struct EditorApp {
     view_plane: u8,
     brightness: f32,
     remove_color_banding: bool,
+    /// Non-reference option: wall normals merge across 1-2 unit vertical offsets (hides seams
+    /// between wall pieces such as objects 1904/1907).
+    wall_seam_tolerance: bool,
+    presentation_generation: u32,
     /// Background (and the colour holes in the terrain show). RuneLite's default sky is black.
     sky_color: [f32; 3],
     streamer: RegionStreamer,
@@ -95,7 +99,8 @@ impl EditorApp {
             -2600.0,
             0.3 * REGION_UNITS as f32,
         );
-        let streamer = RegionStreamer::spawn(cache_dir, TerrainPresentation::default());
+        let streamer = RegionStreamer::spawn(cache_dir, Self::presentation(true));
+        streamer.set_presentation(Self::presentation(true), 1);
 
         Ok(Self {
             render_state,
@@ -105,6 +110,8 @@ impl EditorApp {
             view_plane: 0,
             brightness: 0.8,
             remove_color_banding: true,
+            wall_seam_tolerance: true,
+            presentation_generation: 1,
             sky_color: [0.0, 0.0, 0.0],
             streamer,
             animations: AnimationSystem::new(),
@@ -129,6 +136,29 @@ impl EditorApp {
             peak_resident: 0,
             started: Instant::now(),
         })
+    }
+
+    fn presentation(wall_seam_tolerance: bool) -> TerrainPresentation {
+        TerrainPresentation {
+            wall_merge_tolerance: if wall_seam_tolerance { 2 } else { 0 },
+            ..TerrainPresentation::default()
+        }
+    }
+
+    /// Rebuild every resident region (after a presentation change).
+    fn rebuild_all(&mut self) {
+        self.presentation_generation += 1;
+        self.streamer.set_presentation(
+            Self::presentation(self.wall_seam_tolerance),
+            self.presentation_generation,
+        );
+        for key in self.loaded.keys().copied().collect::<Vec<_>>() {
+            self.renderer.remove_region(key);
+            self.animations.remove_region(key);
+        }
+        self.loaded.clear();
+        self.in_flight.clear();
+        self.animation_dirty = true;
     }
 
     /// World position of the camera in local units.
@@ -175,6 +205,9 @@ impl EditorApp {
                 }
                 StreamEvent::Region(region) => {
                     let key = (region.region.x, region.region.y);
+                    if region.generation != self.presentation_generation {
+                        continue;
+                    }
                     self.in_flight.remove(&key);
                     self.renderer.upload_region(key, &region.geometry);
                     self.animations.insert_region(key, region.animations);
@@ -424,6 +457,12 @@ impl eframe::App for EditorApp {
                 ui.separator();
                 ui.add(egui::Slider::new(&mut self.brightness, 0.5..=1.0).text("brightness"));
                 ui.checkbox(&mut self.remove_color_banding, "smooth shading");
+                if ui
+                    .checkbox(&mut self.wall_seam_tolerance, "merge wall seams")
+                    .changed()
+                {
+                    self.rebuild_all();
+                }
                 ui.color_edit_button_rgb(&mut self.sky_color);
                 ui.add(egui::Slider::new(&mut self.stream_radius, 0..=4).text("radius"));
                 ui.add(egui::Slider::new(&mut self.camera.fov_degrees, 30.0..=100.0).text("fov"));

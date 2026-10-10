@@ -34,7 +34,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let started = Instant::now();
-    let world = build_world_scene(&mut definitions, window, TerrainPresentation::default())?;
+    let world = build_world_scene(
+        &mut definitions,
+        window,
+        TerrainPresentation {
+            wall_merge_tolerance: env::var("RENDER_WALL_TOL").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
+            ..TerrainPresentation::default()
+        },
+    )?;
     let assembled = started.elapsed();
     let geometry: SceneGeometry = extract_scene_geometry(&world);
     let extracted = started.elapsed();

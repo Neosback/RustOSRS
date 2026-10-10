@@ -10,7 +10,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut hits: Vec<(u32, i32, i32, u8, u8, u8)> = Vec::new();
     for rx in 0..100 {
         for ry in 0..200 {
-            let Ok(Some(region)) = defs.region(RegionCoord::new(rx, ry)) else { continue };
+            let Ok(Some(region)) = defs.region(RegionCoord::new(rx, ry)) else {
+                continue;
+            };
             for loc in region.locations.locations() {
                 let id = loc.object_id.get();
                 if id == a || id == b {

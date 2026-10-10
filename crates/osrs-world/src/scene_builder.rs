@@ -54,6 +54,7 @@ pub fn build_world_scene(
     } = place_window_locs(definitions, &mut loaded, &mut scene)?;
 
     apply_terrain(definitions, &loaded.grid, presentation, &mut scene)?;
+    finalizer.set_vertical_merge_tolerance(presentation.wall_merge_tolerance);
     let merge_report = finalizer
         .reconcile_and_light()
         .map_err(|error| WorldError::Placement(error.to_string()))?;

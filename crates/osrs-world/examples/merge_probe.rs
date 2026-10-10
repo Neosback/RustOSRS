@@ -11,7 +11,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let id: u32 = a[base].parse()?;
         let def = defs.object(ObjectId::new(id))?.ok_or("def")?;
         let model = defs
-            .resolve_model(&def, LocType::new(a[base + 1].parse()?), a[base + 2].parse()?)?
+            .resolve_model(
+                &def,
+                LocType::new(a[base + 1].parse()?),
+                a[base + 2].parse()?,
+            )?
             .ok_or("model")?;
         let (tx, tz): (i32, i32) = (a[base + 3].parse()?, a[base + 4].parse()?);
         let points: Vec<(i32, i32, i32)> = model
@@ -26,8 +30,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for q in &models[1] {
             if p.0 == q.0 && p.2 == q.2 {
                 xz_only += 1;
-                if p.1 == q.1 { exact += 1 }
-                if (p.1 - q.1).abs() <= 2 { near += 1 }
+                if p.1 == q.1 {
+                    exact += 1
+                }
+                if (p.1 - q.1).abs() <= 2 {
+                    near += 1
+                }
                 println!("xz match: y {} vs {} (delta {})", p.1, q.1, p.1 - q.1);
             }
         }

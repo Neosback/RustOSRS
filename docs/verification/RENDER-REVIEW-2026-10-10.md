@@ -87,6 +87,21 @@ Same write-up, diagonal decorations (shape 8 on diagonal wall 1902): type-9 diag
 "plane bias / roof pull" section is not in RuneLite (face bias only, levels share one depth
 buffer), so it is intentionally not applied.
 
+## Update: seam tolerance option and plane visibility
+
+* The strict `y` match is the pinned client's code, but a project the user validated against the
+  game shows these seams are not visible in OSRS, so the January deob is probably behind build 241
+  here (or the offsets are applied elsewhere). `TerrainPresentation::wall_merge_tolerance`
+  (default 0 in the library) adds an opt-in vertical tolerance; the editor enables 2 by default
+  ("merge wall seams" checkbox, rebuilds loaded regions). This is a **non-reference** setting.
+* Plane visibility was wrong: `Scene.draw` iterates every plane from `minPlane` and draws a tile
+  when `tile.minPlane <= Scene_plane` (and RuneLite uploads `TILE_FLAG_VIS_BELOW` tiles of upper
+  levels into the level-0 draw). We additionally required `level <= plane`, hiding e.g. the
+  Lumbridge battlements. Now only `min_plane <= plane` is tested.
+* Draw order: opaque order only matters for exact depth ties (first drawn wins under `GREATER`)
+  and for alpha. RuneLite emits per tile (paint, model, wall, decorative, ground, game objects);
+  we emit all terrain of a zone then its locs. Not changed.
+
 ## Open items (not yet matching the reference)
 
 * **Alpha ordering.** RuneLite additionally sorts alpha models by distance and counting-sorts
