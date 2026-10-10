@@ -448,6 +448,37 @@ impl CacheRepository {
         Ok(CacheFile { provenance, bytes })
     }
 
+    /// Read and split every file of one logical group with a single group decode.
+    ///
+    /// Use this instead of repeated [`Self::read_file`] calls for large config groups (for
+    /// example object definitions), where each `read_file` would otherwise re-decode the group.
+    pub fn read_group_files(
+        &self,
+        index_id: u8,
+        group_id: u32,
+    ) -> Result<Vec<(u32, CacheFile)>, CacheError> {
+        let metadata = self.group_metadata(index_id, group_id)?;
+        let decoded = self.read_decoded_group(index_id, group_id, None)?;
+        let files = split_group_files(
+            &decoded.bytes,
+            &metadata.file_ids,
+            self.limits.max_files_per_group,
+        )
+        .map_err(|kind| CacheError::new(&self.context, kind).at_group(index_id, group_id))?;
+        Ok(files
+            .into_iter()
+            .map(|(file_id, bytes)| {
+                (
+                    file_id,
+                    CacheFile {
+                        provenance: ArchiveFileProvenance::new(index_id, group_id, Some(file_id)),
+                        bytes,
+                    },
+                )
+            })
+            .collect())
+    }
+
     pub fn read_map_square(&self, region: RegionCoord) -> Result<MapSquareData, CacheError> {
         let resolved = resolve_map_square(&self.context, region).map_err(|error| {
             CacheError::new(

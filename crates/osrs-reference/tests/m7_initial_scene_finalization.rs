@@ -177,6 +177,8 @@ fn object_definition(
         is_rotated: false,
         non_flat_shading: true,
         contour_clip: None,
+        full_recolor: None,
+        ground_raise: 0,
         animation: None,
         ambient,
         contrast,

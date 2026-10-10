@@ -286,6 +286,8 @@ fn object_definition(
         is_rotated: false,
         non_flat_shading: false,
         contour_clip,
+        full_recolor: None,
+        ground_raise: 0,
         animation: None,
         ambient: 0,
         contrast: 0,

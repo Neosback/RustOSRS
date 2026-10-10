@@ -224,6 +224,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "osrs-world"
+version = "0.0.0"
+dependencies = [
+ "osrs-cache",
+ "osrs-core",
+ "osrs-scene",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -551,6 +551,8 @@ mod tests {
             is_rotated,
             non_flat_shading: false,
             contour_clip: None,
+            full_recolor: None,
+            ground_raise: 0,
             animation: None,
             ambient: 0,
             contrast: 0,

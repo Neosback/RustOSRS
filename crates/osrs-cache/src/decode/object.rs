@@ -43,6 +43,8 @@ pub fn decode_object_definition(
     let mut is_rotated = false;
     let mut non_flat_shading = false;
     let mut contour_clip = None;
+    let mut full_recolor = None;
+    let mut ground_raise = 0_u8;
     let mut animation = None;
     let mut ambient = 0_i16;
     let mut contrast = 0_i16;
@@ -150,6 +152,11 @@ pub fn decode_object_definition(
             95 => {
                 reader.skip(1)?;
             }
+            42 => full_recolor = Some(reader.read_u16_be()?),
+            96 => ground_raise = reader.read_u8()?,
+            100 => consume_entity_sub_op(&mut reader)?,
+            101 => consume_conditional_op(&mut reader)?,
+            102 => consume_conditional_sub_op(&mut reader)?,
             249 => consume_parameters(&mut reader)?,
             _ => {
                 return Err(reader.unsupported_opcode(
@@ -182,6 +189,8 @@ pub fn decode_object_definition(
         is_rotated,
         non_flat_shading,
         contour_clip,
+        full_recolor,
+        ground_raise,
         animation,
         ambient,
         contrast,
@@ -321,6 +330,29 @@ fn decode_morphs(
         transforms,
         fallback,
     })
+}
+
+/// Opcode 100: `index`, `subId`, text (one sub-op per opcode, per the October 2026 RuneLite loader
+/// and verified against every build-241 object definition; FileStore's terminated-list variant
+/// desynchronizes on objects with many sub-ops).
+fn consume_entity_sub_op(reader: &mut BinaryReader<'_>) -> DecodeResult<()> {
+    reader.skip(1 + 1)?;
+    reader.read_cp1252_string()?;
+    Ok(())
+}
+
+/// Opcode 101: `index`, varp, varbit, min, max, text.
+fn consume_conditional_op(reader: &mut BinaryReader<'_>) -> DecodeResult<()> {
+    reader.skip(1 + 2 + 2 + 4 + 4)?;
+    reader.read_cp1252_string()?;
+    Ok(())
+}
+
+/// Opcode 102: `index`, sub-id, varp, varbit, min, max, text.
+fn consume_conditional_sub_op(reader: &mut BinaryReader<'_>) -> DecodeResult<()> {
+    reader.skip(1 + 2 + 2 + 2 + 4 + 4)?;
+    reader.read_cp1252_string()?;
+    Ok(())
 }
 
 fn consume_ambient_sound(reader: &mut BinaryReader<'_>, post_220: bool) -> DecodeResult<()> {
@@ -551,6 +583,29 @@ mod tests {
         assert_eq!(definition.category, Some(CategoryId::new(5)));
         assert_eq!(definition.map_scene, Some(MapSceneId::new(6)));
         assert_eq!(definition.map_icon, Some(MapIconId::new(7)));
+        Ok(())
+    }
+
+    #[test]
+    fn october_2026_entity_op_opcodes_decode_and_consume_exactly()
+    -> Result<(), Box<dyn std::error::Error>> {
+        // Formats from the October 2026 RuneLite loader, verified against all 62,522 build-241
+        // object definitions: 42 recolor (u16), 96 raise (u8), 100 sub-op (index, sub-id, text),
+        // 101 conditional op, 102 conditional sub-op.
+        let context = test_support::target_context()?;
+        let source = ArchiveFileProvenance::new(2, 6, Some(110));
+        let bytes = [
+            42, 0x12, 0x34, //
+            96, 5, //
+            100, 1, 2, b'a', 0, //
+            100, 1, 3, b'b', b'c', 0, //
+            101, 2, 0xff, 0xff, 0x4f, 0x1b, 0, 0, 0, 0, 0, 0, 0, 0x3f, 0, //
+            102, 3, 0, 1, 0xff, 0xff, 0, 5, 0, 0, 0, 0, 0, 0, 0, 1, b'x', 0, //
+            0,
+        ];
+        let definition = decode_object_definition(ObjectId::new(110), &bytes, &context, &source)?;
+        assert_eq!(definition.full_recolor, Some(0x1234));
+        assert_eq!(definition.ground_raise, 5);
         Ok(())
     }
 

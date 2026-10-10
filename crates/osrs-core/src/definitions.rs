@@ -159,6 +159,10 @@ pub struct ObjectDefinition {
     pub is_rotated: bool,
     pub non_flat_shading: bool,
     pub contour_clip: Option<u32>,
+    /// Opcode 42: whole-model recolor value (`fullRecolor`). Decoded; render semantics unverified.
+    pub full_recolor: Option<u16>,
+    /// Opcode 96: ground raise byte (`raise`). Decoded; render semantics unverified.
+    pub ground_raise: u8,
     pub animation: Option<SequenceId>,
     pub ambient: i16,
     pub contrast: i16,
