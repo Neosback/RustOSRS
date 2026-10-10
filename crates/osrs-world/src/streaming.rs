@@ -7,8 +7,9 @@
 //! context in every direction.
 
 use crate::{
-    AnimatedInstance, OwnedTiles, RegionInfo, extract_region_info, SceneWindow, TerrainPresentation, WorldDefinitions, WorldError,
-    build_world_scene, extract_animated_instances, extract_owned_geometry, texture_layers,
+    AnimatedInstance, OwnedTiles, RegionInfo, SceneWindow, TerrainPresentation, WorldDefinitions,
+    WorldError, build_world_scene, extract_animated_instances, extract_owned_geometry,
+    extract_region_info, texture_layers,
 };
 use osrs_core::coords::RegionCoord;
 use osrs_render::{SceneGeometry, gpu::TextureLayer};
@@ -68,7 +69,10 @@ pub fn build_region_geometry(
     let info = Arc::new(extract_region_info(
         &world,
         region,
-        ((margin, margin), (margin + REGION_TILES, margin + REGION_TILES)),
+        (
+            (margin, margin),
+            (margin + REGION_TILES, margin + REGION_TILES),
+        ),
         &mut |id| definitions.object(id).ok().flatten(),
     ));
     Ok(Some(RegionGeometry {

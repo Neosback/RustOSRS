@@ -154,6 +154,7 @@ impl EditorApp {
     fn presentation(wall_seam_tolerance: bool) -> TerrainPresentation {
         TerrainPresentation {
             wall_merge_tolerance: if wall_seam_tolerance { 2 } else { 0 },
+            flush_diagonal_decorations: wall_seam_tolerance,
             ..TerrainPresentation::default()
         }
     }
@@ -649,7 +650,7 @@ impl eframe::App for EditorApp {
                 ui.add(egui::Slider::new(&mut self.brightness, 0.5..=1.0).text("brightness"));
                 ui.checkbox(&mut self.remove_color_banding, "smooth shading");
                 if ui
-                    .checkbox(&mut self.wall_seam_tolerance, "merge wall seams")
+                    .checkbox(&mut self.wall_seam_tolerance, "wall fixes (seams, diagonal decor)")
                     .changed()
                 {
                     self.rebuild_all();

@@ -38,7 +38,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut definitions,
         window,
         TerrainPresentation {
-            wall_merge_tolerance: env::var("RENDER_WALL_TOL").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
+            wall_merge_tolerance: env::var("RENDER_WALL_TOL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
+            flush_diagonal_decorations: env::var("RENDER_FLUSH_DECOR").is_ok(),
             ..TerrainPresentation::default()
         },
     )?;

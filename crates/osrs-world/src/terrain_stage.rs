@@ -19,6 +19,10 @@ pub struct TerrainPresentation {
     pub jitter: TerrainJitter,
     /// Non-reference option: vertical tolerance for wall normal merging (`0` = exact client).
     pub wall_merge_tolerance: i32,
+    /// Non-reference option: zero the diagonal wall-decoration offsets on tiles hosting a type-9
+    /// diagonal wall object, so the visible plate sits flush on the wedge face instead of
+    /// floating `8 * sqrt(2)` units off it (see the render review).
+    pub flush_diagonal_decorations: bool,
 }
 
 impl Default for TerrainPresentation {
@@ -27,6 +31,7 @@ impl Default for TerrainPresentation {
             brightness: DEFAULT_BRIGHTNESS,
             jitter: TerrainJitter::default(),
             wall_merge_tolerance: 0,
+            flush_diagonal_decorations: false,
         }
     }
 }

@@ -106,6 +106,29 @@ so `getBoundaryObjectTag` is 0 and the displacement is the default `8`; offsets 
 and the second entity at orientation `+2` match our plan. The write-up's "plane bias / roof pull"
 is not in RuneLite (face bias only; all levels share one depth buffer) and is not applied.
 
+## Diagonal wall decorations floating off type-9 walls (user report: mirrored window)
+
+`decor_matrix` (real models of decoration 1821 and host 1902): a type-8 decoration's plates are
+`orientation + 4` (offset) and `orientation + 6` (drawn at the plain centre); a type-9 diagonal
+wall is a wedge whose flat face lies on a tile diagonal. For each host orientation only two of the
+four decoration orientations are valid, and for exactly one of them the visible plate is the
+*offset* one: the client's default displacement (`8 * (field803, field805)`, magnitude 11.3,
+perpendicular to the face) then leaves the plate floating 11 units off the wall, while for the
+other valid orientation the visible plate is the plain-centre one and sits flush. This is the
+reported "same decoration fine on another wall". Type-9 walls are game objects, so
+`getBoundaryObjectTag` is 0 and the displacement default `8` is used; the offset presumably
+assumes a thin diagonal boundary wall. RuneLite's API also carries a second offset pair
+(`getXOffset2/getYOffset2`, absent in the January deob), so the 241 client changed how the
+second renderable is positioned; its values are unknown to us.
+
+Option `TerrainPresentation::flush_diagonal_decorations` (non-reference; library default off,
+editor on with the wall fixes checkbox) zeroes the offsets of `256`-flag decorations on tiles that
+hold a type-9 wall; both valid combinations are then flush. Before/after renders confirm the
+window frames sit on the wall. Needs confirming against the 241 client's second-offset logic.
+
+The RuneLite commit "cache: rev 241" (87616aa) only adds loader changes (object opcode 42
+`fullRecolor`, opcode reorder, item/npc/spotanim fields); `runelite-master` already contains it.
+
 ## RuneLite / client behaviour we know about but do not reproduce yet
 
 * **Alpha ordering.** `Zone.renderAlpha` sorts alpha models by squared distance (far first) and,

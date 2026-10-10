@@ -102,7 +102,8 @@ impl RegionInfo {
 
     pub fn tile(&self, plane: usize, tile: (i32, i32)) -> Option<&TileInfo> {
         let (x, y) = self.local(tile)?;
-        self.tiles.get((plane * REGION_TILES + x) * REGION_TILES + y)
+        self.tiles
+            .get((plane * REGION_TILES + x) * REGION_TILES + y)
     }
 
     /// Terrain height at a corner of the region (`x`, `y` in `0..=64`).
@@ -153,8 +154,14 @@ fn model_bounds(
         let (mut x, y, mut z) = (vertex.x, vertex.y, vertex.z);
         if rotation != 0 {
             let original_x = x;
-            x = (z.wrapping_mul(sin).wrapping_add(original_x.wrapping_mul(cos))) >> 16;
-            z = (z.wrapping_mul(cos).wrapping_sub(original_x.wrapping_mul(sin))) >> 16;
+            x = (z
+                .wrapping_mul(sin)
+                .wrapping_add(original_x.wrapping_mul(cos)))
+                >> 16;
+            z = (z
+                .wrapping_mul(cos)
+                .wrapping_sub(original_x.wrapping_mul(sin)))
+                >> 16;
         }
         let point = [x + origin[0], y + origin[1], z + origin[2]];
         for axis in 0..3 {
@@ -177,7 +184,8 @@ pub fn extract_region_info(
     object: &mut dyn FnMut(osrs_core::ids::ObjectId) -> Option<Arc<ObjectDefinition>>,
 ) -> RegionInfo {
     let (base_x, base_y) = (world.window.base_x, world.window.base_y);
-    let in_range = |x: u32, y: u32| x >= owned.0.0 && x < owned.1.0 && y >= owned.0.1 && y < owned.1.1;
+    let in_range =
+        |x: u32, y: u32| x >= owned.0.0 && x < owned.1.0 && y >= owned.0.1 && y < owned.1.1;
 
     let mut tiles = vec![TileInfo::default(); PLANES * REGION_TILES * REGION_TILES];
     let mut heights = vec![0; PLANES * CORNERS * CORNERS];
@@ -206,9 +214,11 @@ pub fn extract_region_info(
                     shadow: world.load.shadow(plane, sx, sy),
                     ..TileInfo::default()
                 };
-                if let Some(semantic) = storage
-                    .and_then(|plane| world.scene.tile(plane, SceneTile::new(sx as u32, sy as u32)))
-                {
+                if let Some(semantic) = storage.and_then(|plane| {
+                    world
+                        .scene
+                        .tile(plane, SceneTile::new(sx as u32, sy as u32))
+                }) {
                     info.min_plane = semantic.min_plane();
                     info.has_linked_below = semantic.linked_below().is_some();
                     match &semantic.terrain {

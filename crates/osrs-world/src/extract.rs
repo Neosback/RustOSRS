@@ -116,7 +116,11 @@ pub fn extract_owned_geometry(world: &WorldScene, owned: Option<OwnedTiles>) -> 
 }
 
 /// Level and minimum plane of the tile a loc ended up on after bridge relinking.
-pub(crate) fn effective_level(world: &WorldScene, source: StoragePlane, tile: SceneTile) -> (u8, u8) {
+pub(crate) fn effective_level(
+    world: &WorldScene,
+    source: StoragePlane,
+    tile: SceneTile,
+) -> (u8, u8) {
     let bridge = world.load.settings(1, tile.x as usize, tile.y as usize) & 2 != 0;
     let plane = source.index().get();
     let level = if bridge && plane > 0 {
@@ -130,7 +134,10 @@ pub(crate) fn effective_level(world: &WorldScene, source: StoragePlane, tile: Sc
     (level, min_plane)
 }
 
-pub(crate) fn lit_model(world: &WorldScene, renderable: LocRenderable) -> Option<&ReferenceLitModel> {
+pub(crate) fn lit_model(
+    world: &WorldScene,
+    renderable: LocRenderable,
+) -> Option<&ReferenceLitModel> {
     match renderable {
         LocRenderable::Lit(index) => world.lit.get(index),
         LocRenderable::ModelData(id) => world.finalizer.lit_model(id),
