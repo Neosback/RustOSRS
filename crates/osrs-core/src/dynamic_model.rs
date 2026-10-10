@@ -166,18 +166,18 @@ impl DynamicModelCache {
         F: FnOnce() -> Option<WorkingModel>,
     {
         let key = DynamicModelKey::for_object(definition, requested_type, orientation);
-        if !self.entries.contains_key(&key) {
-            let Some(model_data) = build_model_data() else {
-                return Ok(None);
-            };
-            let lighting = LightingParameters::for_loc(definition.ambient, definition.contrast);
-            let lit = light_model_data(&model_data, lighting)?;
-            self.entries.insert(key, lit);
-        }
-
-        let Some(base) = self.entries.get(&key) else {
-            unreachable!("dynamic model cache entry was inserted or already present");
+        let base = match self.entries.entry(key) {
+            std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                let Some(model_data) = build_model_data() else {
+                    return Ok(None);
+                };
+                let lighting = LightingParameters::for_loc(definition.ambient, definition.contrast);
+                let lit = light_model_data(&model_data, lighting)?;
+                entry.insert(lit)
+            }
         };
+
         let contour_clip = definition
             .contour_clip
             .map(|value| {
