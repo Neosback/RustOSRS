@@ -62,11 +62,13 @@ impl fmt::Display for ContourGroundError {
                 formatter.write_str("contour height-grid dimensions exceed reference int range")
             }
             Self::SampleOutOfBounds { x, z } => {
-                write!(formatter, "contour sample ({x},{z}) is outside the height grid")
+                write!(
+                    formatter,
+                    "contour sample ({x},{z}) is outside the height grid"
+                )
             }
-            Self::ZeroModelHeight => formatter.write_str(
-                "nonzero contour clip cannot divide by zero reference model height",
-            ),
+            Self::ZeroModelHeight => formatter
+                .write_str("nonzero contour clip cannot divide by zero reference model height"),
         }
     }
 }
@@ -90,7 +92,7 @@ pub fn contour_ground_copy<'a>(
 ) -> Result<Cow<'a, ReferenceLitModel>, ContourGroundError> {
     let dimensions = validate_height_grid(input.heights)?;
     let bounds = calculate_bounds_cylinder(model);
-    if contour_fast_path(model, input, dimensions, bounds)? {
+    if contour_fast_path(input, dimensions, bounds)? {
         return Ok(Cow::Borrowed(model));
     }
 
@@ -111,7 +113,7 @@ pub fn contour_ground_in_place(
 ) -> Result<bool, ContourGroundError> {
     let dimensions = validate_height_grid(input.heights)?;
     let bounds = calculate_bounds_cylinder(model);
-    if contour_fast_path(model, input, dimensions, bounds)? {
+    if contour_fast_path(input, dimensions, bounds)? {
         return Ok(false);
     }
 
@@ -167,7 +169,6 @@ fn calculate_bounds_cylinder(model: &ReferenceLitModel) -> ModelCylinderBounds {
 }
 
 fn contour_fast_path(
-    model: &ReferenceLitModel,
     input: ContourGroundInput<'_>,
     dimensions: (i32, i32),
     bounds: ModelCylinderBounds,
@@ -196,7 +197,6 @@ fn contour_fast_path(
     let northwest = height_at(input.heights, min_tile_x, max_tile_z)?;
     let northeast = height_at(input.heights, max_tile_x, max_tile_z)?;
 
-    let _ = model;
     Ok(input.base_height == southwest
         && input.base_height == southeast
         && input.base_height == northwest
@@ -217,13 +217,13 @@ fn apply_contour(
         let original_y = vertex.y;
         if input.clip == 0 {
             let sampled = sample_ground(input.heights, dimensions, input, vertex.x, vertex.z)?;
-            vertex.y = sampled.wrapping_add(original_y).wrapping_sub(input.base_height);
+            vertex.y = sampled
+                .wrapping_add(original_y)
+                .wrapping_sub(input.base_height);
             continue;
         }
 
-        let fixed_height = original_y
-            .wrapping_neg()
-            .wrapping_shl(FIXED_POINT_SHIFT);
+        let fixed_height = original_y.wrapping_neg().wrapping_shl(FIXED_POINT_SHIFT);
         let ratio = java_int_div(fixed_height, model_height);
         if ratio < input.clip {
             let sampled = sample_ground(input.heights, dimensions, input, vertex.x, vertex.z)?;
