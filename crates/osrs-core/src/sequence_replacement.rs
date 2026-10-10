@@ -5,11 +5,7 @@
 //! opcode-11 `restartMode` is zero. Every other case starts the replacement at
 //! the deterministic initial state.
 
-use crate::{
-    animation::SequencePlaybackState,
-    definitions::SequenceDefinition,
-    ids::SequenceId,
-};
+use crate::{animation::SequencePlaybackState, definitions::SequenceDefinition, ids::SequenceId};
 
 /// Observable result of applying the pinned primary-sequence replacement rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
