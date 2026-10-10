@@ -9,6 +9,7 @@ use osrs_render::{
 };
 use osrs_world::{
     SceneWindow, TerrainPresentation, WorldDefinitions, build_world_scene, extract_scene_geometry,
+    texture_layers,
 };
 use std::{env, fs, io::Write, time::Instant};
 
@@ -34,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let started = Instant::now();
     let world = build_world_scene(&mut definitions, window, TerrainPresentation::default())?;
     let assembled = started.elapsed();
-    let geometry: SceneGeometry = extract_scene_geometry(&world, definitions.floors());
+    let geometry: SceneGeometry = extract_scene_geometry(&world);
     let extracted = started.elapsed();
     println!(
         "assembled in {assembled:?}, extracted in {extracted:?}: {} zones, {} vertices ({} KiB)",
@@ -44,6 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let mut renderer = SceneRenderer::new_headless()?;
+    renderer.set_textures(&texture_layers(definitions.textures()));
     renderer.upload_scene(&geometry);
     println!(
         "resident vertex bytes: {}",
@@ -56,6 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FrameParams {
             camera,
             view_plane: 0,
+            tick: 0,
             brightness: 0.8,
             clear_color: [0.55, 0.7, 0.9],
         },

@@ -13,6 +13,10 @@ use wgpu::util::DeviceExt;
 
 pub const COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+/// Edge length of every texture layer (the reference array is 128x128).
+pub const TEXTURE_SIZE: u32 = 128;
+/// Maximum texture layers addressable by the animation table.
+pub const MAX_TEXTURE_LAYERS: usize = 256;
 /// Reference projection near term (`Mat4.projection(w, h, 50)`).
 pub const REFERENCE_NEAR: f32 = 50.0;
 
@@ -117,6 +121,8 @@ pub struct FrameParams {
     pub camera: ReferenceCamera,
     /// Draw levels `<=` this plane whose tiles' minimum plane is `<=` it.
     pub view_plane: u8,
+    /// Texture animation clock: the client's `gameCycle & 127`.
+    pub tick: u32,
     pub brightness: f32,
     pub clear_color: [f64; 3],
 }
@@ -127,7 +133,23 @@ struct GlobalsUniform {
     world_proj: [[f32; 4]; 4],
     brightness: f32,
     smooth_banding: f32,
-    pad: [f32; 2],
+    tick: u32,
+    pad: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct AnimationUniform {
+    values: [[f32; 4]; MAX_TEXTURE_LAYERS],
+}
+
+/// One texture layer in the reference upload format.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextureLayer {
+    /// `TEXTURE_SIZE * TEXTURE_SIZE` row-major `[r, g, b, a]` texels (zero alpha = cutout).
+    pub rgba: Vec<[u8; 4]>,
+    pub animation_direction: u8,
+    pub animation_speed: u8,
 }
 
 #[repr(C)]
@@ -158,6 +180,7 @@ pub struct SceneRenderer {
     opaque_pipeline: wgpu::RenderPipeline,
     alpha_pipeline: wgpu::RenderPipeline,
     globals_buffer: wgpu::Buffer,
+    globals_layout: wgpu::BindGroupLayout,
     globals_bind_group: wgpu::BindGroup,
     zone_layout: wgpu::BindGroupLayout,
     zones: Vec<GpuZone>,
@@ -189,16 +212,44 @@ impl SceneRenderer {
 
         let globals_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("globals"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
         });
         let zone_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("zone"),
@@ -304,14 +355,8 @@ impl SceneRenderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let globals_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("globals"),
-            layout: &globals_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: globals_buffer.as_entire_binding(),
-            }],
-        });
+        let globals_bind_group =
+            build_globals_bind_group(&device, &queue, &globals_layout, &globals_buffer, &[]);
 
         Self {
             device,
@@ -319,6 +364,7 @@ impl SceneRenderer {
             opaque_pipeline,
             alpha_pipeline,
             globals_buffer,
+            globals_layout,
             globals_bind_group,
             zone_layout,
             zones: Vec::new(),
@@ -331,6 +377,17 @@ impl SceneRenderer {
 
     pub fn queue(&self) -> &wgpu::Queue {
         &self.queue
+    }
+
+    /// Upload the texture array (layer `i` = texture id `i`) and its animation table.
+    pub fn set_textures(&mut self, layers: &[Option<TextureLayer>]) {
+        self.globals_bind_group = build_globals_bind_group(
+            &self.device,
+            &self.queue,
+            &self.globals_layout,
+            &self.globals_buffer,
+            layers,
+        );
     }
 
     /// Upload extracted geometry, replacing any previous scene.
@@ -429,7 +486,8 @@ impl SceneRenderer {
             world_proj: params.camera.world_projection(width as f32, height as f32),
             brightness: params.brightness,
             smooth_banding: 1.0,
-            pad: [0.0; 2],
+            tick: params.tick,
+            pad: 0.0,
         };
         self.queue
             .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
@@ -598,4 +656,142 @@ impl SceneRenderer {
         readback.unmap();
         Ok(pixels)
     }
+}
+
+/// Average a mip level down by one level (2x2 box filter over RGBA).
+fn downsample(source: &[[u8; 4]], size: usize) -> Vec<[u8; 4]> {
+    let target = (size / 2).max(1);
+    let mut out = Vec::with_capacity(target * target);
+    for row in 0..target {
+        for column in 0..target {
+            let mut sum = [0_u32; 4];
+            for (dy, dx) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
+                let sy = (row * 2 + dy).min(size - 1);
+                let sx = (column * 2 + dx).min(size - 1);
+                for (channel, total) in sum.iter_mut().enumerate() {
+                    *total += u32::from(source[sy * size + sx][channel]);
+                }
+            }
+            out.push(sum.map(|total| ((total + 2) / 4) as u8));
+        }
+    }
+    out
+}
+
+fn build_globals_bind_group(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout,
+    globals_buffer: &wgpu::Buffer,
+    layers: &[Option<TextureLayer>],
+) -> wgpu::BindGroup {
+    let layer_count = layers.len().clamp(1, MAX_TEXTURE_LAYERS) as u32;
+    let size = TEXTURE_SIZE as usize;
+    let mip_levels = TEXTURE_SIZE.ilog2() + 1;
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("texture-array"),
+        size: wgpu::Extent3d {
+            width: TEXTURE_SIZE,
+            height: TEXTURE_SIZE,
+            depth_or_array_layers: layer_count,
+        },
+        mip_level_count: mip_levels,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+
+    let mut animations = AnimationUniform {
+        values: [[0.0; 4]; MAX_TEXTURE_LAYERS],
+    };
+    for (layer_index, layer) in layers.iter().enumerate().take(MAX_TEXTURE_LAYERS) {
+        let Some(layer) = layer else { continue };
+        let vector = crate::TextureAnimationVector::from_direction_speed(
+            layer.animation_direction,
+            layer.animation_speed,
+        );
+        animations.values[layer_index] = [
+            f32::from(vector.u_units_per_tick),
+            f32::from(vector.v_units_per_tick),
+            0.0,
+            0.0,
+        ];
+        let mut level = layer.rgba.clone();
+        let mut level_size = size;
+        for mip in 0..mip_levels {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: mip,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: layer_index as u32,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                bytemuck::cast_slice(&level),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(level_size as u32 * 4),
+                    rows_per_image: Some(level_size as u32),
+                },
+                wgpu::Extent3d {
+                    width: level_size as u32,
+                    height: level_size as u32,
+                    depth_or_array_layers: 1,
+                },
+            );
+            if level_size > 1 {
+                level = downsample(&level, level_size);
+                level_size /= 2;
+            }
+        }
+    }
+
+    // Reference sampler: nearest magnification, nearest-mipmap-linear minification, clamp on S,
+    // repeat on T (the audited GL setup only overrides the S wrap).
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("texture-sampler"),
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::Repeat,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Nearest,
+        min_filter: wgpu::FilterMode::Nearest,
+        mipmap_filter: wgpu::MipmapFilterMode::Linear,
+        ..Default::default()
+    });
+    let view = texture.create_view(&wgpu::TextureViewDescriptor {
+        dimension: Some(wgpu::TextureViewDimension::D2Array),
+        ..Default::default()
+    });
+    let animation_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("texture-animations"),
+        contents: bytemuck::bytes_of(&animations),
+        usage: wgpu::BufferUsages::UNIFORM,
+    });
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("globals"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: globals_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: animation_buffer.as_entire_binding(),
+            },
+        ],
+    })
 }

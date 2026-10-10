@@ -174,6 +174,19 @@ fn compute_explicit_uvs(
     }
 }
 
+/// Direct (non-projected) reference UVs for one face from explicit model-space points: the
+/// tangent/bitangent basis of the texture triangle evaluated at the face vertices, exactly as
+/// `ModelUploader.computeFaceUvs(..., project = false)` does for static geometry.
+pub fn reference_uvs_from_points(face: [[f32; 3]; 3], texture: [[f32; 3]; 3]) -> [[f32; 2]; 3] {
+    let point = |p: [f32; 3]| Point3 {
+        x: p[0],
+        y: p[1],
+        z: p[2],
+    };
+    let uvs = compute_explicit_uvs(face.map(point), texture.map(point), None);
+    [[uvs.a.u, uvs.a.v], [uvs.b.u, uvs.b.v], [uvs.c.u, uvs.c.v]]
+}
+
 fn project_to_plane(face: Point3, target: Point3, camera: Point3, normal: Point3) -> Point3 {
     let ray = camera.sub(face);
     let scale = dot(target.sub(face), normal) / dot(ray, normal);

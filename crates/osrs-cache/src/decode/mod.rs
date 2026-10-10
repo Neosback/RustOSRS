@@ -13,6 +13,7 @@ mod model;
 mod object;
 mod reader;
 mod sequence;
+mod sprite;
 mod texture;
 mod vars;
 
@@ -35,6 +36,7 @@ pub use model::decode_model_data;
 pub use object::decode_object_definition;
 pub use reader::BinaryReader;
 pub use sequence::decode_sequence_definition;
+pub use sprite::{IndexedSprite, decode_sprite_group};
 pub use texture::decode_texture_definition;
 pub use vars::{decode_varbit, decode_varp};
 

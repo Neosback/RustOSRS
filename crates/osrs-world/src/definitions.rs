@@ -4,8 +4,8 @@ use crate::WorldError;
 use osrs_cache::{
     decode::{
         ArchiveFileProvenance, DecodedLocations, DecoderContext, decode_floor_overlay,
-        decode_floor_underlay, decode_locations, decode_object_definition, decode_terrain,
-        decode_texture_definition,
+        decode_floor_underlay, decode_locations, decode_object_definition, decode_sprite_group,
+        decode_terrain, decode_texture_definition,
     },
     model_repository::ModelSourceRepository,
     object_model::resolve_object_model,
@@ -32,6 +32,9 @@ const UNDERLAY_GROUP: u32 = 1;
 const OVERLAY_GROUP: u32 = 4;
 const OBJECT_GROUP: u32 = 6;
 const TEXTURE_INDEX: u8 = 9;
+const SPRITE_INDEX: u8 = 8;
+/// Reference texture edge length (the RuneLite array is 128x128).
+pub const TEXTURE_SIZE: usize = 128;
 
 /// Floor and texture inputs for the terrain builder, loaded eagerly (a few hundred small files).
 #[derive(Debug, Default)]
@@ -39,14 +42,6 @@ pub struct FloorTable {
     underlays: HashMap<u32, UnderlayHsl>,
     overlays: HashMap<u32, OverlayFloor>,
     texture_averages: HashMap<i32, i32>,
-}
-
-impl osrs_render::TextureAverage for FloorTable {
-    fn average_hsl(&self, texture_id: u32) -> Option<u16> {
-        self.texture_averages
-            .get(&(texture_id as i32))
-            .map(|value| *value as u16)
-    }
 }
 
 impl FloorLookup for FloorTable {
@@ -72,6 +67,39 @@ impl FloorLookup for FloorTable {
     }
 }
 
+/// One texture image in the reference upload format: 128x128, 8 bits per channel, RGBA.
+///
+/// Source palette index `0` (and any pixel whose RGB is `0`) is uploaded as all-zero transparent
+/// RGBA; every other pixel gets alpha `255` (`TextureManager.convertPixels`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextureImage {
+    pub texture_id: u32,
+    /// `TEXTURE_SIZE * TEXTURE_SIZE` pixels, row-major, bytes `[r, g, b, a]`.
+    pub rgba: Vec<[u8; 4]>,
+    /// Animation direction (`0` none, `1..=4`) and speed from the texture definition.
+    pub animation_direction: u8,
+    pub animation_speed: u8,
+}
+
+/// All build-241 texture images, indexed by texture id.
+#[derive(Debug, Default)]
+pub struct TextureTable {
+    pub images: Vec<Option<TextureImage>>,
+}
+
+impl TextureTable {
+    /// Number of array layers needed (highest texture id plus one).
+    pub fn layer_count(&self) -> usize {
+        self.images.len()
+    }
+
+    pub fn image(&self, texture_id: u32) -> Option<&TextureImage> {
+        self.images
+            .get(texture_id as usize)
+            .and_then(Option::as_ref)
+    }
+}
+
 /// One region's decoded map files.
 #[derive(Debug)]
 pub struct RegionMap {
@@ -84,6 +112,7 @@ pub struct WorldDefinitions {
     models: ModelSourceRepository,
     context: DecoderContext,
     floors: FloorTable,
+    textures: TextureTable,
     object_files: HashMap<u32, CacheFile>,
     objects: HashMap<u32, Option<Arc<ObjectDefinition>>>,
 }
@@ -129,6 +158,64 @@ impl WorldDefinitions {
                 .insert(id as i32, i32::from(definition.average_rgb));
         }
 
+        let mut textures = TextureTable::default();
+        for (id, file) in cache.read_group_files(TEXTURE_INDEX, 0)? {
+            let definition = decode_texture_definition(
+                TextureId::new(id),
+                &file.bytes,
+                &context,
+                &file.provenance,
+            )
+            .map_err(WorldError::Decode)?;
+            let Some(sprite_id) = definition.source_sprites.first() else {
+                continue;
+            };
+            let sprite_group = cache.read_file(SPRITE_INDEX, sprite_id.get(), 0, None)?;
+            let frames = decode_sprite_group(
+                sprite_id.get(),
+                &sprite_group.bytes,
+                &context,
+                &sprite_group.provenance,
+            )
+            .map_err(WorldError::Decode)?;
+            let Some(frame) = frames.first() else {
+                continue;
+            };
+            let indices = frame.normalized_indices();
+            let source_size = usize::from(frame.max_width);
+            let mut rgba = Vec::with_capacity(TEXTURE_SIZE * TEXTURE_SIZE);
+            for row in 0..TEXTURE_SIZE {
+                for column in 0..TEXTURE_SIZE {
+                    // 64x64 sources are doubled with nearest sampling; 128x128 map 1:1.
+                    let (source_row, source_column) = if source_size == TEXTURE_SIZE {
+                        (row, column)
+                    } else {
+                        (row >> 1, column >> 1)
+                    };
+                    let index = indices
+                        .get(source_row * source_size + source_column)
+                        .copied()
+                        .unwrap_or(0);
+                    let rgb = frame.palette.get(usize::from(index)).copied().unwrap_or(0);
+                    rgba.push(if rgb == 0 {
+                        [0, 0, 0, 0]
+                    } else {
+                        [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8, 255]
+                    });
+                }
+            }
+            let slot = id as usize;
+            if textures.images.len() <= slot {
+                textures.images.resize(slot + 1, None);
+            }
+            textures.images[slot] = Some(TextureImage {
+                texture_id: id,
+                rgba,
+                animation_direction: definition.animation_direction,
+                animation_speed: definition.animation_speed,
+            });
+        }
+
         let object_files = cache
             .read_group_files(CONFIG_INDEX, OBJECT_GROUP)?
             .into_iter()
@@ -138,6 +225,7 @@ impl WorldDefinitions {
             models: ModelSourceRepository::new(cache),
             context,
             floors,
+            textures,
             object_files,
             objects: HashMap::new(),
         })
@@ -169,6 +257,10 @@ impl WorldDefinitions {
 
     pub fn floors(&self) -> &FloorTable {
         &self.floors
+    }
+
+    pub fn textures(&self) -> &TextureTable {
+        &self.textures
     }
 
     /// Decode (and memoize) one object definition. `Ok(None)` means the id has no definition.

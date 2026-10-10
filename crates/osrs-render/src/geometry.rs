@@ -71,18 +71,6 @@ pub struct ModelPlacement {
     pub orientation: u16,
 }
 
-/// Stand-in color source for textured faces until texture sampling exists (M12).
-pub trait TextureAverage {
-    /// Packed 16-bit HSL average of the texture, if known.
-    fn average_hsl(&self, texture_id: u32) -> Option<u16>;
-}
-
-impl TextureAverage for () {
-    fn average_hsl(&self, _texture_id: u32) -> Option<u16> {
-        None
-    }
-}
-
 impl GeometryBuilder {
     pub fn is_empty(&self) -> bool {
         self.opaque.is_empty() && self.alpha.is_empty()
@@ -101,12 +89,11 @@ impl GeometryBuilder {
         surface: &TerrainSurface,
         tile: (i32, i32),
         zone_origin: (i32, i32),
-        textures: &impl TextureAverage,
     ) {
         match surface {
-            TerrainSurface::Flat(flat) => self.push_flat_terrain(flat, tile, zone_origin, textures),
+            TerrainSurface::Flat(flat) => self.push_flat_terrain(flat, tile, zone_origin),
             TerrainSurface::Shaped(shaped) => {
-                self.push_shaped_terrain(shaped, tile, zone_origin, textures);
+                self.push_shaped_terrain(shaped, tile, zone_origin);
             }
         }
     }
@@ -116,7 +103,6 @@ impl GeometryBuilder {
         flat: &FlatTerrainSurface,
         tile: (i32, i32),
         zone_origin: (i32, i32),
-        textures: &impl TextureAverage,
     ) {
         if flat.colors.northeast == TERRAIN_SKIP_COLOR {
             return;
@@ -127,8 +113,7 @@ impl GeometryBuilder {
         let c = flat.colors;
         let texture = flat.texture_id.map_or(0, |id| (id + 1) as u16);
         let corner = |x: i32, z: i32, height: i32, hsl: i32, u: i32, v: i32| {
-            let hsl = terrain_color(hsl, flat.texture_id, textures);
-            PackedVertex::new([x, height, z], hsl, texture, [u, v])
+            PackedVertex::new([x, height, z], (hsl & 0xFFFF) as u32, texture, [u, v])
         };
         // Triangle order `NE NW SE / SW SE NW` with full-tile UVs, as in `SceneUploader`.
         let v_ne = corner(lx + 128, lz + 128, h.northeast, c.northeast, 256, 256);
@@ -144,7 +129,6 @@ impl GeometryBuilder {
         shaped: &ShapedTerrainSurface,
         tile: (i32, i32),
         zone_origin: (i32, i32),
-        textures: &impl TextureAverage,
     ) {
         let tile_x = tile.0 * 128;
         let tile_z = tile.1 * 128;
@@ -155,7 +139,7 @@ impl GeometryBuilder {
             let texture = face.texture_id.map_or(0, |id| (id + 1) as u16);
             for (corner, &index) in face.indices.iter().enumerate() {
                 let vertex = &shaped.vertices[index];
-                let hsl = terrain_color(face.colors[corner], face.texture_id, textures);
+                let hsl = (face.colors[corner] & 0xFFFF) as u32;
                 let x = vertex.position.x.units();
                 let z = vertex.position.z.units();
                 self.opaque.push(PackedVertex::new(
@@ -174,12 +158,7 @@ impl GeometryBuilder {
     }
 
     /// Emit one lit model (`SceneUploader.uploadStaticModel`).
-    pub fn push_model(
-        &mut self,
-        model: &ReferenceLitModel,
-        placement: ModelPlacement,
-        textures: &impl TextureAverage,
-    ) {
+    pub fn push_model(&mut self, model: &ReferenceLitModel, placement: ModelPlacement) {
         let (sin, cos) = if placement.orientation == 0 {
             (0, 0)
         } else {
@@ -231,6 +210,11 @@ impl GeometryBuilder {
             let alpha_bias = (u32::from(alpha) << 24) | (u32::from(bias) << 16);
 
             let indices = [face.a.get(), face.b.get(), face.c.get()];
+            let face_uvs = if texture_id.is_some() {
+                face_uvs(model, face_index, indices)
+            } else {
+                [[0.0; 2]; 3]
+            };
             let target = if alpha != 0 {
                 &mut self.alpha
             } else {
@@ -238,13 +222,11 @@ impl GeometryBuilder {
             };
             for (corner, index) in indices.into_iter().enumerate() {
                 let color = [color_a, color_b, color_c][corner];
-                let hsl = match texture_id {
-                    Some(id) => textured_standin(color, textures.average_hsl(id)),
-                    None => (color & 0xFFFF) as u32,
-                };
-                // Reference UVs (M10 `prepare_reference_face_uvs`) are applied once textures are
-                // sampled; the canonical triangle mapping is carried until then.
-                let uv = [[0, 0], [256, 0], [0, 256]][corner];
+                let hsl = (color & 0xFFFF) as u32;
+                let uv = [
+                    (face_uvs[corner][0] * 256.0) as i32,
+                    (face_uvs[corner][1] * 256.0) as i32,
+                ];
                 target.push(PackedVertex::new(
                     positions[index as usize],
                     alpha_bias | hsl,
@@ -256,28 +238,26 @@ impl GeometryBuilder {
     }
 }
 
-/// HSL for a terrain vertex. Textured terrain stores lightness only, so the stand-in swaps in the
-/// texture's average hue/saturation while keeping the baked lightness.
-fn terrain_color(color: i32, texture: Option<i32>, textures: &impl TextureAverage) -> u32 {
-    match texture {
-        Some(id) => textured_standin(color, textures.average_hsl(id as u32)),
-        None => (color & 0xFFFF) as u32,
-    }
-}
-
-/// Textured faces carry only a 7-bit lightness; until real texture sampling exists, color them
-/// with the texture's average hue/saturation scaled by that lightness. Clearly a stand-in.
-fn textured_standin(lightness: i32, average: Option<u16>) -> u32 {
-    let light = (lightness & 127) as u32;
-    match average {
-        Some(average) => {
-            let average = u32::from(average);
-            let base_light = (average & 127).max(1);
-            let scaled = (base_light * light / 64).clamp(2, 126);
-            (average & 0xFF80) | scaled
-        }
-        // Unknown texture: neutral gray at the baked lightness.
-        None => light.clamp(2, 126),
+/// Reference UVs of one textured face (`computeFaceUvs`, static path): the explicit texture
+/// triangle basis when the face has a texture-face selector, otherwise the canonical
+/// `(0,0) (1,0) (0,1)` mapping.
+fn face_uvs(model: &ReferenceLitModel, face_index: usize, indices: [u32; 3]) -> [[f32; 2]; 3] {
+    let point = |index: u32| {
+        model
+            .vertices
+            .get(index as usize)
+            .map_or([0.0; 3], |v| [v.x as f32, v.y as f32, v.z as f32])
+    };
+    let selector = model
+        .texture_faces
+        .as_ref()
+        .and_then(|selectors| selectors.get(face_index).copied().flatten());
+    match selector.and_then(|index| model.texture_triangles.get(index as usize)) {
+        Some(texture) => crate::uv::reference_uvs_from_points(
+            indices.map(point),
+            [texture.a.get(), texture.b.get(), texture.c.get()].map(point),
+        ),
+        None => [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
     }
 }
 

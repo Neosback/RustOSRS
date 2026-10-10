@@ -9,8 +9,14 @@ struct Globals {
     world_proj: mat4x4<f32>,
     brightness: f32,
     smooth_banding: f32,
-    _pad0: f32,
-    _pad1: f32,
+    // Texture animation clock: the client's `gameCycle & 127`.
+    tick: u32,
+    _pad: f32,
+};
+
+struct TextureAnimations {
+    // `.xy` = per-tick UV scroll (units of 1/128 texture) for texture `index`.
+    values: array<vec4<f32>, 256>,
 };
 
 struct Zone {
@@ -18,6 +24,9 @@ struct Zone {
 };
 
 @group(0) @binding(0) var<uniform> globals: Globals;
+@group(0) @binding(1) var textures: texture_2d_array<f32>;
+@group(0) @binding(2) var tex_sampler: sampler;
+@group(0) @binding(3) var<uniform> animations: TextureAnimations;
 @group(1) @binding(0) var<uniform> zone: Zone;
 
 struct VertexIn {
@@ -30,6 +39,8 @@ struct VertexOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) alpha: f32,
     @location(1) @interpolate(linear, centroid) hsl: f32,
+    @location(2) @interpolate(flat) tex: u32,
+    @location(3) uv: vec2<f32>,
 };
 
 fn hsl_to_rgb(hsl: vec3<f32>) -> vec3<f32> {
@@ -103,11 +114,40 @@ fn vs_main(input: VertexIn) -> VertexOut {
     out.clip = screen;
     out.alpha = 1.0 - a;
     out.hsl = f32(input.abhsl & 0xffffu);
+
+    // Texture id + 1 (0 = untextured) and signed 8.8 UVs packed as u16 pairs.
+    let tex = input.tex_uv.x;
+    let u = f32(i32(input.tex_uv.y) - select(0, 65536, input.tex_uv.y >= 32768u));
+    let v = f32(i32(input.tex_uv.z) - select(0, 65536, input.tex_uv.z >= 32768u));
+    var uv = vec2<f32>(u, v) / 256.0;
+    if (tex > 0u) {
+        let anim = animations.values[min(tex - 1u, 255u)].xy;
+        uv = uv + f32(globals.tick) * anim * (1.0 / 128.0);
+    }
+    out.tex = tex;
+    out.uv = uv;
     return out;
 }
 
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
+    // Derivatives must be computed in uniform control flow, before the texture branch.
+    let dx = dpdx(input.uv);
+    let dy = dpdy(input.uv);
+
+    if (input.tex > 0u) {
+        let layer = i32(input.tex) - 1;
+        let level0 = textureSampleLevel(textures, tex_sampler, input.uv, layer, 0.0);
+        if (level0.a < 1.0) {
+            discard;
+        }
+        let sampled = textureSampleGrad(textures, tex_sampler, input.uv, layer, dx, dy);
+        let rgb = pow(sampled.rgb, vec3<f32>(globals.brightness));
+        // Textured faces carry a 7-bit baked lightness (`fHsl / 127`).
+        let light = input.hsl / 127.0;
+        return vec4<f32>(rgb * light, input.alpha);
+    }
+
     let packed = i32(input.hsl);
     let hsl = vec3<f32>(f32((packed >> 10) & 63), f32((packed >> 7) & 7), f32(packed & 127));
     return vec4<f32>(hsl_to_rgb(hsl), input.alpha);

@@ -8,6 +8,7 @@ use osrs_render::{
 };
 use osrs_world::{
     SceneWindow, TerrainPresentation, WorldDefinitions, build_world_scene, extract_scene_geometry,
+    texture_layers,
 };
 use std::{path::PathBuf, time::Instant};
 
@@ -199,7 +200,8 @@ fn load_scene(
         .ok_or_else(|| "scene base must be a multiple of 8".to_owned())?;
     let world = build_world_scene(&mut definitions, window, TerrainPresentation::default())
         .map_err(|error| error.to_string())?;
-    let geometry: SceneGeometry = extract_scene_geometry(&world, definitions.floors());
+    let geometry: SceneGeometry = extract_scene_geometry(&world);
+    renderer.set_textures(&texture_layers(definitions.textures()));
     renderer.upload_scene(&geometry);
     Ok(LoadedScene {
         vertex_count: geometry.vertex_count(),
@@ -273,6 +275,8 @@ impl eframe::App for EditorApp {
                         FrameParams {
                             camera: self.camera.reference(),
                             view_plane: self.view_plane,
+                            // The client's `gameCycle & 127`, at 50 cycles per second.
+                            tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
                             brightness: self.brightness,
                             clear_color: [0.55, 0.7, 0.9],
                         },

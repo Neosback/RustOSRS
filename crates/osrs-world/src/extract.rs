@@ -6,18 +6,16 @@
 //! boundary, floor decoration, and game object at their storage centers, wall decorations at the
 //! center plus the nudged offset, game objects with their 256-JAU instance rotation when diagonal.
 
-use crate::{LocRenderable, WorldScene};
+use crate::{LocRenderable, TextureTable, WorldScene};
 use osrs_core::{
     coords::{SceneTile, StoragePlane},
     lighting::ReferenceLitModel,
 };
-use osrs_render::{
-    GeometryBuilder, ModelPlacement, SceneGeometry, TextureAverage, ZONE_LOCAL_UNITS,
-};
+use osrs_render::{GeometryBuilder, ModelPlacement, SceneGeometry, ZONE_LOCAL_UNITS};
 use osrs_scene::placement::PlacementKind;
 
 /// Extract all static geometry of `world`.
-pub fn extract_scene_geometry(world: &WorldScene, textures: &impl TextureAverage) -> SceneGeometry {
+pub fn extract_scene_geometry(world: &WorldScene) -> SceneGeometry {
     let mut geometry = SceneGeometry::default();
     let scene_tiles = world.scene.width() as i32;
 
@@ -44,7 +42,6 @@ pub fn extract_scene_geometry(world: &WorldScene, textures: &impl TextureAverage
                             surface,
                             (x as i32, y as i32),
                             origin,
-                            textures,
                         );
                     }
                 }
@@ -72,30 +69,12 @@ pub fn extract_scene_geometry(world: &WorldScene, textures: &impl TextureAverage
         match loc.plan.kind {
             PlacementKind::Boundary(_) => {
                 for renderable in &loc.renderables {
-                    emit(
-                        builder,
-                        world,
-                        *renderable,
-                        base_x,
-                        base_y,
-                        base_z,
-                        0,
-                        textures,
-                    );
+                    emit(builder, world, *renderable, base_x, base_y, base_z, 0);
                 }
             }
             PlacementKind::FloorDecoration(_) => {
                 if let Some(renderable) = loc.renderables.first() {
-                    emit(
-                        builder,
-                        world,
-                        *renderable,
-                        base_x,
-                        base_y,
-                        base_z,
-                        0,
-                        textures,
-                    );
+                    emit(builder, world, *renderable, base_x, base_y, base_z, 0);
                 }
             }
             PlacementKind::GameObject(game) => {
@@ -108,7 +87,6 @@ pub fn extract_scene_geometry(world: &WorldScene, textures: &impl TextureAverage
                         base_y,
                         base_z,
                         game.insertion_flag,
-                        textures,
                     );
                 }
             }
@@ -129,23 +107,13 @@ pub fn extract_scene_geometry(world: &WorldScene, textures: &impl TextureAverage
                         base_y,
                         base_z + decor.offset_z + nudge_z,
                         0,
-                        textures,
                     );
                 }
                 // The second slot is drawn at the plain center, and only for the 256 form.
                 if decor.orientation_flag == 256
                     && let Some(renderable) = loc.renderables.get(1)
                 {
-                    emit(
-                        builder,
-                        world,
-                        *renderable,
-                        base_x,
-                        base_y,
-                        base_z,
-                        0,
-                        textures,
-                    );
+                    emit(builder, world, *renderable, base_x, base_y, base_z, 0);
                 }
             }
         }
@@ -186,7 +154,6 @@ fn emit(
     y: i32,
     z: i32,
     orientation: u16,
-    textures: &impl TextureAverage,
 ) {
     if let Some(model) = lit_model(world, renderable) {
         builder.push_model(
@@ -197,7 +164,23 @@ fn emit(
                 z,
                 orientation,
             },
-            textures,
         );
     }
+}
+
+/// Convert decoded texture images into renderer texture layers (layer index = texture id).
+pub fn texture_layers(table: &TextureTable) -> Vec<Option<osrs_render::gpu::TextureLayer>> {
+    table
+        .images
+        .iter()
+        .map(|image| {
+            image
+                .as_ref()
+                .map(|texture| osrs_render::gpu::TextureLayer {
+                    rgba: texture.rgba.clone(),
+                    animation_direction: texture.animation_direction,
+                    animation_speed: texture.animation_speed,
+                })
+        })
+        .collect()
 }

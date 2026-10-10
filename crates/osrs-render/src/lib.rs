@@ -27,7 +27,7 @@ pub use draw_plan::{RenderDrawPlan, RenderScenePass};
 pub use generation::SemanticGeneration;
 pub use geometry::{
     GeometryBuilder, ModelPlacement, PackedVertex, SceneGeometry, TERRAIN_SKIP_COLOR,
-    TextureAverage, ZONE_LOCAL_UNITS, ZoneGeometry, ZoneGroup,
+    ZONE_LOCAL_UNITS, ZoneGeometry, ZoneGroup,
 };
 pub use material::{
     MaterialHandle, MaterialTable, MaterialTableError, REFERENCE_TEXTURE_ANIMATION_UNIT,

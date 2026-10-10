@@ -14,9 +14,11 @@ mod scene_builder;
 mod terrain_stage;
 mod window;
 
-pub use definitions::{FloorTable, RegionMap, WorldDefinitions};
+pub use definitions::{
+    FloorTable, RegionMap, TEXTURE_SIZE, TextureImage, TextureTable, WorldDefinitions,
+};
 pub use error::WorldError;
-pub use extract::extract_scene_geometry;
+pub use extract::{extract_scene_geometry, texture_layers};
 pub use loc_stage::{LocRenderable, LocStageOutput, LocStageStats, WorldLoc, place_window_locs};
 pub use scene_builder::{WorldScene, build_world_scene};
 pub use terrain_stage::{
