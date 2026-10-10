@@ -5,7 +5,7 @@ use osrs_core::{
 };
 use osrs_scene::{
     PendingInsertion, PendingRemoval, PendingReplacementPlanError, PendingSceneCategory,
-    PendingSceneMutation, PlacementInput, SceneLayer, apply_pending_replacement,
+    PendingSceneMutation, PlacementInput, SceneGrid, SceneLayer, apply_pending_replacement,
     plan_pending_replacement, plan_placement,
 };
 use std::{convert::Infallible, error::Error};
@@ -160,6 +160,78 @@ fn removal_category_is_independent_from_replacement_loc_layer() -> Result<(), Bo
     assert_eq!(
         replacement.placement.kind.layer(),
         SceneLayer::FloorDecoration
+    );
+    Ok(())
+}
+
+#[test]
+fn initial_game_object_is_replaced_through_live_scene_path() -> Result<(), Box<dyn Error>> {
+    let plane = plane_zero()?;
+    let tile = SceneTile::new(1, 1);
+    let overlap = SceneTile::new(2, 1);
+    let mut scene = SceneGrid::new(4, 4, 1)?;
+
+    assert!(scene.insert_placement(plane, ObjectId::new(400), placement(tile, 10)?)?);
+    assert_eq!(
+        scene.game_object(plane, tile).map(|object| object.object_id()),
+        Some(ObjectId::new(400))
+    );
+    assert_eq!(
+        scene
+            .tile(plane, overlap)
+            .map(|semantic_tile| semantic_tile.game_objects().len()),
+        Some(1)
+    );
+
+    let plan = plan_pending_replacement(
+        plane,
+        tile,
+        2,
+        Some((ObjectId::new(401), placement(tile, 22)?)),
+    )?;
+    let report = apply_pending_replacement(&mut scene, plan)?;
+
+    assert!(report.removed);
+    assert!(report.inserted);
+    assert!(scene.game_object(plane, tile).is_none());
+    assert!(
+        scene
+            .tile(plane, overlap)
+            .is_some_and(|semantic_tile| semantic_tile.game_objects().is_empty())
+    );
+    assert_eq!(
+        scene
+            .floor_decoration(plane, tile)
+            .map(|placed| placed.object_id()),
+        Some(ObjectId::new(401))
+    );
+    Ok(())
+}
+
+#[test]
+fn pending_game_object_removal_matches_anchor_not_overlap() -> Result<(), Box<dyn Error>> {
+    let plane = plane_zero()?;
+    let anchor = SceneTile::new(1, 1);
+    let overlap = SceneTile::new(2, 1);
+    let mut scene = SceneGrid::new(4, 4, 1)?;
+
+    assert!(scene.insert_placement(plane, ObjectId::new(500), placement(anchor, 10)?)?);
+    let plan = plan_pending_replacement(plane, overlap, 2, None)?;
+    let report = apply_pending_replacement(&mut scene, plan)?;
+
+    assert!(!report.removed);
+    assert!(!report.inserted);
+    assert_eq!(
+        scene
+            .game_object(plane, anchor)
+            .map(|object| object.object_id()),
+        Some(ObjectId::new(500))
+    );
+    assert_eq!(
+        scene
+            .tile(plane, overlap)
+            .map(|semantic_tile| semantic_tile.game_objects().len()),
+        Some(1)
     );
     Ok(())
 }
