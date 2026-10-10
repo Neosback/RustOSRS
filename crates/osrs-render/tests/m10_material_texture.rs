@@ -78,7 +78,10 @@ fn material_table_is_deterministic_full_width_and_preserves_animation_inputs()
             v_units_per_tick: -3,
         }
     );
-    assert_eq!(low_material.animation_vector().uv_offset_at_tick(128), (0.0, -3.0));
+    assert_eq!(
+        low_material.animation_vector().uv_offset_at_tick(128),
+        (0.0, -3.0)
+    );
 
     let high_material = table.material(high_handle).ok_or("missing high material")?;
     assert_eq!(
@@ -88,13 +91,16 @@ fn material_table_is_deterministic_full_width_and_preserves_animation_inputs()
             v_units_per_tick: 0,
         }
     );
-    assert_eq!(high_material.animation_vector().uv_offset_at_tick(128), (7.0, 0.0));
+    assert_eq!(
+        high_material.animation_vector().uv_offset_at_tick(128),
+        (7.0, 0.0)
+    );
     Ok(())
 }
 
 #[test]
-fn material_table_rejects_duplicate_ids_and_mixed_targets()
--> Result<(), Box<dyn std::error::Error>> {
+fn material_table_rejects_duplicate_ids_and_mixed_targets() -> Result<(), Box<dyn std::error::Error>>
+{
     let duplicate_a = texture_definition(5, "target-a", 0, 0, true)?;
     let duplicate_b = texture_definition(5, "target-a", 1, 1, true)?;
     assert_eq!(
@@ -117,8 +123,7 @@ fn material_table_rejects_duplicate_ids_and_mixed_targets()
 }
 
 #[test]
-fn no_texture_selector_uses_reference_canonical_uvs()
--> Result<(), Box<dyn std::error::Error>> {
+fn no_texture_selector_uses_reference_canonical_uvs() -> Result<(), Box<dyn std::error::Error>> {
     let mesh = mesh(false)?;
     assert_eq!(
         prepare_reference_face_uvs(&mesh, 0, ReferenceUvMode::Direct)?,
