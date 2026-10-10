@@ -103,3 +103,16 @@ jobs:
           cargo test --locked -p osrs-reference --test m7_identity_threading
           cargo test --locked -p osrs-reference --test m7_composite_admission
           cargo test --locked -p osrs-scene --test m7_scene_normal_reconciliation
+
+      - name: Run M8 morph, contour, animation, and replacement suite
+        run: |
+          cargo test --locked -p osrs-reference --test m8_morph_resolution
+          cargo test --locked -p osrs-reference --test m8_contour_ground
+          cargo test --locked -p osrs-reference --test m8_legacy_animation_decode
+          cargo test --locked -p osrs-reference --test m8_legacy_animation_pose
+          cargo test --locked -p osrs-reference --test m8_sequence_progression
+          cargo test --locked -p osrs-reference --test m8_sequence_replacement
+          cargo test --locked -p osrs-reference --test m8_dynamic_model_assembly
+          cargo test --locked -p osrs-reference --test m8_pending_replacement_contract
+          cargo test --locked -p osrs-reference --test m8_initial_runtime_model_path
+          cargo test --locked -p osrs-scene --test m8_active_morph_placement
