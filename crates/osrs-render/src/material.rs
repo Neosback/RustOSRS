@@ -155,9 +155,7 @@ pub struct MaterialTable {
 
 impl MaterialTable {
     /// Build a deterministic table sorted by full-width semantic texture id.
-    pub fn from_definitions(
-        definitions: &[TextureDefinition],
-    ) -> Result<Self, MaterialTableError> {
+    pub fn from_definitions(definitions: &[TextureDefinition]) -> Result<Self, MaterialTableError> {
         if let Some(first) = definitions.first() {
             for other in &definitions[1..] {
                 if other.identity.provenance != first.identity.provenance {
@@ -229,7 +227,10 @@ impl fmt::Display for MaterialTableError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::DuplicateTextureId { texture_id } => {
-                write!(formatter, "duplicate texture id {texture_id} in material table")
+                write!(
+                    formatter,
+                    "duplicate texture id {texture_id} in material table"
+                )
             }
             Self::MixedTargetProvenance {
                 first_texture,
