@@ -173,7 +173,9 @@ fn initial_game_object_is_replaced_through_live_scene_path() -> Result<(), Box<d
 
     assert!(scene.insert_placement(plane, ObjectId::new(400), placement(tile, 10)?)?);
     assert_eq!(
-        scene.game_object(plane, tile).map(|object| object.object_id()),
+        scene
+            .game_object(plane, tile)
+            .map(|object| object.object_id()),
         Some(ObjectId::new(400))
     );
     assert_eq!(
