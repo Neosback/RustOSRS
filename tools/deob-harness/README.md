@@ -62,3 +62,17 @@ Warnings are suppressed because the deob closure contains legacy/deprecation noi
 Add sections to `Dumper.main` using only deterministic, side-effect-free deob calls: pure tables, constructors, static functions, or synthetic models. Never touch live `Client` state, networking, credentials, or anything requiring a game session.
 
 Regenerated output must remain a candidate until reviewed and explicitly promoted through the canonical fixture manifest/hash workflow.
+
+## Terrain oracle and cache-backed archives (2026-10)
+
+* `src/TerrainOracle.java` + `run-terrain-oracle.sh` run the real `class264.loadTerrain`,
+  `ScriptFrame.method749`, and `class470.method9712`; see `reference-fixtures/terrain/README.md`.
+* `src/CacheArchives.java` backs the deob's `AbstractArchive` with a disk cache so the client's own
+  loaders read real data. `overlay/BZip2Decompressor.java` shadows the deob's broken hand-rolled
+  bzip2 (its block-size constants overflow) with Apache commons-compress; put
+  `commons-compress-1.21.jar` on the classpath and `overlay` first on the source path.
+* `src/ObjectDecodeProbe.java` decodes every build-241 object definition with the deob's
+  `ObjectComposition.decode`. Result: 62,384 of 62,522 decode, but 57,661 leave trailing bytes and
+  138 throw, because the January deob predates the build-241 object layout. **The deob is therefore
+  not a valid oracle for real object definitions or models on this cache**; use it only with
+  synthetic definitions/models (as `Dumper` does) unless the deob is updated to match build 241.
