@@ -1,6 +1,6 @@
 # Semantic Parity Verification Matrix
 
-Status: **Implementation tracking through M7 milestone exit audit**
+Status: **Implementation tracking through M8 milestone exit audit**
 
 This matrix maps every canonical semantic specification to its required verification family. Coverage status describes checked-in production test/fixture implementation state, not source-evidence certainty.
 
@@ -37,7 +37,7 @@ M4 closes target-era ModelData decode plus exact pre-GPU object model selection,
 
 The pinned OpenRS2 2727 target sweep decoded all `62,043` build-241 model groups through the production repository path: `35,103` `FF FD`, `26,940` `FF FE`, zero `FF FF`, zero legacy, zero empty groups, and zero multi-file model groups.
 
-M7 closes `MODEL-BUILD-004` with the exact `nonFlatShading` representation/cache split and scene-local finalization path. `MODEL-BUILD-005` remains `PARTIAL` overall because contouring and animation pose are later-owned, while the M7 scene-normal ownership and source-immutability portion is now exercised. `FACE-001` remains `REQUIRED` until render extraction proves end-to-end optional face metadata preservation.
+M7 closes `MODEL-BUILD-004` with the exact `nonFlatShading` representation/cache split and scene-local finalization path. M8 closes the remaining `MODEL-BUILD-005` ownership requirement by proving animation and contouring mutate only private runtime instances while the shared source and cached lit base remain unchanged. `FACE-001` remains `REQUIRED` until render extraction proves end-to-end optional face metadata preservation.
 
 ## M5 reference-fixture infrastructure coverage
 
@@ -97,6 +97,21 @@ M7 closes production base normals, cross-model normal reconciliation, the scene 
 
 The permanent Tier C gate in `.github/workflows/ci.yml` explicitly runs the M7 core normal/lighting tests, M7 reference semantic tests, and the M7 scene reconciliation test. This prevents future path-based or test-selection changes from silently dropping the milestone's owning semantic suite.
 
+## M8 dynamic semantic coverage
+
+M8 closes the verified dynamic-object subset before semantic parity closure: exact morph selection, active-definition placement recomputation, integer contouring, legacy-frame animation decode/pose/progression, replacement state ownership, the pending/live replacement contract, and private runtime model mutation.
+
+| M8 semantic family | Exact verification artifact | Coverage |
+|---|---|---|
+| varbit/varp morph selection, fallback/null behavior, and active-definition footprint recomputation | `crates/osrs-reference/tests/m8_morph_resolution.rs`; `crates/osrs-scene/tests/m8_active_morph_placement.rs` | EXISTING |
+| exact contour disabled/flat/slope/clip/border behavior and source immutability | `crates/osrs-reference/tests/m8_contour_ground.rs` | EXISTING |
+| legacy animation decode, pose, orientation, alpha, deterministic progression, and preserve/restart replacement modes | `crates/osrs-reference/tests/m8_legacy_animation_decode.rs`; `m8_legacy_animation_pose.rs`; `m8_sequence_progression.rs`; `m8_sequence_replacement.rs` | EXISTING within M8 verified scope |
+| active morph to private runtime lit model, null-model short circuit, animation-before-contour ordering, and cached-base immutability | `crates/osrs-reference/tests/m8_dynamic_model_assembly.rs` | EXISTING |
+| initial non-flat ModelData versus runtime already-lit model representation for the same definition | `crates/osrs-reference/tests/m8_initial_runtime_model_path.rs` | EXISTING |
+| pending/live category replacement and timing/metadata preservation | `crates/osrs-reference/tests/m8_pending_replacement_contract.rs` | EXISTING |
+
+The permanent Tier C gate explicitly runs all M8 reference integration suites plus the active-morph scene placement suite. Full skeletal animation execution outside the currently verified legacy-frame scope is not claimed by this milestone.
+
 ## Placement
 
 | Spec | Required verification | Comparison | Coverage |
@@ -104,11 +119,11 @@ The permanent Tier C gate in `.github/workflows/ci.yml` explicitly runs the M7 c
 | `LOC-PLACEMENT-001` | loc types `0..22` + representative `>=12`; walls/decor x orientations; indexed evidence IDs `placement.wall_types.orientation_matrix`, `placement.decor_types.orientation_matrix`, `placement.floor_type22.storage` | exact scene slot/type/arms/flags | EXISTING |
 | `LOC-PLACEMENT-002` | decor types `4..8` x orientation, wall present/absent, custom displacement; indexed evidence ID `placement.decor_types.orientation_matrix` | exact integer offsets/orientation flags | EXISTING |
 | `LOC-PLACEMENT-003` | square/non-square footprints x all orientations; sloped center samples; indexed evidence ID `placement.game_object.footprint_and_capacity` | exact footprint, center, height inputs | EXISTING |
-| `LOC-PLACEMENT-004` | same qualifying definition through initial and pending-replacement paths | exact representation/path identity | PARTIAL; M7 initial path EXISTING, pending/live replacement still REQUIRED |
+| `LOC-PLACEMENT-004` | same qualifying definition through initial and pending-replacement paths | exact representation/path identity | EXISTING |
 | `LOC-PLACEMENT-005` | definition-driven collision/clipping/occlusion/wall metadata cases | exact side-effect state per promoted sub-contract | PARTIAL |
 | `LOC-PLACEMENT-006` | floor decoration flat+slope cases; indexed evidence ID `placement.floor_type22.storage` | exact semantic Z, no implicit lift | EXISTING |
 
-`LOC-PLACEMENT-003` is closed by the source-pinned rotated-footprint midpoint sampler, including the exact scene-edge anchor/anchor+1 fallback and Java-style four-sample average. `LOC-PLACEMENT-005` remains `PARTIAL` by the explicit M6 roadmap exception: collision-operation selection and wall-displacement ownership are implemented, while narrower private collision/shadow/occlusion bit-grid formulas remain unpromoted. M7 closes the initial `LOC-PLACEMENT-004` side by proving qualifying `nonFlatShading` ModelData survives into normal reconciliation and final lighting. The pending/live replacement half remains later-owned and keeps the full row `PARTIAL`.
+`LOC-PLACEMENT-003` is closed by the source-pinned rotated-footprint midpoint sampler, including the exact scene-edge anchor/anchor+1 fallback and Java-style four-sample average. `LOC-PLACEMENT-005` remains `PARTIAL` by the explicit M6 roadmap exception: collision-operation selection and wall-displacement ownership are implemented, while narrower private collision/shadow/occlusion bit-grid formulas remain unpromoted. M8 closes `LOC-PLACEMENT-004` by combining the M7 initial `nonFlatShading` ModelData lifecycle with an exact same-definition runtime lit-model regression and the pending/live category replacement suite.
 
 ## Model construction
 
@@ -118,7 +133,7 @@ The permanent Tier C gate in `.github/workflows/ci.yml` explicitly runs the M7 c
 | `MODEL-BUILD-002` | typed mirror truth table + untyped special case; fixtures `model.selection.typed_exact.orientation_4`, `model.mirror.geometry_winding` | exact vertices, indices, winding | EXISTING |
 | `MODEL-BUILD-003` | orientations, type-4 diagonal recenter, fixture `model.transform.type4_order` | exact integer vertices + material substitutions | EXISTING |
 | `MODEL-BUILD-004` | `nonFlatShading` false/true path | exact semantic representation and cache state | EXISTING |
-| `MODEL-BUILD-005` | two instances share source; mutate only one | untouched source/instance exact hash | PARTIAL; M7 scene-normal ownership EXISTING, contour/animation portions later-owned |
+| `MODEL-BUILD-005` | two instances share source; mutate only one | untouched source/instance exact hash | EXISTING |
 
 ## Normals and lighting
 
@@ -136,9 +151,11 @@ M7 satisfies the roadmap hard exit gate: every normal/lighting matrix row is now
 
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
-| `MORPH-001` | varbit, varp, in-range, fallback, null, footprint-changing transform | exact selected definition/absence | REQUIRED |
-| `ANIMATION-001` | deterministic pose; footprint-changing morph; preserve/restart replacement | exact semantic pose/state ownership where specified | REQUIRED |
-| `CONTOUR-001` | existing control + fast paths + clip thresholds + tile border + ownership; indexed historical evidence `contour.synthetic.flat_slope` | exact integer vertex Y output | PARTIAL |
+| `MORPH-001` | varbit, varp, in-range, fallback, null, footprint-changing transform | exact selected definition/absence | EXISTING |
+| `ANIMATION-001` | deterministic pose; footprint-changing morph; preserve/restart replacement | exact semantic pose/state ownership where specified | EXISTING within verified legacy-frame scope |
+| `CONTOUR-001` | existing control + fast paths + clip thresholds + tile border + ownership; indexed historical evidence `contour.synthetic.flat_slope` | exact integer vertex Y output | EXISTING |
+
+M8 closes the owned morph/contour/animation rows with exact production-path tests. `ANIMATION-001` is promoted only for the milestone's explicitly verified legacy-frame/deterministic sequence scope; broader skeletal execution remains outside this claim rather than being inferred.
 
 ## Terrain
 
