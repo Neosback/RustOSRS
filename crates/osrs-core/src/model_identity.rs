@@ -49,9 +49,7 @@ impl ModelSemanticIdentity {
     }
 
     /// Capture the exact M4 provenance of an assembled model.
-    pub fn from_assembled(
-        model: &AssembledModel,
-    ) -> Result<Self, ModelSemanticIdentityError> {
+    pub fn from_assembled(model: &AssembledModel) -> Result<Self, ModelSemanticIdentityError> {
         Self::try_from_sources(model.sources().to_vec())
     }
 
@@ -135,23 +133,17 @@ mod tests {
             LocType, ModelScale, ModelTranslation, ObjectDefinition, ObjectPlacementFlags,
         },
         ids::ObjectId,
-        model::{
-            FacePriority, ModelEncoding, SourceModel, SourceModelParts, Triangle,
-        },
-        model_construction::{
-            apply_object_model_instance_transforms, combine_source_models,
-        },
+        model::{FacePriority, ModelEncoding, SourceModel, SourceModelParts, Triangle},
+        model_construction::{apply_object_model_instance_transforms, combine_source_models},
         provenance::{CacheFingerprint, ProfileDigest},
     };
 
-    const PROFILE_DIGEST: &str =
-        "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
+    const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
     const CACHE_FINGERPRINT: &str =
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
     #[test]
-    fn single_source_identity_exposes_only_its_real_model_id()
-    -> Result<(), Box<dyn Error>> {
+    fn single_source_identity_exposes_only_its_real_model_id() -> Result<(), Box<dyn Error>> {
         let source = source_model(100, "target-a")?;
         let assembled = combine_source_models(&[&source])?;
         let identity = ModelSemanticIdentity::from_assembled(&assembled)?;
@@ -159,14 +151,17 @@ mod tests {
         assert_eq!(identity.source_count(), 1);
         assert!(!identity.is_composite());
         assert_eq!(identity.singular_model_id(), Some(ModelId::new(100)));
-        assert_eq!(identity.singular_definition_identity(), Some(source.identity()));
+        assert_eq!(
+            identity.singular_definition_identity(),
+            Some(source.identity())
+        );
         assert_eq!(identity.singular_format(), Some(source.format()));
         Ok(())
     }
 
     #[test]
-    fn combined_identity_retains_order_and_refuses_fake_singular_id()
-    -> Result<(), Box<dyn Error>> {
+    fn combined_identity_retains_order_and_refuses_fake_singular_id() -> Result<(), Box<dyn Error>>
+    {
         let first = source_model(100, "target-a")?;
         let second = source_model(200, "target-a")?;
         let assembled = combine_source_models(&[&first, &second])?;
@@ -183,20 +178,14 @@ mod tests {
     }
 
     #[test]
-    fn instance_transforms_do_not_change_constructed_identity()
-    -> Result<(), Box<dyn Error>> {
+    fn instance_transforms_do_not_change_constructed_identity() -> Result<(), Box<dyn Error>> {
         let first = source_model(300, "target-a")?;
         let second = source_model(400, "target-a")?;
         let mut assembled = combine_source_models(&[&first, &second])?;
         let before = ModelSemanticIdentity::from_assembled(&assembled)?;
         let definition = object_definition()?;
 
-        apply_object_model_instance_transforms(
-            &mut assembled,
-            &definition,
-            LocType::new(4),
-            5,
-        );
+        apply_object_model_instance_transforms(&mut assembled, &definition, LocType::new(4), 5);
 
         let after = ModelSemanticIdentity::from_assembled(&assembled)?;
         assert_eq!(after, before);
@@ -204,8 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_identity_rejects_empty_and_cross_target_sources()
-    -> Result<(), Box<dyn Error>> {
+    fn explicit_identity_rejects_empty_and_cross_target_sources() -> Result<(), Box<dyn Error>> {
         assert_eq!(
             ModelSemanticIdentity::try_from_sources(Vec::new()),
             Err(ModelSemanticIdentityError::EmptySources)
@@ -278,7 +266,11 @@ mod tests {
             animation: None,
             ambient: 0,
             contrast: 0,
-            scale: ModelScale { x: 130, y: 126, z: 129 },
+            scale: ModelScale {
+                x: 130,
+                y: 126,
+                z: 129,
+            },
             translation: ModelTranslation { x: 3, y: -2, z: 5 },
             recolors: Vec::new(),
             retextures: Vec::new(),
