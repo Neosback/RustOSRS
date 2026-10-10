@@ -18,8 +18,7 @@ const CACHE_FINGERPRINT: &str = "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b
 
 #[test]
 fn real_two_source_assembly_survives_working_and_final_lighting_identity()
-    -> Result<(), Box<dyn Error>>
-{
+-> Result<(), Box<dyn Error>> {
     let first = source_model(
         9_001,
         0,
