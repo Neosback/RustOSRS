@@ -1,99 +1,117 @@
 # ADR-0004: Reverse-Z and Canonical Raster Conventions
 
-Status: **Accepted**  
-Date: 2026-10-07
+Status: **Accepted, corrected by M10 foundation audit**  
+Date: 2026-10-07  
+Correction date: 2026-10-10
 
 ## Context
 
-RustOSRS needs one stable raster convention for depth precision, authored face bias, culling, picking, diagnostics, and future renderer tests.
+RustOSRS needs one stable raster convention for depth precision, authored face bias, culling, picking, diagnostics, and renderer verification.
 
-The imported RuneLite GPU path uses reverse-Z and explicitly preserves authored per-face depth bias. That is strong renderer evidence, but the choice is still project-owned renderer policy rather than OSRS semantic behavior.
+The imported RuneLite GPU path uses reverse-Z, strict `GL_GREATER`, clear depth `0`, and an explicit authored face-bias term. The earlier version of this ADR selected `GreaterEqual`; that was a project convenience that was incorrectly described too close to reference behavior. The Reference profile now follows the stricter imported rule.
 
-The semantic specifications also require mirrored model winding and face bias to remain observable rather than being hidden by double-sided rendering or arbitrary polygon offset.
+Raster policy remains renderer-owned. Semantic geometry, winding, face bias, priority, and suppression state remain observable inputs rather than being repaired by the GPU.
 
 ## Decision
 
 RustOSRS uses reverse-Z as the baseline renderer convention.
 
-Baseline state:
+### Reference profile baseline
 
 ```text
-depth format  = Depth32Float (when supported by the selected surface path)
+depth format  = Depth32Float when supported
 depth clear   = 0.0
 near depth    = larger value
 far depth     = smaller value
-depth compare = GreaterEqual
+depth compare = Greater
 front face    = CCW
 cull mode     = Back
 ```
 
-Projection maps camera depth into wgpu's `0..1` NDC convention.
+`Greater` is intentional. Equal-depth fragments do not pass merely to make multi-pass replay convenient. Any pass requiring equal-depth replay must prove and document its own state rather than weakening the baseline Reference comparison.
 
-Render extraction normalizes GPU-facing triangle winding to CCW exactly once. Semantic mirroring and transform behavior remain governed by `MODEL-BUILD-*` and cannot be replaced by negative-scale GPU transforms.
+### Projection
 
-Reference profile initially realizes authored face bias using the audited RuneLite-style clip adjustment:
+The imported RuneLite reference matrix is reverse-Z with no finite far-plane term. In its audited form, depth behaves proportionally to `2 * near / z` after perspective division.
+
+RustOSRS wgpu projection must map the equivalent Reference contract into wgpu's `0..1` NDC range and retain the no-far-plane behavior unless a separately versioned renderer profile intentionally differs.
+
+Projection helpers must therefore be tested from the matrix contract, not selected only because a camera library labels a helper "reverse Z."
+
+### Winding
+
+Render extraction normalizes GPU-facing winding to CCW exactly once. Semantic mirroring and transform behavior remain governed by `MODEL-BUILD-*`; negative-scale GPU transforms are not a substitute.
+
+### Authored face bias
+
+Reference profile uses the audited RuneLite-style pre-divide depth adjustment:
 
 ```text
-clip_position.z += face_bias / 128.0
+position.z += face_bias / 128.0
 ```
 
-before perspective division.
+at the same logical stage as the pinned renderer path.
 
-The semantic `faceBias` value remains separately retained; this formula is replaceable only through a superseding ADR if a better wgpu-native realization proves equivalent on fixtures.
+Because the reference projection is perspective/no-far, the resulting normalized-depth separation is distance dependent. The same authored bias does **not** produce a constant screen-depth offset as distance increases.
+
+The semantic `faceBias` remains separately retained. This formula may be superseded only by another ADR with differential evidence.
+
+## Transparency/depth-write boundary
+
+The imported RuneLite GPU snapshot does not globally disable depth writes for blended alpha geometry. Normal depth-tested ranges retain ordinary depth writes; explicit `*_NO_DEPTH` render modes are a separate path.
+
+Therefore the RustOSRS Reference profile must not assume the conventional modern rule "transparent means depth writes off" without a fixture proving that is the intended target behavior.
+
+An Enhanced profile may choose conventional blended/depth-read-only composition, but that choice must be explicitly separate from Reference parity.
 
 ## Consequences
 
 Positive:
 
-- strong depth precision across a large editor scene;
-- one consistent depth convention for visible rendering and picking;
-- authored coplanar ordering has an explicit implementation path;
-- no dependence on driver-specific polygon offset as semantic repair;
-- winding/culling bugs become visible instead of being hidden by two-sided rendering.
+- Reference depth comparison matches the strongest imported renderer evidence;
+- equal-depth behavior becomes testable rather than silently tolerated;
+- authored bias retains the correct distance-dependent projection behavior;
+- winding/culling defects remain visible;
+- picking can share one explicit depth convention.
 
 Costs:
 
-- all projection helpers and depth diagnostics must understand reverse-Z;
-- third-party camera/projection helpers cannot be adopted without checking their NDC convention;
-- authored bias needs exact regression fixtures;
-- transparent pass state must be designed around reverse-Z depth testing.
+- passes that relied on `GreaterEqual` must be redesigned explicitly;
+- alpha composition cannot assume standard depth-write-off behavior;
+- reference projection and bias require exact near/far-distance fixtures;
+- third-party projection helpers require contract verification.
 
 ## Alternatives considered
 
+### `GreaterEqual`
+
+Rejected for Reference mode after the foundation audit because imported RuneLite uses strict `GL_GREATER`. `GreaterEqual` remains available only to a separately documented non-reference path if needed.
+
 ### Conventional less-than depth
 
-Rejected as the baseline because it provides worse precision distribution for the intended large-scene editor and diverges from the strongest renderer reference.
+Rejected as the baseline because it diverges from the strongest renderer evidence and changes precision behavior.
 
 ### Disable culling
 
-Rejected for production rendering because it hides mirrored/winding errors and draws semantically back-facing geometry.
-
-Diagnostic pipelines may explicitly disable culling.
+Rejected for production Reference rendering because it hides semantic winding defects.
 
 ### Hardware polygon offset for face bias
 
-Rejected as the canonical parity mechanism because the semantic input is an authored byte and the reference applies an explicit clip-depth adjustment. Driver/rasterizer offset behavior is not an adequate substitute without proof.
+Rejected as the canonical parity mechanism because the target input is an authored byte and the imported renderer uses an explicit depth adjustment.
 
-## Constraints/invariants affected
+## Required verification
 
-- architecture invariant E1: semantic metadata and renderer strategy remain distinct;
-- E2: presentation decisions are explicit;
-- E3: parity remains observable;
-- C4: semantic integer work remains untouched until extraction.
+Before M11/M12 may claim Reference raster parity:
 
-## Follow-up work
-
-Implementation and verification must include:
-
-- near/far reverse-Z matrix tests;
+- exact matrix tests for near, intermediate, and very distant camera-space depths;
+- strict equal-depth test proving the second equal fragment fails under `Greater`;
 - ordinary and mirrored winding fixtures;
 - terrain rotation culling fixtures;
-- authored-bias equal-depth fixture;
-- picking-depth equivalence test;
-- depth diagnostic view.
-
-Verification ownership is detailed in Checkpoint 7.
+- authored-bias fixtures at at least two substantially different distances;
+- alpha geometry fixture proving Reference depth-write behavior;
+- `*_NO_DEPTH` mode/policy fixture if those modes are represented;
+- picking-depth equivalence test.
 
 ## Supersedes
 
-None.
+This correction supersedes the original `GreaterEqual` statement in this ADR and any blueprint text derived from it.
