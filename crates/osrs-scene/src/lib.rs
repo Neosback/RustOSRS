@@ -14,6 +14,7 @@ pub mod placement_height;
 pub mod planes;
 pub mod reference_finalization;
 pub mod scene;
+pub mod semantic_hash;
 pub mod side_effects;
 pub mod terrain;
 pub mod terrain_contract;
@@ -45,6 +46,9 @@ pub use placement_height::{PlacementHeightError, PlacementHeightInput, sample_pl
 pub use planes::{PlacementPlanes, collision_plane};
 pub use reference_finalization::{SceneReferenceFinalizationError, SceneReferenceFinalizer};
 pub use scene::{SceneGameObject, SceneGrid, SceneGridError, ScenePlacedLoc, SemanticTile};
+pub use semantic_hash::{
+    SEMANTIC_SCENE_HASH_V1, semantic_scene_hash_hex_v1, semantic_scene_hash_v1,
+};
 pub use side_effects::{
     CollisionSideEffect, DefinitionSideEffectInputs, SceneSideEffectPlan,
     plan_definition_side_effects, plan_side_effects,
