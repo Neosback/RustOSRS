@@ -21,4 +21,5 @@ pub mod morph;
 pub mod normals;
 pub mod orientation;
 pub mod provenance;
+pub mod sequence_replacement;
 pub mod static_entity;
