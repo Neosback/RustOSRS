@@ -39,6 +39,10 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "RustOSRS",
         options,
-        Box::new(move |cc| Ok(Box::new(app::EditorApp::new(cc, cache_dir, base_x, base_y)))),
+        Box::new(move |cc| {
+            Ok(Box::new(app::EditorApp::new(
+                cc, cache_dir, base_x, base_y,
+            )?))
+        }),
     )
 }

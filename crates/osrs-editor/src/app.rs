@@ -47,11 +47,11 @@ impl EditorApp {
         cache_dir: PathBuf,
         base_x: i32,
         base_y: i32,
-    ) -> Self {
+    ) -> Result<Self, String> {
         let render_state = cc
             .wgpu_render_state
             .clone()
-            .expect("eframe must be running on the wgpu backend");
+            .ok_or("eframe is not running on the wgpu backend")?;
         let mut renderer =
             SceneRenderer::with_device(render_state.device.clone(), render_state.queue.clone());
 
@@ -62,7 +62,7 @@ impl EditorApp {
             -2600.0,
             24.0 * 128.0,
         );
-        Self {
+        Ok(Self {
             render_state,
             renderer,
             camera,
@@ -76,14 +76,15 @@ impl EditorApp {
                 .and_then(|value| value.parse().ok()),
             frames: 0,
             started: Instant::now(),
-        }
+        })
     }
 
     fn ensure_targets(&mut self, width: u32, height: u32) {
-        if let Some(targets) = &self.targets {
-            if targets.width == width && targets.height == height {
-                return;
-            }
+        if let Some(targets) = &self.targets
+            && targets.width == width
+            && targets.height == height
+        {
+            return;
         }
         let device = &self.render_state.device;
         let color = device.create_texture(&wgpu::TextureDescriptor {
