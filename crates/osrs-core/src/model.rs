@@ -381,9 +381,7 @@ impl WorkingModel {
                 face_priorities: model.face_priorities().map(ToOwned::to_owned),
                 face_alphas: model.face_alphas().map(ToOwned::to_owned),
                 face_textures: model.face_textures().map(ToOwned::to_owned),
-                texture_face_selectors: model
-                    .texture_face_selectors()
-                    .map(ToOwned::to_owned),
+                texture_face_selectors: model.texture_face_selectors().map(ToOwned::to_owned),
                 face_biases: model.face_biases().map(ToOwned::to_owned),
                 texture_triangles: model.texture_triangles().to_vec(),
                 vertex_skins: model.vertex_skins().map(ToOwned::to_owned),
