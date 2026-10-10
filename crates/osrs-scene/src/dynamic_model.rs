@@ -149,9 +149,7 @@ where
 
     let contour_clip = active_definition
         .contour_clip
-        .map(|clip| {
-            i32::try_from(clip).map_err(|_| DynamicModelError::ContourClipOutOfRange(clip))
-        })
+        .map(|clip| i32::try_from(clip).map_err(|_| DynamicModelError::ContourClipOutOfRange(clip)))
         .transpose()?;
 
     if input.legacy_frame.is_none() && contour_clip.is_none() {
