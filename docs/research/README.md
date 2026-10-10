@@ -1,166 +1,133 @@
 # Legacy Research Corpus
 
-Status: **Historical research only — non-normative**
+Status: **Historical research only, reconciled through the M10 foundation audit**
 
-The root-level `RUNELITE_*.md` files predate the canonical RustOSRS blueprint. They remain in the repository because they contain valuable source-discovery notes, formulas, file maps, and historical reasoning, but they are **not implementation specifications**.
+The root-level `RUNELITE_*.md` files predate the canonical RustOSRS blueprint. They remain useful for source discovery and historical reasoning, but they are **not implementation specifications**.
 
 ## Authority rule
 
-When a legacy research statement conflicts with any of the following, the legacy statement loses:
+When research text conflicts with current canonical documentation, the canonical owner wins:
 
 1. `docs/specs/` for OSRS semantic behavior;
-2. accepted `docs/adr/` records for RustOSRS-owned architecture/product decisions;
-3. `docs/blueprint/` for system/editor/renderer architecture and roadmap;
-4. `docs/verification/` for source pins, fixture ownership, parity coverage, and CI policy.
+2. accepted `docs/adr/` records for RustOSRS-owned decisions;
+3. `docs/blueprint/` for architecture and roadmap;
+4. `docs/verification/` for source pins, parity status, fixture ownership, and CI policy.
 
-A legacy statement must never be used as the terminal authority for production code or a regression test.
+A root research statement must never be the terminal authority for production code or a regression test.
 
-## Legacy document map
+## M10 foundation-audit correction
 
-| Legacy document | Still useful for | Canonical replacement / authority |
-|---|---|---|
-| `RUNELITE_RENDER_SOURCES.md` | source discovery and file inventory | `docs/blueprint/03-SOURCE-GROUP-INVENTORY.md`, `docs/verification/SOURCE-PINS.md` |
-| `RUNELITE_GPU_PIPELINE.md` | RuneLite GPU research and historical algorithm details | `docs/blueprint/11-RENDERER-ARCHITECTURE.md`, `12-GPU-DATA-PASSES.md`, ADR-0004..0006 |
-| `RUNELITE_SCENE_AND_MATERIALS.md` | API/scene research and field discovery | `docs/specs/`, `docs/blueprint/05-SYSTEM-ARCHITECTURE.md`, `09-SEMANTIC-AUDIT.md`, `10-TERRAIN-MATERIAL-PLANE-AUDIT.md` |
-| `RUNELITE_RUNTIME_RULES.md` | original R1-R27 research trail | `docs/specs/` plus semantic audit documents |
-| `RUNELITE_DEOB_READING_GUIDE.md` | deob navigation and historical pseudocode | `docs/verification/SOURCE-PINS.md`, canonical specs with pinned source |
-| `RUNELITE_RUST_PORT_NOTES.md` | early Rust/wgpu/egui design research | `docs/blueprint/06-CRATE-ARCHITECTURE.md`, `11-15`, ADR-0001..0009 |
-| `RUNELITE_HARDEST_PARTS.md` | historical risk brainstorming | `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md`, `docs/verification/PARITY-MATRIX.md` |
-| `RUNELITE_CACHE_STACK.md` | rs-cache/FileStore investigation | M1 in `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md`; cache dependency choice still requires an implementation-era ADR |
+The earlier research quarantine itself contained one now-proven false statement: it said the pinned public `class470` terrain-builder attribution was stale and that the complete terrain builder remained source-blocked.
 
-## Known superseded or quarantined claims
+That is superseded.
 
-The following legacy conclusions are specifically unsafe to copy into implementation.
+At exact public source:
 
-### Normal merging
+`melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`
 
-Legacy language asserting that normals are strictly per-model or that there is no cross-model normal merging is superseded.
+`class470.java` blob:
 
-Canonical authority:
+`1cd9cad5cb4be865dcae94dc633bba821644dc84`
 
-- `docs/specs/normals-lighting.md`
-- `NORMALS-001..004`
-- `docs/blueprint/09-SEMANTIC-AUDIT.md`
+contains final static `method9712(WorldView)`, the complete target terrain-construction routine.
 
-Separate meshes can remain topologically separate while eligible `ModelData` instances reconcile coincident vertex normals before final lighting. Mesh welding and normal accumulation are different operations.
+`FriendSystem.java` blob:
 
-### `editor_*` crate architecture
+`b8cf51b6ee673181d8a115e28153a77f5978c390`
 
-Legacy crate names such as `editor_core`, `editor_cache`, `editor_render`, and `editor_app` are not the accepted architecture.
+pins the placement-derived shadow-grid writes consumed by that builder.
 
-Canonical authority:
+Therefore:
 
-- ADR-0001
-- `docs/blueprint/06-CRATE-ARCHITECTURE.md`
+- `TERRAIN-004` is **source verified**, not source blocked;
+- production Rust implementation plus an exact differential fixture are still required;
+- old research prose saying public `class470` is unrelated text-layout code must not be used.
 
-Accepted primary crates are `osrs-core`, `osrs-cache`, `osrs-scene`, `osrs-render`, `osrs-reference`, and `osrs-editor`.
+Canonical owners are `docs/specs/terrain.md`, `docs/verification/SOURCE-PINS.md`, `docs/verification/PARITY-MATRIX.md`, and `docs/implementation/M10-FOUNDATION-AUDIT.md`.
 
-### Mandatory wasm support
+## Other known superseded research claims
 
-Legacy instructions that the core must target wasm or that browser support is a hard requirement are superseded.
+### Cross-model normals
 
-Canonical authority: ADR-0002.
+Separate scene objects are not topologically welded, but qualifying `ModelData` instances **do** reconcile coincident normals before final lighting. Matched faces can be suppressed when the owning merge enables hiding.
 
-RustOSRS is native-first. wasm is deferred and must not distort the native editor architecture unless a future ADR changes the decision.
-
-### Mirroring through renderer transforms
-
-Any implication that mirroring can be represented merely by a negative GPU scale is unsafe.
-
-Canonical authority:
-
-- `MODEL-BUILD-002`
-- ADR-0004 renderer winding/culling conventions
-
-OSRS model mirroring changes semantic geometry/winding before rendering.
+Canonical owner: `docs/specs/normals-lighting.md`.
 
 ### Universal bridge-adjusted plane
 
-Legacy prose that collapses bridge behavior into one adjusted plane is superseded.
+Source/encoded plane, collision plane, storage plane, mutable `Tile.plane`, `originalPlane`, `minPlane`, linked-below state, and renderer grouping are distinct contracts.
 
-Canonical authority:
+Canonical owner: `docs/specs/planes-bridges.md`.
 
-- `PLANES-001..004`
-- `docs/blueprint/10-TERRAIN-MATERIAL-PLANE-AUDIT.md`
+### Generic floor-decoration lift
 
-Encoded/source plane, collision plane, storage plane, render/height level, linked-below relation, and renderer roof grouping are distinct concepts.
+The audited placement path does not apply a generic `+1/+2` floor-decoration height lift.
 
-### Generic floor-decoration height lift
+Canonical owner: `docs/specs/loc-placement.md`.
 
-Any generic `+1`/`+2` ground-decoration lift claim is refuted for the audited path.
+### Fixed texture count as semantic truth
 
-Canonical authority: `LOC-PLACEMENT-006`.
+Imported RuneLite renderer capacity is not an OSRS texture-ID invariant. RustOSRS preserves full-width texture identity and maps it through renderer-owned handles.
 
-### `TEXTURE_COUNT = 256` as semantic truth
+Canonical owner: `docs/specs/face-materials.md`.
 
-Historical RuneLite GPU texture capacity is not a cache or OSRS semantic invariant.
+### Universal RuneLite priority sorting
 
-Canonical authority:
+The software/client priority algorithm and imported RuneLite GPU behavior are separate targets. RuneLite GPU enables the full priority queue only on selected render-mode paths, notably `SORTED_NO_DEPTH`.
 
-- `TEXTURE-001`
-- `docs/blueprint/12-GPU-DATA-PASSES.md`
+Canonical owners: `docs/specs/face-materials.md` and ADR-0005.
 
-RustOSRS renderer capacity is adapter-aware and maps semantic texture IDs through renderer-owned material/page allocation.
+### `GreaterEqual` Reference depth
 
-### `class470` terrain-builder attribution
+Imported RuneLite uses reverse-Z clear `0` with strict `GL_GREATER`. RustOSRS Reference mode now uses `Greater`.
 
-The legacy attribution of the complete terrain-color builder to obfuscated `class470` is stale for the pinned public January source.
+Canonical owner: ADR-0004.
 
-Canonical authority:
+### Conventional transparency depth writes
 
-- `TERRAIN-004`
-- `docs/verification/SOURCE-PINS.md`
+The imported RuneLite snapshot does not establish a universal rule that blended alpha disables depth writes. Explicit no-depth render modes are separate.
 
-The full terrain-color/11x11 builder remains `REVISION_SENSITIVE` and blocked from unconditional parity claims until a reproducible source/oracle is pinned.
+Canonical owner: `docs/blueprint/12-GPU-DATA-PASSES.md`.
 
-### “FileStore is the spec”
+### "Nearest" as the full texture sampler rule
 
-OpenRune FileStore is valuable independent implementation evidence, not the OSRS oracle.
+Imported magnification is nearest. Minification is nearest only at filtering level `0`; at level `>=1` it is `NEAREST_MIPMAP_LINEAR`, and the imported configuration defaults to level `1`. S wraps clamp-to-edge; T remains default repeat in the audited setup.
 
-Canonical authority:
+Canonical owner: `docs/specs/face-materials.md`.
 
-- evidence hierarchy in `docs/blueprint/01-EVIDENCE-STATUS.md`
-- M1 in `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md`
+### Self-generated screenshot as external parity proof
 
-### `rs-cache` hybrid recommendation
+A RustOSRS-generated image is internal regression evidence. External visual parity requires an independently generated, provenance-complete client/RuneLite oracle.
 
-The old recommendation to adopt `rs-cache` and port missing pieces is research, not an accepted dependency decision.
+Canonical owner: `docs/blueprint/16-VERIFICATION-ARCHITECTURE.md`.
 
-Canonical authority: M1 of the implementation roadmap. Implementation must perform the compatibility spike and record the chosen strategy in a new ADR.
+## Legacy document map
 
-### Priority ordering simplification
-
-Face priority must not be reduced to a generic `(priority, depth)` sort.
-
-Canonical authority:
-
-- `FACE-002`
-- ADR-0005
-- `docs/verification/PARITY-MATRIX.md`
-
-### Screenshot evidence
-
-A visual match never overrides an exact P0/P1/P2 failure.
-
-Canonical authority:
-
-- `docs/blueprint/08-PARITY-MODEL.md`
-- `docs/blueprint/16-VERIFICATION-ARCHITECTURE.md`
-
-Screenshot tolerance begins at P3 reference visual parity.
-
-## Research-use workflow
-
-When a legacy document contains a potentially useful detail:
-
-1. use it to locate the relevant source/method/table;
-2. check whether a canonical spec or ADR already owns the behavior;
-3. follow the source pin from the canonical document;
-4. if no canonical contract exists, record the issue as research/revision-sensitive rather than implementing from the legacy prose;
-5. add or update the appropriate spec/ADR and verification requirement before production code relies on it.
+| Legacy document | Current use | Canonical replacement |
+|---|---|---|
+| `RUNELITE_RENDER_SOURCES.md` | source-discovery index | `docs/verification/SOURCE-PINS.md` |
+| `RUNELITE_GPU_PIPELINE.md` | renderer research index | `docs/blueprint/11-RENDERER-ARCHITECTURE.md`, `12-GPU-DATA-PASSES.md`, ADR-0004..0006 |
+| `RUNELITE_SCENE_AND_MATERIALS.md` | historical scene/material discovery | `docs/specs/`, semantic/terrain audits |
+| `RUNELITE_RUNTIME_RULES.md` | corrected research index | `docs/specs/` |
+| `RUNELITE_DEOB_READING_GUIDE.md` | deob navigation | source pins plus owning specs |
+| `RUNELITE_RUST_PORT_NOTES.md` | historical Rust feasibility notes | crate/renderer/editor blueprints and ADRs |
+| `RUNELITE_HARDEST_PARTS.md` | historical risk discovery | roadmap, parity matrix, foundation audit |
+| `RUNELITE_CACHE_STACK.md` | historical cache-dependency research | ADR-0010 and M1 implementation records |
 
 ## Historical-content policy
 
-The legacy files are intentionally preserved substantially as written so the evolution of the research remains inspectable. Their presence does not imply current endorsement.
+Git history is the archive for original research conclusions. When stale root prose creates a material implementation risk, the current file may be replaced by a corrected non-normative research index while the original remains recoverable from Git history.
 
-Do not “fix” a legacy document in place merely to make it agree with current architecture when doing so would erase useful provenance. Promote the corrected result into the canonical blueprint/spec/ADR system instead.
+That is what the M10 foundation audit does for the highest-risk root notes. This does not promote those root files to specification authority.
+
+## Research-use workflow
+
+When a research document contains a potentially useful detail:
+
+1. use it to locate the owning source/method/table;
+2. identify the canonical spec or ADR that owns the behavior;
+3. follow the exact source pin from canonical documentation;
+4. if no canonical contract exists, classify the finding as research/revision-sensitive rather than implementing from prose;
+5. update the appropriate spec/ADR and verification requirement before production code depends on it.
+
+Do not repair an earlier semantic failure with renderer or editor compensation.

@@ -64,6 +64,7 @@ fn lit_model(
         faces,
         face_colors: vec![LitFaceColors::default(); source.faces().len()],
         default_priority: FacePriority::ZERO,
+        face_render_types: None,
         face_priorities: None,
         face_alphas,
         face_textures: None,

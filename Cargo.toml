@@ -4,12 +4,14 @@ members = [
     "crates/osrs-core",
     "crates/osrs-cache",
     "crates/osrs-scene",
+    "crates/osrs-render",
     "crates/osrs-reference",
 ]
 default-members = [
     "crates/osrs-core",
     "crates/osrs-cache",
     "crates/osrs-scene",
+    "crates/osrs-render",
     "crates/osrs-reference",
 ]
 

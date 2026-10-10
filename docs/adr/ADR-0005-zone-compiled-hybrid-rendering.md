@@ -1,138 +1,101 @@
 # ADR-0005: Zone-Compiled Hybrid Rendering
 
-Status: **Accepted, clarified 2026-10-10**  
+Status: **Accepted, clarified by M10 foundation audit**  
 Date: 2026-10-07  
-Clarification provenance: `docs/implementation/REFERENCE-PROVENANCE-CORRECTION-2026-10-10.md`
+Clarification date: 2026-10-10
 
 ## Context
 
 The editor needs large-scene performance without turning GPU buffers into source truth. Most map geometry is static for long periods, while some content remains animated, morph-dependent, transparent, priority-sensitive, or temporarily edited.
 
-A monolithic scene buffer makes small edits expensive. A fully per-object draw model creates unnecessary CPU/GPU overhead. A fully baked model risks erasing camera-dependent priority/transparency behavior.
+The imported RuneLite renderer demonstrates that chunk/zone-style static compilation is practical, but its exact face sorting is path-specific. It must not be cited as evidence that all RuneLite GPU geometry receives the software client's full priority-queue algorithm.
 
-The audited RuneLite renderer demonstrates that chunk-aligned static compilation is practical, but a post-M9 audit established an important distinction: RuneLite does not universally run its priority sorter. Its captured GPU dispatch enables priority sorting specifically for `RENDERMODE_SORTED_NO_DEPTH`, while static zone and ordinary depth-tested paths behave differently.
+RustOSRS deliberately preserves a stronger separation:
 
-RustOSRS therefore uses RuneLite's zone architecture as renderer evidence while keeping the software-client priority algorithm as the stronger Reference-profile ordering oracle where RustOSRS classifies content as ordering-sensitive.
+- semantic/model truth;
+- software/client Reference ordering rules;
+- imported RuneLite GPU behavior;
+- RustOSRS renderer policy.
 
 ## Decision
 
-RustOSRS uses an **8x8 tile zone** as the primary static renderer compilation unit and combines it with dynamic and ordered renderable paths.
+RustOSRS uses an **8x8 tile zone** as the primary static renderer compilation unit and combines it with dynamic and ordered paths.
 
 ### Zone-compiled static path
 
-Used for geometry whose extracted appearance is stable enough to bake into zone-local GPU artifacts.
+Used for extracted geometry whose appearance is stable enough to compile into reusable zone artifacts, including ordinary opaque terrain and static loc geometry that does not require camera-dependent ordered treatment.
 
-Examples:
-
-- terrain;
-- finalized static loc models;
-- walls and wall decorations;
-- static floor decorations;
-- ordinary opaque static faces that are reference-safe under depth and authored bias.
+Static compilation never discards priority, alpha, bias, texture, suppression, identity, or plane provenance needed by a later Reference/diagnostic path.
 
 ### Dynamic path
 
-Used for geometry requiring regeneration/per-frame updates but not camera-dependent face ordering.
-
-Examples:
-
-- animated loc geometry;
-- morph-state regeneration;
-- temporary preview geometry;
-- profile-specific dynamic reconstruction.
+Used when geometry/material preparation changes at runtime but does not require ordered face emission, for example animation frames, morph regeneration, or temporary preview geometry.
 
 ### Ordered path
 
-Used when RustOSRS Reference policy requires camera/depth-sensitive ordered preparation.
+Used when the selected RustOSRS render profile requires camera-relative ordering, including priority-sensitive software-reference behavior and transparency ordering.
 
-Examples:
+For the **RustOSRS Reference profile**, priority-sensitive content may use the exact pinned `Model.method5946` software/client algorithm even where imported RuneLite GPU would instead rely on depth or a simpler depth-only sort. This is an intentional Reference-policy decision, not a claim that RuneLite GPU always behaves that way.
 
-- content requiring the `FACE-002` software-client priority oracle;
-- transparency whose owning reference contract requires ordered blending/emission;
-- other explicitly proven camera-relative ordering cases.
+For an explicit **RuneLite-GPU comparison profile**, classification may instead reproduce imported RuneLite render modes and path-specific sorting.
 
-Static geometry may register selected models/faces with the ordered path even when geometry itself is static. "Static" describes geometry/resource stability, not permission to discard priority, alpha, bias, or other face metadata.
+## Imported RuneLite sorting distinction
 
-## Priority-policy clarification
+The imported snapshot exposes render modes `DEFAULT`, `SORTED`, `SORTED_NO_DEPTH`, `UNSORTED`, and `UNSORTED_NO_DEPTH`.
 
-RustOSRS does **not** claim that its ordered-path classifier duplicates RuneLite's `RENDERMODE_*` dispatch one-for-one.
+Its `ModelUploader` only enables the priority-queue branch when the caller supplies `prioritySort=true`; the audited `GpuPlugin` does so for `SORTED_NO_DEPTH`. Ordinary dynamic upload passes `false`, static opaque upload does not universally apply priority sorting, and alpha/static work in `Zone` is primarily distance/depth ordered.
 
-Two different questions are tested separately:
-
-1. Does the software-client priority algorithm produce the exact required face emission order?
-2. Which RustOSRS renderables must use that algorithm in the Reference profile?
-
-Captured RuneLite operational behavior remains useful renderer evidence, including its `SORTED_NO_DEPTH` distinction, but it does not weaken the canonical semantic requirement to preserve authored priority or the Reference profile's ability to select the exact software-client sorter when needed.
+This distinction is normative documentation for provenance. It prevents future developers from using "RuneLite does priority sorting" as an overbroad implementation justification.
 
 ## Dirty model
 
-Semantic edits publish invalidation events. The renderer maps them to affected zones/resources.
+Semantic edits publish invalidation. Renderer zone tracking:
 
-Dirty rebuilds:
+1. starts from an immutable semantic generation;
+2. invalidates every affected 8x8 storage-plane zone;
+3. allows unaffected zones to remain reusable across a newer global generation;
+4. rejects stale work for a zone invalidated by a newer generation;
+5. uploads/retires GPU resources only after CPU structural correctness is established.
 
-1. start from the newest immutable semantic generation;
-2. extract only affected renderer dependencies where practical;
-3. compile CPU zone artifacts off-thread;
-4. reject stale results when the affected zone now requires a newer generation;
-5. upload replacement GPU resources;
-6. retire old resources safely after in-flight use ends.
-
-Unchanged zones may remain reusable across a newer global semantic generation when their own required generation did not change. Camera movement, texture-animation ticks, and ordinary visibility filters do not rebuild semantic zones.
+Camera movement, texture animation tick, and ordinary visibility filters do not mutate semantic zones.
 
 ## Consequences
 
 Positive:
 
-- bounded rebuild cost for terrain/loc edits;
-- natural compatibility with 8x8 OSRS chunks;
+- bounded rebuild work;
+- chunk-aligned spatial ownership;
 - renderer artifacts remain reconstructible;
-- priority/transparency correctness is not sacrificed to static batching;
-- software-client parity and RuneLite GPU dispatch remain explicitly distinguishable.
+- software/client priority parity can be preserved where required;
+- RuneLite-GPU differential behavior can be represented separately rather than conflated;
+- static batching cannot erase diagnostic/parity metadata.
 
 Costs:
 
-- cross-zone object dependencies require explicit invalidation;
-- material changes may fan out to multiple zones;
-- ordered static geometry needs side metadata;
-- renderer classification requires reference fixtures instead of assuming RuneLite's operational categories are universal.
+- ordered/static side metadata is required;
+- cross-zone footprints and material dependencies need explicit invalidation;
+- Reference and RuneLite-GPU comparison profiles may classify some content differently;
+- more lifecycle bookkeeping than a monolithic buffer.
 
-## Alternatives considered
+## Required invariants
 
-### Copy RuneLite render-mode dispatch exactly
+- static/dynamic/ordered describes renderer stability/policy, not semantic object type;
+- suppressed semantic faces remain suppressed in every profile;
+- zone compilation cannot change semantic hashes;
+- switching renderer profile cannot mutate semantic scene state;
+- a future optimization may change scheduling but not the selected profile's observable ordering contract.
 
-Rejected as the universal architecture rule. RuneLite's captured GPU dispatch is one renderer implementation, while RustOSRS also targets exact software-client semantics and editor use cases. A RuneLite-specific profile may reproduce those render modes explicitly, but they do not define semantic truth.
+## Required verification
 
-### One buffer for the whole scene
-
-Rejected because local edits would trigger excessive rebuild/upload work.
-
-### Per-tile buffers
-
-Rejected because allocation/draw overhead is excessive for the expected edit granularity.
-
-### Per-object rendering only
-
-Rejected because static scenes contain enough geometry to make unnecessary draw/resource overhead significant.
-
-### Fully GPU-driven meshlets immediately
-
-Deferred until semantic/reference rendering is proven.
-
-## Required follow-up
-
-Implementation must define and test:
-
-- zone dependency index;
+- 8x8 keying including negative semantic tile coordinates;
 - cross-zone footprint invalidation;
-- material-to-zone dependency tracking;
-- CPU compile job ownership;
-- stale-generation rejection;
-- GPU resource retirement;
-- ordered-static registration;
-- zone diagnostics;
-- Reference classifier cases using the software-client FACE-002 oracle;
-- optional RuneLite-profile render-mode cases including `UNSORTED`, `SORTED`, and `SORTED_NO_DEPTH` when that profile is implemented.
+- stale-zone generation rejection;
+- partial reuse of unaffected zones across generations;
+- static/dynamic/ordered classification with explicit reasons;
+- exact software priority fixture for Reference ordered content;
+- separate imported RuneLite render-mode fixture before any RuneLite-GPU parity claim;
+- semantic hash unchanged by classification/grouping/zone compilation.
 
 ## Supersedes
 
-None. The 2026-10-10 clarification narrows the earlier implication that RuneLite and RustOSRS ordered dispatch were the same thing.
+This clarification supersedes any reading of the original ADR that treated imported RuneLite GPU as universal evidence for software priority ordering.

@@ -8,22 +8,14 @@ Primary source pins:
 - `Scene.java` blob `f15260a63103952fe8f5ffbdb62f5c7c39d94565`
 - `ObjectComposition.java` blob `079451cd9a6dcfd2666efd15b0524250eaafe4c4`
 
-Correction provenance: `docs/implementation/REFERENCE-PROVENANCE-CORRECTION-2026-10-10.md`.
-
 ## SPEC: NORMALS-001
 
 **Domain:** `OSRS_SEMANTIC`  
 **Status:** `VERIFIED`
 
-Base normals are derived from semantic integer model geometry before final model lighting. Flat and smooth behavior remains distinguishable through face-render metadata.
+Base normals are derived from semantic integer model geometry before final object lighting. Flat and smooth faces remain distinct according to ModelData render metadata.
 
-Invariants:
-
-- mirrored winding is already correct before normal generation;
-- normal calculation does not mutate shared decoded geometry across semantic instances;
-- face render-type metadata survives until its owning operation.
-
-Required tests include exact smooth/flat triangle and quad normals, mirrored winding, and source immutability.
+Mirrored winding must already be correct before normal generation. Normal calculation and later reconciliation operate on cache-safe/scene-local state, never by mutating canonical shared model input.
 
 ---
 
@@ -33,18 +25,19 @@ Required tests include exact smooth/flat triangle and quad normals, mirrored win
 **Status:** `VERIFIED`  
 **Primary evidence:** `ModelData.method5262(...)`
 
-Cross-model normal reconciliation operates between distinct eligible `ModelData` instances.
+Cross-model reconciliation is real target behavior.
 
-Given models `A` and `B`, translation `(dx, dy, dz)`, and `hideMatchedFaces`:
+Given two ModelData instances, relative translation, and `hideMatchedFaces`:
 
 1. ensure bounds/base normals;
-2. compare eligible vertices after relative translation;
-3. initialize scene-local merged normals from each model's base normal when required;
-4. accumulate the matching model's normal components and magnitude;
-5. track matched vertices for the merge generation;
-6. if at least three vertices matched and `hideMatchedFaces == true`, fully matched faces receive render type `2` on both instances.
+2. compare eligible translated integer vertex positions;
+3. accumulate the other model's normal into scene-local merged-normal state at coincident vertices;
+4. track matched vertices for the current merge generation;
+5. when at least three vertices match and `hideMatchedFaces == true`, mark any fully matched face render type `2` on both models.
 
-This is **not mesh welding**. Vertex arrays, faces, scene objects, and semantic identities remain separate.
+This is **normal reconciliation, not mesh welding**. Vertices/faces/object identity remain separate. Render type `2` is a matched-face suppression marker consumed by later model conversion/rendering.
+
+No positional match means no merge. `hideMatchedFaces=false` still permits normal accumulation.
 
 ---
 
@@ -52,37 +45,38 @@ This is **not mesh welding**. Vertex arrays, faces, scene objects, and semantic 
 
 **Domain:** `OSRS_SEMANTIC`  
 **Status:** `VERIFIED`  
-**Primary evidence:** `Scene.method5585`, `Scene.method5586`, `Scene.method5587`, and `ModelData.method5262`
+**Primary evidence:** pinned `Scene.method5585`, `method5586`, `method5587`
 
-### Scene-finalization behavior
+### Required scene finalization
 
-The pinned `Scene` implementation performs real cross-model normal reconciliation during scene ModelData finalization. Older research stating that `Scene` has no such wall/object normal logic is superseded.
+The target `Scene` walks qualifying ModelData before final `toModel(...)` conversion and performs cross-object reconciliation.
 
 For boundary objects:
 
-- reconcile each eligible ModelData arm against the audited neighboring eligible ModelData search;
-- reconcile the second arm when present;
-- when both arms are ModelData, reconcile those two arms directly at zero translation without matched-face hiding;
-- convert to final lit Models only after required reconciliation.
+- each ModelData arm is reconciled against qualifying neighboring boundary/game-object ModelData;
+- when both arms are ModelData, the two arms are additionally reconciled directly at zero translation with `hideMatchedFaces=false`;
+- final lighting occurs only after reconciliation.
 
 For game objects:
 
-- reconcile eligible ModelData against neighboring boundary/game objects using footprint-aware relative translation;
-- then convert to final Model.
+- footprint-aware neighboring boundary/game-object reconciliation uses exact relative translations and average-height deltas;
+- final conversion follows reconciliation.
 
 For floor decorations:
 
-- use the dedicated neighboring-floor-decoration reconciliation path;
-- qualifying same-plane neighbor calls can request matched-face hiding;
-- then convert to final Model.
+- the dedicated adjacent-floor-decoration path uses `hideMatchedFaces=true` for its qualifying same-plane matches.
 
-The traversal can include the plane above with height-derived Y translation. The exact `hideMatchedFaces` argument is caller/path dependent. Do not generalize one boolean value to all neighbor relationships.
+For the general neighboring boundary/game traversal, the method begins the same-plane pass with matched-face hiding enabled and then disables hiding when advancing to the plane-above pass. This distinction is part of the source behavior and must not be flattened into one global merge flag.
 
-### Critical distinction
+### Correction to historical root notes
 
-The source merges **normal state**, and may mark fully coincident faces render type `2` when requested. It does not perform boolean mesh union or weld the source objects into one topology.
+Any root research note saying the engine "never merges walls" or that `Scene` contains no normal-reconciliation logic is superseded.
 
-Required tests retain dual-arm boundaries, wall/game neighbors, floor-decoration suppression, plane-above neighbor behavior, and final-lighting deltas.
+The precise rule is:
+
+- the engine does **not** weld wall geometry into a single mesh;
+- it **does** reconcile normals between separate wall/object ModelData instances;
+- some fully coincident faces are suppressed by render type `2` when the owning merge call enables matched-face hiding.
 
 ---
 
@@ -91,9 +85,9 @@ Required tests retain dual-arm boundaries, wall/game neighbors, floor-decoration
 **Domain:** `OSRS_SEMANTIC`  
 **Status:** `VERIFIED`
 
-During final ModelData-to-Model lighting, a merged normal produced by reconciliation takes precedence over the original base vertex normal. If no merged normal exists, use the base vertex normal.
+During final ModelData-to-Model lighting, a merged vertex normal takes precedence over the base normal. If no merged normal exists, use the base normal.
 
-The merge is therefore presentation-affecting semantic construction, not diagnostic-only metadata.
+Cross-model reconciliation therefore changes final baked lighting and is not diagnostic-only metadata.
 
 ---
 
@@ -102,45 +96,62 @@ The merge is therefore presentation-affecting semantic construction, not diagnos
 **Domain:** `OSRS_SEMANTIC`  
 **Status:** `VERIFIED`
 
-### Object light parameters
+### Decoded object-light inputs
 
-For static object conversion:
+Object-definition opcode `29` stores signed ambient directly.
+
+Object-definition opcode `39` stores:
 
 ```text
-ambient  = objectDefinition.ambient + 64
-contrast = objectDefinition.contrast + 768
+contrast = signed_byte * 25
+```
+
+The Rust decoder already performs this multiplication. Consequently, the `objectDefinition.contrast` consumed below is **already multiplied by 25** and must not be multiplied again during lighting.
+
+### Required static-object light parameters
+
+```text
+ambient  = decodedObjectAmbient + 64
+contrast = decodedObjectContrast + 768
 lightX   = -50
 lightY   = -10
 lightZ   = -50
 ```
 
-### Contrast decode scale
+`ModelData.toModel` then derives light-vector magnitude and per-normal contrast with the pinned integer arithmetic and shifts.
 
-`objectDefinition.contrast` in the expression above is already decoder-scaled.
+### Alpha/render-type sentinel interaction
 
-Pinned `ObjectComposition` opcode `39` performs:
+Before face lighting, the pinned conversion interprets raw face alpha sentinels:
 
 ```text
-contrast = readByte() * 25
+alpha == -2 -> effective render type 3
+alpha == -1 -> effective render type 2
 ```
 
-The later model-lighting path then adds `768` to that stored/scaled value. Implementations must not multiply by `25` a second time during lighting, and specifications/tests must not read the stored field as the raw cache byte.
+For untextured faces:
 
-`ambient` has its own decoded byte field and receives the later `+64` lighting offset as documented.
+- effective type `3` produces constant gray color `128` with flat-color marker `c = -1`;
+- effective type `2` produces suppressed-face marker `c = -2`.
 
-### Exact arithmetic
+For textured faces, unsupported effective render types likewise produce `c = -2` suppression.
 
-`ModelData.toModel` derives light-vector magnitude and per-normal contrast using reference integer arithmetic and shift/clamp behavior. Floating-point approximation is not accepted for semantic/golden parity tests.
+RustOSRS already implements this in `osrs-core::lighting`; downstream renderer extraction must preserve and later honor the `c == -2` suppression marker rather than drawing the triangle merely because its topology remains present.
 
-### Required tests
+### Exactness
 
-- known lighting vector;
-- opcode-39 decode value proving the `*25` scale exactly once;
-- flat and smooth faces;
-- merged-normal case;
-- textured/untextured cases;
-- valid ambient/contrast extremes.
+Reference semantic lighting preserves exact integer operation order, clamps, signed sentinel interpretation, and merged-normal precedence. Enhanced editor lighting, if added, remains a separately selected renderer profile and must not replace this semantic result.
+
+### Required verification
+
+- flat/smooth base cases;
+- merged-normal lighting delta;
+- textured/untextured branches;
+- alpha `-1/-2` sentinel cases;
+- decoded contrast multiplication-by-25 boundary cases;
+- ambient/contrast extremes in valid target range;
+- proof that suppressed `c == -2` faces cannot be re-admitted by the Reference renderer path.
 
 ### Related specs
 
-`MODEL-BUILD-004`, `NORMALS-004`, `FACE-001`.
+`MODEL-BUILD-004`, `NORMALS-004`, `FACE-001`, `FACE-003`.

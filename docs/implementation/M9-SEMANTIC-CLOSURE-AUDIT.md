@@ -1,156 +1,141 @@
 # M9 Semantic Parity Closure Audit
 
-Status: **PASS, merge gated on final exact-head CI and PR verification**
+Status: **Historical M9 PASS record with post-M9 terrain provenance correction**
 
-Branch: `impl/m9-semantic-parity-closure`
-
-M8/main baseline: `23a2602ed62000a4843d7118b34427569ac176b9`
-
-Parity-disposition head before this audit update: `e3fcaf255357d9a8a21cbcf79d00ad6cfdb953b7`
+Historical branch: `impl/m9-semantic-parity-closure`  
+M8/main baseline: `23a2602ed62000a4843d7118b34427569ac176b9`  
+Historical final M9 branch head: `91325e219ac3988914ca60885b4606ec40502a04`  
+Historical M9 squash/main result: `f7d004471562f723ee8115f5a3e28e937e3a6f5d`
 
 ## Purpose
 
-M9 is the hard semantic gate before `osrs-render` begins. This audit records which apparent gaps are true upstream semantic gaps, which rows belong to later renderer milestones, which revision-sensitive behavior remains blocked, and how deterministic semantic-scene identity is proven.
+This document preserves the M9 semantic-exit audit while recording one important conclusion that was later proven wrong during M10 foundation review.
 
-M9 does not implement renderer behavior early merely to make the parity matrix look complete.
+M9 remains a valid milestone for coordinate/placement ownership, deterministic semantic-scene identity, and renderer-boundary classification. The historical `TERRAIN-004 = BLOCKED because the builder source is missing` conclusion is superseded.
 
-## Checkpoint 1 closure
+## Historical M9 closure
 
-The first M9 checkpoint closed the two remaining upstream semantic coverage gaps identified by the row-by-row audit:
+M9 closed:
 
-- `COORD-001`: exact world/region/local conversion, negative local coordinates, rotated footprint centers, and exact terrain vertex positions now execute together in `crates/osrs-reference/tests/m9_semantic_closure.rs`.
-- `LOC-PLACEMENT-005`: the ownership-level contract now has a direct exact regression proving deterministic retention of collision operation identity, projectile blocking, clipping/model-clipping/ground-obstruction inputs, rotated definition footprint, and wall displacement metadata.
+- `COORD-001` cross-layer tile/region/local behavior;
+- `LOC-PLACEMENT-005` deterministic side-effect ownership/regeneration inputs;
+- renderer-independent `rustosrs-semantic-scene-v1` hashing;
+- explicit target capability diagnostics;
+- row-by-row separation of semantic gaps from renderer-owned work.
 
-The canonical `LOC-PLACEMENT-005` specification explicitly does not require RustOSRS to invent the reference client's private collision/shadow/occlusion bit-array formulas before narrower contracts own them. M9 therefore closes the ownership/regeneration contract without claiming unimplemented private grid formulas.
+Pinned semantic scene hashes remain unchanged:
 
-## Target capability diagnostics
-
-`crates/osrs-cache/src/capability.rs` exposes revision-gate diagnostics from the target profile as typed capabilities.
-
-For the pinned build-241 target:
-
-- extended object model IDs: `required`;
-- object sound layout 220+: `required`;
-- sequence layout 226+: `required`;
-- texture layout 233+: `required`;
-- terrain color builder: `blocked`, spec `TERRAIN-004`.
-
-The M9 integration suite proves the terrain-color capability is surfaced as blocked and that no guessed implementation is silently substituted.
-
-## Deterministic semantic scene identity
-
-M9 adds `rustosrs-semantic-scene-v1` in `osrs-scene`.
-
-The canonical hash:
-
-- is SHA-256;
-- is renderer-independent;
-- hashes explicit fixed-width semantic values rather than debug strings;
-- walks planes and tiles in deterministic plane/y/x order;
-- includes source/storage plane identity;
-- includes flat and shaped terrain semantic fields;
-- includes fixed-layer loc identity and complete placement plans;
-- includes game-object occupancy, footprint identity, edge masks, placement state, and scene instance identity;
-- includes linked-below semantic tiles recursively;
-- distinguishes absent values with explicit option tags.
-
-This is a verification identity, not a persistence format. Future authoritative semantic fields must be deliberately incorporated into the hash contract before they are claimed to be protected by semantic-document identity checks.
-
-### Pinned M9 golden hashes
-
-| Golden semantic scene | `rustosrs-semantic-scene-v1` SHA-256 |
+| Golden semantic scene | SHA-256 |
 |---|---|
-| composed terrain + floor decoration + dual boundary + wall decoration + game object | `50974f0232192dbd97c623d31bdbe208432ef64a13121c2852230afcc262f4a6` |
-| four-plane linked-below column | `bf7a7876864142f75a29c47836f331da6cfb97b512d500274fd3c8035c3a296c` |
+| composed terrain + loc scene | `50974f0232192dbd97c623d31bdbe208432ef64a13121c2852230afcc262f4a6` |
+| four-plane linked-below scene | `bf7a7876864142f75a29c47836f331da6cfb97b512d500274fd3c8035c3a296c` |
 
-`m9_semantic_closure.rs` rebuilds each scene independently, requires exact structural equality, and requires both rebuilds to reproduce the pinned digest.
+The permanent M9 Tier C tests remain valid and continue to protect these contracts.
 
-## Final parity row disposition
+## Post-M9 correction: `TERRAIN-004`
 
-`docs/verification/PARITY-MATRIX.md` now reflects the M9 ownership decision:
+### What M9 said
 
-| Row | M9 disposition | Reason |
-|---|---|---|
-| `COORD-001` | `EXISTING` | exact cross-layer semantic regression covers required tile/local, footprint-center, and terrain-position cases |
-| `LOC-PLACEMENT-005` | `EXISTING` at ownership/regeneration contract | all currently normative definition/placement inputs required to regenerate side effects are retained deterministically; narrower private bit-grid formulas are not part of this spec |
-| `TERRAIN-004` | `BLOCKED` | exact full terrain-color builder/oracle remains unpinned; typed target capability exposes the limitation |
-| `FACE-001` | `DEFERRED-M10` | M10 owns semantic-to-render metadata preservation proof |
-| `FACE-002` | `DEFERRED-M10/M12` | M10 owns exact ordered face preparation; M12 owns renderer realization |
-| `FACE-003` | `DEFERRED-M10/M12` | M10 owns structural alpha interpretation inputs; M12 owns renderer realization |
-| `FACE-004` | `DEFERRED-M12` | authored bias realization is renderer policy |
-| `TEXTURE-001` | `DEFERRED-M10/M12` | CPU material/UV handoff belongs to M10 and GPU realization belongs to M12 |
-| `PLANES-004` | `DEFERRED-M10` | renderer grouping must prove it cannot mutate semantic planes |
-| renderer side of `COORD-003` | `DEFERRED-M10` | semantic coordinate separation already exists; render conversion is intentionally renderer-owned |
+At M9 exit, the repository classified the complete terrain-color builder as blocked because prior source review concluded that obfuscated `class470` in the pinned public source was unrelated text-layout code.
 
-These renderer-owned rows are not knowingly deferred P0/P1 semantic bugs. Their required semantic inputs already exist upstream; the missing proof is at the owning render-extraction or GPU layer.
+That conclusion was incorrect.
 
-## C-003 / C-005 provenance review
+### What the M10 foundation audit proved
 
-M9 reviewed the mixed-snapshot and historical-local-path limitations rather than falsely marking them resolved.
+At exact public reference:
 
-`C-003` and `C-005` remain `REVISION_SENSITIVE` because the original developer-machine melxin checkout used for the historical harness is not known to be byte-identical to the pinned public revision.
+`melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`
 
-That limitation does not contaminate M9 production promotion:
+`runescape-client/src/main/java/class470.java` blob:
 
-- current canonical semantic specs terminate in pinned public repository commits/blob identities, checked-in exact artifacts, or accepted project decisions;
-- `SOURCE-PINS.md` byte-gates the checked-in historical `deob_golden.txt` and `Dumper.java` artifacts;
-- the historical local checkout is classified only as corroborating evidence;
-- ordinary CI does not depend on the old absolute path or local checkout;
-- the M9 coordinate, placement ownership, capability, and semantic-hash tests do not read or invoke the unpinned historical tree.
+`1cd9cad5cb4be865dcae94dc633bba821644dc84`
 
-Therefore the historical whole-snapshot equivalence gate remains explicit, while no M9 `EXISTING` promotion relies on that unresolved checkout as terminal authority.
+contains final static method:
 
-## Permanent verification gate
+`method9712(WorldView)`
 
-Tier C includes an explicit M9 step:
+which is the complete terrain-construction routine.
 
-```text
-cargo test --locked -p osrs-scene --lib semantic_hash::tests
-cargo test --locked -p osrs-reference --test m9_semantic_closure
-```
+It includes slope lighting, the placement-derived shadow grid, separable radius-5/11x11 underlay blending, overlay handling, tile emission, `minPlane`, normal finalization, and bridge relinking.
 
-This is in addition to the full M3 through M8 semantic parity stack.
+The placement-side shadow writer is independently pinned in:
 
-## Pre-PR validation and branch scope
+`FriendSystem.java` blob `b8cf51b6ee673181d8a115e28153a77f5978c390`, symbol `addObjects(...)`.
 
-Checkpoint validation completed successfully on head `6ff8bbbbd4b56e5fa74f87a8fd898c379b9d80dd` in workflow `38054905546` before the final documentation-only parity/audit commits:
+### Correct current disposition
 
-- Tier A: PASS, including architecture guardrails, regeneration safety, historical fixture index, rustfmt, locked workspace check, and strict clippy;
-- Tier B: PASS, including the pinned semantic-scene digest regressions;
-- Tier C: PASS, including M3 through M8 and the explicit M9 semantic closure/golden hash step.
+`TERRAIN-004` is now:
 
-After the parity-matrix update, the branch remained directly based on the M8 main baseline with no divergence:
+`SOURCE_VERIFIED / IMPLEMENTATION_REQUIRED`
 
-- merge base: `23a2602ed62000a4843d7118b34427569ac176b9`;
-- ahead: 14 commits before this audit update;
-- behind: 0;
-- changed files: 10;
-- scope: M9 capability diagnostics, semantic hash implementation/tests, CI gate, lockfile dependency declaration, parity tracking, and M9 audit only.
+It is **not** implementation-complete. RustOSRS still needs the production builder and an executable exact differential fixture before the row can become `EXISTING`.
 
-No renderer, GPU, or editor implementation is present in the M9 branch.
+The target profile capability state is therefore `source_verified`, not `blocked`.
 
-Because this audit commit changes the exact branch head, Tier A/B/C must pass again on the final head before the PR is opened.
+## Terrain details corrected after M9
 
-## Milestone PR gate
+The source audit also established:
 
-M9 may merge only if all of the following remain true:
+- random hue/lightness jitter does not change the four underlay corner HSL values used for 3D tile shading;
+- jitter feeds separately derived palette/minimap-style RGB values;
+- hue jitter wraps with `& 255` while lightness clamps;
+- `Tiles.Tiles_underlays2` is placement-derived shadow state, not generic neighboring-ground contrast;
+- clipped walls write orientation-specific value `50` shadow cells;
+- clipped game objects may write model-height-derived shadow values capped at `30`;
+- the terrain builder assigns target `Tile.minPlane` before normal finalization/link-below processing.
 
-1. final exact-head Tier A, Tier B, and Tier C pass;
-2. branch remains based directly on `23a2602ed62000a4843d7118b34427569ac176b9` with zero commits behind;
-3. exact PR file list matches the audited M9 scope;
-4. PR head remains unchanged through verification;
-5. PR-triggered CI passes on that exact head;
-6. PR remains mergeable and base-stable;
-7. squash merge uses an expected-head SHA lock;
-8. post-merge `main` is verified and work stops before M10.
+## Plane correction after M9
 
-## Explicit non-claims
+`Tile.minPlane` and `Tile.originalPlane` are target client scene fields, not merely RuneLite GPU upload strategy.
 
-M9 does not claim:
+Imported RuneLite `SceneUploader.maplevel` may choose settings/roof-group lookups from another level, but it does not move `tiles[level][x][y]` geometry into a different semantic storage-plane pass.
 
-- complete `TERRAIN-004` terrain-color parity;
-- renderer face ordering or transparency realization;
-- GPU texture/material realization;
-- picking or editor behavior;
-- broader skeletal animation execution outside the M8 verified scope;
-- private collision/shadow/occlusion bit-grid formulas that do not yet have a narrower normative contract.
+Current authoritative plane contracts are in `docs/specs/planes-bridges.md`.
+
+## Normal/lighting correction after M9
+
+The canonical M7 implementation was correct. Historical root research prose claiming that `Scene` does not perform wall/object normal merging was not.
+
+Pinned `Scene.method5585/method5587` invokes `ModelData.method5262` across qualifying boundary/game/floor neighbors, while dual boundary arms merge with `hideMatchedFaces=false`.
+
+Object-definition contrast is already decoded as signed opcode-39 byte multiplied by `25`; final loc lighting adds `768` and does not multiply again.
+
+## Renderer provenance correction after M9
+
+M10 foundation review distinguishes:
+
+- software/client priority behavior from pinned `Model.method5946`;
+- imported RuneLite GPU path-specific sorting;
+- RustOSRS Reference renderer policy.
+
+Imported RuneLite only enables the full priority-queue branch for paths that request it, notably `SORTED_NO_DEPTH`. Ordinary dynamic/static GPU work does not universally reproduce the software priority algorithm.
+
+This does not invalidate M10's exact software priority implementation. It corrects the provenance claim used to justify it.
+
+## M9 provenance limitations retained
+
+The historical developer-machine melxin checkout remains not proven byte-identical to the public source revision.
+
+`C-003`/`C-005` style whole-snapshot limitations therefore remain explicit where a claim still depends on the old checkout as a whole.
+
+The newly corrected terrain builder does **not** depend on that historical equivalence because the relevant public `class470` and `FriendSystem` files are now pinned directly.
+
+## Historical verification record
+
+M9 exact-head pre-PR CI and PR CI both passed Tier A/B/C, including the explicit M9 suite. The branch was scope-audited and squash merged to main at:
+
+`f7d004471562f723ee8115f5a3e28e937e3a6f5d`
+
+The post-M9 provenance correction changes current documentation/profile state, not the fact that the historical M9 code/tests passed their then-declared contract.
+
+## Current non-claims
+
+Even after the correction, the project does not yet claim:
+
+- implemented full `TERRAIN-004` parity;
+- external 1:1 visual parity from self-generated screenshots;
+- completed GPU texture/material/transparency realization;
+- completed renderer `minPlane`/`originalPlane` visibility realization;
+- broader skeletal animation execution outside the verified M8 subset.
+
+These remain explicit forward gates rather than hidden renderer compensation.
