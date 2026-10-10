@@ -70,7 +70,9 @@ pub enum DynamicModelError {
 impl fmt::Display for DynamicModelError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Lighting(error) => write!(formatter, "dynamic base-model lighting failed: {error}"),
+            Self::Lighting(error) => {
+                write!(formatter, "dynamic base-model lighting failed: {error}")
+            }
             Self::LegacyPose(error) => write!(formatter, "dynamic legacy pose failed: {error}"),
             Self::Contour(error) => write!(formatter, "dynamic contouring failed: {error}"),
             Self::ContourClipOutOfRange(value) => write!(
