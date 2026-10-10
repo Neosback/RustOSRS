@@ -71,9 +71,12 @@ revision_gates:
   texture_layout_233_plus:
     state: required
   terrain_color_builder:
-    state: blocked
+    state: source_verified
     spec: TERRAIN-004
-    note: no guessed implementation may be promoted to reference parity
+    note: >-
+      Pinned public class470.method9712 contains the complete terrain builder.
+      Exact Rust implementation and executable differential fixtures remain
+      required before TERRAIN-004 may claim implementation parity.
 
 policy:
   bundled_revision_180_cache_is_target: false
