@@ -10,7 +10,9 @@
 //! pending/live replacement, or renderer extraction.
 
 use crate::{
-    normal_finalization::{SceneModelDataGrid, SceneModelDataId, SceneNormalError, SceneNormalMergeReport},
+    normal_finalization::{
+        SceneModelDataGrid, SceneModelDataId, SceneNormalError, SceneNormalMergeReport,
+    },
     placement::Footprint,
 };
 use osrs_core::{
@@ -34,14 +36,20 @@ impl fmt::Display for SceneReferenceFinalizationError {
         match self {
             Self::Normal(error) => error.fmt(formatter),
             Self::UnknownModel(model) => {
-                write!(formatter, "unknown scene ModelData id {model} during final lighting")
+                write!(
+                    formatter,
+                    "unknown scene ModelData id {model} during final lighting"
+                )
             }
             Self::ModelStillPending(model) => write!(
                 formatter,
                 "scene ModelData id {model} is still pending normal reconciliation"
             ),
             Self::Lighting { model, source } => {
-                write!(formatter, "final reference lighting failed for scene ModelData id {model}: {source}")
+                write!(
+                    formatter,
+                    "final reference lighting failed for scene ModelData id {model}: {source}"
+                )
             }
         }
     }
@@ -98,7 +106,10 @@ impl SceneReferenceFinalizer {
 
     /// Admit one scene-local initial non-flat entity and retain its exact loc
     /// lighting parameters until normal reconciliation is complete.
-    pub fn add_initial_model_data(&mut self, entity: SceneLocalModelDataEntity) -> SceneModelDataId {
+    pub fn add_initial_model_data(
+        &mut self,
+        entity: SceneLocalModelDataEntity,
+    ) -> SceneModelDataId {
         let (model, lighting) = entity.into_parts();
         let id = self.model_data.add_model(model);
         self.lighting.insert(id, lighting);
@@ -176,7 +187,9 @@ impl SceneReferenceFinalizer {
                 .is_pending_model_data(id)
                 .ok_or(SceneReferenceFinalizationError::UnknownModel(id.index()))?;
             if pending {
-                return Err(SceneReferenceFinalizationError::ModelStillPending(id.index()));
+                return Err(SceneReferenceFinalizationError::ModelStillPending(
+                    id.index(),
+                ));
             }
         }
 
