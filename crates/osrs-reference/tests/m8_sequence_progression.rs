@@ -90,8 +90,8 @@ fn legacy_frame_boundary_uses_reference_strict_greater_than_delay() -> Result<()
 }
 
 #[test]
-fn legacy_loopback_subtracts_frame_step_instead_of_restarting_at_zero()
--> Result<(), Box<dyn Error>> {
+fn legacy_loopback_subtracts_frame_step_instead_of_restarting_at_zero() -> Result<(), Box<dyn Error>>
+{
     let sequence = legacy_sequence(2, &[1, 1, 1, 1], Some(2), 99)?;
     let mut state = SequencePlaybackState::new();
 
@@ -159,12 +159,7 @@ fn loop_limit_is_diagnostic_for_a_valid_looping_sequence() -> Result<(), Box<dyn
 #[test]
 fn skeletal_sequence_advances_one_frame_per_cycle_and_loops_by_frame_step()
 -> Result<(), Box<dyn Error>> {
-    let sequence = skeletal_sequence(
-        6,
-        SequenceRange { start: 10, end: 14 },
-        Some(2),
-        99,
-    )?;
+    let sequence = skeletal_sequence(6, SequenceRange { start: 10, end: 14 }, Some(2), 99)?;
     let mut state = SequencePlaybackState::new();
 
     advance_dynamic_sequence(&sequence, &mut state, 1)?;
@@ -183,12 +178,7 @@ fn skeletal_sequence_advances_one_frame_per_cycle_and_loops_by_frame_step()
 
 #[test]
 fn skeletal_sequence_without_frame_step_deactivates_at_end() -> Result<(), Box<dyn Error>> {
-    let sequence = skeletal_sequence(
-        7,
-        SequenceRange { start: 20, end: 23 },
-        None,
-        99,
-    )?;
+    let sequence = skeletal_sequence(7, SequenceRange { start: 20, end: 23 }, None, 99)?;
     let mut state = SequencePlaybackState::new();
 
     advance_dynamic_sequence(&sequence, &mut state, 1)?;
@@ -203,12 +193,7 @@ fn skeletal_sequence_without_frame_step_deactivates_at_end() -> Result<(), Box<d
 
 #[test]
 fn skeletal_large_delta_uses_reference_loop_step_reduction() -> Result<(), Box<dyn Error>> {
-    let sequence = skeletal_sequence(
-        8,
-        SequenceRange { start: 30, end: 35 },
-        Some(2),
-        99,
-    )?;
+    let sequence = skeletal_sequence(8, SequenceRange { start: 30, end: 35 }, Some(2), 99)?;
     let mut state = SequencePlaybackState::new();
 
     advance_dynamic_sequence(&sequence, &mut state, 5)?;
@@ -228,12 +213,7 @@ fn malformed_sequence_inputs_fail_explicitly() -> Result<(), Box<dyn Error>> {
         Err(SequenceAdvanceError::MissingLegacyFrames)
     );
 
-    let invalid_range = skeletal_sequence(
-        10,
-        SequenceRange { start: 40, end: 39 },
-        Some(1),
-        99,
-    )?;
+    let invalid_range = skeletal_sequence(10, SequenceRange { start: 40, end: 39 }, Some(1), 99)?;
     let mut state = SequencePlaybackState::new();
     assert_eq!(
         advance_dynamic_sequence(&invalid_range, &mut state, 1),
