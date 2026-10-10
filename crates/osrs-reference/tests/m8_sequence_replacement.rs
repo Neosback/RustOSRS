@@ -19,12 +19,26 @@ fn decoder_context() -> Result<DecoderContext, Box<dyn Error>> {
 
 fn sequence_bytes(restart_mode: u8) -> Vec<u8> {
     vec![
-        1, 0, 2, // two legacy frames
-        0, 2, 0, 3, // frame delays
-        0, 0, 0, 1, // frame-id low halves
-        0, 1, 0, 1, // frame-id high halves
-        2, 0, 2, // frame step / loopback
-        11, restart_mode, // pinned restartMode
+        1,
+        0,
+        2, // two legacy frames
+        0,
+        2,
+        0,
+        3, // frame delays
+        0,
+        0,
+        0,
+        1, // frame-id low halves
+        0,
+        1,
+        0,
+        1, // frame-id high halves
+        2,
+        0,
+        2, // frame step / loopback
+        11,
+        restart_mode, // pinned restartMode
         0,
     ]
 }
@@ -58,10 +72,8 @@ fn same_sequence_restart_mode_zero_preserves_exact_playback_state() -> Result<()
     let sequence = decoded_sequence(40, 0)?;
     let previous = progressed_state(&sequence)?;
 
-    let (replacement, decision) = replacement_primary_playback(
-        &sequence,
-        Some((SequenceId::new(40), previous)),
-    );
+    let (replacement, decision) =
+        replacement_primary_playback(&sequence, Some((SequenceId::new(40), previous)));
 
     assert_eq!(decision, ReplacementPlaybackDecision::Preserved);
     assert_eq!(replacement, previous);
@@ -76,10 +88,8 @@ fn same_sequence_nonzero_restart_mode_restarts_from_initial_state() -> Result<()
     let replacement_sequence = decoded_sequence(41, 2)?;
     let previous = progressed_state(&source_sequence)?;
 
-    let (replacement, decision) = replacement_primary_playback(
-        &replacement_sequence,
-        Some((SequenceId::new(41), previous)),
-    );
+    let (replacement, decision) =
+        replacement_primary_playback(&replacement_sequence, Some((SequenceId::new(41), previous)));
 
     assert_eq!(decision, ReplacementPlaybackDecision::Restarted);
     assert_eq!(replacement, SequencePlaybackState::new());
@@ -94,10 +104,8 @@ fn different_sequence_id_restarts_even_when_restart_mode_is_zero() -> Result<(),
     let new_sequence = decoded_sequence(43, 0)?;
     let previous = progressed_state(&old_sequence)?;
 
-    let (replacement, decision) = replacement_primary_playback(
-        &new_sequence,
-        Some((SequenceId::new(42), previous)),
-    );
+    let (replacement, decision) =
+        replacement_primary_playback(&new_sequence, Some((SequenceId::new(42), previous)));
 
     assert_eq!(decision, ReplacementPlaybackDecision::Restarted);
     assert_eq!(replacement, SequencePlaybackState::new());
@@ -110,10 +118,8 @@ fn inactive_previous_state_cannot_be_carried_forward() -> Result<(), Box<dyn Err
     let mut previous = progressed_state(&sequence)?;
     previous.reset();
 
-    let (replacement, decision) = replacement_primary_playback(
-        &sequence,
-        Some((SequenceId::new(44), previous)),
-    );
+    let (replacement, decision) =
+        replacement_primary_playback(&sequence, Some((SequenceId::new(44), previous)));
 
     assert_eq!(decision, ReplacementPlaybackDecision::Restarted);
     assert_eq!(replacement, SequencePlaybackState::new());
