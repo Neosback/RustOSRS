@@ -349,14 +349,7 @@ mod tests {
         }];
 
         let mismatch = require_decode_error(
-            decode_legacy_animation_frame(
-                frame_id,
-                &[0, 8, 1, 0],
-                9,
-                &skeleton,
-                &context,
-                &source,
-            ),
+            decode_legacy_animation_frame(frame_id, &[0, 8, 1, 0], 9, &skeleton, &context, &source),
             "mismatched skeleton id must fail",
         )?;
         assert!(matches!(
