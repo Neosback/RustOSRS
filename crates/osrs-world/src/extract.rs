@@ -14,10 +14,32 @@ use osrs_core::{
 use osrs_render::{GeometryBuilder, ModelPlacement, SceneGeometry, ZONE_LOCAL_UNITS};
 use osrs_scene::placement::PlacementKind;
 
-/// Extract all static geometry of `world`.
+/// Inclusive-exclusive tile range `[min, max)` in scene coordinates that a window owns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OwnedTiles {
+    pub min: (u32, u32),
+    pub max: (u32, u32),
+}
+
+impl OwnedTiles {
+    fn contains(self, x: u32, y: u32) -> bool {
+        x >= self.min.0 && x < self.max.0 && y >= self.min.1 && y < self.max.1
+    }
+}
+
+/// Extract all static geometry of `world`. Zones are keyed by world zone coordinates.
 pub fn extract_scene_geometry(world: &WorldScene) -> SceneGeometry {
+    extract_owned_geometry(world, None)
+}
+
+/// Extract the geometry of the tiles in `owned` (or every tile when `None`).
+///
+/// Windows used for streaming overlap their neighbours so every owned tile has full blend and
+/// normal-merge context; only the owned tiles' terrain and the locs anchored on them are emitted.
+pub fn extract_owned_geometry(world: &WorldScene, owned: Option<OwnedTiles>) -> SceneGeometry {
     let mut geometry = SceneGeometry::default();
-    let scene_tiles = world.scene.width() as i32;
+    let (zone_base_x, zone_base_z) = (world.window.base_x / 8, world.window.base_y / 8);
+    let in_range = |x: u32, y: u32| owned.is_none_or(|range| range.contains(x, y));
 
     // Terrain: every storage tile, then its linked-below (bridge) tile.
     for plane_index in 0..4_u8 {
@@ -26,6 +48,9 @@ pub fn extract_scene_geometry(world: &WorldScene) -> SceneGeometry {
         };
         for x in 0..world.scene.width() {
             for y in 0..world.scene.height() {
+                if !in_range(x, y) {
+                    continue;
+                }
                 let Some(tile) = world.scene.tile(plane, SceneTile::new(x, y)) else {
                     continue;
                 };
@@ -35,9 +60,13 @@ pub fn extract_scene_geometry(world: &WorldScene) -> SceneGeometry {
                 }
                 for (source, level) in sources {
                     if let Some(surface) = &source.terrain {
-                        let (zone_x, zone_z) = (x as i32 / 8, y as i32 / 8);
-                        let zone = geometry.zone_mut(zone_x, zone_z);
-                        let origin = zone.origin();
+                        let (scene_zone_x, scene_zone_z) = (x as i32 / 8, y as i32 / 8);
+                        let zone = geometry
+                            .zone_mut(zone_base_x + scene_zone_x, zone_base_z + scene_zone_z);
+                        let origin = (
+                            scene_zone_x * ZONE_LOCAL_UNITS,
+                            scene_zone_z * ZONE_LOCAL_UNITS,
+                        );
                         zone.group_mut(level, source.min_plane()).push_terrain(
                             surface,
                             (x as i32, y as i32),
@@ -48,17 +77,19 @@ pub fn extract_scene_geometry(world: &WorldScene) -> SceneGeometry {
             }
         }
     }
-    let _ = scene_tiles;
 
     // Locs.
     for loc in &world.locs {
-        if loc.renderables.is_empty() {
+        if loc.renderables.is_empty() || !in_range(loc.tile.x, loc.tile.y) {
             continue;
         }
         let (level, min_plane) = effective_level(world, loc.plane, loc.tile);
-        let (zone_x, zone_z) = (loc.tile.x as i32 / 8, loc.tile.y as i32 / 8);
-        let zone = geometry.zone_mut(zone_x, zone_z);
-        let origin = zone.origin();
+        let (scene_zone_x, scene_zone_z) = (loc.tile.x as i32 / 8, loc.tile.y as i32 / 8);
+        let zone = geometry.zone_mut(zone_base_x + scene_zone_x, zone_base_z + scene_zone_z);
+        let origin = (
+            scene_zone_x * ZONE_LOCAL_UNITS,
+            scene_zone_z * ZONE_LOCAL_UNITS,
+        );
         let builder = zone.group_mut(level, min_plane);
 
         let center = loc.plan.storage_center;
@@ -118,7 +149,6 @@ pub fn extract_scene_geometry(world: &WorldScene) -> SceneGeometry {
             }
         }
     }
-    let _ = ZONE_LOCAL_UNITS;
     geometry
 }
 

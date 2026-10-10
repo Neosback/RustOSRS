@@ -29,7 +29,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         z: number(7, 18.0 * 128.0),
         yaw: number(8, 0.0),
         pitch: number(9, 0.75),
-        scale: number(10, 512.0),
+        // Horizontal FOV of 60 degrees at 1280 pixels wide: (w/2)/tan(30deg).
+        scale: number(10, 640.0 / 30f32.to_radians().tan()),
     };
 
     let started = Instant::now();

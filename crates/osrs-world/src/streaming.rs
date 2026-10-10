@@ -1,0 +1,155 @@
+//! Region streaming: one scene window per map region, built on a worker thread.
+//!
+//! The reference scene is a fixed 104x104 window, and terrain blending and normal merging need
+//! tile context around every tile. To stream an unbounded world, each map region is built from
+//! its own window (the region plus [`REGION_WINDOW_MARGIN`] tiles before it and 24 after) and
+//! only the region's own 64x64 tiles are kept, so every kept tile has at least 16 tiles of
+//! context in every direction.
+
+use crate::{
+    OwnedTiles, SceneWindow, TerrainPresentation, WorldDefinitions, WorldError, build_world_scene,
+    extract_owned_geometry, texture_layers,
+};
+use osrs_core::coords::RegionCoord;
+use osrs_render::{SceneGeometry, gpu::TextureLayer};
+use std::{
+    path::PathBuf,
+    sync::mpsc::{Receiver, Sender, channel},
+    thread::JoinHandle,
+    time::Instant,
+};
+
+/// Tiles of context before a region inside its window.
+pub const REGION_WINDOW_MARGIN: i32 = 16;
+const REGION_TILES: u32 = 64;
+
+/// The scene window used to build `region`.
+pub fn region_window(region: RegionCoord) -> SceneWindow {
+    SceneWindow {
+        base_x: region.x * 64 - REGION_WINDOW_MARGIN,
+        base_y: region.y * 64 - REGION_WINDOW_MARGIN,
+    }
+}
+
+/// Geometry of one region, in world zone coordinates.
+#[derive(Debug, Clone)]
+pub struct RegionGeometry {
+    pub region: RegionCoord,
+    pub geometry: SceneGeometry,
+    pub build_ms: f32,
+}
+
+/// Build one region's geometry, or `None` when the cache has no map data for it.
+pub fn build_region_geometry(
+    definitions: &mut WorldDefinitions,
+    region: RegionCoord,
+    presentation: TerrainPresentation,
+) -> Result<Option<RegionGeometry>, WorldError> {
+    if definitions.region(region)?.is_none() {
+        return Ok(None);
+    }
+    let started = Instant::now();
+    let window = region_window(region);
+    let world = build_world_scene(definitions, window, presentation)?;
+    let margin = REGION_WINDOW_MARGIN as u32;
+    let geometry = extract_owned_geometry(
+        &world,
+        Some(OwnedTiles {
+            min: (margin, margin),
+            max: (margin + REGION_TILES, margin + REGION_TILES),
+        }),
+    );
+    Ok(Some(RegionGeometry {
+        region,
+        geometry,
+        build_ms: started.elapsed().as_secs_f32() * 1000.0,
+    }))
+}
+
+/// Messages from the streaming worker.
+pub enum StreamEvent {
+    /// The cache is open; textures are ready to upload.
+    Ready {
+        textures: Vec<Option<TextureLayer>>,
+    },
+    Region(Box<RegionGeometry>),
+    /// The cache has no map data for this region (open ocean, unused squares).
+    Empty(RegionCoord),
+    Failed(RegionCoord, String),
+    InitFailed(String),
+}
+
+enum Request {
+    Build(RegionCoord),
+    Shutdown,
+}
+
+/// Background builder that owns the cache and definitions.
+pub struct RegionStreamer {
+    requests: Sender<Request>,
+    events: Receiver<StreamEvent>,
+    worker: Option<JoinHandle<()>>,
+}
+
+impl RegionStreamer {
+    pub fn spawn(cache_dir: PathBuf, presentation: TerrainPresentation) -> Self {
+        let (request_tx, request_rx) = channel::<Request>();
+        let (event_tx, event_rx) = channel::<StreamEvent>();
+        let worker = std::thread::Builder::new()
+            .name("region-streamer".to_owned())
+            .spawn(move || {
+                let mut definitions = match WorldDefinitions::open(&cache_dir) {
+                    Ok(definitions) => definitions,
+                    Err(error) => {
+                        let _ = event_tx.send(StreamEvent::InitFailed(error.to_string()));
+                        return;
+                    }
+                };
+                let _ = event_tx.send(StreamEvent::Ready {
+                    textures: texture_layers(definitions.textures()),
+                });
+                while let Ok(request) = request_rx.recv() {
+                    match request {
+                        Request::Shutdown => break,
+                        Request::Build(region) => {
+                            let event =
+                                match build_region_geometry(&mut definitions, region, presentation)
+                                {
+                                    Ok(Some(geometry)) => StreamEvent::Region(Box::new(geometry)),
+                                    Ok(None) => StreamEvent::Empty(region),
+                                    Err(error) => StreamEvent::Failed(region, error.to_string()),
+                                };
+                            if event_tx.send(event).is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            })
+            .ok();
+        Self {
+            requests: request_tx,
+            events: event_rx,
+            worker,
+        }
+    }
+
+    /// Queue a region build.
+    pub fn request(&self, region: RegionCoord) {
+        let _ = self.requests.send(Request::Build(region));
+    }
+
+    /// Next finished event, if any.
+    pub fn try_recv(&self) -> Option<StreamEvent> {
+        self.events.try_recv().ok()
+    }
+}
+
+impl Drop for RegionStreamer {
+    fn drop(&mut self) {
+        let _ = self.requests.send(Request::Shutdown);
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}

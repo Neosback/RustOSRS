@@ -166,6 +166,11 @@ struct DrawRange {
 }
 
 struct GpuZone {
+    /// World origin of the zone in local units.
+    world_origin: (i32, i32),
+    /// Vertical extent (`y`, negative is up) of every vertex in the zone.
+    y_range: (f32, f32),
+    zone_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     opaque: Option<wgpu::Buffer>,
     alpha: Option<wgpu::Buffer>,
@@ -183,7 +188,10 @@ pub struct SceneRenderer {
     globals_layout: wgpu::BindGroupLayout,
     globals_bind_group: wgpu::BindGroup,
     zone_layout: wgpu::BindGroupLayout,
-    zones: Vec<GpuZone>,
+    /// Streamed regions, keyed by an opaque caller key (for example the map region).
+    regions: std::collections::BTreeMap<(i32, i32), Vec<GpuZone>>,
+    /// World point that renders at local `(0, 0)`; keeps f32 values small far from the origin.
+    render_origin: (i32, i32),
 }
 
 impl SceneRenderer {
@@ -367,7 +375,8 @@ impl SceneRenderer {
             globals_layout,
             globals_bind_group,
             zone_layout,
-            zones: Vec::new(),
+            regions: std::collections::BTreeMap::new(),
+            render_origin: (0, 0),
         }
     }
 
@@ -390,20 +399,56 @@ impl SceneRenderer {
         );
     }
 
-    /// Upload extracted geometry, replacing any previous scene.
+    /// World point that renders at local `(0, 0)`.
+    pub const fn render_origin(&self) -> (i32, i32) {
+        self.render_origin
+    }
+
+    /// Move the render origin (rewrites zone uniforms). Callers must express camera positions
+    /// relative to the new origin afterwards.
+    pub fn set_render_origin(&mut self, origin: (i32, i32)) {
+        self.render_origin = origin;
+        for zones in self.regions.values() {
+            for zone in zones {
+                let uniform = ZoneUniform {
+                    base: [
+                        (zone.world_origin.0 - origin.0) as f32,
+                        0.0,
+                        (zone.world_origin.1 - origin.1) as f32,
+                        0.0,
+                    ],
+                };
+                self.queue
+                    .write_buffer(&zone.zone_buffer, 0, bytemuck::bytes_of(&uniform));
+            }
+        }
+    }
+
+    /// Upload extracted geometry as the only resident scene.
     pub fn upload_scene(&mut self, geometry: &SceneGeometry) {
-        self.zones.clear();
+        self.regions.clear();
+        self.upload_region((0, 0), geometry);
+    }
+
+    /// Upload (or replace) one streamed region's zones under `key`.
+    pub fn upload_region(&mut self, key: (i32, i32), geometry: &SceneGeometry) {
+        let mut gpu_zones = Vec::with_capacity(geometry.zones.len());
         for zone in &geometry.zones {
-            let origin = zone.origin();
+            let world_origin = zone.origin();
             let zone_uniform = ZoneUniform {
-                base: [origin.0 as f32, 0.0, origin.1 as f32, 0.0],
+                base: [
+                    (world_origin.0 - self.render_origin.0) as f32,
+                    0.0,
+                    (world_origin.1 - self.render_origin.1) as f32,
+                    0.0,
+                ],
             };
             let zone_buffer = self
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("zone"),
                     contents: bytemuck::bytes_of(&zone_uniform),
-                    usage: wgpu::BufferUsages::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 });
             let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("zone"),
@@ -418,7 +463,12 @@ impl SceneRenderer {
             let mut alpha: Vec<PackedVertex> = Vec::new();
             let mut opaque_ranges = Vec::new();
             let mut alpha_ranges = Vec::new();
+            let mut y_range = (f32::MAX, f32::MIN);
             for group in &zone.groups {
+                for vertex in group.geometry.opaque.iter().chain(&group.geometry.alpha) {
+                    let y = f32::from(vertex.position[1]);
+                    y_range = (y_range.0.min(y), y_range.1.max(y));
+                }
                 if !group.geometry.opaque.is_empty() {
                     opaque_ranges.push(DrawRange {
                         level: group.level,
@@ -438,6 +488,9 @@ impl SceneRenderer {
                     alpha.extend_from_slice(&group.geometry.alpha);
                 }
             }
+            if y_range.0 > y_range.1 {
+                continue;
+            }
             let make = |vertices: &[PackedVertex], label: &str| {
                 (!vertices.is_empty()).then(|| {
                     self.device
@@ -448,7 +501,10 @@ impl SceneRenderer {
                         })
                 })
             };
-            self.zones.push(GpuZone {
+            gpu_zones.push(GpuZone {
+                world_origin,
+                y_range,
+                zone_buffer,
                 bind_group,
                 opaque: make(&opaque, "zone-opaque"),
                 alpha: make(&alpha, "zone-alpha"),
@@ -456,12 +512,24 @@ impl SceneRenderer {
                 alpha_ranges,
             });
         }
+        self.regions.insert(key, gpu_zones);
+    }
+
+    /// Drop a streamed region's GPU resources.
+    pub fn remove_region(&mut self, key: (i32, i32)) {
+        self.regions.remove(&key);
+    }
+
+    /// Number of resident zones.
+    pub fn resident_zone_count(&self) -> usize {
+        self.regions.values().map(Vec::len).sum()
     }
 
     /// Bytes of vertex data resident on the GPU.
     pub fn resident_vertex_bytes(&self) -> u64 {
-        self.zones
-            .iter()
+        self.regions
+            .values()
+            .flatten()
             .flat_map(|zone| [zone.opaque.as_ref(), zone.alpha.as_ref()])
             .flatten()
             .map(wgpu::Buffer::size)
@@ -522,8 +590,15 @@ impl SceneRenderer {
             });
             pass.set_bind_group(0, &self.globals_bind_group, &[]);
 
+            let visible: Vec<&GpuZone> = self
+                .regions
+                .values()
+                .flatten()
+                .filter(|zone| zone_visible(zone, self.render_origin, &globals.world_proj))
+                .collect();
+
             pass.set_pipeline(&self.opaque_pipeline);
-            for zone in &self.zones {
+            for zone in visible.iter().copied() {
                 let Some(buffer) = &zone.opaque else { continue };
                 pass.set_bind_group(1, &zone.bind_group, &[]);
                 pass.set_vertex_buffer(0, buffer.slice(..));
@@ -535,7 +610,7 @@ impl SceneRenderer {
             }
 
             pass.set_pipeline(&self.alpha_pipeline);
-            for zone in &self.zones {
+            for zone in visible.iter().copied() {
                 let Some(buffer) = &zone.alpha else { continue };
                 pass.set_bind_group(1, &zone.bind_group, &[]);
                 pass.set_vertex_buffer(0, buffer.slice(..));
@@ -795,3 +870,37 @@ fn build_globals_bind_group(
         ],
     })
 }
+
+/// Conservative frustum test of one zone's bounding box against the world projection.
+///
+/// The reference projection has clip `w` equal to camera distance, so a box is outside when all
+/// eight corners lie beyond the same clip plane, or all lie closer than the `2 * near` point where
+/// depth would exceed `1`.
+fn zone_visible(zone: &GpuZone, origin: (i32, i32), world_proj: &[[f32; 4]; 4]) -> bool {
+    let base_x = (zone.world_origin.0 - origin.0) as f32;
+    let base_z = (zone.world_origin.1 - origin.1) as f32;
+    let extent = ZONE_LOCAL_EXTENT;
+    // Zone content may overhang the 1024-unit footprint (large models), so pad generously.
+    let pad = 512.0;
+    let mut outside = [0_u8; 5]; // counts of corners outside: left, right, bottom, top, near
+    for &dx in &[-pad, extent + pad] {
+        for &dz in &[-pad, extent + pad] {
+            for &y in &[zone.y_range.0 - 256.0, zone.y_range.1 + 256.0] {
+                let p = [base_x + dx, y, base_z + dz, 1.0];
+                let mut clip = [0.0_f32; 4];
+                for (row, value) in clip.iter_mut().enumerate() {
+                    *value = (0..4).map(|k| world_proj[k][row] * p[k]).sum();
+                }
+                let w = clip[3];
+                outside[0] += u8::from(clip[0] < -w);
+                outside[1] += u8::from(clip[0] > w);
+                outside[2] += u8::from(clip[1] < -w);
+                outside[3] += u8::from(clip[1] > w);
+                outside[4] += u8::from(w < 2.0 * REFERENCE_NEAR);
+            }
+        }
+    }
+    outside.iter().all(|&count| count < 8)
+}
+
+const ZONE_LOCAL_EXTENT: f32 = 1024.0;

@@ -12,7 +12,8 @@ pub struct FlyCamera {
     pub z: f32,
     pub yaw: f32,
     pub pitch: f32,
-    pub scale: f32,
+    /// Horizontal field of view in degrees.
+    pub fov_degrees: f32,
     /// Movement speed in local units per second (128 = one tile).
     pub speed: f32,
 }
@@ -25,19 +26,23 @@ impl FlyCamera {
             z,
             yaw: 0.0,
             pitch: 0.75,
-            scale: 512.0,
+            fov_degrees: 60.0,
             speed: 900.0,
         }
     }
 
-    pub fn reference(&self) -> ReferenceCamera {
+    /// Reference camera for a viewport `width` pixels wide. The reference projection maps
+    /// `scale / distance` pixels per unit, so the scale that yields the requested horizontal
+    /// field of view is `(width / 2) / tan(fov / 2)`.
+    pub fn reference(&self, width: f32) -> ReferenceCamera {
+        let half_fov = self.fov_degrees.to_radians() * 0.5;
         ReferenceCamera {
             x: self.x,
             y: self.y,
             z: self.z,
             yaw: self.yaw,
             pitch: self.pitch,
-            scale: self.scale,
+            scale: (width * 0.5) / half_fov.tan(),
         }
     }
 
