@@ -155,11 +155,7 @@ fn compute_explicit_uvs(
         face[2] = project_to_plane(face[2], texture[2], camera, normal);
     }
 
-    let relative = [
-        face[0].sub(t1),
-        face[1].sub(t1),
-        face[2].sub(t1),
-    ];
+    let relative = [face[0].sub(t1), face[1].sub(t1), face[2].sub(t1)];
 
     let u_axis = cross(bitangent, normal);
     let inverse_u_denominator = 1.0 / dot(u_axis, tangent);
@@ -220,10 +216,16 @@ impl fmt::Display for ReferenceUvError {
                 "texture selector metadata is missing render face index {face_index}"
             ),
             Self::TextureTriangleOutOfRange { selector } => {
-                write!(formatter, "texture triangle selector {selector} is out of range")
+                write!(
+                    formatter,
+                    "texture triangle selector {selector} is out of range"
+                )
             }
             Self::VertexOutOfRange { vertex_index } => {
-                write!(formatter, "render vertex index {vertex_index} is out of range")
+                write!(
+                    formatter,
+                    "render vertex index {vertex_index} is out of range"
+                )
             }
         }
     }
