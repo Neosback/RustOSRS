@@ -8,12 +8,12 @@
 
 use crate::{
     coords::ModelPoint,
-    definitions::DefinitionIdentity,
-    ids::{ModelId, TextureId},
+    ids::TextureId,
     model::{
         FaceNormal, FacePriority, ModelFormatIdentity, ModelNormalState, SkeletalVertexData,
         Triangle, VertexNormal, WorkingModel,
     },
+    model_identity::ModelSemanticIdentity,
     normals::calculate_base_normals,
 };
 use std::{error::Error, fmt};
@@ -60,8 +60,9 @@ pub struct LitFaceColors {
 /// Renderer-neutral semantic result of the reference ModelData lighting pass.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReferenceLitModel {
-    pub identity: DefinitionIdentity<ModelId>,
-    pub format: ModelFormatIdentity,
+    pub identity: ModelSemanticIdentity,
+    /// A singular source format exists only when exactly one raw model contributed.
+    pub format: Option<ModelFormatIdentity>,
     pub vertices: Vec<ModelPoint>,
     pub faces: Vec<Triangle>,
     pub face_colors: Vec<LitFaceColors>,
