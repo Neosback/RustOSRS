@@ -109,7 +109,10 @@ fn draw_plan_omits_unused_core_passes_without_reordering_remaining_work() {
 
     assert_eq!(
         plan.passes(),
-        &[RenderScenePass::OpaqueStatic, RenderScenePass::OpaqueDynamic]
+        &[
+            RenderScenePass::OpaqueStatic,
+            RenderScenePass::OpaqueDynamic
+        ]
     );
     assert!(plan.ordered_indices().is_empty());
 }
