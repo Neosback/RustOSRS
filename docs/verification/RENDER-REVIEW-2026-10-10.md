@@ -24,7 +24,7 @@ placement, lighting and terrain) and `runelite-master` (build-241-accurate GPU p
 
 | Area | Evidence |
 | --- | --- |
-| Terrain loader + builder, every shape/rotation, skipped faces, bridges, min planes | Oracle diff passes byte-for-byte on Lumbridge (committed fixture), Yanille, Varrock, Falador (and the windows listed in the work log below). |
+| Terrain loader + builder, every shape/rotation, skipped faces, bridges, min planes | Oracle diff passes byte-for-byte on Lumbridge (committed fixture), Yanille, Varrock, Falador (see the window table below). |
 | Normal merge traversal (`method5585/5586/5587`) | Plane range `p..p+1`, x-start decrement, corner exclusion, translation formulas, boundary primary/secondary order, floor-decoration neighbourhood: identical. |
 | `ModelData.method5262` | Bounds constants, base-normal contributions, match test, `>= 3` matched pairs hide rule: identical. |
 | Instance transforms (mirror, type-4 `256` + `(45,0,-45)`, rotate, recolor, retexture, resize, offset) | Identical order to `getModelData`. |
@@ -63,9 +63,8 @@ tiles (overlay 442, shapes 1-5) whose underlay id is 0, so the underlay half of 
 colour (`ca=12345678` in the oracle output for tile `0 41 45` of the Yanille window). Our output
 matches the oracle line for line. In RuneLite those faces are skipped too and the clear colour
 shows through; vanilla/RuneLite default the sky colour to black, and the optional RuneLite
-"Skybox" plugin supplies an old-school per-region sky colour. We clear to light blue.
-
-Options: clear black (RuneLite default), or port `skybox.txt` region colours. Not done yet.
+"Skybox" plugin supplies an old-school per-region sky colour. The editor now clears to black by default with a colour picker; porting `skybox.txt` region
+colours is not done.
 
 ## Open items (not yet matching the reference)
 
@@ -85,11 +84,12 @@ Options: clear black (RuneLite default), or port `skybox.txt` region colours. No
 
 ## Work log: extra terrain oracle windows
 
-See the table appended by the run (`reference-fixtures` unchanged; windows are regenerated on
-demand with `export_terrain_oracle_input` + `run-terrain-oracle.sh`).
+Windows are regenerated on demand with `export_terrain_oracle_input` + `run-terrain-oracle.sh`;
+the committed fixture is unchanged.
 
 | Window (scene base) | Result |
 | --- | --- |
 | Yanille east coast (2592,3048) | pass |
 | Varrock (3112,3368) | pass |
 | Falador (2920,3304) | pass |
+| Karamja (2792,3112) | pass |
