@@ -90,3 +90,16 @@ jobs:
 
       - name: Run M6 semantic scene suite
         run: cargo test --locked -p osrs-scene
+
+      - name: Run M7 normals, lighting, and finalization suite
+        run: |
+          cargo test --locked -p osrs-core --lib normals::tests
+          cargo test --locked -p osrs-core --lib lighting::tests
+          cargo test --locked -p osrs-reference --test m7_base_normals
+          cargo test --locked -p osrs-reference --test m7_normal_merge
+          cargo test --locked -p osrs-reference --test m7_lighting
+          cargo test --locked -p osrs-reference --test m7_static_entity_lifecycle
+          cargo test --locked -p osrs-reference --test m7_initial_scene_finalization
+          cargo test --locked -p osrs-reference --test m7_identity_threading
+          cargo test --locked -p osrs-reference --test m7_composite_admission
+          cargo test --locked -p osrs-scene --test m7_scene_normal_reconciliation
