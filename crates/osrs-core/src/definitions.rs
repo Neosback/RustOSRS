@@ -245,7 +245,9 @@ pub struct SequenceDefinition {
     pub max_loops: u16,
     pub precedence_animating: u8,
     pub priority: u8,
-    pub reply_mode: u8,
+    /// Build-241 `restartMode` (opcode 11). Dynamic-object replacement only
+    /// preserves primary playback state for equal sequence ids when this is 0.
+    pub restart_mode: u8,
     pub left_hand_item: Option<ItemId>,
     pub right_hand_item: Option<ItemId>,
     pub skeletal_animation: Option<SkeletalAnimationId>,
@@ -357,7 +359,7 @@ mod tests {
             max_loops: 99,
             precedence_animating: 2,
             priority: 2,
-            reply_mode: 2,
+            restart_mode: 2,
             left_hand_item: Some(ItemId::new(4151)),
             right_hand_item: None,
             skeletal_animation: Some(SkeletalAnimationId::new(900)),
