@@ -5,6 +5,7 @@
 //! foundation in bounded slices so later cache/scene/render layers consume typed
 //! canonical values rather than redefining them.
 
+pub mod animation;
 pub mod contour;
 pub mod coordinate_math;
 pub mod coords;
