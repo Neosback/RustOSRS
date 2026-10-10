@@ -20,8 +20,7 @@ use std::error::Error;
 const PROFILE_YAML: &str =
     include_str!("../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
 const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
-const CACHE_FINGERPRINT: &str =
-    "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
+const CACHE_FINGERPRINT: &str = "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
 fn decoder_context() -> Result<DecoderContext, Box<dyn Error>> {
     let profile = TargetProfile::from_yaml_str(PROFILE_YAML)?;
@@ -94,12 +93,8 @@ fn decoded_cache_frame_flows_directly_into_private_object_pose() -> Result<(), B
     // skeleton=9, slot count=2, masks=[0,1], x short-smart=5.
     let frame_bytes = [0, 9, 2, 0, 1, 69];
 
-    let skeleton = decode_legacy_skeleton(
-        skeleton_id,
-        &skeleton_bytes,
-        &context,
-        &skeleton_source,
-    )?;
+    let skeleton =
+        decode_legacy_skeleton(skeleton_id, &skeleton_bytes, &context, &skeleton_source)?;
     assert_eq!(
         legacy_frame_skeleton_id(frame_id, &frame_bytes, &context, &frame_source)?,
         skeleton_id
