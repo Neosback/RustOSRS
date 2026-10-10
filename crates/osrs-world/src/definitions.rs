@@ -4,8 +4,9 @@ use crate::WorldError;
 use osrs_cache::{
     decode::{
         ArchiveFileProvenance, DecodedLocations, DecoderContext, decode_floor_overlay,
-        decode_floor_underlay, decode_locations, decode_object_definition, decode_sprite_group,
-        decode_terrain, decode_texture_definition,
+        decode_floor_underlay, decode_legacy_animation_frame, decode_legacy_skeleton,
+        decode_locations, decode_object_definition, decode_sequence_definition,
+        decode_sprite_group, decode_terrain, decode_texture_definition, legacy_frame_skeleton_id,
     },
     model_repository::ModelSourceRepository,
     object_model::resolve_object_model,
@@ -13,10 +14,11 @@ use osrs_cache::{
     transport::{CacheErrorKind, CacheFile, CacheRepository},
 };
 use osrs_core::{
+    animation_pose::{LegacyAnimationFrame, LegacySkeletonTransform},
     coords::RegionCoord,
-    definitions::{LocType, ObjectDefinition},
+    definitions::{LocType, ObjectDefinition, SequenceDefinition},
     floor_color::UnderlayHsl,
-    ids::{FloorOverlayId, FloorUnderlayId, ObjectId, TextureId},
+    ids::{FloorOverlayId, FloorUnderlayId, FrameId, ObjectId, SequenceId, TextureId},
     model_construction::AssembledModel,
 };
 use osrs_scene::{
@@ -31,6 +33,9 @@ const CONFIG_INDEX: u8 = 2;
 const UNDERLAY_GROUP: u32 = 1;
 const OVERLAY_GROUP: u32 = 4;
 const OBJECT_GROUP: u32 = 6;
+const SEQUENCE_GROUP: u32 = 12;
+const FRAME_INDEX: u8 = 0;
+const SKELETON_INDEX: u8 = 1;
 const TEXTURE_INDEX: u8 = 9;
 const SPRITE_INDEX: u8 = 8;
 /// Reference texture edge length (the RuneLite array is 128x128).
@@ -115,6 +120,11 @@ pub struct WorldDefinitions {
     textures: TextureTable,
     object_files: HashMap<u32, CacheFile>,
     objects: HashMap<u32, Option<Arc<ObjectDefinition>>>,
+    sequence_files: HashMap<u32, CacheFile>,
+    sequences: HashMap<u32, Option<Arc<SequenceDefinition>>>,
+    frame_groups: HashMap<u32, HashMap<u32, CacheFile>>,
+    skeletons: HashMap<u16, Option<Arc<Vec<LegacySkeletonTransform>>>>,
+    frames: HashMap<u32, Option<Arc<LegacyAnimationFrame>>>,
 }
 
 impl WorldDefinitions {
@@ -221,6 +231,11 @@ impl WorldDefinitions {
             .into_iter()
             .collect();
 
+        let sequence_files = cache
+            .read_group_files(CONFIG_INDEX, SEQUENCE_GROUP)?
+            .into_iter()
+            .collect();
+
         Ok(Self {
             models: ModelSourceRepository::new(cache),
             context,
@@ -228,6 +243,11 @@ impl WorldDefinitions {
             textures,
             object_files,
             objects: HashMap::new(),
+            sequence_files,
+            sequences: HashMap::new(),
+            frame_groups: HashMap::new(),
+            skeletons: HashMap::new(),
+            frames: HashMap::new(),
         })
     }
 
@@ -277,6 +297,139 @@ impl WorldDefinitions {
         };
         self.objects.insert(id.get(), definition.clone());
         Ok(definition)
+    }
+
+    /// Decode (and memoize) one sequence definition.
+    pub fn sequence(
+        &mut self,
+        id: SequenceId,
+    ) -> Result<Option<Arc<SequenceDefinition>>, WorldError> {
+        if let Some(cached) = self.sequences.get(&id.get()) {
+            return Ok(cached.clone());
+        }
+        let definition = match self.sequence_files.get(&id.get()) {
+            Some(file) => Some(Arc::new(
+                decode_sequence_definition(id, &file.bytes, &self.context, &file.provenance)
+                    .map_err(WorldError::Decode)?,
+            )),
+            None => None,
+        };
+        self.sequences.insert(id.get(), definition.clone());
+        Ok(definition)
+    }
+
+    /// Decode every legacy frame of `sequence`. `Ok(None)` when the sequence has no legacy
+    /// frames or any frame or skeleton is missing from the cache (the caller falls back to the
+    /// static model).
+    pub fn legacy_frames(
+        &mut self,
+        sequence: &SequenceDefinition,
+    ) -> Result<Option<Vec<Arc<LegacyAnimationFrame>>>, WorldError> {
+        if sequence.frame_ids.is_empty() {
+            return Ok(None);
+        }
+        let mut frames = Vec::with_capacity(sequence.frame_ids.len());
+        for frame_id in &sequence.frame_ids {
+            match self.legacy_frame(*frame_id)? {
+                Some(frame) => frames.push(frame),
+                None => return Ok(None),
+            }
+        }
+        Ok(Some(frames))
+    }
+
+    fn legacy_frame(
+        &mut self,
+        frame_id: FrameId,
+    ) -> Result<Option<Arc<LegacyAnimationFrame>>, WorldError> {
+        if let Some(cached) = self.frames.get(&frame_id.get()) {
+            return Ok(cached.clone());
+        }
+        let group = frame_id.get() >> 16;
+        let file_id = frame_id.get() & 0xffff;
+        if !self.frame_groups.contains_key(&group) {
+            let files = match self.cache().read_group_files(FRAME_INDEX, group) {
+                Ok(files) => files.into_iter().collect(),
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        CacheErrorKind::MissingGroup | CacheErrorKind::MissingFile
+                    ) =>
+                {
+                    HashMap::new()
+                }
+                Err(error) => return Err(error.into()),
+            };
+            self.frame_groups.insert(group, files);
+        }
+        let result = match self
+            .frame_groups
+            .get(&group)
+            .and_then(|files| files.get(&file_id))
+        {
+            None => None,
+            Some(file) => {
+                let skeleton_id = legacy_frame_skeleton_id(
+                    frame_id,
+                    &file.bytes,
+                    &self.context,
+                    &file.provenance,
+                )
+                .map_err(WorldError::Decode)?;
+                match self.legacy_skeleton(skeleton_id)? {
+                    None => None,
+                    Some(skeleton) => {
+                        let file = &self.frame_groups[&group][&file_id];
+                        Some(Arc::new(
+                            decode_legacy_animation_frame(
+                                frame_id,
+                                &file.bytes,
+                                skeleton_id,
+                                &skeleton,
+                                &self.context,
+                                &file.provenance,
+                            )
+                            .map_err(WorldError::Decode)?,
+                        ))
+                    }
+                }
+            }
+        };
+        self.frames.insert(frame_id.get(), result.clone());
+        Ok(result)
+    }
+
+    fn legacy_skeleton(
+        &mut self,
+        skeleton_id: u16,
+    ) -> Result<Option<Arc<Vec<LegacySkeletonTransform>>>, WorldError> {
+        if let Some(cached) = self.skeletons.get(&skeleton_id) {
+            return Ok(cached.clone());
+        }
+        let file = match self
+            .cache()
+            .read_file(SKELETON_INDEX, u32::from(skeleton_id), 0, None)
+        {
+            Ok(file) => Some(file),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    CacheErrorKind::MissingGroup | CacheErrorKind::MissingFile
+                ) =>
+            {
+                None
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let skeleton = match file {
+            Some(file) => Some(Arc::new(
+                decode_legacy_skeleton(skeleton_id, &file.bytes, &self.context, &file.provenance)
+                    .map_err(WorldError::Decode)?,
+            )),
+            None => None,
+        };
+        self.skeletons.insert(skeleton_id, skeleton.clone());
+        Ok(skeleton)
     }
 
     /// Read and decode one region's terrain and location files, or `None` when the cache has no

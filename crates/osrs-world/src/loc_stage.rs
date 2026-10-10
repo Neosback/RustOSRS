@@ -8,14 +8,19 @@
 //! Collision maps, minimap/occlusion flags, and sound registration are deliberately not modeled:
 //! no renderer consumes them.
 
-use crate::{LoadedWindow, WorldDefinitions, WorldError};
+use crate::{
+    LoadedWindow, WorldDefinitions, WorldError,
+    animation::{AnimatedContour, AnimatedModel},
+};
 use osrs_core::{
     contour::{ContourGroundInput, contour_ground_copy, contour_model_data_copy, model_xz_radius},
     coords::{SceneTile, StoragePlane},
     definitions::{LocType, ObjectDefinition},
+    dynamic_model::{DynamicModelCache, DynamicModelKey, DynamicModelTerrain},
     ids::ObjectId,
     lighting::ReferenceLitModel,
     model::WorkingModel,
+    morph::select_morph_target,
     static_entity::{InitialStaticEntity, InitialStaticEntityCache, SceneLocalModelDataEntity},
 };
 use osrs_scene::{
@@ -24,7 +29,7 @@ use osrs_scene::{
     placement_height::{PlacementHeightInput, sample_placement_height},
     terrain_load::{REFERENCE_SCENE_TILES, TerrainLoadGrid},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 /// Value a clipped wall writes into the shadow grid.
 const WALL_SHADOW: u8 = 50;
@@ -39,8 +44,10 @@ pub enum LocRenderable {
     Lit(usize),
     /// Scene `ModelData` registered with the finalizer; lit after normal reconciliation.
     ModelData(SceneModelDataId),
-    /// An animated or morphing object (`DynamicObject`); its model is produced per frame.
-    Animated,
+    /// Index into [`LocStageOutput::animated`]: an animated `DynamicObject` posed per frame.
+    Animated(usize),
+    /// A placed object that draws nothing (null morph target, dropped duplicate).
+    Omitted,
 }
 
 /// One placed location.
@@ -77,14 +84,31 @@ pub struct LocStageOutput {
     pub finalizer: SceneReferenceFinalizer,
     /// Final lit models for flat-shaded entities, indexed by [`LocRenderable::Lit`].
     pub lit: Vec<ReferenceLitModel>,
+    /// Animated models indexed by [`LocRenderable::Animated`].
+    pub animated: Vec<Arc<AnimatedModel>>,
     pub locs: Vec<WorldLoc>,
     pub stats: LocStageStats,
+}
+
+/// What a `DynamicObject` loc currently draws.
+enum DynamicEntity {
+    /// No playable legacy animation: the (contoured) lit model, drawn statically.
+    Static(Box<ReferenceLitModel>),
+    Animated(Arc<AnimatedModel>),
+    Hidden,
 }
 
 enum BuiltEntity {
     Lit(Box<ReferenceLitModel>),
     Data(SceneLocalModelDataEntity),
-    Animated,
+    Dynamic(DynamicEntity),
+}
+
+/// Per-window dynamic-object state: lit-base cache and shared base models.
+#[derive(Default)]
+struct DynamicState {
+    cache: DynamicModelCache,
+    bases: HashMap<DynamicModelKey, Arc<ReferenceLitModel>>,
 }
 
 struct PendingLoc {
@@ -105,9 +129,10 @@ pub fn place_window_locs(
     scene: &mut SceneGrid,
 ) -> Result<LocStageOutput, WorldError> {
     let window = loaded.window;
-    let plane_heights: Vec<Vec<Vec<i32>>> = (0..4)
-        .map(|plane| loaded.grid.plane_heights(plane))
+    let plane_heights: Vec<Arc<Vec<Vec<i32>>>> = (0..4)
+        .map(|plane| Arc::new(loaded.grid.plane_heights(plane)))
         .collect();
+    let mut dynamic = DynamicState::default();
     let mut cache = InitialStaticEntityCache::new();
     let mut stats = LocStageStats::default();
     let mut pending: Vec<PendingLoc> = Vec::new();
@@ -172,14 +197,22 @@ pub fn place_window_locs(
             let is_dynamic = definition.animation.is_some() || definition.morphs.is_some();
             for request in &requests {
                 let entity = if is_dynamic {
-                    Some(BuiltEntity::Animated)
+                    Some(BuiltEntity::Dynamic(build_dynamic(
+                        definitions,
+                        &mut dynamic,
+                        &definition,
+                        *request,
+                        heights,
+                        &plan,
+                        sampled_height,
+                    )?))
                 } else {
                     build_entity(
                         definitions,
                         &mut cache,
                         &definition,
                         *request,
-                        heights,
+                        heights.as_slice(),
                         &plan,
                         sampled_height,
                     )?
@@ -254,6 +287,146 @@ fn model_requests(kind: &PlacementKind) -> Vec<ModelRequest> {
             .collect(),
         PlacementKind::GameObject(plan) => vec![plan.model],
     }
+}
+
+/// Default-state object for a morphing definition: every variable reads zero.
+fn effective_definition(
+    definitions: &mut WorldDefinitions,
+    original: &Arc<ObjectDefinition>,
+) -> Result<Option<Arc<ObjectDefinition>>, WorldError> {
+    let Some(morphs) = &original.morphs else {
+        return Ok(Some(original.clone()));
+    };
+    let selector = if morphs.transform_varbit.is_some() || morphs.transform_varp.is_some() {
+        0
+    } else {
+        -1
+    };
+    match select_morph_target(morphs, selector) {
+        Some(id) => definitions.object(id),
+        None => Ok(None),
+    }
+}
+
+/// `DynamicObject.getModel`: the transformed definition's lit model, posed per frame when the
+/// loc's own sequence has legacy frames.
+fn build_dynamic(
+    definitions: &mut WorldDefinitions,
+    state: &mut DynamicState,
+    original: &Arc<ObjectDefinition>,
+    request: ModelRequest,
+    heights: &Arc<Vec<Vec<i32>>>,
+    plan: &PlacementPlan,
+    sampled_height: i32,
+) -> Result<DynamicEntity, WorldError> {
+    let Some(effective) = effective_definition(definitions, original)? else {
+        return Ok(DynamicEntity::Hidden);
+    };
+    let sequence = match original.animation {
+        Some(id) => definitions.sequence(id)?,
+        None => None,
+    };
+    let frames = match &sequence {
+        Some(sequence) => definitions.legacy_frames(sequence)?,
+        None => None,
+    };
+    let terrain = DynamicModelTerrain {
+        heights: heights.as_slice(),
+        origin_x: plan.model_center.x.units(),
+        base_height: sampled_height,
+        origin_z: plan.model_center.z.units(),
+    };
+
+    let mut resolve_error: Option<WorldError> = None;
+    let mut builder = |definitions: &mut WorldDefinitions| match definitions.resolve_model(
+        &effective,
+        request.loc_type,
+        request.orientation,
+    ) {
+        Ok(Some(assembled)) => match WorkingModel::from_assembled(&assembled) {
+            Ok(model) => Some(model),
+            Err(error) => {
+                resolve_error = Some(WorldError::Placement(error.to_string()));
+                None
+            }
+        },
+        Ok(None) => None,
+        Err(error) => {
+            resolve_error = Some(error);
+            None
+        }
+    };
+
+    let (Some(sequence), Some(frames)) = (sequence, frames) else {
+        let built = state
+            .cache
+            .get_or_build_legacy(
+                &effective,
+                request.loc_type,
+                request.orientation,
+                None,
+                Some(terrain),
+                || builder(definitions),
+            )
+            .map_err(|error| WorldError::Placement(error.to_string()))?
+            .map(std::borrow::Cow::into_owned);
+        if let Some(error) = resolve_error {
+            return Err(error);
+        }
+        return Ok(match built {
+            Some(model) => DynamicEntity::Static(Box::new(model)),
+            None => DynamicEntity::Hidden,
+        });
+    };
+
+    // Animated: cache the lit base only; posing and contouring happen per frame at runtime.
+    let present = state
+        .cache
+        .get_or_build_legacy(
+            &effective,
+            request.loc_type,
+            request.orientation,
+            None,
+            None,
+            || builder(definitions),
+        )
+        .map_err(|error| WorldError::Placement(error.to_string()))?
+        .is_some();
+    if let Some(error) = resolve_error {
+        return Err(error);
+    }
+    if !present {
+        return Ok(DynamicEntity::Hidden);
+    }
+    let key = DynamicModelKey::for_object(&effective, request.loc_type, request.orientation);
+    let base = match state.bases.get(&key) {
+        Some(base) => base.clone(),
+        None => {
+            let Some(base) = state.cache.cached_base(key) else {
+                return Ok(DynamicEntity::Hidden);
+            };
+            let base = Arc::new(base.clone());
+            state.bases.insert(key, base.clone());
+            base
+        }
+    };
+    let contour = effective
+        .contour_clip
+        .and_then(|clip| i32::try_from(clip).ok())
+        .map(|clip| AnimatedContour {
+            clip,
+            heights: heights.clone(),
+            origin_x: plan.model_center.x.units(),
+            base_height: sampled_height,
+            origin_z: plan.model_center.z.units(),
+        });
+    Ok(DynamicEntity::Animated(Arc::new(AnimatedModel {
+        base,
+        sequence,
+        frames,
+        orientation: request.orientation,
+        contour,
+    })))
 }
 
 /// `ObjectComposition.getEntity`: cached lit model or scene-local `ModelData`, then contouring.
@@ -430,6 +603,7 @@ fn finish(
     }
 
     let mut lit = Vec::new();
+    let mut animated: Vec<Arc<AnimatedModel>> = Vec::new();
     let mut locs = Vec::with_capacity(pending.len());
     for (index, loc) in pending.into_iter().enumerate() {
         let key = (loc.plane.index().get(), loc.tile.x, loc.tile.y);
@@ -443,7 +617,15 @@ fn finish(
         let mut renderables = Vec::with_capacity(loc.entities.len());
         for entity in loc.entities {
             renderables.push(match entity {
-                BuiltEntity::Animated => LocRenderable::Animated,
+                BuiltEntity::Dynamic(DynamicEntity::Static(model)) => {
+                    lit.push(*model);
+                    LocRenderable::Lit(lit.len() - 1)
+                }
+                BuiltEntity::Dynamic(DynamicEntity::Animated(model)) => {
+                    animated.push(model);
+                    LocRenderable::Animated(animated.len() - 1)
+                }
+                BuiltEntity::Dynamic(DynamicEntity::Hidden) => LocRenderable::Omitted,
                 BuiltEntity::Lit(model) => {
                     lit.push(*model);
                     LocRenderable::Lit(lit.len() - 1)
@@ -453,7 +635,7 @@ fn finish(
                         LocRenderable::ModelData(finalizer.add_initial_model_data(data))
                     } else {
                         // A replaced or rejected ModelData entity never reaches finalization.
-                        LocRenderable::Animated
+                        LocRenderable::Omitted
                     }
                 }
             });
@@ -479,6 +661,7 @@ fn finish(
     Ok(LocStageOutput {
         finalizer,
         lit,
+        animated,
         locs,
         stats,
     })

@@ -26,6 +26,7 @@ pub struct WorldScene {
     pub finalizer: SceneReferenceFinalizer,
     /// Flat-shaded lit models indexed by `LocRenderable::Lit`.
     pub lit: Vec<ReferenceLitModel>,
+    pub animated: Vec<std::sync::Arc<crate::AnimatedModel>>,
     pub locs: Vec<WorldLoc>,
     pub loc_stats: LocStageStats,
     pub merge_report: SceneNormalMergeReport,
@@ -47,6 +48,7 @@ pub fn build_world_scene(
     let LocStageOutput {
         mut finalizer,
         lit,
+        animated,
         locs,
         stats,
     } = place_window_locs(definitions, &mut loaded, &mut scene)?;
@@ -63,6 +65,7 @@ pub fn build_world_scene(
         scene,
         finalizer,
         lit,
+        animated,
         locs,
         loc_stats: stats,
         merge_report,

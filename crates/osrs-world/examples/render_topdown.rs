@@ -59,9 +59,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let first = match loc.renderables[0] {
             LocRenderable::Lit(index) => world.lit.get(index),
             LocRenderable::ModelData(id) => world.finalizer.lit_model(id),
-            LocRenderable::Animated => None,
+            LocRenderable::Animated(_) | LocRenderable::Omitted => None,
         };
-        let animated = matches!(loc.renderables[0], LocRenderable::Animated);
+        let animated = matches!(loc.renderables[0], LocRenderable::Animated(_));
         let textured = first.is_some_and(|m| {
             m.face_textures
                 .as_ref()

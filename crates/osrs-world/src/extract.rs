@@ -6,12 +6,12 @@
 //! boundary, floor decoration, and game object at their storage centers, wall decorations at the
 //! center plus the nudged offset, game objects with their 256-JAU instance rotation when diagonal.
 
-use crate::{LocRenderable, TextureTable, WorldScene};
+use crate::{AnimatedInstance, LocRenderable, TextureTable, WorldLoc, WorldScene};
 use osrs_core::{
     coords::{SceneTile, StoragePlane},
     lighting::ReferenceLitModel,
 };
-use osrs_render::{GeometryBuilder, ModelPlacement, SceneGeometry, ZONE_LOCAL_UNITS};
+use osrs_render::{ModelPlacement, SceneGeometry, ZONE_LOCAL_UNITS};
 use osrs_scene::placement::PlacementKind;
 
 /// Inclusive-exclusive tile range `[min, max)` in scene coordinates that a window owns.
@@ -85,67 +85,30 @@ pub fn extract_owned_geometry(world: &WorldScene, owned: Option<OwnedTiles>) -> 
         }
         let (level, min_plane) = effective_level(world, loc.plane, loc.tile);
         let (scene_zone_x, scene_zone_z) = (loc.tile.x as i32 / 8, loc.tile.y as i32 / 8);
-        let zone = geometry.zone_mut(zone_base_x + scene_zone_x, zone_base_z + scene_zone_z);
         let origin = (
             scene_zone_x * ZONE_LOCAL_UNITS,
             scene_zone_z * ZONE_LOCAL_UNITS,
         );
+        let slots = loc_slots(loc, origin);
+        if slots
+            .iter()
+            .all(|slot| lit_model(world, slot.renderable).is_none())
+        {
+            continue;
+        }
+        let zone = geometry.zone_mut(zone_base_x + scene_zone_x, zone_base_z + scene_zone_z);
         let builder = zone.group_mut(level, min_plane);
-
-        let center = loc.plan.storage_center;
-        let base_x = center.x.units() - origin.0;
-        let base_y = center.y.units();
-        let base_z = center.z.units() - origin.1;
-
-        match loc.plan.kind {
-            PlacementKind::Boundary(_) => {
-                for renderable in &loc.renderables {
-                    emit(builder, world, *renderable, base_x, base_y, base_z, 0);
-                }
-            }
-            PlacementKind::FloorDecoration(_) => {
-                if let Some(renderable) = loc.renderables.first() {
-                    emit(builder, world, *renderable, base_x, base_y, base_z, 0);
-                }
-            }
-            PlacementKind::GameObject(game) => {
-                if let Some(renderable) = loc.renderables.first() {
-                    emit(
-                        builder,
-                        world,
-                        *renderable,
-                        base_x,
-                        base_y,
-                        base_z,
-                        game.insertion_flag,
-                    );
-                }
-            }
-            PlacementKind::WallDecoration(decor) => {
-                let (nudge_x, nudge_z) = match decor.orientation_flag {
-                    1 => (1, 0),
-                    2 => (0, -1),
-                    4 => (-1, 0),
-                    8 => (0, 1),
-                    _ => (0, 0),
-                };
-                if let Some(renderable) = loc.renderables.first() {
-                    emit(
-                        builder,
-                        world,
-                        *renderable,
-                        base_x + decor.offset_x + nudge_x,
-                        base_y,
-                        base_z + decor.offset_z + nudge_z,
-                        0,
-                    );
-                }
-                // The second slot is drawn at the plain center, and only for the 256 form.
-                if decor.orientation_flag == 256
-                    && let Some(renderable) = loc.renderables.get(1)
-                {
-                    emit(builder, world, *renderable, base_x, base_y, base_z, 0);
-                }
+        for slot in slots {
+            if let Some(model) = lit_model(world, slot.renderable) {
+                builder.push_model(
+                    model,
+                    ModelPlacement {
+                        x: slot.x,
+                        y: slot.y,
+                        z: slot.z,
+                        orientation: slot.rotation,
+                    },
+                );
             }
         }
     }
@@ -171,31 +134,115 @@ fn lit_model(world: &WorldScene, renderable: LocRenderable) -> Option<&Reference
     match renderable {
         LocRenderable::Lit(index) => world.lit.get(index),
         LocRenderable::ModelData(id) => world.finalizer.lit_model(id),
-        LocRenderable::Animated => None,
+        LocRenderable::Animated(_) | LocRenderable::Omitted => None,
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn emit(
-    builder: &mut GeometryBuilder,
-    world: &WorldScene,
+/// One drawn model slot of a loc, positioned relative to its owning zone origin.
+struct Slot {
     renderable: LocRenderable,
     x: i32,
     y: i32,
     z: i32,
-    orientation: u16,
-) {
-    if let Some(model) = lit_model(world, renderable) {
-        builder.push_model(
-            model,
-            ModelPlacement {
-                x,
-                y,
-                z,
-                orientation,
-            },
-        );
+    rotation: u16,
+}
+
+/// Draw positions of a loc's renderables (boundary/floor decoration/game object at the storage
+/// center, wall decorations at the center plus the nudged offset).
+fn loc_slots(loc: &WorldLoc, origin: (i32, i32)) -> Vec<Slot> {
+    let center = loc.plan.storage_center;
+    let base_x = center.x.units() - origin.0;
+    let base_y = center.y.units();
+    let base_z = center.z.units() - origin.1;
+    let slot = |renderable, x, y, z, rotation| Slot {
+        renderable,
+        x,
+        y,
+        z,
+        rotation,
+    };
+    match loc.plan.kind {
+        PlacementKind::Boundary(_) => loc
+            .renderables
+            .iter()
+            .map(|renderable| slot(*renderable, base_x, base_y, base_z, 0))
+            .collect(),
+        PlacementKind::FloorDecoration(_) => loc
+            .renderables
+            .first()
+            .map(|renderable| slot(*renderable, base_x, base_y, base_z, 0))
+            .into_iter()
+            .collect(),
+        PlacementKind::GameObject(game) => loc
+            .renderables
+            .first()
+            .map(|renderable| slot(*renderable, base_x, base_y, base_z, game.insertion_flag))
+            .into_iter()
+            .collect(),
+        PlacementKind::WallDecoration(decor) => {
+            let (nudge_x, nudge_z) = match decor.orientation_flag {
+                1 => (1, 0),
+                2 => (0, -1),
+                4 => (-1, 0),
+                8 => (0, 1),
+                _ => (0, 0),
+            };
+            let mut slots = Vec::new();
+            if let Some(renderable) = loc.renderables.first() {
+                slots.push(slot(
+                    *renderable,
+                    base_x + decor.offset_x + nudge_x,
+                    base_y,
+                    base_z + decor.offset_z + nudge_z,
+                    0,
+                ));
+            }
+            // The second slot is drawn at the plain center, and only for the 256 form.
+            if decor.orientation_flag == 256
+                && let Some(renderable) = loc.renderables.get(1)
+            {
+                slots.push(slot(*renderable, base_x, base_y, base_z, 0));
+            }
+            slots
+        }
     }
+}
+
+/// Animated model instances of the tiles in `owned` (or every tile when `None`).
+pub fn extract_animated_instances(
+    world: &WorldScene,
+    owned: Option<OwnedTiles>,
+) -> Vec<AnimatedInstance> {
+    let (zone_base_x, zone_base_z) = (world.window.base_x / 8, world.window.base_y / 8);
+    let mut instances = Vec::new();
+    for loc in &world.locs {
+        if owned.is_some_and(|range| !range.contains(loc.tile.x, loc.tile.y)) {
+            continue;
+        }
+        let (level, min_plane) = effective_level(world, loc.plane, loc.tile);
+        let (scene_zone_x, scene_zone_z) = (loc.tile.x as i32 / 8, loc.tile.y as i32 / 8);
+        let origin = (
+            scene_zone_x * ZONE_LOCAL_UNITS,
+            scene_zone_z * ZONE_LOCAL_UNITS,
+        );
+        for slot in loc_slots(loc, origin) {
+            let LocRenderable::Animated(index) = slot.renderable else {
+                continue;
+            };
+            let Some(model) = world.animated.get(index) else {
+                continue;
+            };
+            instances.push(AnimatedInstance {
+                model: model.clone(),
+                zone: (zone_base_x + scene_zone_x, zone_base_z + scene_zone_z),
+                level,
+                min_plane,
+                local: (slot.x, slot.y, slot.z),
+                rotation: slot.rotation,
+            });
+        }
+    }
+    instances
 }
 
 /// Convert decoded texture images into renderer texture layers (layer index = texture id).

@@ -7,8 +7,8 @@
 //! context in every direction.
 
 use crate::{
-    OwnedTiles, SceneWindow, TerrainPresentation, WorldDefinitions, WorldError, build_world_scene,
-    extract_owned_geometry, texture_layers,
+    AnimatedInstance, OwnedTiles, SceneWindow, TerrainPresentation, WorldDefinitions, WorldError,
+    build_world_scene, extract_animated_instances, extract_owned_geometry, texture_layers,
 };
 use osrs_core::coords::RegionCoord;
 use osrs_render::{SceneGeometry, gpu::TextureLayer};
@@ -36,6 +36,8 @@ pub fn region_window(region: RegionCoord) -> SceneWindow {
 pub struct RegionGeometry {
     pub region: RegionCoord,
     pub geometry: SceneGeometry,
+    /// Animated locs of the region, posed at runtime.
+    pub animations: Vec<AnimatedInstance>,
     pub build_ms: f32,
 }
 
@@ -52,16 +54,16 @@ pub fn build_region_geometry(
     let window = region_window(region);
     let world = build_world_scene(definitions, window, presentation)?;
     let margin = REGION_WINDOW_MARGIN as u32;
-    let geometry = extract_owned_geometry(
-        &world,
-        Some(OwnedTiles {
-            min: (margin, margin),
-            max: (margin + REGION_TILES, margin + REGION_TILES),
-        }),
-    );
+    let owned = Some(OwnedTiles {
+        min: (margin, margin),
+        max: (margin + REGION_TILES, margin + REGION_TILES),
+    });
+    let geometry = extract_owned_geometry(&world, owned);
+    let animations = extract_animated_instances(&world, owned);
     Ok(Some(RegionGeometry {
         region,
         geometry,
+        animations,
         build_ms: started.elapsed().as_secs_f32() * 1000.0,
     }))
 }

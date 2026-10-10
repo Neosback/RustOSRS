@@ -4,7 +4,7 @@ use crate::camera::FlyCamera;
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_core::coords::RegionCoord;
 use osrs_render::gpu::{COLOR_FORMAT, DEPTH_FORMAT, FrameParams, SceneRenderer};
-use osrs_world::{RegionStreamer, StreamEvent, TerrainPresentation};
+use osrs_world::{AnimationSystem, RegionStreamer, StreamEvent, TerrainPresentation};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -32,6 +32,13 @@ struct RegionStats {
     vertices: usize,
 }
 
+/// Renderer key of the per-frame animated-loc geometry.
+const ANIMATED_KEY: (i32, i32) = (i32::MIN, i32::MIN);
+/// Animated locs farther than this many tiles from the camera are not drawn.
+const ANIMATION_RADIUS_TILES: i32 = 80;
+/// Animated geometry is rebuilt at most once per this many game cycles (20 ms each).
+const ANIMATION_STRIDE_CYCLES: u64 = 2;
+
 pub struct EditorApp {
     render_state: egui_wgpu::RenderState,
     renderer: SceneRenderer,
@@ -40,6 +47,10 @@ pub struct EditorApp {
     view_plane: u8,
     brightness: f32,
     streamer: RegionStreamer,
+    animations: AnimationSystem,
+    animation_cycle: u64,
+    animation_center: (i32, i32),
+    animation_dirty: bool,
     ready: bool,
     status: Option<String>,
     /// Regions resident on the GPU (`None` = the cache has no map data there).
@@ -91,6 +102,10 @@ impl EditorApp {
             view_plane: 0,
             brightness: 0.8,
             streamer,
+            animations: AnimationSystem::new(),
+            animation_cycle: 0,
+            animation_center: (0, 0),
+            animation_dirty: true,
             ready: false,
             status: None,
             loaded: HashMap::new(),
@@ -157,6 +172,8 @@ impl EditorApp {
                     let key = (region.region.x, region.region.y);
                     self.in_flight.remove(&key);
                     self.renderer.upload_region(key, &region.geometry);
+                    self.animations.insert_region(key, region.animations);
+                    self.animation_dirty = true;
                     self.last_build_ms = region.build_ms;
                     self.loaded.insert(
                         key,
@@ -215,6 +232,34 @@ impl EditorApp {
         for key in stale {
             self.loaded.remove(&key);
             self.renderer.remove_region(key);
+            self.animations.remove_region(key);
+            self.animation_dirty = true;
+        }
+    }
+
+    /// Advance animated locs to the current game cycle and refresh their geometry.
+    fn update_animations(&mut self) {
+        let cycle = (self.started.elapsed().as_secs_f32() * 50.0) as u64;
+        let (world_x, world_z) = self.world_position();
+        let center = ((world_x / 128.0) as i32, (world_z / 128.0) as i32);
+        let moved = (center.0 - self.animation_center.0)
+            .abs()
+            .max((center.1 - self.animation_center.1).abs())
+            >= 8;
+        if cycle < self.animation_cycle + ANIMATION_STRIDE_CYCLES && !self.animation_dirty && !moved
+        {
+            return;
+        }
+        let delta = (cycle - self.animation_cycle).min(500) as i32;
+        self.animation_cycle = cycle;
+        let advanced = self.animations.advance(delta);
+        if advanced || self.animation_dirty || moved {
+            self.animation_dirty = false;
+            self.animation_center = center;
+            let geometry = self
+                .animations
+                .build_geometry(center, ANIMATION_RADIUS_TILES);
+            self.renderer.upload_region(ANIMATED_KEY, &geometry);
         }
     }
 
@@ -338,6 +383,7 @@ impl eframe::App for EditorApp {
         }
         self.rebase_if_needed();
         self.stream();
+        self.update_animations();
         self.peak_resident = self
             .peak_resident
             .max(self.loaded.values().flatten().count());

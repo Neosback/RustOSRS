@@ -5,6 +5,7 @@
 //! semantics: each stage delegates to a pinned-source port in `osrs-scene`/`osrs-core` and adds
 //! only orchestration and cache access.
 
+mod animation;
 mod definitions;
 mod error;
 mod extract;
@@ -15,11 +16,15 @@ mod streaming;
 mod terrain_stage;
 mod window;
 
+pub use animation::{AnimatedContour, AnimatedInstance, AnimatedModel, AnimationSystem};
 pub use definitions::{
     FloorTable, RegionMap, TEXTURE_SIZE, TextureImage, TextureTable, WorldDefinitions,
 };
 pub use error::WorldError;
-pub use extract::{OwnedTiles, extract_owned_geometry, extract_scene_geometry, texture_layers};
+pub use extract::{
+    OwnedTiles, extract_animated_instances, extract_owned_geometry, extract_scene_geometry,
+    texture_layers,
+};
 pub use loc_stage::{LocRenderable, LocStageOutput, LocStageStats, WorldLoc, place_window_locs};
 pub use scene_builder::{WorldScene, build_world_scene};
 pub use streaming::{

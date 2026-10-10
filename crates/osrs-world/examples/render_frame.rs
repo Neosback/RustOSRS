@@ -8,7 +8,7 @@ use osrs_render::{
     gpu::{FrameParams, ReferenceCamera, SceneRenderer},
 };
 use osrs_world::{
-    SceneWindow, TerrainPresentation, WorldDefinitions, build_world_scene, extract_scene_geometry,
+    AnimationSystem, SceneWindow, TerrainPresentation, WorldDefinitions, build_world_scene, extract_animated_instances, extract_scene_geometry,
     texture_layers,
 };
 use std::{env, fs, io::Write, time::Instant};
@@ -51,6 +51,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     renderer.set_render_origin((window.base_x * 128, window.base_y * 128));
     renderer.set_textures(&texture_layers(definitions.textures()));
     renderer.upload_scene(&geometry);
+    let mut animations = AnimationSystem::new();
+    animations.insert_region((0, 0), extract_animated_instances(&world, None));
+    let cycles: i32 = env::var("RENDER_ANIM_CYCLES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    animations.advance(cycles);
+    let animated = animations.build_geometry((window.base_x + 52, window.base_y + 52), 200);
+    println!(
+        "animated: {} instances, {} vertices",
+        animations.instance_count(),
+        animated.vertex_count()
+    );
+    renderer.upload_region((i32::MIN, i32::MIN), &animated);
     println!(
         "resident vertex bytes: {}",
         renderer.resident_vertex_bytes()
