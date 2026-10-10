@@ -301,8 +301,7 @@ mod tests {
     use osrs_core::{definitions::LocType, ids::ObjectId};
 
     fn plane_zero() -> Result<StoragePlane, Box<dyn std::error::Error>> {
-        StoragePlane::new(0)
-            .ok_or_else(|| std::io::Error::other("plane zero must be valid").into())
+        StoragePlane::new(0).ok_or_else(|| std::io::Error::other("plane zero must be valid").into())
     }
 
     #[test]
@@ -320,7 +319,10 @@ mod tests {
             )),
         )?;
         let second = first.clone();
-        assert_eq!(semantic_scene_hash_v1(&first), semantic_scene_hash_v1(&second));
+        assert_eq!(
+            semantic_scene_hash_v1(&first),
+            semantic_scene_hash_v1(&second)
+        );
 
         let placement = plan_placement(PlacementInput {
             loc_type: LocType::new(22),
@@ -332,7 +334,10 @@ mod tests {
             existing_wall_displacement: None,
         })?;
         assert!(first.insert_placement(plane, ObjectId::new(9001), placement)?);
-        assert_ne!(semantic_scene_hash_v1(&first), semantic_scene_hash_v1(&second));
+        assert_ne!(
+            semantic_scene_hash_v1(&first),
+            semantic_scene_hash_v1(&second)
+        );
         Ok(())
     }
 }
