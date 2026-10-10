@@ -636,9 +636,7 @@ fn finish(
             && match loc.plan.kind {
                 PlacementKind::Boundary(_) => boundary_owner.get(&key) == Some(&index),
                 PlacementKind::FloorDecoration(_) => floor_owner.get(&key) == Some(&index),
-                PlacementKind::WallDecoration(_) => {
-                    wall_decoration_owner.get(&key) == Some(&index)
-                }
+                PlacementKind::WallDecoration(_) => wall_decoration_owner.get(&key) == Some(&index),
                 _ => true,
             };
 

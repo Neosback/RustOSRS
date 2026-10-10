@@ -79,7 +79,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             tick: 0,
             brightness: 0.8,
             remove_color_banding: env::var("RENDER_BANDING").is_err(),
-            clear_color: [0.55, 0.7, 0.9],
+            clear_color: if env::var("RENDER_SKY").is_ok() {
+                [0.55, 0.7, 0.9]
+            } else {
+                [0.0, 0.0, 0.0]
+            },
         },
         width,
         height,

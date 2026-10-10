@@ -47,6 +47,8 @@ pub struct EditorApp {
     view_plane: u8,
     brightness: f32,
     remove_color_banding: bool,
+    /// Background (and the colour holes in the terrain show). RuneLite's default sky is black.
+    sky_color: [f32; 3],
     streamer: RegionStreamer,
     animations: AnimationSystem,
     animation_cycle: u64,
@@ -103,6 +105,7 @@ impl EditorApp {
             view_plane: 0,
             brightness: 0.8,
             remove_color_banding: true,
+            sky_color: [0.0, 0.0, 0.0],
             streamer,
             animations: AnimationSystem::new(),
             animation_cycle: 0,
@@ -421,6 +424,7 @@ impl eframe::App for EditorApp {
                 ui.separator();
                 ui.add(egui::Slider::new(&mut self.brightness, 0.5..=1.0).text("brightness"));
                 ui.checkbox(&mut self.remove_color_banding, "smooth shading");
+                ui.color_edit_button_rgb(&mut self.sky_color);
                 ui.add(egui::Slider::new(&mut self.stream_radius, 0..=4).text("radius"));
                 ui.add(egui::Slider::new(&mut self.camera.fov_degrees, 30.0..=100.0).text("fov"));
             });
@@ -457,7 +461,7 @@ impl eframe::App for EditorApp {
                             tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
                             brightness: self.brightness,
                             remove_color_banding: self.remove_color_banding,
-                            clear_color: [0.55, 0.7, 0.9],
+                            clear_color: self.sky_color.map(f64::from),
                         },
                         targets.width,
                         targets.height,
