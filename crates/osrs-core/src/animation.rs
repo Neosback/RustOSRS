@@ -5,7 +5,7 @@
 //! dynamic-object path. Actual skeleton/model deformation remains separate:
 //! this code only decides which sequence frame is active at a preview tick.
 
-use crate::definitions::SequenceDefinition;
+use crate::{definitions::SequenceDefinition, ids::SequenceId};
 use std::{error::Error, fmt};
 
 /// Mutable per-instance sequence state.
@@ -61,6 +61,64 @@ impl Default for SequencePlaybackState {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Primary dynamic-object animation state relevant to replacement semantics.
+///
+/// This mirrors the audited `field775` + `cycleStart` ownership without
+/// importing the client's secondary fallback animation resource state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DynamicSequenceState {
+    pub sequence_id: SequenceId,
+    pub playback: SequencePlaybackState,
+    pub cycle_start: i32,
+}
+
+impl DynamicSequenceState {
+    /// Create the deterministic non-randomized constructor state.
+    ///
+    /// The client initializes `cycleStart` to `Client.cycle - 1`, so the first
+    /// model resolution consumes one cycle. Java int wraparound is preserved.
+    pub fn start(sequence: &SequenceDefinition, current_cycle: i32) -> Self {
+        Self {
+            sequence_id: sequence.identity.id,
+            playback: SequencePlaybackState::new(),
+            cycle_start: current_cycle.wrapping_sub(1),
+        }
+    }
+}
+
+/// Result of replacing one primary dynamic-object sequence instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SequenceReplacementOutcome {
+    Preserved,
+    Restarted,
+}
+
+/// Apply the pinned `DynamicObject` primary-sequence replacement contract.
+///
+/// Playback state and `cycleStart` carry forward only when the previous dynamic
+/// object uses the same sequence id and the new sequence's build-241
+/// `restartMode` is exactly `0`. All other replacements restart from the
+/// deterministic constructor state. Randomized starts and the client's
+/// secondary fallback sequence/resource-readiness path are intentionally out of
+/// scope here.
+pub fn replace_dynamic_sequence(
+    sequence: &SequenceDefinition,
+    current_cycle: i32,
+    previous: Option<&DynamicSequenceState>,
+) -> (DynamicSequenceState, SequenceReplacementOutcome) {
+    if let Some(previous) = previous
+        && previous.sequence_id == sequence.identity.id
+        && sequence.restart_mode == 0
+    {
+        return (*previous, SequenceReplacementOutcome::Preserved);
+    }
+
+    (
+        DynamicSequenceState::start(sequence, current_cycle),
+        SequenceReplacementOutcome::Restarted,
+    )
 }
 
 /// Observable semantic effects of one deterministic sequence advance.
