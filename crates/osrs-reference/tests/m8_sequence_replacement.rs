@@ -3,9 +3,11 @@ use osrs_cache::{
     profile::TargetProfile,
 };
 use osrs_core::{
-    animation::{SequencePlaybackState, advance_dynamic_sequence},
+    animation::advance_dynamic_sequence,
     ids::SequenceId,
-    sequence_replacement::{ReplacementPlaybackDecision, replacement_primary_playback},
+    sequence_replacement::{
+        PrimarySequenceState, ReplacementPlaybackDecision, replacement_primary_sequence,
+    },
 };
 use std::error::Error;
 
@@ -59,42 +61,47 @@ fn decoded_sequence(
 
 fn progressed_state(
     sequence: &osrs_core::definitions::SequenceDefinition,
-) -> Result<SequencePlaybackState, Box<dyn Error>> {
-    let mut state = SequencePlaybackState::new();
-    advance_dynamic_sequence(sequence, &mut state, 4)?;
-    assert_eq!(state.frame(), Some(1));
-    assert_eq!(state.frame_cycle(), 2);
+    current_cycle: i32,
+) -> Result<PrimarySequenceState, Box<dyn Error>> {
+    let mut state = PrimarySequenceState::start(sequence, current_cycle);
+    advance_dynamic_sequence(sequence, &mut state.playback, 4)?;
+    assert_eq!(state.playback.frame(), Some(1));
+    assert_eq!(state.playback.frame_cycle(), 2);
     Ok(state)
 }
 
 #[test]
-fn same_sequence_restart_mode_zero_preserves_exact_playback_state() -> Result<(), Box<dyn Error>> {
+fn same_sequence_restart_mode_zero_preserves_playback_and_cycle_start()
+-> Result<(), Box<dyn Error>> {
     let sequence = decoded_sequence(40, 0)?;
-    let previous = progressed_state(&sequence)?;
+    let mut previous = progressed_state(&sequence, 100)?;
+    previous.cycle_start = 77;
 
-    let (replacement, decision) =
-        replacement_primary_playback(&sequence, Some((SequenceId::new(40), previous)));
+    let (replacement, decision) = replacement_primary_sequence(&sequence, 200, Some(&previous));
 
     assert_eq!(decision, ReplacementPlaybackDecision::Preserved);
     assert_eq!(replacement, previous);
-    assert_eq!(replacement.frame(), Some(1));
-    assert_eq!(replacement.frame_cycle(), 2);
+    assert_eq!(replacement.playback.frame(), Some(1));
+    assert_eq!(replacement.playback.frame_cycle(), 2);
+    assert_eq!(replacement.cycle_start, 77);
     Ok(())
 }
 
 #[test]
-fn same_sequence_nonzero_restart_mode_restarts_from_initial_state() -> Result<(), Box<dyn Error>> {
+fn same_sequence_nonzero_restart_mode_restarts_primary_state() -> Result<(), Box<dyn Error>> {
     let source_sequence = decoded_sequence(41, 0)?;
     let replacement_sequence = decoded_sequence(41, 2)?;
-    let previous = progressed_state(&source_sequence)?;
+    let previous = progressed_state(&source_sequence, 100)?;
 
     let (replacement, decision) =
-        replacement_primary_playback(&replacement_sequence, Some((SequenceId::new(41), previous)));
+        replacement_primary_sequence(&replacement_sequence, 200, Some(&previous));
 
     assert_eq!(decision, ReplacementPlaybackDecision::Restarted);
-    assert_eq!(replacement, SequencePlaybackState::new());
-    assert_eq!(replacement.frame(), Some(0));
-    assert_eq!(replacement.frame_cycle(), 0);
+    assert_eq!(replacement.sequence_id, SequenceId::new(41));
+    assert_eq!(replacement.playback.frame(), Some(0));
+    assert_eq!(replacement.playback.frame_cycle(), 0);
+    assert_eq!(replacement.playback.completed_loops(), 0);
+    assert_eq!(replacement.cycle_start, 199);
     Ok(())
 }
 
@@ -102,26 +109,28 @@ fn same_sequence_nonzero_restart_mode_restarts_from_initial_state() -> Result<()
 fn different_sequence_id_restarts_even_when_restart_mode_is_zero() -> Result<(), Box<dyn Error>> {
     let old_sequence = decoded_sequence(42, 0)?;
     let new_sequence = decoded_sequence(43, 0)?;
-    let previous = progressed_state(&old_sequence)?;
+    let previous = progressed_state(&old_sequence, 100)?;
 
     let (replacement, decision) =
-        replacement_primary_playback(&new_sequence, Some((SequenceId::new(42), previous)));
+        replacement_primary_sequence(&new_sequence, 300, Some(&previous));
 
     assert_eq!(decision, ReplacementPlaybackDecision::Restarted);
-    assert_eq!(replacement, SequencePlaybackState::new());
+    assert_eq!(replacement.sequence_id, SequenceId::new(43));
+    assert_eq!(replacement.playback.frame(), Some(0));
+    assert_eq!(replacement.cycle_start, 299);
     Ok(())
 }
 
 #[test]
-fn inactive_previous_state_cannot_be_carried_forward() -> Result<(), Box<dyn Error>> {
+fn fresh_primary_state_uses_client_cycle_minus_one_with_java_wraparound()
+-> Result<(), Box<dyn Error>> {
     let sequence = decoded_sequence(44, 0)?;
-    let mut previous = progressed_state(&sequence)?;
-    previous.reset();
 
-    let (replacement, decision) =
-        replacement_primary_playback(&sequence, Some((SequenceId::new(44), previous)));
+    let (replacement, decision) = replacement_primary_sequence(&sequence, i32::MIN, None);
 
     assert_eq!(decision, ReplacementPlaybackDecision::Restarted);
-    assert_eq!(replacement, SequencePlaybackState::new());
+    assert_eq!(replacement.sequence_id, SequenceId::new(44));
+    assert_eq!(replacement.playback.frame(), Some(0));
+    assert_eq!(replacement.cycle_start, i32::MAX);
     Ok(())
 }
