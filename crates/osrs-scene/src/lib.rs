@@ -5,6 +5,7 @@
 //! storage, exact location placement, plane relinking, and queryable scene state
 //! while keeping renderer/editor policy outside this crate.
 
+pub mod dynamic_placement;
 pub mod normal_finalization;
 pub mod placement;
 pub mod placement_height;
@@ -15,6 +16,10 @@ pub mod side_effects;
 pub mod terrain;
 pub mod terrain_contract;
 
+pub use dynamic_placement::{
+    DynamicPlacementError, DynamicPlacementInput, ObjectDefinitionLookup,
+    ResolvedDynamicPlacement, resolve_dynamic_placement,
+};
 pub use normal_finalization::{
     BoundaryModelData, FloorDecorationModelData, GameObjectModelData, SceneModelDataGrid,
     SceneModelDataId, SceneNormalError, SceneNormalMergeReport,
