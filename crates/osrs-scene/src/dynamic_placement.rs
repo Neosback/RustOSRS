@@ -67,7 +67,9 @@ impl fmt::Display for DynamicPlacementError {
                 "object lookup returned definition {actual} for requested {requested}"
             ),
             Self::Height(error) => write!(formatter, "dynamic placement height failed: {error}"),
-            Self::Placement(error) => write!(formatter, "dynamic placement planning failed: {error}"),
+            Self::Placement(error) => {
+                write!(formatter, "dynamic placement planning failed: {error}")
+            }
         }
     }
 }
