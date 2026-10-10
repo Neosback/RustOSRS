@@ -45,3 +45,10 @@ The preferred sequence is:
 2. close `TERRAIN-004` production semantics with an exact fixture before or at the M10-to-M11 boundary;
 3. use those deterministic terrain colors in the first reference viewport;
 4. add an independent external visual oracle before using "1:1 visual parity" as a verified claim.
+
+## Progress update
+
+`TERRAIN-004` production core now exists (`osrs-scene::terrain_load`, `terrain_build`) and is
+differentially tested against the pinned client in ordinary Tier C. Remaining for `EXISTING`:
+loc-derived shadow-grid writer and a non-empty-shadow fixture (closure rule items 3 and 5 are
+partially met). The terrain capability stays `source_verified` until then.

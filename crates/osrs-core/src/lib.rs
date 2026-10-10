@@ -7,6 +7,7 @@
 
 pub mod animation;
 pub mod animation_pose;
+pub mod color_palette;
 pub mod contour;
 pub mod coordinate_math;
 pub mod coords;
@@ -24,3 +25,4 @@ pub mod orientation;
 pub mod provenance;
 pub mod sequence_replacement;
 pub mod static_entity;
+pub mod trig;

@@ -7,12 +7,10 @@
 //! base model is always cloned before any pose mutation.
 
 use crate::lighting::ReferenceLitModel;
-use std::{array, error::Error, fmt, sync::OnceLock};
+use crate::trig::trig_tables;
+use std::{error::Error, fmt};
 
 const SKIN_GROUP_COUNT: usize = 256;
-const TRIG_TABLE_SIZE: usize = 2048;
-const TRIG_SCALE: f64 = 65_536.0;
-const TRIG_STEP: f64 = 0.003_067_961_5;
 
 /// One skeleton transform slot referenced by a legacy animation frame.
 ///
@@ -101,11 +99,6 @@ struct TransformPivot {
     x: i32,
     y: i32,
     z: i32,
-}
-
-struct TrigTables {
-    sine: [i32; TRIG_TABLE_SIZE],
-    cosine: [i32; TRIG_TABLE_SIZE],
 }
 
 /// Clone a cached lit base model, apply one legacy frame in object-animation
@@ -341,8 +334,8 @@ fn rotate_groups(
         point.z = point.z.wrapping_sub(pivot.z);
 
         if angle_z != 0 {
-            let sine = tables.sine[angle_z];
-            let cosine = tables.cosine[angle_z];
+            let sine = tables.sine(angle_z);
+            let cosine = tables.cosine(angle_z);
             let new_x = sine
                 .wrapping_mul(point.y)
                 .wrapping_add(cosine.wrapping_mul(point.x))
@@ -355,8 +348,8 @@ fn rotate_groups(
         }
 
         if angle_x != 0 {
-            let sine = tables.sine[angle_x];
-            let cosine = tables.cosine[angle_x];
+            let sine = tables.sine(angle_x);
+            let cosine = tables.cosine(angle_x);
             let new_y = cosine
                 .wrapping_mul(point.y)
                 .wrapping_sub(sine.wrapping_mul(point.z))
@@ -369,8 +362,8 @@ fn rotate_groups(
         }
 
         if angle_y != 0 {
-            let sine = tables.sine[angle_y];
-            let cosine = tables.cosine[angle_y];
+            let sine = tables.sine(angle_y);
+            let cosine = tables.cosine(angle_y);
             let new_x = sine
                 .wrapping_mul(point.z)
                 .wrapping_add(cosine.wrapping_mul(point.x))
@@ -491,12 +484,4 @@ fn rotate_y_270_ccw(model: &mut ReferenceLitModel) {
         point.z = point.x;
         point.x = z.wrapping_neg();
     }
-}
-
-fn trig_tables() -> &'static TrigTables {
-    static TABLES: OnceLock<TrigTables> = OnceLock::new();
-    TABLES.get_or_init(|| TrigTables {
-        sine: array::from_fn(|index| (TRIG_SCALE * ((index as f64) * TRIG_STEP).sin()) as i32),
-        cosine: array::from_fn(|index| (TRIG_SCALE * ((index as f64) * TRIG_STEP).cos()) as i32),
-    })
 }

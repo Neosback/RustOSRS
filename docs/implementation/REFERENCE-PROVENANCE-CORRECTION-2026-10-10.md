@@ -33,7 +33,7 @@ The method performs, in source order:
 - overlay texture/sentinel/secondary-color handling;
 - `Scene.addTile(...)` calls;
 - `Scene.setTileMinPlane(...)` calls;
-- scene normal/finalization call `method5494(-50, -10, -50)`;
+- scene normal/finalization call `method5585(-50, -10, -50)`;
 - bridge `Scene.setLinkBelow(...)` calls.
 
 The previous statement that the pinned `class470` was unrelated text-layout code was caused by an incomplete inspection of the file. Most of the file is unrelated, but its final large static method is the terrain builder.

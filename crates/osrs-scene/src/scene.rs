@@ -137,6 +137,8 @@ impl SceneGameObject {
 pub struct SemanticTile {
     source_plane: Option<SourcePlane>,
     storage_plane: StoragePlane,
+    original_plane: StoragePlane,
+    min_plane: u8,
     pub terrain: Option<TerrainSurface>,
     floor_decoration: Option<ScenePlacedLoc>,
     boundary: Option<ScenePlacedLoc>,
@@ -150,6 +152,8 @@ impl SemanticTile {
         Self {
             source_plane,
             storage_plane,
+            original_plane: storage_plane,
+            min_plane: 0,
             terrain: None,
             floor_decoration: None,
             boundary: None,
@@ -165,6 +169,16 @@ impl SemanticTile {
 
     pub const fn storage_plane(&self) -> StoragePlane {
         self.storage_plane
+    }
+
+    /// Plane the tile was created on (`Tile.originalPlane`); unchanged by link-below.
+    pub const fn original_plane(&self) -> StoragePlane {
+        self.original_plane
+    }
+
+    /// Minimum viewing plane (`Tile.minPlane`) written by the terrain builder.
+    pub const fn min_plane(&self) -> u8 {
+        self.min_plane
     }
 
     pub const fn floor_decoration(&self) -> Option<&ScenePlacedLoc> {
@@ -364,6 +378,29 @@ impl SceneGrid {
         semantic_tile.storage_plane = plane;
         self.tiles[index] = Some(semantic_tile);
         Ok(())
+    }
+
+    /// `Scene.addTile`: create any missing tiles on planes `plane..=0` at this location, then
+    /// install the terrain surface on the tile at `plane`.
+    pub fn add_terrain_tile(
+        &mut self,
+        plane: StoragePlane,
+        tile: SceneTile,
+        surface: TerrainSurface,
+    ) -> Result<(), SceneGridError> {
+        for index in (0..=plane.index().get()).rev() {
+            let lower = storage_plane_from_index(index)?;
+            self.ensure_tile(lower, tile)?;
+        }
+        self.ensure_tile(plane, tile)?.terrain = Some(surface);
+        Ok(())
+    }
+
+    /// `Scene.setTileMinPlane`: only affects a tile that already exists.
+    pub fn set_tile_min_plane(&mut self, plane: StoragePlane, tile: SceneTile, min_plane: u8) {
+        if let Some(existing) = self.tile_mut(plane, tile) {
+            existing.min_plane = min_plane;
+        }
     }
 
     pub fn set_terrain(

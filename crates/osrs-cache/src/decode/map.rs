@@ -168,6 +168,7 @@ pub struct EncodedTerrainTile {
 pub struct DecodedTerrain {
     region: RegionCoord,
     tiles: Vec<EncodedTerrainTile>,
+    trailing_flags: u8,
 }
 
 impl DecodedTerrain {
@@ -177,6 +178,11 @@ impl DecodedTerrain {
 
     pub fn tiles(&self) -> &[EncodedTerrainTile] {
         &self.tiles
+    }
+
+    /// Trailing flags byte (`0` when the file ends right after the tile streams).
+    pub const fn trailing_flags(&self) -> u8 {
+        self.trailing_flags
     }
 
     pub fn len(&self) -> usize {
@@ -276,8 +282,43 @@ pub fn decode_terrain(
         }
     }
 
+    // After the 4 * 64 * 64 tile streams the build-241 file may carry one flags byte. Bit 0 marks
+    // a second 64 * 64 block of tile-opcode streams that the client reads and discards
+    // (`class337.method7281` / `class148.method3945`).
+    let trailing_flags = if reader.remaining() > 0 {
+        reader.read_u8()?
+    } else {
+        0
+    };
+    if trailing_flags & 1 != 0 {
+        for _ in 0..(u32::from(REGION_AXIS_TILES) * u32::from(REGION_AXIS_TILES)) {
+            skip_tile_opcode_stream(&mut reader)?;
+        }
+    }
+
     reader.finish()?;
-    Ok(DecodedTerrain { region, tiles })
+    Ok(DecodedTerrain {
+        region,
+        tiles,
+        trailing_flags,
+    })
+}
+
+/// Consume one tile-opcode stream without retaining it (`class148.method3945`).
+fn skip_tile_opcode_stream(reader: &mut BinaryReader<'_>) -> DecodeResult<()> {
+    loop {
+        match reader.read_u16_be()? {
+            0 => return Ok(()),
+            1 => {
+                reader.read_u8()?;
+                return Ok(());
+            }
+            2..=49 => {
+                reader.read_u16_be()?;
+            }
+            _ => {}
+        }
+    }
 }
 
 /// One location entry decoded from a region-local loc stream.

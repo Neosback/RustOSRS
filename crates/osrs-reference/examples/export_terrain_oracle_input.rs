@@ -30,7 +30,10 @@ fn hex(bytes: &[u8]) -> String {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 6 {
-        return Err("usage: export_terrain_oracle_input <cache-dir> <output> <base-x> <base-y> <rx,ry>...".into());
+        return Err(
+            "usage: export_terrain_oracle_input <cache-dir> <output> <base-x> <base-y> <rx,ry>..."
+                .into(),
+        );
     }
     let profile = TargetProfile::from_yaml_str(PROFILE_YAML)?;
     let cache = CacheRepository::open(&args[1], &profile)?;
@@ -55,14 +58,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let region = RegionCoord::new(rx.parse()?, ry.parse()?);
         let scene_x = region.x * 64 - base_x;
         let scene_y = region.y * 64 - base_y;
-        if scene_x + 64 <= 0 || scene_y + 64 <= 0 || scene_x >= SCENE_TILES || scene_y >= SCENE_TILES {
+        if scene_x + 64 <= 0
+            || scene_y + 64 <= 0
+            || scene_x >= SCENE_TILES
+            || scene_y >= SCENE_TILES
+        {
             eprintln!("region {spec} lies outside the scene; skipped");
             continue;
         }
         match cache.read_map_square(region) {
             Ok(square) => {
-                let _ = writeln!(out, "land {scene_x} {scene_y} {}", hex(&square.terrain.bytes));
-                eprintln!("region {spec}: {} terrain bytes", square.terrain.bytes.len());
+                let _ = writeln!(
+                    out,
+                    "land {scene_x} {scene_y} {}",
+                    hex(&square.terrain.bytes)
+                );
+                eprintln!(
+                    "region {spec}: {} terrain bytes",
+                    square.terrain.bytes.len()
+                );
             }
             Err(error) => {
                 eprintln!("region {spec}: no land data ({error:?}); exporting empty");

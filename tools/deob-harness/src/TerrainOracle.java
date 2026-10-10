@@ -19,7 +19,7 @@ import java.util.Map;
  *   brightness <double>              palette brightness (default 0.8)
  *   underlay <id> <hex>              raw FloorUnderlayDefinition bytes
  *   overlay <id> <hex>               raw FloorOverlayDefinition bytes
- *   texavg <id> <rgb>                texture average RGB (unlisted ids return (id * 0x010203) & 0xFFFFFF)
+ *   texavg <id> <rgb>                texture average RGB (unlisted ids return (id * 257) & 0xFFFF)
  *   noise <x> <y>                    noise offsets passed as loadTerrain's (var5,var6) base
  *   land <sceneX> <sceneY> <hex>     decoded terrain stream for one 64x64 region
  *   empty <sceneX> <sceneY>          region without land data (ScriptFrame.method749 fill)
@@ -107,7 +107,7 @@ public class TerrainOracle {
 				if (v == null) {
 					// Deterministic stub for ids not listed with a `texavg` record. The Rust port
 					// must use the same formula until real texture averages exist.
-					return (id * 0x010203) & 0xFFFFFF;
+					return (id * 257) & 0xFFFF;
 				}
 				return v;
 			}

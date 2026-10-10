@@ -130,6 +130,8 @@ pub struct FlatTerrainSurface {
     pub colors: TerrainCorners<i32>,
     pub texture_id: Option<i32>,
     pub is_flat: bool,
+    /// Tile-level palette RGB (`SceneTilePaint.rgb`, minimap-style; jitter dependent).
+    pub rgb: i32,
 }
 
 impl FlatTerrainSurface {
@@ -159,6 +161,7 @@ impl FlatTerrainSurface {
             colors,
             texture_id,
             is_flat,
+            rgb: 0,
         }
     }
 }

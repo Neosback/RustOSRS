@@ -109,8 +109,23 @@ Post-decode computes secondary HSL when present, then restores/computes primary 
 ## SPEC: TERRAIN-004
 
 **Domain:** `OSRS_SEMANTIC`  
-**Status:** `SOURCE_VERIFIED / IMPLEMENTATION_REQUIRED`  
+**Status:** `SOURCE_VERIFIED / CORE PORT EXISTING; LOC-SHADOW WRITER REQUIRED`  
 **Primary evidence:** pinned `class470.method9712(WorldView)` and `FriendSystem.addObjects(...)`
+
+### Implementation state (2026-10-10)
+
+`osrs-scene::terrain_load` and `osrs-scene::terrain_build` port the terrain loader (explicit and
+noise default heights, plane stacking, empty-region fill) and the complete `method9712` builder
+(slope light, shadow subtraction, radius-5 blend, overlay branches, tile emission, minimum plane,
+bridge link-below). `crates/osrs-reference/tests/terrain_oracle_diff.rs` compares them line by
+line against the real pinned client on real build-241 Lumbridge terrain (11,247 tiles, 935 shaped,
+40 linked-below) using `reference-fixtures/terrain/lumbridge-3x3.oracle-*`.
+
+Still required before this row is `EXISTING`: the `FriendSystem.addObjects` shadow-grid writer (it
+needs object definitions with `clipped` and placed model heights) and an oracle fixture that
+exercises non-empty shadow input. The shadow-grid loop for clipped game objects is inclusive
+(`0..=size` on both axes), covers a `(size + 1)` square of corner cells, and runs only when
+placement succeeded.
 
 ### Correction to the earlier provenance audit
 

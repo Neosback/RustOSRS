@@ -17,7 +17,9 @@ pub mod scene;
 pub mod semantic_hash;
 pub mod side_effects;
 pub mod terrain;
+pub mod terrain_build;
 pub mod terrain_contract;
+pub mod terrain_load;
 
 pub use dynamic_model::{
     DynamicLitModelLookup, DynamicModelError, DynamicModelInput, ResolvedDynamicModel,

@@ -96,6 +96,53 @@ fn rgb_fractions(rgb: Rgb24) -> (f64, f64, f64) {
     (hue / 6.0, saturation, lightness)
 }
 
+/// Sentinel returned by the terrain lightness adjusters for "no color" (`-1` / `-2` inputs).
+pub const TERRAIN_SKIP_COLOR: i32 = 12_345_678;
+
+/// `class39.method817`: pack 8-bit hue/saturation/lightness into the 16-bit terrain HSL,
+/// halving saturation above the pinned highlight lightness thresholds.
+pub const fn pack_terrain_hsl(hue: i32, mut saturation: i32, lightness: i32) -> i32 {
+    if lightness > 179 {
+        saturation /= 2;
+    }
+    if lightness > 192 {
+        saturation /= 2;
+    }
+    if lightness > 217 {
+        saturation /= 2;
+    }
+    if lightness > 243 {
+        saturation /= 2;
+    }
+    ((saturation / 32) << 7) + ((hue / 4) << 10) + lightness / 2
+}
+
+fn scale_lightness(packed: i32, light: i32) -> i32 {
+    let scaled = ((packed & 127) * light / 128).clamp(2, 126);
+    (packed & 65_408) + scaled
+}
+
+/// `class57.method2086`: rewrite the lightness bits of an underlay HSL (`-1` means absent).
+pub fn adjust_underlay_lightness(packed: i32, light: i32) -> i32 {
+    if packed == -1 {
+        TERRAIN_SKIP_COLOR
+    } else {
+        scale_lightness(packed, light)
+    }
+}
+
+/// `class212.method4685`: rewrite the lightness bits of an overlay HSL.
+///
+/// `-2` (hidden overlay) maps to the skip sentinel and `-1` (no color, textured overlay) maps
+/// to the clamped corner lightness alone.
+pub fn adjust_overlay_lightness(packed: i32, light: i32) -> i32 {
+    match packed {
+        -2 => TERRAIN_SKIP_COLOR,
+        -1 => light.clamp(2, 126),
+        _ => scale_lightness(packed, light),
+    }
+}
+
 const fn clamp_byte(value: i32) -> i32 {
     if value < 0 {
         0
@@ -109,6 +156,28 @@ const fn clamp_byte(value: i32) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terrain_hsl_pack_matches_pinned_golden_rows() {
+        assert_eq!(pack_terrain_hsl(0, 0, 0), 0);
+        assert_eq!(pack_terrain_hsl(255, 255, 255), 64_639);
+        assert_eq!(pack_terrain_hsl(128, 200, 100), 33_586);
+        assert_eq!(pack_terrain_hsl(10, 250, 220), 2_158);
+        assert_eq!(pack_terrain_hsl(200, 30, 250), 51_325);
+    }
+
+    #[test]
+    fn lightness_adjusters_match_golden_and_sentinels() {
+        assert_eq!(adjust_underlay_lightness(9_029, 96), 9_011);
+        assert_eq!(adjust_underlay_lightness(-1, 96), TERRAIN_SKIP_COLOR);
+        assert_eq!(adjust_overlay_lightness(-2, 96), TERRAIN_SKIP_COLOR);
+        assert_eq!(adjust_overlay_lightness(-1, 1), 2);
+        assert_eq!(adjust_overlay_lightness(-1, 500), 126);
+        assert_eq!(
+            adjust_overlay_lightness(9_029, 96),
+            adjust_underlay_lightness(9_029, 96)
+        );
+    }
 
     fn rgb(value: u32) -> Rgb24 {
         match Rgb24::new(value) {
