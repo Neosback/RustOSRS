@@ -64,7 +64,10 @@ impl fmt::Display for RenderCoordinateError {
             Self::YOverflow => "y",
             Self::ZOverflow => "z",
         };
-        write!(formatter, "renderer coordinate rebase overflow on {axis} axis")
+        write!(
+            formatter,
+            "renderer coordinate rebase overflow on {axis} axis"
+        )
     }
 }
 
