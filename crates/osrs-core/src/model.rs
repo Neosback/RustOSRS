@@ -7,7 +7,6 @@
 use crate::coords::ModelPoint;
 use crate::definitions::DefinitionIdentity;
 use crate::ids::{ModelId, TextureId};
-use crate::model_construction::AssembledModel;
 use crate::model_identity::ModelSemanticIdentity;
 use core::fmt;
 
@@ -272,7 +271,7 @@ impl SourceModel {
         self.data.face_alphas.as_deref()
     }
 
-    pub fn face_textures(&self) -> Option<&[Option<TextureId>]> {
+    pub fn face_textures(&self) -> Option<&[Option<TextureId>>] {
         self.data.face_textures.as_deref()
     }
 
@@ -303,11 +302,8 @@ impl SourceModel {
     /// Create an owned mutable semantic copy. Mutating the returned value cannot
     /// mutate this cached source model.
     pub fn to_working_copy(&self) -> WorkingModel {
-        let assembled = AssembledModel::from_source(self);
-        let semantic_identity = ModelSemanticIdentity::from_assembled(&assembled)
-            .expect("a single validated source model always yields a valid semantic identity");
         WorkingModel {
-            semantic_identity,
+            semantic_identity: ModelSemanticIdentity::from_source(self),
             data: self.data.clone(),
             normals: ModelNormalState::Uncomputed,
             animation_groups: None,
