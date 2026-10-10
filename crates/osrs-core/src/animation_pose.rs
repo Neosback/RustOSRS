@@ -46,8 +46,14 @@ pub struct LegacyAnimationFrame {
 /// to consume safely.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LegacyPoseError {
-    InvalidVertexSkin { vertex: usize, skin: i32 },
-    InvalidFaceSkin { face: usize, skin: i32 },
+    InvalidVertexSkin {
+        vertex: usize,
+        skin: i32,
+    },
+    InvalidFaceSkin {
+        face: usize,
+        skin: i32,
+    },
     SkeletonTransformOutOfRange {
         frame_transform: usize,
         skeleton_transform: usize,
@@ -395,9 +401,10 @@ fn alpha_groups(
     labels: &[u16],
     x: i32,
 ) -> Result<(), LegacyPoseError> {
-    let (Some(face_groups), Some(alphas)) =
-        (groups.face_alpha_groups.as_ref(), model.face_alphas.as_mut())
-    else {
+    let (Some(face_groups), Some(alphas)) = (
+        groups.face_alpha_groups.as_ref(),
+        model.face_alphas.as_mut(),
+    ) else {
         return Ok(());
     };
 
@@ -415,7 +422,7 @@ fn alpha_groups(
     Ok(())
 }
 
-fn for_each_vertex(mut groups: &AnimationGroups, labels: &[u16], mut apply: impl FnMut(usize)) {
+fn for_each_vertex(groups: &AnimationGroups, labels: &[u16], mut apply: impl FnMut(usize)) {
     for &label in labels {
         let label = usize::from(label);
         let Some(vertices) = groups.vertex_groups.get(label) else {
@@ -471,11 +478,7 @@ fn rotate_y_270_ccw(model: &mut ReferenceLitModel) {
 fn trig_tables() -> &'static TrigTables {
     static TABLES: OnceLock<TrigTables> = OnceLock::new();
     TABLES.get_or_init(|| TrigTables {
-        sine: array::from_fn(|index| {
-            (TRIG_SCALE * ((index as f64) * TRIG_STEP).sin()) as i32
-        }),
-        cosine: array::from_fn(|index| {
-            (TRIG_SCALE * ((index as f64) * TRIG_STEP).cos()) as i32
-        }),
+        sine: array::from_fn(|index| (TRIG_SCALE * ((index as f64) * TRIG_STEP).sin()) as i32),
+        cosine: array::from_fn(|index| (TRIG_SCALE * ((index as f64) * TRIG_STEP).cos()) as i32),
     })
 }
