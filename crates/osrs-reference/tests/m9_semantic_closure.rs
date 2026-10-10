@@ -1,20 +1,16 @@
-use osrs_cache::{
-    capability::TargetCapability,
-    profile::TargetProfile,
-};
+use osrs_cache::{capability::TargetCapability, profile::TargetProfile};
 use osrs_core::{
     coords::{LocalCoord, LocalPoint, MapTile, SceneTile},
     definitions::{LocType, ObjectPlacementFlags},
 };
 use osrs_scene::{
-    CollisionSideEffect, DefinitionSideEffectInputs, Footprint, PlacementInput,
-    ShapedTerrainInput, ShapedTerrainSurface, TerrainCorners, plan_placement, plan_side_effects,
+    CollisionSideEffect, DefinitionSideEffectInputs, Footprint, PlacementInput, ShapedTerrainInput,
+    ShapedTerrainSurface, TerrainCorners, plan_placement, plan_side_effects,
 };
 use std::{error::Error, io};
 
-const TARGET_PROFILE_YAML: &str = include_str!(
-    "../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml"
-);
+const TARGET_PROFILE_YAML: &str =
+    include_str!("../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
 
 #[test]
 fn coord_001_spans_world_local_footprint_and_terrain_positions() -> Result<(), Box<dyn Error>> {
