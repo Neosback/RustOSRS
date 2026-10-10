@@ -46,6 +46,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let mut renderer = SceneRenderer::new_headless()?;
+    // Zones are world-aligned; render relative to the window corner so camera values stay
+    // scene-local.
+    renderer.set_render_origin((window.base_x * 128, window.base_y * 128));
     renderer.set_textures(&texture_layers(definitions.textures()));
     renderer.upload_scene(&geometry);
     println!(
