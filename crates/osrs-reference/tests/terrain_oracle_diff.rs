@@ -12,19 +12,17 @@ use osrs_cache::decode::{
 };
 use osrs_cache::profile::TargetProfile;
 use osrs_core::color_palette::build_color_palette;
-use osrs_core::coords::{RegionCoord, SceneTile, StoragePlane};
+use osrs_core::coords::RegionCoord;
 use osrs_core::floor_color::UnderlayHsl;
 use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
-use osrs_scene::terrain::TerrainSurface;
+use osrs_scene::SceneGrid;
 use osrs_scene::terrain_build::{
     FloorLookup, OverlayFloor, TerrainJitter, build_terrain, link_bridge_tiles,
 };
 use osrs_scene::terrain_load::{
     RegionTerrain, RegionTerrainTile, RegionTileHeight, RegionTileOverlay, TerrainLoadGrid,
 };
-use osrs_scene::{SceneGrid, SemanticTile};
 use std::collections::HashMap;
-use std::fmt::Write as _;
 
 const PROFILE_YAML: &str =
     include_str!("../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
@@ -96,70 +94,6 @@ fn region_terrain(
         })
         .collect();
     Ok(RegionTerrain::new(tiles)?)
-}
-
-fn join<T: std::fmt::Display>(values: impl IntoIterator<Item = T>) -> String {
-    let mut out = String::new();
-    for (index, value) in values.into_iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        let _ = write!(out, "{value}");
-    }
-    out
-}
-
-fn format_tile(tag: &str, plane: u8, x: u32, y: u32, tile: &SemanticTile) -> String {
-    let mut line = format!(
-        "{tag} {plane} {x} {y} plane={} orig={} min={} linked={}",
-        tile.storage_plane().index().get(),
-        tile.original_plane().index().get(),
-        tile.min_plane(),
-        u8::from(tile.linked_below().is_some())
-    );
-    match &tile.terrain {
-        Some(TerrainSurface::Flat(flat)) => {
-            let _ = write!(
-                line,
-                " paint={},{},{},{} tex={} rgb={} flat={}",
-                flat.colors.southwest,
-                flat.colors.southeast,
-                flat.colors.northeast,
-                flat.colors.northwest,
-                flat.texture_id.unwrap_or(-1),
-                flat.rgb,
-                u8::from(flat.is_flat)
-            );
-        }
-        Some(TerrainSurface::Shaped(model)) => {
-            let textured = model.faces.iter().any(|face| face.texture_id.is_some());
-            let _ = write!(
-                line,
-                " model shape={} rot={} flat={} under={} over={} vx={} vy={} vz={} ca={} cb={} cc={} fx={} fy={} fz={} ft={}",
-                model.shape,
-                model.rotation,
-                u8::from(model.is_flat),
-                model.underlay_rgb,
-                model.overlay_rgb,
-                join(model.vertices.iter().map(|v| v.position.x.units())),
-                join(model.vertices.iter().map(|v| v.position.y.units())),
-                join(model.vertices.iter().map(|v| v.position.z.units())),
-                join(model.faces.iter().map(|f| f.colors[0])),
-                join(model.faces.iter().map(|f| f.colors[1])),
-                join(model.faces.iter().map(|f| f.colors[2])),
-                join(model.faces.iter().map(|f| f.indices[0])),
-                join(model.faces.iter().map(|f| f.indices[1])),
-                join(model.faces.iter().map(|f| f.indices[2])),
-                if textured {
-                    join(model.faces.iter().map(|f| f.texture_id.unwrap_or(-1)))
-                } else {
-                    "-".to_owned()
-                },
-            );
-        }
-        None => {}
-    }
-    line
 }
 
 #[test]
@@ -253,62 +187,21 @@ fn terrain_loader_and_builder_match_pinned_client_oracle() -> TestResult {
     output.apply_to_scene(&grid, &mut scene)?;
     link_bridge_tiles(&grid, &mut scene)?;
 
-    let mut expected_lines = ORACLE_OUTPUT.lines();
-    let _jitter_line = expected_lines.next();
-    let _min_plane_line = expected_lines.next();
-
-    // Heights.
-    for plane in 0..4 {
-        for x in 0..105 {
-            let expected = expected_lines.next().ok_or("oracle ended in heights")?;
-            let actual = format!(
-                "h {plane} {x} {}",
-                join((0..105).map(|y| grid.height(plane, x, y)))
-            );
-            assert_eq!(actual, expected, "height row plane {plane} x {x}");
-        }
+    // Everything after the two oracle header lines must match line for line.
+    let expected: Vec<&str> = ORACLE_OUTPUT.lines().skip(2).collect();
+    let actual = osrs_world::oracle_dump::terrain_body_lines(&grid, &scene);
+    for (index, (actual_line, expected_line)) in actual.iter().zip(expected.iter()).enumerate() {
+        assert_eq!(actual_line, expected_line, "oracle body line {index}");
     }
-    // Settings.
-    for plane in 0..4 {
-        for x in 0..104 {
-            let expected = expected_lines.next().ok_or("oracle ended in settings")?;
-            let actual = format!(
-                "s {plane} {x} {}",
-                join((0..104).map(|y| i32::from(grid.settings(plane, x, y) as i8)))
-            );
-            assert_eq!(actual, expected, "settings row plane {plane} x {x}");
-        }
-    }
-
-    // Tiles, in plane/x/y order, each followed by its linked-below tile.
-    let mut tile_count = 0_usize;
-    for plane_index in 0..4_u8 {
-        let plane = StoragePlane::new(plane_index).ok_or("plane")?;
-        for x in 0..104_u32 {
-            for y in 0..104_u32 {
-                let Some(tile) = scene.tile(plane, SceneTile::new(x, y)) else {
-                    continue;
-                };
-                tile_count += 1;
-                let expected = expected_lines.next().ok_or("oracle ended in tiles")?;
-                assert_eq!(
-                    format_tile("tile", plane_index, x, y, tile),
-                    expected,
-                    "tile p{plane_index} ({x},{y})"
-                );
-                if let Some(below) = tile.linked_below() {
-                    let expected = expected_lines.next().ok_or("oracle ended in below")?;
-                    assert_eq!(
-                        format_tile("below", plane_index, x, y, below),
-                        expected,
-                        "linked-below p{plane_index} ({x},{y})"
-                    );
-                }
-            }
-        }
-    }
-    assert_eq!(expected_lines.next(), None, "oracle has extra tiles");
-    assert!(tile_count > 10_000, "fixture should exercise a real scene");
+    assert_eq!(actual.len(), expected.len(), "oracle body line count");
+    assert!(
+        actual
+            .iter()
+            .filter(|line| line.starts_with("tile "))
+            .count()
+            > 10_000,
+        "fixture should exercise a real scene"
+    );
     Ok(())
 }
 

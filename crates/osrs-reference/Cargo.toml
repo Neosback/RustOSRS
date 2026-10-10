@@ -9,6 +9,7 @@ publish = false
 osrs-core = { path = "../osrs-core" }
 osrs-cache = { path = "../osrs-cache" }
 osrs-scene = { path = "../osrs-scene" }
+osrs-world = { path = "../osrs-world" }
 serde.workspace = true
 serde_yaml_ng.workspace = true
 sha2.workspace = true
