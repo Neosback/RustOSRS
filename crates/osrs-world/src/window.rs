@@ -71,6 +71,7 @@ mod tests {
             window.region_scene_origin(RegionCoord::new(49, 49)),
             (-40, -40)
         );
+        Ok(())
     }
 
     #[test]
