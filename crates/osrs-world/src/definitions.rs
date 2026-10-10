@@ -437,7 +437,15 @@ impl WorldDefinitions {
     pub fn region(&self, region: RegionCoord) -> Result<Option<RegionMap>, WorldError> {
         let square = match self.cache().read_map_square(region) {
             Ok(square) => square,
-            Err(error) if matches!(error.kind(), CacheErrorKind::MapResolution { .. }) => {
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    CacheErrorKind::MapResolution { .. }
+                        | CacheErrorKind::MissingGroup
+                        | CacheErrorKind::MissingMetadata
+                        | CacheErrorKind::MissingFile
+                ) =>
+            {
                 return Ok(None);
             }
             Err(error) => return Err(error.into()),

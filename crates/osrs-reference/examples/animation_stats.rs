@@ -18,19 +18,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sequences.insert(id, decode_sequence_definition(SequenceId::new(id), &file.bytes, &context, &src)?);
     }
     let (mut legacy, mut skeletal, mut both, mut none) = (0, 0, 0, 0);
+    let (mut with_step, mut without_step) = (0, 0);
+    let mut examples = Vec::new();
     for (id, file) in cache.read_group_files(2, 6)? {
         let src = ArchiveFileProvenance::new(2, 6, Some(id));
         let def = decode_object_definition(ObjectId::new(id), &file.bytes, &context, &src)?;
         let Some(animation) = def.animation else { continue };
         let Some(seq) = sequences.get(&animation.get()) else { none += 1; continue };
         match (!seq.frame_ids.is_empty(), seq.skeletal_animation.is_some()) {
-            (true, false) => legacy += 1,
+            (true, false) => {
+                legacy += 1;
+                if seq.frame_step.is_some() { with_step += 1 } else {
+                    without_step += 1;
+                    if examples.len() < 8 { examples.push((id, animation.get(), seq.frame_ids.len(), seq.max_loops)); }
+                }
+            }
             (false, true) => skeletal += 1,
             (true, true) => both += 1,
             (false, false) => none += 1,
         }
     }
     println!("animated object defs: legacy-frames={legacy} skeletal={skeletal} both={both} neither={none}");
+    println!("legacy: with frame_step={with_step} without={without_step}; examples (obj, seq, frames, max_loops): {examples:?}");
     let total = sequences.len();
     let skel = sequences.values().filter(|s| s.skeletal_animation.is_some()).count();
     println!("sequences: total={total} skeletal={skel}");

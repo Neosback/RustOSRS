@@ -631,7 +631,11 @@ fn finish(
                     LocRenderable::Lit(lit.len() - 1)
                 }
                 BuiltEntity::Data(data) => {
-                    if survives {
+                    // The client's normal reconciliation only converts boundary, floor
+                    // decoration, and game-object `ModelData`; a non-flat wall decoration stays
+                    // an unlit `ModelData` renderable, which draws nothing.
+                    let reconciled = !matches!(loc.plan.kind, PlacementKind::WallDecoration(_));
+                    if survives && reconciled {
                         LocRenderable::ModelData(finalizer.add_initial_model_data(data))
                     } else {
                         // A replaced or rejected ModelData entity never reaches finalization.

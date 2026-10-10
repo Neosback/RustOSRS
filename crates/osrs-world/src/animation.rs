@@ -77,6 +77,26 @@ impl AnimationSystem {
         self.regions.values().map(Vec::len).sum()
     }
 
+    /// Diagnostic: `(object-less summaries)` of instances whose playback has stopped, as
+    /// `(sequence id, frame count, frame_step, max_loops, total delay)`.
+    pub fn stopped(&self) -> Vec<(u32, usize, Option<u16>, u16, u32)> {
+        self.regions
+            .values()
+            .flatten()
+            .filter(|live| live.frame.is_none())
+            .map(|live| {
+                let seq = &live.instance.model.sequence;
+                (
+                    seq.identity.id.get(),
+                    seq.frame_ids.len(),
+                    seq.frame_step,
+                    seq.max_loops,
+                    seq.frame_delays.iter().map(|d| u32::from(*d)).sum(),
+                )
+            })
+            .collect()
+    }
+
     pub fn insert_region(&mut self, key: (i32, i32), instances: Vec<AnimatedInstance>) {
         if instances.is_empty() {
             self.regions.remove(&key);
@@ -108,6 +128,12 @@ impl AnimationSystem {
             let model = &live.instance.model;
             let result = advance_dynamic_sequence(&model.sequence, &mut live.state, cycles);
             let frame = match result {
+                Ok(_) if live.state.frame().is_none() => {
+                    // A sequence without a loop-back step finishes and the client stops it.
+                    // Placed scenery is expected to keep cycling, so restart it from frame 0.
+                    live.state = SequencePlaybackState::new();
+                    live.state.frame()
+                }
                 Ok(_) => live.state.frame(),
                 Err(_) => {
                     live.state.reset();

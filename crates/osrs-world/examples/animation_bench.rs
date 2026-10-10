@@ -11,7 +11,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for dx in 0..n {
         for dy in 0..n {
             let region = RegionCoord::new(x0 + dx, y0 + dy);
-            let Some(built) = build_region_geometry(&mut defs, region, TerrainPresentation::default())?
+            let Some(built) =
+                build_region_geometry(&mut defs, region, TerrainPresentation::default())?
             else {
                 continue;
             };
@@ -41,6 +42,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             vertices = geometry.vertex_count();
         }
     }
+    for _ in 0..3000 {
+        system.advance(1);
+    }
+    let mut stopped = system.stopped();
+    stopped.sort();
+    stopped.dedup();
+    println!("stopped after 3200 cycles (seq, frames, step, max_loops, total delay): {stopped:?}");
     println!(
         "200 cycles: {changed_ticks} with changes, last geometry {vertices} vertices, avg build {:.2} ms, wall {:?}",
         build_total / f64::from(changed_ticks.max(1)),

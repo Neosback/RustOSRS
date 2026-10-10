@@ -8,8 +8,8 @@ use osrs_render::{
     gpu::{FrameParams, ReferenceCamera, SceneRenderer},
 };
 use osrs_world::{
-    AnimationSystem, SceneWindow, TerrainPresentation, WorldDefinitions, build_world_scene, extract_animated_instances, extract_scene_geometry,
-    texture_layers,
+    AnimationSystem, SceneWindow, TerrainPresentation, WorldDefinitions, build_world_scene,
+    extract_animated_instances, extract_scene_geometry, texture_layers,
 };
 use std::{env, fs, io::Write, time::Instant};
 
