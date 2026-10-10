@@ -208,6 +208,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "osrs-render"
+version = "0.0.0"
+dependencies = [
+ "osrs-core",
+ "osrs-scene",
+]
+
+[[package]]
 name = "osrs-scene"
 version = "0.0.0"
 dependencies = [
