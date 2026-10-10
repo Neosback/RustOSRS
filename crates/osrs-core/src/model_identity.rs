@@ -187,8 +187,8 @@ mod tests {
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
     #[test]
-    fn direct_single_source_identity_exposes_only_its_real_model_id()
-    -> Result<(), Box<dyn Error>> {
+    fn direct_single_source_identity_exposes_only_its_real_model_id() -> Result<(), Box<dyn Error>>
+    {
         let source = source_model(100, "target-a")?;
         let identity = ModelSemanticIdentity::from_source(&source);
 
