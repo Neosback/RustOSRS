@@ -1,272 +1,161 @@
-# RuneLite GPU Pipeline — How It Works (File-by-File Deep Dive)
+# RuneLite GPU Pipeline Research Index
 
-Companion to `RUNELITE_RENDER_SOURCES.md` (Groups A + B). This doc explains **what
-each file does, how it does it, and why it exists** — the knowledge needed to
-reimplement the pipeline in Rust/wgpu/WGSL rather than transliterate Java.
+Status: **Historical deep-dive reconciled by M10 foundation audit**
 
-Primary tree: `/Users/tylercovalt/Documents/runelite-master`
-(`runelite-client/src/main/java/net/runelite/client/plugins/gpu/`).
-Staged shaders: `reference-shaders/runelite-gpu/`.
+This root document is research context, not a canonical RustOSRS renderer specification. The earlier version contained several overbroad conclusions about priority sorting, bridge/maplevel grouping, depth comparison, alpha depth writes, and sampling. Git history retains the full historical deep dive. Current implementation decisions must use the canonical docs listed at the end of this file.
 
-Notation: `Class.method()` = Java source. `→ Rust` = suggested port home.
+## Exact imported source identity
 
----
+Imported RuneLite tree:
 
-## 1. Frame lifecycle (the 10,000-ft view)
+`5afef996a992bacc73655860681269242e90d6e8`
 
+Key blobs:
+
+- `SceneUploader.java` `83ac701f1b2ee7a039879941bcc710527dbc54c1`
+- `ModelUploader.java` `35347963838d1be74deddd59027a73623d7872f3`
+- `GpuPlugin.java` `8c233cb381e288146af47ac375fa3dfc41a53d76`
+- `Zone.java` `80594f4ca2759a96c9a3a9800008790b91c5d692`
+- `TextureManager.java` `e830a518dc13c173f22f006fe52cb25e3c0fc8b3`
+- `Renderable.java` `bce439b4dd2000a98d83191f3d0348b64ff83b3c`
+- `vert.glsl` `d899cf3180295bd18d30adf901fd7a460e560318`
+- `frag.glsl` `0ca7180d50ef90e5083c85f7182e60521ef76baa`
+
+Until the exact upstream RuneLite commit for this imported tree is recorded, cite these RustOSRS tree/blob identities.
+
+## 1. Render modes
+
+The imported API defines:
+
+```text
+RENDERMODE_DEFAULT           = 0
+RENDERMODE_SORTED            = 1
+RENDERMODE_SORTED_NO_DEPTH   = 2
+RENDERMODE_UNSORTED          = 3
+RENDERMODE_UNSORTED_NO_DEPTH = 4
 ```
-login / region change
-  └─ SceneUploader.zoneSize()      → Zone.sizeO / sizeA (buffer pre-size)
-  └─ SceneUploader.uploadZone()    → Zone.vboO / vboA (opaque + alpha VBOs)
-       ├─ uploadZoneLevel(Roof)    → roof buckets, VIS_BELOW double pass
-       └─ uploadZoneTile()         → paint → model → wall×2 → decor×2 → ground
-                                      → gameobjects → bridge recursion
-  └─ Zone.convertForDraw()         → VAO-ready float layout
-every frame
-  ├─ GpuPlugin: camera → worldProj/entityProj, fog box, tick, brightness…
-  ├─ ModelUploader.uploadSortedModel() → dynamic/anim models (CPU priority sort)
-  ├─ VAO.draw()                    → glDrawArrays per Range batch
-  └─ Zone.renderAlpha()            → translucent pass (depth-sorted)
+
+These modes materially affect sorting/depth treatment. Do not describe RuneLite GPU as one universal model-rendering path.
+
+## 2. Priority sorting is path-specific
+
+`ModelUploader.uploadSortedModel(..., prioritySort)` only performs the 0..11 priority threshold/special-queue algorithm when `prioritySort` is true.
+
+The imported plugin enables that for `SORTED_NO_DEPTH`. Ordinary dynamic upload passes `false`; static opaque upload does not globally reproduce the software priority algorithm.
+
+Static alpha work in `Zone` sorts models by distance and faces by depth bucket rather than universally running the software priority queues.
+
+Therefore:
+
+- pinned OSRS `Model.method5946` remains the software/client priority oracle;
+- imported RuneLite GPU is a separate render-mode-specific oracle;
+- RustOSRS Reference mode may deliberately choose the software algorithm for priority-sensitive content.
+
+## 3. Static versus dynamic upload
+
+RuneLite demonstrates a useful architectural split between reusable uploaded scene geometry and runtime/dynamic model upload.
+
+RustOSRS adopts the architectural lesson, not every incidental implementation limit:
+
+- static/dynamic describes render stability;
+- full semantic face metadata remains retained;
+- renderer handles/material indices are not semantic texture IDs;
+- fixed RuneLite texture-array capacity is not cache truth.
+
+## 4. Bridge/maplevel correction
+
+RuneLite `SceneUploader` computes a local `maplevel` to choose tile-settings/roof grouping information.
+
+The geometry tile is still fetched from `tiles[level][x][y]`.
+
+A bridge therefore does **not** mean the tile geometry itself "joins the lower plane's upload pass." The grouping/settings lookup can reference another level while semantic storage identity remains unchanged.
+
+Target-client `Tile.minPlane` and `Tile.originalPlane` are separate semantic scene fields and must not be reduced to this RuneLite uploader strategy.
+
+## 5. Reverse-Z
+
+Imported `GpuPlugin` establishes:
+
+```text
+clear depth = 0
+comparison  = GL_GREATER
 ```
 
-Two principles explain every oddity below:
+The Reference comparison is strict greater, not greater-or-equal.
 
-1. **The scene is pre-baked, not drawn from objects.** `SceneUploader` flattens
-   the whole tile grid into two giant vertex buffers (opaque + alpha) once per
-   region change. Per-frame work is uniforms + dynamic models + draw calls.
-   Consequence for the editor: brush edits dirty a *zone* (8×8), never the scene.
-2. **Priority replaces depth.** OSRS content is authored coplanar (rugs on floors,
-   posters on walls). The 12 software priorities are resolved on the CPU
-   (`ModelUploader`) and as micro depth offsets (`abhsl` bias), not by the
-   depth buffer alone. Consequence: any port that "just uses `Less` depth" will
-   Z-fight everywhere. The depth system is reverse-Z end to end — clip control
-   `ZERO_TO_ONE` ("1 near 0 far"), depth func `GREATER`, clear depth `0`,
-   32-bit float depth — with coplanar separation from the **authored per-face
-   bias byte** (`screenPos.z += bias/128`, larger wins under `GREATER`) plus CPU
-   bucket order. Full mechanics: `RUNELITE_RUNTIME_RULES.md` R21.
+Imported projection is reverse-Z with no finite far plane. Authored face bias is applied before the perspective divide, so normalized depth separation decreases with distance.
 
-3. **Baked vs per-frame is a hard split.** Baked into VBOs: positions, `abhsl`,
-   static emission order, base UVs (plus slope shading and underlay blur, baked
-   earlier into HSL bits at scene build). Per frame: dynamic-model sort, zone
-   Range walk, fog, lighting conversion, UV scroll, all tint/brightness/fog
-   uniforms. Full inventory: R22. The editor must respect the same split —
-   brush edits re-bake zones, never poke uniforms to fake geometry.
+## 6. Alpha/depth correction
 
----
+The imported renderer does not establish a universal "alpha pass disables depth writes" rule.
 
-## 2. `GpuPlugin.java` — renderer backbone (what it owns and why)
+Ordinary depth-tested work retains normal depth writes unless the owning no-depth render mode/range says otherwise.
 
-**What it is:** the plugin entry point. It owns the GL context state, all shader
-programs, all uniforms, the render-thread pool, VAO lists, and the per-frame
-update path. It does *not* tessellate (that's `SceneUploader`/`ModelUploader`).
+RustOSRS must test this explicitly for any profile claiming RuneLite-like Reference behavior.
 
-**How it works, piece by piece:**
+## 7. Texture image construction
 
-- **Render threads (`RenderThread[] rts`).** Each thread has its own
-  `VAOList vaoO/vaoA`, scratch `tmp[3]`, and `ModelUploader`. `config.numThreads`
-  (default 3, max 15) controls the pool; changing it frees and rebuilds every
-  thread's VAOs, then re-issues `setupGpuFlags()` with
-  `DrawCallbacks.RENDER_THREADS(n)`. Why threads exist: dynamic-model sorting
-  (`uploadSortedModel`) is pure CPU math and parallelizes cleanly; the static
-  zone buffers are shared read-only.
-  → Rust: a staging-thread pool even if you start with 1 thread; per-thread
-  scratch + sorter instances from day one.
+Imported `TextureManager` uses 128x128 source texture images for this snapshot and produces RGBA data where:
 
-- **GPU flags (`setupGpuFlags()`).** Tells the (injected) client to route draws
-  through the GPU path: `GPU | ZBUF | RENDER_THREADS(n)` (count packed by the
-  `RENDER_THREADS()` macro, not a plain bit) plus optional
-  `NO_VERTEX_SNAPPING`. `removeVertexSnapping` trades pixel-jitter authenticity
-  for smooth camera motion — an editor viewport almost certainly wants it ON.
-  → Rust: a `RendererFlags` bitset with the same layout; no client needed.
-- **Scene contexts + draw passes.** One `SceneContext` per scene holds the
-  `zones` grid, its `projection`, camera, `minLevel/level/maxLevel`, and
-  `hideRoofIds`. Each frame answers three passes: `PASS_OPAQUE` (draw every
-  thread's `vaoO`; non-top-level views get `IDENTITY` entity projection),
-  `PRE_PASS_ALPHA` (unmap `vaoA`, upload `entityProj` + `entityTint` from the
-  scene's HSL overrides), `PASS_ALPHA` (drop temp models per zone, then
-  `Zone.renderAlpha`). The `useStaticUnsorted` fast path skips resorting static
-  alpha unless the scene carries HSL overrides.
+- source RGB `0` -> transparent;
+- nonzero RGB -> alpha `255`.
 
-- **Camera + uniforms (per frame).** Builds `worldProj` (static scene) and
-  `entityProj` (tinted/animated entities) via `Mat4`, uploads `base` (scene
-  origin for fog math), `tick` (texture scroll clock), `drawDistance`,
-  `expandedMapLoadingChunks`, `brightness`, fog triple
-  (`useFog = fogDepth > 0`, `fogDepth`, `fogColor`), `smoothBanding`,
-  `textureLightMode` (`brightTextures`), `entityTint` (HSL overrides),
-  colorblind pair. Why so many: each maps 1:1 to a `vert`/`frag` uniform —
-  the uniform table in §6 *is* the `GpuPlugin`→shader contract.
-  → Rust: one `CameraUniforms` struct uploaded per frame + one `FrameUniforms`.
+The staged fragment shader uses level-0 alpha for cutout/discard behavior.
 
-- **Texture animations.** `textureManager.computeTextureAnimations()` builds the
-  `textureAnimations[TEXTURE_COUNT]` vec2 array from `TextureProvider`: each entry
-  is the per-tick U/V scroll vector. `tick` advances it in-shader.
-  Why an array, not per-material time: one uniform update animates all water,
-  lava, and conveyors coherently.
-  → Rust: same array; advance `tick` on game-tick, not wall-clock (pausing the
-  editor must freeze water).
+The 128 size and imported count/capacity are renderer implementation facts, not universal cache-semantic limits.
 
-- **Top-level test.** `wvid == WorldView.TOPLEVEL` (value `0` in this tree)
-  selects the `SCENE_OFFSET` shift. Old code compared against `-1`; the constant
-  changed, the logic didn't.
-  → Rust: `if world_view == TOPLEVEL { base -= SCENE_OFFSET }`.
+## 8. Texture filtering and wrap
 
-**Why it matters:** every visual feature in `GpuPluginConfig` bottoms out here.
-If a setting has no uniform behind it, it does nothing — use §6 as the checklist.
+Correct audited summary:
 
----
+```text
+MAG                         = NEAREST
+MIN at filtering level 0    = NEAREST
+MIN at filtering level >=1  = NEAREST_MIPMAP_LINEAR
+imported default level      = 1
+S wrap                      = CLAMP_TO_EDGE
+T wrap                      = OpenGL default repeat in audited setup
+```
 
-## 3. `SceneUploader.java` — the flattener (how static geometry is baked)
+Calling this simply "nearest filtered" is incomplete.
 
-**What it is:** a one-way compiler from the tile grid to two vertex buffers.
-No GL calls inside (it writes into `GpuIntBuffer` views over the zone VBOs).
+## 9. Texture lighting/brightness
 
-**How `uploadZone` works (and why the order is load-bearing):**
+Brightness/color processing occurs in the shader-side renderer path. Textured model faces consume a baked lightness payload rather than recalculating OSRS semantic normal lighting in the shader.
 
-1. `zoneSize()` walks every tile of the 8×8 zone and counts faces into
-   `sizeO` (opaque) / `sizeA` (alpha): paint = 2 tris, model = `faceX.length`,
-   each renderable split by `faceTransparencies`. Why pre-size: GL buffers are
-   allocated once; over/under-run corrupts neighbors.
-2. Roof census: collect roof IDs per level into `rids/roofStart/roofEnd` ranges
-   so roof hiding later is a *range skip*, not a rebuild.
-3. Level 0 is special: after its own pass it re-uploads levels 1–3 with
-   `visbelow=true`, so geometry under upper floors (caves, dungeons) is drawn
-   as part of the ground pass. Levels 1–3 upload only their own pass.
-4. `uploadZoneLevelRoof()` applies the **bridge shift**: if
-   `settings[1][x][z] & BRIDGE`, `maplevel++` — the tile's *geometry* joins the
-   lower plane's pass while heights/collision stay upstairs. Then
-   `visbelow != VIS_BELOW` tiles are skipped, roof ID must match the bucket, and
-   `uploadZoneTile` runs.
+RustOSRS semantic lighting remains upstream. Renderer profiles may transform the resulting color only according to a separately tested material contract.
 
-**How `uploadZoneTile` works (order = draw-priority contract):**
-`SceneTilePaint` quad → `SceneTileModel` shape mesh → `WallObject` slot 1, then
-slot 2 → `DecorativeObject` renderable + renderable2 with `xOffset/yOffset` →
-`GroundObject` → each `GameObject` whose `min == this tile` (multi-tile objects
-appear on every covered tile's list; the filter guarantees single upload) → then
-`tile.getBridge()` recursed. Each object is gated by
-`renderCallbackManager.drawTile/drawObject` (editor: roof/plane filters plug in
-here). The paint path writes the 2-triangle quad with corner HSL + full-tile UVs;
-the model path converts scene-local verts to zone-local and skips `12345678`
-faces.
+## 10. UV preparation
 
-**How `uploadStaticModel` works:** JAU-rotate verts (`SINE`/`COSINE`, `>> 16`),
-translate by object origin, then emit each face as 3× (`pos`, `alphaBias|color`,
-`tex+1`, `u*256`, `v*256`). Transparency and depth-bias ride in the color int
-(`alphaBias`), texture `+1` reserves 0 for "untextured".
+`ModelUploader.computeFaceUvs` remains the imported differential oracle for:
 
-→ Rust: `scene_upload::{size_zone, upload_zone, upload_tile, upload_model}`;
-keep the function boundaries — they map to unit tests (bridge map, T-junction,
-multi-tile gate).
+- canonical no-selector mapping;
+- explicit texture-triangle basis mapping;
+- projected/dynamic texture-plane behavior.
 
----
+M10 CPU preparation already targets these structural contracts. Physical texture sampling remains later GPU work.
 
-## 4. `ModelUploader.java` — the sorter (how dynamic/priority drawing works)
+## 11. What this import can and cannot prove
 
-**What it is:** the CPU half of the priority system, used for animated, dirty, or
-otherwise non-baked models (players, NPCs, animating locs, temp edits).
+The imported RuneLite tree can prove facts about that imported renderer snapshot.
 
-**How `uploadSortedModel` works:**
+It does not automatically prove:
 
-1. Rotate + translate verts to world; project each through `Projection`; **cull
-   the whole model if any `p[2] < 50`** (behind/inside camera — cheap reject).
-2. Backface-cull per triangle in *projected* space
-   (`(aX-bX)*(cY-bY)-(cX-bX)*(aY-bY) > 0`), bucket survivors by mean depth into
-   `zsortHead/Tail/Next` chains over a `MAX_DIAMETER 6000` range.
-3. If the model has no priorities (or sorting disabled): emit far→near.
-   Otherwise the 12-bucket interleave: faces accumulate in
-   `orderedFaces[pri]` with distance sums in `lt10` and exact distances for
-   pri-10/11 in `eq10/eq11`; running averages `avg12/avg34/avg68` decide where
-   the pri-10, then pri-11, faces inject (at the pri-0/3/5 boundaries).
-   Each face lands in the opaque or alpha buffer by its transparency bit.
-4. UVs come from `computeFaceUvs` (tangent/bitangent/normal frame + camera-ray
-   projection for textured faces; constant 0/1 triangle otherwise), and colors
-   pass through `interpolateHSL` unless textured, then `faceTransparency`
-   merges model-wide and per-face alpha.
+- exact OSRS software renderer behavior;
+- behavior of a different RuneLite upstream commit;
+- that historical shader files in another staged tree are actually loaded by this imported October plugin;
+- external visual parity of RustOSRS without an independently generated capture.
 
-**Why two sorters exist conceptually:** static geometry is pre-sorted at bake
-time; anything that moves must be re-sorted per frame against the camera. The
-editor needs both: baked zones for the map, the dynamic path for ghosts,
-previews, water planes, and animated locs.
+## Canonical RustOSRS renderer documents
 
-→ Rust: `priority_sort::{sort_model, compute_face_uvs, interpolate_hsl}`;
-the `priority_render.glsl` `priority_map` function is the same algorithm in GLSL
-form — keep them side by side and test with identical inputs.
+Use these for implementation decisions:
 
----
-
-## 5. `Zone.java` + `RegionManager.java` — the streaming layer
-
-**What `Zone` is:** one 8×8 chunk's worth of GPU buffers plus the metadata to
-draw subsets: `vboO/vboA` (opaque/alpha), `levelOffsets[4]` (per-plane draw
-ranges), roof ranges, `alphaModels` (translucent models with packed faces for
-the alpha pass), and `dirty/invalidate/cull` lifecycle flags.
-
-**How it works:** upload fills the two VBOs in staging layout (`VERT_SIZE 20`:
-short vec4 pos + int `abhsl` + short vec4 id/uv); `convertForDraw()` swizzles to
-the `VAO` draw layout (`VERT_SIZE 24`: float vec3 + int + short vec4). Draws use
-the level/roof ranges so plane toggles and roof hiding never re-upload. The
-alpha-model cache is mutex-guarded because render threads share zones.
-
-**What `RegionManager`/`Region`/`Regions` are:** the region-ID lookup plus the
-`hideUnrelatedMaps` pruner. `Regions` parses `regions.txt`; `prepare(scene)`
-deletes every 8×8 chunk whose region ID differs from the center region (skipped
-for instances or when the setting is off). There is no dirty queue here —
-dirty tracking lives on `Zone` (`dirty`/`invalidate`/`cull`).
-
-→ Rust: `region_manager::{RegionManager}` (lookup + hide-unrelated cull); the
-dirty→reupload→`convertForDraw` cycle *is* the brush-edit pipeline.
-
----
-
-## 6. Buffers, math, and shader plumbing
-
-**Buffers (`GpuIntBuffer`, `GpuFloatBuffer`, `GLBuffer`, `VBO`, `VAO`).**
-`GpuIntBuffer.put22224/put2222` and `putfff4` are the *only* legal writers —
-they encode the ABI: position ints or floats, then `abhsl`, then `(tex+1, u, v)`.
-`GLBuffer`/`VBO` own GL memory (orphaning on resize); `VAO` owns attribute
-pointers + the `Range` batch list that merges consecutive draws sharing
-`(projection, renderMethod)`. Get one stride wrong and UVs decode as colors.
-
-**`Mat4` / `Shader` / `Template`.** `Mat4` builds view/proj (plus `IDENTITY`);
-`Shader` compiles/links (`add()` units + `compile()`); `Template.process()`
-expands `#include "file"` lines, which is how generated snippets
-(`texture_config` with `TEXTURE_COUNT = 256`, `sampling_mode` from
-`uiScalingMode`, `colorblind_mode`) and `hsl_to_rgb.glsl` land inside
-`vert`/`frag`. A WGSL port needs the same tiny preprocessor.
-
-**`TextureManager`.** Builds the texture array from `TextureProvider` (palette
-scaling/brightness included) and the per-tick scroll vectors. Frozen water =
-this file not ticked; reversed scroll = U/V direction flipped; gray materials =
-tint not applied.
-
-**Uniform table (the full contract — every row needs a Rust counterpart):**
-
-| Uniform | Producer | Consumer | Effect if wrong |
-|---|---|---|---|
-| `worldProj` / `entityProj` | `GpuPlugin` via `Mat4` | `vert` | everything misplaced / tinted entities unprojected |
-| `entityTint` | `GpuPlugin` (HSL overrides) | `vert` | override entities wrong color |
-| `base` | `GpuPlugin` (scene base coords — added to **every** vertex position as `vert = vertf + base`, and anchors the fog box; location fetched as `uniBase`, confirm the write path during port) | `vert` positions + fog | whole scene offset / fog anchored wrong |
-| `tick` + `textureAnimations[]` | `TextureManager` + tick clock | `vert` UVs | frozen/reversed water, lava, conveyors |
-| `drawDistance`, `expandedMapLoadingChunks` | config | `vert` fog box | popping edges, fog over unloaded chunks |
-| `useFog`, `fogDepth`, `fogColor` | config | `vert`→`frag` | no fog / wrong color / depth ignored |
-| `brightness` | config | `vert`+`frag` | dark/bright mismatch between terrain and textures |
-| `smoothBanding` | config | `frag` | color banding on gradients |
-| `textureLightMode` | `brightTextures` | `frag` | washed-out or muddy textures |
-| `colorblindIntensity` | config | `frag` via `colorblind.glsl` | over/under-corrected output |
-
----
-
-## 7. Config features and their rendering meaning (`GpuPluginConfig`)
-
-- `drawDistance` + `expandedMapLoadingZones` + `hideUnrelatedMaps`: resident-set
-  size and the fog box that hides its edge. Editor needs all three (large-map
-  editing without fog walls).
-- `fogDepth` (`0` = off), `smoothBanding`, `brightTextures`,
-  `antiAliasingMode`, `anisotropicFilteringLevel`, `uiScalingMode`: quality
-  ladder — implement in this order.
-- `colorBlindMode` + `colorBlindIntensity`: post-mix correction; intensity
-  defaults to 100.
-- `removeVertexSnapping`: smooth camera vs authentic jitter — default ON for an
-  editor.
-- `numThreads`: render-thread count (3 default, 15 max).
-- `unlockFps`/`vsyncMode`/`fpsTarget`: presentation only; still wire them so the
-  viewport behaves.
+- `docs/specs/face-materials.md`
+- `docs/specs/planes-bridges.md`
+- `docs/adr/ADR-0004-reverse-z-raster-conventions.md`
+- `docs/adr/ADR-0005-zone-compiled-hybrid-rendering.md`
+- `docs/blueprint/12-GPU-DATA-PASSES.md`
+- `docs/blueprint/16-VERIFICATION-ARCHITECTURE.md`
+- `docs/verification/SOURCE-PINS.md`
+- `docs/verification/PARITY-MATRIX.md`
+- `docs/implementation/M10-FOUNDATION-AUDIT.md`
