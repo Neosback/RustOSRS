@@ -6,11 +6,12 @@ Primary source pins:
 
 - `DynamicObject.java` blob `3ff5ba2c1c4fb4cc914326cc70223720d5f2e77d`
 - `Scene.java` blob `f15260a63103952fe8f5ffbdb62f5c7c39d94565`
+- `Tile.java` blob `74c221f904f8b4748a7733eeade057934f1e0879`
 - `Tiles.java` blob `e4655da97d297f3d4fb53e9e7ae9816f1bdd5790`
+- `class470.java` blob `1cd9cad5cb4be865dcae94dc633bba821644dc84`, symbol `method9712(WorldView)`
 
-Independent October RuneLite API corroboration:
+Independent imported RuneLite corroboration:
 
-- `Tile.java` and `Scene.java` in the imported `runelite-master/` tree
 - `SceneUploader.java` blob `83ac701f1b2ee7a039879941bcc710527dbc54c1`
 
 ## SPEC: PLANES-001
@@ -18,35 +19,20 @@ Independent October RuneLite API corroboration:
 **Domain:** `OSRS_SEMANTIC`  
 **Status:** `VERIFIED`
 
-### Required concept separation
-
-RustOSRS must not represent all plane behavior with a single undifferentiated integer.
-
-The semantic scene needs distinguishable concepts for at least:
+RustOSRS must not model plane behavior with one undifferentiated integer. The semantic scene distinguishes at least:
 
 - encoded/source plane from map-location data;
 - collision plane used for collision-map updates;
-- scene/storage plane after bridge relinking;
-- render/height level used to obtain terrain heights where applicable;
+- storage plane after bridge relinking;
+- height/render sampling plane where the owning path requires it;
+- `Tile.plane`, the mutable scene plane after relinking;
+- `Tile.originalPlane`, the tile's construction-plane provenance;
+- `Tile.minPlane`, the client visibility-floor constraint;
 - linked-below tile relation.
 
-A renderer-specific roof/VIS_BELOW grouping level is a separate derived concern and is not part of this semantic plane identity.
+Renderer roof grouping remains a derived renderer concern, but `originalPlane` and `minPlane` are not merely RuneLite GPU conveniences. They exist in the pinned game-client scene model and participate in client traversal/visibility.
 
-### Invariants
-
-No helper named generically `bridge_adjust_plane()` may be used for all of these responsibilities. Every call site must identify which plane domain it requests.
-
-### Failure signature
-
-Objects appear on the correct visual level but collide on the wrong level, bridge tiles disappear, height sampling uses an unrelated plane, or editing/export changes bridge structure.
-
-### Required tests
-
-Strongly typed/newtype plane-domain tests or equivalent API-level compile-time/runtime guardrails plus a bridge fixture exercising all listed plane concepts.
-
-### Related specs
-
-`PLANES-002`, `PLANES-003`, `LOC-PLACEMENT-003`.
+No generic `bridge_adjust_plane()` may stand in for these distinct contracts.
 
 ---
 
@@ -57,35 +43,17 @@ Strongly typed/newtype plane-domain tests or equivalent API-level compile-time/r
 
 ### Initial decoded placement and collision plane
 
-The decoded location retains its encoded plane for the initial scene-placement call.
+The decoded location retains its encoded plane for the scene-placement call.
 
-Before placement, the audited loader checks bridge bit `2` in tile settings plane `1` at the target tile. When that bit is set, collision processing uses:
+Before placement, the audited loader checks bridge bit `2` in tile-settings plane `1`. When set, collision processing uses:
 
 ```text
 collisionPlane = encodedPlane - 1
 ```
 
-when the result is valid.
+when valid.
 
-This collision adjustment does not rewrite the encoded/source placement plane passed into the scene builder.
-
-### Invariants
-
-- bridge collision adjustment is not evidence for a universal render or height-plane adjustment;
-- collision map may be absent when the adjusted result is invalid;
-- source plane remains available for deterministic rebuild/export.
-
-### Failure signature
-
-Bridge scenery blocks movement on the wrong floor, or editor round-trips rewrite loc planes merely because collision is projected downward.
-
-### Required tests
-
-Encoded planes `0..3` with bridge bit off/on, verifying collision-plane result and unchanged source placement plane.
-
-### Related specs
-
-`PLANES-001`, `LOC-PLACEMENT-005`.
+This collision adjustment does not rewrite encoded/source placement identity and is not a universal height/render/storage adjustment.
 
 ---
 
@@ -95,63 +63,71 @@ Encoded planes `0..3` with bridge bit off/on, verifying collision-plane result a
 **Status:** `VERIFIED`  
 **Primary evidence:** `Scene.setLinkBelow(x, y)`
 
-### Required bridge relinking
+For a linked-below coordinate, the target operation structurally shifts scene storage:
 
-For a tile coordinate selected for link-below processing, the audited scene operation structurally shifts scene tile references:
+- old plane `1` tile -> storage plane `0`;
+- old plane `2` tile -> storage plane `1`;
+- old plane `3` tile -> storage plane `2`;
+- each moved tile's mutable `plane` decrements;
+- qualifying rooted game objects decrement their stored plane;
+- the old plane-0 tile becomes the new plane-0 tile's `linkedBelowTile`;
+- old plane-3 storage clears.
 
-- previous plane `1` tile becomes storage plane `0`;
-- previous plane `2` tile becomes storage plane `1`;
-- previous plane `3` tile becomes storage plane `2`;
-- moved tile plane values decrement accordingly;
-- qualifying game objects rooted at that coordinate have their stored plane decremented;
-- the previous plane-0 tile becomes the new plane-0 tile's linked-below tile;
-- the previous plane-3 slot is cleared after the shift.
+If needed, a new plane-0 tile is created before linking the old plane-0 tile below it.
 
-If the new plane-0 slot would otherwise be null, a plane-0 tile is created before linking the old plane-0 tile beneath it.
+`originalPlane` is intentionally distinct from this mutable storage/plane shift and remains provenance for later visibility/roof logic.
 
-### Invariants
-
-Link-below is structural semantic state. It cannot be represented only by a visibility flag in the renderer.
-
-### Failure signature
-
-Duplicated bridge surfaces, missing lower tile, objects left one plane above their tile, bridge selection/edit operations targeting the wrong storage tile.
-
-### Required tests
-
-Four-plane synthetic tile column with tagged game objects proving exact reference movement, linked-below identity, and top-slot clear.
-
-### Related specs
-
-`PLANES-001`, `PLANES-004`.
+Link-below is structural semantic state, not a renderer-only visibility flag.
 
 ---
 
 ## SPEC: PLANES-004
 
-**Domain:** `OSRS_SEMANTIC` for the boundary; RuneLite map-level calculation is `RENDERER_POLICY` evidence  
-**Status:** `VERIFIED` separation
+**Domain:** `OSRS_SEMANTIC` for tile visibility fields; imported RuneLite upload grouping is `RENDERER_POLICY` corroboration  
+**Status:** `SOURCE_VERIFIED / IMPLEMENTATION_PARTIAL`
 
-### Required boundary
+### `Tile.minPlane`
 
-The semantic scene may expose a render/height level distinct from storage plane and a linked-below relation.
+The pinned terrain builder assigns `minPlane` after terrain tile construction:
 
-RuneLite's later GPU uploader additionally derives a local map level for `VIS_BELOW` and roof-range grouping by checking bridge state. That calculation is an upload/visibility strategy and must not be reused as the canonical collision/source/storage plane rule.
+```text
+if tileSettings[plane][x][y] has bit 8:
+    minPlane = 0
+else if plane > 0 and tileSettings[1][x][y] has bridge bit 2:
+    minPlane = plane - 1
+else:
+    minPlane = plane
+```
 
-Likewise, RuneLite roof IDs and roof-removal ranges are derived runtime/editor-friendly infrastructure, not cache loc plane data.
+The pinned `Scene` later checks tile `minPlane` against the current scene plane while deciding whether a tile can participate in draw traversal. Therefore `minPlane` is target client scene state and belongs on the semantic side of the renderer boundary.
 
-### Invariants
+### `Tile.originalPlane`
 
-`osrs-core`/`osrs-scene` must not depend on RuneLite roof-id generation. `osrs-render` may derive comparable grouping from semantic scene data in Checkpoint 5.
+`Tile` stores both mutable `plane` and immutable construction-time `originalPlane`. Bridge relinking can move/decrement the mutable plane while original-plane identity remains available for later scene/render logic.
 
-### Failure signature
+RustOSRS must not collapse these values if a later visibility path requires the distinction.
 
-A change in renderer roof-removal strategy unexpectedly changes loc placement, collision, or saved map plane values.
+### Imported RuneLite `maplevel`
 
-### Required tests
+RuneLite's `SceneUploader` derives a local `maplevel` for tile-settings/roof-range lookup. A bridge can change which original-plane settings and roof arrays are consulted.
 
-Semantic scene tests should remain unchanged when renderer roof grouping is disabled/replaced.
+This does **not** mean RuneLite moves the uploaded tile geometry into a lower storage-plane pass. The uploader still fetches geometry from `tiles[level][x][y]`; `maplevel` changes associated visibility/settings lookup.
+
+Therefore:
+
+- semantic source/collision/storage/min/original-plane identities remain authoritative;
+- renderer roof grouping may derive additional local grouping values;
+- renderer grouping must not mutate semantic plane state.
+
+### Implementation gate
+
+Before M10/M11 plane handling is considered closed, exact tests must prove:
+
+1. `minPlane` construction for ordinary, bit-8, and bridge-bit cases;
+2. `originalPlane` survives link-below storage movement;
+3. renderer grouping may inspect these values without changing semantic scene hashes;
+4. RuneLite-style `maplevel` affects settings/roof grouping only and does not rewrite tile storage identity.
 
 ### Related specs
 
-`PLANES-001`, future renderer ADR for roof grouping/removal.
+`PLANES-001`, `PLANES-003`, `TERRAIN-004`, renderer visibility/roof policy.
