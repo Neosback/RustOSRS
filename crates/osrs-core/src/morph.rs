@@ -41,7 +41,10 @@ impl fmt::Display for MorphResolveError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::MissingVarbitDefinition(id) => {
-                write!(formatter, "missing varbit definition {id} for morph selection")
+                write!(
+                    formatter,
+                    "missing varbit definition {id} for morph selection"
+                )
             }
             Self::VarbitDefinitionMismatch { requested, actual } => write!(
                 formatter,
@@ -149,8 +152,7 @@ mod tests {
     use crate::provenance::{CacheFingerprint, ProfileDigest, TargetProvenance};
     use std::collections::BTreeMap;
 
-    const PROFILE_DIGEST: &str =
-        "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
+    const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
     const CACHE_FINGERPRINT: &str =
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
@@ -189,18 +191,11 @@ mod tests {
         }
     }
 
-    fn morphs(
-        transform_varbit: Option<VarbitId>,
-        transform_varp: Option<VarpId>,
-    ) -> ObjectMorphs {
+    fn morphs(transform_varbit: Option<VarbitId>, transform_varp: Option<VarpId>) -> ObjectMorphs {
         ObjectMorphs {
             transform_varbit,
             transform_varp,
-            transforms: vec![
-                Some(ObjectId::new(100)),
-                Some(ObjectId::new(101)),
-                None,
-            ],
+            transforms: vec![Some(ObjectId::new(100)), Some(ObjectId::new(101)), None],
             fallback: Some(ObjectId::new(200)),
         }
     }
