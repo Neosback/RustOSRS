@@ -27,8 +27,8 @@ pub use normal_finalization::{
 };
 pub use pending_replacement::{
     PendingInsertion, PendingRemoval, PendingReplacementPlan, PendingReplacementPlanError,
-    PendingReplacementReport, PendingSceneCategory, PendingSceneMutation, apply_pending_replacement,
-    plan_pending_replacement,
+    PendingReplacementReport, PendingSceneCategory, PendingSceneMutation,
+    apply_pending_replacement, plan_pending_replacement,
 };
 pub use placement::{
     BoundaryPlan, CARDINAL_OFFSET_X, CARDINAL_OFFSET_Z, DIAGONAL_OFFSET_X, DIAGONAL_OFFSET_Z,
