@@ -1,14 +1,15 @@
-//! Explicit target capability diagnostics for revision-gated behavior.
+//! Explicit target capability diagnostics for gated behavior.
 //!
-//! M9 must not let a blocked target feature disappear behind an absent code path.
-//! These diagnostics expose the target profile's revision gates in a typed form
-//! that later renderer/editor layers can surface without reinterpreting profile
-//! strings or duplicating gate names.
+//! M9 established that a target feature must not disappear behind an absent code
+//! path. A gate may represent revision compatibility, implementation readiness,
+//! or another explicit target-profile constraint. These typed diagnostics let
+//! renderer/editor layers surface that state without reinterpreting profile
+//! strings or duplicating stable gate names.
 
 use crate::profile::TargetProfile;
 
-/// Revision-sensitive target capabilities that downstream layers may need to
-/// surface as supported, required, blocked, or otherwise gated behavior.
+/// Target capabilities that downstream layers may need to surface as supported,
+/// required, blocked, or otherwise gated behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TargetCapability {
     ExtendedObjectModelIds,
@@ -58,7 +59,7 @@ impl TargetCapabilityDiagnostic<'_> {
 }
 
 impl TargetProfile {
-    /// Return the exact revision-gate diagnostic for a typed capability.
+    /// Return the exact target-profile diagnostic for a typed capability.
     ///
     /// Validated target profiles contain every gate in [`TargetCapability::ALL`].
     /// `None` remains explicit for callers that construct an unvalidated profile
