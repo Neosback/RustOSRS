@@ -14,6 +14,7 @@ mod mesh;
 mod priority;
 mod snapshot;
 mod uv;
+mod zone;
 
 pub use alpha::ReferenceFaceAlpha;
 pub use classification::{
@@ -34,4 +35,8 @@ pub use priority::{
 pub use snapshot::RenderSnapshot;
 pub use uv::{
     ReferenceFaceUvs, ReferenceUv, ReferenceUvError, ReferenceUvMode, prepare_reference_face_uvs,
+};
+pub use zone::{
+    RENDER_ZONE_SIZE_TILES, RenderTileBounds, RenderZoneError, RenderZoneKey, ZoneBuildTicket,
+    ZoneInvalidationTracker,
 };
