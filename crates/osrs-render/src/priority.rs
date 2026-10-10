@@ -90,7 +90,7 @@ pub fn prepare_reference_priority_order(faces: &[ReferencePriorityFace]) -> Refe
     let mut special_index = 0_usize;
     let mut ordered_face_indices = Vec::with_capacity(faces.len());
 
-    for priority in 0..10 {
+    for (priority, queue) in queues.iter().enumerate().take(10) {
         if let Some(threshold) = threshold_before_priority(priority, thresholds) {
             while special
                 .get(special_index)
@@ -101,7 +101,7 @@ pub fn prepare_reference_priority_order(faces: &[ReferencePriorityFace]) -> Refe
             }
         }
 
-        ordered_face_indices.extend(queues[priority].iter().map(|face| face.face_index));
+        ordered_face_indices.extend(queue.iter().map(|face| face.face_index));
     }
 
     ordered_face_indices.extend(special[special_index..].iter().map(|face| face.face_index));
