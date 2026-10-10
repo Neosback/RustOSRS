@@ -12,7 +12,7 @@ This file exists because M9 correctly recorded the implementation state known at
 |---|---|---|---|
 | `TERRAIN-004` source provenance | BLOCKED / revision-sensitive because builder source was thought missing | **VERIFIED source oracle**: `class470.method9712(WorldView)` at exact public pin | none for provenance |
 | `TERRAIN-004` Rust production | BLOCKED together with source uncertainty | **REQUIRED**: production builder and executable differential fixture do not exist yet | dedicated semantic closure before reference visual parity |
-| terrain target capability | blocked because implementation could not be promoted without source | **operationally blocked only because production implementation is absent** | flip capability state only when Rust builder/fixture exists |
+| terrain target capability | blocked because implementation could not be promoted without source | **`source_verified`**: exact oracle is pinned; this does not claim production support | keep production coverage separate and promote it only after Rust builder/fixture exists |
 | `PLANES-004` tile minimum plane | treated mainly as renderer/RuneLite grouping separation | **VERIFIED client scene behavior** for `Scene.setTileMinPlane`; RuneLite `maplevel` remains separate renderer policy | semantic exact fixture + renderer grouping fixture |
 | `FACE-002` software priority oracle | verified, renderer deferred | unchanged oracle; **captured RuneLite GPU dispatch is conditional**, not universal | M10/M12 classifier/render-mode proof |
 | `FACE-003` alpha sentinel scope | draw-time `-1` emphasized | **expanded** to include ModelData `-1 -> render type 2`, `-2 -> render type 3/gray 128`, plus separate draw-time `-1 -> 253` | production/extraction regressions |
@@ -22,9 +22,9 @@ This file exists because M9 correctly recorded the implementation state known at
 
 ## TERRAIN-004 closure rule
 
-Do not set the target profile's `terrain_color_builder` gate to supported merely because the source method has been found.
+The target profile's `terrain_color_builder` state is `source_verified` because its exact source oracle is known. That state is a provenance classification, not an implementation-readiness flag.
 
-It becomes supported only when all of the following are true:
+Production coverage becomes `EXISTING` only when all of the following are true:
 
 1. production Rust builder exists;
 2. exact source-derived fixture covers the core builder path;
@@ -33,7 +33,7 @@ It becomes supported only when all of the following are true:
 5. ordinary Tier C executes the production path;
 6. active specs and parity matrix can then promote production coverage to `EXISTING`.
 
-Until then, `blocked` means implementation unavailable, not source unknown.
+Until then, keep the capability state `source_verified` and the production status `REQUIRED` rather than conflating those two dimensions.
 
 ## Milestone consequence
 

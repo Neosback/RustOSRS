@@ -44,7 +44,7 @@ The source/provenance gate is now **VERIFIED**.
 
 The RustOSRS production implementation is still **REQUIRED**. No milestone may claim executable `TERRAIN-004` parity until the builder is ported and an exact fixture exercises the production implementation.
 
-The target-profile `terrain_color_builder` capability remains operationally blocked until that implementation exists, but its note must no longer say the source oracle is missing. `BLOCKED` now means "implementation unavailable for this target profile", not "source behavior unknown".
+The target-profile `terrain_color_builder` capability state is `source_verified`. That state means the exact source oracle is pinned; it does **not** mean the Rust production implementation exists. Production readiness remains tracked separately by the `TERRAIN-004` production status and executable verification coverage.
 
 ## C-2026-02: terrain jitter scope
 
@@ -158,7 +158,7 @@ P3 may be called externally corroborated only when the expected image or equival
 ## Immediate implementation consequences
 
 1. Correct active terrain/source documentation from `REVISION_SENSITIVE/BLOCKED BY MISSING SOURCE` to `VERIFIED SOURCE / IMPLEMENTATION REQUIRED`.
-2. Keep operational target capability blocked only until the Rust builder exists; update its diagnostic note to say the source is pinned.
+2. Keep the target capability state at `source_verified` while source provenance is the dimension it reports; do not use that state as a substitute for production implementation coverage.
 3. Port `class470.method9712` in a dedicated semantic checkpoint before claiming `TERRAIN-004` executable parity.
 4. Include clipping/shadow-grid inputs and tile minimum-plane output in that fixture family.
 5. Keep M10 priority preparation as the software-client Reference-profile oracle, while documenting that captured RuneLite GPU dispatch uses the sorter conditionally.
