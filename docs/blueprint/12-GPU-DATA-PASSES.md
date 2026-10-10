@@ -1,451 +1,284 @@
 # RustOSRS GPU Data and Render Pass Contracts
 
-Status: **Checkpoint 5 normative renderer blueprint**  
+Status: **Normative renderer blueprint, corrected by M10 foundation audit**  
 Decision class: `PROJECT_DECISION`
 
-This document defines the renderer-facing ABI between extracted OSRS scene data and `wgpu`. It is deliberately not an OSRS semantic specification.
+This document defines the renderer-facing ABI between extracted OSRS scene data and future `wgpu` realization. It does not redefine OSRS semantic truth.
 
-## 1. Principles
+## 1. Governing principles
 
-1. GPU formats are disposable derivatives.
-2. Semantic face metadata survives extraction until the renderer has consumed it.
-3. Static batching must not erase the information required for parity diagnostics.
-4. Dynamic ordering must not mutate the canonical mesh.
-5. The renderer must be able to rebuild every GPU resource from the current render extraction snapshot.
+1. GPU artifacts are disposable derivatives.
+2. Semantic face/plane/material metadata survives until the owning render policy consumes it.
+3. Static batching cannot erase parity or picking provenance.
+4. Ordered preparation never mutates canonical meshes.
+5. Every GPU resource is rebuildable from a current immutable extraction generation.
+6. OSRS software/client behavior and imported RuneLite GPU behavior are distinct reference targets and must be named explicitly.
 
-## 2. Canonical render mesh
+## 2. Canonical `RenderMesh`
 
-Before GPU packing, a renderer-owned `RenderMesh` representation must be able to express:
+Before GPU packing, renderer-owned CPU data must be able to express:
 
-- positions in render-local `f32` coordinates converted from exact semantic integer coordinates;
+- integer-derived renderer-local positions;
 - triangle indices;
-- color/HSL payload required by the current render profile;
-- semantic texture ID/material handle;
-- UV or texture-triangle inputs;
-- per-face alpha;
-- per-face priority or model default priority;
+- baked reference face colors/HSL payload;
+- semantic texture ID and renderer material handle;
+- UV/texture-triangle inputs;
+- raw signed face alpha;
+- face priority or model default priority;
 - authored face bias;
-- semantic/renderable ID;
-- optional normals/tangents for diagnostics/enhanced presentation;
-- flags such as hidden/suppressed face state already resolved by semantic construction.
+- original face render type;
+- semantic/renderable identity;
+- suppressed-face state via baked `c == -2` semantics;
+- plane/provenance needed for picking and diagnostics.
 
-No field above may be discarded solely because the first GPU pipeline does not use it yet.
+A GPU pipeline's first implementation may ignore some fields only after retaining them in CPU extraction.
 
 ## 3. Position conversion
 
-Semantic model/local coordinates remain integer through semantic construction.
+Semantic integer coordinates remain integer through semantic construction and placement.
 
-Render extraction converts them once to `f32` at the GPU boundary.
+Renderer extraction performs explicit origin rebasing while integer-exact, then converts to floating GPU positions at the GPU packing boundary.
 
-Rules:
+No hidden half-tile correction, corrective rotation, or semantic bridge adjustment is allowed in this conversion.
 
-- one semantic local unit maps to one render-space unit by default;
-- scene-origin rebasing is allowed to keep viewport-visible values numerically small;
-- rebasing must be represented as an explicit per-scene/per-zone origin, never baked back into semantic coordinates;
-- extraction must not apply hidden half-tile offsets or corrective rotations.
+## 4. Vertex/data formats
 
-A later global render scale may be introduced only if the conversion is explicit and tested.
+Static and dynamic paths use compatible logical material/color contracts even if physical buffers differ.
 
-## 4. Vertex formats
+Diagnostic streams remain separate so editor-only attributes do not bloat production static geometry.
 
-The renderer uses a small family of explicit vertex formats instead of one universal packed struct.
+Indexed rendering is the default. De-indexing is permitted only if provenance remains recoverable through side tables.
 
-### 4.1 Static scene vertex
+GPU-facing winding is normalized to CCW exactly once.
 
-Minimum logical fields:
+## 5. Face admission
 
-```text
-position      : vec3<f32>
-color_or_hsl  : u32
-material_id   : u32
-uv            : vec2<f32>
-face_meta     : u32
-```
+Before any draw packet is emitted:
 
-`face_meta` may pack renderer-consumed alpha/bias/diagnostic bits, but the CPU-side extraction retains the full semantic fields independently.
+- baked face color marker `c == -2` means suppressed and the face is not drawn in Reference mode;
+- flat marker `c == -1` remains a valid drawn-face state;
+- suppression is semantic output, not an alpha/blend optimization;
+- renderer classification cannot re-admit a suppressed triangle.
 
-### 4.2 Dynamic/ordered vertex
-
-Uses the same logical material/color contract as static geometry so static and dynamic paths shade consistently.
-
-Dynamic geometry may use a separate GPU buffer layout optimized for frequent upload.
-
-### 4.3 Diagnostic vertex streams
-
-Normals, wireframe edges, selection bounds, gizmos, and similar diagnostics use separate buffers/pipelines. They must not force production static geometry to carry editor-only attributes.
-
-## 5. Indexing
-
-Indexed triangle rendering is the default.
-
-The render compiler may de-index geometry when profiling shows a material performance advantage, but must retain object/face provenance through side tables.
-
-Canonical GPU-facing winding is normalized to **counter-clockwise front faces**.
-
-Any source-space conversion required to achieve that normalization happens exactly once during render extraction. Asset-specific mirroring remains semantic behavior under `MODEL-BUILD-*`; the renderer does not use negative-scale instance transforms as a substitute.
+This explicitly protects the target alpha/render-type sentinel behavior already implemented by `osrs-core::lighting`.
 
 ## 6. Material table
 
-Semantic texture IDs map through a renderer-owned material table.
+Semantic texture IDs map through renderer-owned `MaterialHandle` values.
 
-A material entry can contain:
+Material entries preserve:
 
-- source semantic texture ID;
-- texture page + layer;
-- sampler class;
-- animation vector/speed metadata;
-- reference brightness/sampling inputs;
-- enhanced-profile sampling options;
-- debug/provenance identity.
+- full-width texture identity;
+- source/composition metadata;
+- average RGB/opacity inputs;
+- animation direction/speed;
+- source sprite/color-transform metadata;
+- sampler/reference profile identity;
+- provenance.
 
-No fixed semantic assumption such as `TEXTURE_COUNT = 256` is allowed.
+No fixed RuneLite texture count is semantic truth.
 
 ## 7. Texture storage
 
-The baseline GPU texture system uses **paged 2D texture arrays**.
+The intended wgpu baseline uses paged 2D texture arrays where supported. Paging is renderer policy and must not impose a fixed semantic texture-ID range.
 
-Reasons:
+Adapters that cannot realize the selected path must choose an explicitly documented fallback or surface a capability diagnostic. Silent texture loss is prohibited.
 
-- OSRS reference textures are naturally same-dimension sampled images in the audited renderer path;
-- array layers avoid atlas bleeding and preserve wrap/animation behavior;
-- paging avoids treating one historical texture-count constant as a universal limit;
-- page size can respect adapter limits.
+## 8. Reference texture construction and sampling
 
-The material table maps semantic texture IDs to page/layer coordinates.
+The imported RuneLite renderer provides one explicit comparison profile.
 
-If an adapter cannot support the preferred layout, initialization must either select a documented compatible fallback or fail with a capability diagnostic. It must not silently drop textures.
+Audited texture image behavior:
 
-## 8. Samplers
+- imported texture images are 128x128 for that renderer snapshot;
+- source RGB pixel `0` is uploaded transparent;
+- nonzero source RGB is uploaded with alpha `255`;
+- level-0 alpha is sampled for cutout/discard behavior;
+- staged shader discards when level-0 alpha is below `1`;
+- brightness is applied in shader-side color processing;
+- textured model face lighting consumes the baked lightness payload rather than re-running semantic normal lighting.
 
-At minimum the renderer supports:
-
-- reference-compatible sampler behavior;
-- enhanced sampler behavior with anisotropic filtering when supported.
-
-Sampler choice belongs to render profile, not semantic texture identity.
-
-## 9. Per-frame uniform groups
-
-Separate uniform/storage groups should distinguish update frequency.
-
-### Frame globals
-
-Typical contents:
-
-- viewport size;
-- deterministic render tick;
-- render-profile flags;
-- diagnostic mode;
-- fog/presentation values where enabled.
-
-### Camera globals
-
-- view matrix;
-- reverse-Z projection matrix;
-- camera position;
-- scene-origin rebase;
-- near-plane/reference projection inputs.
-
-### Draw/instance data
-
-- object transform when not pre-baked;
-- semantic/pick handle;
-- material/page selection when not per-vertex;
-- tint/override state when explicitly supported;
-- plane/visibility state if needed by the draw path.
-
-## 10. Shader organization
-
-WGSL source is organized by responsibility, for example:
+Audited sampler behavior must not be summarized as simply "nearest":
 
 ```text
-shaders/
-  common/
-    coordinates.wgsl
-    hsl.wgsl
-    material.wgsl
-    depth_bias.wgsl
-  scene/
-    static.vert.wgsl
-    static.frag.wgsl
-    dynamic.vert.wgsl
-    dynamic.frag.wgsl
-  picking/
-    pick.vert.wgsl
-    pick.frag.wgsl
-  diagnostics/
-    priority.wgsl
-    alpha.wgsl
-    normals.wgsl
-    depth.wgsl
+magnification                         = NEAREST
+minification, filtering level 0      = NEAREST
+minification, filtering level >= 1   = NEAREST_MIPMAP_LINEAR
+imported config default level         = 1
+S wrap                                = CLAMP_TO_EDGE
+T wrap                                = default repeat in audited setup
 ```
 
-Generated constants or material tables may be injected at build/runtime, but the shader preprocessing system must remain small and deterministic.
+RustOSRS Reference sampling selects and tests an explicit profile. Enhanced anisotropic/filtering behavior is separately selectable and cannot silently replace the Reference profile.
 
-A source shader from RuneLite is reference evidence, not a file to transliterate mechanically.
+## 9. Frame/camera/draw data
 
-## 11. HSL/color boundary
+Frame globals include deterministic render tick and profile/diagnostic state.
 
-Reference mode preserves the audited OSRS/RuneLite color payload semantics.
+Camera globals include view transform, explicit reverse-Z projection, camera position, and scene-origin rebase.
 
-HSL-to-RGB conversion may occur in the shader for efficiency, provided:
+Draw data includes semantic/pick handle, material selection, renderer transform where not pre-baked, and plane/visibility metadata required by the selected profile.
 
-- packed values match the semantic/model result exactly;
-- conversion is tested against the pinned reference helper/table;
-- textured-face behavior follows the selected reference profile;
-- enhanced color processing is separately switchable.
+## 10. HSL/color boundary
 
-The renderer must not redo semantic model lighting from normals in reference mode.
+Reference mode consumes semantic/model lighting output. It does not recompute target object lighting from normals.
 
-## 12. Reverse-Z depth
+HSL-to-RGB may occur on GPU only if exact packed inputs and conversion helpers are verified against the target/reference tables.
 
-The baseline depth target is `Depth32Float` where supported.
+Textured-face lightness behavior and enhanced color modes remain explicit renderer-profile choices.
 
-Reverse-Z conventions:
+## 11. Reverse-Z Reference contract
+
+ADR-0004 is authoritative.
+
+Reference baseline:
 
 ```text
-depth clear      = 0.0
-near              -> larger depth
-far               -> smaller depth
-depth compare     = GreaterEqual
+depth clear   = 0.0
+near           = larger depth
+far            = smaller depth
+depth compare = Greater
 ```
 
-Projection maps to wgpu's `0..1` NDC depth convention.
+The imported reference projection has no finite far plane. RustOSRS must reproduce equivalent `0..1` wgpu depth behavior rather than using `GreaterEqual` as a convenience.
 
-`GreaterEqual` is chosen rather than strict `Greater` to tolerate intentional equal-depth replay between compatible passes while authored priority/bias remains explicit.
+## 12. Authored face bias
 
-Depth writes are enabled for opaque scene geometry and selectively disabled for translucent passes according to the pass contract.
-
-## 13. Authored face bias
-
-The renderer preserves semantic `faceBias` as its own value.
-
-Reference profile adopts the audited RuneLite-style clip-depth adjustment as the initial parity strategy:
+Reference profile preserves the audited pre-divide bias behavior:
 
 ```text
-clip_position.z += face_bias / 128.0
+position.z += face_bias / 128.0
 ```
 
-applied before perspective division and under reverse-Z, where larger bias wins.
+Because the reference projection is perspective/no-far, normalized-depth separation decreases with distance. Required fixtures therefore cover at least two materially different camera distances.
 
-This is a renderer decision, not an OSRS cache semantic.
+Hardware polygon offset is not a semantic substitute.
 
-The implementation must have a dedicated bias fixture because projection changes can make an apparently small formula materially different.
+## 13. Opaque paths
 
-Enhanced profile may use a numerically improved equivalent only when it preserves required ordering and can be compared against reference mode.
+Opaque zone-compiled static and dynamic geometry use explicit reverse-Z depth testing, depth writes, blending disabled, backface culling, and authored bias.
 
-## 14. Culling
+Static compilation does not imply that all static faces are ordinary opaque work. Priority-sensitive or alpha-sensitive static content may register with ordered systems.
 
-Canonical raster state:
+## 14. Ordering reference distinction
+
+### RustOSRS software/client Reference ordering
+
+Priority-sensitive Reference content uses the exact `FACE-002` `Model.method5946` queue/threshold algorithm implemented in M10 CPU preparation.
+
+### Imported RuneLite GPU behavior
+
+The imported RuneLite renderer exposes render modes:
 
 ```text
-front face = CCW
-cull mode  = Back
+DEFAULT
+SORTED
+SORTED_NO_DEPTH
+UNSORTED
+UNSORTED_NO_DEPTH
 ```
 
-Render extraction normalizes source triangles into that convention once.
+Its `ModelUploader` priority queues execute only when `prioritySort=true`; the audited plugin selects that for `SORTED_NO_DEPTH`. Ordinary dynamic upload passes `false`, static opaque upload does not universally apply the priority queues, and alpha/static content in `Zone` uses distance/depth ordering.
 
-Required validation includes:
+Therefore "RuneLite reproduces the priority algorithm" is only true for the path that actually enables priority sorting. RustOSRS documents any RuneLite-GPU comparison profile separately from the stronger software/client Reference policy.
 
-- ordinary model triangle;
-- all four loc orientations;
-- mirrored model;
-- terrain shape rotations;
-- type-4 diagonal-decoration path.
+## 15. Transparency
 
-Two-sided diagnostic rendering may disable culling, but production reference rendering must not rely on double-sided rasterization to hide winding errors.
+Transparency ordering and depth behavior are profile-owned.
 
-## 15. MSAA
+For Reference work, do **not** assume the conventional modern rule that all blended geometry disables depth writes. The imported RuneLite snapshot leaves ordinary depth writes active and represents explicit no-depth work through separate render modes/ranges.
 
-Renderer support target:
+Required Reference implementation must prove:
 
-- 1x mandatory;
-- 4x preferred when adapter/format support allows;
-- other sample counts optional.
+- source alpha interpretation;
+- model-level and face-level transparency interaction where applicable;
+- far-to-near ordering contract;
+- strict `Greater` behavior;
+- depth-write behavior;
+- explicit no-depth behavior if represented.
 
-Reference screenshot fixtures default to 1x unless the fixture explicitly tests multisampling.
+An Enhanced profile may use conventional read-only-depth transparency only as an explicit divergence.
 
-Enhanced editor presentation defaults to 4x when supported.
+## 16. Terrain pipelines
 
-## 16. Opaque pass
+GPU terrain consumes already-constructed semantic topology.
 
-Opaque static geometry is drawn from zone-compiled ranges.
+Flat paint uses the exact two-triangle `TERRAIN-002` split. Shaped terrain uses exact `TERRAIN-001` vertices/faces.
 
-Opaque dynamic geometry is drawn after static opaque geometry unless a reference ordering contract requires it to participate in an ordered packet.
+The GPU does not rebuild the terrain shape templates or terrain-color builder.
 
-Opaque pass state:
+Full terrain-color semantic construction remains an upstream `TERRAIN-004` implementation task, now source-verified rather than source-blocked.
 
-- reverse-Z depth test enabled;
-- depth writes enabled;
-- blending disabled;
-- backface culling enabled;
-- authored face bias active.
+## 17. Plane/roof visibility inputs
 
-Coplanar behavior is not delegated to unspecified driver polygon offset.
+Renderer grouping may consume semantic storage plane, source plane, linked-below state, and once implemented, target `originalPlane`/`minPlane` semantics.
 
-## 17. Ordered face path
+A RuneLite-style `maplevel` is derived visibility/settings lookup. It must not be interpreted as moving tile geometry into another semantic storage plane.
 
-Any renderable requiring reference face ordering retains immutable face records and an indexable vertex source.
+Renderer grouping must leave the semantic scene hash unchanged.
 
-Per frame, CPU ordering produces an **ordered index/draw stream**, not a mutated canonical mesh.
+## 18. Object pipeline
 
-The ordering implementation must be capable of reproducing `FACE-002` reference behavior:
+Object meshes arrive after semantic model selection, mirroring, transforms, recolor/retexture, contouring, normal reconciliation, lighting, morph/animation ownership, and placement.
 
-1. depth bucket visible faces;
-2. preserve priority queues 0..11;
-3. compute `(1,2)`, `(3,4)`, `(6,8)` average thresholds;
-4. interleave priority 10/11 at the reference boundaries;
-5. preserve far-to-near order within required queues.
+Renderer code applies view/projection/material/pass policy only. It does not reconstruct semantic models.
 
-The implementation may use scratch index buffers, indirect draws, or another mechanism as long as exact crafted fixtures pass.
+## 19. Texture animation
 
-## 18. Static priority-sensitive content
+Animation uses deterministic render tick, never wall-clock-only time.
 
-Static compilation must not erase priority metadata.
+M10 material preparation maps decoded direction/speed to the pinned UV velocity convention. Future GPU code must reproduce those exact tick results.
 
-The baseline classification is:
+## 20. Zone compilation
 
-- ordinary opaque static faces that are reference-safe under depth+bias remain in static zone ranges;
-- faces/models whose appearance depends on camera-relative priority ordering are registered as ordered renderables even if their geometry itself is static;
-- transparent static content remains available to the alpha ordering system.
+Primary static compilation unit is an 8x8 semantic tile zone keyed by storage plane and signed zone coordinates.
 
-This hybrid avoids rebuilding all map geometry each frame while retaining exact behavior where ordering is load-bearing.
+Zone work is generation-aware:
 
-## 19. Transparency pass
+- unchanged zones may remain reusable after unrelated semantic edits;
+- changed zones reject stale build tickets;
+- cross-zone footprints invalidate every affected zone;
+- render-origin movement cannot change semantic zone identity.
 
-Transparency is a dedicated ordered pass.
+## 21. Picking
 
-Baseline policy:
+Preferred pick target remains integer ID based. Pick IDs are extraction-generation scoped and map through a side table to semantic identity plus optional face/tile/subcomponent provenance.
 
-- depth test remains enabled under reverse-Z;
-- depth writes disabled for conventional blended faces;
-- source alpha semantics preserved;
-- draw order is far-to-near according to the owning reference ordering contract;
-- ordered priority behavior is resolved before batching can reorder faces;
-- blend state is explicit and covered by golden fixtures.
+Stale readback must never change selection for a newer semantic generation.
 
-Opaque/alpha split is an optimization after semantic classification, not a replacement for face-priority rules.
+## 22. Diagnostics
 
-## 20. Terrain pipelines
+Priority, alpha, bias, depth, normals, plane, material, and zone diagnostics consume the same retained semantic/extraction metadata. Diagnostics do not alter canonical values.
 
-Terrain uses the topology already produced by semantic extraction.
+## 23. Capability policy
 
-Two GPU input cases exist:
+Optional GPU features may improve performance but cannot become requirements for semantic correctness. Unsupported baseline renderer requirements produce explicit diagnostics rather than silent fallback that changes appearance.
 
-### Flat paint
+## 24. Required verification before renderer parity claims
 
-- four semantic corner positions/heights;
-- two exact triangles from `TERRAIN-002`;
-- full-tile UV convention when textured.
+Structural tests:
 
-### Shaped tile model
+- static/dynamic/ordered classification;
+- suppressed-face exclusion;
+- exact priority emission fixture;
+- material identity and full-width texture IDs;
+- exact UV cases;
+- zone invalidation and stale generation;
+- semantic hash unchanged by renderer grouping.
 
-- exact vertices/faces from `TERRAIN-001`;
-- face material/texture assignment preserved;
-- tile-local UV derivation from semantic vertex X/Z where required by the reference profile.
+Reference raster tests:
 
-The GPU does not regenerate terrain shape templates.
+- strict reverse-Z `Greater` near/far/equal-depth cases;
+- bias at multiple distances;
+- ordinary/mirrored/rotated winding;
+- alpha ordering plus depth-write/no-depth cases;
+- texture zero-alpha/cutout behavior;
+- reference min/mag/wrap sampling profile;
+- deterministic texture animation.
 
-## 21. Object model pipeline
+Visual tests:
 
-Object render meshes arrive after:
+- internal RustOSRS goldens are regression evidence;
+- at least one externally captured/pinned client or RuneLite comparison artifact is required before claiming external "1:1" visual parity for a behavior.
 
-- model selection;
-- mirroring;
-- transform order;
-- recolor/retexture;
-- contouring when applicable;
-- static normal reconciliation/final lighting where applicable;
-- dynamic animation/morph model generation when applicable.
-
-The renderer applies scene placement and renderer-only transforms such as camera/view projection. It does not rerun semantic model construction.
-
-## 22. Texture animation
-
-Texture animation is driven by an explicit deterministic render tick.
-
-Material preparation maps decoded animation direction/speed to a UV velocity.
-
-Shader animation uses the material UV velocity and tick. Pausing/scrubbing the editor can freeze or set the tick exactly.
-
-Wall-clock time must not be the only animation source because reproducible golden frames require deterministic time.
-
-## 23. Picking target
-
-Preferred pick attachment:
-
-```text
-R32Uint
-```
-
-Each visible draw writes a renderer pick ID associated with the current extraction generation.
-
-A side table maps that ID to:
-
-- semantic scene handle;
-- optional face/tile/subcomponent data;
-- provenance required by diagnostics.
-
-One-pixel or small-region readback uses a staging buffer asynchronously.
-
-## 24. Diagnostic passes
-
-Diagnostic modes reuse the same scene visibility and geometry whenever practical.
-
-Examples:
-
-- priority heat map consumes face priority;
-- alpha view consumes face alpha;
-- bias view consumes authored bias;
-- depth view samples/reconstructs reverse-Z depth;
-- normals view uses retained normal buffers;
-- zone view uses compiled zone bounds/generation metadata.
-
-A diagnostic shader must not require changing semantic scene values.
-
-## 25. Pipeline cache
-
-Renderer pipelines are keyed by explicit state such as:
-
-- render profile;
-- color/depth format;
-- sample count;
-- opaque/alpha/picking/diagnostic pass;
-- texture page binding strategy;
-- feature flags that materially change shader interfaces.
-
-Pipeline cache keys must not include semantic asset IDs.
-
-## 26. Capability policy
-
-Initialization records adapter limits/features needed by the selected renderer path.
-
-Required baseline capabilities should stay within broadly supported native wgpu features.
-
-Optional features may improve performance but cannot be required for semantic correctness.
-
-Examples of optional future acceleration:
-
-- multi-draw indirect;
-- indirect first-instance;
-- timestamp queries;
-- compute culling;
-- GPU-driven ordered packet generation.
-
-If absent, the CPU/reference path remains valid.
-
-## 27. Validation requirements
-
-The final renderer implementation must validate at least:
-
-- static and dynamic shaders against the same material fixture;
-- CCW/culling under ordinary, mirrored, and rotated geometry;
-- reverse-Z near/far ordering;
-- equal-depth + authored-bias ordering;
-- priority 0..11 exact crafted outputs;
-- alpha blend/order cases;
-- texture page/material mapping;
-- UV reconstruction cases;
-- deterministic texture animation ticks;
-- 1x reference screenshots and 4x enhanced presentation separately;
-- picking IDs under hidden/visible/bridge-linked tiles.
+A self-generated screenshot alone cannot prove parity with an external renderer.
