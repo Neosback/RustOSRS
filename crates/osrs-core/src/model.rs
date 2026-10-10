@@ -180,10 +180,10 @@ pub struct SourceModelParts {
     pub skeletal_vertices: Option<Vec<Option<SkeletalVertexData>>>,
 }
 
+/// Identity-neutral semantic model payload reusable by raw, assembled, and
+/// working model stages.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ModelSemanticData {
-    identity: DefinitionIdentity<ModelId>,
-    format: ModelFormatIdentity,
     vertices: Vec<ModelPoint>,
     faces: Vec<Triangle>,
     face_colors: Vec<u16>,
@@ -200,32 +200,11 @@ struct ModelSemanticData {
     skeletal_vertices: Option<Vec<Option<SkeletalVertexData>>>,
 }
 
-impl From<SourceModelParts> for ModelSemanticData {
-    fn from(parts: SourceModelParts) -> Self {
-        Self {
-            identity: parts.identity,
-            format: parts.format,
-            vertices: parts.vertices,
-            faces: parts.faces,
-            face_colors: parts.face_colors,
-            default_priority: parts.default_priority,
-            face_render_types: parts.face_render_types,
-            face_priorities: parts.face_priorities,
-            face_alphas: parts.face_alphas,
-            face_textures: parts.face_textures,
-            texture_face_selectors: parts.texture_face_selectors,
-            face_biases: parts.face_biases,
-            texture_triangles: parts.texture_triangles,
-            vertex_skins: parts.vertex_skins,
-            face_skins: parts.face_skins,
-            skeletal_vertices: parts.skeletal_vertices,
-        }
-    }
-}
-
 /// Immutable validated decoded/raw model asset.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SourceModel {
+    identity: DefinitionIdentity<ModelId>,
+    format: ModelFormatIdentity,
     data: ModelSemanticData,
 }
 
@@ -233,15 +212,52 @@ impl SourceModel {
     /// Validate all topology/parallel-array invariants and admit a source model.
     pub fn from_parts(parts: SourceModelParts) -> Result<Self, ModelValidationError> {
         validate_parts(&parts)?;
-        Ok(Self { data: parts.into() })
+        let SourceModelParts {
+            identity,
+            format,
+            vertices,
+            faces,
+            face_colors,
+            default_priority,
+            face_render_types,
+            face_priorities,
+            face_alphas,
+            face_textures,
+            texture_face_selectors,
+            face_biases,
+            texture_triangles,
+            vertex_skins,
+            face_skins,
+            skeletal_vertices,
+        } = parts;
+        Ok(Self {
+            identity,
+            format,
+            data: ModelSemanticData {
+                vertices,
+                faces,
+                face_colors,
+                default_priority,
+                face_render_types,
+                face_priorities,
+                face_alphas,
+                face_textures,
+                texture_face_selectors,
+                face_biases,
+                texture_triangles,
+                vertex_skins,
+                face_skins,
+                skeletal_vertices,
+            },
+        })
     }
 
     pub fn identity(&self) -> &DefinitionIdentity<ModelId> {
-        &self.data.identity
+        &self.identity
     }
 
     pub const fn format(&self) -> ModelFormatIdentity {
-        self.data.format
+        self.format
     }
 
     pub fn vertices(&self) -> &[ModelPoint] {
@@ -360,19 +376,10 @@ pub struct WorkingModel {
 
 impl WorkingModel {
     /// Admit one exact M4 assembled model into the M7 mutable lifecycle.
-    ///
-    /// Composite source identity is preserved separately from the legacy raw
-    /// source envelope carried inside `ModelSemanticData`. The latter is seeded
-    /// from the first real source only for private payload compatibility and is
-    /// never exposed as constructed-model semantic identity or format.
     pub fn from_assembled(model: &AssembledModel) -> Result<Self, ModelSemanticIdentityError> {
-        let semantic_identity = ModelSemanticIdentity::from_assembled(model)?;
-        let first_source = &model.sources()[0];
         Ok(Self {
-            semantic_identity,
+            semantic_identity: ModelSemanticIdentity::from_assembled(model)?,
             data: ModelSemanticData {
-                identity: first_source.identity().clone(),
-                format: first_source.format(),
                 vertices: model.vertices().to_vec(),
                 faces: model.faces().to_vec(),
                 face_colors: model.face_colors().to_vec(),
