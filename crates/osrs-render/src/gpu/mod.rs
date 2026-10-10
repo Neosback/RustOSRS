@@ -3,7 +3,8 @@
 //! Reverse-Z `Depth32Float` (clear `0`, strict `Greater`), CCW front faces with back-face
 //! culling, authored face bias added to clip-space depth in the vertex shader, and the pinned
 //! RuneLite blend state for the alpha pass (`SRC_ALPHA, ONE_MINUS_SRC_ALPHA` color with `ONE, ONE`
-//! alpha, depth writes left on). Output is a non-sRGB `Rgba8Unorm` target so values reach the
+//! alpha, depth writes off for the alpha pass, which draws level by level, far zones first, after
+//! all opaque geometry). Output is a non-sRGB `Rgba8Unorm` target so values reach the
 //! framebuffer unconverted, like the reference's default framebuffer.
 
 use crate::{PackedVertex, SceneGeometry};
@@ -301,7 +302,7 @@ impl SceneRenderer {
             attributes: &vertex_attributes,
         };
 
-        let make_pipeline = |label: &str, blend: Option<wgpu::BlendState>| {
+        let make_pipeline = |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(&pipeline_layout),
@@ -329,7 +330,7 @@ impl SceneRenderer {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
-                    depth_write_enabled: Some(true),
+                    depth_write_enabled: Some(depth_write),
                     depth_compare: Some(wgpu::CompareFunction::Greater),
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
@@ -340,7 +341,7 @@ impl SceneRenderer {
             })
         };
 
-        let opaque_pipeline = make_pipeline("scene-opaque", None);
+        let opaque_pipeline = make_pipeline("scene-opaque", None, true);
         let alpha_pipeline = make_pipeline(
             "scene-alpha",
             Some(wgpu::BlendState {
@@ -355,6 +356,8 @@ impl SceneRenderer {
                     operation: wgpu::BlendOperation::Add,
                 },
             }),
+            // `Zone.flush` wraps every alpha draw in `glDepthMask(false)`.
+            false,
         );
 
         let globals_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -609,14 +612,31 @@ impl SceneRenderer {
                 }
             }
 
+            // Alpha pass: after all opaque geometry, level by level, farthest zones first.
+            // (The reference also depth-sorts alpha models and their faces; zone order is the
+            // coarse part of that ordering.)
+            let camera = (params.camera.x, params.camera.z);
+            let distance_squared = |zone: &GpuZone| {
+                let center_x = (zone.world_origin.0 - self.render_origin.0) as f32 + 512.0;
+                let center_z = (zone.world_origin.1 - self.render_origin.1) as f32 + 512.0;
+                (center_x - camera.0).powi(2) + (center_z - camera.1).powi(2)
+            };
+            let mut alpha_zones: Vec<&GpuZone> = visible
+                .iter()
+                .copied()
+                .filter(|zone| zone.alpha.is_some())
+                .collect();
+            alpha_zones.sort_by(|a, b| distance_squared(b).total_cmp(&distance_squared(a)));
             pass.set_pipeline(&self.alpha_pipeline);
-            for zone in visible.iter().copied() {
-                let Some(buffer) = &zone.alpha else { continue };
-                pass.set_bind_group(1, &zone.bind_group, &[]);
-                pass.set_vertex_buffer(0, buffer.slice(..));
-                for range in &zone.alpha_ranges {
-                    if range.level <= params.view_plane && range.min_plane <= params.view_plane {
-                        pass.draw(range.start..range.start + range.count, 0..1);
+            for level in 0..=params.view_plane {
+                for zone in alpha_zones.iter().copied() {
+                    let Some(buffer) = &zone.alpha else { continue };
+                    pass.set_bind_group(1, &zone.bind_group, &[]);
+                    pass.set_vertex_buffer(0, buffer.slice(..));
+                    for range in &zone.alpha_ranges {
+                        if range.level == level && range.min_plane <= params.view_plane {
+                            pass.draw(range.start..range.start + range.count, 0..1);
+                        }
                     }
                 }
             }

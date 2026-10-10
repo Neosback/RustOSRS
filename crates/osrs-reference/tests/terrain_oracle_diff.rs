@@ -100,6 +100,16 @@ fn region_terrain(
 fn terrain_loader_and_builder_match_pinned_client_oracle() -> TestResult {
     let profile = TargetProfile::from_yaml_str(PROFILE_YAML)?;
     let context = DecoderContext::from_profile(&profile)?;
+    // `RUSTOSRS_ORACLE_IN` / `RUSTOSRS_ORACLE_OUT` replace the committed fixture pair so other
+    // map areas can be diffed against the pinned client.
+    let read_override = |name: &str, fallback: &str| -> String {
+        std::env::var(name)
+            .ok()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .unwrap_or_else(|| fallback.to_owned())
+    };
+    let oracle_input = read_override("RUSTOSRS_ORACLE_IN", ORACLE_INPUT);
+    let oracle_output = read_override("RUSTOSRS_ORACLE_OUT", ORACLE_OUTPUT);
 
     let mut brightness = 0.8_f64;
     let mut noise = (0, 0);
@@ -113,7 +123,7 @@ fn terrain_loader_and_builder_match_pinned_client_oracle() -> TestResult {
     let mut empties: Vec<(i32, i32)> = Vec::new();
     let mut shadows: Vec<(usize, usize, usize, u8)> = Vec::new();
 
-    for line in ORACLE_INPUT.lines() {
+    for line in oracle_input.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
@@ -178,7 +188,7 @@ fn terrain_loader_and_builder_match_pinned_client_oracle() -> TestResult {
     }
 
     // The oracle reports the jitter the client's random walk actually produced.
-    let jitter_line = ORACLE_OUTPUT.lines().next().ok_or("empty oracle output")?;
+    let jitter_line = oracle_output.lines().next().ok_or("empty oracle output")?;
     let jitter = parse_jitter(jitter_line)?;
 
     let palette = build_color_palette(brightness);
@@ -188,7 +198,7 @@ fn terrain_loader_and_builder_match_pinned_client_oracle() -> TestResult {
     link_bridge_tiles(&grid, &mut scene)?;
 
     // Everything after the two oracle header lines must match line for line.
-    let expected: Vec<&str> = ORACLE_OUTPUT.lines().skip(2).collect();
+    let expected: Vec<&str> = oracle_output.lines().skip(2).collect();
     let actual = osrs_world::oracle_dump::terrain_body_lines(&grid, &scene);
     for (index, (actual_line, expected_line)) in actual.iter().zip(expected.iter()).enumerate() {
         assert_eq!(actual_line, expected_line, "oracle body line {index}");

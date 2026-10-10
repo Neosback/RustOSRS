@@ -34,5 +34,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         models,
         geometry.vertex_count()
     );
+    println!("loc stats: {:?}", world.loc_stats);
     Ok(())
 }

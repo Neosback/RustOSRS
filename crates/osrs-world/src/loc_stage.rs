@@ -75,6 +75,8 @@ pub struct LocStageStats {
     pub placed: usize,
     pub dynamic: usize,
     pub replaced: usize,
+    /// Wall decorations whose offsets were rescaled by a later wall (`method5576`).
+    pub decorations_rescaled: usize,
 }
 
 /// Everything the loc stage produced.
@@ -136,6 +138,8 @@ pub fn place_window_locs(
     let mut cache = InitialStaticEntityCache::new();
     let mut stats = LocStageStats::default();
     let mut pending: Vec<PendingLoc> = Vec::new();
+    // The wall decoration currently owning each tile's slot (`newWallDecoration` overwrites).
+    let mut wall_decoration_owner: HashMap<(u8, u32, u32), usize> = HashMap::new();
 
     let locations = std::mem::take(&mut loaded.locations);
     for (region, locs) in &locations {
@@ -256,6 +260,25 @@ pub fn place_window_locs(
                 inserted,
                 entities.first(),
             );
+
+            let slot = (plane.index().get(), tile.x, tile.y);
+            if inserted && matches!(plan.kind, PlacementKind::WallDecoration(_)) {
+                wall_decoration_owner.insert(slot, pending.len());
+            }
+            // `Scene.method5576`: a boundary, diagonal wall, or roof-type object with a
+            // non-default decoration displacement rescales the offsets of a wall decoration that
+            // was already placed on its tile.
+            let rescales = matches!(plan.source_loc_type.get(), 0 | 2 | 9 | 12..);
+            if rescales
+                && definition.decoration_displacement != 16
+                && let Some(&owner) = wall_decoration_owner.get(&slot)
+                && let PlacementKind::WallDecoration(decor) = &mut pending[owner].plan.kind
+            {
+                let scale = i32::from(definition.decoration_displacement);
+                decor.offset_x = scale * decor.offset_x / 16;
+                decor.offset_z = scale * decor.offset_z / 16;
+                stats.decorations_rescaled += 1;
+            }
 
             pending.push(PendingLoc {
                 object_id: loc.object_id,
@@ -572,6 +595,7 @@ fn finish(
     // Boundary and floor-decoration slots keep only their last occupant (the client overwrites).
     let mut boundary_owner: HashMap<(u8, u32, u32), usize> = HashMap::new();
     let mut floor_owner: HashMap<(u8, u32, u32), usize> = HashMap::new();
+    let mut wall_decoration_owner: HashMap<(u8, u32, u32), usize> = HashMap::new();
     for (index, loc) in pending.iter().enumerate() {
         if !loc.inserted {
             continue;
@@ -580,6 +604,7 @@ fn finish(
         let previous = match loc.plan.kind {
             PlacementKind::Boundary(_) => boundary_owner.insert(key, index),
             PlacementKind::FloorDecoration(_) => floor_owner.insert(key, index),
+            PlacementKind::WallDecoration(_) => wall_decoration_owner.insert(key, index),
             _ => None,
         };
         if previous.is_some() {
@@ -611,6 +636,9 @@ fn finish(
             && match loc.plan.kind {
                 PlacementKind::Boundary(_) => boundary_owner.get(&key) == Some(&index),
                 PlacementKind::FloorDecoration(_) => floor_owner.get(&key) == Some(&index),
+                PlacementKind::WallDecoration(_) => {
+                    wall_decoration_owner.get(&key) == Some(&index)
+                }
                 _ => true,
             };
 
