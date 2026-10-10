@@ -1,6 +1,7 @@
 //! The eframe application: scene loading, the wgpu viewport, and fly-camera input.
 
 use crate::camera::FlyCamera;
+use crate::pick::{self, Infos, ObjectPick, Pick};
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_core::coords::RegionCoord;
 use osrs_render::gpu::{COLOR_FORMAT, DEPTH_FORMAT, FrameParams, SceneRenderer};
@@ -53,6 +54,12 @@ pub struct EditorApp {
     presentation_generation: u32,
     /// Background (and the colour holes in the terrain show). RuneLite's default sky is black.
     sky_color: [f32; 3],
+    theme_index: usize,
+    /// Inspection data of the resident regions (for picking).
+    infos: Infos,
+    hover: Pick,
+    selected: Option<ObjectPick>,
+    context_pick: Pick,
     streamer: RegionStreamer,
     animations: AnimationSystem,
     animation_cycle: u64,
@@ -83,6 +90,7 @@ impl EditorApp {
         base_x: i32,
         base_y: i32,
     ) -> Result<Self, String> {
+        crate::theme::set_theme(&cc.egui_ctx, crate::theme::MOCHA);
         let render_state = cc
             .wgpu_render_state
             .clone()
@@ -113,6 +121,11 @@ impl EditorApp {
             wall_seam_tolerance: true,
             presentation_generation: 1,
             sky_color: [0.0, 0.0, 0.0],
+            theme_index: 3,
+            infos: Infos::new(),
+            hover: Pick::default(),
+            selected: None,
+            context_pick: Pick::default(),
             streamer,
             animations: AnimationSystem::new(),
             animation_cycle: 0,
@@ -155,6 +168,7 @@ impl EditorApp {
         for key in self.loaded.keys().copied().collect::<Vec<_>>() {
             self.renderer.remove_region(key);
             self.animations.remove_region(key);
+            self.infos.remove(&key);
         }
         self.loaded.clear();
         self.in_flight.clear();
@@ -211,6 +225,7 @@ impl EditorApp {
                     self.in_flight.remove(&key);
                     self.renderer.upload_region(key, &region.geometry);
                     self.animations.insert_region(key, region.animations);
+                    self.infos.insert(key, region.info);
                     self.animation_dirty = true;
                     self.last_build_ms = region.build_ms;
                     self.loaded.insert(
@@ -271,6 +286,7 @@ impl EditorApp {
             self.loaded.remove(&key);
             self.renderer.remove_region(key);
             self.animations.remove_region(key);
+            self.infos.remove(&key);
             self.animation_dirty = true;
         }
     }
@@ -299,6 +315,181 @@ impl EditorApp {
                 .build_geometry(center, ANIMATION_RADIUS_TILES);
             self.renderer.upload_region(ANIMATED_KEY, &geometry);
         }
+    }
+
+    /// Hover / click / right-click picking against the resident regions' inspection data.
+    fn update_picking(
+        &mut self,
+        response: &egui::Response,
+        rect: egui::Rect,
+        pixels_per_point: f32,
+        width: u32,
+        height: u32,
+    ) {
+        if response.dragged() {
+            return;
+        }
+        let Some(position) = response.hover_pos() else {
+            self.hover = Pick::default();
+            return;
+        };
+        let ray = pick::ray_through_pixel(
+            &self.camera,
+            self.renderer.render_origin(),
+            width as f32,
+            height as f32,
+            (position.x - rect.min.x) * pixels_per_point,
+            (position.y - rect.min.y) * pixels_per_point,
+        );
+        self.hover = pick::pick(&self.infos, &ray, self.view_plane);
+        if response.clicked() {
+            self.selected = self.hover.object.clone();
+        }
+        if response.secondary_clicked() {
+            self.context_pick = self.hover.clone();
+        }
+    }
+
+    fn draw_selection(
+        &self,
+        ui: &egui::Ui,
+        rect: egui::Rect,
+        pixels_per_point: f32,
+        width: u32,
+        height: u32,
+    ) {
+        let painter = ui.painter().with_clip_rect(rect);
+        let outline = |object: &ObjectPick, color: egui::Color32| {
+            let Some(loc) = self
+                .infos
+                .get(&object.region)
+                .and_then(|info| info.locs.get(object.index))
+            else {
+                return;
+            };
+            for slot in &loc.slots {
+                let corner = |index: usize| {
+                    let point = [
+                        f64::from(if index & 1 == 0 {
+                            slot.min[0]
+                        } else {
+                            slot.max[0]
+                        }),
+                        f64::from(if index & 2 == 0 {
+                            slot.min[1]
+                        } else {
+                            slot.max[1]
+                        }),
+                        f64::from(if index & 4 == 0 {
+                            slot.min[2]
+                        } else {
+                            slot.max[2]
+                        }),
+                    ];
+                    pick::project(
+                        &self.camera,
+                        self.renderer.render_origin(),
+                        width as f32,
+                        height as f32,
+                        point,
+                    )
+                    .map(|p| {
+                        egui::pos2(
+                            rect.min.x + p[0] / pixels_per_point,
+                            rect.min.y + p[1] / pixels_per_point,
+                        )
+                    })
+                };
+                for (a, b) in [
+                    (0, 1),
+                    (2, 3),
+                    (4, 5),
+                    (6, 7),
+                    (0, 2),
+                    (1, 3),
+                    (4, 6),
+                    (5, 7),
+                    (0, 4),
+                    (1, 5),
+                    (2, 6),
+                    (3, 7),
+                ] {
+                    if let (Some(a), Some(b)) = (corner(a), corner(b)) {
+                        painter.line_segment([a, b], egui::Stroke::new(1.5, color));
+                    }
+                }
+            }
+        };
+        if let Some(object) = &self.hover.object {
+            outline(
+                object,
+                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 120),
+            );
+        }
+        if let Some(object) = &self.selected {
+            outline(object, egui::Color32::from_rgb(255, 200, 0));
+        }
+        let text = pick::summary(&self.infos, &self.hover);
+        if !text.is_empty() {
+            painter.text(
+                rect.left_bottom() + egui::vec2(8.0, -8.0),
+                egui::Align2::LEFT_BOTTOM,
+                text,
+                egui::FontId::monospace(13.0),
+                egui::Color32::WHITE,
+            );
+        }
+    }
+
+    /// Right-click menu: copy diagnostics of the clicked object / tile / surroundings.
+    fn context_menu(&self, response: &egui::Response) {
+        response.context_menu(|ui| {
+            let pick = &self.context_pick;
+            let center = pick
+                .object
+                .as_ref()
+                .and_then(|object| self.infos.get(&object.region)?.locs.get(object.index))
+                .map(|loc| loc.tile)
+                .or(pick.tile.map(|tile| tile.tile));
+            let plane = pick
+                .object
+                .as_ref()
+                .and_then(|object| self.infos.get(&object.region)?.locs.get(object.index))
+                .map_or(usize::from(self.view_plane), |loc| usize::from(loc.plane));
+            let copy = |ui: &mut egui::Ui, label: &str, text: String| {
+                if ui.button(label).clicked() {
+                    ui.ctx().copy_text(text);
+                    ui.close();
+                }
+            };
+            if let Some(object) = &pick.object {
+                copy(
+                    ui,
+                    "Copy object",
+                    pick::describe_object(&self.infos, object),
+                );
+            }
+            if let Some(tile) = center {
+                copy(ui, "Copy tile", pick::describe_tile(&self.infos, tile));
+                copy(
+                    ui,
+                    "Copy neighbourhood (3x3)",
+                    pick::describe_neighbourhood(&self.infos, tile, plane, 1),
+                );
+                copy(
+                    ui,
+                    "Copy neighbourhood (5x5)",
+                    pick::describe_neighbourhood(&self.infos, tile, plane, 2),
+                );
+                if let Some(object) = &pick.object {
+                    let mut text = pick::describe_object(&self.infos, object);
+                    text.push_str(&pick::describe_neighbourhood(&self.infos, tile, plane, 1));
+                    copy(ui, "Copy object + neighbourhood", text);
+                }
+            } else {
+                ui.label("nothing under the cursor");
+            }
+        });
     }
 
     fn ensure_targets(&mut self, width: u32, height: u32) {
@@ -464,6 +655,17 @@ impl eframe::App for EditorApp {
                     self.rebuild_all();
                 }
                 ui.color_edit_button_rgb(&mut self.sky_color);
+                let before = self.theme_index;
+                egui::ComboBox::from_id_salt("theme")
+                    .selected_text(crate::theme::NAMES[self.theme_index])
+                    .show_ui(ui, |ui| {
+                        for (index, name) in crate::theme::NAMES.iter().enumerate() {
+                            ui.selectable_value(&mut self.theme_index, index, *name);
+                        }
+                    });
+                if self.theme_index != before {
+                    crate::theme::set_theme(ui.ctx(), crate::theme::ALL[self.theme_index]);
+                }
                 ui.add(egui::Slider::new(&mut self.stream_radius, 0..=4).text("radius"));
                 ui.add(egui::Slider::new(&mut self.camera.fov_degrees, 30.0..=100.0).text("fov"));
             });
@@ -480,6 +682,7 @@ impl eframe::App for EditorApp {
             let height = ((rect.height() * pixels_per_point) as u32).max(16);
 
             self.handle_input(&ctx, &response);
+            self.update_picking(&response, rect, pixels_per_point, width, height);
 
             if self.ready {
                 self.ensure_targets(width, height);
@@ -515,6 +718,8 @@ impl eframe::App for EditorApp {
                     );
                 }
             }
+            self.draw_selection(ui, rect, pixels_per_point, width, height);
+            self.context_menu(&response);
         });
 
         self.frames += 1;

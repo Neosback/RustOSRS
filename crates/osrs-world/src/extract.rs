@@ -116,7 +116,7 @@ pub fn extract_owned_geometry(world: &WorldScene, owned: Option<OwnedTiles>) -> 
 }
 
 /// Level and minimum plane of the tile a loc ended up on after bridge relinking.
-fn effective_level(world: &WorldScene, source: StoragePlane, tile: SceneTile) -> (u8, u8) {
+pub(crate) fn effective_level(world: &WorldScene, source: StoragePlane, tile: SceneTile) -> (u8, u8) {
     let bridge = world.load.settings(1, tile.x as usize, tile.y as usize) & 2 != 0;
     let plane = source.index().get();
     let level = if bridge && plane > 0 {
@@ -130,7 +130,7 @@ fn effective_level(world: &WorldScene, source: StoragePlane, tile: SceneTile) ->
     (level, min_plane)
 }
 
-fn lit_model(world: &WorldScene, renderable: LocRenderable) -> Option<&ReferenceLitModel> {
+pub(crate) fn lit_model(world: &WorldScene, renderable: LocRenderable) -> Option<&ReferenceLitModel> {
     match renderable {
         LocRenderable::Lit(index) => world.lit.get(index),
         LocRenderable::ModelData(id) => world.finalizer.lit_model(id),
@@ -139,17 +139,17 @@ fn lit_model(world: &WorldScene, renderable: LocRenderable) -> Option<&Reference
 }
 
 /// One drawn model slot of a loc, positioned relative to its owning zone origin.
-struct Slot {
-    renderable: LocRenderable,
-    x: i32,
-    y: i32,
-    z: i32,
-    rotation: u16,
+pub(crate) struct Slot {
+    pub(crate) renderable: LocRenderable,
+    pub(crate) x: i32,
+    pub(crate) y: i32,
+    pub(crate) z: i32,
+    pub(crate) rotation: u16,
 }
 
 /// Draw positions of a loc's renderables (boundary/floor decoration/game object at the storage
 /// center, wall decorations at the center plus the nudged offset).
-fn loc_slots(loc: &WorldLoc, origin: (i32, i32)) -> Vec<Slot> {
+pub(crate) fn loc_slots(loc: &WorldLoc, origin: (i32, i32)) -> Vec<Slot> {
     let center = loc.plan.storage_center;
     let base_x = center.x.units() - origin.0;
     let base_y = center.y.units();

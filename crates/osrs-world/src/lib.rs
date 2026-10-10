@@ -9,6 +9,7 @@ mod animation;
 mod definitions;
 mod error;
 mod extract;
+mod info;
 mod loc_stage;
 pub mod oracle_dump;
 mod scene_builder;
@@ -25,6 +26,7 @@ pub use extract::{
     OwnedTiles, extract_animated_instances, extract_owned_geometry, extract_scene_geometry,
     texture_layers,
 };
+pub use info::{LocInfo, RegionInfo, SlotInfo, SurfaceKind, TileInfo, extract_region_info};
 pub use loc_stage::{LocRenderable, LocStageOutput, LocStageStats, WorldLoc, place_window_locs};
 pub use scene_builder::{WorldScene, build_world_scene};
 pub use streaming::{

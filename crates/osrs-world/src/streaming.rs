@@ -7,13 +7,14 @@
 //! context in every direction.
 
 use crate::{
-    AnimatedInstance, OwnedTiles, SceneWindow, TerrainPresentation, WorldDefinitions, WorldError,
+    AnimatedInstance, OwnedTiles, RegionInfo, extract_region_info, SceneWindow, TerrainPresentation, WorldDefinitions, WorldError,
     build_world_scene, extract_animated_instances, extract_owned_geometry, texture_layers,
 };
 use osrs_core::coords::RegionCoord;
 use osrs_render::{SceneGeometry, gpu::TextureLayer};
 use std::{
     path::PathBuf,
+    sync::Arc,
     sync::mpsc::{Receiver, Sender, channel},
     thread::JoinHandle,
     time::Instant,
@@ -38,6 +39,8 @@ pub struct RegionGeometry {
     pub geometry: SceneGeometry,
     /// Animated locs of the region, posed at runtime.
     pub animations: Vec<AnimatedInstance>,
+    /// Inspection data for the picker.
+    pub info: Arc<RegionInfo>,
     pub build_ms: f32,
     /// Presentation generation the region was built under (see [`RegionStreamer::set_presentation`]).
     pub generation: u32,
@@ -62,10 +65,17 @@ pub fn build_region_geometry(
     });
     let geometry = extract_owned_geometry(&world, owned);
     let animations = extract_animated_instances(&world, owned);
+    let info = Arc::new(extract_region_info(
+        &world,
+        region,
+        ((margin, margin), (margin + REGION_TILES, margin + REGION_TILES)),
+        &mut |id| definitions.object(id).ok().flatten(),
+    ));
     Ok(Some(RegionGeometry {
         region,
         geometry,
         animations,
+        info,
         build_ms: started.elapsed().as_secs_f32() * 1000.0,
         generation: 0,
     }))

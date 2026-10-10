@@ -8,6 +8,8 @@
 
 mod app;
 mod camera;
+mod pick;
+mod theme;
 
 use std::path::PathBuf;
 
