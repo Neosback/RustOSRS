@@ -26,17 +26,17 @@ impl RenderOrigin {
             .x
             .units()
             .checked_sub(self.x)
-            .ok_or(RenderCoordinateError::Overflow { axis: Axis::X })?;
+            .ok_or(RenderCoordinateError::XOverflow)?;
         let y = point
             .y
             .units()
             .checked_sub(self.y)
-            .ok_or(RenderCoordinateError::Overflow { axis: Axis::Y })?;
+            .ok_or(RenderCoordinateError::YOverflow)?;
         let z = point
             .z
             .units()
             .checked_sub(self.z)
-            .ok_or(RenderCoordinateError::Overflow { axis: Axis::Z })?;
+            .ok_or(RenderCoordinateError::ZOverflow)?;
         Ok(RenderPoint { x, y, z })
     }
 }
@@ -49,42 +49,26 @@ pub struct RenderPoint {
     pub z: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Axis {
-    X,
-    Y,
-    Z,
-}
-
 /// Failure to express a semantic local point relative to the selected render origin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderCoordinateError {
-    Overflow { axis: Axis },
+    XOverflow,
+    YOverflow,
+    ZOverflow,
 }
 
 impl fmt::Display for RenderCoordinateError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Overflow { axis } => write!(
-                formatter,
-                "renderer coordinate rebase overflow on {} axis",
-                axis.label()
-            ),
-        }
+        let axis = match self {
+            Self::XOverflow => "x",
+            Self::YOverflow => "y",
+            Self::ZOverflow => "z",
+        };
+        write!(formatter, "renderer coordinate rebase overflow on {axis} axis")
     }
 }
 
 impl Error for RenderCoordinateError {}
-
-impl Axis {
-    const fn label(self) -> &'static str {
-        match self {
-            Self::X => "x",
-            Self::Y => "y",
-            Self::Z => "z",
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -119,9 +103,6 @@ mod tests {
             LocalCoord::from_units(0),
         );
 
-        assert!(matches!(
-            origin.rebase(point),
-            Err(RenderCoordinateError::Overflow { axis: Axis::X })
-        ));
+        assert_eq!(origin.rebase(point), Err(RenderCoordinateError::XOverflow));
     }
 }
