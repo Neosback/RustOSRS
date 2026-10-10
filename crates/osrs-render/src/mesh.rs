@@ -26,6 +26,11 @@ impl RenderPlacement {
 /// Optional parallel arrays intentionally remain optional. This preserves the
 /// distinction between absent semantic metadata and an authored zero/default
 /// value until a later renderer policy explicitly interprets it.
+///
+/// The face topology is retained even when semantic lighting marks a face as
+/// suppressed with `LitFaceColors::c == -2`. Callers that build Reference draw
+/// packets must consult [`RenderMesh::face_is_suppressed`] and must not re-admit
+/// those triangles merely because their indices remain present for diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderMesh {
     identity: ModelSemanticIdentity,
@@ -92,6 +97,17 @@ impl RenderMesh {
 
     pub fn face_colors(&self) -> &[LitFaceColors] {
         &self.face_colors
+    }
+
+    /// Return whether semantic lighting suppressed the requested face.
+    ///
+    /// The reference `ModelData -> Model` conversion uses baked color slot
+    /// `c == -2` as the no-draw marker. This is distinct from later raster
+    /// alpha interpretation, including the raw-alpha `-1 -> 253` draw rule.
+    pub fn face_is_suppressed(&self, face_index: usize) -> Option<bool> {
+        self.face_colors
+            .get(face_index)
+            .map(|colors| colors.c == -2)
     }
 
     pub const fn default_priority(&self) -> FacePriority {
