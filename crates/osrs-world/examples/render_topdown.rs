@@ -51,6 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             paint(&mut image, width, x, y, 1, 1, color);
         }
     }
+    let mut counts = [0usize; 4];
     for loc in &world.locs {
         if loc.plane != storage || loc.renderables.is_empty() {
             continue;
@@ -60,9 +61,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             LocRenderable::ModelData(id) => world.finalizer.lit_model(id),
             LocRenderable::Animated => None,
         };
-        let color = first
-            .and_then(|m| m.face_colors.iter().find(|c| c.c != -2).map(|c| rgb(c.a)))
-            .unwrap_or([255, 0, 255]);
+        let animated = matches!(loc.renderables[0], LocRenderable::Animated);
+        let textured = first.is_some_and(|m| {
+            m.face_textures
+                .as_ref()
+                .is_some_and(|t| t.iter().any(Option::is_some))
+        });
+        counts[usize::from(animated) + 2 * usize::from(textured)] += 1;
+        if !animated && std::env::var("MAGENTA").is_ok() {
+            let hidden = first.map(|m| m.face_colors.iter().filter(|c| c.c == -2).count());
+            let total = first.map(|m| m.face_colors.len());
+            if first.is_none() || hidden == total {
+                let name = definitions
+                    .object(loc.object_id)?
+                    .and_then(|d| d.name.clone());
+                println!(
+                    "magenta: id={} type={} tile=({},{}) faces={total:?} hidden={hidden:?} name={name:?}",
+                    loc.object_id.get(),
+                    loc.loc_type,
+                    loc.tile.x,
+                    loc.tile.y
+                );
+            }
+        }
+        let color = if animated {
+            [0, 255, 255]
+        } else {
+            first
+                .and_then(|m| m.face_colors.iter().find(|c| c.c != -2).map(|c| rgb(c.a)))
+                .unwrap_or([255, 0, 255])
+        };
         let fp = loc.plan.kind.storage_footprint();
         let (w, h) = match loc.loc_type {
             0..=3 | 4..=8 => (1, 1),
@@ -88,6 +116,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     println!("stats: {:?}", world.loc_stats);
+    println!(
+        "plane {plane} locs: static-untextured={} animated={} textured-static={} textured-animated={}",
+        counts[0], counts[1], counts[2], counts[3]
+    );
     Ok(())
 }
 
