@@ -93,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         let fp = loc.plan.kind.storage_footprint();
         let (w, h) = match loc.loc_type {
-            0..=3 | 4..=8 => (1, 1),
+            0..=8 => (1, 1),
             _ => (usize::from(fp.width), usize::from(fp.depth)),
         };
         paint(

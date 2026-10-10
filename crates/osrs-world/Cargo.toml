@@ -9,6 +9,7 @@ publish = false
 osrs-core = { path = "../osrs-core" }
 osrs-cache = { path = "../osrs-cache" }
 osrs-scene = { path = "../osrs-scene" }
+osrs-render = { path = "../osrs-render" }
 
 [lints]
 workspace = true

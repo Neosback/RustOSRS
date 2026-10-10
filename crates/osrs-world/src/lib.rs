@@ -7,6 +7,7 @@
 
 mod definitions;
 mod error;
+mod extract;
 mod loc_stage;
 pub mod oracle_dump;
 mod scene_builder;
@@ -15,6 +16,7 @@ mod window;
 
 pub use definitions::{FloorTable, RegionMap, WorldDefinitions};
 pub use error::WorldError;
+pub use extract::extract_scene_geometry;
 pub use loc_stage::{LocRenderable, LocStageOutput, LocStageStats, WorldLoc, place_window_locs};
 pub use scene_builder::{WorldScene, build_world_scene};
 pub use terrain_stage::{

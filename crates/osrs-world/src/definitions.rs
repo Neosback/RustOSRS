@@ -41,6 +41,14 @@ pub struct FloorTable {
     texture_averages: HashMap<i32, i32>,
 }
 
+impl osrs_render::TextureAverage for FloorTable {
+    fn average_hsl(&self, texture_id: u32) -> Option<u16> {
+        self.texture_averages
+            .get(&(texture_id as i32))
+            .map(|value| *value as u16)
+    }
+}
+
 impl FloorLookup for FloorTable {
     fn underlay(&self, index: u32) -> UnderlayHsl {
         self.underlays.get(&index).copied().unwrap_or(UnderlayHsl {
