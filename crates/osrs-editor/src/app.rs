@@ -9,6 +9,7 @@ use osrs_world::{AnimationSystem, RegionStreamer, StreamEvent, TerrainPresentati
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
+    sync::Arc,
     time::Instant,
 };
 
@@ -32,6 +33,9 @@ struct ViewportTargets {
 struct RegionStats {
     vertices: usize,
 }
+
+/// `(region, loc index)` of a picked object.
+type OutlineKey = ((i32, i32), usize);
 
 /// Renderer key of the per-frame animated-loc geometry.
 const ANIMATED_KEY: (i32, i32) = (i32::MIN, i32::MIN);
@@ -59,6 +63,9 @@ pub struct EditorApp {
     infos: Infos,
     hover: Pick,
     selected: Option<ObjectPick>,
+    /// Model triangles of picked objects, keyed by (region, loc index).
+    outlines: HashMap<OutlineKey, Arc<Vec<[[i32; 3]; 3]>>>,
+    outline_requested: HashSet<OutlineKey>,
     context_pick: Pick,
     streamer: RegionStreamer,
     animations: AnimationSystem,
@@ -125,6 +132,8 @@ impl EditorApp {
             infos: Infos::new(),
             hover: Pick::default(),
             selected: None,
+            outlines: HashMap::new(),
+            outline_requested: HashSet::new(),
             context_pick: Pick::default(),
             streamer,
             animations: AnimationSystem::new(),
@@ -172,6 +181,9 @@ impl EditorApp {
             self.infos.remove(&key);
         }
         self.loaded.clear();
+        self.outlines.clear();
+        self.outline_requested.clear();
+        self.selected = None;
         self.in_flight.clear();
         self.animation_dirty = true;
     }
@@ -235,6 +247,13 @@ impl EditorApp {
                             vertices: region.geometry.vertex_count(),
                         }),
                     );
+                }
+                StreamEvent::Outline {
+                    region,
+                    index,
+                    triangles,
+                } => {
+                    self.outlines.insert((region, index), Arc::new(triangles));
                 }
                 StreamEvent::Empty(region) => {
                     let key = (region.x, region.y);
@@ -349,6 +368,28 @@ impl EditorApp {
         if response.secondary_clicked() {
             self.context_pick = self.hover.clone();
         }
+        let wanted: Vec<ObjectPick> = [
+            self.hover.object.clone(),
+            self.selected.clone(),
+            self.context_pick.object.clone(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        for object in wanted {
+            let key = (object.region, object.index);
+            if self.outlines.contains_key(&key) || !self.outline_requested.insert(key) {
+                continue;
+            }
+            if let Some(loc) = self
+                .infos
+                .get(&object.region)
+                .and_then(|info| info.locs.get(object.index))
+            {
+                self.streamer
+                    .request_outline(object.region, object.index, loc.clone());
+            }
+        }
     }
 
     fn draw_selection(
@@ -360,75 +401,66 @@ impl EditorApp {
         height: u32,
     ) {
         let painter = ui.painter().with_clip_rect(rect);
-        let outline = |object: &ObjectPick, color: egui::Color32| {
-            let Some(loc) = self
-                .infos
-                .get(&object.region)
-                .and_then(|info| info.locs.get(object.index))
-            else {
+        let outline = |object: &ObjectPick, fill: egui::Color32, edge: egui::Color32| {
+            let Some(triangles) = self.outlines.get(&(object.region, object.index)) else {
                 return;
             };
-            for slot in &loc.slots {
-                let corner = |index: usize| {
-                    let point = [
-                        f64::from(if index & 1 == 0 {
-                            slot.min[0]
-                        } else {
-                            slot.max[0]
-                        }),
-                        f64::from(if index & 2 == 0 {
-                            slot.min[1]
-                        } else {
-                            slot.max[1]
-                        }),
-                        f64::from(if index & 4 == 0 {
-                            slot.min[2]
-                        } else {
-                            slot.max[2]
-                        }),
-                    ];
-                    pick::project(
-                        &self.camera,
-                        self.renderer.render_origin(),
-                        width as f32,
-                        height as f32,
-                        point,
+            let to_screen = |point: [i32; 3]| {
+                pick::project(
+                    &self.camera,
+                    self.renderer.render_origin(),
+                    width as f32,
+                    height as f32,
+                    [
+                        f64::from(point[0]),
+                        f64::from(point[1]),
+                        f64::from(point[2]),
+                    ],
+                )
+                .map(|p| {
+                    egui::pos2(
+                        rect.min.x + p[0] / pixels_per_point,
+                        rect.min.y + p[1] / pixels_per_point,
                     )
-                    .map(|p| {
-                        egui::pos2(
-                            rect.min.x + p[0] / pixels_per_point,
-                            rect.min.y + p[1] / pixels_per_point,
-                        )
-                    })
+                })
+            };
+            let mut mesh = egui::epaint::Mesh::default();
+            for triangle in triangles.iter() {
+                let (Some(a), Some(b), Some(c)) = (
+                    to_screen(triangle[0]),
+                    to_screen(triangle[1]),
+                    to_screen(triangle[2]),
+                ) else {
+                    continue;
                 };
-                for (a, b) in [
-                    (0, 1),
-                    (2, 3),
-                    (4, 5),
-                    (6, 7),
-                    (0, 2),
-                    (1, 3),
-                    (4, 6),
-                    (5, 7),
-                    (0, 4),
-                    (1, 5),
-                    (2, 6),
-                    (3, 7),
-                ] {
-                    if let (Some(a), Some(b)) = (corner(a), corner(b)) {
-                        painter.line_segment([a, b], egui::Stroke::new(1.5, color));
-                    }
+                let base = mesh.vertices.len() as u32;
+                for position in [a, b, c] {
+                    mesh.vertices.push(egui::epaint::Vertex {
+                        pos: position,
+                        uv: egui::epaint::WHITE_UV,
+                        color: fill,
+                    });
                 }
+                mesh.indices.extend([base, base + 1, base + 2]);
+                painter.line_segment([a, b], egui::Stroke::new(0.75, edge));
+                painter.line_segment([b, c], egui::Stroke::new(0.75, edge));
+                painter.line_segment([c, a], egui::Stroke::new(0.75, edge));
             }
+            painter.add(egui::Shape::mesh(mesh));
         };
         if let Some(object) = &self.hover.object {
             outline(
                 object,
-                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 120),
+                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 40),
+                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 90),
             );
         }
         if let Some(object) = &self.selected {
-            outline(object, egui::Color32::from_rgb(255, 200, 0));
+            outline(
+                object,
+                egui::Color32::from_rgba_unmultiplied(255, 190, 0, 60),
+                egui::Color32::from_rgb(255, 200, 0),
+            );
         }
         let text = pick::summary(&self.infos, &self.hover);
         if !text.is_empty() {

@@ -94,6 +94,12 @@ pub enum StreamEvent {
     Region(Box<RegionGeometry>),
     /// The cache has no map data for this region (open ocean, unused squares).
     Empty(RegionCoord),
+    /// Triangles of one picked loc (`[[x, height, z]; 3]` world units).
+    Outline {
+        region: (i32, i32),
+        index: usize,
+        triangles: Vec<[[i32; 3]; 3]>,
+    },
     Failed(RegionCoord, String),
     InitFailed(String),
 }
@@ -101,6 +107,11 @@ pub enum StreamEvent {
 enum Request {
     Build(RegionCoord),
     SetPresentation(TerrainPresentation, u32),
+    Outline {
+        region: (i32, i32),
+        index: usize,
+        loc: Box<crate::LocInfo>,
+    },
     Shutdown,
 }
 
@@ -133,6 +144,15 @@ impl RegionStreamer {
                 while let Ok(request) = request_rx.recv() {
                     match request {
                         Request::Shutdown => break,
+                        Request::Outline { region, index, loc } => {
+                            let triangles = crate::loc_outline_triangles(&mut definitions, &loc)
+                                .unwrap_or_default();
+                            let _ = event_tx.send(StreamEvent::Outline {
+                                region,
+                                index,
+                                triangles,
+                            });
+                        }
                         Request::SetPresentation(new_presentation, new_generation) => {
                             presentation = new_presentation;
                             generation = new_generation;
@@ -169,6 +189,15 @@ impl RegionStreamer {
         let _ = self
             .requests
             .send(Request::SetPresentation(presentation, generation));
+    }
+
+    /// Ask the worker for the triangles of a picked loc.
+    pub fn request_outline(&self, region: (i32, i32), index: usize, loc: crate::LocInfo) {
+        let _ = self.requests.send(Request::Outline {
+            region,
+            index,
+            loc: Box::new(loc),
+        });
     }
 
     /// Queue a region build.

@@ -26,7 +26,10 @@ pub use extract::{
     OwnedTiles, extract_animated_instances, extract_owned_geometry, extract_scene_geometry,
     texture_layers,
 };
-pub use info::{LocInfo, RegionInfo, SlotInfo, SurfaceKind, TileInfo, extract_region_info};
+pub use info::{
+    LocInfo, RegionInfo, SlotInfo, SurfaceKind, TileInfo, extract_region_info,
+    loc_outline_triangles,
+};
 pub use loc_stage::{LocRenderable, LocStageOutput, LocStageStats, WorldLoc, place_window_locs};
 pub use scene_builder::{WorldScene, build_world_scene};
 pub use streaming::{

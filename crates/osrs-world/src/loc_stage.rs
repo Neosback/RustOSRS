@@ -62,6 +62,9 @@ pub struct WorldLoc {
     /// One entry per model request in the plan (two for type 2/8), in plan order. Empty when the
     /// object has no model for the requested type (nothing is placed in that case).
     pub renderables: Vec<LocRenderable>,
+    /// Non-reference per-slot draw offsets `(x, z)` for diagonal wall decorations snapped flush
+    /// against a type-9 wall (see `TerrainPresentation::flush_diagonal_decorations`).
+    pub slot_offsets: Option<[(i32, i32); 2]>,
 }
 
 /// Counters describing a loc stage run.
@@ -685,6 +688,7 @@ fn finish(
             orientation: loc.orientation,
             plan: loc.plan,
             renderables,
+            slot_offsets: None,
         });
     }
 

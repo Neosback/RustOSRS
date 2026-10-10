@@ -106,25 +106,36 @@ so `getBoundaryObjectTag` is 0 and the displacement is the default `8`; offsets 
 and the second entity at orientation `+2` match our plan. The write-up's "plane bias / roof pull"
 is not in RuneLite (face bias only; all levels share one depth buffer) and is not applied.
 
-## Diagonal wall decorations floating off type-9 walls (user report: mirrored window)
+## Diagonal wall decorations vs type-9 diagonal walls (user report: mirrored window)
 
-`decor_matrix` (real models of decoration 1821 and host 1902): a type-8 decoration's plates are
-`orientation + 4` (offset) and `orientation + 6` (drawn at the plain centre); a type-9 diagonal
-wall is a wedge whose flat face lies on a tile diagonal. For each host orientation only two of the
-four decoration orientations are valid, and for exactly one of them the visible plate is the
-*offset* one: the client's default displacement (`8 * (field803, field805)`, magnitude 11.3,
-perpendicular to the face) then leaves the plate floating 11 units off the wall, while for the
-other valid orientation the visible plate is the plain-centre one and sits flush. This is the
-reported "same decoration fine on another wall". Type-9 walls are game objects, so
-`getBoundaryObjectTag` is 0 and the displacement default `8` is used; the offset presumably
-assumes a thin diagonal boundary wall. RuneLite's API also carries a second offset pair
-(`getXOffset2/getYOffset2`, absent in the January deob), so the 241 client changed how the
-second renderable is positioned; its values are unknown to us.
+Earlier analysis of this section was wrong in one respect and is corrected here.
 
-Option `TerrainPresentation::flush_diagonal_decorations` (non-reference; library default off,
-editor on with the wall fixes checkbox) zeroes the offsets of `256`-flag decorations on tiles that
-hold a type-9 wall; both valid combinations are then flush. Before/after renders confirm the
-window frames sit on the wall. Needs confirming against the 241 client's second-offset logic.
+A type-9 wall is a thin **slab** (thickness 16 along the tile diagonal, flat outer face on the
+diagonal through the tile centre; only the vertices a face references count, the model also holds
+unused vertices). A type-8 decoration has two plates: `orientation + 4` drawn at the offset
+`8 * (field803, field805)` and `orientation + 6` drawn at the plain centre. Measured with the real
+models (`decor_matrix`, `decor_probe`, `dump_model`):
+
+* When the decoration orientation equals the wall orientation (the usual authoring), the offset
+  plate lands flush on the slab's inner face and the plain plate flush on the outer face:
+  **the client rule is correct and gives a window visible from both sides.**
+* When the orientations differ by 2 (6 of 64 decorations in the Yanille window, e.g. object 1821 at
+  (2609..2613, 3076..3080) and torch 1183 at (2596,3085)) the same rule leaves one plate buried in
+  the slab and the other floating 11 units off a face — the reported "not flush" case.
+
+An earlier option that zeroed the offsets fixed those 6 but buried the inner plates of the 58
+others; it was removed. `TerrainPresentation::flush_diagonal_decorations` now *snaps* each plate
+along the slab normal so its base plane coincides with the slab face it faces
+(`snap_diagonal_decorations`): identical to the client for the 58 matched cases (checked with
+`decor_snap_report`), and corrected for the 6 mismatched ones. It is non-reference (the 241 client
+may behave differently: RuneLite's API carries a second offset pair, `getXOffset2/getYOffset2`,
+absent in the January deob).
+
+`decor_audit` over region (40,48): straight-wall decorations (types 4/5) are overwhelmingly
+flush (50 flush / 6 embedded / 1 floating for type 5), so the straight path matches the client.
+
+Picker bounds now ignore unused model vertices; selection/hover highlight draws the picked
+model's own triangles (ghosted fill + edges), rebuilt on the worker from the definition.
 
 The RuneLite commit "cache: rev 241" (87616aa) only adds loader changes (object opcode 42
 `fullRecolor`, opcode reorder, item/npc/spotanim fields); `runelite-master` already contains it.

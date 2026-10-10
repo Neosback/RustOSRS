@@ -196,11 +196,15 @@ pub(crate) fn loc_slots(loc: &WorldLoc, origin: (i32, i32)) -> Vec<Slot> {
             };
             let mut slots = Vec::new();
             if let Some(renderable) = loc.renderables.first() {
+                let (offset_x, offset_z) = match loc.slot_offsets {
+                    Some(offsets) => offsets[0],
+                    None => (decor.offset_x, decor.offset_z),
+                };
                 slots.push(slot(
                     *renderable,
-                    base_x + decor.offset_x + nudge_x,
+                    base_x + offset_x + nudge_x,
                     base_y,
-                    base_z + decor.offset_z + nudge_z,
+                    base_z + offset_z + nudge_z,
                     0,
                 ));
             }
@@ -208,7 +212,14 @@ pub(crate) fn loc_slots(loc: &WorldLoc, origin: (i32, i32)) -> Vec<Slot> {
             if decor.orientation_flag == 256
                 && let Some(renderable) = loc.renderables.get(1)
             {
-                slots.push(slot(*renderable, base_x, base_y, base_z, 0));
+                let (offset_x, offset_z) = loc.slot_offsets.map_or((0, 0), |offsets| offsets[1]);
+                slots.push(slot(
+                    *renderable,
+                    base_x + offset_x,
+                    base_y,
+                    base_z + offset_z,
+                    0,
+                ));
             }
             slots
         }

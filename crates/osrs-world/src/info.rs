@@ -150,7 +150,17 @@ fn model_bounds(
     };
     let mut min = [i32::MAX; 3];
     let mut max = [i32::MIN; 3];
-    for vertex in &model.vertices {
+    // Only vertices a face references: models may carry unused vertices that would inflate the
+    // bounds (wall pieces often do).
+    let mut used = vec![false; model.vertices.len()];
+    for face in &model.faces {
+        for index in [face.a.get(), face.b.get(), face.c.get()] {
+            if let Some(flag) = used.get_mut(index as usize) {
+                *flag = true;
+            }
+        }
+    }
+    for (vertex, _) in model.vertices.iter().zip(&used).filter(|(_, used)| **used) {
         let (mut x, y, mut z) = (vertex.x, vertex.y, vertex.z);
         if rotation != 0 {
             let original_x = x;
@@ -305,4 +315,70 @@ pub fn extract_region_info(
         locs,
         by_tile,
     }
+}
+
+/// Triangles of a placed loc's model(s) in world local units, for selection highlighting.
+///
+/// Rebuilt from the definition (selection, mirroring, transforms) without lighting or ground
+/// contouring; each triangle is `[[x, height, z]; 3]`.
+pub fn loc_outline_triangles(
+    definitions: &mut crate::WorldDefinitions,
+    loc: &LocInfo,
+) -> Result<Vec<[[i32; 3]; 3]>, crate::WorldError> {
+    use osrs_scene::placement::PlacementKind;
+    let requests: Vec<osrs_scene::placement::ModelRequest> = match loc.plan.kind {
+        PlacementKind::Boundary(plan) => [Some(plan.primary), plan.secondary]
+            .into_iter()
+            .flatten()
+            .collect(),
+        PlacementKind::FloorDecoration(plan) => vec![plan.model],
+        PlacementKind::WallDecoration(plan) => [Some(plan.primary), plan.secondary]
+            .into_iter()
+            .flatten()
+            .collect(),
+        PlacementKind::GameObject(plan) => vec![plan.model],
+    };
+    let mut triangles = Vec::new();
+    for (request, slot) in requests.iter().zip(&loc.slots) {
+        let Some(model) =
+            definitions.resolve_model(&loc.definition, request.loc_type, request.orientation)?
+        else {
+            continue;
+        };
+        let (sin, cos) = if slot.rotation == 0 {
+            (0, 0)
+        } else {
+            let tables = osrs_core::trig::trig_tables();
+            let index = usize::from(slot.rotation) & 2047;
+            (tables.sine(index), tables.cosine(index))
+        };
+        let points: Vec<[i32; 3]> = model
+            .vertices()
+            .iter()
+            .map(|vertex| {
+                let (mut x, y, mut z) = (vertex.x, vertex.y, vertex.z);
+                if slot.rotation != 0 {
+                    let original_x = x;
+                    x = (z
+                        .wrapping_mul(sin)
+                        .wrapping_add(original_x.wrapping_mul(cos)))
+                        >> 16;
+                    z = (z
+                        .wrapping_mul(cos)
+                        .wrapping_sub(original_x.wrapping_mul(sin)))
+                        >> 16;
+                }
+                [x + slot.origin[0], y + slot.origin[1], z + slot.origin[2]]
+            })
+            .collect();
+        for face in model.faces() {
+            let get = |index: u32| points.get(index as usize).copied();
+            if let (Some(a), Some(b), Some(c)) =
+                (get(face.a.get()), get(face.b.get()), get(face.c.get()))
+            {
+                triangles.push([a, b, c]);
+            }
+        }
+    }
+    Ok(triangles)
 }
