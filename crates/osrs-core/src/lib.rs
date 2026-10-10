@@ -6,6 +6,7 @@
 //! canonical values rather than redefining them.
 
 pub mod animation;
+pub mod animation_pose;
 pub mod contour;
 pub mod coordinate_math;
 pub mod coords;
