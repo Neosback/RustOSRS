@@ -137,10 +137,10 @@ pub fn extract_varbit_value(
 /// This helper is public so deterministic preview/runtime code can test target
 /// selection independently from variable-storage integration.
 pub fn select_morph_target(morphs: &ObjectMorphs, selector: i32) -> Option<ObjectId> {
-    if selector >= 0 {
-        if let Some(target) = morphs.transforms.get(selector as usize) {
-            return *target;
-        }
+    if selector >= 0
+        && let Some(target) = morphs.transforms.get(selector as usize)
+    {
+        return *target;
     }
     morphs.fallback
 }
@@ -150,7 +150,7 @@ mod tests {
     use super::*;
     use crate::definitions::DefinitionIdentity;
     use crate::provenance::{CacheFingerprint, ProfileDigest, TargetProvenance};
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, error::Error};
 
     const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
     const CACHE_FINGERPRINT: &str =
@@ -172,23 +172,27 @@ mod tests {
         }
     }
 
-    fn provenance() -> TargetProvenance {
-        TargetProvenance::new(
+    fn provenance() -> Result<TargetProvenance, Box<dyn Error>> {
+        Ok(TargetProvenance::new(
             "osrs-live-241-2026-09-30-openrs2-2727",
-            ProfileDigest::from_lower_hex(PROFILE_DIGEST).expect("valid profile digest"),
-            CacheFingerprint::from_lower_hex(CACHE_FINGERPRINT).expect("valid cache fingerprint"),
+            ProfileDigest::from_lower_hex(PROFILE_DIGEST)?,
+            CacheFingerprint::from_lower_hex(CACHE_FINGERPRINT)?,
             1,
-        )
-        .expect("valid target provenance")
+        )?)
     }
 
-    fn varbit(id: u32, base_varp: u32, start_bit: u8, end_bit: u8) -> VarbitDefinition {
-        VarbitDefinition {
-            identity: DefinitionIdentity::new(VarbitId::new(id), provenance()),
+    fn varbit(
+        id: u32,
+        base_varp: u32,
+        start_bit: u8,
+        end_bit: u8,
+    ) -> Result<VarbitDefinition, Box<dyn Error>> {
+        Ok(VarbitDefinition {
+            identity: DefinitionIdentity::new(VarbitId::new(id), provenance()?),
             base_varp: VarpId::new(base_varp),
             start_bit,
             end_bit,
-        }
+        })
     }
 
     fn morphs(transform_varbit: Option<VarbitId>, transform_varp: Option<VarpId>) -> ObjectMorphs {
@@ -201,22 +205,26 @@ mod tests {
     }
 
     #[test]
-    fn inclusive_varbit_range_extracts_reference_selector() {
-        let definition = varbit(7, 9, 3, 5);
-        let value = extract_varbit_value(&definition, 0b1110_1000).expect("valid varbit");
+    fn inclusive_varbit_range_extracts_reference_selector() -> Result<(), Box<dyn Error>> {
+        let definition = varbit(7, 9, 3, 5)?;
+        let value = extract_varbit_value(&definition, 0b1110_1000)?;
         assert_eq!(value, 5);
+        Ok(())
     }
 
     #[test]
-    fn full_width_varbit_preserves_signed_java_int_bits() {
-        let definition = varbit(7, 9, 0, 31);
-        assert_eq!(extract_varbit_value(&definition, -1), Ok(-1));
+    fn full_width_varbit_preserves_signed_java_int_bits() -> Result<(), Box<dyn Error>> {
+        let definition = varbit(7, 9, 0, 31)?;
+        assert_eq!(extract_varbit_value(&definition, -1)?, -1);
+        Ok(())
     }
 
     #[test]
-    fn varbit_wins_over_varp_when_both_are_present() {
+    fn varbit_wins_over_varp_when_both_are_present() -> Result<(), Box<dyn Error>> {
         let mut state = TestState::default();
-        state.varbits.insert(VarbitId::new(7), varbit(7, 9, 1, 2));
+        state
+            .varbits
+            .insert(VarbitId::new(7), varbit(7, 9, 1, 2)?);
         state.varps.insert(VarpId::new(9), 0b0010);
         state.varps.insert(VarpId::new(8), 2);
 
@@ -225,6 +233,7 @@ mod tests {
             &state,
         );
         assert_eq!(target, Ok(Some(ObjectId::new(101))));
+        Ok(())
     }
 
     #[test]
@@ -263,14 +272,14 @@ mod tests {
     }
 
     #[test]
-    fn missing_runtime_state_and_invalid_ranges_fail_explicitly() {
+    fn missing_runtime_state_and_invalid_ranges_fail_explicitly() -> Result<(), Box<dyn Error>> {
         let state = TestState::default();
         assert_eq!(
             resolve_object_morph(&morphs(Some(VarbitId::new(7)), None), &state),
             Err(MorphResolveError::MissingVarbitDefinition(VarbitId::new(7)))
         );
 
-        let invalid = varbit(7, 9, 6, 5);
+        let invalid = varbit(7, 9, 6, 5)?;
         assert_eq!(
             extract_varbit_value(&invalid, 0),
             Err(MorphResolveError::InvalidVarbitRange {
@@ -279,5 +288,6 @@ mod tests {
                 end_bit: 5,
             })
         );
+        Ok(())
     }
 }
