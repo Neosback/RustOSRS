@@ -14,8 +14,7 @@ use osrs_scene::{
 use std::{collections::BTreeMap, error::Error};
 
 const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
-const CACHE_FINGERPRINT: &str =
-    "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
+const CACHE_FINGERPRINT: &str = "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
 #[derive(Default)]
 struct RuntimeState {
@@ -155,7 +154,10 @@ fn active_morph_recomputes_rotated_footprint_height_and_center() -> Result<(), B
         panic!("type 10 must remain game-object storage");
     };
     assert_eq!(game.storage_footprint, Footprint::new(3, 2));
-    assert_eq!(resolved.placement.storage_center, resolved.placement.model_center);
+    assert_eq!(
+        resolved.placement.storage_center,
+        resolved.placement.model_center
+    );
     Ok(())
 }
 
