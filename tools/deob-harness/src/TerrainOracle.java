@@ -19,7 +19,7 @@ import java.util.Map;
  *   brightness <double>              palette brightness (default 0.8)
  *   underlay <id> <hex>              raw FloorUnderlayDefinition bytes
  *   overlay <id> <hex>               raw FloorOverlayDefinition bytes
- *   texavg <id> <rgb>                texture average RGB returned by the stub texture loader
+ *   texavg <id> <rgb>                texture average RGB (unlisted ids return (id * 0x010203) & 0xFFFFFF)
  *   noise <x> <y>                    noise offsets passed as loadTerrain's (var5,var6) base
  *   land <sceneX> <sceneY> <hex>     decoded terrain stream for one 64x64 region
  *   empty <sceneX> <sceneY>          region without land data (ScriptFrame.method749 fill)
@@ -105,7 +105,9 @@ public class TerrainOracle {
 			public int getAverageTextureRGB(int id) {
 				Integer v = avg.get(id);
 				if (v == null) {
-					throw new IllegalStateException("missing texavg for texture " + id);
+					// Deterministic stub for ids not listed with a `texavg` record. The Rust port
+					// must use the same formula until real texture averages exist.
+					return (id * 0x010203) & 0xFFFFFF;
 				}
 				return v;
 			}
@@ -115,6 +117,10 @@ public class TerrainOracle {
 			}
 		});
 
+		// The client caches definitions in 64-entry evicting tables; replace them so every
+		// supplied definition stays resident.
+		FloorUnderlayDefinition.FloorUnderlayDefinition_cached = new EvictingDualNodeHashTable(65536);
+		FloorOverlayDefinition.FloorOverlayDefinition_cached = new EvictingDualNodeHashTable(65536);
 		for (String[] r : records) {
 			if (r[0].equals("underlay")) {
 				int id = Integer.parseInt(r[1]);
@@ -153,6 +159,27 @@ public class TerrainOracle {
 				Tiles.Tiles_underlays2[Integer.parseInt(r[1])][Integer.parseInt(r[2])][Integer.parseInt(r[3])] =
 					(byte) Integer.parseInt(r[4]);
 			}
+		}
+
+		java.util.TreeSet<Integer> missingUnder = new java.util.TreeSet<>();
+		java.util.TreeSet<Integer> missingOver = new java.util.TreeSet<>();
+		for (int p = 0; p < 4; ++p) {
+			for (int x = 0; x < 104; ++x) {
+				for (int y = 0; y < 104; ++y) {
+					int u = class33.Tiles_underlays[p][x][y] & 32767;
+					if (u > 0 && FloorUnderlayDefinition.FloorUnderlayDefinition_cached.get((long) (u - 1)) == null) {
+						missingUnder.add(u - 1);
+					}
+					int o = class623.Tiles_overlays[p][x][y] & 32767;
+					if (o > 0 && FloorOverlayDefinition.FloorOverlayDefinition_cached.get((long) (o - 1)) == null) {
+						missingOver.add(o - 1);
+					}
+				}
+			}
+		}
+		if (!missingUnder.isEmpty() || !missingOver.isEmpty()) {
+			System.err.println("missing underlay defs " + missingUnder + " overlay defs " + missingOver);
+			System.exit(3);
 		}
 
 		class470.method9712(wv);
