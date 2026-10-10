@@ -6,10 +6,8 @@ use osrs_core::{
 };
 use std::{collections::BTreeMap, error::Error};
 
-const PROFILE_DIGEST: &str =
-    "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
-const CACHE_FINGERPRINT: &str =
-    "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
+const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
+const CACHE_FINGERPRINT: &str = "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
 #[derive(Default)]
 struct FixtureState {
@@ -28,8 +26,8 @@ impl MorphVariableState for FixtureState {
 }
 
 #[test]
-fn m8_morph_resolution_obeys_varbit_varp_fallback_and_null_contract()
--> Result<(), Box<dyn Error>> {
+fn m8_morph_resolution_obeys_varbit_varp_fallback_and_null_contract() -> Result<(), Box<dyn Error>>
+{
     let varbit_id = VarbitId::new(70);
     let selector_varp = VarpId::new(90);
     let direct_varp = VarpId::new(80);
