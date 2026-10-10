@@ -9,9 +9,11 @@ mod classification;
 mod coordinates;
 mod draw_plan;
 mod generation;
+mod material;
 mod mesh;
 mod priority;
 mod snapshot;
+mod uv;
 
 pub use alpha::ReferenceFaceAlpha;
 pub use classification::{
@@ -20,9 +22,16 @@ pub use classification::{
 pub use coordinates::{RenderCoordinateError, RenderOrigin, RenderPoint};
 pub use draw_plan::{RenderDrawPlan, RenderScenePass};
 pub use generation::SemanticGeneration;
+pub use material::{
+    MaterialHandle, MaterialTable, MaterialTableError, REFERENCE_TEXTURE_ANIMATION_UNIT,
+    RenderMaterial, TextureAnimationVector,
+};
 pub use mesh::{RenderExtractionError, RenderMesh, RenderPlacement};
 pub use priority::{
     ReferencePriorityFace, ReferencePriorityOrder, ReferencePriorityThresholds,
     prepare_reference_priority_order,
 };
 pub use snapshot::RenderSnapshot;
+pub use uv::{
+    ReferenceFaceUvs, ReferenceUv, ReferenceUvError, ReferenceUvMode, prepare_reference_face_uvs,
+};
