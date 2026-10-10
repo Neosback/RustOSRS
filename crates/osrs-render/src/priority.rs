@@ -61,9 +61,7 @@ impl ReferencePriorityOrder {
 /// interleaved before ordinary priority bands 0, 3, and 5 using the audited
 /// `(1,2)`, `(3,4)`, and `(6,8)` average-depth thresholds. Priority 11 is not
 /// considered until priority 10 is exhausted.
-pub fn prepare_reference_priority_order(
-    faces: &[ReferencePriorityFace],
-) -> ReferencePriorityOrder {
+pub fn prepare_reference_priority_order(faces: &[ReferencePriorityFace]) -> ReferencePriorityOrder {
     let mut depth_ordered = faces.to_vec();
     depth_ordered.sort_by(|left, right| {
         right
@@ -106,11 +104,7 @@ pub fn prepare_reference_priority_order(
         ordered_face_indices.extend(queues[priority].iter().map(|face| face.face_index));
     }
 
-    ordered_face_indices.extend(
-        special[special_index..]
-            .iter()
-            .map(|face| face.face_index),
-    );
+    ordered_face_indices.extend(special[special_index..].iter().map(|face| face.face_index));
 
     ReferencePriorityOrder {
         ordered_face_indices,

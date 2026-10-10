@@ -5,12 +5,10 @@ use osrs_render::{
 };
 use std::error::Error;
 
-const INPUT_FIXTURE: &str = include_str!(
-    "../../../reference-fixtures/priority/all_0_11_threshold_crossing.input.json"
-);
-const EXPECTED_FIXTURE: &str = include_str!(
-    "../../../reference-fixtures/priority/all_0_11_threshold_crossing.expected.json"
-);
+const INPUT_FIXTURE: &str =
+    include_str!("../../../reference-fixtures/priority/all_0_11_threshold_crossing.input.json");
+const EXPECTED_FIXTURE: &str =
+    include_str!("../../../reference-fixtures/priority/all_0_11_threshold_crossing.expected.json");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FixtureFace {
@@ -58,8 +56,7 @@ fn production_priority_order_executes_the_pinned_m5_fixture() -> Result<(), Box<
 }
 
 #[test]
-fn reference_alpha_interpretation_preserves_raw_sentinel_semantics()
--> Result<(), Box<dyn Error>> {
+fn reference_alpha_interpretation_preserves_raw_sentinel_semantics() -> Result<(), Box<dyn Error>> {
     let input = parse_input_fixture(INPUT_FIXTURE)?;
 
     let absent = input
@@ -91,7 +88,10 @@ fn reference_alpha_interpretation_preserves_raw_sentinel_semantics()
     assert!(sentinel_alpha.is_minus_one_sentinel());
 
     assert_eq!(ReferenceFaceAlpha::from_raw(Some(0)).rasterizer_alpha(), 0);
-    assert_eq!(ReferenceFaceAlpha::from_raw(Some(-2)).rasterizer_alpha(), 254);
+    assert_eq!(
+        ReferenceFaceAlpha::from_raw(Some(-2)).rasterizer_alpha(),
+        254
+    );
     Ok(())
 }
 
