@@ -7,6 +7,8 @@
 use crate::coords::ModelPoint;
 use crate::definitions::DefinitionIdentity;
 use crate::ids::{ModelId, TextureId};
+use crate::model_construction::AssembledModel;
+use crate::model_identity::ModelSemanticIdentity;
 use core::fmt;
 
 /// Stable vertex index in canonical model topology.
@@ -301,7 +303,11 @@ impl SourceModel {
     /// Create an owned mutable semantic copy. Mutating the returned value cannot
     /// mutate this cached source model.
     pub fn to_working_copy(&self) -> WorkingModel {
+        let assembled = AssembledModel::from_source(self);
+        let semantic_identity = ModelSemanticIdentity::from_assembled(&assembled)
+            .expect("a single validated source model always yields a valid semantic identity");
         WorkingModel {
+            semantic_identity,
             data: self.data.clone(),
             normals: ModelNormalState::Uncomputed,
             animation_groups: None,
@@ -349,18 +355,22 @@ pub enum ModelNormalState {
 /// Owned mutable model state used by exact semantic transformations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkingModel {
+    semantic_identity: ModelSemanticIdentity,
     data: ModelSemanticData,
     normals: ModelNormalState,
     animation_groups: Option<AnimationGroups>,
 }
 
 impl WorkingModel {
-    pub fn identity(&self) -> &DefinitionIdentity<ModelId> {
-        &self.data.identity
+    /// Exact constructed-model source identity. Composite support is carried by
+    /// this type even though admission from M4 assemblies is a later checkpoint.
+    pub fn identity(&self) -> &ModelSemanticIdentity {
+        &self.semantic_identity
     }
 
-    pub const fn format(&self) -> ModelFormatIdentity {
-        self.data.format
+    /// A decode format exists only when exactly one real source model contributed.
+    pub fn format(&self) -> Option<ModelFormatIdentity> {
+        self.semantic_identity.singular_format()
     }
 
     pub fn vertices(&self) -> &[ModelPoint] {
@@ -546,7 +556,7 @@ impl fmt::Display for ModelValidationError {
                 vertex_count,
             } => write!(
                 formatter,
-                "texture triangle {triangle} references vertex {vertex}, but vertex count is {vertex_count}"
+                "texture triangle {triangle} references vertex {vertex}, but texture triangle count is {vertex_count}"
             ),
             Self::TextureSelectorOutOfRange {
                 face,
@@ -889,6 +899,8 @@ mod tests {
 
         assert_eq!(source.vertices()[0], original);
         assert_ne!(working.vertices()[0], original);
+        assert_eq!(working.identity().singular_model_id(), Some(ModelId::new(77)));
+        assert_eq!(working.format(), Some(source.format()));
         Ok(())
     }
 
