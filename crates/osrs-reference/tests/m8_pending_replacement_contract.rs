@@ -5,8 +5,8 @@ use osrs_core::{
 };
 use osrs_scene::{
     PendingInsertion, PendingRemoval, PendingReplacementPlanError, PendingSceneCategory,
-    PendingSceneMutation, PlacementInput, SceneLayer, apply_pending_replacement, plan_placement,
-    plan_pending_replacement,
+    PendingSceneMutation, PlacementInput, SceneLayer, apply_pending_replacement,
+    plan_pending_replacement, plan_placement,
 };
 use std::{convert::Infallible, error::Error};
 
@@ -148,12 +148,8 @@ fn removal_category_is_independent_from_replacement_loc_layer() -> Result<(), Bo
     let plane = plane_zero()?;
     let tile = SceneTile::new(10, 11);
     let floor_placement = placement(tile, 22)?;
-    let plan = plan_pending_replacement(
-        plane,
-        tile,
-        2,
-        Some((ObjectId::new(300), floor_placement)),
-    )?;
+    let plan =
+        plan_pending_replacement(plane, tile, 2, Some((ObjectId::new(300), floor_placement)))?;
 
     assert_eq!(plan.removal.category, PendingSceneCategory::GameObject);
     assert_eq!(plan.removal.tile, tile);
@@ -161,6 +157,9 @@ fn removal_category_is_independent_from_replacement_loc_layer() -> Result<(), Bo
         .replacement
         .ok_or_else(|| "replacement should be present".to_string())?;
     assert_eq!(replacement.tile, tile);
-    assert_eq!(replacement.placement.kind.layer(), SceneLayer::FloorDecoration);
+    assert_eq!(
+        replacement.placement.kind.layer(),
+        SceneLayer::FloorDecoration
+    );
     Ok(())
 }
