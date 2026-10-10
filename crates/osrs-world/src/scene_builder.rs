@@ -137,6 +137,33 @@ fn snap_diagonal_decorations(
         }
         let key = (loc.plane.index().get(), loc.tile.x, loc.tile.y);
         let Some(&(host_id, host_orientation)) = hosts.get(&key) else {
+            // No type-9 wall here (diagonal boundary hosts, or none): keep the client's offsets
+            // but still lift each plate off the surface it sits on.
+            let Some(decor_def) = definitions.object(loc.object_id)? else {
+                continue;
+            };
+            let mut offsets = [(decor.offset_x, decor.offset_z), (0, 0)];
+            for (slot, request) in [Some(decor.primary), decor.secondary]
+                .into_iter()
+                .enumerate()
+            {
+                let Some(request) = request else { continue };
+                let Some(plate) =
+                    definitions.resolve_model(&decor_def, request.loc_type, request.orientation)?
+                else {
+                    continue;
+                };
+                let points = used_points(&plate);
+                for normal in [(k, k), (k, -k), (-k, -k), (-k, k)] {
+                    let (lo, hi) = range(&points, normal);
+                    if lo.abs() <= 1.5 && hi > 1.5 {
+                        offsets[slot].0 += (normal.0 * 1.0).round() as i32;
+                        offsets[slot].1 += (normal.1 * 1.0).round() as i32;
+                        break;
+                    }
+                }
+            }
+            loc.slot_offsets = Some(offsets);
             continue;
         };
         let (Some(host_def), Some(decor_def)) = (
@@ -151,14 +178,24 @@ fn snap_diagonal_decorations(
             continue;
         };
         let host_points = used_points(&host_model);
-        // The slab normal is the diagonal axis along which the wall is thin.
-        let Some((normal, (slab_lo, slab_hi))) = [(k, k), (k, -k)]
-            .into_iter()
-            .map(|normal| (normal, range(&host_points, normal)))
-            .find(|(_, (lo, hi))| hi - lo < 24.0)
+        // The host's flat face passes through the tile centre: along one diagonal axis its
+        // vertices end at 0. Orient the axis so the outward side is positive.
+        let Some((normal, slab_lo)) =
+            [(k, k), (k, -k), (-k, -k), (-k, k)]
+                .into_iter()
+                .find_map(|normal| {
+                    let (lo, hi) = range(&host_points, normal);
+                    (hi.abs() < 1.0 && lo < -2.0).then_some((normal, lo))
+                })
         else {
             continue;
         };
+        // Thin slab (a 16-unit wall) has a second, inner face; a wedge's inside is solid.
+        let thin = -slab_lo < 24.0;
+        // Plates must clear the face they sit on by a hair: the integer 45-degree rotation
+        // leaves some plates up to 0.7 units inside the wall, where the depth buffer hides
+        // them (the software client paints decorations over their wall regardless of depth).
+        const LIFT: f64 = 1.0;
 
         let mut offsets = [(0, 0); 2];
         for (slot, request) in [Some(decor.primary), decor.secondary]
@@ -174,9 +211,19 @@ fn snap_diagonal_decorations(
             let (plate_lo, plate_hi) = range(&used_points(&plate), normal);
             // The plate's base plane is the end of its thickness at the origin.
             let delta = if plate_lo.abs() <= 1.5 && plate_hi > 1.5 {
-                slab_hi // protrudes toward +normal: sits on the +normal face
+                LIFT // protrudes outward: sits on the outer face
             } else if plate_hi.abs() <= 1.5 && plate_lo < -1.5 {
-                slab_lo // protrudes toward -normal: sits on the -normal face
+                if thin {
+                    slab_lo - LIFT // protrudes inward: sits on the inner face
+                } else {
+                    // Buried in a solid wedge: keep the client's placement.
+                    offsets[slot] = if slot == 0 {
+                        (decor.offset_x, decor.offset_z)
+                    } else {
+                        (0, 0)
+                    };
+                    continue;
+                }
             } else {
                 continue;
             };

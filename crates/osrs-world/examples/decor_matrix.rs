@@ -18,7 +18,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let wall = defs
             .resolve_model(&host, LocType::new(9), h)?
             .ok_or("wall")?;
-        let pts: Vec<(i32, i32)> = wall.vertices().iter().map(|v| (v.x, v.z)).collect();
+        let mut used = vec![false; wall.vertices().len()];
+        for f in wall.faces() {
+            for i in [f.a.get(), f.b.get(), f.c.get()] {
+                used[i as usize] = true;
+            }
+        }
+        let pts: Vec<(i32, i32)> = wall
+            .vertices()
+            .iter()
+            .zip(&used)
+            .filter(|(_, u)| **u)
+            .map(|(v, _)| (v.x, v.z))
+            .collect();
         // wedge normal: the axis whose projection range is one-sided
         let mut best = None;
         for normal in [(k, k), (k, -k)] {
@@ -30,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 proj.iter().cloned().fold(f64::MAX, f64::min),
                 proj.iter().cloned().fold(f64::MIN, f64::max),
             );
-            if lo.abs() < 1.0 || hi.abs() < 1.0 {
+            if hi - lo < 40.0 {
                 // one-sided: face at 0, wedge toward the far side
                 let sign = if hi.abs() < 1.0 { 1.0 } else { -1.0 }; // wedge side is -sign*normal... outside is +sign
                 best = Some((normal, sign));

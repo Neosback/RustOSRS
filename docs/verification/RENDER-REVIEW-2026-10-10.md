@@ -134,6 +134,34 @@ absent in the January deob).
 `decor_audit` over region (40,48): straight-wall decorations (types 4/5) are overwhelmingly
 flush (50 flush / 6 embedded / 1 floating for type 5), so the straight path matches the client.
 
+### Recessed decoration plates hidden by the depth buffer (black arrow-slit crosses)
+
+Diagonal (`256`-flag) wall-decoration plates are produced by an integer 45-degree rotation plus a
+`(45, 0, -45)` shift, which leaves some plates (all that were measured) up to 0.7 units *behind*
+the wall face they sit on (decoration 1938 on wall 17088: black slot faces at n in [-0.7, 7.8]).
+The CPU client paints decorations over their wall regardless of depth, so the black slot shows;
+a depth-tested renderer hides the part behind the face (the slot filled with brick texture), and
+the straight-wall path avoids it only through the `+-1` nudge, which diagonal flags (256) do not
+have. `snap_diagonal_decorations` now also lifts every diagonal plate 1 unit along its outward
+normal (and keeps the client's offsets when the host is not a type-9 wall). With it the black
+slots render. Non-reference (option "wall fixes").
+
+Same section: wall 17088 carries `decoration_displacement = 32`, so `Scene.method5576` doubles the
+offsets of decorations placed before it (`(-8,-8)` becomes `(-16,-16)`), which matches the thick
+(32-unit) slab of that wall family.
+
+Cross-check against the 317-based client at `~/Desktop/ub3r-monorepo/game-client`: it stores one
+renderable per wall decoration and bakes the offsets into the draw call (`53 = 45 + 8` for the
+`256` flag, `45` for `512`, type 8 = `768` chooses the flag by camera side), which is the same
+geometry the 241 model-based path produces (`(45, 0, -45)` plus `8 * field`). It uses a fixed
+displacement of 8 for types 6-8 and never rescales existing decorations.
+
+Lighting was re-checked against `ModelData.toModel`/`calculateVertexNormals`: the face-normal
+sign, the `/ (var7 * magnitude) + ambient` form, light vector `(-50, -10, -50)`, flat vs smooth
+faces and the `2..126` lightness clamp are identical in `osrs-core::normals`/`lighting`. Objects
+with `ambient = 0, contrast = 0` (for example the bay window 1852) are lit with
+`ambient + 64` / `contrast + 768`, which makes east-facing faces nearly black by design.
+
 Picker bounds now ignore unused model vertices; selection/hover highlight draws the picked
 model's own triangles (ghosted fill + edges), rebuilt on the worker from the definition.
 

@@ -22,7 +22,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let host = defs.object(ObjectId::new(a[4].parse()?))?.ok_or("host")?;
     let (d_or, h_or): (u8, u8) = (a[3].parse()?, a[5].parse()?);
     let pts = |m: &osrs_core::model_construction::AssembledModel| -> Vec<(i32, i32)> {
-        m.vertices().iter().map(|v| (v.x, v.z)).collect()
+        let mut used = vec![false; m.vertices().len()];
+        for f in m.faces() {
+            for i in [f.a.get(), f.b.get(), f.c.get()] {
+                used[i as usize] = true;
+            }
+        }
+        m.vertices()
+            .iter()
+            .zip(&used)
+            .filter(|(_, u)| **u)
+            .map(|(v, _)| (v.x, v.z))
+            .collect()
     };
     let wall = defs
         .resolve_model(&host, LocType::new(9), h_or)?
