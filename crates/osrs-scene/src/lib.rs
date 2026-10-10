@@ -9,6 +9,7 @@ pub mod normal_finalization;
 pub mod placement;
 pub mod placement_height;
 pub mod planes;
+pub mod reference_finalization;
 pub mod scene;
 pub mod side_effects;
 pub mod terrain;
@@ -26,6 +27,7 @@ pub use placement::{
 };
 pub use placement_height::{PlacementHeightError, PlacementHeightInput, sample_placement_height};
 pub use planes::{PlacementPlanes, collision_plane};
+pub use reference_finalization::{SceneReferenceFinalizationError, SceneReferenceFinalizer};
 pub use scene::{SceneGameObject, SceneGrid, SceneGridError, ScenePlacedLoc, SemanticTile};
 pub use side_effects::{
     CollisionSideEffect, DefinitionSideEffectInputs, SceneSideEffectPlan,
