@@ -46,13 +46,21 @@ fn same_non_flat_definition_uses_model_data_initially_and_lit_runtime_model()
         .ok_or("runtime dynamic model unexpectedly absent")?;
 
     let Cow::Borrowed(runtime_lit) = runtime else {
-        return Err("runtime path without pose or contour did not borrow its lit cached base".into());
+        return Err(
+            "runtime path without pose or contour did not borrow its lit cached base".into(),
+        );
     };
 
     assert_eq!(runtime_cache.len(), 1);
     assert_eq!(runtime_lit.vertices[0], ModelPoint::new(0, 0, 0));
-    assert_ne!(initial_model_data.model().vertices()[0], runtime_lit.vertices[0]);
-    assert_eq!(source, source_snapshot, "shared raw source must remain immutable");
+    assert_ne!(
+        initial_model_data.model().vertices()[0],
+        runtime_lit.vertices[0]
+    );
+    assert_eq!(
+        source, source_snapshot,
+        "shared raw source must remain immutable"
+    );
     Ok(())
 }
 
