@@ -66,6 +66,27 @@ shows through; vanilla/RuneLite default the sky colour to black, and the optiona
 "Skybox" plugin supplies an old-school per-region sky colour. The editor now clears to black by default with a colour picker; porting `skybox.txt` region
 colours is not done.
 
+## Wall-merge seams (objects 1904 / 1907, Yanille garden wall)
+
+Third-party write-up claim: the client's normal merge (`ModelData.method5262`) requires
+strict `x`, `y` and `z` equality, and some adjacent wall pieces differ by 1 unit in `y`, so they
+never merge (visible lighting seam, coincident end caps left visible).
+
+Verified on the real cache (`examples/merge_probe.rs`, `examples/loc_finder.rs`): object 1904
+has `translation.y = 1`, 1907 has `0`; the pair at (2585,3085) type 9 / (2584,3085) type 1 has 18
+x/z-coincident vertices, **0** strict-equal, 9 within 2 units. The pinned client's condition is
+`var11 == var1.verticesY[var14]` (strict), so the reference also fails to merge these pieces and
+shows the same seam; our port is identical. The write-up's 2-unit tolerance is a deliberate
+deviation from the client, not an exactness fix. It is not applied. If a "visual tolerance"
+mode is wanted it should be an opt-in editor setting (parameter on
+`merge_model_normals`), off by default.
+
+Same write-up, diagonal decorations (shape 8 on diagonal wall 1902): type-9 diagonal walls are
+*game objects*, so `getBoundaryObjectTag` is 0 and the decoration displacement is the default
+`8`; offsets `8 * (+-1, +-1)` and the second entity at orientation `+2` match our plan. The
+"plane bias / roof pull" section is not in RuneLite (face bias only, levels share one depth
+buffer), so it is intentionally not applied.
+
 ## Open items (not yet matching the reference)
 
 * **Alpha ordering.** RuneLite additionally sorts alpha models by distance and counting-sorts

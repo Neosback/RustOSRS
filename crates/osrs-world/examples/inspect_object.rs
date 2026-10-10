@@ -23,6 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             def.placement.clipped,
             def.placement.interact_type
         );
+        println!("  scale={:?} translation={:?} recolors={} ambient={} contrast={} contour={:?}", def.scale, def.translation, def.recolors.len(), def.ambient, def.contrast, def.contour_clip);
         for t in [0u8, 9, 10, 22] {
             match defs.resolve_model(&def, LocType::new(t), 0)? {
                 Some(model) => println!(
