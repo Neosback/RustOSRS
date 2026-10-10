@@ -29,8 +29,8 @@ const EAST_SHIFTED_TRIANGLE: [ModelPoint; 3] = [
 ];
 
 #[test]
-fn initial_non_flat_floor_neighbors_reconcile_before_final_lighting()
--> Result<(), Box<dyn Error>> {
+fn initial_non_flat_floor_neighbors_reconcile_before_final_lighting() -> Result<(), Box<dyn Error>>
+{
     let west_source = source_model(10_001, EAST_SHIFTED_TRIANGLE, 0x1234)?;
     let east_source = source_model(10_002, BASE_TRIANGLE, 0x1234)?;
     let west_snapshot = west_source.clone();
@@ -47,8 +47,14 @@ fn initial_non_flat_floor_neighbors_reconcile_before_final_lighting()
 
     assert_eq!(scene.lit_model(west_id), None);
     assert_eq!(scene.lit_model(east_id), None);
-    assert_eq!(scene.model_data().is_pending_model_data(west_id), Some(true));
-    assert_eq!(scene.model_data().is_pending_model_data(east_id), Some(true));
+    assert_eq!(
+        scene.model_data().is_pending_model_data(west_id),
+        Some(true)
+    );
+    assert_eq!(
+        scene.model_data().is_pending_model_data(east_id),
+        Some(true)
+    );
 
     let report = scene.reconcile_and_light()?;
 
@@ -56,18 +62,37 @@ fn initial_non_flat_floor_neighbors_reconcile_before_final_lighting()
     assert_eq!(report.matched_vertex_pairs(), 3);
     assert_eq!(report.hidden_faces(), 2);
     assert_eq!(report.closed_models(), 2);
-    assert_eq!(scene.model_data().is_pending_model_data(west_id), Some(false));
-    assert_eq!(scene.model_data().is_pending_model_data(east_id), Some(false));
-    assert_eq!(scene.lit_model(west_id).ok_or("west model was not lit")?.face_colors[0].c, -2);
-    assert_eq!(scene.lit_model(east_id).ok_or("east model was not lit")?.face_colors[0].c, -2);
+    assert_eq!(
+        scene.model_data().is_pending_model_data(west_id),
+        Some(false)
+    );
+    assert_eq!(
+        scene.model_data().is_pending_model_data(east_id),
+        Some(false)
+    );
+    assert_eq!(
+        scene
+            .lit_model(west_id)
+            .ok_or("west model was not lit")?
+            .face_colors[0]
+            .c,
+        -2
+    );
+    assert_eq!(
+        scene
+            .lit_model(east_id)
+            .ok_or("east model was not lit")?
+            .face_colors[0]
+            .c,
+        -2
+    );
     assert_eq!(west_source, west_snapshot);
     assert_eq!(east_source, east_snapshot);
     Ok(())
 }
 
 #[test]
-fn retained_loc_lighting_parameters_are_used_after_reconciliation()
--> Result<(), Box<dyn Error>> {
+fn retained_loc_lighting_parameters_are_used_after_reconciliation() -> Result<(), Box<dyn Error>> {
     let source = source_model(10_101, BASE_TRIANGLE, 0x2345)?;
     let entity = initial_non_flat_entity(1_101, &source, 7, -11)?;
     let expected = light_model_data(entity.model(), entity.lighting())?;
@@ -95,7 +120,10 @@ fn unplaced_initial_model_data_is_not_prematurely_lit() -> Result<(), Box<dyn Er
         .reconcile_and_light()
         .expect_err("unplaced ModelData must remain pending");
 
-    assert_eq!(error, SceneReferenceFinalizationError::ModelStillPending(id.index()));
+    assert_eq!(
+        error,
+        SceneReferenceFinalizationError::ModelStillPending(id.index())
+    );
     assert_eq!(scene.lit_model(id), None);
     assert_eq!(scene.model_data().is_pending_model_data(id), Some(true));
     Ok(())
