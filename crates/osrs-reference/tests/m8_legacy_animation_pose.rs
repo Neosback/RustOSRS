@@ -7,7 +7,9 @@ use osrs_core::{
     definitions::DefinitionIdentity,
     ids::ModelId,
     lighting::{LitFaceColors, ReferenceLitModel},
-    model::{FacePriority, ModelEncoding, ModelFormatIdentity, SourceModel, SourceModelParts, Triangle},
+    model::{
+        FacePriority, ModelEncoding, ModelFormatIdentity, SourceModel, SourceModelParts, Triangle,
+    },
     model_identity::ModelSemanticIdentity,
     provenance::{CacheFingerprint, ProfileDigest, TargetProvenance},
 };
