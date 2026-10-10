@@ -20,6 +20,16 @@ pub const TEXTURE_SIZE: u32 = 128;
 pub const MAX_TEXTURE_LAYERS: usize = 256;
 /// Reference projection near term (`Mat4.projection(w, h, 50)`).
 pub const REFERENCE_NEAR: f32 = 50.0;
+/// MSAA sample count of the scene pass (RuneLite's GPU plugin defaults to 2x MSAA).
+pub const MSAA_SAMPLES: u32 = 4;
+
+/// Multisampled attachments of the scene pass, resolved into the caller's color view.
+struct MsaaTargets {
+    width: u32,
+    height: u32,
+    color: wgpu::TextureView,
+    depth: wgpu::TextureView,
+}
 
 /// GPU setup or readback failure.
 #[derive(Debug)]
@@ -193,6 +203,7 @@ pub struct SceneRenderer {
     regions: std::collections::BTreeMap<(i32, i32), Vec<GpuZone>>,
     /// World point that renders at local `(0, 0)`; keeps f32 values small far from the origin.
     render_origin: (i32, i32),
+    msaa: std::cell::RefCell<Option<MsaaTargets>>,
 }
 
 impl SceneRenderer {
@@ -335,7 +346,11 @@ impl SceneRenderer {
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),
-                multisample: wgpu::MultisampleState::default(),
+                multisample: wgpu::MultisampleState {
+                    count: MSAA_SAMPLES,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
                 multiview_mask: None,
                 cache: None,
             })
@@ -380,6 +395,7 @@ impl SceneRenderer {
             zone_layout,
             regions: std::collections::BTreeMap::new(),
             render_origin: (0, 0),
+            msaa: std::cell::RefCell::new(None),
         }
     }
 
@@ -562,13 +578,24 @@ impl SceneRenderer {
         };
         self.queue
             .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
+        let (msaa_color, msaa_depth) = {
+            let mut slot = self.msaa.borrow_mut();
+            let targets = match slot.take() {
+                Some(targets) if targets.width == width && targets.height == height => targets,
+                _ => self.create_msaa_targets(width, height),
+            };
+            let views = (targets.color.clone(), targets.depth.clone());
+            *slot = Some(targets);
+            views
+        };
+        let _ = depth_view;
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: color_view,
+                    view: &msaa_color,
                     depth_slice: None,
-                    resolve_target: None,
+                    resolve_target: Some(color_view),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: params.clear_color[0],
@@ -576,11 +603,11 @@ impl SceneRenderer {
                             b: params.clear_color[2],
                             a: 1.0,
                         }),
-                        store: wgpu::StoreOp::Store,
+                        store: wgpu::StoreOp::Discard,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: depth_view,
+                    view: &msaa_depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(0.0),
                         store: wgpu::StoreOp::Discard,
@@ -640,6 +667,33 @@ impl SceneRenderer {
                     }
                 }
             }
+        }
+    }
+
+    fn create_msaa_targets(&self, width: u32, height: u32) -> MsaaTargets {
+        let make = |label: &str, format: wgpu::TextureFormat| {
+            self.device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some(label),
+                    size: wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: MSAA_SAMPLES,
+                    dimension: wgpu::TextureDimension::D2,
+                    format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &[],
+                })
+                .create_view(&wgpu::TextureViewDescriptor::default())
+        };
+        MsaaTargets {
+            width,
+            height,
+            color: make("scene-msaa-color", COLOR_FORMAT),
+            depth: make("scene-msaa-depth", DEPTH_FORMAT),
         }
     }
 
