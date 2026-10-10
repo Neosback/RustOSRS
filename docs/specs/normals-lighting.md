@@ -8,36 +8,22 @@ Primary source pins:
 - `Scene.java` blob `f15260a63103952fe8f5ffbdb62f5c7c39d94565`
 - `ObjectComposition.java` blob `079451cd9a6dcfd2666efd15b0524250eaafe4c4`
 
+Correction provenance: `docs/implementation/REFERENCE-PROVENANCE-CORRECTION-2026-10-10.md`.
+
 ## SPEC: NORMALS-001
 
 **Domain:** `OSRS_SEMANTIC`  
-**Status:** `VERIFIED`  
-**Primary evidence:** `ModelData.calculateVertexNormals()` and final model conversion paths  
-**Executable evidence:** existing lighting fixture partially covers output; dedicated normal fixture REQUIRED
+**Status:** `VERIFIED`
 
-### Required behavior
+Base normals are derived from semantic integer model geometry before final model lighting. Flat and smooth behavior remains distinguishable through face-render metadata.
 
-Base normals are derived from semantic integer model geometry before final model lighting. Flat/smooth face behavior must remain distinguishable according to ModelData face-render metadata.
+Invariants:
 
-Normal generation belongs to model/scene semantics. The renderer may consume baked colors or semantic normals depending on the selected rendering profile, but it must not silently recompute a different topology-normal interpretation and call it parity.
+- mirrored winding is already correct before normal generation;
+- normal calculation does not mutate shared decoded geometry across semantic instances;
+- face render-type metadata survives until its owning operation.
 
-### Invariants
-
-- mirrored winding from `MODEL-BUILD-002` must already be correct before normal generation;
-- normal calculation cannot mutate shared decoded geometry in a way that leaks between semantic instances;
-- face render-type metadata must survive until the operation that owns it.
-
-### Failure signature
-
-Inverted diffuse response, faceted surfaces where smooth shading is expected, smooth surfaces where flat shading is expected.
-
-### Required tests
-
-Crafted triangle/quad ModelData cases with exact normal components/magnitudes and mirrored winding comparisons.
-
-### Related specs
-
-`MODEL-BUILD-002`, `NORMALS-002`, `LIGHTING-001`.
+Required tests include exact smooth/flat triangle and quad normals, mirrored winding, and source immutability.
 
 ---
 
@@ -47,52 +33,18 @@ Crafted triangle/quad ModelData cases with exact normal components/magnitudes an
 **Status:** `VERIFIED`  
 **Primary evidence:** `ModelData.method5262(...)`
 
-### Applies to
+Cross-model normal reconciliation operates between distinct eligible `ModelData` instances.
 
-Cross-model normal reconciliation between separate eligible `ModelData` instances.
+Given models `A` and `B`, translation `(dx, dy, dz)`, and `hideMatchedFaces`:
 
-### Required behavior
+1. ensure bounds/base normals;
+2. compare eligible vertices after relative translation;
+3. initialize scene-local merged normals from each model's base normal when required;
+4. accumulate the matching model's normal components and magnitude;
+5. track matched vertices for the merge generation;
+6. if at least three vertices matched and `hideMatchedFaces == true`, fully matched faces receive render type `2` on both instances.
 
-Given two ModelData values `A` and `B`, a translation `(dx, dy, dz)`, and `hideMatchedFaces`:
-
-1. calculate/ensure bounds and base vertex normals for both;
-2. compare eligible vertices after applying the supplied relative translation;
-3. when translated positions coincide and the relevant source normal magnitude is non-zero, create scene-local merged-normal state as needed;
-4. initialize each merged normal from that model's base normal;
-5. add the other model's normal components and magnitude into the merged normal;
-6. record the matched vertices for the current merge generation;
-7. if at least three vertices matched and `hideMatchedFaces == true`, any face whose three vertices all matched receives face render type `2` on both ModelData instances.
-
-### Critical distinction
-
-This is **not mesh welding**. Vertex arrays, faces, object identities, and scene objects remain separate. Only lighting-normal state and optional matched-face render metadata are reconciled.
-
-### Integer semantics
-
-Vertex position comparison and normal accumulation use the audited integer coordinate/normal values. Do not epsilon-match floating-point GPU vertices.
-
-### Invariants
-
-- no positional match means no cross-model normal change;
-- `hideMatchedFaces=false` may still merge normals;
-- face hiding requires the audited matched-vertex threshold and all three face vertices matched;
-- cached canonical ModelData must not be globally mutated by a scene-specific merge.
-
-### Failure signature
-
-Visible lighting seams between modular static objects, or conversely missing faces where matched-face suppression was incorrectly applied.
-
-### Required tests
-
-- positive coincident triangle merge;
-- translated negative case with zero matches;
-- positive merge with `hideMatchedFaces=false`;
-- positive merge with `hideMatchedFaces=true`, proving render type `2` on fully matched faces;
-- source cache immutability.
-
-### Related specs
-
-`NORMALS-003`, `MODEL-BUILD-004`.
+This is **not mesh welding**. Vertex arrays, faces, scene objects, and semantic identities remain separate.
 
 ---
 
@@ -100,52 +52,37 @@ Visible lighting seams between modular static objects, or conversely missing fac
 
 **Domain:** `OSRS_SEMANTIC`  
 **Status:** `VERIFIED`  
-**Primary evidence:** audited `Scene` ModelData finalization traversal
+**Primary evidence:** `Scene.method5585`, `Scene.method5586`, `Scene.method5587`, and `ModelData.method5262`
 
-### Required scene-finalization behavior
+### Scene-finalization behavior
 
-Scene finalization must process qualifying renderables that are still ModelData before their final conversion to Model.
+The pinned `Scene` implementation performs real cross-model normal reconciliation during scene ModelData finalization. Older research stating that `Scene` has no such wall/object normal logic is superseded.
 
 For boundary objects:
 
-- reconcile the first eligible ModelData arm against neighboring eligible scene ModelData;
+- reconcile each eligible ModelData arm against the audited neighboring eligible ModelData search;
 - reconcile the second arm when present;
-- when both boundary arms are ModelData, reconcile the two arms directly with zero translation and `hideMatchedFaces=false`;
-- only then convert the arms to final lit Models.
+- when both arms are ModelData, reconcile those two arms directly at zero translation without matched-face hiding;
+- convert to final lit Models only after required reconciliation.
 
 For game objects:
 
-- reconcile eligible ModelData against the audited neighboring boundary/game-object search using footprint-aware relative translations;
+- reconcile eligible ModelData against neighboring boundary/game objects using footprint-aware relative translation;
 - then convert to final Model.
 
 For floor decorations:
 
-- use the floor-decoration neighbor reconciliation path;
-- that path may request matched-face hiding for qualifying adjacent floor-decoration merges;
+- use the dedicated neighboring-floor-decoration reconciliation path;
+- qualifying same-plane neighbor calls can request matched-face hiding;
 - then convert to final Model.
 
-The neighbor traversal may consider the source plane and the plane above according to the audited scene logic, with translation Y derived from relative average tile heights.
+The traversal can include the plane above with height-derived Y translation. The exact `hideMatchedFaces` argument is caller/path dependent. Do not generalize one boolean value to all neighbor relationships.
 
-### Invariants
+### Critical distinction
 
-Final lighting must occur after required normal reconciliation, not before it.
+The source merges **normal state**, and may mark fully coincident faces render type `2` when requested. It does not perform boolean mesh union or weld the source objects into one topology.
 
-### Failure signature
-
-Correct isolated models but incorrect lighting at object seams, especially wall corners and repeated modular scenery.
-
-### Required tests
-
-Scene fixture containing:
-
-- a type-2 dual-arm boundary object with qualifying ModelData;
-- neighboring wall/game ModelData at matching vertices;
-- adjacent floor decorations with a positive matched-face case;
-- a plane-above neighbor case.
-
-### Related specs
-
-`LOC-PLACEMENT-004`, `NORMALS-002`, `LIGHTING-001`.
+Required tests retain dual-arm boundaries, wall/game neighbors, floor-decoration suppression, plane-above neighbor behavior, and final-lighting deltas.
 
 ---
 
@@ -154,35 +91,18 @@ Scene fixture containing:
 **Domain:** `OSRS_SEMANTIC`  
 **Status:** `VERIFIED`
 
-### Required final-normal selection
+During final ModelData-to-Model lighting, a merged normal produced by reconciliation takes precedence over the original base vertex normal. If no merged normal exists, use the base vertex normal.
 
-During final ModelData-to-Model lighting, a per-vertex merged normal produced by normal reconciliation takes precedence over the original base vertex normal. If no merged normal exists for a vertex, use the base vertex normal.
-
-### Invariants
-
-Cross-model merge state must affect final baked lighting. It is not diagnostic-only metadata.
-
-### Failure signature
-
-The merge routine appears to run successfully in tests, but final rendered colors remain identical to unmerged output.
-
-### Required tests
-
-A fixture where merged-normal components intentionally change the final per-vertex lit color and exact output differs from the no-merge control.
-
-### Related specs
-
-`NORMALS-002`, `LIGHTING-001`.
+The merge is therefore presentation-affecting semantic construction, not diagnostic-only metadata.
 
 ---
 
 ## SPEC: LIGHTING-001
 
 **Domain:** `OSRS_SEMANTIC`  
-**Status:** `VERIFIED` for the pinned object-lighting path  
-**Executable evidence:** existing deob lighting/HSL helper fixture plus required expanded flat/smooth cases
+**Status:** `VERIFIED`
 
-### Required object-light parameters
+### Object light parameters
 
 For static object conversion:
 
@@ -194,29 +114,32 @@ lightY   = -10
 lightZ   = -50
 ```
 
-`ModelData.toModel` derives light-vector magnitude and per-normal contrast using the reference integer arithmetic/shift semantics.
+### Contrast decode scale
 
-Model-lighting HSL/lightness helper behavior must preserve the pinned integer clamps and sentinel rules exercised by the deob harness.
+`objectDefinition.contrast` in the expression above is already decoder-scaled.
 
-### Scope
+Pinned `ObjectComposition` opcode `39` performs:
 
-This spec defines the reference OSRS semantic lighting conversion. A future enhanced editor presentation mode may intentionally use different real-time lighting, but it must remain separately selectable and must not replace the parity output or mutate canonical model semantics.
+```text
+contrast = readByte() * 25
+```
 
-### Integer semantics
+The later model-lighting path then adds `768` to that stored/scaled value. Implementations must not multiply by `25` a second time during lighting, and specifications/tests must not read the stored field as the raw cache byte.
 
-Exact integer arithmetic, clamp boundaries, and shift order are required for parity output. Floating-point approximations are not acceptable for exact semantic/golden tests.
+`ambient` has its own decoded byte field and receives the later `+64` lighting offset as documented.
 
-### Failure signature
+### Exact arithmetic
 
-Systematic object brightness mismatch, wrong contrast on identical cache assets, subtle palette differences that vary by surface normal.
+`ModelData.toModel` derives light-vector magnitude and per-normal contrast using reference integer arithmetic and shift/clamp behavior. Floating-point approximation is not accepted for semantic/golden parity tests.
 
 ### Required tests
 
-- existing known lighting vector fixture retained;
+- known lighting vector;
+- opcode-39 decode value proving the `*25` scale exactly once;
 - flat and smooth faces;
 - merged-normal case;
-- textured/non-textured lighting cases where applicable;
-- ambient/contrast extremes within valid decoded ranges.
+- textured/untextured cases;
+- valid ambient/contrast extremes.
 
 ### Related specs
 

@@ -1,16 +1,18 @@
 # Source Pins and Provenance
 
-Status: **M5 closure provenance record; unresolved equivalence gates remain explicit**
+Status: **M5 provenance record with 2026-10-10 reference correction applied**
 
 This file records exact source identities used by semantic audits and fixtures. A date, local filesystem path, historical research document, generated API page, or obfuscated class name alone is not an acceptable final source pin.
 
+The correction record `docs/implementation/REFERENCE-PROVENANCE-CORRECTION-2026-10-10.md` supersedes earlier conclusions that the pinned public `class470` lacked the terrain builder.
+
 ## Repository baseline
 
-RustOSRS blueprint baseline:
+Original RustOSRS blueprint baseline:
 
 `489b0603bc7c2c9fabd2614d204f809fb017d0cb`
 
-Blueprint branch:
+Historical blueprint branch:
 
 `blueprint/osrs-editor-foundation`
 
@@ -24,62 +26,55 @@ RustOSRS tree SHA:
 
 `5afef996a992bacc73655860681269242e90d6e8`
 
-Research notes identify this import as an October 4, 2026 RuneLite snapshot. Until the exact upstream RuneLite commit corresponding to the import is recorded, semantic citations must use the RustOSRS tree/blob identity in addition to any descriptive date.
+Research identifies this import as an October 2026 snapshot. Until its exact upstream RuneLite commit is recorded, renderer citations use the RustOSRS tree/blob identity.
 
-Selected imported file pins used by renderer/API audits:
+Selected imported renderer/API file pins:
 
-| File | RustOSRS blob SHA | Audit use |
+| File | RustOSRS blob SHA | Use |
 |---|---|---|
-| `runelite-master/runelite-api/src/main/java/net/runelite/api/Constants.java` | `407831d491b39afd1230552f7475f86ce9e79be2` | scene/chunk/region sizes and tile flags |
-| `runelite-master/runelite-api/src/main/java/net/runelite/api/Perspective.java` | `648a593690b777c1522c7afb16203f547e044b88` | local tile size, angle tables, projection reference |
-| `runelite-master/runelite-api/src/main/java/net/runelite/api/Texture.java` | `80a4d1a45a51b28c3d5da9f0ad47a03ccf0a482f` | texture animation inputs |
-| `runelite-master/runelite-client/src/main/java/net/runelite/client/plugins/gpu/SceneUploader.java` | `83ac701f1b2ee7a039879941bcc710527dbc54c1` | terrain upload, bridge/roof grouping, static alpha split, terrain UVs |
-| `runelite-master/runelite-client/src/main/java/net/runelite/client/plugins/gpu/ModelUploader.java` | `35347963838d1be74deddd59027a73623d7872f3` | dynamic priority ordering, transparency composition, object UV reconstruction |
-| `reference-shaders/runelite-gpu/vert.glsl` | `d899cf3180295bd18d30adf901fd7a460e560318` | texture animation and RuneLite clip-space face-bias application |
+| `runelite-api/.../Constants.java` | `407831d491b39afd1230552f7475f86ce9e79be2` | scene/chunk sizes and tile flags |
+| `runelite-api/.../Perspective.java` | `648a593690b777c1522c7afb16203f547e044b88` | local units and projection reference |
+| `runelite-api/.../Texture.java` | `80a4d1a45a51b28c3d5da9f0ad47a03ccf0a482f` | texture animation inputs |
+| `runelite-client/.../gpu/SceneUploader.java` | `83ac701f1b2ee7a039879941bcc710527dbc54c1` | terrain upload, bridge/roof lookup, static alpha split, terrain UVs |
+| `runelite-client/.../gpu/ModelUploader.java` | `35347963838d1be74deddd59027a73623d7872f3` | dynamic face preparation, conditional priority sorting, model UVs |
+| `runelite-client/.../gpu/TextureManager.java` | `e830a518dc13c173f22f006fe52cb25e3c0fc8b3` | 128x128 texture upload, sampler state, animations |
+| `runelite-client/.../gpu/frag.glsl` | `0ca7180d50ef90e5083c85f7182e60521ef76baa` | alpha discard, shader brightness, textured lightness |
+| `reference-shaders/runelite-gpu/vert.glsl` | `d899cf3180295bd18d30adf901fd7a460e560318` | texture animation and clip-space face bias |
+
+RuneLite GPU behavior is renderer evidence, not automatically OSRS semantic truth.
 
 ## Historical local melxin/deob evidence
 
-The original `reference-fixtures/deob_golden.txt` was produced from a developer-machine checkout historically described by:
-
-`/Users/tylercovalt/Documents/ChatGPT/RSPSi-resources/RuneLite-melxin/runescape-client/src/main/java`
-
-That absolute path is historical provenance only. It is not a reproducible source pin and the current harness does not depend on it.
+The original `reference-fixtures/deob_golden.txt` came from a developer-machine checkout historically described by an absolute local path. That path is provenance only, not a reproducible source pin.
 
 Checked-in historical identities are byte-gated as Git blobs:
 
-- `reference-fixtures/deob_golden.txt` -> `49887733ad463572cf61bc059733b7c5f5fd26f4`;
-- `tools/deob-harness/src/Dumper.java` -> `ceefbd6e97c8e0b09c2ef196b3f9fd2e0f763236`.
+- `reference-fixtures/deob_golden.txt` -> `49887733ad463572cf61bc059733b7c5f5fd26f4`
+- `tools/deob-harness/src/Dumper.java` -> `ceefbd6e97c8e0b09c2ef196b3f9fd2e0f763236`
 
-Historical evidence classification:
+Classification:
 
 `historical_local_harness_corroborated_by_public_source`
 
-This classification deliberately does not claim that the old developer-machine checkout was byte-identical to the public source revision used by M5.
+This does not claim the old local checkout was byte-identical to the public revision.
 
 ## Current deob harness contract
 
-`tools/deob-harness/run.sh` requires explicit caller-supplied inputs:
+`tools/deob-harness/run.sh` requires explicit caller-supplied checkout, expected commit, BC provider JAR, output, and optional work directory.
 
-- `--checkout PATH`;
-- `--expected-commit SHA`;
-- `--bcprov JAR`;
-- `--output FILE`;
-- optional `--work-dir DIR`.
+Safety rules:
 
-The checkout must be a Git worktree exactly at the requested commit.
-
-Candidate generation safety:
-
-- output inside `reference-fixtures/` is rejected;
+- checkout must be exactly at the requested Git commit;
+- output inside accepted `reference-fixtures/` is rejected;
 - existing candidate output is not silently overwritten;
-- ordinary CI does not clone/download or regenerate accepted output;
-- no automatic acceptance mode edits manifests or expected hashes.
+- ordinary CI does not clone/download/regenerate accepted output;
+- no automatic acceptance mode mutates manifests or expected hashes.
 
 Tier A validates this boundary through `scripts/test_reference_regeneration.py`.
 
 ## Pinned public melxin source
 
-Canonical public M5 reference revision:
+Canonical public semantic/reference revision:
 
 `melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`
 
@@ -93,184 +88,103 @@ The commit message references RuneLite version commit:
 
 ### Exact public file pins
 
-| File | Blob SHA | M5 / semantic use |
+| File | Blob SHA | Semantic/reference use |
 |---|---|---|
-| `runescape-client/src/main/java/ObjectComposition.java` | `079451cd9a6dcfd2666efd15b0524250eaafe4c4` | typed/untyped model selection and object-model transform ordering |
-| `runescape-client/src/main/java/ModelData.java` | `2cc9406b2504fbd4fae0c0c952aa2d133809e928` | mirror/winding, transforms, base normals, cross-model normal merge, lighting |
-| `runescape-client/src/main/java/Model.java` | `c2aa55c0e8fea89fae0da33d782119f8c109cacf` | contouring and reference face-priority emission |
-| `runescape-client/src/main/java/Rasterizer3D.java` | `f32216b5e564c6a03a173438e3b19004c27c1c9e` | exact sine/cosine tables for type-4 transforms |
-| `runescape-client/src/main/java/Scene.java` | `f15260a63103952fe8f5ffbdb62f5c7c39d94565` | scene storage, game-object placement, bridge relinking through `setLinkBelow` |
-| `runescape-client/src/main/java/SceneTileModel.java` | `ce6a179cfa93e02271af87164e102ee538223718` | exact terrain shape/rotation topology |
-| `runescape-client/src/main/java/FloorUnderlayDefinition.java` | `f06136263590143afeedf5a8e448cd901f960614` | underlay RGB-to-weighted-HSL conversion |
-| `runescape-client/src/main/java/FloorOverlayDefinition.java` | `f3a15cc07c53ccae74b2219db88d456b77d88d68` | overlay fields, defaults, decode, primary/secondary HSL |
-| `runescape-client/src/main/java/Tiles.java` | `e4655da97d297f3d4fb53e9e7ae9816f1bdd5790` | bridge bit consumer and orientation tables |
-| `runescape-client/src/main/java/DynamicObject.java` | `3ff5ba2c1c4fb4cc914326cc70223720d5f2e77d` | decoded loc placement and bridge-adjusted collision-plane selection |
+| `ObjectComposition.java` | `079451cd9a6dcfd2666efd15b0524250eaafe4c4` | model selection/transforms, ambient/contrast decode including opcode 39 scale |
+| `ModelData.java` | `2cc9406b2504fbd4fae0c0c952aa2d133809e928` | mirror/winding, transforms, normals, cross-model merge, lighting, alpha sentinels |
+| `Model.java` | `c2aa55c0e8fea89fae0da33d782119f8c109cacf` | contouring, software face-priority emission, draw-time alpha |
+| `Rasterizer3D.java` | `f32216b5e564c6a03a173438e3b19004c27c1c9e` | exact sine/cosine tables |
+| `Scene.java` | `f15260a63103952fe8f5ffbdb62f5c7c39d94565` | scene storage, link-below, ModelData finalization/normal reconciliation |
+| `SceneTileModel.java` | `ce6a179cfa93e02271af87164e102ee538223718` | terrain shape/rotation topology |
+| `FloorUnderlayDefinition.java` | `f06136263590143afeedf5a8e448cd901f960614` | underlay weighted HSL |
+| `FloorOverlayDefinition.java` | `f3a15cc07c53ccae74b2219db88d456b77d88d68` | overlay fields/defaults/HSL |
+| `Tiles.java` | `e4655da97d297f3d4fb53e9e7ae9816f1bdd5790` | bridge flags and orientation tables |
+| `DynamicObject.java` | `3ff5ba2c1c4fb4cc914326cc70223720d5f2e77d` | dynamic construction context |
+| `class470.java` | `1cd9cad5cb4be865dcae94dc633bba821644dc84` | `method9712(WorldView)`: full terrain builder, tile min-plane writes, scene finalization, link-below phase |
 
-M5 revalidated the public blob identities used by normalized fixtures against the exact pinned upstream revision.
+The public file identities above are the canonical exact-source anchors. Older whole-snapshot local evidence remains corroborating only unless separately proven equivalent.
+
+## Terrain-builder correction
+
+The previous M5/M9 provenance conclusion said the pinned public `class470` was unrelated and that the terrain builder source was missing. That conclusion was incorrect because inspection stopped before the file's final large static method.
+
+`class470.method9712(WorldView)` at the exact public pin is the terrain builder and directly contains:
+
+- slope lighting;
+- `Tiles_underlays2` shadow/clipping subtraction;
+- separable radius-5 / 11x11 underlay accumulation;
+- weighted HSL construction;
+- client hue/lightness jitter;
+- overlay sentinel/texture/secondary-color handling;
+- `Scene.addTile` calls;
+- tile minimum-plane writes;
+- scene ModelData finalization;
+- `setLinkBelow` calls.
+
+Therefore the **source gate for `TERRAIN-004` is closed**.
+
+Production Rust `TERRAIN-004` remains `REQUIRED` until the builder is implemented and exact executable fixtures pass. The target capability may remain operationally blocked while implementation is absent, but it must not say the oracle is unknown.
 
 ## M5 normalized semantic fixtures
 
-The following M5 fixtures execute production semantic code in ordinary offline Tier C verification:
+The M5 normalized production fixtures remain valid for:
 
-1. `model.selection.typed_exact.orientation_4`
-   - source: `ObjectComposition.java`;
-   - symbols covering exact typed selection / orientation mirror semantics;
-   - production executor: `select_object_model`.
-2. `model.mirror.geometry_winding`
-   - source: `ModelData.java`;
-   - production executor: `mirror_source_model`.
-3. `model.transform.type4_order`
-   - source: `ObjectComposition.java`, `ModelData.java`, `Rasterizer3D.java`;
-   - production executor: `apply_object_model_instance_transforms`.
+1. typed model selection;
+2. mirror geometry/winding;
+3. type-4 transform order.
 
-Each fixture manifest records exact repository, commit, file blob, symbol, normalization record, input/output paths, and expected-output SHA-256.
+Evidence-only M5 families remain useful for normal generation/merge and face-priority ordering, with later milestones owning production promotion.
 
-## M5 evidence-only normalized fixtures
+Important normalized/historical fixture IDs include:
 
-Evidence-only fixtures are accepted only when the corresponding production executor does not yet exist. Their manifests still require exact source pins, normalization revision, expected output, and expected-output SHA-256.
-
-### Base normals
-
-Fixtures:
-
-- `normals.base.smooth_triangle`;
-- `normals.base.flat_triangle`.
-
-Source:
-
-- `ModelData.java` blob `2cc9406b2504fbd4fae0c0c952aa2d133809e928`;
-- symbol `calculateVertexNormals`.
-
-The crafted triangle preserves exact integer cross-product/normalization behavior and distinguishes smooth vertex accumulation from flat face-normal storage.
-
-Production owner: M7. `NORMALS-001` is not promoted to `EXISTING` by M5 evidence.
-
-### Cross-model normal merge controls
-
-Fixtures:
-
-- `normals.merge.coincident_triangle.hide_false`;
-- `normals.merge.coincident_triangle.hide_true`;
-- `normals.merge.translated_negative`.
-
-Source:
-
-- `ModelData.java` blob `2cc9406b2504fbd4fae0c0c952aa2d133809e928`;
-- symbol `method5262`.
-
-These fixtures make exact coincident positive matching, face hiding, and a translated no-match control reviewable before M7 production implementation.
-
-Production owner: M7. `NORMALS-002` remains `REQUIRED`.
-
-### Plane/link-below structural relinking
-
-Fixture:
-
-`planes.link_below.four_plane_column`
-
-Source:
-
-- `Scene.java` blob `f15260a63103952fe8f5ffbdb62f5c7c39d94565`;
-- symbol `setLinkBelow`.
-
-The expected artifact records storage-slot shifts, tile-plane decrements, linked-below identity, top-slot clearing, qualifying anchored type-2 game-object plane decrements, and negative controls.
-
-Production owner: M6. `PLANES-003` remains `REQUIRED`.
-
-### Face-priority order
-
-Fixture:
-
-`priority.all_0_11.threshold_crossing`
-
-Source:
-
-- `Model.java` blob `c2aa55c0e8fea89fae0da33d782119f8c109cacf`;
-- symbol `method5946`.
-
-It preserves priorities `0..11`, threshold groups, priority-10/11 queue behavior, signed alpha metadata, and exact ordered face IDs.
-
-Production owner: renderer milestone. `FACE-002` remains `REQUIRED`.
-
-## M5 semantic-evidence normalization record
-
-`reference-fixtures/manifest/M5-SEMANTIC-EVIDENCE-MIGRATION-v1.md`
-
-Git blob:
-
-`2e1ac34d309ce6f9c0c401e462746e31377cacec`
-
-This migration records the source derivation for base normals, normal-merge controls, and `Scene.setLinkBelow` structural relinking.
-
-It does not claim executable RustOSRS parity for those later-owned semantics.
-
-## Indexed historical evidence
-
-`reference-fixtures/historical/deob_golden.index.json` exposes stable IDs for useful historical families while retaining their historical provenance classification:
-
-- `terrain.shape_gallery.all_13x4`;
-- `contour.synthetic.flat_slope`;
-- `lighting.synthetic_triangle.loc_rig`;
-- `placement.wall_types.orientation_matrix`;
-- `placement.decor_types.orientation_matrix`;
-- `placement.floor_type22.storage`;
-- `placement.game_object.footprint_and_capacity`.
-
-`scripts/test_deob_golden_index.py` verifies historical fixture/harness Git blob identities, classification, IDs, public pin shape, exact-line uniqueness, and expected prefix counts entirely offline.
+- `normals.base.smooth_triangle`
+- `normals.base.flat_triangle`
+- `normals.merge.coincident_triangle.hide_false`
+- `normals.merge.coincident_triangle.hide_true`
+- `normals.merge.translated_negative`
+- `planes.link_below.four_plane_column`
+- `priority.all_0_11.threshold_crossing`
+- `terrain.shape_gallery.all_13x4`
+- `contour.synthetic.flat_slope`
+- `lighting.synthetic_triangle.loc_rig`
+- `placement.wall_types.orientation_matrix`
+- `placement.decor_types.orientation_matrix`
+- `placement.floor_type22.storage`
+- `placement.game_object.footprint_and_capacity`
 
 ## Historical whole-snapshot equivalence gate
 
-Before any specification relies on the old developer-machine melxin/deob tree as exact whole-snapshot provenance, one of the following is required:
+Before a specification relies on the old developer-machine melxin tree as exact whole-snapshot provenance, one of these is still required:
 
-1. identify and record its upstream Git commit;
-2. vendor a source manifest containing hashes for every audited deob file; or
-3. prove the relevant file/method body is byte/semantic equivalent to a pinned public source.
+1. identify its upstream commit;
+2. vendor source hashes for every audited file; or
+3. prove the relevant method body equivalent to a pinned public source.
 
-Until then, specs may state that a behavior is verified for the exact public commit while separately recording historical local-harness corroboration. They must not describe the entire old local checkout as exactly pinned.
-
-## Terrain-builder gate
-
-The complete terrain color/build routine described by older research remains unresolved at the exact-source level because the cited obfuscated `class470` does not match the public January 28 source.
-
-Therefore the full builder-side 11x11 blur, slope-lighting builder, random color walk, overlay sentinel path, and related writes remain `REVISION_SENSITIVE` until the actual source method is pinned or an exact executable oracle proves them.
-
-`TERRAIN-004` remains blocked. Terrain topology itself is independently pinned through `SceneTileModel` and historical indexed evidence.
+The terrain correction does not remove this general provenance rule. It closes `TERRAIN-004` source provenance specifically because its actual method is now pinned in the public revision.
 
 ## OpenRune FileStore
 
 Imported tree:
 
-`OpenRune-FileStore-main/`
-
-Tree SHA:
-
 `55f571db4b23f2d528786e1cdfbcba0061fd201a`
 
-Treat as independent decoder/tooling evidence, not as the OSRS semantic oracle by itself.
+Treat as independent decoder/tooling evidence, not the OSRS semantic oracle by itself.
 
 ## rs-cache
 
 Imported tree:
 
-`rs-cache-master/`
-
-Tree SHA:
-
 `fae41f98352fc804e5d13d9bd2e836ab1e2635cd`
 
-Treat as candidate Rust cache dependency/reference. Revision lineage and known decoder gaps remain explicit compatibility concerns.
+Treat as candidate Rust cache dependency/reference. Revision lineage and decoder gaps remain explicit concerns.
 
 ## Shader reference tree
 
-RustOSRS path:
-
-`reference-shaders/runelite-gpu/`
-
-Tree SHA:
+`reference-shaders/runelite-gpu/` tree SHA:
 
 `d33651c6b87ec5d61c43ab2e1e69d15ed6083877`
 
-This directory has mixed provenance. Individual files must be classified and pinned rather than treating the whole directory as one semantic source.
+This directory has mixed provenance. Individual files must still be classified/pinned rather than treating the whole directory as one semantic source.
 
 ## Final rule
 
