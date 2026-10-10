@@ -1,10 +1,12 @@
 # M9 Semantic Parity Closure Audit
 
-Status: **Checkpoint 2 implementation complete; final exact-head validation and milestone PR audit pending**
+Status: **PASS, merge gated on final exact-head CI and PR verification**
 
 Branch: `impl/m9-semantic-parity-closure`
 
 M8/main baseline: `23a2602ed62000a4843d7118b34427569ac176b9`
+
+Parity-disposition head before this audit update: `e3fcaf255357d9a8a21cbcf79d00ad6cfdb953b7`
 
 ## Purpose
 
@@ -63,13 +65,13 @@ This is a verification identity, not a persistence format. Future authoritative 
 
 `m9_semantic_closure.rs` rebuilds each scene independently, requires exact structural equality, and requires both rebuilds to reproduce the pinned digest.
 
-## Parity row disposition before renderer implementation
+## Final parity row disposition
 
-The following classifications are the M9 ownership decision. The final milestone-exit update to `docs/verification/PARITY-MATRIX.md` must reflect them before merge.
+`docs/verification/PARITY-MATRIX.md` now reflects the M9 ownership decision:
 
 | Row | M9 disposition | Reason |
 |---|---|---|
-| `COORD-001` | `EXISTING` | exact cross-layer semantic regression now covers required tile/local, footprint-center, and terrain-position cases |
+| `COORD-001` | `EXISTING` | exact cross-layer semantic regression covers required tile/local, footprint-center, and terrain-position cases |
 | `LOC-PLACEMENT-005` | `EXISTING` at ownership/regeneration contract | all currently normative definition/placement inputs required to regenerate side effects are retained deterministically; narrower private bit-grid formulas are not part of this spec |
 | `TERRAIN-004` | `BLOCKED` | exact full terrain-color builder/oracle remains unpinned; typed target capability exposes the limitation |
 | `FACE-001` | `DEFERRED-M10` | M10 owns semantic-to-render metadata preservation proof |
@@ -100,7 +102,7 @@ Therefore the historical whole-snapshot equivalence gate remains explicit, while
 
 ## Permanent verification gate
 
-Tier C now includes an explicit M9 step:
+Tier C includes an explicit M9 step:
 
 ```text
 cargo test --locked -p osrs-scene --lib semantic_hash::tests
@@ -109,17 +111,38 @@ cargo test --locked -p osrs-reference --test m9_semantic_closure
 
 This is in addition to the full M3 through M8 semantic parity stack.
 
-## Remaining M9 exit work
+## Pre-PR validation and branch scope
 
-Before the milestone PR may merge:
+Checkpoint validation completed successfully on head `6ff8bbbbd4b56e5fa74f87a8fd898c379b9d80dd` in workflow `38054905546` before the final documentation-only parity/audit commits:
 
-1. update `docs/verification/PARITY-MATRIX.md` to the M9 dispositions above;
-2. run final Tier A, Tier B, and Tier C on the exact branch head;
-3. compare the entire M9 branch against the M8/main baseline and verify no renderer/GPU/editor scope creep;
-4. open the single M9 milestone PR;
-5. audit the exact PR file list and exact-head PR CI;
-6. squash merge only if the PR remains mergeable, base-stable, scope-correct, and green;
-7. verify `main` after merge and stop before M10.
+- Tier A: PASS, including architecture guardrails, regeneration safety, historical fixture index, rustfmt, locked workspace check, and strict clippy;
+- Tier B: PASS, including the pinned semantic-scene digest regressions;
+- Tier C: PASS, including M3 through M8 and the explicit M9 semantic closure/golden hash step.
+
+After the parity-matrix update, the branch remained directly based on the M8 main baseline with no divergence:
+
+- merge base: `23a2602ed62000a4843d7118b34427569ac176b9`;
+- ahead: 14 commits before this audit update;
+- behind: 0;
+- changed files: 10;
+- scope: M9 capability diagnostics, semantic hash implementation/tests, CI gate, lockfile dependency declaration, parity tracking, and M9 audit only.
+
+No renderer, GPU, or editor implementation is present in the M9 branch.
+
+Because this audit commit changes the exact branch head, Tier A/B/C must pass again on the final head before the PR is opened.
+
+## Milestone PR gate
+
+M9 may merge only if all of the following remain true:
+
+1. final exact-head Tier A, Tier B, and Tier C pass;
+2. branch remains based directly on `23a2602ed62000a4843d7118b34427569ac176b9` with zero commits behind;
+3. exact PR file list matches the audited M9 scope;
+4. PR head remains unchanged through verification;
+5. PR-triggered CI passes on that exact head;
+6. PR remains mergeable and base-stable;
+7. squash merge uses an expected-head SHA lock;
+8. post-merge `main` is verified and work stops before M10.
 
 ## Explicit non-claims
 
