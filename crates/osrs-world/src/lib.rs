@@ -7,13 +7,18 @@
 
 mod definitions;
 mod error;
+mod loc_stage;
 pub mod oracle_dump;
+mod scene_builder;
 mod terrain_stage;
 mod window;
 
 pub use definitions::{FloorTable, RegionMap, WorldDefinitions};
 pub use error::WorldError;
+pub use loc_stage::{LocRenderable, LocStageOutput, LocStageStats, WorldLoc, place_window_locs};
+pub use scene_builder::{WorldScene, build_world_scene};
 pub use terrain_stage::{
-    DEFAULT_BRIGHTNESS, TerrainPresentation, TerrainScene, build_terrain_scene, load_window_terrain,
+    DEFAULT_BRIGHTNESS, LoadedWindow, TerrainPresentation, apply_terrain, load_window,
+    load_window_terrain,
 };
 pub use window::SceneWindow;

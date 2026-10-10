@@ -173,6 +173,17 @@ impl TerrainLoadGrid {
         self.heights[self.corner_index(plane, x, y)]
     }
 
+    /// Corner heights of one plane as `[x][y]` rows (`size_x + 1` by `size_y + 1`).
+    pub fn plane_heights(&self, plane: usize) -> Vec<Vec<i32>> {
+        (0..=self.size_x)
+            .map(|x| {
+                (0..=self.size_y)
+                    .map(|y| self.height(plane, x, y))
+                    .collect()
+            })
+            .collect()
+    }
+
     /// `tileSettings[plane][x][y]`.
     pub fn settings(&self, plane: usize, x: usize, y: usize) -> u8 {
         self.settings[self.tile_index(plane, x, y)]

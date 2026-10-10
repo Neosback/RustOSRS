@@ -162,7 +162,7 @@ Exact arithmetic and operation order are normative for the future production por
 `FriendSystem.addObjects(...)` writes this grid from placed definitions with `clipped == true`:
 
 - clipped wall cases write value `50` to orientation-specific neighboring grid locations;
-- clipped game objects write a model-derived shadow amount, defaulting to `15` and using model height divided by four when a concrete `Model` exists, capped at `30`;
+- clipped game objects write a model-derived shadow amount, defaulting to `15` and using the lit `Model`'s cylinder XZ radius (`Model.method5921`, not its height) divided by four when the entity is a concrete lit `Model`, capped at `30`; the write covers the inclusive `(size + 1)` square of corner cells;
 - writes retain the larger existing value.
 
 Therefore exact terrain colors depend on the relevant initial loc placement/shadow side effects being available before terrain construction.

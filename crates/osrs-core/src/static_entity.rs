@@ -60,6 +60,14 @@ pub struct SceneLocalModelDataEntity {
 }
 
 impl SceneLocalModelDataEntity {
+    /// Rebuild an entity from a (for example contoured) working model and its loc lighting.
+    pub fn from_parts(model: WorkingModel, lighting: LightingParameters) -> Self {
+        Self {
+            model: Box::new(model),
+            lighting,
+        }
+    }
+
     pub fn model(&self) -> &WorkingModel {
         &self.model
     }

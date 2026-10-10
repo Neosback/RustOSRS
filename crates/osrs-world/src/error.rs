@@ -2,6 +2,7 @@
 
 use osrs_cache::{
     decode::{DecodeError, DecoderContextError},
+    object_model::ObjectModelResolveError,
     profile::TargetProfileError,
     transport::{CacheError, CacheRepositoryOpenError},
 };
@@ -21,6 +22,10 @@ pub enum WorldError {
     TerrainLoad(TerrainLoadError),
     TerrainColor(TerrainColorError),
     Scene(SceneGridError),
+    ModelResolve(ObjectModelResolveError),
+    Contour(osrs_core::contour::ContourGroundError),
+    Lighting(osrs_core::lighting::LightingError),
+    Placement(String),
 }
 
 impl fmt::Display for WorldError {
@@ -34,6 +39,10 @@ impl fmt::Display for WorldError {
             Self::TerrainLoad(error) => write!(formatter, "terrain load: {error}"),
             Self::TerrainColor(error) => write!(formatter, "terrain color: {error}"),
             Self::Scene(error) => write!(formatter, "scene: {error}"),
+            Self::ModelResolve(error) => write!(formatter, "model resolve: {error}"),
+            Self::Contour(error) => write!(formatter, "contour: {error}"),
+            Self::Lighting(error) => write!(formatter, "lighting: {error}"),
+            Self::Placement(detail) => write!(formatter, "placement: {detail}"),
         }
     }
 }
@@ -59,4 +68,7 @@ impl_from!(
     TerrainLoad(TerrainLoadError),
     TerrainColor(TerrainColorError),
     Scene(SceneGridError),
+    ModelResolve(ObjectModelResolveError),
+    Contour(osrs_core::contour::ContourGroundError),
+    Lighting(osrs_core::lighting::LightingError),
 );

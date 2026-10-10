@@ -6,7 +6,7 @@
 //! and nonzero clip behavior without introducing cache, scene, or renderer
 //! dependencies.
 
-use crate::lighting::ReferenceLitModel;
+use crate::{lighting::ReferenceLitModel, model::WorkingModel};
 use std::{borrow::Cow, error::Error, fmt};
 
 const TILE_SHIFT: u32 = 7;
@@ -121,6 +121,85 @@ pub fn contour_ground_in_place(
     Ok(true)
 }
 
+/// Reference `ModelData.method5320`: copy-contour a pre-lighting working model.
+///
+/// This is the `ModelData` counterpart of [`contour_ground_copy`], used for `nonFlatShading`
+/// objects that must stay `ModelData` until scene normal reconciliation. It differs from the lit
+/// path in two ways: the early-out uses the axis-aligned vertex bounds (not the cylinder radius),
+/// and the copy's derived normals are discarded (`method5283`) so they are recomputed from the
+/// contoured geometry.
+pub fn contour_model_data_copy<'a>(
+    model: &'a WorkingModel,
+    input: ContourGroundInput<'_>,
+) -> Result<Cow<'a, WorkingModel>, ContourGroundError> {
+    let (width, depth) = validate_height_grid(input.heights)?;
+
+    let mut min_x = 999_999_i32;
+    let mut max_x = -999_999_i32;
+    let mut min_z = 99_999_i32;
+    let mut max_z = -99_999_i32;
+    let mut height = 0_i32;
+    for vertex in model.vertices() {
+        min_x = min_x.min(vertex.x);
+        max_x = max_x.max(vertex.x);
+        min_z = min_z.min(vertex.z);
+        max_z = max_z.max(vertex.z);
+        height = height.max(vertex.y.wrapping_neg());
+    }
+
+    let low_x = input.origin_x.wrapping_add(min_x);
+    let high_x = input.origin_x.wrapping_add(max_x);
+    let low_z = input.origin_z.wrapping_add(min_z);
+    let high_z = input.origin_z.wrapping_add(max_z);
+    if low_x < 0
+        || high_x.wrapping_add(TILE_SIZE) >> TILE_SHIFT >= width
+        || low_z < 0
+        || high_z.wrapping_add(TILE_SIZE) >> TILE_SHIFT >= depth
+    {
+        return Ok(Cow::Borrowed(model));
+    }
+
+    let tile_low_x = low_x >> TILE_SHIFT;
+    let tile_high_x = high_x.wrapping_add(TILE_MASK) >> TILE_SHIFT;
+    let tile_low_z = low_z >> TILE_SHIFT;
+    let tile_high_z = high_z.wrapping_add(TILE_MASK) >> TILE_SHIFT;
+    if input.base_height == height_at(input.heights, tile_low_x, tile_low_z)?
+        && input.base_height == height_at(input.heights, tile_high_x, tile_low_z)?
+        && input.base_height == height_at(input.heights, tile_low_x, tile_high_z)?
+        && input.base_height == height_at(input.heights, tile_high_x, tile_high_z)?
+    {
+        return Ok(Cow::Borrowed(model));
+    }
+
+    if input.clip != 0 && height == 0 && !model.vertices().is_empty() {
+        return Err(ContourGroundError::ZeroModelHeight);
+    }
+
+    let dimensions = (width, depth);
+    let mut contoured = model.clone();
+    for vertex in contoured.vertices_mut() {
+        let original_y = vertex.y;
+        if input.clip == 0 {
+            let sampled = sample_ground(input.heights, dimensions, input, vertex.x, vertex.z)?;
+            vertex.y = sampled
+                .wrapping_add(original_y)
+                .wrapping_sub(input.base_height);
+            continue;
+        }
+        let fixed_height = original_y.wrapping_neg().wrapping_shl(FIXED_POINT_SHIFT);
+        let ratio = java_int_div(fixed_height, height);
+        if ratio < input.clip {
+            let sampled = sample_ground(input.heights, dimensions, input, vertex.x, vertex.z)?;
+            let adjustment = input
+                .clip
+                .wrapping_sub(ratio)
+                .wrapping_mul(sampled.wrapping_sub(input.base_height));
+            vertex.y = java_int_div(adjustment, input.clip).wrapping_add(original_y);
+        }
+    }
+    Ok(Cow::Owned(contoured))
+}
+
 fn validate_height_grid(heights: &[Vec<i32>]) -> Result<(i32, i32), ContourGroundError> {
     let Some(first) = heights.first() else {
         return Err(ContourGroundError::EmptyHeightGrid);
@@ -143,6 +222,11 @@ fn validate_height_grid(heights: &[Vec<i32>]) -> Result<(i32, i32), ContourGroun
     let width = i32::try_from(heights.len()).map_err(|_| ContourGroundError::HeightGridTooLarge)?;
     let depth = i32::try_from(expected).map_err(|_| ContourGroundError::HeightGridTooLarge)?;
     Ok((width, depth))
+}
+
+/// `Model.method5921`: the cylinder XZ radius of a lit model (`calculateBoundsCylinder().xzRadius`).
+pub fn model_xz_radius(model: &ReferenceLitModel) -> i32 {
+    calculate_bounds_cylinder(model).xz_radius
 }
 
 fn calculate_bounds_cylinder(model: &ReferenceLitModel) -> ModelCylinderBounds {

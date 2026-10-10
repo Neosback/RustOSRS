@@ -7,14 +7,17 @@ use osrs_cache::{
         decode_floor_underlay, decode_locations, decode_object_definition, decode_terrain,
         decode_texture_definition,
     },
+    model_repository::ModelSourceRepository,
+    object_model::resolve_object_model,
     profile::TargetProfile,
     transport::{CacheErrorKind, CacheFile, CacheRepository},
 };
 use osrs_core::{
     coords::RegionCoord,
-    definitions::ObjectDefinition,
+    definitions::{LocType, ObjectDefinition},
     floor_color::UnderlayHsl,
     ids::{FloorOverlayId, FloorUnderlayId, ObjectId, TextureId},
+    model_construction::AssembledModel,
 };
 use osrs_scene::{
     terrain_build::{FloorLookup, OverlayFloor},
@@ -70,7 +73,7 @@ pub struct RegionMap {
 
 /// Definitions and map data read from the pinned build-241 cache.
 pub struct WorldDefinitions {
-    cache: CacheRepository,
+    models: ModelSourceRepository,
     context: DecoderContext,
     floors: FloorTable,
     object_files: HashMap<u32, CacheFile>,
@@ -124,7 +127,7 @@ impl WorldDefinitions {
             .collect();
 
         Ok(Self {
-            cache,
+            models: ModelSourceRepository::new(cache),
             context,
             floors,
             object_files,
@@ -133,7 +136,23 @@ impl WorldDefinitions {
     }
 
     pub fn cache(&self) -> &CacheRepository {
-        &self.cache
+        self.models.cache_repository()
+    }
+
+    /// Select, mirror, combine, and transform the raw models for one object/type/orientation.
+    /// `Ok(None)` is the exact semantic "no model" outcome.
+    pub fn resolve_model(
+        &mut self,
+        definition: &ObjectDefinition,
+        loc_type: LocType,
+        orientation: u8,
+    ) -> Result<Option<AssembledModel>, WorldError> {
+        Ok(resolve_object_model(
+            &mut self.models,
+            definition,
+            loc_type,
+            orientation,
+        )?)
     }
 
     pub fn context(&self) -> &DecoderContext {
@@ -163,7 +182,7 @@ impl WorldDefinitions {
     /// Read and decode one region's terrain and location files, or `None` when the cache has no
     /// map square for it.
     pub fn region(&self, region: RegionCoord) -> Result<Option<RegionMap>, WorldError> {
-        let square = match self.cache.read_map_square(region) {
+        let square = match self.cache().read_map_square(region) {
             Ok(square) => square,
             Err(error) if matches!(error.kind(), CacheErrorKind::MapResolution { .. }) => {
                 return Ok(None);
