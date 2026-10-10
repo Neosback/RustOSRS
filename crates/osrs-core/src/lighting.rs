@@ -67,6 +67,8 @@ pub struct ReferenceLitModel {
     pub faces: Vec<Triangle>,
     pub face_colors: Vec<LitFaceColors>,
     pub default_priority: FacePriority,
+    /// Original optional render-type metadata retained through the lighting handoff.
+    pub face_render_types: Option<Vec<i8>>,
     pub face_priorities: Option<Vec<FacePriority>>,
     pub face_alphas: Option<Vec<i8>>,
     pub face_textures: Option<Vec<Option<TextureId>>>,
@@ -272,6 +274,7 @@ pub fn light_model_data(
         faces: model.faces().to_vec(),
         face_colors,
         default_priority: model.default_priority(),
+        face_render_types: model.face_render_types().map(<[_]>::to_vec),
         face_priorities: model.face_priorities().map(<[_]>::to_vec),
         face_alphas: model.face_alphas().map(<[_]>::to_vec),
         face_textures: model.face_textures().map(<[_]>::to_vec),
