@@ -335,6 +335,7 @@ fn lit_model(
         faces: Vec::new(),
         face_colors: Vec::new(),
         default_priority: FacePriority::ZERO,
+        face_render_types: None,
         face_priorities: None,
         face_alphas: None,
         face_textures: None,
