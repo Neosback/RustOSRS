@@ -271,7 +271,7 @@ impl SourceModel {
         self.data.face_alphas.as_deref()
     }
 
-    pub fn face_textures(&self) -> Option<&[Option<TextureId>>] {
+    pub fn face_textures(&self) -> Option<&[Option<TextureId>]> {
         self.data.face_textures.as_deref()
     }
 
