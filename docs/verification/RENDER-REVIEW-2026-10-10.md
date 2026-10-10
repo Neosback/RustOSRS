@@ -162,6 +162,20 @@ faces and the `2..126` lightness clamp are identical in `osrs-core::normals`/`li
 with `ambient = 0, contrast = 0` (for example the bay window 1852) are lit with
 `ambient + 64` / `contrast + 768`, which makes east-facing faces nearly black by design.
 
+### Terrain tile steps ("tiles show up strongly")
+
+`examples/seam_stats` over the Lumbridge window: of 15,426 vertices shared by two flat untextured
+tiles, 36% differ in hue, 10% in saturation and 28% in lightness (worst 29/128) between the two
+tiles. This is client data, not a renderer error: each tile gets its own blended hue/saturation
+(radius-5 underlay average) and per-corner lightness plus the object shadow grid, and the terrain
+oracle matches line for line. Option `TerrainPresentation::smooth_terrain` (editor checkbox,
+default off, non-reference) averages colours at shared vertices; the grass blotches soften.
+
+Picker fix: models may carry hidden (`-2` / render type 2) faces used for texture axes (wall 997
+has one reaching 80 units past the tile); they inflated pick boxes (so a wall could win a hover
+meant for a booth) and outlines. Bounds and outlines now skip them, and outlines of morph
+objects (bank booth 10356) use the default-state definition (they were empty).
+
 Picker bounds now ignore unused model vertices; selection/hover highlight draws the picked
 model's own triangles (ghosted fill + edges), rebuilt on the worker from the definition.
 

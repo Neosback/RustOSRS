@@ -160,7 +160,11 @@ fn model_bounds(
     // Only vertices a face references: models may carry unused vertices that would inflate the
     // bounds (wall pieces often do).
     let mut used = vec![false; model.vertices.len()];
-    for face in &model.faces {
+    for (face, colors) in model.faces.iter().zip(&model.face_colors) {
+        // Hidden faces (`-2`) are never drawn; some models use them to carry texture axes.
+        if colors.c == -2 {
+            continue;
+        }
         for index in [face.a.get(), face.b.get(), face.c.get()] {
             if let Some(flag) = used.get_mut(index as usize) {
                 *flag = true;
@@ -372,12 +376,17 @@ pub fn loc_outline_triangles(
         PlacementKind::GameObject(plan) => vec![plan.model],
     };
     let mut triangles = Vec::new();
+    let definition = crate::loc_stage::default_state_definition(definitions, &loc.definition)?;
+    let Some(definition) = definition else {
+        return Ok(triangles);
+    };
     for (request, slot) in requests.iter().zip(&loc.slots) {
         let Some(model) =
-            definitions.resolve_model(&loc.definition, request.loc_type, request.orientation)?
+            definitions.resolve_model(&definition, request.loc_type, request.orientation)?
         else {
             continue;
         };
+        let render_types = model.face_render_types();
         let (sin, cos) = if slot.rotation == 0 {
             (0, 0)
         } else {
@@ -404,7 +413,11 @@ pub fn loc_outline_triangles(
                 [x + slot.origin[0], y + slot.origin[1], z + slot.origin[2]]
             })
             .collect();
-        for face in model.faces() {
+        for (face_index, face) in model.faces().iter().enumerate() {
+            // Render type 2 (and alpha -2 type 3) faces are hidden.
+            if render_types.is_some_and(|types| matches!(types[face_index], 2 | 3)) {
+                continue;
+            }
             let get = |index: u32| points.get(index as usize).copied();
             if let (Some(a), Some(b), Some(c)) =
                 (get(face.a.get()), get(face.b.get()), get(face.c.get()))

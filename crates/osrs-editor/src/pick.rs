@@ -542,4 +542,85 @@ mod tests {
         assert!(checked > 20, "only {checked} locs were checked");
         Ok(())
     }
+
+    /// Needs the pinned cache. Every sampled object, viewed from a camera in front of it, must
+    /// be pickable at the pixel its centre projects to (or something nearer must be).
+    #[test]
+    #[ignore = "requires the pinned build-241 cache"]
+    fn objects_are_pickable_at_their_projected_centre() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = std::env::var("RUSTOSRS_TARGET_CACHE_DIR")?;
+        let mut definitions = osrs_world::WorldDefinitions::open(dir)?;
+        let built = osrs_world::build_region_geometry(
+            &mut definitions,
+            osrs_core::coords::RegionCoord::new(40, 48),
+            osrs_world::TerrainPresentation::default(),
+        )?
+        .ok_or("region 40,48 missing")?;
+        let mut infos = Infos::new();
+        infos.insert((40, 48), built.info.clone());
+        let (mut total, mut missed) = (0, 0);
+        for (index, loc) in built.info.locs.iter().enumerate() {
+            if loc.min_plane != 0 || loc.plane != 0 {
+                continue;
+            }
+            let Some(slot) = loc.slots.first() else {
+                continue;
+            };
+            let center = [
+                f64::from(slot.min[0] + slot.max[0]) / 2.0,
+                f64::from(slot.min[1] + slot.max[1]) / 2.0,
+                f64::from(slot.min[2] + slot.max[2]) / 2.0,
+            ];
+            let mut camera = FlyCamera::new(0.0, 0.0, 0.0);
+            camera.pitch = 0.9;
+            // 700 units south and 900 up, looking north at the centre.
+            camera.x = center[0] as f32;
+            camera.y = (center[1] - 900.0) as f32;
+            camera.z = (center[2] - 700.0) as f32;
+            let (width, height) = (1280.0_f32, 720.0_f32);
+            let Some(pixel) = project(&camera, (0, 0), width, height, center) else {
+                continue;
+            };
+            if !(0.0..width).contains(&pixel[0]) || !(0.0..height).contains(&pixel[1]) {
+                continue;
+            }
+            let ray = ray_through_pixel(&camera, (0, 0), width, height, pixel[0], pixel[1]);
+            let pick = pick(&infos, &ray, 0);
+            total += 1;
+            let ok = pick.object.as_ref().is_some_and(|object| {
+                let hit = &infos[&object.region].locs[object.index];
+                hit.slots
+                    .iter()
+                    .any(|s| f64::from(s.min[0]) - 4.0 <= center[0] + 700.0)
+                    && (object.index == index || ray_box_any(&ray, hit))
+            });
+            if !ok {
+                missed += 1;
+                if missed <= 8 {
+                    println!(
+                        "missed: object {} at {:?} (picked {:?})",
+                        loc.definition.identity.id.get(),
+                        loc.tile,
+                        pick.object.as_ref().map(|o| infos[&o.region].locs[o.index]
+                            .definition
+                            .identity
+                            .id
+                            .get())
+                    );
+                }
+            }
+        }
+        println!("{missed} of {total} sampled objects not pickable");
+        assert!(
+            missed * 20 <= total,
+            "too many unpickable objects: {missed}/{total}"
+        );
+        Ok(())
+    }
+
+    fn ray_box_any(ray: &Ray, loc: &osrs_world::LocInfo) -> bool {
+        loc.slots
+            .iter()
+            .any(|slot| ray_box(ray, slot.min, slot.max).is_some())
+    }
 }

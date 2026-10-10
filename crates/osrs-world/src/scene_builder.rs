@@ -62,6 +62,9 @@ pub fn build_world_scene(
         .reconcile_and_light()
         .map_err(|error| WorldError::Placement(error.to_string()))?;
     link_bridge_tiles(&loaded.grid, &mut scene)?;
+    if presentation.smooth_terrain {
+        smooth_flat_terrain(&mut scene);
+    }
 
     Ok(WorldScene {
         window,
@@ -235,4 +238,88 @@ fn snap_diagonal_decorations(
         loc.slot_offsets = Some(offsets);
     }
     Ok(())
+}
+
+/// Average the colour at every vertex shared by untextured flat terrain tiles.
+///
+/// The client gives each tile its own blended hue/saturation and per-corner lightness, so the
+/// colours of the two tiles meeting at a vertex generally differ (about a third of shared
+/// vertices differ in hue, over a quarter in lightness). Hue is averaged on the 64-step circle.
+fn smooth_flat_terrain(scene: &mut SceneGrid) {
+    use osrs_core::coords::{SceneTile, StoragePlane};
+    use osrs_scene::terrain::TerrainSurface;
+
+    const SKIPPED: i32 = 12_345_678;
+    let (width, height) = (scene.width() as usize, scene.height() as usize);
+    for plane_index in 0..4_u8 {
+        let Some(plane) = StoragePlane::new(plane_index) else {
+            continue;
+        };
+        // (sum cos, sum sin, sum saturation, sum lightness, count) per vertex.
+        let stride = height + 1;
+        let mut sums = vec![(0.0_f64, 0.0_f64, 0_i32, 0_i32, 0_i32); (width + 1) * stride];
+        let eligible = |scene: &SceneGrid, x: usize, y: usize| match scene
+            .tile(plane, SceneTile::new(x as u32, y as u32))
+            .and_then(|tile| tile.terrain.as_ref())
+        {
+            Some(TerrainSurface::Flat(flat))
+                if flat.texture_id.is_none() && flat.colors.northeast != SKIPPED =>
+            {
+                Some(flat.colors)
+            }
+            _ => None,
+        };
+        for x in 0..width {
+            for y in 0..height {
+                let Some(colors) = eligible(scene, x, y) else {
+                    continue;
+                };
+                for (color, vx, vy) in [
+                    (colors.southwest, x, y),
+                    (colors.southeast, x + 1, y),
+                    (colors.northeast, x + 1, y + 1),
+                    (colors.northwest, x, y + 1),
+                ] {
+                    let entry = &mut sums[vx * stride + vy];
+                    let angle = f64::from((color >> 10) & 63) / 64.0 * std::f64::consts::TAU;
+                    entry.0 += angle.cos();
+                    entry.1 += angle.sin();
+                    entry.2 += (color >> 7) & 7;
+                    entry.3 += color & 127;
+                    entry.4 += 1;
+                }
+            }
+        }
+        let averaged = |vx: usize, vy: usize, original: i32| {
+            let (cos, sin, sat, light, count) = sums[vx * stride + vy];
+            if count == 0 {
+                return original;
+            }
+            let hue = if cos.abs() + sin.abs() < 1e-9 {
+                (original >> 10) & 63
+            } else {
+                let turns = sin.atan2(cos) / std::f64::consts::TAU;
+                (((turns * 64.0).round() as i32) + 64) & 63
+            };
+            let saturation = (sat + count / 2) / count;
+            let lightness = (light + count / 2) / count;
+            (original & !0xFFFF) | (hue << 10) | (saturation << 7) | lightness
+        };
+        for x in 0..width {
+            for y in 0..height {
+                if eligible(scene, x, y).is_none() {
+                    continue;
+                }
+                let Some(tile) = scene.tile_mut(plane, SceneTile::new(x as u32, y as u32)) else {
+                    continue;
+                };
+                if let Some(TerrainSurface::Flat(flat)) = tile.terrain.as_mut() {
+                    flat.colors.southwest = averaged(x, y, flat.colors.southwest);
+                    flat.colors.southeast = averaged(x + 1, y, flat.colors.southeast);
+                    flat.colors.northeast = averaged(x + 1, y + 1, flat.colors.northeast);
+                    flat.colors.northwest = averaged(x, y + 1, flat.colors.northwest);
+                }
+            }
+        }
+    }
 }

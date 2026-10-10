@@ -315,6 +315,14 @@ fn model_requests(kind: &PlacementKind) -> Vec<ModelRequest> {
     }
 }
 
+/// Definition an outline/inspection of a placed loc should use (the default morph state).
+pub(crate) fn default_state_definition(
+    definitions: &mut WorldDefinitions,
+    original: &Arc<ObjectDefinition>,
+) -> Result<Option<Arc<ObjectDefinition>>, WorldError> {
+    effective_definition(definitions, original)
+}
+
 /// Default-state object for a morphing definition: every variable reads zero.
 fn effective_definition(
     definitions: &mut WorldDefinitions,

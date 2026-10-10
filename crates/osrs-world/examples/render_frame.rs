@@ -43,6 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(0),
             flush_diagonal_decorations: env::var("RENDER_FLUSH_DECOR").is_ok(),
+            smooth_terrain: env::var("RENDER_SMOOTH_TERRAIN").is_ok(),
             ..TerrainPresentation::default()
         },
     )?;

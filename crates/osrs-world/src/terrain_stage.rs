@@ -23,6 +23,9 @@ pub struct TerrainPresentation {
     /// the type-9 diagonal wall on their tile instead of using the client's fixed displacement
     /// (see the render review).
     pub flush_diagonal_decorations: bool,
+    /// Non-reference option: average the colour of every vertex shared by flat terrain tiles, so
+    /// the per-tile hue/lightness steps of the client's terrain disappear.
+    pub smooth_terrain: bool,
 }
 
 impl Default for TerrainPresentation {
@@ -32,6 +35,7 @@ impl Default for TerrainPresentation {
             jitter: TerrainJitter::default(),
             wall_merge_tolerance: 0,
             flush_diagonal_decorations: false,
+            smooth_terrain: false,
         }
     }
 }

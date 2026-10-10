@@ -55,6 +55,7 @@ pub struct EditorApp {
     /// Non-reference option: wall normals merge across 1-2 unit vertical offsets (hides seams
     /// between wall pieces such as objects 1904/1907).
     wall_seam_tolerance: bool,
+    smooth_terrain: bool,
     presentation_generation: u32,
     /// Background (and the colour holes in the terrain show). RuneLite's default sky is black.
     sky_color: [f32; 3],
@@ -114,8 +115,8 @@ impl EditorApp {
             -2600.0,
             0.3 * REGION_UNITS as f32,
         );
-        let streamer = RegionStreamer::spawn(cache_dir, Self::presentation(true));
-        streamer.set_presentation(Self::presentation(true), 1);
+        let streamer = RegionStreamer::spawn(cache_dir, Self::presentation(true, false));
+        streamer.set_presentation(Self::presentation(true, false), 1);
 
         Ok(Self {
             render_state,
@@ -126,6 +127,7 @@ impl EditorApp {
             brightness: 0.8,
             remove_color_banding: true,
             wall_seam_tolerance: true,
+            smooth_terrain: false,
             presentation_generation: 1,
             sky_color: [0.0, 0.0, 0.0],
             theme_index: 3,
@@ -160,8 +162,9 @@ impl EditorApp {
         })
     }
 
-    fn presentation(wall_seam_tolerance: bool) -> TerrainPresentation {
+    fn presentation(wall_seam_tolerance: bool, smooth_terrain: bool) -> TerrainPresentation {
         TerrainPresentation {
+            smooth_terrain,
             wall_merge_tolerance: if wall_seam_tolerance { 2 } else { 0 },
             flush_diagonal_decorations: wall_seam_tolerance,
             ..TerrainPresentation::default()
@@ -172,7 +175,7 @@ impl EditorApp {
     fn rebuild_all(&mut self) {
         self.presentation_generation += 1;
         self.streamer.set_presentation(
-            Self::presentation(self.wall_seam_tolerance),
+            Self::presentation(self.wall_seam_tolerance, self.smooth_terrain),
             self.presentation_generation,
         );
         for key in self.loaded.keys().copied().collect::<Vec<_>>() {
@@ -681,10 +684,13 @@ impl eframe::App for EditorApp {
                 ui.separator();
                 ui.add(egui::Slider::new(&mut self.brightness, 0.5..=1.0).text("brightness"));
                 ui.checkbox(&mut self.remove_color_banding, "smooth shading");
-                if ui
+                let wall_changed = ui
                     .checkbox(&mut self.wall_seam_tolerance, "wall fixes (seams, diagonal decor)")
-                    .changed()
-                {
+                    .changed();
+                let terrain_changed = ui
+                    .checkbox(&mut self.smooth_terrain, "smooth terrain")
+                    .changed();
+                if wall_changed || terrain_changed {
                     self.rebuild_all();
                 }
                 ui.color_edit_button_rgb(&mut self.sky_color);
