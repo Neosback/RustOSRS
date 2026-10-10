@@ -281,8 +281,19 @@ fn write_loc(out: &mut String, loc: &LocInfo) {
     for (index, slot) in loc.slots.iter().enumerate() {
         let _ = writeln!(
             out,
-            "    slot {index}: {} origin={:?} rotation={} bounds={:?}..{:?} vertices={} faces={}",
-            slot.kind, slot.origin, slot.rotation, slot.min, slot.max, slot.vertices, slot.faces,
+            "    slot {index}: {} origin={:?} rotation={} bounds={:?}..{:?} vertices={} faces={} biased={} (max {}) alpha={} textured={} hidden={}",
+            slot.kind,
+            slot.origin,
+            slot.rotation,
+            slot.min,
+            slot.max,
+            slot.vertices,
+            slot.faces,
+            slot.biased_faces,
+            slot.max_bias,
+            slot.alpha_faces,
+            slot.textured_faces,
+            slot.hidden_faces,
         );
     }
     let _ = writeln!(

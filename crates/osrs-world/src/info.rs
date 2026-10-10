@@ -61,6 +61,13 @@ pub struct SlotInfo {
     pub rotation: u16,
     pub vertices: usize,
     pub faces: usize,
+    /// Faces carrying a non-zero depth bias / alpha / texture, and hidden (`-2`) faces.
+    pub biased_faces: usize,
+    pub alpha_faces: usize,
+    pub textured_faces: usize,
+    pub hidden_faces: usize,
+    /// Highest depth bias on any face.
+    pub max_bias: i32,
 }
 
 /// One placed loc.
@@ -278,6 +285,27 @@ pub fn extract_region_info(
                 }
                 None => (origin, origin, 0, 0),
             };
+            let (biased_faces, alpha_faces, textured_faces, hidden_faces, max_bias) = model
+                .map(|model| {
+                    let biased = model
+                        .face_biases
+                        .as_ref()
+                        .map_or(0, |b| b.iter().filter(|v| **v != 0).count());
+                    let alpha = model
+                        .face_alphas
+                        .as_ref()
+                        .map_or(0, |a| a.iter().filter(|v| **v != 0).count());
+                    let textured = model
+                        .face_textures
+                        .as_ref()
+                        .map_or(0, |t| t.iter().filter(|v| v.is_some()).count());
+                    let hidden = model.face_colors.iter().filter(|c| c.c == -2).count();
+                    let max_bias = model.face_biases.as_ref().map_or(0, |b| {
+                        b.iter().map(|v| i32::from(*v as u8)).max().unwrap_or(0)
+                    });
+                    (biased, alpha, textured, hidden, max_bias)
+                })
+                .unwrap_or((0, 0, 0, 0, 0));
             slots.push(SlotInfo {
                 kind: match slot.renderable {
                     LocRenderable::Lit(_) => "lit",
@@ -291,6 +319,11 @@ pub fn extract_region_info(
                 rotation: slot.rotation,
                 vertices,
                 faces,
+                biased_faces,
+                alpha_faces,
+                textured_faces,
+                hidden_faces,
+                max_bias,
             });
         }
         let tile = (base_x + loc.tile.x as i32, base_y + loc.tile.y as i32);
