@@ -7,202 +7,209 @@ Primary source pins:
 - `ModelData.java` blob `2cc9406b2504fbd4fae0c0c952aa2d133809e928`
 - `Model.java` blob `c2aa55c0e8fea89fae0da33d782119f8c109cacf`
 
-Independent October RuneLite reference pins:
+Independent imported RuneLite renderer pins:
 
 - `ModelUploader.java` blob `35347963838d1be74deddd59027a73623d7872f3`
 - `SceneUploader.java` blob `83ac701f1b2ee7a039879941bcc710527dbc54c1`
+- `GpuPlugin.java` blob `8c233cb381e288146af47ac375fa3dfc41a53d76`
+- `Zone.java` blob `80594f4ca2759a96c9a3a9800008790b91c5d692`
+- `TextureManager.java` blob `e830a518dc13c173f22f006fe52cb25e3c0fc8b3`
+- `Renderable.java` blob `bce439b4dd2000a98d83191f3d0348b64ff83b3c`
 - imported `Texture.java` blob `80a4d1a45a51b28c3d5da9f0ad47a03ccf0a482f`
-- staged live `vert.glsl` blob `d899cf3180295bd18d30adf901fd7a460e560318`
+- staged `vert.glsl` blob `d899cf3180295bd18d30adf901fd7a460e560318`
+- staged `frag.glsl` blob `0ca7180d50ef90e5083c85f7182e60521ef76baa`
 
 ## SPEC: FACE-001
 
 **Domain:** `OSRS_SEMANTIC`  
 **Status:** `VERIFIED`
 
-### Required semantic face metadata
+The canonical model/render handoff preserves, when present:
 
-The canonical model representation must preserve, when present:
+- triangle indices;
+- baked/reference face colors;
+- original face render type;
+- per-face priority or model default priority;
+- raw signed face alpha;
+- face texture ID;
+- texture-face selector and texture triangles;
+- authored face bias;
+- semantic model identity/provenance.
 
-- triangle vertex indices;
-- per-face color/light result inputs or baked reference colors as owned by the semantic stage;
-- face render type;
-- per-face priority or model-level default priority;
-- per-face alpha/transparency;
-- face texture id;
-- texture-coordinate/texture-face selector;
-- texture-triangle indices/data needed to reproduce mapped texture coordinates;
-- authored face-bias metadata when supplied by the target model data path.
+Optional arrays remain optional. Absence is not replaced by invented authored zeros unless a later policy explicitly applies the reference default.
 
-Absence of an optional array is not equivalent to inventing arbitrary zero-filled semantics unless the reference default is explicitly defined.
+### Suppressed faces
 
-### Invariants
-
-Renderer packing may change, but semantic fields cannot be discarded merely because one initial wgpu path does not use them yet.
-
-### Failure signature
-
-Models render correctly only for simple opaque/untextured assets; later transparent, prioritized, textured, or bias-authored models cannot be reproduced without re-decoding/rearchitecting.
-
-### Required tests
-
-Decode/model-construction fixture retaining every optional face metadata class through semantic-to-render handoff.
-
-### Related specs
-
-`FACE-002`, `FACE-003`, `TEXTURE-001`, `LIGHTING-001`.
+`ModelData -> Model` conversion may retain topology while marking a face suppressed with baked color slot `c == -2`. Renderer extraction must preserve that state, and a Reference draw path must not re-admit that face merely because its triangle indices are still present.
 
 ---
 
 ## SPEC: FACE-002
 
-**Domain:** `OSRS_SEMANTIC`  
-**Status:** `VERIFIED` for reference ordering semantics; exact Rust execution strategy is deferred to `RENDERER_POLICY`
+**Domain:** `OSRS_SEMANTIC` for priority metadata and software-reference ordering; realization is `RENDERER_POLICY`  
+**Status:** `VERIFIED` for the pinned software/client algorithm; M10 CPU implementation exists
 
-### Required priority meaning
+### Software/client reference ordering
 
-Face priority values `0..11` are not a generic ascending/descending sort key.
+Face priority `0..11` is not a generic sort key.
 
-The audited software/reference algorithm:
+Pinned `Model.method5946` behavior:
 
-1. obtains visible faces in depth buckets;
-2. maintains distinct queues for priorities `0..11`;
-3. computes average depth thresholds for groups `(1,2)`, `(3,4)`, and `(6,8)`;
-4. interleaves priority `10/11` faces against ordinary priority processing at priority boundaries `0`, `3`, and `5` according to those thresholds;
-5. emits priorities `0..9` in their reference pass ordering, preserving the depth ordering established within each queue.
+1. establish depth-bucket ordering;
+2. distribute into priority queues `0..11`;
+3. compute average thresholds for `(1,2)`, `(3,4)`, `(6,8)`;
+4. process the priority-10 queue followed by priority-11 as the special stream;
+5. interleave special faces before ordinary priority boundaries `0`, `3`, and `5` according to those thresholds;
+6. retain queue/depth ordering required by the reference routine.
 
-The imported October RuneLite `ModelUploader` independently reproduces this structure.
+The M10 CPU preparation path intentionally targets this software/client oracle.
 
-### Semantic requirement
+### Important RuneLite GPU distinction
 
-The semantic model must preserve priority exactly. Any renderer claiming reference parity must prove its chosen algorithm matches crafted ordering fixtures. A simple tuple sort such as `(priority, depth)` is not accepted as equivalent without proof.
+The imported October RuneLite GPU renderer does **not** apply that priority algorithm to every renderable.
 
-### Failure signature
+Its `Renderable` API distinguishes:
 
-Cape/foliage/window/intersecting-surface faces pop through one another at specific camera angles despite correct geometry and depth buffer configuration.
+```text
+RENDERMODE_DEFAULT           = 0
+RENDERMODE_SORTED            = 1
+RENDERMODE_SORTED_NO_DEPTH   = 2
+RENDERMODE_UNSORTED          = 3
+RENDERMODE_UNSORTED_NO_DEPTH = 4
+```
 
-### Required tests
+In the imported GPU path, `ModelUploader.uploadSortedModel(..., prioritySort)` runs the priority queues only when `prioritySort` is true. `GpuPlugin` enables that for `RENDERMODE_SORTED_NO_DEPTH`; ordinary dynamic upload passes `false`, and static opaque upload does not globally reproduce the software priority queue.
 
-Crafted face set containing all priorities `0..11`, depths straddling `avg12`, `avg34`, `avg68`, and both priority-10/11 queues, with exact reference emission order.
+Imported RuneLite alpha/static ordering also uses model/face distance/depth ordering in `Zone`, not universal software-priority ordering.
 
-### Related specs
+Therefore two reference targets must never be conflated:
 
-`FACE-003`, future renderer priority ADR.
+- **OSRS software/client parity:** exact `Model.method5946` priority behavior where the software path owns ordering;
+- **imported RuneLite GPU parity:** render-mode/path-specific sorting and depth behavior.
+
+RustOSRS Reference mode currently chooses the software/client priority algorithm as the stronger ordering contract for priority-sensitive renderables. Documentation must describe that as a project/reference decision, not as "what RuneLite GPU always does."
 
 ---
 
 ## SPEC: FACE-003
 
-**Domain:** `OSRS_SEMANTIC`  
-**Status:** `VERIFIED` for alpha metadata and reference interpretation boundaries
+**Domain:** `OSRS_SEMANTIC` for alpha metadata and pre-lighting sentinel meaning; draw/blend realization is `RENDERER_POLICY`  
+**Status:** `VERIFIED`
 
-### Required behavior
+### Stage 1: ModelData lighting sentinels
 
-Per-face alpha/transparency is semantic metadata and must survive decode/model construction.
+Before final lighting:
 
-In the audited software path:
+```text
+raw alpha -2 -> effective render type 3
+raw alpha -1 -> effective render type 2
+```
 
-- absent face-alpha data behaves as the reference default;
-- ordinary stored alpha bytes are interpreted using reference unsigned/sentinel rules at draw time;
-- signed byte `-1` receives special treatment in the normal software face path rather than being naively interpreted as a generic alpha value.
+For untextured type `3`, baked output is gray `128` with flat marker `c == -1`.
 
-The imported RuneLite renderer also distinguishes alpha faces in upload/sort paths and may combine model-level transparency with face-level transparency for dynamic/sorted rendering.
+Type `2` becomes suppressed baked output `c == -2`. Textured unsupported types are likewise suppressed.
 
-### Scope boundary
+### Stage 2: software draw alpha
 
-Exact blend-state choice, pass count, order-independent techniques, and GPU buffer partitioning belong to Checkpoint 5. They may differ only if reference appearance and ordering semantics are proven equivalent for the target profile.
+For a face that reaches the normal software draw path:
 
-### Failure signature
+- no face-alpha array -> rasterizer alpha `0`;
+- ordinary signed stored byte -> unsigned-byte interpretation;
+- raw `-1` receives the pinned special normal-path value `253` rather than generic `255` handling.
 
-Transparent faces become opaque, fully hidden, or blend in the wrong order; models with model-level transparency differ between static/dynamic paths.
+These two stages must not be collapsed. The semantic lighting sentinel can suppress a face before later raster alpha would matter.
 
-### Required tests
+### RuneLite GPU distinction
 
-Face-alpha values `0`, ordinary nonzero values, the reference `-1/255` sentinel case, plus model-level transparency interaction in the renderer reference suite.
-
-### Related specs
-
-`FACE-002`, future renderer transparency ADR.
+The imported GPU renderer has its own static/dynamic alpha sorting and model-level transparency composition paths. Those are corroborating renderer evidence, not proof that the software/client draw path and RuneLite GPU are identical.
 
 ---
 
 ## SPEC: FACE-004
 
-**Domain:** `OSRS_SEMANTIC` for authored metadata; exact depth application is `RENDERER_POLICY`  
-**Status:** `VERIFIED` separation
+**Domain:** authored metadata is `OSRS_SEMANTIC`; exact depth application is `RENDERER_POLICY`  
+**Status:** `VERIFIED` boundary
 
-### Required behavior
+Authored face bias is preserved through semantic and extraction layers.
 
-Authored face-bias data, when present in the model representation, must be preserved through the semantic-to-render boundary.
+The imported RuneLite vertex shader applies:
 
-The imported RuneLite renderer packs this bias per face and its live vertex shader applies it as a clip-space depth offset. That exact formula is not promoted here as an OSRS semantic requirement.
+```text
+clip_or_view_depth_term += faceBias / 128.0
+```
 
-### Invariants
-
-A renderer may choose another mathematically appropriate implementation, but it may not discard bias metadata and rely only on polygon depth coincidence.
-
-### Failure signature
-
-Coplanar or intentionally layered faces Z-fight, decals flicker, or surface ordering differs on models that authored explicit bias.
-
-### Required tests
-
-At least two coplanar faces with distinct authored bias proving stable reference ordering under the selected renderer policy.
-
-### Related specs
-
-Future renderer depth/bias ADR.
+before the final perspective divide/projection result is consumed. Under the imported no-far reverse-Z projection, the resulting normalized depth separation decreases with distance. RustOSRS requires a near/far bias fixture rather than assuming the offset is screen-depth constant.
 
 ---
 
 ## SPEC: TEXTURE-001
 
-**Domain:** `OSRS_SEMANTIC` for texture/material inputs; UV generation/upload/animation application may include `RENDERER_POLICY`  
-**Status:** `VERIFIED` boundary and reference oracle
+**Domain:** texture/material inputs are `OSRS_SEMANTIC`; image construction, UV realization, sampling, paging, and animation are `RENDERER_POLICY`  
+**Status:** `VERIFIED` boundary; M10 CPU material/UV handoff exists; GPU realization remains later
 
-### Required semantic inputs
+### Semantic inputs
 
-The reusable semantic model must retain enough information to reproduce reference model texturing:
+Preserve:
 
-- face texture id;
+- full-width semantic texture ID;
 - optional texture-face selector;
-- texture triangle indices/vertices;
-- decoded texture animation direction and speed;
-- any target-revision texture/material definition fields required by the selected profile.
+- texture triangle indices;
+- decoded texture source/composition inputs;
+- decoded animation direction and speed;
+- target-revision material fields required by the selected profile.
 
-Do not encode RuneLite's fixed texture-array capacity as a cache semantic invariant.
+RuneLite's imported fixed `TEXTURE_COUNT = 256` is an implementation capacity for that snapshot, **not semantic truth**.
 
-### Reference UV oracle
+### Model UV oracle
 
-The imported `ModelUploader.computeFaceUvs` provides a differential reference:
+Imported `ModelUploader.computeFaceUvs` is the differential renderer oracle:
 
-- with an explicit texture face, reconstruct coordinates from the texture triangle tangent/bitangent basis;
-- in the dynamic/sorted projected case, reference behavior may project face vertices from the camera ray onto the texture plane before basis evaluation;
-- without an explicit texture face, the reduced mapping is:
+- no explicit texture face -> canonical A `(0,0)`, B `(1,0)`, C `(0,1)`;
+- explicit texture face -> reconstruct from the texture-triangle tangent/bitangent basis;
+- projected/dynamic path may first project model vertices onto the texture plane before basis evaluation.
 
-```text
-A = (0,0)
-B = (1,0)
-C = (0,1)
-```
+Terrain UVs have a separate terrain contract.
 
-Terrain UVs are handled by terrain/render contracts and must not be conflated with model texture-triangle mapping.
+### Imported RuneLite texture-image construction
 
-### Texture animation boundary
+The audited `TextureManager` path uses 128x128 RGBA source images for this renderer snapshot. Pixel conversion treats source RGB value `0` as transparent and nonzero RGB as alpha `255`.
 
-Animation direction/speed are semantic decoded inputs. Converting them to a 2D vector and applying `tick`-scaled UV motion is renderer/material preparation. The staged RuneLite shader's `1/128` animation unit is reference evidence for Checkpoint 5, not a universal cache limit.
+The staged fragment shader samples level 0 for alpha-cutout testing and discards when the level-0 alpha is below `1`. Brightness adjustment is applied in shader-side color processing; textured model lighting uses the face lightness payload (`fHsl / 127` in the staged shader path) rather than re-running semantic normal lighting.
 
-### HSL override reference
+These are renderer-profile requirements, not cache-definition invariants.
 
-The imported RuneLite model uploader does not apply its model HSL override to textured faces. A RuneLite-parity rendering profile must test that behavior, but the override mechanism remains a renderer/reference concern unless separately proven as client semantic state.
+### Imported RuneLite sampler behavior
 
-### Failure signature
+Do not summarize the imported path as simply "nearest filtering."
 
-Textures shear, rotate, or swim on models; animated water/lava moves on the wrong axis/speed; texture ids truncate due fixed-capacity assumptions.
+Verified state:
 
-### Required tests
+- magnification filter: `NEAREST`;
+- minification with anisotropic/filter level `0`: `NEAREST`;
+- minification with level `>= 1`: `NEAREST_MIPMAP_LINEAR`;
+- imported config default filtering level is `1`;
+- S wrap is explicitly `CLAMP_TO_EDGE`;
+- T wrap is not overridden in the audited texture setup and therefore follows the OpenGL default repeat behavior unless another owning setup proves otherwise.
 
-Explicit texture-face UV fixture, no-texture-face canonical mapping, projected/dynamic reference case, and animation direction/speed material handoff.
+RustOSRS Reference sampling must encode the exact selected reference profile explicitly. Enhanced anisotropic/filtering choices remain separate.
+
+### Texture animation
+
+Animation direction/speed remain decoded semantic inputs. Renderer material preparation converts them to the pinned UV velocity convention and deterministic render tick. The staged shader's `1/128` animation unit is renderer reference evidence, not a semantic texture-size assumption.
+
+### Required tests before GPU parity claim
+
+- explicit and canonical model UV cases;
+- projected texture-plane case;
+- pixel-zero transparency conversion;
+- alpha-cutout threshold;
+- textured lightness behavior;
+- brightness path;
+- S clamp / T repeat fixture;
+- min/mag filter profile fixture;
+- deterministic animation direction/speed/tick;
+- full-width texture ID mapping independent of fixed array capacity.
 
 ### Related specs
 
-`FACE-001`, `TERRAIN-001`, future renderer material ADR.
+`FACE-001`, `FACE-003`, `TERRAIN-001`, renderer depth/material ADRs.
