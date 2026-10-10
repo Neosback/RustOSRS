@@ -222,9 +222,7 @@ mod tests {
     #[test]
     fn varbit_wins_over_varp_when_both_are_present() -> Result<(), Box<dyn Error>> {
         let mut state = TestState::default();
-        state
-            .varbits
-            .insert(VarbitId::new(7), varbit(7, 9, 1, 2)?);
+        state.varbits.insert(VarbitId::new(7), varbit(7, 9, 1, 2)?);
         state.varps.insert(VarpId::new(9), 0b0010);
         state.varps.insert(VarpId::new(8), 2);
 
