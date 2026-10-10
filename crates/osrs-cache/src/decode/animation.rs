@@ -187,7 +187,7 @@ pub fn decode_legacy_animation_frame(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::decode::{DecodeErrorKind, test_support};
+    use crate::decode::{DecodeError, DecodeErrorKind, test_support};
 
     fn skeleton_source(id: u16) -> ArchiveFileProvenance {
         ArchiveFileProvenance::new(1, u32::from(id), Some(0))
@@ -195,6 +195,16 @@ mod tests {
 
     fn frame_source(group: u32, file: u32) -> ArchiveFileProvenance {
         ArchiveFileProvenance::new(0, group, Some(file))
+    }
+
+    fn require_decode_error<T>(
+        result: DecodeResult<T>,
+        message: &'static str,
+    ) -> Result<DecodeError, Box<dyn std::error::Error>> {
+        match result {
+            Ok(_) => Err(std::io::Error::other(message).into()),
+            Err(error) => Ok(error),
+        }
     }
 
     #[test]
@@ -231,8 +241,10 @@ mod tests {
         let decoded = decode_legacy_skeleton(77, &[1, 1, 1, 0, 0, 0], &context, &source)?;
         assert_eq!(decoded.len(), 1);
 
-        let error = decode_legacy_skeleton(77, &[1, 1, 1, 0, 0, 1], &context, &source)
-            .expect_err("nonzero skeletal extension must remain explicit");
+        let error = require_decode_error(
+            decode_legacy_skeleton(77, &[1, 1, 1, 0, 0, 1], &context, &source),
+            "nonzero skeletal extension must remain explicit",
+        )?;
         assert_eq!(error.subject(), Some(&DecodeSubject::Skeleton(77)));
         assert!(matches!(
             error.kind(),
@@ -336,9 +348,17 @@ mod tests {
             labels: vec![0],
         }];
 
-        let mismatch =
-            decode_legacy_animation_frame(frame_id, &[0, 8, 1, 0], 9, &skeleton, &context, &source)
-                .expect_err("mismatched skeleton id must fail");
+        let mismatch = require_decode_error(
+            decode_legacy_animation_frame(
+                frame_id,
+                &[0, 8, 1, 0],
+                9,
+                &skeleton,
+                &context,
+                &source,
+            ),
+            "mismatched skeleton id must fail",
+        )?;
         assert!(matches!(
             mismatch.kind(),
             DecodeErrorKind::InvalidValue {
@@ -347,15 +367,17 @@ mod tests {
             }
         ));
 
-        let overrun = decode_legacy_animation_frame(
-            frame_id,
-            &[0, 9, 2, 0, 0],
-            9,
-            &skeleton,
-            &context,
-            &source,
-        )
-        .expect_err("slot overrun must fail");
+        let overrun = require_decode_error(
+            decode_legacy_animation_frame(
+                frame_id,
+                &[0, 9, 2, 0, 0],
+                9,
+                &skeleton,
+                &context,
+                &source,
+            ),
+            "slot overrun must fail",
+        )?;
         assert!(matches!(
             overrun.kind(),
             DecodeErrorKind::InvalidValue {
@@ -364,15 +386,17 @@ mod tests {
             }
         ));
 
-        let trailing = decode_legacy_animation_frame(
-            frame_id,
-            &[0, 9, 1, 1, 65, 0],
-            9,
-            &skeleton,
-            &context,
-            &source,
-        )
-        .expect_err("trailing frame payload must fail");
+        let trailing = require_decode_error(
+            decode_legacy_animation_frame(
+                frame_id,
+                &[0, 9, 1, 1, 65, 0],
+                9,
+                &skeleton,
+                &context,
+                &source,
+            ),
+            "trailing frame payload must fail",
+        )?;
         assert_eq!(
             trailing.kind(),
             &DecodeErrorKind::TrailingBytes { remaining: 1 }
