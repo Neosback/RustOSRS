@@ -17,8 +17,8 @@ pub mod terrain;
 pub mod terrain_contract;
 
 pub use dynamic_placement::{
-    DynamicPlacementError, DynamicPlacementInput, ObjectDefinitionLookup,
-    ResolvedDynamicPlacement, resolve_dynamic_placement,
+    DynamicPlacementError, DynamicPlacementInput, ObjectDefinitionLookup, ResolvedDynamicPlacement,
+    resolve_dynamic_placement,
 };
 pub use normal_finalization::{
     BoundaryModelData, FloorDecorationModelData, GameObjectModelData, SceneModelDataGrid,
