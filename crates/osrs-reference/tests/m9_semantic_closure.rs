@@ -287,7 +287,10 @@ fn semantic_golden_scene_hashes_are_exact_and_rebuild_deterministically()
     let first = build_m9_composed_scene()?;
     let rebuilt = build_m9_composed_scene()?;
     assert_eq!(first, rebuilt);
-    assert_eq!(semantic_scene_hash_hex_v1(&first), M9_COMPOSED_SCENE_HASH_V1);
+    assert_eq!(
+        semantic_scene_hash_hex_v1(&first),
+        M9_COMPOSED_SCENE_HASH_V1
+    );
     assert_eq!(
         semantic_scene_hash_hex_v1(&rebuilt),
         M9_COMPOSED_SCENE_HASH_V1
