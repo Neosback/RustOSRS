@@ -55,7 +55,7 @@ impl InitialStaticEntityKey {
 /// Scene-local pre-lighting ModelData result for a `nonFlatShading` entity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SceneLocalModelDataEntity {
-    model: WorkingModel,
+    model: Box<WorkingModel>,
     lighting: LightingParameters,
 }
 
@@ -73,7 +73,7 @@ impl SceneLocalModelDataEntity {
     }
 
     pub fn into_parts(self) -> (WorkingModel, LightingParameters) {
-        (self.model, self.lighting)
+        (*self.model, self.lighting)
     }
 }
 
@@ -101,7 +101,7 @@ impl InitialStaticEntity {
 enum CachedInitialStaticEntity {
     Lit(ReferenceLitModel),
     ModelData {
-        model: WorkingModel,
+        model: Box<WorkingModel>,
         lighting: LightingParameters,
     },
 }
@@ -112,7 +112,7 @@ impl CachedInitialStaticEntity {
             Self::Lit(model) => InitialStaticEntity::Lit(model.clone()),
             Self::ModelData { model, lighting } => {
                 InitialStaticEntity::ModelData(SceneLocalModelDataEntity {
-                    model: model.clone(),
+                    model: Box::new((**model).clone()),
                     lighting: *lighting,
                 })
             }
@@ -176,7 +176,10 @@ impl InitialStaticEntityCache {
                 let normals = calculate_base_normals(&model);
                 model.set_computed_normals(normals);
             }
-            CachedInitialStaticEntity::ModelData { model, lighting }
+            CachedInitialStaticEntity::ModelData {
+                model: Box::new(model),
+                lighting,
+            }
         } else {
             CachedInitialStaticEntity::Lit(light_model_data(&model, lighting)?)
         };
