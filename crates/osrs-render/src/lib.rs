@@ -5,14 +5,20 @@
 //! enough provenance/metadata for exact structural verification before M11.
 
 mod alpha;
+mod classification;
 mod coordinates;
+mod draw_plan;
 mod generation;
 mod mesh;
 mod priority;
 mod snapshot;
 
 pub use alpha::ReferenceFaceAlpha;
+pub use classification::{
+    RenderClassification, RenderPath, RenderRequirement, RenderRequirements, classify_renderable,
+};
 pub use coordinates::{RenderCoordinateError, RenderOrigin, RenderPoint};
+pub use draw_plan::{RenderDrawPlan, RenderScenePass};
 pub use generation::SemanticGeneration;
 pub use mesh::{RenderExtractionError, RenderMesh, RenderPlacement};
 pub use priority::{
