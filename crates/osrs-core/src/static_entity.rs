@@ -81,7 +81,7 @@ impl SceneLocalModelDataEntity {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InitialStaticEntity {
     /// `nonFlatShading == false`: already converted with exact loc lighting.
-    Lit(ReferenceLitModel),
+    Lit(Box<ReferenceLitModel>),
     /// `nonFlatShading == true`: mutable scene-local ModelData copy awaiting
     /// scene normal reconciliation and final lighting.
     ModelData(SceneLocalModelDataEntity),
@@ -99,7 +99,7 @@ impl InitialStaticEntity {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CachedInitialStaticEntity {
-    Lit(ReferenceLitModel),
+    Lit(Box<ReferenceLitModel>),
     ModelData {
         model: Box<WorkingModel>,
         lighting: LightingParameters,
@@ -109,7 +109,7 @@ enum CachedInitialStaticEntity {
 impl CachedInitialStaticEntity {
     fn instantiate(&self) -> InitialStaticEntity {
         match self {
-            Self::Lit(model) => InitialStaticEntity::Lit(model.clone()),
+            Self::Lit(model) => InitialStaticEntity::Lit(Box::new((**model).clone())),
             Self::ModelData { model, lighting } => {
                 InitialStaticEntity::ModelData(SceneLocalModelDataEntity {
                     model: Box::new((**model).clone()),
@@ -181,7 +181,7 @@ impl InitialStaticEntityCache {
                 lighting,
             }
         } else {
-            CachedInitialStaticEntity::Lit(light_model_data(&model, lighting)?)
+            CachedInitialStaticEntity::Lit(Box::new(light_model_data(&model, lighting)?))
         };
 
         let entity = cached.instantiate();
