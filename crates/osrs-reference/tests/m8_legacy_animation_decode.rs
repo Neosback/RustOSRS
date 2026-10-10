@@ -68,6 +68,7 @@ fn one_vertex_lit_model() -> Result<ReferenceLitModel, Box<dyn Error>> {
         faces: Vec::new(),
         face_colors: Vec::<LitFaceColors>::new(),
         default_priority: FacePriority::ZERO,
+        face_render_types: None,
         face_priorities: None,
         face_alphas: None,
         face_textures: None,
