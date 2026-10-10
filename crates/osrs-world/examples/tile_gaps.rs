@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut defs = WorldDefinitions::open(&args[1])?;
     let window = SceneWindow::new(args[2].parse()?, args[3].parse()?).ok_or("align")?;
     let world = build_world_scene(&mut defs, window, TerrainPresentation::default())?;
-    let plane = StoragePlane::new(0).unwrap();
+    let plane = StoragePlane::new(0).ok_or("plane")?;
     let (mut none, mut skipped_faces, mut skipped_flat, mut total) = (0, 0, 0, 0);
     let mut shown = 0;
     for x in 1..103u32 {
