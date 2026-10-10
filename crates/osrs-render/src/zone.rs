@@ -288,10 +288,16 @@ impl fmt::Display for RenderZoneError {
             Self::ZeroWidth => write!(formatter, "render tile bounds require nonzero width"),
             Self::ZeroDepth => write!(formatter, "render tile bounds require nonzero depth"),
             Self::WidthTooLarge { width_tiles } => {
-                write!(formatter, "render tile width {width_tiles} exceeds signed tile range")
+                write!(
+                    formatter,
+                    "render tile width {width_tiles} exceeds signed tile range"
+                )
             }
             Self::DepthTooLarge { depth_tiles } => {
-                write!(formatter, "render tile depth {depth_tiles} exceeds signed tile range")
+                write!(
+                    formatter,
+                    "render tile depth {depth_tiles} exceeds signed tile range"
+                )
             }
             Self::XBoundsOverflow => write!(formatter, "render tile bounds overflow on x axis"),
             Self::ZBoundsOverflow => write!(formatter, "render tile bounds overflow on z axis"),
