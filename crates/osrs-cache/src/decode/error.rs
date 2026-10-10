@@ -383,7 +383,10 @@ mod tests {
             DecodeSubject::Model(u32::MAX).to_string(),
             "model:4294967295"
         );
-        assert_eq!(DecodeSubject::Frame(0x1234_5678).to_string(), "frame:305419896");
+        assert_eq!(
+            DecodeSubject::Frame(0x1234_5678).to_string(),
+            "frame:305419896"
+        );
         assert_eq!(DecodeSubject::Skeleton(77).to_string(), "skeleton:77");
     }
 
