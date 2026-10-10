@@ -1,389 +1,281 @@
 # Contradiction and Open-Question Register
 
-Status: **Living register, reconciled through M1 cache-contract decision**
+Status: **Living register, reconciled through the M10 foundation audit**
 
-This register records claims that must not become implementation requirements until they are resolved. It is intentionally stricter than the existing research notes.
+This register records claims that must not become implementation requirements until their evidence and ownership are clear.
 
-## Severity
+Severity:
 
 - **P0**: can produce structurally wrong OSRS geometry/scene semantics.
 - **P1**: can produce visibly wrong rendering or revision breakage.
-- **P2**: architecture/product ambiguity that can create unnecessary coupling or rework.
+- **P2**: architecture/product ambiguity that can cause coupling or rework.
 
-## C-001: Cross-model normal behavior is currently overstated
-
-**Severity:** P0  
-**Status:** `RESOLVED`  
-**Domain:** `OSRS_SEMANTIC`
-
-Resolved by `docs/blueprint/09-SEMANTIC-AUDIT.md`, `docs/specs/normals-lighting.md`, and the source pins in `docs/verification/SOURCE-PINS.md`.
-
-The audited public deob contains a cross-`ModelData` normal merge routine. Eligible static scene objects can accumulate normals at translated coincident vertices before final lighting, and matched faces can be marked through render type `2` when the caller requests face suppression.
-
-This is **not** topological mesh welding. Model/scene-object identity remains separate while lighting normals can be reconciled across models.
-
-Positive, negative, and matched-face differential fixtures remain required by the verification plan, but the disputed behavior itself is resolved.
-
-## C-002: Mesh welding and visual continuity must not be conflated
+## C-001: Cross-model normal behavior
 
 **Severity:** P0  
 **Status:** `RESOLVED`
 
-Resolved by `docs/blueprint/09-SEMANTIC-AUDIT.md` and `docs/specs/normals-lighting.md`.
+Pinned `Scene.method5585/method5587` performs cross-`ModelData` normal reconciliation through `ModelData.method5262`. Separate objects remain separate meshes, but eligible coincident normals are accumulated and fully matched faces may be marked render type `2` when hiding is enabled.
 
-The canonical model separately represents:
+Canonical owner: `docs/specs/normals-lighting.md`.
 
-- scene-object topology;
-- model ownership/caching;
-- base normal generation;
-- cross-model normal accumulation;
-- optional matched-face suppression;
-- final lighting conversion.
+## C-002: Mesh welding versus visual continuity
 
-Separate meshes do not imply separate lighting normals.
+**Severity:** P0  
+**Status:** `RESOLVED`
 
-## C-003: Evidence corpus mixes January and October 2026 snapshots
+Topology/identity and normal reconciliation are separate. No production rule may infer "no mesh welding" to mean "no cross-object normal reconciliation."
+
+## C-003: Mixed January/October evidence snapshots
 
 **Severity:** P1  
 **Status:** `REVISION_SENSITIVE`
 
-The corpus uses:
+The corpus includes pinned public deob/client source and a separately imported RuneLite GPU tree. Claims must terminate in exact file/blob/tree identity and may not pretend these sources are one snapshot.
 
-- October 4, 2026 RuneLite API/client/GPU material for the newer reference set;
-- January 2026 melxin/deob material for runescape-client construction internals and older compute/priority shader files.
+The historical developer-machine deob checkout is still not proven byte-identical as a whole to the public pin. This remains relevant only where a claim still depends on that old tree rather than a directly pinned public file/method.
 
-Checkpoint 3 added exact public commit and file/blob pins where possible, but the existing local deob harness source is still an unpinned developer-machine tree.
-
-Required resolution remains:
-
-- source pins in every semantic spec;
-- explicit cross-revision equivalence checks for behavior borrowed from the January deob;
-- no spec may cite a mixed source group as if it were one snapshot;
-- identify or hash the exact local harness source before treating its whole output as one pinned snapshot.
-
-## C-004: Staged shader directory contains live, historical, semantic, and optional presentation material together
+## C-004: Mixed shader provenance
 
 **Severity:** P1  
-**Status:** `RESOLVED`
+**Status:** `RESOLVED AT OWNERSHIP LEVEL`
 
-Resolved at the architecture/ownership level by `docs/blueprint/03-SOURCE-GROUP-INVENTORY.md`, `11-RENDERER-ARCHITECTURE.md`, and `12-GPU-DATA-PASSES.md`.
+The staged shader directory contains live, historical, and presentation material. It is evidence only. RustOSRS ports verified contracts by responsibility rather than transliterating the directory wholesale.
 
-The staged shader tree is reference evidence only. The Rust renderer does **not** transliterate the directory wholesale.
-
-Checkpoint 5 established the split:
-
-- semantic inputs remain in `docs/specs/` and renderer extraction;
-- live RuneLite rendering formulas may serve as reference-profile evidence;
-- historical priority/compute shaders are algorithm documentation/reference evidence;
-- colorblind/scaling/UI shaders are optional presentation/editor features;
-- WGSL is organized by RustOSRS renderer responsibility rather than source-tree shape.
-
-Individual formulas still require their own evidence/tests when ported, but the authority/classification contradiction is closed.
-
-## C-005: Historical local filesystem paths are not reproducible source pins
+## C-005: Historical local filesystem paths
 
 **Severity:** P1  
 **Status:** `REVISION_SENSITIVE`
 
-Several documents identify sources primarily by `/Users/...` filesystem locations and a human-readable date.
+Absolute paths and human-readable dates are provenance only, never identity. Checked-in fixture bytes and promoted public source pins are hash-gated. Whole historical checkout equivalence remains unclaimed.
 
-Checkpoint 3 added imported tree/blob pins and a provisional public deob upstream commit, but the historical local deob source used by the harness is still not exactly identified.
-
-Checkpoint 7 now requires every newly promoted fixture to carry an exact source/harness manifest, so this unresolved historical path cannot silently contaminate future fixture provenance.
-
-Required closure is documented in `docs/verification/SOURCE-PINS.md` and `REFERENCE-FIXTURES.md`.
-
-## C-006: Deob golden fixture coverage is strong but incomplete for the highest-risk semantics
+## C-006: Differential fixture coverage
 
 **Severity:** P0  
-**Status:** `RESEARCH`
+**Status:** `OPEN COVERAGE`
 
-The current harness proves terrain shape tables, triangulation, HSL/color functions, contouring, one lighting case, wall/decor storage, footprints, offsets, and scene capacity behavior.
+M3-M10 now have substantial exact fixture/test coverage, including model transforms, placement, normals, lighting, morph/contour/legacy animation scope, priority preparation, UV preparation, and zones.
 
-It does not yet provide complete differential coverage for:
+Remaining high-risk gaps include:
 
-- positive/negative normal merge cases;
-- all transform combinations and ordering;
-- recolor/retexture interactions;
-- mirrored winding/culling;
-- priority/transparency behavior;
-- all morph/static/dynamic object paths;
-- animation transform semantics;
-- bridge/plane combinations at scene level;
-- the complete terrain color-builder path under an exact source pin.
+- complete `TERRAIN-004` differential fixture;
+- target `minPlane/originalPlane` end-to-end visibility fixture;
+- Reference GPU depth/bias/alpha fixtures;
+- texture pixel/sampler/cutout GPU fixtures;
+- an independent external visual oracle.
 
-Checkpoint 7 resolved the **planning gap** by defining the complete spec-to-fixture matrix, fixture manifest contract, golden scene catalog, and CI tiers in `docs/verification/`. The **coverage gap itself remains open** until implementation adds the required fixtures/tests and advances the corresponding `PARITY-MATRIX.md` rows to `EXISTING`.
+The terrain source itself is no longer blocked.
 
-`TERRAIN-004` remains separately blocked on source/oracle provenance rather than ordinary fixture implementation.
-
-## C-007: `editor_*` crate naming conflicts with reusable OSRS foundation goals
+## C-007: Reusable crate architecture
 
 **Severity:** P2  
 **Status:** `RESOLVED`
 
-Resolved by `docs/adr/ADR-0001-reusable-osrs-crate-boundaries.md` and `docs/blueprint/06-CRATE-ARCHITECTURE.md`.
+Accepted crates are `osrs-core`, `osrs-cache`, `osrs-scene`, `osrs-render`, `osrs-reference`, and `osrs-editor`. Reusable semantics are not editor-owned.
 
-The accepted primary crate direction is:
-
-- `osrs-core`;
-- `osrs-cache`;
-- `osrs-scene`;
-- `osrs-render`;
-- `osrs-reference`;
-- `osrs-editor`.
-
-Reusable lower layers are OSRS-owned, not editor-owned. Additional crate splits require demonstrated value and an ADR.
-
-## C-008: Mandatory wasm support is not yet a product requirement
+## C-008: Mandatory wasm support
 
 **Severity:** P2  
 **Status:** `RESOLVED`
 
-Resolved by `docs/adr/ADR-0002-native-first-editor.md`.
+RustOSRS is native-first. wasm remains deferred unless a future ADR changes that decision.
 
-RustOSRS is native-first. wasm support is deferred, not forbidden. Natural portability is welcome, but wasm compatibility is not a hard acceptance gate and must not distort native editor architecture without a future superseding ADR.
-
-## C-009: Existing "map editor, not a client" non-scope is too broad for foundation architecture
+## C-009: Editor versus reusable client foundation
 
 **Severity:** P2  
 **Status:** `RESOLVED`
 
-Resolved by `docs/blueprint/04-PROJECT-CHARTER.md`, `docs/blueprint/06-CRATE-ARCHITECTURE.md`, and ADR-0001.
+The initial product is an editor, while lower `osrs-*` crates remain reusable enough for future reference/client applications where correctness is preserved.
 
-The editor product remains explicitly non-client for its initial milestones, while reusable cache/core/scene/render crates remain suitable for a future Rust client/reference application where doing so does not compromise correctness or maintainability.
-
-## C-010: `rs-cache` is a candidate foundation, not an accepted decoder contract
+## C-010: Cache dependency contract
 
 **Severity:** P1  
 **Status:** `RESOLVED`
 
-Resolved in M1 by `docs/adr/ADR-0010-rune-fs-private-cache-transport.md`, `docs/implementation/M1-CACHE-COMPATIBILITY-SPIKE.md`, and `docs/implementation/M1-TRANSPORT-SPIKE-RESULTS.md`.
+ADR-0010 selects `rune-fs 0.2.0` as private read-only transport. RustOSRS owns revision-aware decoders and canonical semantic structures. No `rune-fs` type crosses the public cache/core boundary.
 
-Executable spikes against the bundled revision-180 regression cache and OpenRS2 build-241 target established that:
+`TERRAIN-004` is no longer a cache/source blocker under this item. Its remaining work is semantic implementation plus fixture coverage.
 
-- the high-level `rs-cache` definition layer is not accepted as canonical because it omits or loses target-era fields and decoder families required by RustOSRS;
-- `rune-fs 0.2.0` is selected as the private read-only low-level JS5/DAT2/index/reference/group/compression/XTEA transport dependency behind `osrs-cache`;
-- RustOSRS owns revision-aware semantic decoders and canonical output representations;
-- no `rune-fs` type may cross the public `osrs-cache -> osrs-core` boundary;
-- build 241 map index `5` contains no nonzero archive name hashes, so modern map-square resolution is target/profile-aware rather than based on a universal `mX_Y` / `lX_Y` lookup;
-- dependency error/panic/reference-metadata risks are explicitly accepted and mitigated by ADR-0010, with provenance-rich wrapping required before M3 exposes production decode APIs.
-
-C-010 is closed at the dependency-selection/planning level. Target decoder implementation and opcode/field verification remain owned by M3-M8 through `docs/implementation/M1-DECODER-ACCEPTANCE.md`. `TERRAIN-004` remains a separate unresolved gate under C-021.
-
-## C-011: "FileStore is the spec" is too strong
+## C-011: "FileStore is the spec"
 
 **Severity:** P1  
-**Status:** `RESEARCH`
+**Status:** `RESEARCH ONLY`
 
-OpenRune FileStore is valuable independent implementation evidence and likely the best existing opcode map for several gaps. It is still an implementation, not the canonical OSRS oracle.
+OpenRune FileStore remains valuable corroborating decoder/tooling evidence, not the terminal OSRS oracle.
 
-Required resolution:
-
-- use FileStore to accelerate decoding work;
-- verify revision-sensitive opcodes/defaults against target data/deob or another primary source;
-- never make Rust semantics depend on Kotlin naming or implementation quirks.
-
-Checkpoint 9 also quarantines the legacy `RUNELITE_CACHE_STACK.md` wording through `docs/research/README.md` and `18-DOCUMENTATION-RECONCILIATION.md`.
-
-## C-012: Fixed texture count/array assumptions may be renderer implementation details
+## C-012: Fixed texture count/capacity
 
 **Severity:** P1  
 **Status:** `RESOLVED`
 
-Resolved by `docs/blueprint/12-GPU-DATA-PASSES.md` and ADR-0005/renderer architecture.
+Semantic texture IDs are full-width and independent of imported RuneLite's fixed renderer capacity. Renderer allocation uses material handles/pages and must surface capability failure explicitly.
 
-The canonical rule is now:
+## C-013: Reverse-Z Reference state
 
-- semantic texture IDs are not limited by RuneLite's historical `TEXTURE_COUNT = 256` renderer constant;
-- renderer capacity/allocation is adapter-aware and uses a material table plus paged texture arrays;
-- texture storage capacity is renderer policy;
-- unsupported adapter limits must produce diagnostics/fallback selection, not silent texture loss.
+**Severity:** P1  
+**Status:** `RESOLVED AS POLICY, GPU IMPLEMENTATION PENDING`
 
-Target-revision decoder limits remain decoder acceptance work under ADR-0010 and `docs/implementation/M1-DECODER-ACCEPTANCE.md`.
+Imported RuneLite evidence establishes clear depth `0` and strict `GL_GREATER`. ADR-0004 now defines RustOSRS Reference mode as:
 
-## C-013: Reverse-Z is a renderer policy, not OSRS semantic parity
+```text
+clear depth   = 0
+depth compare = Greater
+near          = larger depth
+far           = smaller depth
+```
+
+The imported projection has no finite far plane. `GreaterEqual` is no longer the Reference baseline. Authored bias requires distance-sensitive fixtures before GPU parity is claimed.
+
+## C-014: Camera controls versus semantic angles
 
 **Severity:** P2  
 **Status:** `RESOLVED`
 
-Resolved by ADR-0004 and `docs/blueprint/11-RENDERER-ARCHITECTURE.md` / `12-GPU-DATA-PASSES.md`.
+JAU/object orientation remains semantic/reference math. Camera controls and editor framing are editor policy.
 
-RustOSRS accepts reverse-Z as renderer policy with:
-
-- `Depth32Float`;
-- clear depth `0.0`;
-- larger depth nearer;
-- `GreaterEqual` baseline comparison;
-- canonical CCW GPU-facing front faces;
-- back-face culling;
-- authored face bias preserved separately and consumed by the reference rendering strategy.
-
-Semantic placement, priority, alpha, face metadata, and model behavior remain independently testable underneath this policy.
-
-## C-014: Camera defaults and pitch bands are mixed semantic/editor concerns
+## C-015: RuneLite region filtering
 
 **Severity:** P2  
 **Status:** `RESOLVED`
 
-Resolved by `docs/specs/coordinates.md`, renderer ADRs, and `docs/blueprint/13-EDITOR-ARCHITECTURE.md`.
+RuneLite plugin region lists and visibility preferences are not baseline scene semantics. Workspace membership and visibility filters are editor/render state.
 
-The separation is explicit:
-
-- tile/JAU/angular tables and object transforms: semantic/reference math;
-- projection/clip-space/reverse-Z: renderer policy;
-- orbit/fly controls, default distance/pitch, smoothing, framing, and bookmarks: editor policy.
-
-The editor camera cannot mutate semantic loc orientation.
-
-## C-015: RuneLite region filtering and `regions.txt` are not baseline scene semantics
-
-**Severity:** P2  
-**Status:** `RESOLVED`
-
-Resolved by `docs/blueprint/13-EDITOR-ARCHITECTURE.md`, `15-EDITOR-TOOLS-INTERACTION.md`, and ADR-0006/0007 ownership boundaries.
-
-`hideUnrelatedMaps`, RuneLite `regions.txt`, colorblind processing, UI scaling, and similar plugin settings are not baseline OSRS scene semantics.
-
-RustOSRS decisions are now:
-
-- multi-region workspace membership is explicit project/editor state;
-- unloaded neighbors are distinct from empty map data;
-- region/plane visibility filters are non-destructive editor/render state;
-- colorblind/scaling options are optional presentation policy;
-- no RuneLite plugin region list becomes semantic map truth.
-
-## C-016: Generated API docs must never become sole proof
+## C-016: Generated API docs as proof
 
 **Severity:** P1  
 **Status:** `RESOLVED`
 
-Resolved by `docs/blueprint/01-EVIDENCE-STATUS.md` and invariant A2 in `docs/blueprint/07-ARCHITECTURE-INVARIANTS.md`.
+Generated/API pages are navigation evidence only. Normative claims require pinned source and/or executable evidence through their owning spec.
 
-`docs/api/` is navigation/reference material only. Final semantic specs must cite underlying pinned source and/or executable evidence.
-
-## C-017: Existing "all verified" language hides different verification strengths
+## C-017: Verification-strength vocabulary
 
 **Severity:** P1  
 **Status:** `RESOLVED`
 
-Resolved by the status/evidence vocabulary in `docs/blueprint/01-EVIDENCE-STATUS.md`.
+The project distinguishes verified, derived, project decision, research, hypothesis, disputed, revision-sensitive, deferred, obsolete, source-verified/implementation-required, and structural/GPU-pending states rather than flattening them into "verified."
 
-The canonical blueprint distinguishes `VERIFIED`, `DERIVED`, `PROJECT_DECISION`, `RESEARCH`, `HYPOTHESIS`, `DISPUTED`, `REVISION_SENSITIVE`, `DEFERRED`, and `OBSOLETE` rather than treating all source inspection or conceptual mapping as equivalent verification.
-
-## C-018: Ground-decoration lift and similar visual claims need source-path verification
+## C-018: Generic floor-decoration lift
 
 **Severity:** P1  
-**Status:** `RESOLVED`
+**Status:** `RESOLVED / REFUTED`
 
-Resolved by `docs/blueprint/10-TERRAIN-MATERIAL-PLANE-AUDIT.md` and `docs/specs/loc-placement.md` for the generic lift claim.
+The audited path stores floor-decoration Z at the supplied semantic height. No generic `+1/+2` lift is part of the canonical contract.
 
-The audited public deob stores floor-decoration Z at the supplied height unchanged, initial placement supplies the computed ground height, and the imported RuneLite static uploader uses the stored ground-object Z directly. The old generic "+1/+2 to avoid Z-fighting" statement is therefore `OBSOLETE/REFUTED` for this audited path.
-
-Future asset-specific offsets still require source evidence. Visual-intent prose is never sufficient by itself.
-
-## C-019: Static/dynamic model branch must be audited with morph and animation ownership
+## C-019: Initial versus runtime model ownership
 
 **Severity:** P0  
 **Status:** `RESOLVED`
 
-Resolved by `docs/blueprint/09-SEMANTIC-AUDIT.md` and canonical model/morph/contour specs.
+Initial scene construction, pending/static replacement, morph resolution, contouring, animation working copies, and scene normal-finalization are distinct semantic pipelines. M7/M8 exact tests own these boundaries.
 
-Checkpoint 3/4 established:
-
-- initial static scene construction can preserve `ModelData` for later normal merging;
-- pending-spawn/static replacement uses an already-lit model path;
-- morph resolution is varbit/varp driven and includes fallback/null targets;
-- dynamic objects resolve morphs at model time;
-- transformed definitions can alter footprint dimensions;
-- animation is applied to a working/shared model path rather than mutating the immutable source cache;
-- contouring occurs on the appropriate working representation.
-
-The differential morph/animation fixture families are now explicitly defined in Checkpoint 7, while their implementation remains future work.
-
-## C-020: Priority rendering evidence spans software semantics and RuneLite GPU strategy
+## C-020: Software priority versus RuneLite GPU sorting
 
 **Severity:** P0  
 **Status:** `RESOLVED`
 
-Resolved by `docs/specs/face-materials.md`, `docs/blueprint/11-RENDERER-ARCHITECTURE.md`, `12-GPU-DATA-PASSES.md`, and ADR-0005.
+Pinned software/client `Model.method5946` defines the priority `0..11` threshold/special-queue oracle implemented by M10 CPU preparation.
 
-The canonical split is:
+Imported RuneLite GPU is path-specific:
 
-- priority values/face metadata and reference ordering behavior are semantic/reference contracts;
-- static zone batching is renderer implementation;
-- camera-dependent ordered faces use a dedicated ordered path;
-- transparency and authored bias remain preserved inputs;
-- Rust renderer strategy is proven against crafted priority/transparency fixtures rather than copied structurally from RuneLite.
+- full priority queues run only when `prioritySort=true`, notably `SORTED_NO_DEPTH`;
+- ordinary dynamic upload passes `false`;
+- static opaque work is not universally priority-sorted;
+- `Zone` alpha work uses model-distance/face-depth ordering.
 
-Checkpoint 7 defines the exact all-priority/threshold fixture and composed golden scene. Fixture implementation remains future work, but the semantic/renderer ownership contradiction is closed.
+RustOSRS Reference mode intentionally selects the software/client ordering contract for priority-sensitive content. A RuneLite-GPU comparison profile would be separate.
 
-## C-021: The old `class470` terrain-builder source pin is stale
-
-**Severity:** P0  
-**Status:** `REVISION_SENSITIVE`  
-**Domain:** `OSRS_SEMANTIC`
-
-Older research cites `class470` and line ranges as the source for slope lighting, 11x11 underlay blending, random terrain-color variation, overlays, and terrain-side flags.
-
-In public `melxin/runelite@1ad572d7...`, `class470` is unrelated text-layout code.
-
-Checkpoint 3B separately verified:
-
-- `SceneTileModel` terrain shape topology;
-- underlay definition weighted HSL inputs;
-- overlay definition fields/defaults/HSL;
-- downstream terrain sentinel/UV behavior in the imported RuneLite renderer.
-
-But the complete higher-level terrain-color builder is not yet pinned.
-
-Required resolution before normative promotion:
-
-- identify the actual target source method/file and pin it; or
-- add an end-to-end terrain-color differential fixture that proves the complete builder behavior against an exact source snapshot.
-
-Checkpoint 7 deliberately marks the corresponding parity row and `GS-012-terrain-color-border` golden scene as `BLOCKED` rather than assigning guessed expected values.
-
-Until closure, `TERRAIN-004` remains revision-gated and the old 11x11/color-builder prose remains research.
-
-## C-022: Bridge behavior was conflated into one adjusted-plane rule
+## C-021: Complete terrain-builder source attribution
 
 **Severity:** P0  
-**Status:** `RESOLVED`  
-**Domain:** `OSRS_SEMANTIC`
+**Status:** `RESOLVED AT SOURCE / IMPLEMENTATION OPEN`
 
-Resolved by `docs/blueprint/10-TERRAIN-MATERIAL-PLANE-AUDIT.md`, `docs/specs/planes-bridges.md`, and the editor plane workflow.
+The earlier register statement that public pinned `class470` was unrelated text-layout code was wrong.
 
-The blueprint preserves separate mechanisms for:
+At:
 
-- encoded/source loc plane;
-- bridge-adjusted collision-plane selection during decoded object placement;
-- structural `Scene.setLinkBelow` tile relinking;
-- tile storage plane after relinking;
-- tile render/height level;
-- linked-below bridge tile;
-- pending-spawn/live replacement sampling rules;
-- RuneLite-specific roof/VIS_BELOW grouping as renderer/product state.
+`melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`
 
-These must not be represented as one universal `plane +/- 1` rule, including in the editor UI.
+`class470.java` blob:
+
+`1cd9cad5cb4be865dcae94dc633bba821644dc84`
+
+contains final static `method9712(WorldView)`, the complete terrain-construction routine.
+
+It includes slope lighting, placement-shadow consumption, separable radius-5/11x11 underlay blending, overlays, tile emission, `minPlane`, scene normal finalization, and bridge relinking.
+
+`FriendSystem.java` blob:
+
+`b8cf51b6ee673181d8a115e28153a77f5978c390`
+
+pins the placement-derived shadow writes consumed by that builder.
+
+Current `TERRAIN-004` status is `SOURCE_VERIFIED / IMPLEMENTATION_REQUIRED`. C-021 is no longer a provenance blocker. Production Rust implementation and an executable differential fixture remain mandatory before implementation parity is claimed.
+
+## C-022: Bridge/plane concepts collapsed into one rule
+
+**Severity:** P0  
+**Status:** `RESOLVED AT CONTRACT LEVEL`
+
+The canonical model distinguishes:
+
+- source/encoded plane;
+- collision plane;
+- storage plane;
+- mutable `Tile.plane`;
+- immutable `Tile.originalPlane`;
+- `Tile.minPlane`;
+- linked-below state;
+- renderer-derived settings/roof grouping such as RuneLite `maplevel`.
+
+Imported RuneLite `maplevel` can change settings/roof lookup while geometry remains `tiles[level]`; it does not rewrite semantic storage identity.
+
+End-to-end Rust representation/visibility tests for `minPlane/originalPlane` remain an implementation gate, not a conceptual contradiction.
+
+## C-023: Alpha blending and depth-write assumptions
+
+**Severity:** P1  
+**Status:** `SOURCE_VERIFIED / GPU IMPLEMENTATION OPEN`
+
+The imported RuneLite snapshot does not establish a universal modern rule that blended alpha disables depth writes. Explicit no-depth render modes/ranges are separate.
+
+Reference GPU work must test alpha ordering, strict `Greater`, depth writes, and explicit no-depth behavior instead of inheriting conventional assumptions.
+
+## C-024: Texture filtering shorthand
+
+**Severity:** P1  
+**Status:** `RESOLVED AT SOURCE / GPU IMPLEMENTATION OPEN`
+
+The imported renderer is not simply "nearest filtered":
+
+- MAG = `NEAREST`;
+- MIN at filtering level 0 = `NEAREST`;
+- MIN at level >=1 = `NEAREST_MIPMAP_LINEAR`;
+- imported default level = 1;
+- S = clamp-to-edge;
+- T = default repeat in the audited setup.
+
+Physical GPU realization remains a later M12 gate.
+
+## C-025: Self-generated visual goldens as external proof
+
+**Severity:** P1  
+**Status:** `RESOLVED AT VERIFICATION-POLICY LEVEL`
+
+RustOSRS-generated Reference screenshots are internal regression evidence (`V3R`). External measured parity (`V3`) requires an independently generated, provenance-complete client/RuneLite oracle artifact.
+
+The project currently has no promoted external V3 visual oracle.
 
 ## Documentation quarantine
 
-Checkpoint 9 makes the authority boundary explicit through:
-
-- canonical root `index.md`;
-- `docs/research/README.md`;
-- `docs/blueprint/18-DOCUMENTATION-RECONCILIATION.md`.
-
-Root `RUNELITE_*.md` files remain historical research and cannot resolve an item in this register by themselves.
+Root `RUNELITE_*.md` files remain non-normative research. Git history preserves the original research text; current root files may be reduced to corrected research indexes when stale prose poses a material implementation risk.
 
 ## Resolution workflow
 
-For every item resolved later:
+For every newly resolved item:
 
-1. add exact source pins;
-2. state chosen target behavior;
-3. add/update an atomic spec or ADR;
-4. attach a test/fixture requirement where applicable;
-5. mark the register item `RESOLVED` and link the resolving document.
-
-Nothing in this register should be "resolved" only by rewriting prose.
+1. pin exact evidence;
+2. state the chosen/verified behavior;
+3. update the owning spec or ADR;
+4. attach implementation/test ownership;
+5. update `PARITY-MATRIX.md`;
+6. do not mark implementation complete merely because source provenance is complete.
