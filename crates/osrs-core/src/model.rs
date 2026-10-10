@@ -556,7 +556,7 @@ impl fmt::Display for ModelValidationError {
                 vertex_count,
             } => write!(
                 formatter,
-                "texture triangle {triangle} references vertex {vertex}, but texture triangle count is {vertex_count}"
+                "texture triangle {triangle} references vertex {vertex}, but vertex count is {vertex_count}"
             ),
             Self::TextureSelectorOutOfRange {
                 face,
@@ -899,7 +899,10 @@ mod tests {
 
         assert_eq!(source.vertices()[0], original);
         assert_ne!(working.vertices()[0], original);
-        assert_eq!(working.identity().singular_model_id(), Some(ModelId::new(77)));
+        assert_eq!(
+            working.identity().singular_model_id(),
+            Some(ModelId::new(77))
+        );
         assert_eq!(working.format(), Some(source.format()));
         Ok(())
     }
