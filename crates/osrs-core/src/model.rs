@@ -7,7 +7,8 @@
 use crate::coords::ModelPoint;
 use crate::definitions::DefinitionIdentity;
 use crate::ids::{ModelId, TextureId};
-use crate::model_identity::ModelSemanticIdentity;
+use crate::model_construction::AssembledModel;
+use crate::model_identity::{ModelSemanticIdentity, ModelSemanticIdentityError};
 use core::fmt;
 
 /// Stable vertex index in canonical model topology.
@@ -358,8 +359,44 @@ pub struct WorkingModel {
 }
 
 impl WorkingModel {
-    /// Exact constructed-model source identity. Composite support is carried by
-    /// this type even though admission from M4 assemblies is a later checkpoint.
+    /// Admit one exact M4 assembled model into the M7 mutable lifecycle.
+    ///
+    /// Composite source identity is preserved separately from the legacy raw
+    /// source envelope carried inside `ModelSemanticData`. The latter is seeded
+    /// from the first real source only for private payload compatibility and is
+    /// never exposed as constructed-model semantic identity or format.
+    pub fn from_assembled(model: &AssembledModel) -> Result<Self, ModelSemanticIdentityError> {
+        let semantic_identity = ModelSemanticIdentity::from_assembled(model)?;
+        let first_source = &model.sources()[0];
+        Ok(Self {
+            semantic_identity,
+            data: ModelSemanticData {
+                identity: first_source.identity().clone(),
+                format: first_source.format(),
+                vertices: model.vertices().to_vec(),
+                faces: model.faces().to_vec(),
+                face_colors: model.face_colors().to_vec(),
+                default_priority: model.default_priority(),
+                face_render_types: model.face_render_types().map(ToOwned::to_owned),
+                face_priorities: model.face_priorities().map(ToOwned::to_owned),
+                face_alphas: model.face_alphas().map(ToOwned::to_owned),
+                face_textures: model.face_textures().map(ToOwned::to_owned),
+                texture_face_selectors: model
+                    .texture_face_selectors()
+                    .map(ToOwned::to_owned),
+                face_biases: model.face_biases().map(ToOwned::to_owned),
+                texture_triangles: model.texture_triangles().to_vec(),
+                vertex_skins: model.vertex_skins().map(ToOwned::to_owned),
+                face_skins: model.face_skins().map(ToOwned::to_owned),
+                skeletal_vertices: model.skeletal_vertices().map(ToOwned::to_owned),
+            },
+            normals: ModelNormalState::Uncomputed,
+            animation_groups: None,
+        })
+    }
+
+    /// Exact constructed-model source identity. Composite assemblies retain the
+    /// complete ordered set of real source identities.
     pub fn identity(&self) -> &ModelSemanticIdentity {
         &self.semantic_identity
     }
