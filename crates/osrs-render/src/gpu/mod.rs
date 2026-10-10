@@ -135,6 +135,9 @@ pub struct FrameParams {
     /// Texture animation clock: the client's `gameCycle & 127`.
     pub tick: u32,
     pub brightness: f32,
+    /// RuneLite's "Remove color banding" option (default on): shade with vertex RGB interpolated
+    /// across the face. Off converts the interpolated 7-bit HSL per pixel like the CPU renderer.
+    pub remove_color_banding: bool,
     pub clear_color: [f64; 3],
 }
 
@@ -572,7 +575,8 @@ impl SceneRenderer {
         let globals = GlobalsUniform {
             world_proj: params.camera.world_projection(width as f32, height as f32),
             brightness: params.brightness,
-            smooth_banding: 1.0,
+            // The reference uniform is inverted: it is `1` when banding is *not* removed.
+            smooth_banding: if params.remove_color_banding { 0.0 } else { 1.0 },
             tick: params.tick,
             pad: 0.0,
         };

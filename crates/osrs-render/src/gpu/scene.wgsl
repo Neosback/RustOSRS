@@ -41,6 +41,8 @@ struct VertexOut {
     @location(1) @interpolate(linear, centroid) hsl: f32,
     @location(2) @interpolate(flat) tex: u32,
     @location(3) uv: vec2<f32>,
+    // Vertex RGB (`fColor.rgb`), interpolated perspective-correct.
+    @location(4) color: vec3<f32>,
 };
 
 fn hsl_to_rgb(hsl: vec3<f32>) -> vec3<f32> {
@@ -114,6 +116,11 @@ fn vs_main(input: VertexIn) -> VertexOut {
     out.clip = screen;
     out.alpha = 1.0 - a;
     out.hsl = f32(input.abhsl & 0xffffu);
+    out.color = hsl_to_rgb(vec3<f32>(
+        f32((input.abhsl >> 10u) & 63u),
+        f32((input.abhsl >> 7u) & 7u),
+        f32(input.abhsl & 127u),
+    ));
 
     // Texture id + 1 (0 = untextured) and signed 8.8 UVs packed as u16 pairs.
     let tex = input.tex_uv.x;
@@ -150,5 +157,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
 
     let packed = i32(input.hsl);
     let hsl = vec3<f32>(f32((packed >> 10) & 63), f32((packed >> 7) & 7), f32(packed & 127));
-    return vec4<f32>(hsl_to_rgb(hsl), input.alpha);
+    // `smoothBanding` is 0 when banding is removed (vertex RGB) and 1 for per-pixel HSL.
+    let rgb = mix(input.color, hsl_to_rgb(hsl), globals.smooth_banding);
+    return vec4<f32>(rgb, input.alpha);
 }

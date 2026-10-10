@@ -78,6 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             view_plane: 0,
             tick: 0,
             brightness: 0.8,
+            remove_color_banding: env::var("RENDER_BANDING").is_err(),
             clear_color: [0.55, 0.7, 0.9],
         },
         width,
