@@ -21,10 +21,10 @@ fn provenance() -> Result<TargetProvenance, Box<dyn std::error::Error>> {
 }
 
 fn source_model(with_optional_metadata: bool) -> Result<SourceModel, Box<dyn std::error::Error>> {
-    let default_priority = FacePriority::new(3)
-        .ok_or_else(|| std::io::Error::other("priority 3 must be valid"))?;
-    let explicit_priority = FacePriority::new(9)
-        .ok_or_else(|| std::io::Error::other("priority 9 must be valid"))?;
+    let default_priority =
+        FacePriority::new(3).ok_or_else(|| std::io::Error::other("priority 3 must be valid"))?;
+    let explicit_priority =
+        FacePriority::new(9).ok_or_else(|| std::io::Error::other("priority 9 must be valid"))?;
 
     let (
         face_render_types,
@@ -91,10 +91,7 @@ fn extraction_preserves_face_metadata_and_rebases_after_semantic_placement()
     let mesh = RenderMesh::extract(
         &lit,
         RenderPlacement::new(
-            LocalXZ::new(
-                LocalCoord::from_units(4096),
-                LocalCoord::from_units(8192),
-            ),
+            LocalXZ::new(LocalCoord::from_units(4096), LocalCoord::from_units(8192)),
             LocalCoord::from_units(-32),
         ),
         RenderOrigin::new(4000, -64, 8000),
@@ -128,10 +125,7 @@ fn extraction_preserves_face_metadata_and_rebases_after_semantic_placement()
         Some(9)
     );
     assert_eq!(mesh.face_alphas(), Some(&[-1][..]));
-    assert_eq!(
-        mesh.face_textures(),
-        Some(&[Some(TextureId::new(42))][..])
-    );
+    assert_eq!(mesh.face_textures(), Some(&[Some(TextureId::new(42))][..]));
     assert_eq!(mesh.texture_triangles(), &[Triangle::new(0, 1, 2)]);
     assert_eq!(mesh.texture_faces(), Some(&[Some(0)][..]));
     assert_eq!(mesh.face_biases(), Some(&[7][..]));
