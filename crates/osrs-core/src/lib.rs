@@ -14,6 +14,7 @@ pub mod lighting;
 pub mod model;
 pub mod model_construction;
 pub mod model_identity;
+pub mod morph;
 pub mod normals;
 pub mod orientation;
 pub mod provenance;
