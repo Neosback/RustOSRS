@@ -212,6 +212,7 @@ name = "osrs-scene"
 version = "0.0.0"
 dependencies = [
  "osrs-core",
+ "sha2",
 ]
 
 [[package]]
