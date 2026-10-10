@@ -1,6 +1,9 @@
 //! Bounded semantic tile storage for M6 scene construction.
 
 use crate::{
+    pending_replacement::{
+        PendingInsertion, PendingRemoval, PendingSceneCategory, PendingSceneMutation,
+    },
     placement::{PlacementKind, PlacementPlan},
     terrain::TerrainSurface,
 };
@@ -440,6 +443,63 @@ impl SceneGrid {
         Ok(())
     }
 
+    fn remove_pending_placement(
+        &mut self,
+        removal: PendingRemoval,
+    ) -> Result<bool, SceneGridError> {
+        if removal.category == PendingSceneCategory::GameObject {
+            return self.remove_game_object(removal.plane, removal.tile);
+        }
+
+        let index = self.required_index(removal.plane, removal.tile)?;
+        let Some(tile) = self.tiles[index].as_mut() else {
+            return Ok(false);
+        };
+        let removed = match removal.category {
+            PendingSceneCategory::Boundary => tile.boundary.take().is_some(),
+            PendingSceneCategory::WallDecoration => tile.wall_decoration.take().is_some(),
+            PendingSceneCategory::FloorDecoration => tile.floor_decoration.take().is_some(),
+            PendingSceneCategory::GameObject => unreachable!(),
+        };
+        Ok(removed)
+    }
+
+    fn remove_game_object(
+        &mut self,
+        plane: StoragePlane,
+        anchor: SceneTile,
+    ) -> Result<bool, SceneGridError> {
+        self.required_index(plane, anchor)?;
+        let Some(instance_id) = self
+            .game_object(plane, anchor)
+            .map(SceneGameObject::instance_id)
+        else {
+            return Ok(false);
+        };
+
+        if let Some(instance_id) = instance_id {
+            for tile in self.tiles.iter_mut().flatten() {
+                tile.game_objects
+                    .retain(|object| object.instance_id != Some(instance_id));
+            }
+            return Ok(true);
+        }
+
+        let index = self.required_index(plane, anchor)?;
+        let Some(tile) = self.tiles[index].as_mut() else {
+            return Ok(false);
+        };
+        let Some(position) = tile.game_objects.iter().position(|object| {
+            object.instance_id.is_none()
+                && object.tag_type == GAME_OBJECT_TAG_TYPE
+                && object.start == anchor
+        }) else {
+            return Ok(false);
+        };
+        tile.game_objects.remove(position);
+        Ok(true)
+    }
+
     fn insert_game_object(
         &mut self,
         plane: StoragePlane,
@@ -565,6 +625,18 @@ impl SceneGrid {
         usize::from(plane)
             .checked_mul(self.plane_len)?
             .checked_add(tile_index)
+    }
+}
+
+impl PendingSceneMutation for SceneGrid {
+    type Error = SceneGridError;
+
+    fn remove_pending(&mut self, removal: PendingRemoval) -> Result<bool, Self::Error> {
+        self.remove_pending_placement(removal)
+    }
+
+    fn insert_pending(&mut self, insertion: PendingInsertion) -> Result<bool, Self::Error> {
+        self.insert_placement(insertion.plane, insertion.object_id, insertion.placement)
     }
 }
 

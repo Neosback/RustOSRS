@@ -5,7 +5,10 @@
 //! storage, exact location placement, plane relinking, and queryable scene state
 //! while keeping renderer/editor policy outside this crate.
 
+pub mod dynamic_model;
+pub mod dynamic_placement;
 pub mod normal_finalization;
+pub mod pending_replacement;
 pub mod placement;
 pub mod placement_height;
 pub mod planes;
@@ -15,9 +18,22 @@ pub mod side_effects;
 pub mod terrain;
 pub mod terrain_contract;
 
+pub use dynamic_model::{
+    DynamicLitModelLookup, DynamicModelError, DynamicModelInput, ResolvedDynamicModel,
+    resolve_dynamic_model,
+};
+pub use dynamic_placement::{
+    DynamicPlacementError, DynamicPlacementInput, ObjectDefinitionLookup, ResolvedDynamicPlacement,
+    resolve_dynamic_placement,
+};
 pub use normal_finalization::{
     BoundaryModelData, FloorDecorationModelData, GameObjectModelData, SceneModelDataGrid,
     SceneModelDataId, SceneNormalError, SceneNormalMergeReport,
+};
+pub use pending_replacement::{
+    PendingInsertion, PendingRemoval, PendingReplacementPlan, PendingReplacementPlanError,
+    PendingReplacementReport, PendingSceneCategory, PendingSceneMutation,
+    apply_pending_replacement, plan_pending_replacement,
 };
 pub use placement::{
     BoundaryPlan, CARDINAL_OFFSET_X, CARDINAL_OFFSET_Z, DIAGONAL_OFFSET_X, DIAGONAL_OFFSET_Z,

@@ -4,6 +4,7 @@
 //! leak `rune-fs` transport types or move scene/render/editor semantics into the
 //! cache layer.
 
+mod animation;
 mod context;
 mod error;
 mod floor;
@@ -15,6 +16,9 @@ mod sequence;
 mod texture;
 mod vars;
 
+pub use animation::{
+    decode_legacy_animation_frame, decode_legacy_skeleton, legacy_frame_skeleton_id,
+};
 pub use context::{DecoderContext, DecoderContextError};
 pub use error::{
     ArchiveFileProvenance, ByteSpan, DecodeError, DecodeErrorKind, DecodeResult, DecodeSubject,

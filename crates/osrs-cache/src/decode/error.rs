@@ -131,6 +131,8 @@ pub enum DecodeSubject {
     Varp(u32),
     Texture(u32),
     Sequence(u32),
+    Frame(u32),
+    Skeleton(u32),
     Model(u32),
     TerrainRegion { x: i32, y: i32 },
     LocationRegion { x: i32, y: i32 },
@@ -146,6 +148,8 @@ impl fmt::Display for DecodeSubject {
             Self::Varp(id) => write!(formatter, "varp:{id}"),
             Self::Texture(id) => write!(formatter, "texture:{id}"),
             Self::Sequence(id) => write!(formatter, "sequence:{id}"),
+            Self::Frame(id) => write!(formatter, "frame:{id}"),
+            Self::Skeleton(id) => write!(formatter, "skeleton:{id}"),
             Self::Model(id) => write!(formatter, "model:{id}"),
             Self::TerrainRegion { x, y } => write!(formatter, "terrain-region:{x},{y}"),
             Self::LocationRegion { x, y } => write!(formatter, "location-region:{x},{y}"),
@@ -374,11 +378,16 @@ mod tests {
     }
 
     #[test]
-    fn model_subject_renders_stable_identity() {
+    fn model_frame_and_skeleton_subjects_render_stable_identity() {
         assert_eq!(
             DecodeSubject::Model(u32::MAX).to_string(),
             "model:4294967295"
         );
+        assert_eq!(
+            DecodeSubject::Frame(0x1234_5678).to_string(),
+            "frame:305419896"
+        );
+        assert_eq!(DecodeSubject::Skeleton(77).to_string(), "skeleton:77");
     }
 
     #[test]

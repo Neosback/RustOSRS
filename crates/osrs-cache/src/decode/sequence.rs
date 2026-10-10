@@ -35,7 +35,7 @@ pub fn decode_sequence_definition(
     let mut max_loops = 99_u16;
     let mut precedence_animating = None;
     let mut priority = None;
-    let mut reply_mode = 2_u8;
+    let mut restart_mode = 2_u8;
     let mut left_hand_item = None;
     let mut right_hand_item = None;
     let mut skeletal_animation = None;
@@ -92,7 +92,7 @@ pub fn decode_sequence_definition(
             8 => max_loops = u16::from(reader.read_u8()?),
             9 => precedence_animating = Some(reader.read_u8()?),
             10 => priority = Some(reader.read_u8()?),
-            11 => reply_mode = reader.read_u8()?,
+            11 => restart_mode = reader.read_u8()?,
             12 => {
                 let count = usize::from(reader.read_u8()?);
                 // Chat-frame ids use the same split-low/split-high u32 layout,
@@ -163,7 +163,7 @@ pub fn decode_sequence_definition(
         max_loops,
         precedence_animating,
         priority,
-        reply_mode,
+        restart_mode,
         left_hand_item,
         right_hand_item,
         skeletal_animation,
@@ -194,7 +194,7 @@ mod tests {
         assert_eq!(sequence.max_loops, 99);
         assert_eq!(sequence.precedence_animating, 0);
         assert_eq!(sequence.priority, 0);
-        assert_eq!(sequence.reply_mode, 2);
+        assert_eq!(sequence.restart_mode, 2);
         assert_eq!(sequence.left_hand_item, None);
         assert_eq!(sequence.right_hand_item, None);
         assert_eq!(sequence.skeletal_animation, None);
@@ -241,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_priority_fields_override_postdecode_inference()
+    fn explicit_priority_and_restart_fields_preserve_target_values()
     -> Result<(), Box<dyn std::error::Error>> {
         let context = test_support::target_context()?;
         let source = ArchiveFileProvenance::new(2, 12, Some(4));
@@ -255,7 +255,7 @@ mod tests {
         assert_eq!(sequence.precedence_animating, 5);
         assert_eq!(sequence.priority, 6);
         assert_eq!(sequence.max_loops, 7);
-        assert_eq!(sequence.reply_mode, 1);
+        assert_eq!(sequence.restart_mode, 1);
         Ok(())
     }
 
