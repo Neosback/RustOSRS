@@ -116,9 +116,10 @@ fn unplaced_initial_model_data_is_not_prematurely_lit() -> Result<(), Box<dyn Er
     let mut scene = SceneReferenceFinalizer::new(1, 1, 1)?;
     let id = scene.add_initial_model_data(entity);
 
-    let error = scene
-        .reconcile_and_light()
-        .expect_err("unplaced ModelData must remain pending");
+    let error = match scene.reconcile_and_light() {
+        Ok(_) => return Err("unplaced ModelData was prematurely finalized".into()),
+        Err(error) => error,
+    };
 
     assert_eq!(
         error,
