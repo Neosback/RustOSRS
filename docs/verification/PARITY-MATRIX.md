@@ -1,6 +1,6 @@
 # Semantic Parity Verification Matrix
 
-Status: **Implementation tracking through M8 milestone exit audit**
+Status: **Implementation tracking through M9 milestone exit audit**
 
 This matrix maps every canonical semantic specification to its required verification family. Coverage status describes checked-in production test/fixture implementation state, not source-evidence certainty.
 
@@ -37,7 +37,7 @@ M4 closes target-era ModelData decode plus exact pre-GPU object model selection,
 
 The pinned OpenRS2 2727 target sweep decoded all `62,043` build-241 model groups through the production repository path: `35,103` `FF FD`, `26,940` `FF FE`, zero `FF FF`, zero legacy, zero empty groups, and zero multi-file model groups.
 
-M7 closes `MODEL-BUILD-004` with the exact `nonFlatShading` representation/cache split and scene-local finalization path. M8 closes the remaining `MODEL-BUILD-005` ownership requirement by proving animation and contouring mutate only private runtime instances while the shared source and cached lit base remain unchanged. `FACE-001` remains `REQUIRED` until render extraction proves end-to-end optional face metadata preservation.
+M7 closes `MODEL-BUILD-004` with the exact `nonFlatShading` representation/cache split and scene-local finalization path. M8 closes the remaining `MODEL-BUILD-005` ownership requirement by proving animation and contouring mutate only private runtime instances while the shared source and cached lit base remain unchanged. End-to-end render-extraction preservation of optional face metadata is renderer-owned under `FACE-001` and deferred to M10.
 
 ## M5 reference-fixture infrastructure coverage
 
@@ -51,7 +51,7 @@ M5 adds source-pinned normalized fixtures, an exact offline runner, candidate-on
 | base normals smooth/flat | `normals.base.smooth_triangle`, `normals.base.flat_triangle`; `reference-fixtures/manifest/normals-base-*.yaml` | evidence-only; production promotion occurs in the M7 suite |
 | cross-model normal merge controls | `normals.merge.coincident_triangle.hide_false`, `normals.merge.coincident_triangle.hide_true`, `normals.merge.translated_negative`; `reference-fixtures/manifest/normals-merge-*.yaml` | evidence-only; production promotion occurs in the M7 suite |
 | four-plane link-below relinking | `planes.link_below.four_plane_column`; `reference-fixtures/manifest/planes-link-below-four-plane-column.yaml` | semantic / EXISTING |
-| priority thresholds and priority-10/11 queues | `priority.all_0_11.threshold_crossing`; `reference-fixtures/manifest/priority-all-0-11-threshold-crossing.yaml` | evidence-only; `FACE-002` remains REQUIRED |
+| priority thresholds and priority-10/11 queues | `priority.all_0_11.threshold_crossing`; `reference-fixtures/manifest/priority-all-0-11-threshold-crossing.yaml` | evidence-only; renderer production closure is deferred to M10/M12 |
 | historical deob evidence index | `reference-fixtures/historical/deob_golden.index.json`; `scripts/test_deob_golden_index.py` | indexed historical evidence; later production rows retain their existing status |
 
 At M5 exit, the repository-wide normalized runner validated all ten canonical YAML fixtures with three production semantic executors and seven evidence-only fixtures. M6 Checkpoint 3 promotes `planes.link_below.four_plane_column` to production semantic execution, so the current runner exercises four semantic fixtures while six remain evidence-only. M7 keeps the normal fixtures source-pinned and additionally exercises the production normal algorithms through dedicated exact Rust tests.
@@ -69,7 +69,7 @@ M6 Checkpoints 1 through 5 establish exact terrain topology, typed plane semanti
 | flat/shaped terrain ownership, exact flat diagonal, NE sentinel skip contract, shaped first-face sentinel contract | `crates/osrs-scene/src/terrain.rs`, `crates/osrs-scene/src/terrain_contract.rs`, `crates/osrs-scene/tests/m6_exit_golden_scenes.rs` | EXISTING |
 | floor-decoration storage at supplied flat and synthetic slope heights with no implicit lift | `crates/osrs-scene/tests/m6_scene_insertion.rs` | EXISTING |
 | definition-driven collision operation selection, including floor-decoration special case and definition-footprint collision for visually 1x1 type `9` | `crates/osrs-scene/src/side_effects.rs` unit tests, pinned `FriendSystem.addObjects` | EXISTING at operation-plan level |
-| definition clipping/model-clipping/ground-obstruction inputs and audited wall-displacement metadata retained for deterministic later side-grid mutation | `DefinitionSideEffectInputs`, `SceneSideEffectPlan`, side-effect planner unit tests | PARTIAL; concrete shadow/occlusion/collision bit-grid mutations remain intentionally unimplemented |
+| definition clipping/model-clipping/ground-obstruction inputs and audited wall-displacement metadata retained for deterministic later side-grid mutation | `DefinitionSideEffectInputs`, `SceneSideEffectPlan`, side-effect planner unit tests; M9 ownership regression | EXISTING at ownership/regeneration contract; private bit-grid formulas require narrower future contracts |
 | multi-tile game-object plane identity under link-below mutation | `crates/osrs-scene/src/scene.rs` unit tests | EXISTING |
 | world/scene/region/local coordinate composition across a 64-tile region border | `crates/osrs-core/src/coords.rs`, `crates/osrs-scene/tests/m6_exit_golden_scenes.rs` | EXISTING semantic side |
 
@@ -112,6 +112,24 @@ M8 closes the verified dynamic-object subset before semantic parity closure: exa
 
 The permanent Tier C gate explicitly runs all M8 reference integration suites plus the active-morph scene placement suite. Full skeletal animation execution outside the currently verified legacy-frame scope is not claimed by this milestone.
 
+## M9 semantic parity closure
+
+M9 closes the remaining upstream semantic gate before renderer implementation without pulling renderer policy forward.
+
+| M9 closure family | Exact verification artifact | Coverage |
+|---|---|---|
+| cross-layer tile/region/local conversion, rotated footprint centers, and exact terrain vertex positions | `crates/osrs-reference/tests/m9_semantic_closure.rs` | EXISTING |
+| deterministic side-effect ownership inputs for collision, projectile blocking, clipping/model clipping, ground obstruction, rotated footprint, and wall displacement | `crates/osrs-reference/tests/m9_semantic_closure.rs`; `DefinitionSideEffectInputs`; `SceneSideEffectPlan` | EXISTING at ownership/regeneration contract |
+| target capability diagnostics, including explicit terrain-color builder block | `crates/osrs-cache/src/capability.rs`; `crates/osrs-reference/tests/m9_semantic_closure.rs` | EXISTING |
+| renderer-independent canonical semantic-scene identity | `crates/osrs-scene/src/semantic_hash.rs`; `crates/osrs-reference/tests/m9_semantic_closure.rs` | EXISTING |
+
+Pinned `rustosrs-semantic-scene-v1` SHA-256 identities:
+
+- composed terrain/loc scene: `50974f0232192dbd97c623d31bdbe208432ef64a13121c2852230afcc262f4a6`;
+- four-plane linked-below scene: `bf7a7876864142f75a29c47836f331da6cfb97b512d500274fd3c8035c3a296c`.
+
+`TERRAIN-004` remains deliberately blocked. Renderer-owned face/material/plane/coordinate proof is deferred to the owning M10/M12 milestones rather than being misclassified as an upstream semantic defect.
+
 ## Placement
 
 | Spec | Required verification | Comparison | Coverage |
@@ -120,10 +138,10 @@ The permanent Tier C gate explicitly runs all M8 reference integration suites pl
 | `LOC-PLACEMENT-002` | decor types `4..8` x orientation, wall present/absent, custom displacement; indexed evidence ID `placement.decor_types.orientation_matrix` | exact integer offsets/orientation flags | EXISTING |
 | `LOC-PLACEMENT-003` | square/non-square footprints x all orientations; sloped center samples; indexed evidence ID `placement.game_object.footprint_and_capacity` | exact footprint, center, height inputs | EXISTING |
 | `LOC-PLACEMENT-004` | same qualifying definition through initial and pending-replacement paths | exact representation/path identity | EXISTING |
-| `LOC-PLACEMENT-005` | definition-driven collision/clipping/occlusion/wall metadata cases | exact side-effect state per promoted sub-contract | PARTIAL |
+| `LOC-PLACEMENT-005` | definition-driven collision/clipping/occlusion/wall metadata cases | exact side-effect ownership/regeneration state | EXISTING at ownership/regeneration contract |
 | `LOC-PLACEMENT-006` | floor decoration flat+slope cases; indexed evidence ID `placement.floor_type22.storage` | exact semantic Z, no implicit lift | EXISTING |
 
-`LOC-PLACEMENT-003` is closed by the source-pinned rotated-footprint midpoint sampler, including the exact scene-edge anchor/anchor+1 fallback and Java-style four-sample average. `LOC-PLACEMENT-005` remains `PARTIAL` by the explicit M6 roadmap exception: collision-operation selection and wall-displacement ownership are implemented, while narrower private collision/shadow/occlusion bit-grid formulas remain unpromoted. M8 closes `LOC-PLACEMENT-004` by combining the M7 initial `nonFlatShading` ModelData lifecycle with an exact same-definition runtime lit-model regression and the pending/live category replacement suite.
+`LOC-PLACEMENT-003` is closed by the source-pinned rotated-footprint midpoint sampler, including the exact scene-edge anchor/anchor+1 fallback and Java-style four-sample average. M9 closes `LOC-PLACEMENT-005` at its normative ownership/regeneration boundary: all currently required definition and placement inputs are retained deterministically, while private collision/shadow/occlusion bit-grid formulas require narrower future contracts before implementation. M8 closes `LOC-PLACEMENT-004` by combining the M7 initial `nonFlatShading` ModelData lifecycle with an exact same-definition runtime lit-model regression and the pending/live category replacement suite.
 
 ## Model construction
 
@@ -166,7 +184,7 @@ M8 closes the owned morph/contour/animation rows with exact production-path test
 | `TERRAIN-003` | RGB/HSL boundaries, hue multiplier clamp, overlay defaults/opcodes/secondary | exact decoded integers/defaults | EXISTING |
 | `TERRAIN-004` | full slope/11x11/overlay/jitter builder | exact end-to-end terrain color output | BLOCKED |
 
-`TERRAIN-002` is closed by exact flat-paint diagonal ownership, explicit flat-vs-shaped semantic representation, and source-pinned sentinel tests. `TERRAIN-004` remains blocked until the builder source or an equivalent exact executable oracle is reproducibly pinned; M6 does not infer that algorithm from plausible historical prose.
+`TERRAIN-002` is closed by exact flat-paint diagonal ownership, explicit flat-vs-shaped semantic representation, and source-pinned sentinel tests. `TERRAIN-004` remains blocked until the builder source or an equivalent exact executable oracle is reproducibly pinned. M9 surfaces this limitation as a typed target capability and does not infer an implementation from historical prose.
 
 ## Planes and bridges
 
@@ -175,31 +193,31 @@ M8 closes the owned morph/contour/animation rows with exact production-path test
 | `PLANES-001` | API/domain guardrails + composed bridge fixture | exact distinct plane-domain values | EXISTING |
 | `PLANES-002` | encoded planes 0..3 x bridge bit on/off | exact collision plane + unchanged source plane | EXISTING |
 | `PLANES-003` | four-plane synthetic column + tagged game objects; fixture `planes.link_below.four_plane_column` | exact tile identity/relinking/plane changes | EXISTING |
-| `PLANES-004` | renderer roof grouping toggled/replaced | semantic scene exact equality | PLANNED-GPU |
+| `PLANES-004` | renderer roof grouping toggled/replaced | semantic scene exact equality | DEFERRED-M10 |
 
-`planes.link_below.four_plane_column` is source-pinned to `Scene.setLinkBelow` and executes against the M6 production `osrs-scene` relinking path. Renderer roof grouping remains separate policy under `PLANES-004`.
+`planes.link_below.four_plane_column` is source-pinned to `Scene.setLinkBelow` and executes against the M6 production `osrs-scene` relinking path. Renderer grouping proof remains separate policy and is owned by M10.
 
 ## Face/material semantics
 
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
-| `FACE-001` | model retaining all optional face metadata into render extraction | exact field preservation | REQUIRED |
-| `FACE-002` | priorities 0..11 around avg12/avg34/avg68 with 10/11 queues; M5 evidence `priority.all_0_11.threshold_crossing` | exact reference face emission order | REQUIRED |
-| `FACE-003` | alpha 0, ordinary values, sentinel, model+face transparency | exact interpreted metadata/order input | REQUIRED |
-| `FACE-004` | coplanar authored-bias faces | exact bias preservation; visual stable order later | PLANNED-GPU |
-| `TEXTURE-001` | explicit texture face, canonical fallback UV, projected dynamic case, animation handoff | exact/tolerance per owned stage | REQUIRED + PLANNED-GPU |
+| `FACE-001` | model retaining all optional face metadata into render extraction | exact field preservation | DEFERRED-M10 |
+| `FACE-002` | priorities 0..11 around avg12/avg34/avg68 with 10/11 queues; M5 evidence `priority.all_0_11.threshold_crossing` | exact reference face emission order | DEFERRED-M10/M12 |
+| `FACE-003` | alpha 0, ordinary values, sentinel, model+face transparency | exact interpreted metadata/order input | DEFERRED-M10/M12 |
+| `FACE-004` | coplanar authored-bias faces | exact bias preservation; visual stable order later | DEFERRED-M12 |
+| `TEXTURE-001` | explicit texture face, canonical fallback UV, projected dynamic case, animation handoff | exact/tolerance per owned stage | DEFERRED-M10/M12 |
 
-`priority.all_0_11.threshold_crossing` is intentionally `evidence_only`. The renderer-owned production priority executor does not exist yet, so `FACE-002` remains `REQUIRED`.
+`priority.all_0_11.threshold_crossing` remains source-pinned evidence. M10 owns CPU-side render extraction, metadata/UV handoff, and reference priority preparation; M12 owns GPU realization where specified. These rows are therefore deferred to their owning renderer milestones, not left as unexplained upstream semantic requirements.
 
 ## Coordinates
 
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
-| `COORD-001` | tile/local conversions, footprint centers, terrain positions | exact integer coordinates | PARTIAL |
+| `COORD-001` | tile/local conversions, footprint centers, terrain positions | exact integer coordinates | EXISTING |
 | `COORD-002` | all loc orientations + special 256-JAU path; fixture `model.transform.type4_order` | exact integer transformed vertices | EXISTING |
-| `COORD-003` | world/scene/local/model/render conversion and region-border fixture | exact semantic coordinates; explicit renderer conversion | EXISTING semantic side; renderer conversion PLANNED-GPU |
+| `COORD-003` | world/scene/local/model/render conversion and region-border fixture | exact semantic coordinates; explicit renderer conversion | EXISTING semantic side; renderer conversion DEFERRED-M10 |
 
-M6 closes the semantic side of `COORD-003` with a composed region-border fixture that crosses the 63/0 region boundary, round-trips world and scene coordinates, preserves exact 128-unit local centers, and stores both objects without changing world identity. Camera/view/clip conversion remains renderer-owned.
+M6 closes the semantic side of `COORD-003` with a composed region-border fixture that crosses the 63/0 region boundary, round-trips world and scene coordinates, preserves exact 128-unit local centers, and stores both objects without changing world identity. M9 closes `COORD-001` with one cross-layer exact regression covering world/region/local conversion, rotated footprint centers, and terrain vertex positions. Camera/view/clip and GPU-facing conversion remain renderer-owned.
 
 ## Renderer-policy verification mapping
 
@@ -225,4 +243,4 @@ M6 closes the semantic side of `COORD-003` with a composed region-border fixture
 
 ## Exit rule
 
-A milestone cannot claim a spec as implemented merely because source evidence or a row exists here. Coverage advances to `EXISTING` only when the owning production implementation is exercised by the required exact test/fixture.
+A milestone cannot claim a spec as implemented merely because source evidence or a row exists here. Coverage advances to `EXISTING` only when the owning production implementation is exercised by the required exact test/fixture. `BLOCKED` and `DEFERRED-*` rows remain explicit so later milestones cannot silently treat missing provenance or renderer-owned proof as completed semantic work.
