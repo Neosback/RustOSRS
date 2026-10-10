@@ -7,6 +7,8 @@
 use crate::coords::ModelPoint;
 use crate::definitions::DefinitionIdentity;
 use crate::ids::{ModelId, TextureId};
+use crate::model_construction::AssembledModel;
+use crate::model_identity::{ModelSemanticIdentity, ModelSemanticIdentityError};
 use core::fmt;
 
 /// Stable vertex index in canonical model topology.
@@ -178,10 +180,10 @@ pub struct SourceModelParts {
     pub skeletal_vertices: Option<Vec<Option<SkeletalVertexData>>>,
 }
 
+/// Identity-neutral semantic model payload reusable by raw, assembled, and
+/// working model stages.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ModelSemanticData {
-    identity: DefinitionIdentity<ModelId>,
-    format: ModelFormatIdentity,
     vertices: Vec<ModelPoint>,
     faces: Vec<Triangle>,
     face_colors: Vec<u16>,
@@ -198,32 +200,11 @@ struct ModelSemanticData {
     skeletal_vertices: Option<Vec<Option<SkeletalVertexData>>>,
 }
 
-impl From<SourceModelParts> for ModelSemanticData {
-    fn from(parts: SourceModelParts) -> Self {
-        Self {
-            identity: parts.identity,
-            format: parts.format,
-            vertices: parts.vertices,
-            faces: parts.faces,
-            face_colors: parts.face_colors,
-            default_priority: parts.default_priority,
-            face_render_types: parts.face_render_types,
-            face_priorities: parts.face_priorities,
-            face_alphas: parts.face_alphas,
-            face_textures: parts.face_textures,
-            texture_face_selectors: parts.texture_face_selectors,
-            face_biases: parts.face_biases,
-            texture_triangles: parts.texture_triangles,
-            vertex_skins: parts.vertex_skins,
-            face_skins: parts.face_skins,
-            skeletal_vertices: parts.skeletal_vertices,
-        }
-    }
-}
-
 /// Immutable validated decoded/raw model asset.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SourceModel {
+    identity: DefinitionIdentity<ModelId>,
+    format: ModelFormatIdentity,
     data: ModelSemanticData,
 }
 
@@ -231,15 +212,52 @@ impl SourceModel {
     /// Validate all topology/parallel-array invariants and admit a source model.
     pub fn from_parts(parts: SourceModelParts) -> Result<Self, ModelValidationError> {
         validate_parts(&parts)?;
-        Ok(Self { data: parts.into() })
+        let SourceModelParts {
+            identity,
+            format,
+            vertices,
+            faces,
+            face_colors,
+            default_priority,
+            face_render_types,
+            face_priorities,
+            face_alphas,
+            face_textures,
+            texture_face_selectors,
+            face_biases,
+            texture_triangles,
+            vertex_skins,
+            face_skins,
+            skeletal_vertices,
+        } = parts;
+        Ok(Self {
+            identity,
+            format,
+            data: ModelSemanticData {
+                vertices,
+                faces,
+                face_colors,
+                default_priority,
+                face_render_types,
+                face_priorities,
+                face_alphas,
+                face_textures,
+                texture_face_selectors,
+                face_biases,
+                texture_triangles,
+                vertex_skins,
+                face_skins,
+                skeletal_vertices,
+            },
+        })
     }
 
     pub fn identity(&self) -> &DefinitionIdentity<ModelId> {
-        &self.data.identity
+        &self.identity
     }
 
     pub const fn format(&self) -> ModelFormatIdentity {
-        self.data.format
+        self.format
     }
 
     pub fn vertices(&self) -> &[ModelPoint] {
@@ -302,6 +320,7 @@ impl SourceModel {
     /// mutate this cached source model.
     pub fn to_working_copy(&self) -> WorkingModel {
         WorkingModel {
+            semantic_identity: ModelSemanticIdentity::from_source(self),
             data: self.data.clone(),
             normals: ModelNormalState::Uncomputed,
             animation_groups: None,
@@ -349,18 +368,47 @@ pub enum ModelNormalState {
 /// Owned mutable model state used by exact semantic transformations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkingModel {
+    semantic_identity: ModelSemanticIdentity,
     data: ModelSemanticData,
     normals: ModelNormalState,
     animation_groups: Option<AnimationGroups>,
 }
 
 impl WorkingModel {
-    pub fn identity(&self) -> &DefinitionIdentity<ModelId> {
-        &self.data.identity
+    /// Admit one exact M4 assembled model into the M7 mutable lifecycle.
+    pub fn from_assembled(model: &AssembledModel) -> Result<Self, ModelSemanticIdentityError> {
+        Ok(Self {
+            semantic_identity: ModelSemanticIdentity::from_assembled(model)?,
+            data: ModelSemanticData {
+                vertices: model.vertices().to_vec(),
+                faces: model.faces().to_vec(),
+                face_colors: model.face_colors().to_vec(),
+                default_priority: model.default_priority(),
+                face_render_types: model.face_render_types().map(ToOwned::to_owned),
+                face_priorities: model.face_priorities().map(ToOwned::to_owned),
+                face_alphas: model.face_alphas().map(ToOwned::to_owned),
+                face_textures: model.face_textures().map(ToOwned::to_owned),
+                texture_face_selectors: model.texture_face_selectors().map(ToOwned::to_owned),
+                face_biases: model.face_biases().map(ToOwned::to_owned),
+                texture_triangles: model.texture_triangles().to_vec(),
+                vertex_skins: model.vertex_skins().map(ToOwned::to_owned),
+                face_skins: model.face_skins().map(ToOwned::to_owned),
+                skeletal_vertices: model.skeletal_vertices().map(ToOwned::to_owned),
+            },
+            normals: ModelNormalState::Uncomputed,
+            animation_groups: None,
+        })
     }
 
-    pub const fn format(&self) -> ModelFormatIdentity {
-        self.data.format
+    /// Exact constructed-model source identity. Composite assemblies retain the
+    /// complete ordered set of real source identities.
+    pub fn identity(&self) -> &ModelSemanticIdentity {
+        &self.semantic_identity
+    }
+
+    /// A decode format exists only when exactly one real source model contributed.
+    pub fn format(&self) -> Option<ModelFormatIdentity> {
+        self.semantic_identity.singular_format()
     }
 
     pub fn vertices(&self) -> &[ModelPoint] {
@@ -461,6 +509,29 @@ impl WorkingModel {
 
     pub fn normal_state(&self) -> &ModelNormalState {
         &self.normals
+    }
+
+    /// Install freshly calculated base normals on this scene-local working copy.
+    pub(crate) fn set_computed_normals(&mut self, normals: ModelNormals) {
+        self.normals = ModelNormalState::Computed(normals);
+    }
+
+    /// Mutate already-computed normal state without exposing it outside the core crate.
+    pub(crate) fn computed_normals_mut(&mut self) -> Option<&mut ModelNormals> {
+        match &mut self.normals {
+            ModelNormalState::Uncomputed => None,
+            ModelNormalState::Computed(normals) => Some(normals),
+        }
+    }
+
+    /// Reference normal reconciliation authors render type `2` after base normals
+    /// are calculated. That operation must not invalidate the merged normal state.
+    pub(crate) fn mark_normal_merge_hidden_face(&mut self, face_index: usize) {
+        let render_types = self
+            .data
+            .face_render_types
+            .get_or_insert_with(|| vec![0; self.data.faces.len()]);
+        render_types[face_index] = 2;
     }
 
     pub fn animation_groups(&self) -> Option<&AnimationGroups> {
@@ -866,6 +937,11 @@ mod tests {
 
         assert_eq!(source.vertices()[0], original);
         assert_ne!(working.vertices()[0], original);
+        assert_eq!(
+            working.identity().singular_model_id(),
+            Some(ModelId::new(77))
+        );
+        assert_eq!(working.format(), Some(source.format()));
         Ok(())
     }
 
