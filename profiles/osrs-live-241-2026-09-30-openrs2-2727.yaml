@@ -73,7 +73,10 @@ revision_gates:
   terrain_color_builder:
     state: blocked
     spec: TERRAIN-004
-    note: no guessed implementation may be promoted to reference parity
+    note: >-
+      source oracle pinned at class470.method9712; production terrain-color
+      builder is still required; no guessed implementation may be promoted to
+      reference parity
 
 policy:
   bundled_revision_180_cache_is_target: false
