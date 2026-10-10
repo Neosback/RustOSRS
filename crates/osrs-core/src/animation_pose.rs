@@ -157,16 +157,7 @@ fn apply_legacy_frame(
             });
         };
 
-        apply_transform(
-            model,
-            &groups,
-            &mut pivot,
-            skeleton.transform_type,
-            &skeleton.labels,
-            authored.x,
-            authored.y,
-            authored.z,
-        )?;
+        apply_transform(model, &groups, &mut pivot, skeleton, authored)?;
     }
 
     Ok(())
@@ -222,23 +213,50 @@ fn trim_empty_tail(groups: &mut Vec<Vec<usize>>) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn apply_transform(
     model: &mut ReferenceLitModel,
     groups: &AnimationGroups,
     pivot: &mut TransformPivot,
-    transform_type: u8,
-    labels: &[u16],
-    x: i32,
-    y: i32,
-    z: i32,
+    skeleton: &LegacySkeletonTransform,
+    authored: LegacyFrameTransform,
 ) -> Result<(), LegacyPoseError> {
-    match transform_type {
-        0 => set_pivot(model, groups, pivot, labels, x, y, z),
-        1 => translate_groups(model, groups, labels, x, y, z),
-        2 => rotate_groups(model, groups, *pivot, labels, x, y, z),
-        3 => scale_groups(model, groups, *pivot, labels, x, y, z),
-        5 => alpha_groups(model, groups, labels, x),
+    match skeleton.transform_type {
+        0 => set_pivot(
+            model,
+            groups,
+            pivot,
+            &skeleton.labels,
+            authored.x,
+            authored.y,
+            authored.z,
+        ),
+        1 => translate_groups(
+            model,
+            groups,
+            &skeleton.labels,
+            authored.x,
+            authored.y,
+            authored.z,
+        ),
+        2 => rotate_groups(
+            model,
+            groups,
+            *pivot,
+            &skeleton.labels,
+            authored.x,
+            authored.y,
+            authored.z,
+        ),
+        3 => scale_groups(
+            model,
+            groups,
+            *pivot,
+            &skeleton.labels,
+            authored.x,
+            authored.y,
+            authored.z,
+        ),
+        5 => alpha_groups(model, groups, &skeleton.labels, authored.x),
         _ => Ok(()),
     }
 }
