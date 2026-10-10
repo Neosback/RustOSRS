@@ -87,6 +87,7 @@ fn extraction_preserves_face_metadata_and_rebases_after_semantic_placement()
     let lit = light_model_data(&working, LightingParameters::for_loc(0, 0))?;
 
     assert_eq!(lit.face_render_types.as_deref(), Some(&[0][..]));
+    assert_eq!(lit.face_colors[0].c, -2);
 
     let mesh = RenderMesh::extract(
         &lit,
@@ -118,6 +119,8 @@ fn extraction_preserves_face_metadata_and_rebases_after_semantic_placement()
         ]
     );
     assert_eq!(mesh.faces(), &[Triangle::new(0, 1, 2)]);
+    assert_eq!(mesh.face_is_suppressed(0), Some(true));
+    assert_eq!(mesh.face_is_suppressed(1), None);
     assert_eq!(mesh.default_priority().get(), 3);
     assert_eq!(mesh.face_render_types(), Some(&[0][..]));
     assert_eq!(
@@ -147,6 +150,7 @@ fn extraction_does_not_materialize_absent_optional_face_arrays()
         RenderOrigin::new(0, 0, 0),
     )?;
 
+    assert_eq!(mesh.face_is_suppressed(0), Some(false));
     assert!(mesh.face_render_types().is_none());
     assert!(mesh.face_priorities().is_none());
     assert!(mesh.face_alphas().is_none());
