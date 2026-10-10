@@ -71,8 +71,8 @@ fn progressed_state(
 }
 
 #[test]
-fn same_sequence_restart_mode_zero_preserves_playback_and_cycle_start()
--> Result<(), Box<dyn Error>> {
+fn same_sequence_restart_mode_zero_preserves_playback_and_cycle_start() -> Result<(), Box<dyn Error>>
+{
     let sequence = decoded_sequence(40, 0)?;
     let mut previous = progressed_state(&sequence, 100)?;
     previous.cycle_start = 77;
@@ -111,8 +111,7 @@ fn different_sequence_id_restarts_even_when_restart_mode_is_zero() -> Result<(),
     let new_sequence = decoded_sequence(43, 0)?;
     let previous = progressed_state(&old_sequence, 100)?;
 
-    let (replacement, decision) =
-        replacement_primary_sequence(&new_sequence, 300, Some(&previous));
+    let (replacement, decision) = replacement_primary_sequence(&new_sequence, 300, Some(&previous));
 
     assert_eq!(decision, ReplacementPlaybackDecision::Restarted);
     assert_eq!(replacement.sequence_id, SequenceId::new(43));
