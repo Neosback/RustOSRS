@@ -141,7 +141,10 @@ fn nonzero_clip_preserves_threshold_and_exact_tile_boundary_math() -> Result<(),
 
     let ys: Vec<i32> = contoured.vertices.iter().map(|vertex| vertex.y).collect();
     assert_eq!(ys, [-25, -100, 39, 217]);
-    assert_eq!(model, original, "copy contour must not mutate the cached base model");
+    assert_eq!(
+        model, original,
+        "copy contour must not mutate the cached base model"
+    );
     Ok(())
 }
 
