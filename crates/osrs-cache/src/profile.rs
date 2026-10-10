@@ -346,7 +346,6 @@ impl TargetProfile {
         if source.xtea_keys_present > source.xtea_keys_total {
             return validation_error("xtea_keys_present must not exceed xtea_keys_total");
         }
-
         let unique_empty: BTreeSet<_> = source.empty_logical_indices.iter().copied().collect();
         if unique_empty.len() != source.empty_logical_indices.len() {
             return validation_error("empty_logical_indices must not contain duplicates");
@@ -530,7 +529,7 @@ mod tests {
     const TARGET_CACHE_FINGERPRINT: &str =
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
     const TARGET_PROFILE_DIGEST: &str =
-        "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
+        "203bb13fc48b56e88257d1a4bc96dfca9afd66fcd9216276bb7f83c97038726f";
 
     type TestResult = Result<(), Box<dyn Error>>;
 

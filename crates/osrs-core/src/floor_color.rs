@@ -1,9 +1,9 @@
 //! Exact floor-definition color post-decode semantics for the pinned OSRS target.
 //!
 //! These helpers intentionally stop at the definition-level HSL state verified
-//! by `TERRAIN-003`. Neighborhood blending, slope lighting, jitter, texture
-//! fallback, and complete terrain-color construction remain blocked by
-//! `TERRAIN-004` until their exact builder is source-pinned.
+//! by `TERRAIN-003`. The complete builder is now source-pinned in
+//! `class470.method9712`; neighborhood blending, slope/shadow lighting, overlay
+//! composition, and tile emission remain production work under `TERRAIN-004`.
 
 use crate::definitions::Rgb24;
 

@@ -251,27 +251,28 @@ fn loc_placement_005_preserves_deterministic_rebuild_inputs() -> Result<(), Box<
 }
 
 #[test]
-fn target_profile_exposes_blocked_terrain_color_builder_capability() -> Result<(), Box<dyn Error>> {
+fn target_profile_exposes_source_verified_terrain_color_builder_capability()
+-> Result<(), Box<dyn Error>> {
     let profile = TargetProfile::from_yaml_str(TARGET_PROFILE_YAML)?;
     let terrain = profile
         .capability_diagnostic(TargetCapability::TerrainColorBuilder)
         .ok_or_else(|| io::Error::other("terrain color capability gate must exist"))?;
 
-    assert!(terrain.is_blocked());
+    assert!(!terrain.is_blocked());
     assert_eq!(terrain.gate_name, "terrain_color_builder");
-    assert_eq!(terrain.state, "blocked");
+    assert_eq!(terrain.state, "source_verified");
     assert_eq!(terrain.spec, Some("TERRAIN-004"));
     assert!(
         terrain
             .note
-            .is_some_and(|note| note.contains("no guessed implementation"))
+            .is_some_and(|note| note.contains("class470.method9712"))
     );
 
     let blocked: Vec<_> = profile
         .blocked_capabilities()
         .map(|diagnostic| diagnostic.capability)
         .collect();
-    assert_eq!(blocked, vec![TargetCapability::TerrainColorBuilder]);
+    assert!(blocked.is_empty());
 
     let extended_ids = profile
         .capability_diagnostic(TargetCapability::ExtendedObjectModelIds)
