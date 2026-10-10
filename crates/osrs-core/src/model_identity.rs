@@ -3,32 +3,70 @@
 //! Raw `SourceModel` values have one real cache `ModelId`, but M4 may combine
 //! multiple source models for an untyped type-10 object. A combined model has
 //! no truthful singular `ModelId`. This module therefore carries the ordered,
-//! non-empty source descriptor set as semantic identity and exposes a singular
-//! model id only when exactly one real source contributed.
+//! non-empty source set as semantic identity and exposes a singular model id
+//! only when exactly one real source contributed.
 
 use crate::{
     definitions::DefinitionIdentity,
     ids::ModelId,
-    model::ModelFormatIdentity,
+    model::{ModelFormatIdentity, SourceModel},
     model_construction::{AssembledModel, ModelSourceDescriptor},
     provenance::TargetProvenance,
 };
 use std::{error::Error, fmt};
 
+/// Exact provenance for one raw source contributing to a constructed model.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ModelSemanticSource {
+    identity: DefinitionIdentity<ModelId>,
+    format: ModelFormatIdentity,
+}
+
+impl ModelSemanticSource {
+    fn from_source(source: &SourceModel) -> Self {
+        Self {
+            identity: source.identity().clone(),
+            format: source.format(),
+        }
+    }
+
+    fn from_descriptor(source: &ModelSourceDescriptor) -> Self {
+        Self {
+            identity: source.identity().clone(),
+            format: source.format(),
+        }
+    }
+
+    pub fn identity(&self) -> &DefinitionIdentity<ModelId> {
+        &self.identity
+    }
+
+    pub const fn format(&self) -> ModelFormatIdentity {
+        self.format
+    }
+}
+
 /// Exact source provenance for one constructed semantic model.
 ///
 /// Source order is retained because M4 combination order is semantic. The set
-/// is always non-empty and all descriptors must belong to the same target
+/// is always non-empty and all sources must belong to the same target
 /// provenance. Composite identities intentionally have no singular `ModelId`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ModelSemanticIdentity {
-    sources: Box<[ModelSourceDescriptor]>,
+    sources: Box<[ModelSemanticSource]>,
 }
 
 impl ModelSemanticIdentity {
+    /// Capture one validated raw source without a fallible reconstruction step.
+    pub fn from_source(source: &SourceModel) -> Self {
+        Self {
+            sources: vec![ModelSemanticSource::from_source(source)].into_boxed_slice(),
+        }
+    }
+
     /// Admit an explicit ordered source set after enforcing identity invariants.
     pub fn try_from_sources(
-        sources: Vec<ModelSourceDescriptor>,
+        sources: Vec<ModelSemanticSource>,
     ) -> Result<Self, ModelSemanticIdentityError> {
         let Some(first) = sources.first() else {
             return Err(ModelSemanticIdentityError::EmptySources);
@@ -50,10 +88,16 @@ impl ModelSemanticIdentity {
 
     /// Capture the exact M4 provenance of an assembled model.
     pub fn from_assembled(model: &AssembledModel) -> Result<Self, ModelSemanticIdentityError> {
-        Self::try_from_sources(model.sources().to_vec())
+        Self::try_from_sources(
+            model
+                .sources()
+                .iter()
+                .map(ModelSemanticSource::from_descriptor)
+                .collect(),
+        )
     }
 
-    pub fn sources(&self) -> &[ModelSourceDescriptor] {
+    pub fn sources(&self) -> &[ModelSemanticSource] {
         &self.sources
     }
 
@@ -65,8 +109,8 @@ impl ModelSemanticIdentity {
         self.sources.len() > 1
     }
 
-    /// Return the one real source descriptor only when the identity is singular.
-    pub fn singular_source(&self) -> Option<&ModelSourceDescriptor> {
+    /// Return the one real source only when the identity is singular.
+    pub fn singular_source(&self) -> Option<&ModelSemanticSource> {
         if self.sources.len() == 1 {
             self.sources.first()
         } else {
@@ -83,11 +127,11 @@ impl ModelSemanticIdentity {
     }
 
     pub fn singular_definition_identity(&self) -> Option<&DefinitionIdentity<ModelId>> {
-        self.singular_source().map(ModelSourceDescriptor::identity)
+        self.singular_source().map(ModelSemanticSource::identity)
     }
 
     pub fn singular_format(&self) -> Option<ModelFormatIdentity> {
-        self.singular_source().map(ModelSourceDescriptor::format)
+        self.singular_source().map(ModelSemanticSource::format)
     }
 
     pub fn target_provenance(&self) -> &TargetProvenance {
@@ -133,7 +177,7 @@ mod tests {
             LocType, ModelScale, ModelTranslation, ObjectDefinition, ObjectPlacementFlags,
         },
         ids::ObjectId,
-        model::{FacePriority, ModelEncoding, SourceModel, SourceModelParts, Triangle},
+        model::{FacePriority, ModelEncoding, SourceModelParts, Triangle},
         model_construction::{apply_object_model_instance_transforms, combine_source_models},
         provenance::{CacheFingerprint, ProfileDigest},
     };
@@ -143,10 +187,10 @@ mod tests {
         "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
 
     #[test]
-    fn single_source_identity_exposes_only_its_real_model_id() -> Result<(), Box<dyn Error>> {
+    fn direct_single_source_identity_exposes_only_its_real_model_id()
+    -> Result<(), Box<dyn Error>> {
         let source = source_model(100, "target-a")?;
-        let assembled = combine_source_models(&[&source])?;
-        let identity = ModelSemanticIdentity::from_assembled(&assembled)?;
+        let identity = ModelSemanticIdentity::from_source(&source);
 
         assert_eq!(identity.source_count(), 1);
         assert!(!identity.is_composite());
@@ -199,11 +243,11 @@ mod tests {
             Err(ModelSemanticIdentityError::EmptySources)
         );
 
-        let first = AssembledModel::from_source(&source_model(500, "target-a")?);
-        let other = AssembledModel::from_source(&source_model(600, "target-b")?);
+        let first = source_model(500, "target-a")?;
+        let other = source_model(600, "target-b")?;
         let error = ModelSemanticIdentity::try_from_sources(vec![
-            first.sources()[0].clone(),
-            other.sources()[0].clone(),
+            ModelSemanticSource::from_source(&first),
+            ModelSemanticSource::from_source(&other),
         ]);
         assert_eq!(
             error,
