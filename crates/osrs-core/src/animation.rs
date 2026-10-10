@@ -107,7 +107,10 @@ impl fmt::Display for SequenceAdvanceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NegativeCycleDelta(delta) => {
-                write!(formatter, "sequence cycle delta cannot be negative: {delta}")
+                write!(
+                    formatter,
+                    "sequence cycle delta cannot be negative: {delta}"
+                )
             }
             Self::MissingLegacyFrames => {
                 formatter.write_str("frame-based sequence has no frame ids")
@@ -119,9 +122,8 @@ impl fmt::Display for SequenceAdvanceError {
                 formatter,
                 "frame-based sequence has {frame_ids} frame ids but {frame_delays} frame delays"
             ),
-            Self::MissingSkeletalRange => formatter.write_str(
-                "cached/skeletal sequence is missing its canonical animation range",
-            ),
+            Self::MissingSkeletalRange => formatter
+                .write_str("cached/skeletal sequence is missing its canonical animation range"),
             Self::InvalidSkeletalRange { start, end } => write!(
                 formatter,
                 "cached/skeletal sequence range ends before it starts: {start}..{end}"
@@ -209,22 +211,22 @@ fn advance_legacy(
         return Err(SequenceAdvanceError::NonProgressingSequence);
     }
 
-    let mut frame = i32::try_from(state.frame)
-        .map_err(|_| SequenceAdvanceError::FrameIndexOverflow)?;
+    let mut frame =
+        i32::try_from(state.frame).map_err(|_| SequenceAdvanceError::FrameIndexOverflow)?;
     let mut frame_cycle = state.frame_cycle.wrapping_add(remaining);
     let mut completed_loops = state.completed_loops;
     let mut report = SequenceAdvanceReport::default();
 
     loop {
-        let frame_index = usize::try_from(frame)
-            .map_err(|_| SequenceAdvanceError::InvalidActiveFrame {
+        let frame_index =
+            usize::try_from(frame).map_err(|_| SequenceAdvanceError::InvalidActiveFrame {
                 frame: state.frame,
                 frame_count: frame_count_u32,
             })?;
         let delay = i32::from(sequence.frame_delays[frame_index]);
         if frame_cycle <= delay {
-            state.frame = u32::try_from(frame)
-                .map_err(|_| SequenceAdvanceError::FrameIndexOverflow)?;
+            state.frame =
+                u32::try_from(frame).map_err(|_| SequenceAdvanceError::FrameIndexOverflow)?;
             state.frame_cycle = frame_cycle;
             state.completed_loops = completed_loops;
             return Ok(report);
