@@ -411,6 +411,85 @@ impl SceneRenderer {
             .sum()
     }
 
+    /// Encode one frame's render pass into `encoder`, targeting caller-owned views.
+    ///
+    /// The color view must be [`COLOR_FORMAT`] and the depth view [`DEPTH_FORMAT`], both sized
+    /// `width x height`. Camera uniforms are written through the queue, so the encoder must be
+    /// submitted after this call.
+    pub fn encode_frame(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        color_view: &wgpu::TextureView,
+        depth_view: &wgpu::TextureView,
+        params: FrameParams,
+        width: u32,
+        height: u32,
+    ) {
+        let globals = GlobalsUniform {
+            world_proj: params.camera.world_projection(width as f32, height as f32),
+            brightness: params.brightness,
+            smooth_banding: 1.0,
+            pad: [0.0; 2],
+        };
+        self.queue
+            .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("scene"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: color_view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: params.clear_color[0],
+                            g: params.clear_color[1],
+                            b: params.clear_color[2],
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: wgpu::StoreOp::Discard,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_bind_group(0, &self.globals_bind_group, &[]);
+
+            pass.set_pipeline(&self.opaque_pipeline);
+            for zone in &self.zones {
+                let Some(buffer) = &zone.opaque else { continue };
+                pass.set_bind_group(1, &zone.bind_group, &[]);
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                for range in &zone.opaque_ranges {
+                    if range.level <= params.view_plane && range.min_plane <= params.view_plane {
+                        pass.draw(range.start..range.start + range.count, 0..1);
+                    }
+                }
+            }
+
+            pass.set_pipeline(&self.alpha_pipeline);
+            for zone in &self.zones {
+                let Some(buffer) = &zone.alpha else { continue };
+                pass.set_bind_group(1, &zone.bind_group, &[]);
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                for range in &zone.alpha_ranges {
+                    if range.level <= params.view_plane && range.min_plane <= params.view_plane {
+                        pass.draw(range.start..range.start + range.count, 0..1);
+                    }
+                }
+            }
+        }
+    }
+
     /// Render one frame into a fresh offscreen target and return tightly packed RGBA8 pixels.
     pub fn render_to_rgba(
         &self,
@@ -449,75 +528,19 @@ impl SceneRenderer {
         let color_view = color.create_view(&wgpu::TextureViewDescriptor::default());
         let depth_view = depth.create_view(&wgpu::TextureViewDescriptor::default());
 
-        let globals = GlobalsUniform {
-            world_proj: params.camera.world_projection(width as f32, height as f32),
-            brightness: params.brightness,
-            smooth_banding: 1.0,
-            pad: [0.0; 2],
-        };
-        self.queue
-            .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
-
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("scene"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &color_view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: params.clear_color[0],
-                            g: params.clear_color[1],
-                            b: params.clear_color[2],
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(0.0),
-                        store: wgpu::StoreOp::Discard,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            pass.set_bind_group(0, &self.globals_bind_group, &[]);
-
-            pass.set_pipeline(&self.opaque_pipeline);
-            for zone in &self.zones {
-                let Some(buffer) = &zone.opaque else { continue };
-                pass.set_bind_group(1, &zone.bind_group, &[]);
-                pass.set_vertex_buffer(0, buffer.slice(..));
-                for range in &zone.opaque_ranges {
-                    if range.level <= params.view_plane && range.min_plane <= params.view_plane {
-                        pass.draw(range.start..range.start + range.count, 0..1);
-                    }
-                }
-            }
-
-            pass.set_pipeline(&self.alpha_pipeline);
-            for zone in &self.zones {
-                let Some(buffer) = &zone.alpha else { continue };
-                pass.set_bind_group(1, &zone.bind_group, &[]);
-                pass.set_vertex_buffer(0, buffer.slice(..));
-                for range in &zone.alpha_ranges {
-                    if range.level <= params.view_plane && range.min_plane <= params.view_plane {
-                        pass.draw(range.start..range.start + range.count, 0..1);
-                    }
-                }
-            }
-        }
+        self.encode_frame(
+            &mut encoder,
+            &color_view,
+            &depth_view,
+            params,
+            width,
+            height,
+        );
 
         let unpadded = width * 4;
         let padded = unpadded.div_ceil(256) * 256;

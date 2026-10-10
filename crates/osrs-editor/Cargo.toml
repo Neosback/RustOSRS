@@ -1,0 +1,18 @@
+[package]
+name = "osrs-editor"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+osrs-core = { path = "../osrs-core" }
+osrs-cache = { path = "../osrs-cache" }
+osrs-scene = { path = "../osrs-scene" }
+osrs-render = { path = "../osrs-render" }
+osrs-world = { path = "../osrs-world" }
+eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland"] }
+wgpu.workspace = true
+
+[lints]
+workspace = true
