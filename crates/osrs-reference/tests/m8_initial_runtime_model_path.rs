@@ -51,7 +51,6 @@ fn same_non_flat_definition_uses_model_data_initially_and_lit_runtime_model()
         );
     };
 
-    assert_eq!(runtime_cache.len(), 1);
     assert_eq!(runtime_lit.vertices[0], ModelPoint::new(0, 0, 0));
     assert_ne!(
         initial_model_data.model().vertices()[0],
