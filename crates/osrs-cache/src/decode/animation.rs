@@ -275,14 +275,8 @@ mod tests {
         ];
         let bytes = [0x12, 0x34, 2, 0, 1, 69];
 
-        let decoded = decode_legacy_animation_frame(
-            frame_id,
-            &bytes,
-            0x1234,
-            &skeleton,
-            &context,
-            &source,
-        )?;
+        let decoded =
+            decode_legacy_animation_frame(frame_id, &bytes, 0x1234, &skeleton, &context, &source)?;
 
         assert_eq!(
             decoded.transforms,
@@ -305,8 +299,8 @@ mod tests {
     }
 
     #[test]
-    fn omitted_scale_components_default_to_reference_128()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn omitted_scale_components_default_to_reference_128() -> Result<(), Box<dyn std::error::Error>>
+    {
         let context = test_support::target_context()?;
         let source = frame_source(1, 0);
         let frame_id = FrameId::new(0x0001_0000);
@@ -316,14 +310,8 @@ mod tests {
         }];
         let bytes = [0, 9, 1, 1, 65];
 
-        let decoded = decode_legacy_animation_frame(
-            frame_id,
-            &bytes,
-            9,
-            &skeleton,
-            &context,
-            &source,
-        )?;
+        let decoded =
+            decode_legacy_animation_frame(frame_id, &bytes, 9, &skeleton, &context, &source)?;
 
         assert_eq!(
             decoded.transforms,
@@ -348,15 +336,9 @@ mod tests {
             labels: vec![0],
         }];
 
-        let mismatch = decode_legacy_animation_frame(
-            frame_id,
-            &[0, 8, 1, 0],
-            9,
-            &skeleton,
-            &context,
-            &source,
-        )
-        .expect_err("mismatched skeleton id must fail");
+        let mismatch =
+            decode_legacy_animation_frame(frame_id, &[0, 8, 1, 0], 9, &skeleton, &context, &source)
+                .expect_err("mismatched skeleton id must fail");
         assert!(matches!(
             mismatch.kind(),
             DecodeErrorKind::InvalidValue {
