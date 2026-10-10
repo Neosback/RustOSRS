@@ -1,121 +1,101 @@
 # ADR-0005: Zone-Compiled Hybrid Rendering
 
-Status: **Accepted**  
-Date: 2026-10-07
+Status: **Accepted, clarified by M10 foundation audit**  
+Date: 2026-10-07  
+Clarification date: 2026-10-10
 
 ## Context
 
 The editor needs large-scene performance without turning GPU buffers into source truth. Most map geometry is static for long periods, while some content remains animated, morph-dependent, transparent, priority-sensitive, or temporarily edited.
 
-A monolithic scene buffer makes small edits expensive. A fully per-object draw model creates unnecessary CPU/GPU overhead. A fully baked model risks erasing camera-dependent priority/transparency behavior.
+The imported RuneLite renderer demonstrates that chunk/zone-style static compilation is practical, but its exact face sorting is path-specific. It must not be cited as evidence that all RuneLite GPU geometry receives the software client's full priority-queue algorithm.
 
-The audited RuneLite renderer demonstrates that chunk-aligned static compilation is practical, but RustOSRS must preserve stronger semantic/test boundaries than merely copying that implementation.
+RustOSRS deliberately preserves a stronger separation:
+
+- semantic/model truth;
+- software/client Reference ordering rules;
+- imported RuneLite GPU behavior;
+- RustOSRS renderer policy.
 
 ## Decision
 
-RustOSRS uses an **8x8 tile zone** as the primary static renderer compilation unit and combines it with a dynamic/ordered renderable path.
-
-The renderer therefore has two complementary classes:
+RustOSRS uses an **8x8 tile zone** as the primary static renderer compilation unit and combines it with dynamic and ordered paths.
 
 ### Zone-compiled static path
 
-Used for geometry whose extracted appearance is stable enough to bake into zone-local GPU artifacts.
+Used for extracted geometry whose appearance is stable enough to compile into reusable zone artifacts, including ordinary opaque terrain and static loc geometry that does not require camera-dependent ordered treatment.
 
-Examples:
+Static compilation never discards priority, alpha, bias, texture, suppression, identity, or plane provenance needed by a later Reference/diagnostic path.
 
-- terrain;
-- finalized static loc models;
-- walls and wall decorations;
-- static floor decorations;
-- ordinary opaque static faces that do not require camera-dependent reference ordering.
+### Dynamic path
 
-### Dynamic/ordered path
+Used when geometry/material preparation changes at runtime but does not require ordered face emission, for example animation frames, morph regeneration, or temporary preview geometry.
 
-Used for geometry requiring per-frame or camera-relative processing.
+### Ordered path
 
-Examples:
+Used when the selected RustOSRS render profile requires camera-relative ordering, including priority-sensitive software-reference behavior and transparency ordering.
 
-- animated locs;
-- morph/preview results that regenerate geometry;
-- transparent content requiring ordered blending;
-- priority-sensitive models/faces requiring `FACE-002` reference ordering;
-- temporary editor previews/ghosts.
+For the **RustOSRS Reference profile**, priority-sensitive content may use the exact pinned `Model.method5946` software/client algorithm even where imported RuneLite GPU would instead rely on depth or a simpler depth-only sort. This is an intentional Reference-policy decision, not a claim that RuneLite GPU always behaves that way.
 
-Static geometry may still register selected faces/models with the ordered path when camera-dependent ordering is required. "Static" therefore describes geometry stability, not permission to discard face metadata.
+For an explicit **RuneLite-GPU comparison profile**, classification may instead reproduce imported RuneLite render modes and path-specific sorting.
+
+## Imported RuneLite sorting distinction
+
+The imported snapshot exposes render modes `DEFAULT`, `SORTED`, `SORTED_NO_DEPTH`, `UNSORTED`, and `UNSORTED_NO_DEPTH`.
+
+Its `ModelUploader` only enables the priority-queue branch when the caller supplies `prioritySort=true`; the audited `GpuPlugin` does so for `SORTED_NO_DEPTH`. Ordinary dynamic upload passes `false`, static opaque upload does not universally apply priority sorting, and alpha/static work in `Zone` is primarily distance/depth ordered.
+
+This distinction is normative documentation for provenance. It prevents future developers from using "RuneLite does priority sorting" as an overbroad implementation justification.
 
 ## Dirty model
 
-Semantic edits publish invalidation events. The renderer maps them to affected zones/resources.
+Semantic edits publish invalidation. Renderer zone tracking:
 
-Dirty rebuilds:
+1. starts from an immutable semantic generation;
+2. invalidates every affected 8x8 storage-plane zone;
+3. allows unaffected zones to remain reusable across a newer global generation;
+4. rejects stale work for a zone invalidated by a newer generation;
+5. uploads/retires GPU resources only after CPU structural correctness is established.
 
-1. start from the newest immutable semantic generation;
-2. extract only affected renderer dependencies where practical;
-3. compile CPU zone artifacts off-thread;
-4. discard stale results if their generation is no longer current;
-5. upload replacement GPU resources;
-6. retire old resources safely after in-flight use ends.
-
-Camera movement, texture animation ticks, and ordinary visibility filters do not rebuild semantic zones.
+Camera movement, texture animation tick, and ordinary visibility filters do not mutate semantic zones.
 
 ## Consequences
 
 Positive:
 
-- bounded rebuild cost for terrain/loc edits;
-- natural compatibility with 8x8 OSRS chunks;
-- simple streaming and frustum-culling bounds;
+- bounded rebuild work;
+- chunk-aligned spatial ownership;
 - renderer artifacts remain reconstructible;
-- priority/transparency correctness is not sacrificed to static batching;
-- future client-like applications can reuse the same static/dynamic split.
+- software/client priority parity can be preserved where required;
+- RuneLite-GPU differential behavior can be represented separately rather than conflated;
+- static batching cannot erase diagnostic/parity metadata.
 
 Costs:
 
-- cross-zone object dependencies need explicit invalidation;
-- material changes may fan out to multiple zones;
-- ordered static geometry requires side metadata in addition to baked buffers;
-- more lifecycle bookkeeping than a single monolithic mesh.
+- ordered/static side metadata is required;
+- cross-zone footprints and material dependencies need explicit invalidation;
+- Reference and RuneLite-GPU comparison profiles may classify some content differently;
+- more lifecycle bookkeeping than a monolithic buffer.
 
-## Alternatives considered
+## Required invariants
 
-### One buffer for the whole scene
+- static/dynamic/ordered describes renderer stability/policy, not semantic object type;
+- suppressed semantic faces remain suppressed in every profile;
+- zone compilation cannot change semantic hashes;
+- switching renderer profile cannot mutate semantic scene state;
+- a future optimization may change scheduling but not the selected profile's observable ordering contract.
 
-Rejected because editor-local edits would trigger excessive rebuild/upload work and complicate streaming.
+## Required verification
 
-### Per-tile buffers
-
-Rejected as the baseline because allocation/draw overhead would be excessive relative to the expected edit granularity.
-
-### Per-object rendering only
-
-Rejected as the baseline because static maps contain enough objects/terrain to make draw-call and resource-management overhead unnecessary.
-
-### Fully GPU-driven meshlet system immediately
-
-Deferred. It may become a later optimization, but it adds complexity before the semantic/reference renderer is proven.
-
-## Constraints/invariants affected
-
-- D1: semantic scene remains renderer-independent;
-- D4: dirty tracking begins at semantic edits;
-- E4: GPU optimizations never become source truth;
-- H1/H2: zone artifacts retain semantic provenance for diagnostics.
-
-## Follow-up work
-
-Implementation must define:
-
-- zone dependency index;
+- 8x8 keying including negative semantic tile coordinates;
 - cross-zone footprint invalidation;
-- material-to-zone dependency tracking;
-- CPU compile job format;
-- stale-generation rejection;
-- GPU resource retirement;
-- ordered-static registration;
-- zone diagnostic overlays.
-
-Checkpoint 7 defines verification ownership.
+- stale-zone generation rejection;
+- partial reuse of unaffected zones across generations;
+- static/dynamic/ordered classification with explicit reasons;
+- exact software priority fixture for Reference ordered content;
+- separate imported RuneLite render-mode fixture before any RuneLite-GPU parity claim;
+- semantic hash unchanged by classification/grouping/zone compilation.
 
 ## Supersedes
 
-None.
+This clarification supersedes any reading of the original ADR that treated imported RuneLite GPU as universal evidence for software priority ordering.
