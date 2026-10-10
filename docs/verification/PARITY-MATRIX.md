@@ -1,6 +1,6 @@
 # Semantic Parity Verification Matrix
 
-Status: **Implementation tracking through M6 Checkpoint 6 milestone closure**
+Status: **Implementation tracking through M7 milestone exit audit**
 
 This matrix maps every canonical semantic specification to its required verification family. Coverage status describes checked-in production test/fixture implementation state, not source-evidence certainty.
 
@@ -37,24 +37,24 @@ M4 closes target-era ModelData decode plus exact pre-GPU object model selection,
 
 The pinned OpenRS2 2727 target sweep decoded all `62,043` build-241 model groups through the production repository path: `35,103` `FF FD`, `26,940` `FF FE`, zero `FF FF`, zero legacy, zero empty groups, and zero multi-file model groups.
 
-`MODEL-BUILD-004` remains `REQUIRED`: its `nonFlatShading` representation/cache split depends on the later pre-lighting normal-reconciliation/static-entity path. `MODEL-BUILD-005` is only `PARTIAL` because contouring, animation pose, and scene-normal mutation still need their owning milestone tests. `FACE-001` remains `REQUIRED` until render extraction proves end-to-end optional face metadata preservation.
+M7 closes `MODEL-BUILD-004` with the exact `nonFlatShading` representation/cache split and scene-local finalization path. `MODEL-BUILD-005` remains `PARTIAL` overall because contouring and animation pose are later-owned, while the M7 scene-normal ownership and source-immutability portion is now exercised. `FACE-001` remains `REQUIRED` until render extraction proves end-to-end optional face metadata preservation.
 
 ## M5 reference-fixture infrastructure coverage
 
-M5 adds source-pinned normalized fixtures, an exact offline runner, candidate-only regeneration, and an indexed historical evidence catalog. Evidence for later-owned semantics does not promote those production semantics to `EXISTING`.
+M5 adds source-pinned normalized fixtures, an exact offline runner, candidate-only regeneration, and an indexed historical evidence catalog. Evidence for later-owned semantics does not promote those production semantics to `EXISTING` by itself.
 
 | M5 fixture/evidence family | Exact verification artifact | Execution / coverage |
 |---|---|---|
 | typed model selection | `model.selection.typed_exact.orientation_4`; `reference-fixtures/manifest/model-selection-typed-orientation-4.yaml` | semantic / EXISTING |
 | mirror geometry and winding | `model.mirror.geometry_winding`; `reference-fixtures/manifest/model-mirror-geometry-winding.yaml` | semantic / EXISTING |
 | type-4 transform order | `model.transform.type4_order`; `reference-fixtures/manifest/model-transform-type4-order.yaml` | semantic / EXISTING |
-| base normals smooth/flat | `normals.base.smooth_triangle`, `normals.base.flat_triangle`; `reference-fixtures/manifest/normals-base-*.yaml` | evidence-only; `NORMALS-001` remains PARTIAL |
-| cross-model normal merge controls | `normals.merge.coincident_triangle.hide_false`, `normals.merge.coincident_triangle.hide_true`, `normals.merge.translated_negative`; `reference-fixtures/manifest/normals-merge-*.yaml` | evidence-only; `NORMALS-002` remains REQUIRED |
+| base normals smooth/flat | `normals.base.smooth_triangle`, `normals.base.flat_triangle`; `reference-fixtures/manifest/normals-base-*.yaml` | evidence-only; production promotion occurs in the M7 suite |
+| cross-model normal merge controls | `normals.merge.coincident_triangle.hide_false`, `normals.merge.coincident_triangle.hide_true`, `normals.merge.translated_negative`; `reference-fixtures/manifest/normals-merge-*.yaml` | evidence-only; production promotion occurs in the M7 suite |
 | four-plane link-below relinking | `planes.link_below.four_plane_column`; `reference-fixtures/manifest/planes-link-below-four-plane-column.yaml` | semantic / EXISTING |
 | priority thresholds and priority-10/11 queues | `priority.all_0_11.threshold_crossing`; `reference-fixtures/manifest/priority-all-0-11-threshold-crossing.yaml` | evidence-only; `FACE-002` remains REQUIRED |
 | historical deob evidence index | `reference-fixtures/historical/deob_golden.index.json`; `scripts/test_deob_golden_index.py` | indexed historical evidence; later production rows retain their existing status |
 
-At M5 exit, the repository-wide normalized runner validated all ten canonical YAML fixtures with three production semantic executors and seven evidence-only fixtures. M6 Checkpoint 3 promotes `planes.link_below.four_plane_column` to production semantic execution, so the current runner exercises four semantic fixtures while six remain evidence-only.
+At M5 exit, the repository-wide normalized runner validated all ten canonical YAML fixtures with three production semantic executors and seven evidence-only fixtures. M6 Checkpoint 3 promotes `planes.link_below.four_plane_column` to production semantic execution, so the current runner exercises four semantic fixtures while six remain evidence-only. M7 keeps the normal fixtures source-pinned and additionally exercises the production normal algorithms through dedicated exact Rust tests.
 
 The historical index exposes stable fixture IDs for `terrain.shape_gallery.all_13x4`, `contour.synthetic.flat_slope`, `lighting.synthetic_triangle.loc_rig`, `placement.wall_types.orientation_matrix`, `placement.decor_types.orientation_matrix`, `placement.floor_type22.storage`, and `placement.game_object.footprint_and_capacity`.
 
@@ -82,6 +82,21 @@ M6 Checkpoints 1 through 5 establish exact terrain topology, typed plane semanti
 | four-plane bridge column | `m6_exit_golden_scenes::golden_four_plane_bridge_column_relinks_structurally`; normalized fixture `planes.link_below.four_plane_column` | EXISTING |
 | region-border coordinate fixture | `m6_exit_golden_scenes::golden_region_border_fixture_preserves_world_scene_and_local_identity` | EXISTING |
 
+## M7 normals, lighting, and scene finalization coverage
+
+M7 closes production base normals, cross-model normal reconciliation, the scene neighbor traversal/finalization lifecycle, exact final object lighting, initial `nonFlatShading` ownership, and constructed-model identity threading before renderer work begins.
+
+| M7 semantic family | Exact verification artifact | Coverage |
+|---|---|---|
+| exact smooth/flat base normals, quad accumulation, winding reversal, and source immutability | `crates/osrs-core/src/normals.rs` unit tests; `crates/osrs-reference/tests/m7_base_normals.rs` | EXISTING |
+| translated cross-model merge, no-match control, hide=false/true, matched-face type `2`, repeated accumulation, and source immutability | `crates/osrs-core/src/normals.rs` unit tests; `crates/osrs-reference/tests/m7_normal_merge.rs` | EXISTING |
+| dual-arm boundary, boundary/game neighbor, floor-decoration hiding, plane-above height delta, and ModelData close state | `crates/osrs-scene/tests/m7_scene_normal_reconciliation.rs` | EXISTING |
+| initial flat/non-flat static entity split, cached ModelData ownership, scene-local copies, reconciliation-before-lighting, and retained loc lighting parameters | `crates/osrs-reference/tests/m7_static_entity_lifecycle.rs`; `crates/osrs-reference/tests/m7_initial_scene_finalization.rs` | EXISTING |
+| exact known-vector lighting, flat/smooth, textured/untextured, merged-normal precedence, alpha sentinels, HSL/lightness clamps, ambient/contrast extremes | `crates/osrs-reference/tests/m7_lighting.rs`; `crates/osrs-core/src/lighting.rs` unit tests | EXISTING |
+| constructed-model identity retained through working/lit/cache lifecycle and genuine two-source M4 assembly admission | `crates/osrs-reference/tests/m7_identity_threading.rs`; `crates/osrs-reference/tests/m7_composite_admission.rs` | EXISTING |
+
+The permanent Tier C gate in `.github/workflows/ci.yml` explicitly runs the M7 core normal/lighting tests, M7 reference semantic tests, and the M7 scene reconciliation test. This prevents future path-based or test-selection changes from silently dropping the milestone's owning semantic suite.
+
 ## Placement
 
 | Spec | Required verification | Comparison | Coverage |
@@ -89,11 +104,11 @@ M6 Checkpoints 1 through 5 establish exact terrain topology, typed plane semanti
 | `LOC-PLACEMENT-001` | loc types `0..22` + representative `>=12`; walls/decor x orientations; indexed evidence IDs `placement.wall_types.orientation_matrix`, `placement.decor_types.orientation_matrix`, `placement.floor_type22.storage` | exact scene slot/type/arms/flags | EXISTING |
 | `LOC-PLACEMENT-002` | decor types `4..8` x orientation, wall present/absent, custom displacement; indexed evidence ID `placement.decor_types.orientation_matrix` | exact integer offsets/orientation flags | EXISTING |
 | `LOC-PLACEMENT-003` | square/non-square footprints x all orientations; sloped center samples; indexed evidence ID `placement.game_object.footprint_and_capacity` | exact footprint, center, height inputs | EXISTING |
-| `LOC-PLACEMENT-004` | same qualifying definition through initial and pending-replacement paths | exact representation/path identity | REQUIRED |
+| `LOC-PLACEMENT-004` | same qualifying definition through initial and pending-replacement paths | exact representation/path identity | PARTIAL; M7 initial path EXISTING, pending/live replacement still REQUIRED |
 | `LOC-PLACEMENT-005` | definition-driven collision/clipping/occlusion/wall metadata cases | exact side-effect state per promoted sub-contract | PARTIAL |
 | `LOC-PLACEMENT-006` | floor decoration flat+slope cases; indexed evidence ID `placement.floor_type22.storage` | exact semantic Z, no implicit lift | EXISTING |
 
-`LOC-PLACEMENT-003` is closed by the source-pinned rotated-footprint midpoint sampler, including the exact scene-edge anchor/anchor+1 fallback and Java-style four-sample average. `LOC-PLACEMENT-005` remains `PARTIAL` by the explicit M6 roadmap exception: collision-operation selection and wall-displacement ownership are implemented, while narrower private collision/shadow/occlusion bit-grid formulas remain unpromoted. `LOC-PLACEMENT-004` remains later runtime/replacement work and is not an M6 exit gate.
+`LOC-PLACEMENT-003` is closed by the source-pinned rotated-footprint midpoint sampler, including the exact scene-edge anchor/anchor+1 fallback and Java-style four-sample average. `LOC-PLACEMENT-005` remains `PARTIAL` by the explicit M6 roadmap exception: collision-operation selection and wall-displacement ownership are implemented, while narrower private collision/shadow/occlusion bit-grid formulas remain unpromoted. M7 closes the initial `LOC-PLACEMENT-004` side by proving qualifying `nonFlatShading` ModelData survives into normal reconciliation and final lighting. The pending/live replacement half remains later-owned and keeps the full row `PARTIAL`.
 
 ## Model construction
 
@@ -102,20 +117,20 @@ M6 Checkpoints 1 through 5 establish exact terrain topology, typed plane semanti
 | `MODEL-BUILD-001` | typed hit/miss; untyped type-10 combine; non-10 rejection; missing IDs; fixture `model.selection.typed_exact.orientation_4` | exact selected model IDs / `None` | EXISTING |
 | `MODEL-BUILD-002` | typed mirror truth table + untyped special case; fixtures `model.selection.typed_exact.orientation_4`, `model.mirror.geometry_winding` | exact vertices, indices, winding | EXISTING |
 | `MODEL-BUILD-003` | orientations, type-4 diagonal recenter, fixture `model.transform.type4_order` | exact integer vertices + material substitutions | EXISTING |
-| `MODEL-BUILD-004` | `nonFlatShading` false/true path | exact semantic representation and cache state | REQUIRED |
-| `MODEL-BUILD-005` | two instances share source; mutate only one | untouched source/instance exact hash | PARTIAL |
+| `MODEL-BUILD-004` | `nonFlatShading` false/true path | exact semantic representation and cache state | EXISTING |
+| `MODEL-BUILD-005` | two instances share source; mutate only one | untouched source/instance exact hash | PARTIAL; M7 scene-normal ownership EXISTING, contour/animation portions later-owned |
 
 ## Normals and lighting
 
 | Spec | Required verification | Comparison | Coverage |
 |---|---|---|---|
-| `NORMALS-001` | crafted smooth/flat triangles/quads + mirrored winding; M5 evidence `normals.base.smooth_triangle`, `normals.base.flat_triangle` | exact normal components/magnitudes | PARTIAL |
-| `NORMALS-002` | positive, negative, translated, hide=false, hide=true merge; M5 evidence `normals.merge.coincident_triangle.hide_false`, `normals.merge.coincident_triangle.hide_true`, `normals.merge.translated_negative` | exact merged normals + face render types | REQUIRED |
-| `NORMALS-003` | dual-arm wall, wall/game neighbor, floor decor, plane-above | exact scene reconciliation/finalization state | REQUIRED |
-| `NORMALS-004` | merge changes final lighting vs control | exact final lit values | REQUIRED |
-| `LIGHTING-001` | known vector, flat/smooth, merged, ambient/contrast limits; indexed historical evidence `lighting.synthetic_triangle.loc_rig` | exact integer lit/HSL output | PARTIAL |
+| `NORMALS-001` | crafted smooth/flat triangles/quads + mirrored winding; M5 evidence `normals.base.smooth_triangle`, `normals.base.flat_triangle` | exact normal components/magnitudes | EXISTING |
+| `NORMALS-002` | positive, negative, translated, hide=false, hide=true merge; M5 evidence `normals.merge.coincident_triangle.hide_false`, `normals.merge.coincident_triangle.hide_true`, `normals.merge.translated_negative` | exact merged normals + face render types | EXISTING |
+| `NORMALS-003` | dual-arm wall, wall/game neighbor, floor decor, plane-above | exact scene reconciliation/finalization state | EXISTING |
+| `NORMALS-004` | merge changes final lighting vs control | exact final lit values | EXISTING |
+| `LIGHTING-001` | known vector, flat/smooth, merged, ambient/contrast limits; indexed historical evidence `lighting.synthetic_triangle.loc_rig` | exact integer lit/HSL output | EXISTING |
 
-M5 normal fixtures are intentionally `evidence_only`. Production normal generation and cross-model normal reconciliation remain M7 work, so these rows do not advance solely because exact oracle evidence now exists.
+M7 satisfies the roadmap hard exit gate: every normal/lighting matrix row is now `EXISTING` through production exact tests. The M5 normalized normal fixtures remain evidence-only as fixture-runner artifacts, but their semantics are independently exercised against production code by the dedicated M7 tests.
 
 ## Morph, animation, contour
 
