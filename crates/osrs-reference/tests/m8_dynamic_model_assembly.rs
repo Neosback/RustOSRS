@@ -16,12 +16,7 @@ use osrs_scene::{
     DynamicLitModelLookup, DynamicModelInput, DynamicPlacementInput, ModelRequest,
     ObjectDefinitionLookup, resolve_dynamic_model,
 };
-use std::{
-    borrow::Cow,
-    cell::Cell,
-    collections::BTreeMap,
-    error::Error,
-};
+use std::{borrow::Cow, cell::Cell, collections::BTreeMap, error::Error};
 
 const PROFILE_DIGEST: &str = "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7";
 const CACHE_FINGERPRINT: &str = "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38";
@@ -159,7 +154,10 @@ fn active_morph_pose_then_contour_uses_private_lit_model_and_active_footprint()
         panic!("animation plus contour must create a private runtime model");
     };
     assert_eq!(dynamic.vertices, vec![ModelPoint::new(128, 0, 0)]);
-    assert_eq!(models.base, original_base, "cached lit base must remain immutable");
+    assert_eq!(
+        models.base, original_base,
+        "cached lit base must remain immutable"
+    );
     Ok(())
 }
 
