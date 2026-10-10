@@ -53,12 +53,12 @@ impl RenderMesh {
             let semantic = vertex
                 .place(placement.origin, placement.base_y)
                 .ok_or(RenderExtractionError::PlacementOverflow { vertex_index })?;
-            let render = render_origin
-                .rebase(semantic)
-                .map_err(|source| RenderExtractionError::Coordinate {
+            let render = render_origin.rebase(semantic).map_err(|source| {
+                RenderExtractionError::Coordinate {
                     vertex_index,
                     source,
-                })?;
+                }
+            })?;
             vertices.push(render);
         }
 
