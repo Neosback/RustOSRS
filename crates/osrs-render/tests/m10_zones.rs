@@ -16,12 +16,30 @@ fn zone_key_uses_storage_plane_and_euclidean_eight_tile_partitioning()
 -> Result<(), Box<dyn std::error::Error>> {
     let p2 = plane(2)?;
 
-    assert_eq!(RenderZoneKey::from_tile(p2, 0, 0), RenderZoneKey::new(p2, 0, 0));
-    assert_eq!(RenderZoneKey::from_tile(p2, 7, 7), RenderZoneKey::new(p2, 0, 0));
-    assert_eq!(RenderZoneKey::from_tile(p2, 8, 15), RenderZoneKey::new(p2, 1, 1));
-    assert_eq!(RenderZoneKey::from_tile(p2, -1, -1), RenderZoneKey::new(p2, -1, -1));
-    assert_eq!(RenderZoneKey::from_tile(p2, -8, -8), RenderZoneKey::new(p2, -1, -1));
-    assert_eq!(RenderZoneKey::from_tile(p2, -9, -9), RenderZoneKey::new(p2, -2, -2));
+    assert_eq!(
+        RenderZoneKey::from_tile(p2, 0, 0),
+        RenderZoneKey::new(p2, 0, 0)
+    );
+    assert_eq!(
+        RenderZoneKey::from_tile(p2, 7, 7),
+        RenderZoneKey::new(p2, 0, 0)
+    );
+    assert_eq!(
+        RenderZoneKey::from_tile(p2, 8, 15),
+        RenderZoneKey::new(p2, 1, 1)
+    );
+    assert_eq!(
+        RenderZoneKey::from_tile(p2, -1, -1),
+        RenderZoneKey::new(p2, -1, -1)
+    );
+    assert_eq!(
+        RenderZoneKey::from_tile(p2, -8, -8),
+        RenderZoneKey::new(p2, -1, -1)
+    );
+    assert_eq!(
+        RenderZoneKey::from_tile(p2, -9, -9),
+        RenderZoneKey::new(p2, -2, -2)
+    );
     assert_ne!(
         RenderZoneKey::from_tile(plane(1)?, 0, 0),
         RenderZoneKey::from_tile(p2, 0, 0)
@@ -78,15 +96,16 @@ fn bounds_reject_zero_extent_and_signed_range_overflow() {
 }
 
 #[test]
-fn changed_zone_rejects_old_generation_build_ticket()
--> Result<(), Box<dyn std::error::Error>> {
+fn changed_zone_rejects_old_generation_build_ticket() -> Result<(), Box<dyn std::error::Error>> {
     let key = RenderZoneKey::new(plane(0)?, 4, 5);
     let first = generation(10, 0x10);
     let second = generation(11, 0x11);
     let mut tracker = ZoneInvalidationTracker::new(first);
 
     tracker.invalidate_zone(key);
-    let old_ticket = tracker.begin_build(key).ok_or("missing first build ticket")?;
+    let old_ticket = tracker
+        .begin_build(key)
+        .ok_or("missing first build ticket")?;
     assert_eq!(old_ticket.key(), key);
     assert_eq!(old_ticket.required_generation(), first);
 
@@ -102,7 +121,9 @@ fn changed_zone_rejects_old_generation_build_ticket()
         })
     );
 
-    let current_ticket = tracker.begin_build(key).ok_or("missing current build ticket")?;
+    let current_ticket = tracker
+        .begin_build(key)
+        .ok_or("missing current build ticket")?;
     tracker.complete_build(current_ticket)?;
     assert!(!tracker.is_dirty(key));
     assert_eq!(
@@ -173,8 +194,7 @@ fn invalidating_bounds_tracks_dirty_zones_in_stable_key_order()
 }
 
 #[test]
-fn generation_advance_must_be_strictly_monotonic()
--> Result<(), Box<dyn std::error::Error>> {
+fn generation_advance_must_be_strictly_monotonic() -> Result<(), Box<dyn std::error::Error>> {
     let mut tracker = ZoneInvalidationTracker::new(generation(40, 0x40));
 
     assert_eq!(
