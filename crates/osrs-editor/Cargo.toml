@@ -12,15 +12,26 @@ osrs-scene = { path = "../osrs-scene" }
 osrs-render = { path = "../osrs-render" }
 osrs-hd = { path = "../osrs-hd" }
 osrs-world = { path = "../osrs-world" }
-eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland"] }
+eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts"] }
 wgpu.workspace = true
-memory-stats = "1.2.0"
+web-time.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0.152"
 egui-phosphor = "0.14.0"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland"] }
+memory-stats = "1.2.0"
 open = "5.4.4"
 rfd = "0.15"
-image = { version = "0.25", default-features = false, features = ["png"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window", "Document", "HtmlCanvasElement", "Element"] }
+console_error_panic_hook = "0.1"
 
 [lints]
 workspace = true

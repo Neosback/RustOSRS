@@ -6,8 +6,9 @@ use std::{
         Arc,
         atomic::{AtomicU32, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
+use web_time::Instant;
 
 const MIB: f32 = 1024.0 * 1024.0;
 /// Smoothing factor of the per-frame timings.
@@ -77,8 +78,8 @@ impl FrameStats {
             .is_none_or(|at| at.elapsed() >= Duration::from_secs(1))
         {
             self.memory_sampled = Some(now);
-            if let Some(usage) = memory_stats::memory_stats() {
-                self.process_mib = usage.physical_mem as f32 / MIB;
+            if let Some(mib) = crate::platform::process_memory_mib() {
+                self.process_mib = mib;
                 self.peak_process_mib = self.peak_process_mib.max(self.process_mib);
             }
         }

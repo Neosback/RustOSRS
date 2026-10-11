@@ -164,7 +164,7 @@ impl AssetState {
                     None
                 } else {
                     Some(
-                        match renderer.render(definitions, &catalog, area, region, pixels_per_tile)
+                        match renderer.render(definitions, catalog, area, region, pixels_per_tile)
                         {
                             Some(image) => {
                                 AssetEvent::WorldMapRegion(Box::new(WorldMapRegionImage {
@@ -184,14 +184,14 @@ impl AssetState {
                 }
             }
             Request::Minimap { region, plane } => Some(
-                match minimap::render_region(definitions, &catalog, region, plane) {
+                match minimap::render_region(definitions, catalog, region, plane) {
                     Ok(Some(image)) => AssetEvent::MinimapRegion(Arc::new(image)),
                     Ok(None) => AssetEvent::MinimapEmpty(region, plane),
                     Err(error) => AssetEvent::Failed(format!("minimap {region:?}: {error}")),
                 },
             ),
             Request::Icons { area } => {
-                let (icons, names) = worldmap::area_icons(definitions, &catalog, area, true);
+                let (icons, names) = worldmap::area_icons(definitions, catalog, area, true);
                 Some(AssetEvent::WorldMapIcons {
                     area,
                     icons: Arc::new(icons),

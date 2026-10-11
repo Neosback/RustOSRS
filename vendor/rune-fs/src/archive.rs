@@ -8,18 +8,18 @@ use serde_big_array::BigArray;
 use nom::number::complete::be_u24;
 
 use crate::sector::{
-    SectorHeaderSize, SECTOR_DATA_SIZE, SECTOR_EXPANDED_DATA_SIZE, SECTOR_EXPANDED_HEADER_SIZE,
-    SECTOR_HEADER_SIZE,
+    SECTOR_DATA_SIZE, SECTOR_EXPANDED_DATA_SIZE, SECTOR_EXPANDED_HEADER_SIZE, SECTOR_HEADER_SIZE,
+    SectorHeaderSize,
 };
 
 pub const ARCHIVE_REF_LEN: usize = 6;
 
 /// A reference to an archive segment.
-/// 
+///
 /// Archives are not stored in a contiguous fashion.
 /// An `ArchiveRef` is _basically_ a wide pointer, like `&str` or `&[u8]`. When an `Archive` is fetched from the
 /// [`Dat2`](crate::Dat2) file it knows where the memory starts and its length. Each block of memory belong to the archive
-/// is viewed as a [`Sector`](crate::Sector), which contains a pointer to the next sector. Once this chain is 
+/// is viewed as a [`Sector`](crate::Sector), which contains a pointer to the next sector. Once this chain is
 /// exhausted you are left with all of the archive data.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
@@ -32,9 +32,9 @@ pub struct ArchiveRef {
 
 impl ArchiveRef {
     /// Transforms an [`Index`](crate::Index) sub-buffer into an archive reference.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Will fail if the buffer is not exactly 6 bytes in length.
     pub fn from_buffer(id: u32, index_id: u8, buffer: &[u8]) -> crate::Result<Self> {
         let (buffer, len) = be_u24(buffer)?;
@@ -69,7 +69,7 @@ impl ArchiveRef {
 }
 
 /// Iterator to walk the archive reference chain.
-/// 
+///
 /// When reading an `Archive` from [`Dat2`](crate::Dat2) it needs to know
 /// where to read and what the total data length is.
 /// By calling [`ArchiveRef::data_blocks`](ArchiveRef::data_blocks) you get a
@@ -101,9 +101,9 @@ impl Iterator for DataBlocks {
 }
 
 /// Metadata on every archive.
-/// 
+///
 /// # Example
-/// 
+///
 /// TODO This type needs refining so be prepared for breaking changes when using it.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
@@ -134,9 +134,9 @@ pub struct ArchiveFileGroup(Vec<ArchiveFileData>);
 
 impl ArchiveFileGroup {
     /// Format a raw buffer into a list of `ArchiveFileData`'s.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Whenever the buffer has a wrong format no files can be constructed.
     pub fn from_buffer(buffer: &[u8], entry_count: usize) -> Self {
         let chunks = buffer[buffer.len() - 1] as usize;

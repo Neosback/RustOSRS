@@ -41,8 +41,8 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::Arc,
-    time::Instant,
 };
+use web_time::Instant;
 
 /// Local units per map region (64 tiles of 128).
 const REGION_UNITS: i32 = 64 * 128;
@@ -159,6 +159,15 @@ pub struct EditorApp {
     palette: Option<std::sync::Arc<osrs_world::FloorPalette>>,
     palette_rx:
         Option<std::sync::mpsc::Receiver<Result<osrs_world::FloorPalette, osrs_world::WorldError>>>,
+    /// Browser: the palette is loaded in the frame loop once the cache is open.
+    #[cfg(target_arch = "wasm32")]
+    palette_job: Option<(
+        std::sync::mpsc::Sender<Result<osrs_world::FloorPalette, osrs_world::WorldError>>,
+        osrs_cache::source::CacheSource,
+    )>,
+    /// Browser: the cache folder being read.
+    #[cfg(target_arch = "wasm32")]
+    web_pick: Option<crate::platform::web::SharedPick>,
     /// Tiles the editor has painted, by `(plane, x, y)`, and the undo / redo stacks of strokes.
     edited: HashMap<editing::TileKey, crate::paint::TileValues>,
     history: Vec<editing::EditStep>,
@@ -224,10 +233,10 @@ impl EditorApp {
             -2600.0,
             0.3 * REGION_UNITS as f32,
         );
-        let asset_cache_dir = cache_dir.clone();
-        let palette_dir = cache_dir.clone();
         let initial_dir = cache_dir.clone();
-        let streamer = RegionStreamer::spawn(cache_dir, Self::presentation(false, false));
+        let initial_source = osrs_cache::source::CacheSource::Dir(cache_dir);
+        let streamer =
+            RegionStreamer::spawn(initial_source.clone(), Self::presentation(false, false));
         streamer.set_presentation(Self::presentation(false, false), 1);
 
         let mut app = Self {
@@ -246,7 +255,7 @@ impl EditorApp {
             ],
             plugin_lines: std::collections::BTreeMap::new(),
             infos_version: 0,
-            assets: Assets::new(asset_cache_dir),
+            assets: Assets::new(initial_source.clone()),
             world_map: worldmap::WorldMapView::new(),
             minimap_hud: minimap::MinimapHud::default(),
             prefs: Settings::default(),
@@ -292,15 +301,24 @@ impl EditorApp {
             stats: FrameStats::new(),
             teleport: TeleportWindow::new(),
             palette: None,
-            palette_rx: Some(Self::spawn_palette_loader(palette_dir)),
+            palette_rx: None,
+            #[cfg(target_arch = "wasm32")]
+            palette_job: None,
+            #[cfg(target_arch = "wasm32")]
+            web_pick: None,
             // Smoke-test hook: open the quick tools HUD at start (`RUSTOSRS_QUICK=1`).
             edited: HashMap::new(),
             history: Vec::new(),
             redo_stack: Vec::new(),
             stroke: None,
             dirty_regions: HashSet::new(),
-            cache_error: (!cache_picker::looks_like_cache(&initial_dir))
-                .then(|| format!("No cache found at {}.", initial_dir.display())),
+            cache_error: (!cache_picker::looks_like_cache(&initial_dir)).then(|| {
+                if initial_dir.as_os_str().is_empty() {
+                    "No cache is open yet.".to_owned()
+                } else {
+                    format!("No cache found at {}.", initial_dir.display())
+                }
+            }),
             cache_dir: initial_dir,
             cache_build: None,
             quick_open: std::env::var_os("RUSTOSRS_QUICK").map(|_| egui::pos2(520.0, 300.0)),
@@ -366,6 +384,12 @@ impl EditorApp {
             app.keymap.register(plugin.actions());
         }
         app.init_settings(&cc.egui_ctx);
+        #[cfg(not(target_arch = "wasm32"))]
+        app.start_palette_loader(initial_source);
+        #[cfg(target_arch = "wasm32")]
+        if let Some(base) = crate::platform::web::cache_url_param() {
+            app.pick_cache_url(&cc.egui_ctx, base);
+        }
         Ok(app)
     }
 
@@ -585,6 +609,13 @@ impl EditorApp {
         if (self.prefs.render_profile == ProfileChoice::Hd) != self.presentation_hd {
             self.rebuild_all();
         }
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.poll_web_pick(ctx);
+            self.run_palette_job();
+        }
+        // Browser: no worker threads, so run the streamer's queue for a slice of this frame.
+        self.streamer.pump(std::time::Duration::from_millis(8));
         while let Some(event) = self.streamer.try_recv() {
             match event {
                 StreamEvent::HdMaterials(data) => {
@@ -642,6 +673,7 @@ impl EditorApp {
                     self.loaded.insert((region.x, region.y), None);
                     self.status = Some(format!("region {},{} failed: {error}", region.x, region.y));
                 }
+                StreamEvent::InitFailed(_) if self.cache_dir.as_os_str().is_empty() => {}
                 StreamEvent::InitFailed(error) => {
                     // The card explains it; the status bar stays quiet.
                     self.cache_error = Some(if error.contains("No such file") {

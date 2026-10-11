@@ -208,7 +208,7 @@ impl EditorApp {
         if !(brush.overlay.armed || brush.underlay.armed) {
             self.notice = Some((
                 "Choose an overlay or underlay to lay the path with".to_owned(),
-                std::time::Instant::now(),
+                web_time::Instant::now(),
             ));
             return;
         }
@@ -225,7 +225,7 @@ impl EditorApp {
         self.spline.preview = None;
         self.notice = Some((
             format!("Laid a path over {changed} tiles"),
-            std::time::Instant::now(),
+            web_time::Instant::now(),
         ));
     }
 

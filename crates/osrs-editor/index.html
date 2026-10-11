@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RustOSRS</title>
+    <link data-trunk rel="rust" data-bin="osrs-editor" data-wasm-opt="0" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #14161a; overflow: hidden; }
+      canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+      #loading { position: fixed; inset: 0; display: grid; place-items: center;
+                 color: #9aa3b2; font: 14px system-ui, sans-serif; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <canvas id="rustosrs_canvas"></canvas>
+    <div id="loading">Loading RustOSRS...</div>
+  </body>
+</html>

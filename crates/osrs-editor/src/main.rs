@@ -20,12 +20,14 @@ mod interact;
 mod keymap;
 mod paint;
 mod pick;
+mod platform;
 mod plugin;
 mod screenshot;
 mod settings;
 mod theme;
 mod wiki;
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
 /// eframe's default wgpu setup plus GPU timestamp queries (for the scene pass timing) when the
@@ -55,6 +57,7 @@ fn wgpu_options() -> eframe::egui_wgpu::WgpuConfiguration {
     configuration
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// 1360 x 860, or `RUSTOSRS_WINDOW="w,h"` (to look at the responsive layout).
 fn window_size() -> [f32; 2] {
     std::env::var("RUSTOSRS_WINDOW")
@@ -66,6 +69,7 @@ fn window_size() -> [f32; 2] {
         .unwrap_or([1360.0, 860.0])
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     // The command line, then RUSTOSRS_TARGET_CACHE_DIR, then the cache used last time.
@@ -91,4 +95,44 @@ fn main() -> eframe::Result<()> {
             )?))
         }),
     )
+}
+
+/// In the browser the editor draws into the page's `#rustosrs_canvas`; the cache folder is chosen
+/// from the first-run card (File System Access API) or `?cache=<url prefix>` for development.
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    use wasm_bindgen::JsCast;
+    console_error_panic_hook::set_once();
+    wasm_bindgen_futures::spawn_local(async {
+        let canvas = web_sys::window()
+            .and_then(|window| window.document())
+            .and_then(|document| document.get_element_by_id("rustosrs_canvas"))
+            .and_then(|element| element.dyn_into::<web_sys::HtmlCanvasElement>().ok());
+        let Some(canvas) = canvas else {
+            web_sys::console::error_1(&"index.html has no #rustosrs_canvas".into());
+            return;
+        };
+        let options = eframe::WebOptions {
+            wgpu_options: wgpu_options(),
+            ..Default::default()
+        };
+        let result = eframe::WebRunner::new()
+            .start(
+                canvas,
+                options,
+                Box::new(|cc| {
+                    Ok(Box::new(app::EditorApp::new(
+                        cc,
+                        std::path::PathBuf::new(),
+                        3176,
+                        3176,
+                    )?))
+                }),
+            )
+            .await;
+        platform::web::hide_loading();
+        if let Err(error) = result {
+            web_sys::console::error_1(&error);
+        }
+    });
 }

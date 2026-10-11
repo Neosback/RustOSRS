@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map, HashMap},
+    collections::{HashMap, hash_map},
     fs::{self, File},
     io::Read,
     path::Path,
@@ -10,16 +10,17 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    archive::{ArchiveMetadata, ArchiveRef, ARCHIVE_REF_LEN},
-    error::{ParseError, ReadError},
     Dat2, REFERENCE_TABLE_ID,
+    archive::{ARCHIVE_REF_LEN, ArchiveMetadata, ArchiveRef},
+    error::{ParseError, ReadError},
 };
 use itertools::izip;
 use nom::{
+    Parser,
     bytes::complete::take,
     combinator::cond,
-    multi::{many0, many_m_n},
-    number::complete::{be_i32, be_u16, be_u32, be_u8}, Parser,
+    multi::{many_m_n, many0},
+    number::complete::{be_i32, be_u8, be_u16, be_u32},
 };
 
 use crate::codec::{Buffer, Decoded};
@@ -37,14 +38,14 @@ impl Indices {
     ///
     /// # Errors
     ///
-    /// Constructing this type is quite error prone, it needs to do quite a bit 
-    /// of book-keeping to get its allocation right. However, if the cache is 
+    /// Constructing this type is quite error prone, it needs to do quite a bit
+    /// of book-keeping to get its allocation right. However, if the cache is
     /// unchanged _and_ in its proper format it will, most likely, succeed.
     ///
-    /// The primary errors have to do with I/O, in order to read every index 
+    /// The primary errors have to do with I/O, in order to read every index
     /// successfully it needs a `Dat2` reference and the metadata index.
     ///
-    /// If an index is found it needs to load its entire contents and parse it, 
+    /// If an index is found it needs to load its entire contents and parse it,
     /// failure at this point is considered a bug.
     pub fn new<P: AsRef<Path>>(path: P) -> crate::Result<Self> {
         let path = path.as_ref();
@@ -60,23 +61,24 @@ impl Indices {
             let path = p?.path();
 
             if let Some(ext) = path.extension().and_then(std::ffi::OsStr::to_str)
-                && let Some(index_id) = ext.strip_prefix("idx") {
-                    let index_id: u8 = index_id.parse().expect("invalid extension format");
-                    if index_id == 255 {
-                        continue;
-                    }
-                    let mut index = Index::from_path(index_id, path)?;
-                    let archive_ref = ref_index.archive_refs.get(&(index_id as u32)).ok_or(
-                        ReadError::ArchiveNotFound {
-                            idx: REFERENCE_TABLE_ID,
-                            arc: index_id as u32,
-                        },
-                    )?;
-                    if archive_ref.length != 0 {
-                        index.metadata = dat2.metadata(archive_ref)?;
-                    }
-                    indices.insert(index_id, index);
+                && let Some(index_id) = ext.strip_prefix("idx")
+            {
+                let index_id: u8 = index_id.parse().expect("invalid extension format");
+                if index_id == 255 {
+                    continue;
                 }
+                let mut index = Index::from_path(index_id, path)?;
+                let archive_ref = ref_index.archive_refs.get(&(index_id as u32)).ok_or(
+                    ReadError::ArchiveNotFound {
+                        idx: REFERENCE_TABLE_ID,
+                        arc: index_id as u32,
+                    },
+                )?;
+                if archive_ref.length != 0 {
+                    index.metadata = dat2.metadata(archive_ref)?;
+                }
+                indices.insert(index_id, index);
+            }
         }
 
         indices.insert(REFERENCE_TABLE_ID, ref_index);
@@ -164,7 +166,10 @@ impl Index {
     pub fn from_buffer(id: u8, buffer: &[u8]) -> crate::Result<Self> {
         let mut archive_refs = HashMap::new();
 
-        for (archive_id, archive_data) in buffer.chunks_exact(ARCHIVE_REF_LEN).enumerate() {
+        for (archive_id, archive_data) in buffer
+            .chunks(ARCHIVE_REF_LEN)
+            .filter(|chunk| chunk.len() == ARCHIVE_REF_LEN)
+            .enumerate() {
             let archive_id = archive_id as u32;
 
             let archive_ref = match ArchiveRef::from_buffer(archive_id, id, archive_data) {
@@ -208,10 +213,10 @@ impl<'a> IntoIterator for &'a Indices {
 pub struct IndexMetadata(Vec<ArchiveMetadata>);
 
 impl IndexMetadata {
-    /// Takes a specific raw metadata buffer and turns it into a `IndexMetadata`. 
-    /// 
+    /// Takes a specific raw metadata buffer and turns it into a `IndexMetadata`.
+    ///
     /// # Errors
-    /// 
+    ///
     /// If, for what ever reason, the buffer does not _exactly_ adhere to the correct
     /// format parsing will fail.
     pub fn from_buffer(buffer: Buffer<Decoded>) -> crate::Result<Self> {
@@ -332,7 +337,11 @@ fn parse_whirlpools(
     let (buffer, taken) = cond(whirlpool, take(archive_count * 64)).parse(buffer)?;
     let mut whirlpools = vec![[0; 64]; archive_count];
 
-    for (index, chunk) in taken.unwrap_or(&[]).chunks_exact(64).enumerate() {
+    for (index, chunk) in taken
+        .unwrap_or(&[])
+        .chunks(64)
+        .filter(|chunk| chunk.len() == 64)
+        .enumerate() {
         whirlpools[index].copy_from_slice(chunk);
     }
     if whirlpools.len() != archive_count {

@@ -8,7 +8,8 @@ use osrs_hd::{
     expr::NoVariables,
 };
 use osrs_render::gpu::HdLighting;
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
+use web_time::Instant;
 
 /// The environment table and the transition state driven by it.
 pub struct HdRuntime {

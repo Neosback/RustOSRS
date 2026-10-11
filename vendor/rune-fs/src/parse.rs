@@ -1,11 +1,11 @@
 //! Faster parsers using [nom](https://crates.io/crates/nom).
 
 use nom::{
+    IResult, Parser,
     bytes::complete::{tag, take_while},
     error::ParseError,
-    number::complete::{be_u16, be_u32, be_u8},
+    number::complete::{be_u8, be_u16, be_u32},
     sequence::terminated,
-    IResult, Parser,
 };
 
 /// Reads a 0-terminated string from the given buffer. Uses `String::from_utf8_lossy()` for the conversion.
@@ -30,7 +30,8 @@ use nom::{
 /// # }
 /// ```
 pub fn rs_string<'a, E: ParseError<&'a [u8]>>(buffer: &'a [u8]) -> IResult<&'a [u8], String, E> {
-    let (buffer, string) = terminated(take_while(|byte| byte != 0), tag([0].as_slice())).parse(buffer)?;
+    let (buffer, string) =
+        terminated(take_while(|byte| byte != 0), tag([0].as_slice())).parse(buffer)?;
 
     Ok((buffer, String::from_utf8_lossy(string).to_string()))
 }

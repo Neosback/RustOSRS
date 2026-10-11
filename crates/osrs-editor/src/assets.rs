@@ -8,7 +8,6 @@ use osrs_world::{
     worldmap::{Catalog, MapIcon},
 };
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::sync::Arc;
 
 /// Interface sprite ids used by the editor (the same ids as the game's `SpriteID`).
@@ -56,9 +55,9 @@ pub struct Assets {
 }
 
 impl Assets {
-    pub fn new(cache_dir: PathBuf) -> Self {
+    pub fn new(source: impl Into<osrs_cache::source::CacheSource>) -> Self {
         Self {
-            worker: AssetWorker::spawn(cache_dir),
+            worker: AssetWorker::spawn(source),
             sprites: HashMap::new(),
             sprite_pixels: HashMap::new(),
             minimap: HashMap::new(),
@@ -185,6 +184,7 @@ impl Assets {
     /// Upload what the worker finished since the last call; returns whether anything arrived.
     pub fn poll(&mut self, ctx: &egui::Context) -> bool {
         self.label_context.get_or_insert_with(|| ctx.clone());
+        self.worker.pump(std::time::Duration::from_millis(8));
         let mut changed = false;
         for _ in 0..64 {
             let Some(event) = self.worker.try_recv() else {

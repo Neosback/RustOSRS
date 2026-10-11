@@ -1,5 +1,5 @@
 //! In-place XTEA en/de-ciphering.
-//! 
+//!
 //! Defaults to 32 rounds.
 
 const ROUNDS: u32 = 32;

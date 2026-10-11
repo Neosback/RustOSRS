@@ -10,8 +10,9 @@ use flate2::{bufread::GzDecoder, write::GzEncoder};
 #[cfg(feature = "rs3")]
 use lzma_rs::{compress, decompress, lzma_compress_with_options, lzma_decompress_with_options};
 use nom::{
+    Parser,
     combinator::cond,
-    number::complete::{be_i16, be_u32, be_u8}, Parser,
+    number::complete::{be_i16, be_u8, be_u32},
 };
 
 use crate::{error::CompressionUnsupported, xtea};
@@ -105,9 +106,9 @@ impl Buffer<Encoded> {
     /// 3. Decompress the remaining bytes.
     ///
     /// # Panics
-    /// 
+    ///
     /// When data can't be decompressed using LZMA this function panics.
-    /// 
+    ///
     /// # Errors
     ///
     /// Returns an error if the remaining bytes couldn't be decompressed.

@@ -1,6 +1,6 @@
 use nom::{
     combinator::rest,
-    number::complete::{be_u16, be_u24, be_u32, be_u8},
+    number::complete::{be_u8, be_u16, be_u24, be_u32},
 };
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -24,10 +24,10 @@ pub struct Sector<'a> {
 impl<'a> Sector<'a> {
     /// Creates a sector from the given buffer using the header size to correctly initiate
     /// the root sector.
-    /// 
+    ///
     /// # Errors
-    /// 
-    /// Either a `SectorHeader` couldn't be initiated due to a wrong buffer or 
+    ///
+    /// Either a `SectorHeader` couldn't be initiated due to a wrong buffer or
     /// there are no more bytes after the initial header.
     pub fn new(buffer: &'a [u8], header_size: &SectorHeaderSize) -> crate::Result<Self> {
         let (buffer, header) = SectorHeader::new(buffer, header_size)?;
@@ -49,16 +49,16 @@ pub struct SectorHeader {
 
 impl<'a> SectorHeader {
     /// Constructs a sector header from the given buffer.
-    /// 
+    ///
     /// Each sector is guaranteed to have a length of 520 bytes. The header size
-    /// will be either 8 or 10 bytes, making the data size either 512 or 510 bytes 
+    /// will be either 8 or 10 bytes, making the data size either 512 or 510 bytes
     /// respectively. Only when the archive id exceeds `u16::MAX` will the header size
     /// be expanded (meaning a 10 byte header).
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// The header buffer needs to be exactly `SectorHeaderSize`, otherwise you will
-    /// get a parser error. 
+    /// get a parser error.
     pub fn new(
         buffer: &'a [u8],
         header_size: &SectorHeaderSize,

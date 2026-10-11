@@ -13,7 +13,8 @@ use eframe::egui;
 use osrs_core::coords::RegionCoord;
 use osrs_world::TileEdit;
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 /// Tiles around an edit whose derived geometry can change: the underlay blend reaches 5 tiles
 /// (`BLEND_RADIUS`) and lighting one more.

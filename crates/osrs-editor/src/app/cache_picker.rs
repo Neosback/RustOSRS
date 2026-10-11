@@ -7,19 +7,22 @@
 use super::EditorApp;
 use crate::assets::Assets;
 use eframe::egui;
+use osrs_cache::source::CacheSource;
 use osrs_world::RegionStreamer;
 use std::path::{Path, PathBuf};
 
 const RECENT_LIMIT: usize = 8;
 const DATA_FILE: &str = "main_file_cache.dat2";
 
-/// Whether `dir` looks like a cache folder.
+/// Whether `dir` looks like a cache folder. (The browser has no folders to look in: it reads the
+/// cache the page was given.)
 pub fn looks_like_cache(dir: &Path) -> bool {
-    dir.join(DATA_FILE).is_file()
+    cfg!(not(target_arch = "wasm32")) && dir.join(DATA_FILE).is_file()
 }
 
 impl EditorApp {
     /// Ask for a cache folder with the system dialog and open it.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn pick_cache_folder(&mut self, ctx: &egui::Context) {
         let mut dialog = rfd::FileDialog::new()
             .set_title("Choose the OSRS cache folder (it contains main_file_cache.dat2)");
@@ -28,6 +31,58 @@ impl EditorApp {
         }
         if let Some(folder) = dialog.pick_folder() {
             self.open_cache(folder, ctx);
+        }
+    }
+
+    /// Ask the browser for a cache folder (File System Access API) and read it into memory.
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn pick_cache_folder(&mut self, ctx: &egui::Context) {
+        let repaint = ctx.clone();
+        self.web_pick = Some(crate::platform::web::start_pick(None, move || {
+            repaint.request_repaint();
+        }));
+    }
+
+    /// Read the cache from `?cache=<url prefix>` (development: no folder dialog to click through).
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn pick_cache_url(&mut self, ctx: &egui::Context, base: String) {
+        let repaint = ctx.clone();
+        self.web_pick = Some(crate::platform::web::start_pick(Some(base), move || {
+            repaint.request_repaint();
+        }));
+    }
+
+    /// Open the cache the browser finished reading, or show why it could not.
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn poll_web_pick(&mut self, ctx: &egui::Context) {
+        use crate::platform::web::PickState;
+        let Some(pick) = &self.web_pick else {
+            return;
+        };
+        let done = match &mut *pick.borrow_mut() {
+            PickState::Reading(_) => return,
+            PickState::Done(result) => std::mem::replace(result, Err(String::new())),
+        };
+        self.web_pick = None;
+        match done {
+            Ok(picked) => {
+                let source = CacheSource::Memory(std::sync::Arc::new(picked.files));
+                self.open_source(source, PathBuf::from(picked.name), ctx);
+            }
+            Err(error) if error.is_empty() => {}
+            Err(error) => self.cache_error = Some(error),
+        }
+    }
+
+    /// Run the palette loader (no thread in the browser): once the streamer has opened the cache,
+    /// so the fingerprint is already known.
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn run_palette_job(&mut self) {
+        if !self.ready {
+            return;
+        }
+        if let Some((sender, source)) = self.palette_job.take() {
+            let _ = sender.send(osrs_world::load_floor_palette(source));
         }
     }
 
@@ -40,18 +95,30 @@ impl EditorApp {
             ));
             return;
         }
+        self.open_source(CacheSource::Dir(dir.clone()), dir, ctx);
+    }
+
+    /// Switch to `source`; `label` names it in the title and the recent list.
+    pub(super) fn open_source(&mut self, source: CacheSource, label: PathBuf, ctx: &egui::Context) {
+        let dir = label;
         self.cache_error = None;
         self.cache_build = None;
         // The old workers finish their current job before stopping; do not wait for them here.
         let old_streamer = std::mem::replace(
             &mut self.streamer,
-            RegionStreamer::spawn(dir.clone(), Self::presentation(false, false)),
+            RegionStreamer::spawn(source.clone(), Self::presentation(false, false)),
         );
-        let old_assets = std::mem::replace(&mut self.assets, Assets::new(dir.clone()));
+        let old_assets = std::mem::replace(&mut self.assets, Assets::new(source.clone()));
+        #[cfg(not(target_arch = "wasm32"))]
         std::thread::spawn(move || {
             drop(old_streamer);
             drop(old_assets);
         });
+        #[cfg(target_arch = "wasm32")]
+        {
+            drop(old_streamer);
+            drop(old_assets);
+        }
         self.rebuild_all();
         self.infos.clear();
         self.infos_version += 1;
@@ -65,14 +132,16 @@ impl EditorApp {
         self.texture_handles.clear();
         self.floor_textures = None;
         self.palette = None;
-        self.palette_rx = Some(Self::spawn_palette_loader(dir.clone()));
+        self.start_palette_loader(source.clone());
         self.ready = false;
 
-        let text = dir.to_string_lossy().into_owned();
-        self.prefs.cache_dir = Some(text.clone());
-        self.prefs.recent_caches.retain(|recent| *recent != text);
-        self.prefs.recent_caches.insert(0, text);
-        self.prefs.recent_caches.truncate(RECENT_LIMIT);
+        if matches!(source, CacheSource::Dir(_)) {
+            let text = dir.to_string_lossy().into_owned();
+            self.prefs.cache_dir = Some(text.clone());
+            self.prefs.recent_caches.retain(|recent| *recent != text);
+            self.prefs.recent_caches.insert(0, text);
+            self.prefs.recent_caches.truncate(RECENT_LIMIT);
+        }
         self.cache_dir = dir;
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(
             "RustOSRS: opening cache...".to_owned(),
@@ -86,19 +155,23 @@ impl EditorApp {
         )));
         self.notice = Some((
             format!("Opened cache build {build} ({profile_id})"),
-            std::time::Instant::now(),
+            web_time::Instant::now(),
         ));
         self.cache_build = Some((build, profile_id));
     }
 
-    pub(super) fn spawn_palette_loader(
-        dir: PathBuf,
-    ) -> std::sync::mpsc::Receiver<Result<osrs_world::FloorPalette, osrs_world::WorldError>> {
+    /// Load the floor palette for the drawer: on a thread, or (browser) when the cache is open.
+    pub(super) fn start_palette_loader(&mut self, source: CacheSource) {
         let (sender, receiver) = std::sync::mpsc::channel();
+        self.palette_rx = Some(receiver);
+        #[cfg(not(target_arch = "wasm32"))]
         std::thread::spawn(move || {
-            let _ = sender.send(osrs_world::load_floor_palette(dir));
+            let _ = sender.send(osrs_world::load_floor_palette(source));
         });
-        receiver
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.palette_job = Some((sender, source));
+        }
     }
 
     /// File menu entries: open, and the recent caches.
@@ -159,6 +232,16 @@ impl EditorApp {
                      Pick the folder that contains main_file_cache.dat2.",
                 );
                 ui.add_space(6.0);
+                #[cfg(target_arch = "wasm32")]
+                if let Some(pick) = &self.web_pick
+                    && let crate::platform::web::PickState::Reading(message) = &*pick.borrow()
+                {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(message);
+                    });
+                    return;
+                }
                 ui.colored_label(ui.visuals().warn_fg_color, &error);
                 ui.add_space(8.0);
                 if ui
@@ -202,13 +285,14 @@ impl EditorApp {
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     if ui.link("Get a cache from OpenRS2").clicked() {
-                        let _ = open::that("https://archive.openrs2.org/caches");
+                        let _ = crate::platform::open_url("https://archive.openrs2.org/caches");
                     }
                     ui.weak("(download the \"disk\" zip of a supported build and unzip it)");
                 });
             });
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     /// The cache to start with: the command line, the environment, the last one used, else the default.
     pub fn initial_cache_dir(arg: Option<PathBuf>) -> PathBuf {
         if let Some(dir) = arg {

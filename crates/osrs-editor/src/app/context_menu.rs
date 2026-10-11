@@ -16,7 +16,7 @@ use crate::interact;
 use crate::pick::{self, ObjectPick, Pick};
 use crate::settings::ContextMenuStyle;
 use eframe::egui;
-use std::time::Instant;
+use web_time::Instant;
 
 /// What an editor-menu entry does.
 #[derive(Debug, Clone)]

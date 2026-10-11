@@ -15,7 +15,8 @@ use crate::icons;
 use crate::paint::{SelectMode, TileValues, Tool};
 use crate::settings::{InspectTab, RailTab};
 use eframe::egui::{self, Pos2, Rect, Sense, Stroke, Vec2};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 /// Window width (points) under which labels collapse to icons and the dock narrows.
 pub const COMPACT_WIDTH: f32 = 1100.0;

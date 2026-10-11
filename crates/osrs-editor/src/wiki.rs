@@ -55,7 +55,7 @@ impl WikiPlugin {
     }
 
     fn open(url: &str, cx: &mut PluginContext) {
-        if let Err(error) = open::that(url) {
+        if let Err(error) = crate::platform::open_url(url) {
             cx.send(EditorCommand::Status(format!(
                 "could not open the wiki: {error}"
             )));

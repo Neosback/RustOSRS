@@ -1,12 +1,13 @@
+#![allow(clippy::all, clippy::chunks_exact_to_as_chunks)]
 //! Read-only, low level, virtual file types for the RuneScape file system.
-//! 
+//!
 //! This crate supplies all of the backing types for [rs-cache](https://docs.rs/rs-cache). Many of these
-//! types were private but are now publicly available. rs-cache is a high level api for both the OSRS and RS3 
+//! types were private but are now publicly available. rs-cache is a high level api for both the OSRS and RS3
 //! caches and exposing these low level virtual types didn't make sense, hence this crate.
-//! 
+//!
 //! A word of caution, these types are highly experimental, I have done my best to document and test as
 //! much as I can, but there might still be the weird occasional edge-case. With that said, whenever you find
-//! a bug or missing feature; or even unsoundness don't hesitate to 
+//! a bug or missing feature; or even unsoundness don't hesitate to
 //! [open an issue](https://github.com/jimvdl/rs-cache/issues/new).
 
 #![cfg_attr(docsrs, feature(doc_cfg))]

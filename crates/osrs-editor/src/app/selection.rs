@@ -261,7 +261,7 @@ impl EditorApp {
                 if objects == 1 { "" } else { "s" },
                 if tiles == 1 { "" } else { "s" }
             ),
-            std::time::Instant::now(),
+            web_time::Instant::now(),
         ));
     }
 
