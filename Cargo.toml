@@ -8,6 +8,7 @@ members = [
     "crates/osrs-reference",
     "crates/osrs-world",
     "crates/osrs-editor",
+    "crates/osrs-hd",
 ]
 default-members = [
     "crates/osrs-core",
@@ -17,6 +18,7 @@ default-members = [
     "crates/osrs-reference",
     "crates/osrs-world",
     "crates/osrs-editor",
+    "crates/osrs-hd",
 ]
 
 [workspace.package]

@@ -15,6 +15,7 @@ enum Request {
     Insert((i32, i32), Vec<AnimatedInstance>),
     Remove((i32, i32)),
     SetSmoothing(bool),
+    SetFrozen(bool),
     Rebuild {
         cycles: i32,
         center_tile: (i32, i32),
@@ -54,6 +55,7 @@ impl AnimationWorker {
                         Request::Insert(key, instances) => system.insert_region(key, instances),
                         Request::Remove(key) => system.remove_region(key),
                         Request::SetSmoothing(enabled) => system.set_smoothing(enabled),
+                        Request::SetFrozen(frozen) => system.set_frozen(frozen),
                         Request::Rebuild {
                             cycles,
                             center_tile,
@@ -93,6 +95,12 @@ impl AnimationWorker {
     /// Blend animation frames (Animation Smoothing); forces a rebuild.
     pub fn set_smoothing(&mut self, enabled: bool) {
         let _ = self.requests.send(Request::SetSmoothing(enabled));
+        self.pending_force = true;
+    }
+
+    /// Hold animated objects at their rest pose (or play them); forces a rebuild.
+    pub fn set_frozen(&mut self, frozen: bool) {
+        let _ = self.requests.send(Request::SetFrozen(frozen));
         self.pending_force = true;
     }
 

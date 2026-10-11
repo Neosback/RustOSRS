@@ -14,6 +14,7 @@ use crate::assets::Assets;
 use crate::camera::{CameraMode, FlyCamera};
 use crate::grid::GridPlugin;
 use crate::hud::{Destination, FrameStats, TeleportWindow};
+use crate::interact;
 use crate::keymap::Keymap;
 use crate::pick::{self, Infos, ObjectPick, Pick};
 use crate::plugin::EditorPlugin;
@@ -101,6 +102,10 @@ pub struct EditorApp {
     animations: AnimationWorker,
     /// Whether animation frames are blended (changes the update stride).
     animation_smoothing: bool,
+    /// A short message shown in the status bar (menu choices that need a client).
+    notice: Option<(String, Instant)>,
+    /// Whether the worker currently holds animated objects at their rest pose.
+    animations_frozen: bool,
     animation_cycle: u64,
     animation_center: (i32, i32),
     animation_dirty: bool,
@@ -187,6 +192,8 @@ impl EditorApp {
             streamer,
             animations: AnimationWorker::spawn(),
             animation_smoothing: false,
+            notice: None,
+            animations_frozen: false,
             animation_cycle: 0,
             animation_center: (0, 0),
             animation_dirty: true,
@@ -532,6 +539,12 @@ impl EditorApp {
             self.renderer.upload_region(ANIMATED_KEY, &geometry);
             self.stats.phase("anim-upload", phase);
         }
+        let frozen = !self.prefs.animate_objects;
+        if frozen != self.animations_frozen {
+            self.animations_frozen = frozen;
+            self.animations.set_frozen(frozen);
+            self.animation_dirty = true;
+        }
         if !self.animations.is_idle() {
             return;
         }
@@ -548,7 +561,7 @@ impl EditorApp {
         } else {
             ANIMATION_STRIDE_CYCLES
         };
-        if cycle < self.animation_cycle + stride && !self.animation_dirty && !moved {
+        if (frozen || cycle < self.animation_cycle + stride) && !self.animation_dirty && !moved {
             return;
         }
         let delta = (cycle - self.animation_cycle).min(500) as i32;
@@ -688,6 +701,69 @@ impl EditorApp {
                 egui::Color32::from_rgb(255, 200, 0),
             );
         }
+        // The hovered tile, outlined like RuneLite's tile indicator.
+        if self.prefs.hover_tile
+            && let Some(tile) = &self.hover.tile
+            && let Some(corners) = interact::tile_corners(&self.infos, tile.tile, self.view_plane)
+        {
+            let points: Vec<egui::Pos2> = corners
+                .iter()
+                .filter_map(|corner| {
+                    pick::project(
+                        &self.camera,
+                        self.renderer.render_origin(),
+                        width as f32,
+                        height as f32,
+                        *corner,
+                    )
+                })
+                .map(|p| {
+                    egui::pos2(
+                        rect.min.x + p[0] / pixels_per_point,
+                        rect.min.y + p[1] / pixels_per_point,
+                    )
+                })
+                .collect();
+            if points.len() == 4 {
+                painter.add(egui::Shape::convex_polygon(
+                    points,
+                    egui::Color32::from_rgba_unmultiplied(0, 255, 255, 28),
+                    egui::Stroke::new(1.5, egui::Color32::from_rgb(0, 255, 255)),
+                ));
+            }
+        }
+        // The in-game action text next to the cursor (RuneLite's mouse tooltips).
+        if self.prefs.mouse_tooltips
+            && self.context_menu.is_none()
+            && let Some(pointer) = ui.input(|i| i.pointer.hover_pos())
+            && rect.contains(pointer)
+            && !ui.input(|i| i.pointer.any_down())
+        {
+            let entries = interact::entries(&self.infos, &self.hover);
+            if let Some(top) = entries.first() {
+                // Menu entries plus the always-present Cancel.
+                let extra = interact::more_options(entries.len() + 1);
+                let job = interact::entry_job(top, 13.5, extra.as_deref());
+                let galley = painter.layout_job(job);
+                let size = galley.size() + egui::vec2(12.0, 6.0);
+                let mut at = pointer + egui::vec2(14.0, 18.0);
+                if at.x + size.x > rect.right() {
+                    at.x = pointer.x - size.x - 10.0;
+                }
+                if at.y + size.y > rect.bottom() {
+                    at.y = pointer.y - size.y - 10.0;
+                }
+                let tip = egui::Rect::from_min_size(at, size);
+                painter.rect_filled(tip, 3.0, egui::Color32::from_black_alpha(190));
+                painter.rect_stroke(
+                    tip,
+                    3.0,
+                    egui::Stroke::new(1.0, egui::Color32::from_white_alpha(40)),
+                    egui::StrokeKind::Inside,
+                );
+                painter.galley(at + egui::vec2(6.0, 3.0), galley, egui::Color32::WHITE);
+            }
+        }
         let text = pick::summary(&self.infos, &self.hover);
         if !text.is_empty() {
             painter.text(
@@ -700,27 +776,143 @@ impl EditorApp {
         }
     }
 
-    /// Shift + right click menu: copy diagnostics of the clicked object / tile / surroundings.
-    /// (Plain right drag looks around, so the menu needs the modifier.)
+    /// Shift + right click menu in the game's own style: the entries the client would offer for
+    /// the object / tile (`Open Bank booth`, `Examine ...`, `Walk here`, `Cancel`), then the
+    /// editor's copy actions. (Plain right drag looks around, so the menu needs the modifier.)
     fn context_menu(&mut self, ctx: &egui::Context) {
         let Some(position) = self.context_menu else {
             return;
         };
         let pick = self.context_pick.clone();
+        let entries = interact::entries(&self.infos, &pick);
+        let mut chosen: Option<interact::Effect> = None;
         let mut close = false;
+        let brown = egui::Color32::from_rgb(93, 84, 71);
+        let header = egui::Color32::from_rgb(38, 34, 28);
         let area = egui::Area::new(egui::Id::new("viewport_context_menu"))
             .order(egui::Order::Foreground)
             .fixed_pos(position)
             .show(ctx, |ui| {
-                egui::Frame::menu(ui.style()).show(ui, |ui| {
-                    ui.set_min_width(190.0);
-                    close = self.copy_menu(ui, &pick);
-                });
+                egui::Frame::new()
+                    .fill(brown)
+                    .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK))
+                    .inner_margin(egui::Margin::same(2))
+                    .show(ui, |ui| {
+                        ui.set_width(210.0);
+                        ui.spacing_mut().item_spacing.y = 0.0;
+                        egui::Frame::new()
+                            .fill(header)
+                            .inner_margin(egui::Margin::symmetric(6, 3))
+                            .show(ui, |ui| {
+                                ui.set_min_width(ui.available_width());
+                                ui.label(
+                                    egui::RichText::new("Choose Option")
+                                        .color(egui::Color32::from_rgb(220, 205, 170))
+                                        .size(13.0),
+                                );
+                            });
+                        let line = |ui: &mut egui::Ui, job: egui::text::LayoutJob| -> bool {
+                            let galley = ui.painter().layout_job(job);
+                            let size = egui::vec2(
+                                ui.available_width().max(galley.size().x + 12.0),
+                                galley.size().y + 6.0,
+                            );
+                            let (rect, response) =
+                                ui.allocate_exact_size(size, egui::Sense::click());
+                            if response.hovered() {
+                                ui.painter().rect_filled(
+                                    rect,
+                                    0.0,
+                                    egui::Color32::from_white_alpha(46),
+                                );
+                            }
+                            ui.painter().galley(
+                                rect.min + egui::vec2(6.0, 3.0),
+                                galley,
+                                egui::Color32::WHITE,
+                            );
+                            response.clicked()
+                        };
+                        for entry in &entries {
+                            if line(ui, interact::entry_job(entry, 13.5, None)) {
+                                chosen = Some(entry.effect.clone());
+                                close = true;
+                            }
+                        }
+                        let cancel = interact::Entry {
+                            action: "Cancel".to_owned(),
+                            target: None,
+                            effect: interact::Effect::Cancel,
+                        };
+                        if line(ui, interact::entry_job(&cancel, 13.5, None)) {
+                            close = true;
+                        }
+                        ui.add_space(3.0);
+                        ui.separator();
+                        ui.add_space(2.0);
+                        ui.label(
+                            egui::RichText::new("Editor")
+                                .size(11.5)
+                                .color(egui::Color32::from_rgb(190, 176, 148)),
+                        );
+                        ui.visuals_mut().override_text_color =
+                            Some(egui::Color32::from_rgb(235, 225, 200));
+                        ui.visuals_mut().widgets.inactive.weak_bg_fill =
+                            egui::Color32::from_black_alpha(40);
+                        close |= self.copy_menu(ui, &pick);
+                    });
             });
         let pressed_outside =
             ctx.input(|i| i.pointer.any_pressed()) && !area.response.contains_pointer();
         if close || pressed_outside || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.context_menu = None;
+        }
+        if let Some(effect) = chosen {
+            self.apply_effect(effect);
+        }
+    }
+
+    /// Carry out a chosen menu entry. Game actions are inert until the editor talks to a server;
+    /// walking here moves the camera there.
+    fn apply_effect(&mut self, effect: interact::Effect) {
+        let object_name = |app: &Self, object: &ObjectPick| {
+            app.infos
+                .get(&object.region)
+                .and_then(|info| info.locs.get(object.index))
+                .map(|loc| {
+                    (
+                        loc.definition.name.clone().unwrap_or_default(),
+                        loc.definition.identity.id.get(),
+                    )
+                })
+        };
+        match effect {
+            interact::Effect::Cancel => {}
+            interact::Effect::WalkHere((x, y)) => {
+                let plane = self.view_plane;
+                self.teleport_to(Destination::Tile { x, y, plane });
+            }
+            interact::Effect::Examine(object) => {
+                if let Some((name, id)) = object_name(self, &object) {
+                    self.notice = Some((format!("{name} (object {id})"), Instant::now()));
+                }
+            }
+            interact::Effect::ObjectAction { object, slot } => {
+                if let Some((name, id)) = object_name(self, &object) {
+                    let action = self
+                        .infos
+                        .get(&object.region)
+                        .and_then(|info| info.locs.get(object.index))
+                        .and_then(|loc| loc.definition.actions[slot].clone())
+                        .unwrap_or_default();
+                    self.notice = Some((
+                        format!(
+                            "{action} {name} (object {id}): game actions need a server connection"
+                        ),
+                        Instant::now(),
+                    ));
+                }
+            }
         }
     }
 

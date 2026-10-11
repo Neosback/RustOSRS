@@ -66,6 +66,15 @@ frame ring, compass and globe sprites. Known deviations: the key panel names ico
 shows them (the client reads category names from cs2 enums); transform objects use their zero-varp
 state; the minimap draws no player/NPC dots.
 
+## 3b. Keep a client in mind
+
+The editor is meant to become the base of a real client on its own branch. So features should not paper
+over what a client has: object/NPC/player models and animations, spot animations (GFX), the action menu
+(`interact.rs` already builds the in-game entries and effects from definition data), the minimap and world
+map (exact ports), fonts and sprites from the cache, varbit/varp-driven state (`transform()` objects use
+zero state today and need a var store), and a server connection behind the same `Effect`s. When something is
+approximated for the editor, write the deviation in the module docs so the client branch knows.
+
 ## 4. Web (third option)
 Is the project "good to go for web"? **Mostly yes at the architecture level, not yet in the build.**
 * egui, wgpu 30 and eframe all target WebAssembly (WebGPU, WebGL2 fallback), so the renderer and UI port.

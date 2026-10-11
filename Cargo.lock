@@ -1830,6 +1830,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "osrs-hd"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "osrs-reference"
 version = "0.0.0"
 dependencies = [

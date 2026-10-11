@@ -21,6 +21,36 @@ pub enum PanelTab {
     Tools,
 }
 
+/// Size of the minimap assembly: the game's own sprites at 1x are `Medium`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum MinimapSize {
+    Small,
+    #[default]
+    Medium,
+    Large,
+}
+
+impl MinimapSize {
+    pub const ALL: [Self; 3] = [Self::Small, Self::Medium, Self::Large];
+
+    /// Interface scale applied to every minimap sprite.
+    pub const fn scale(self) -> f32 {
+        match self {
+            Self::Small => 0.75,
+            Self::Medium => 1.0,
+            Self::Large => 1.5,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Small => "Small",
+            Self::Medium => "Medium (normal)",
+            Self::Large => "Large",
+        }
+    }
+}
+
 /// Colourblindness correction mode (RuneLite's GPU plugin option).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ColorblindChoice {
@@ -49,6 +79,9 @@ impl ColorblindChoice {
     }
 }
 
+/// The client's default sky colour (`0xC8B8A8`): fog fades into it and the viewport clears to it.
+pub const DEFAULT_SKY: [f32; 3] = [200.0 / 255.0, 184.0 / 255.0, 168.0 / 255.0];
+
 /// Every persisted editor value, in one place. The running editor reads and writes this struct
 /// directly (the UI binds sliders to its fields), so a value has exactly one home; only state
 /// that lives elsewhere at runtime (camera, keymap, plugins) is copied in and out on save/load.
@@ -61,6 +94,13 @@ pub struct Settings {
     pub stats_overlay: bool,
     /// The minimap assembly (map, compass, globe) in the viewport's corner.
     pub show_minimap: bool,
+    pub minimap_size: MinimapSize,
+    /// Play object animations (off shows every animated object in its rest pose).
+    pub animate_objects: bool,
+    /// The in-game style action text next to the cursor (RuneLite's mouse tooltips).
+    pub mouse_tooltips: bool,
+    /// Outline the tile under the cursor.
+    pub hover_tile: bool,
     pub brightness: f32,
     pub remove_color_banding: bool,
     pub bright_textures: bool,
@@ -90,6 +130,10 @@ impl Default for Settings {
             properties_panel: true,
             stats_overlay: true,
             show_minimap: true,
+            minimap_size: MinimapSize::Medium,
+            animate_objects: true,
+            mouse_tooltips: true,
+            hover_tile: true,
             brightness: 0.8,
             remove_color_banding: true,
             bright_textures: false,
@@ -97,7 +141,7 @@ impl Default for Settings {
             draw_distance_tiles: 50,
             colorblind_mode: ColorblindChoice::None,
             colorblind_intensity: 100.0,
-            sky_color: [0.0, 0.0, 0.0],
+            sky_color: DEFAULT_SKY,
             smooth_terrain: false,
             load_radius: 1,
             fov_degrees: 60.0,
@@ -147,6 +191,10 @@ impl Settings {
     /// Clamp every value to what the UI allows (a hand-edited file can hold anything).
     pub fn sanitized(mut self) -> Self {
         self.appearance = self.appearance.min(crate::theme::ALL.len() - 1);
+        // Pure black was the old default and made fog black; it reads as "unset".
+        if self.sky_color == [0.0, 0.0, 0.0] {
+            self.sky_color = DEFAULT_SKY;
+        }
         self.brightness = self.brightness.clamp(0.5, 1.0);
         self.fog_depth_tiles = self.fog_depth_tiles.min(100);
         self.draw_distance_tiles = self.draw_distance_tiles.clamp(8, 184);

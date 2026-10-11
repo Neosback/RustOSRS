@@ -30,8 +30,6 @@ const COMPASS_AT: (f32, f32) = (5.0, 5.0);
 const GLOBE_AT: (f32, f32) = (3.0, 124.0);
 /// Minimap pixels per tile (the client's default).
 const PX_PER_TILE: f32 = 4.0;
-/// Interface scale of the whole assembly.
-const SCALE: f32 = 1.5;
 
 /// Textures re-uploaded as the camera moves.
 #[derive(Default)]
@@ -53,6 +51,7 @@ impl EditorApp {
         if !self.prefs.show_minimap {
             return;
         }
+        let scale = self.prefs.minimap_size.scale();
         let (Some(frame), Some(map_mask), Some(compass_mask), Some(compass)) = (
             self.assets.sprite_image(ids::FRAME),
             self.assets.sprite_image(ids::MAP_MASK),
@@ -69,9 +68,9 @@ impl EditorApp {
         };
         let ctx = ui.ctx().clone();
         let frame_size =
-            egui::vec2(sprites.frame.width as f32, sprites.frame.height as f32) * SCALE;
+            egui::vec2(sprites.frame.width as f32, sprites.frame.height as f32) * scale;
         let origin = egui::pos2(rect.right() - frame_size.x - 10.0, rect.top() + 10.0);
-        let at = |x: f32, y: f32| origin + egui::vec2(x, y) * SCALE;
+        let at = |x: f32, y: f32| origin + egui::vec2(x, y) * scale;
         let yaw = self.camera.yaw;
         let (camera_x, camera_z) = self.world_position();
         let (tile_x, tile_y) = (camera_x / 128.0, camera_z / 128.0);
@@ -92,12 +91,12 @@ impl EditorApp {
         let map_size = egui::vec2(
             sprites.map_mask.width as f32,
             sprites.map_mask.height as f32,
-        ) * SCALE;
+        ) * scale;
         let map_rect = egui::Rect::from_min_size(at(MAP_AT.0, MAP_AT.1), map_size);
         let painter = ui.painter().with_clip_rect(rect);
         let full_uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
         painter.image(map_texture.id(), map_rect, full_uv, egui::Color32::WHITE);
-        self.draw_minimap_icons(&painter, &regions, map_rect, (tile_x, tile_y), yaw);
+        self.draw_minimap_icons(&painter, &regions, map_rect, (tile_x, tile_y), yaw, scale);
 
         // Frame ring.
         let Some(frame_texture) = self.assets.sprite(ids::FRAME).map(|t| t.id()) else {
@@ -130,7 +129,7 @@ impl EditorApp {
             egui::vec2(
                 sprites.compass_mask.width as f32,
                 sprites.compass_mask.height as f32,
-            ) * SCALE,
+            ) * scale,
         );
         painter.image(
             compass_texture.id(),
@@ -141,7 +140,7 @@ impl EditorApp {
 
         // Globe orb: opens the world map.
         let globe_rect =
-            egui::Rect::from_min_size(at(GLOBE_AT.0, GLOBE_AT.1), egui::vec2(30.0, 30.0) * SCALE);
+            egui::Rect::from_min_size(at(GLOBE_AT.0, GLOBE_AT.1), egui::vec2(30.0, 30.0) * scale);
         let globe = ui.interact(
             globe_rect,
             egui::Id::new("minimap_globe"),
@@ -157,8 +156,8 @@ impl EditorApp {
         }
         if let Some(texture) = self.assets.sprite(planet).map(|t| t.id()) {
             let inner = egui::Rect::from_min_size(
-                globe_rect.min + egui::vec2(4.0, 4.0) * SCALE,
-                egui::vec2(22.0, 22.0) * SCALE,
+                globe_rect.min + egui::vec2(4.0, 4.0) * scale,
+                egui::vec2(22.0, 22.0) * scale,
             );
             painter.image(texture, inner, full_uv, egui::Color32::WHITE);
         }
@@ -180,8 +179,8 @@ impl EditorApp {
         if let Some(pointer) = map_response.hover_pos() {
             let centre = map_rect.center();
             let (dx, dy) = (
-                (pointer.x - centre.x) / SCALE,
-                (pointer.y - centre.y) / SCALE,
+                (pointer.x - centre.x) / scale,
+                (pointer.y - centre.y) / scale,
             );
             if dx * dx + dy * dy <= 75.0 * 75.0 {
                 let (tx, ty) = screen_to_tile(dx, dy, (tile_x, tile_y), yaw);
@@ -240,6 +239,7 @@ impl EditorApp {
         map_rect: egui::Rect,
         camera: (f64, f64),
         yaw: f32,
+        scale: f32,
     ) {
         let Some(catalog) = self.assets.catalog.clone() else {
             return;
@@ -268,10 +268,10 @@ impl EditorApp {
                 let Some(texture) = self.assets.sprite(element.sprite as u32) else {
                     continue;
                 };
-                let size = texture.size_vec2() * SCALE;
+                let size = texture.size_vec2() * scale;
                 painter.image(
                     texture.id(),
-                    egui::Rect::from_center_size(centre + egui::vec2(dx, dy) * SCALE, size),
+                    egui::Rect::from_center_size(centre + egui::vec2(dx, dy) * scale, size),
                     egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                     egui::Color32::WHITE,
                 );

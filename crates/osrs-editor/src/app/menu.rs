@@ -38,6 +38,10 @@ impl EditorApp {
                     ui.checkbox(&mut self.prefs.dock_right, "Dock side panel on the right");
                     ui.checkbox(&mut self.prefs.stats_overlay, "Statistics overlay");
                     ui.checkbox(&mut self.prefs.show_minimap, "Minimap");
+                    ui.menu_button("Minimap size", |ui| self.minimap_size_picker(ui));
+                    ui.checkbox(&mut self.prefs.mouse_tooltips, "Mouse tooltips");
+                    ui.checkbox(&mut self.prefs.hover_tile, "Highlight hovered tile");
+                    ui.checkbox(&mut self.prefs.animate_objects, "Animate objects");
                     ui.menu_button("Camera", |ui| self.camera_mode_picker(ui));
                     self.run_plugins(|plugin, cx| {
                         if plugin.has_menu() {
@@ -70,6 +74,23 @@ impl EditorApp {
                 });
             });
         });
+    }
+
+    /// Minimap size choices (View menu and the View tab).
+    pub(super) fn minimap_size_picker(&mut self, ui: &mut egui::Ui) {
+        for size in crate::settings::MinimapSize::ALL {
+            ui.radio_value(&mut self.prefs.minimap_size, size, size.label());
+        }
+    }
+
+    pub(super) fn minimap_size_picker_inline(&mut self, ui: &mut egui::Ui) {
+        for size in crate::settings::MinimapSize::ALL {
+            ui.selectable_value(
+                &mut self.prefs.minimap_size,
+                size,
+                size.label().split(' ').next().unwrap_or(""),
+            );
+        }
     }
 
     /// Fly / orbit camera choice.

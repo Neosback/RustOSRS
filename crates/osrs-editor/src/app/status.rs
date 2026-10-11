@@ -10,6 +10,14 @@ impl EditorApp {
     pub(super) fn status_bar(&mut self, ui: &mut egui::Ui) {
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
+                if let Some((message, shown)) = &self.notice
+                    && shown.elapsed().as_secs_f32() < 6.0
+                {
+                    ui.label(message.as_str());
+                    ui.separator();
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_millis(500));
+                }
                 ui.weak(match self.camera.mode {
                     crate::camera::CameraMode::Fly => FLY_HINT,
                     crate::camera::CameraMode::Orbit => ORBIT_HINT,

@@ -125,7 +125,7 @@ fn terrain_hit(infos: &Infos, ray: &Ray, plane: usize) -> Option<f64> {
 }
 
 /// An object under the cursor.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ObjectPick {
     pub region: (i32, i32),
     pub index: usize,

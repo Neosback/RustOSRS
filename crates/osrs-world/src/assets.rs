@@ -131,7 +131,27 @@ impl AssetWorker {
                 };
                 let _ = event_tx.send(AssetEvent::WorldMapCatalog(Arc::clone(&catalog)));
                 let mut renderer = RegionRenderer::new();
-                while let Ok(request) = request_rx.recv() {
+                // Small jobs (sprites, icon lists, overview, minimap) go before region images, so
+                // the key and icons do not wait behind hundreds of queued regions.
+                let mut pending: std::collections::VecDeque<Request> =
+                    std::collections::VecDeque::new();
+                loop {
+                    if pending.is_empty() {
+                        match request_rx.recv() {
+                            Ok(request) => pending.push_back(request),
+                            Err(_) => break,
+                        }
+                    }
+                    while let Ok(request) = request_rx.try_recv() {
+                        pending.push_back(request);
+                    }
+                    let next = pending
+                        .iter()
+                        .position(|request| !matches!(request, Request::Region { .. }))
+                        .unwrap_or(0);
+                    let Some(request) = pending.remove(next) else {
+                        continue;
+                    };
                     let event = match request {
                         Request::Shutdown => break,
                         Request::Sprite(id) => Some(match load_sprite(&definitions, id) {

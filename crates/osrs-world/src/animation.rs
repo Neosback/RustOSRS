@@ -105,6 +105,8 @@ pub struct AnimationSystem {
     regions: HashMap<(i32, i32), Vec<Live>>,
     /// Blend each frame toward the next (RuneLite's Animation Smoothing plugin).
     smoothing: bool,
+    /// Hold every instance at its rest pose (object animations switched off).
+    frozen: bool,
 }
 
 /// Sequences the Animation Smoothing plugin leaves alone (`isAnimationInterpolatable` returns
@@ -117,6 +119,17 @@ const NOT_SMOOTHED: [u32; 23] = [
 impl AnimationSystem {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Freeze or release playback. Freezing shows every instance at its first frame.
+    pub fn set_frozen(&mut self, frozen: bool) {
+        self.frozen = frozen;
+        if frozen {
+            for live in self.regions.values_mut().flatten() {
+                live.state = SequencePlaybackState::starting_at(0, 0);
+                live.frame = Some(0);
+            }
+        }
     }
 
     /// Turn frame blending on or off.
@@ -174,7 +187,7 @@ impl AnimationSystem {
     /// Advance every instance by `cycles` game cycles (20 ms each). Returns whether any
     /// instance's displayed frame changed.
     pub fn advance(&mut self, cycles: i32) -> bool {
-        if cycles <= 0 {
+        if cycles <= 0 || self.frozen {
             return false;
         }
         let mut changed = false;

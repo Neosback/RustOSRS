@@ -89,6 +89,17 @@ tone map / colour filter / AA resolve -> overlays (egui).
 * **Parity**: HD is a stylised look, not a parity target. Correctness checks are unit tests on the
   data layer plus screenshot comparisons against RuneLite with 117HD at fixed camera positions.
 
+## 5b. Status (2026-10-11)
+
+* Done: upstream resources vendored verbatim in `assets/117hd/` (68 shaders, scene JSON, 194 textures,
+  schemas, settings guide; notices in `THIRD_PARTY.md`). Phase 1 data layer: `crates/osrs-hd` loads and
+  cross-checks materials, ground materials, tile/model overrides, areas (names, boxes, regions, nested
+  areas), environments, water types, sky presets, lights and the gameval tables (tests in
+  `crates/osrs-hd/tests`). `DIRT` and `UNDERWATER_GENERIC` ground materials are defined in the plugin's code
+  and must be added when `GroundMaterial` is ported.
+* Next: phase 0 (render profile switch, HDR target, frame graph), then phase 2 (vertex format with normals
+  and material ids, `ProceduralGenerator`), then 3-8 as listed above.
+
 ## 6. First concrete steps
 
 1. Copy `resources/rs117/hd/scene/*.json` (without textures) into `assets/117hd/` and write the serde

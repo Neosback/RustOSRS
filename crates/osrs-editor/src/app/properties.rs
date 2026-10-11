@@ -82,6 +82,15 @@ impl EditorApp {
     }
 
     fn view_section(&mut self, ui: &mut egui::Ui) {
+        ui.checkbox(&mut self.prefs.show_minimap, "Minimap");
+        ui.horizontal(|ui| {
+            ui.label("Minimap size");
+            self.minimap_size_picker_inline(ui);
+        });
+        ui.checkbox(&mut self.prefs.mouse_tooltips, "Mouse tooltips");
+        ui.checkbox(&mut self.prefs.hover_tile, "Highlight hovered tile");
+        ui.checkbox(&mut self.prefs.animate_objects, "Animate objects");
+        ui.add_space(4.0);
         egui::Grid::new("view_grid")
             .num_columns(2)
             .spacing([8.0, 6.0])
