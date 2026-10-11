@@ -9,6 +9,7 @@ use crate::camera::FlyCamera;
 use crate::grid::{self, GridSettings};
 use crate::hud::{Destination, FrameStats, TeleportWindow};
 use crate::pick::{self, Infos, ObjectPick, Pick};
+use crate::settings::{self, Settings};
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_core::coords::RegionCoord;
 use osrs_render::gpu::{
@@ -85,6 +86,10 @@ pub struct EditorApp {
     colorblind: Colorblind,
     panels: Panels,
     grid: GridSettings,
+    /// Where settings persist (`None` disables saving).
+    settings_path: Option<PathBuf>,
+    saved_settings: Settings,
+    settings_checked: Instant,
     /// Inputs the grid lines were last built for (see `update_grid`).
     grid_key: Option<GridKey>,
     /// Bumped whenever `infos` changes.
@@ -155,7 +160,7 @@ impl EditorApp {
         let streamer = RegionStreamer::spawn(cache_dir, Self::presentation(false));
         streamer.set_presentation(Self::presentation(false), 1);
 
-        Ok(Self {
+        let mut app = Self {
             render_state,
             renderer,
             camera,
@@ -169,6 +174,9 @@ impl EditorApp {
                 mode: ColorblindMode::None,
                 intensity: 100.0,
             },
+            settings_path: None,
+            saved_settings: Settings::default(),
+            settings_checked: Instant::now(),
             grid: std::env::var("RUSTOSRS_GRID").map_or_else(
                 |_| GridSettings::default(),
                 |value| GridSettings {
@@ -225,7 +233,104 @@ impl EditorApp {
             frames: 0,
             peak_resident: 0,
             started: Instant::now(),
-        })
+        };
+        app.init_settings(&cc.egui_ctx);
+        Ok(app)
+    }
+
+    /// Load persisted settings (skipped in smoke runs unless `RUSTOSRS_SETTINGS` is set).
+    fn init_settings(&mut self, ctx: &egui::Context) {
+        let smoke =
+            self.exit_after_seconds.is_some() && std::env::var("RUSTOSRS_SETTINGS").is_err();
+        if smoke {
+            return;
+        }
+        self.settings_path = settings::path();
+        let Some(path) = self.settings_path.clone() else {
+            return;
+        };
+        let loaded = Settings::load(&path);
+        let grid_override = std::env::var("RUSTOSRS_GRID").is_ok().then_some(self.grid);
+        self.apply_settings(&loaded, ctx);
+        if let Some(grid) = grid_override {
+            self.grid = grid;
+        }
+        self.saved_settings = self.settings_snapshot();
+    }
+
+    fn settings_snapshot(&self) -> Settings {
+        Settings {
+            theme: self.theme_index,
+            properties_panel: self.panels.properties,
+            stats_overlay: self.panels.stats_overlay,
+            brightness: self.brightness,
+            remove_color_banding: self.remove_color_banding,
+            bright_textures: self.bright_textures,
+            fog_depth_tiles: self.fog.depth_tiles,
+            draw_distance_tiles: self.fog.draw_distance_tiles,
+            colorblind_mode: self.colorblind.mode as u8,
+            colorblind_intensity: self.colorblind.intensity,
+            sky_color: self.sky_color,
+            smooth_terrain: self.smooth_terrain,
+            grid_tiles: self.grid.tiles,
+            grid_zones: self.grid.zones,
+            grid_regions: self.grid.regions,
+            load_radius: self.stream_radius,
+            fov_degrees: self.camera.fov_degrees,
+            fly_speed: self.camera.speed,
+            plugins: self.saved_settings.plugins.clone(),
+        }
+    }
+
+    fn apply_settings(&mut self, settings: &Settings, ctx: &egui::Context) {
+        self.theme_index = settings.theme.min(crate::theme::ALL.len() - 1);
+        crate::theme::set_theme(ctx, crate::theme::ALL[self.theme_index]);
+        self.panels.properties = settings.properties_panel;
+        self.panels.stats_overlay = settings.stats_overlay;
+        self.brightness = settings.brightness.clamp(0.5, 1.0);
+        self.remove_color_banding = settings.remove_color_banding;
+        self.bright_textures = settings.bright_textures;
+        self.fog.depth_tiles = settings.fog_depth_tiles.min(100);
+        self.fog.draw_distance_tiles = settings.draw_distance_tiles.clamp(8, 184);
+        self.colorblind.mode = match settings.colorblind_mode {
+            1 => ColorblindMode::Protanope,
+            2 => ColorblindMode::Deuteranope,
+            3 => ColorblindMode::Tritanope,
+            _ => ColorblindMode::None,
+        };
+        self.colorblind.intensity = settings.colorblind_intensity.clamp(0.0, 100.0);
+        self.sky_color = settings.sky_color;
+        self.grid = GridSettings {
+            tiles: settings.grid_tiles,
+            zones: settings.grid_zones,
+            regions: settings.grid_regions,
+        };
+        self.stream_radius = settings.load_radius.clamp(0, 4);
+        self.camera.fov_degrees = settings.fov_degrees.clamp(30.0, 100.0);
+        self.camera.speed = settings.fly_speed.clamp(50.0, 20_000.0);
+        if settings.smooth_terrain != self.smooth_terrain {
+            self.smooth_terrain = settings.smooth_terrain;
+            self.streamer.set_presentation(
+                Self::presentation(self.smooth_terrain),
+                self.presentation_generation,
+            );
+        }
+        self.saved_settings.plugins = settings.plugins.clone();
+    }
+
+    /// Save the settings when they changed (checked once a second).
+    fn autosave_settings(&mut self) {
+        let Some(path) = self.settings_path.clone() else {
+            return;
+        };
+        if self.settings_checked.elapsed().as_secs_f32() < 1.0 {
+            return;
+        }
+        self.settings_checked = Instant::now();
+        let snapshot = self.settings_snapshot();
+        if snapshot != self.saved_settings && snapshot.save(&path).is_ok() {
+            self.saved_settings = snapshot;
+        }
     }
 
     fn presentation(smooth_terrain: bool) -> TerrainPresentation {
@@ -772,6 +877,12 @@ impl EditorApp {
 }
 
 impl eframe::App for EditorApp {
+    fn on_exit(&mut self) {
+        if let Some(path) = &self.settings_path {
+            let _ = self.settings_snapshot().save(path);
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let frame_started = self.stats.begin_frame();
@@ -874,6 +985,7 @@ impl eframe::App for EditorApp {
         if let Some(destination) = self.teleport.show(&ctx) {
             self.teleport_to(destination);
         }
+        self.autosave_settings();
         self.stats.end_frame(frame_started);
         self.frames += 1;
         if let Some(limit) = self.exit_after_seconds

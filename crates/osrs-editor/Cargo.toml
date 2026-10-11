@@ -14,6 +14,8 @@ osrs-world = { path = "../osrs-world" }
 eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland"] }
 wgpu.workspace = true
 memory-stats = "1.2.0"
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0.152"
 
 [lints]
 workspace = true

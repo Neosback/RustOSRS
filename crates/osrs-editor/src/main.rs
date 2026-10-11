@@ -11,6 +11,7 @@ mod camera;
 mod grid;
 mod hud;
 mod pick;
+mod settings;
 mod theme;
 
 use std::path::PathBuf;
