@@ -9,6 +9,13 @@ fn assets_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/117hd")
 }
 
+fn load_data() -> HdData {
+    match HdData::load(assets_dir()) {
+        Ok(data) => data,
+        Err(error) => panic!("failed to load checked-in 117HD data: {error}"),
+    }
+}
+
 fn build_overrides(data: &HdData) -> (Areas, TileOverrides) {
     let materials = MaterialSet::default();
     let grounds = GroundMaterials::new(data, &materials);
@@ -23,7 +30,7 @@ fn build_overrides(data: &HdData) -> (Areas, TileOverrides) {
 
 #[test]
 fn toa_loot_chest_platform_keeps_the_first_nested_area_override() {
-    let data = HdData::load(assets_dir()).expect("load checked-in 117HD data");
+    let data = load_data();
     let (areas, overrides) = build_overrides(&data);
 
     // The vendored RLHD data defines TOA_LOOT_ROOM_CHEST_PLATFORM as
