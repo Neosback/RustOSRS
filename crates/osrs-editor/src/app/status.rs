@@ -73,6 +73,10 @@ impl EditorApp {
                         self.stats
                             .memory_text(self.renderer.resident_vertex_bytes()),
                     );
+                    if let Some((build, _)) = &self.cache_build {
+                        ui.separator();
+                        ui.label(egui::RichText::new(format!("build {build}")).strong());
+                    }
                 });
             });
         });

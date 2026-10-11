@@ -4,7 +4,7 @@ use osrs_cache::{
     decode::{DecodeError, DecoderContextError},
     object_model::ObjectModelResolveError,
     profile::TargetProfileError,
-    transport::{CacheError, CacheRepositoryOpenError},
+    transport::{CacheError, CacheRepositoryOpenError, OpenMatchingError},
 };
 use osrs_scene::{
     SceneGridError, terrain_build::TerrainColorError, terrain_load::TerrainLoadError,
@@ -16,6 +16,7 @@ use std::{error::Error, fmt};
 pub enum WorldError {
     Profile(TargetProfileError),
     Open(CacheRepositoryOpenError),
+    OpenMatching(OpenMatchingError),
     Context(DecoderContextError),
     Cache(CacheError),
     Decode(DecodeError),
@@ -33,6 +34,7 @@ impl fmt::Display for WorldError {
         match self {
             Self::Profile(error) => write!(formatter, "target profile: {error}"),
             Self::Open(error) => write!(formatter, "opening cache: {error}"),
+            Self::OpenMatching(error) => write!(formatter, "opening cache: {error}"),
             Self::Context(error) => write!(formatter, "decoder context: {error}"),
             Self::Cache(error) => write!(formatter, "cache read: {error}"),
             Self::Decode(error) => write!(formatter, "decode: {error:?}"),
@@ -62,6 +64,7 @@ macro_rules! impl_from {
 impl_from!(
     Profile(TargetProfileError),
     Open(CacheRepositoryOpenError),
+    OpenMatching(OpenMatchingError),
     Context(DecoderContextError),
     Cache(CacheError),
     Decode(DecodeError),

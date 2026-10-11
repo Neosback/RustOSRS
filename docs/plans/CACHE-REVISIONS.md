@@ -98,3 +98,19 @@ verified fingerprint, and we cannot find out whether 240 -> 241 changed any layo
 
 Order: (1) `cache add` tool + 240 profile, (2) gamevals decode, (3) derived-data keys, then the map writer with
 WORKSPACE-V2 step 8.
+
+## 6. Status (2026-10-11): 240 and 241 both supported, opened by fingerprint
+
+* `osrs_cache::registry` bundles one profile per supported build; `CacheRepository::open_matching` fingerprints a
+  folder and opens it under the matching profile (an unknown cache is reported, not guessed). The editor, the
+  floor palette and the asset workers go through it; nothing hard-codes 241 any more.
+* `make_profile` (example) writes a profile from a downloaded cache; `cache_diff` compares two caches per
+  index. Build 240 (OpenRS2 cache 2720, 2026-09-23) was downloaded, profiled
+  (`profiles/osrs-live-240-2026-09-23-openrs2-2720.yaml`, 117 560 groups) and tested: Lumbridge renders
+  byte-identically to 241, the Reference and HD pixel goldens, all world and render tests pass on it, and the
+  floor census (2 936 map squares, 476 overlays, 221 underlays) matches.
+* 240 -> 241 differs by 148 groups of 117 560 (configs 9, sprites 17, clientscripts 97, sound effects 14,
+  models 3, gamevals 5, interfaces 1, binary 3): no map, texture, model-layout or definition-layout change, as the
+  OpenRune server's revision gates predicted.
+* The editor has File > Open cache folder... (system dialog), a recent list, remembers the last cache, and shows
+  a first-run card (with the supported builds and a link to OpenRS2) when no cache can be opened.

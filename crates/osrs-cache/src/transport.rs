@@ -277,6 +277,78 @@ impl std::error::Error for CacheRepositoryOpenError {
     }
 }
 
+/// What can be learned about a cache directory without a profile (used to write one).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheProbe {
+    pub fingerprint: String,
+    /// Content index ids present (the reference index 255 excluded).
+    pub content_indices: Vec<u8>,
+    /// Groups across all content indices.
+    pub groups_total: usize,
+}
+
+impl CacheProbe {
+    /// Open and fingerprint `path` with the default limits.
+    pub fn of(path: impl AsRef<Path>) -> Result<Self, String> {
+        let limits = CacheReadLimits::default();
+        let path = path.as_ref();
+        catch_unwind(AssertUnwindSafe(|| {
+            let transport = CacheTransport::open(path).map_err(|e| format!("{e:?}"))?;
+            let fingerprint = transport
+                .fingerprint_v1(limits.max_encoded_group_bytes)
+                .map_err(|e| format!("{e:?}"))?;
+            let content_indices = transport.content_index_ids();
+            let mut groups_total = 0;
+            for index in &content_indices {
+                groups_total += transport
+                    .group_ids(*index)
+                    .map_err(|e| format!("{e:?}"))?
+                    .len();
+            }
+            Ok(Self {
+                fingerprint: fingerprint.to_hex(),
+                content_indices,
+                groups_total,
+            })
+        }))
+        .unwrap_or_else(|_| Err("the cache reader panicked on this directory".to_owned()))
+    }
+}
+
+/// Why a cache directory could not be opened by fingerprint.
+#[derive(Debug)]
+pub enum OpenMatchingError {
+    /// The directory is not a readable OSRS cache (missing files, corrupt tables).
+    Unreadable(String),
+    /// A readable cache that no bundled profile describes (another build).
+    UnknownCache {
+        fingerprint: String,
+        content_indices: Vec<u8>,
+        known: Vec<String>,
+    },
+    /// The matching profile is invalid.
+    Target(DecoderContextError),
+}
+
+impl fmt::Display for OpenMatchingError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unreadable(detail) => write!(formatter, "not a readable OSRS cache: {detail}"),
+            Self::UnknownCache {
+                fingerprint, known, ..
+            } => write!(
+                formatter,
+                "this cache (fingerprint {}...) is not one of the supported builds ({})",
+                &fingerprint[..12.min(fingerprint.len())],
+                known.join(", ")
+            ),
+            Self::Target(error) => write!(formatter, "invalid target profile: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for OpenMatchingError {}
+
 /// Verified target cache repository. Construction validates the target profile,
 /// opens the private transport, and proves the complete cache fingerprint before
 /// semantic decoding is allowed.
@@ -325,6 +397,52 @@ impl CacheRepository {
             limits,
             fingerprint,
         })
+    }
+
+    /// Open a cache directory without knowing its build: fingerprint it, and open it under the
+    /// bundled profile whose fingerprint matches. An unknown cache is reported with what could be
+    /// learned about it, so the caller can say which build to add a profile for.
+    pub fn open_matching(
+        path: impl AsRef<Path>,
+        profiles: &[TargetProfile],
+    ) -> Result<(Self, TargetProfile), OpenMatchingError> {
+        let limits = CacheReadLimits::default();
+        let path = path.as_ref();
+        let probed = catch_unwind(AssertUnwindSafe(|| {
+            let transport = CacheTransport::open(path)?;
+            let fingerprint = transport.fingerprint_v1(limits.max_encoded_group_bytes)?;
+            Ok::<_, TransportError>((transport, fingerprint))
+        }));
+        let (transport, fingerprint) = match probed {
+            Ok(Ok(opened)) => opened,
+            Ok(Err(error)) => return Err(OpenMatchingError::Unreadable(format!("{error:?}"))),
+            Err(_) => {
+                return Err(OpenMatchingError::Unreadable(
+                    "the cache reader panicked on this directory".to_owned(),
+                ));
+            }
+        };
+        let actual = fingerprint.to_hex();
+        let Some(profile) = profiles
+            .iter()
+            .find(|profile| profile.cache_fingerprint.value.as_deref() == Some(actual.as_str()))
+        else {
+            return Err(OpenMatchingError::UnknownCache {
+                fingerprint: actual,
+                content_indices: transport.content_index_ids(),
+                known: profiles.iter().map(|p| p.id.clone()).collect(),
+            });
+        };
+        let context = DecoderContext::from_profile(profile).map_err(OpenMatchingError::Target)?;
+        Ok((
+            Self {
+                transport,
+                context,
+                limits,
+                fingerprint,
+            },
+            profile.clone(),
+        ))
     }
 
     pub const fn context(&self) -> &DecoderContext {

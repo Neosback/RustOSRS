@@ -10,7 +10,6 @@ use osrs_cache::{
         DecoderContext, decode_floor_overlay, decode_floor_underlay, decode_terrain,
         decode_texture_definition,
     },
-    profile::TargetProfile,
     transport::CacheRepository,
 };
 use osrs_core::{
@@ -20,8 +19,6 @@ use osrs_core::{
 };
 use std::path::Path;
 
-const PROFILE_YAML: &str =
-    include_str!("../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
 const CONFIG_INDEX: u8 = 2;
 const UNDERLAY_GROUP: u32 = 1;
 const OVERLAY_GROUP: u32 = 4;
@@ -63,8 +60,8 @@ fn split_rgb(rgb: i32) -> [u8; 3] {
 
 /// Read the palette from the pinned cache at `cache_dir`.
 pub fn load_floor_palette(cache_dir: impl AsRef<Path>) -> Result<FloorPalette, WorldError> {
-    let profile = TargetProfile::from_yaml_str(PROFILE_YAML)?;
-    let cache = CacheRepository::open(cache_dir, &profile)?;
+    let profiles = osrs_cache::registry::bundled_profiles()?;
+    let (cache, profile) = CacheRepository::open_matching(cache_dir, &profiles)?;
     let context = DecoderContext::from_profile(&profile)?;
     let colors = build_color_palette(0.8);
 

@@ -126,8 +126,16 @@ mod tests {
 
     #[test]
     fn table_is_sorted_and_starts_below_the_supported_range() {
-        assert!(FORMAT_CHANGES.windows(2).all(|w| w[0].since_build < w[1].since_build));
-        assert!(FORMAT_CHANGES.iter().all(|c| c.since_build <= MIN_SUPPORTED_BUILD + 1));
+        assert!(
+            FORMAT_CHANGES
+                .windows(2)
+                .all(|w| w[0].since_build < w[1].since_build)
+        );
+        assert!(
+            FORMAT_CHANGES
+                .iter()
+                .all(|c| c.since_build <= MIN_SUPPORTED_BUILD + 1)
+        );
     }
 
     #[test]

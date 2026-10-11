@@ -243,6 +243,9 @@ pub struct Settings {
     /// The floating picker rail's position (top-left, in points from the window) and collapse state.
     pub picker_pos: [f32; 2],
     pub picker_collapsed: bool,
+    /// The cache folder last opened, and the recent ones (newest first).
+    pub cache_dir: Option<String>,
+    pub recent_caches: Vec<String>,
     pub spline: crate::paint::SplineSettings,
     pub height_tool: crate::heights::HeightTool,
     pub palette_filter: crate::paint::PaletteFilter,
@@ -301,6 +304,8 @@ impl Default for Settings {
             select_mode: crate::paint::SelectMode::default(),
             picker_pos: [10.0, 12.0],
             picker_collapsed: false,
+            cache_dir: None,
+            recent_caches: Vec::new(),
             spline: crate::paint::SplineSettings::default(),
             height_tool: crate::heights::HeightTool::default(),
             palette_filter: crate::paint::PaletteFilter::default(),

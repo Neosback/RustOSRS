@@ -1,5 +1,6 @@
 //! The eframe application: scene loading, the wgpu viewport, and fly-camera input.
 
+mod cache_picker;
 mod context_menu;
 mod drawer;
 mod editing;
@@ -165,6 +166,10 @@ pub struct EditorApp {
     stroke: Option<editing::Stroke>,
     /// Regions waiting for a rebuild after an edit.
     dirty_regions: HashSet<(i32, i32)>,
+    /// The cache folder in use, the build and profile it matched, and why it could not be opened.
+    cache_dir: PathBuf,
+    cache_build: Option<(u32, String)>,
+    cache_error: Option<String>,
     /// Where the quick tools HUD (Space) is open.
     quick_open: Option<egui::Pos2>,
     /// The last tile the cursor was over (the Tile tab keeps showing it after the cursor leaves).
@@ -221,6 +226,7 @@ impl EditorApp {
         );
         let asset_cache_dir = cache_dir.clone();
         let palette_dir = cache_dir.clone();
+        let initial_dir = cache_dir.clone();
         let streamer = RegionStreamer::spawn(cache_dir, Self::presentation(false, false));
         streamer.set_presentation(Self::presentation(false, false), 1);
 
@@ -286,19 +292,17 @@ impl EditorApp {
             stats: FrameStats::new(),
             teleport: TeleportWindow::new(),
             palette: None,
-            palette_rx: {
-                let (sender, receiver) = std::sync::mpsc::channel();
-                std::thread::spawn(move || {
-                    let _ = sender.send(osrs_world::load_floor_palette(palette_dir));
-                });
-                Some(receiver)
-            },
+            palette_rx: Some(Self::spawn_palette_loader(palette_dir)),
             // Smoke-test hook: open the quick tools HUD at start (`RUSTOSRS_QUICK=1`).
             edited: HashMap::new(),
             history: Vec::new(),
             redo_stack: Vec::new(),
             stroke: None,
             dirty_regions: HashSet::new(),
+            cache_error: (!cache_picker::looks_like_cache(&initial_dir))
+                .then(|| format!("No cache found at {}.", initial_dir.display())),
+            cache_dir: initial_dir,
+            cache_build: None,
             quick_open: std::env::var_os("RUSTOSRS_QUICK").map(|_| egui::pos2(520.0, 300.0)),
             last_hover_tile: None,
             smoke_lay_at: std::env::var("RUSTOSRS_LAY_AT")
@@ -576,7 +580,7 @@ impl EditorApp {
     }
 
     /// Apply finished builds, then request and unload regions around the camera.
-    fn stream(&mut self) {
+    fn stream(&mut self, ctx: &egui::Context) {
         // The HD profile needs geometry with the HD vertex stream: rebuild when it is switched.
         if (self.prefs.render_profile == ProfileChoice::Hd) != self.presentation_hd {
             self.rebuild_all();
@@ -592,7 +596,12 @@ impl EditorApp {
                 StreamEvent::HdFailed(error) => {
                     self.status = Some(format!("117 HD data failed to load: {error}"));
                 }
-                StreamEvent::Ready { textures } => {
+                StreamEvent::Ready {
+                    textures,
+                    profile_id,
+                    build,
+                } => {
+                    self.cache_opened(ctx, profile_id, build);
                     self.renderer.set_textures(&textures);
                     self.floor_textures = Some(textures);
                     self.ready = true;
@@ -634,7 +643,12 @@ impl EditorApp {
                     self.status = Some(format!("region {},{} failed: {error}", region.x, region.y));
                 }
                 StreamEvent::InitFailed(error) => {
-                    self.status = Some(format!("cache failed to open: {error}"));
+                    // The card explains it; the status bar stays quiet.
+                    self.cache_error = Some(if error.contains("No such file") {
+                        "The cache files could not be read. Is this the folder that holds main_file_cache.dat2?".to_owned()
+                    } else {
+                        error
+                    });
                 }
             }
         }
@@ -1289,7 +1303,7 @@ impl eframe::App for EditorApp {
         }
         self.rebase_if_needed();
         let phase = Instant::now();
-        self.stream();
+        self.stream(&ctx);
         self.stats.phase("stream", phase);
         let phase = Instant::now();
         self.update_animations();
@@ -1394,6 +1408,7 @@ impl eframe::App for EditorApp {
                 self.context_menu(&ctx);
             });
         self.quick_tools_hud(&ctx);
+        self.cache_welcome(&ctx);
 
         self.settings_window(&ctx);
         self.assets.poll(&ctx);

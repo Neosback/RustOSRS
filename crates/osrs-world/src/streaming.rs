@@ -237,6 +237,9 @@ pub enum StreamEvent {
     /// The cache is open; textures are ready to upload.
     Ready {
         textures: Vec<Option<TextureLayer>>,
+        /// The matched profile id and its build.
+        profile_id: String,
+        build: u32,
     },
     Region(Box<RegionGeometry>),
     /// The HD profile's material table and textures, decoded (sent once, before the first HD
@@ -292,6 +295,8 @@ impl RegionStreamer {
                 };
                 let _ = event_tx.send(StreamEvent::Ready {
                     textures: texture_layers(definitions.textures()),
+                    profile_id: definitions.profile_id().to_owned(),
+                    build: definitions.build(),
                 });
                 let mut presentation = presentation;
                 let mut generation = 0_u32;

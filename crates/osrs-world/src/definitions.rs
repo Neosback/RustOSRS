@@ -10,7 +10,6 @@ use osrs_cache::{
     },
     model_repository::ModelSourceRepository,
     object_model::resolve_object_model,
-    profile::TargetProfile,
     transport::{CacheErrorKind, CacheFile, CacheRepository},
 };
 use osrs_core::{
@@ -27,8 +26,6 @@ use osrs_scene::{
 };
 use std::{collections::HashMap, path::Path, sync::Arc};
 
-const PROFILE_YAML: &str =
-    include_str!("../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
 const CONFIG_INDEX: u8 = 2;
 const UNDERLAY_GROUP: u32 = 1;
 const OVERLAY_GROUP: u32 = 4;
@@ -116,6 +113,8 @@ pub struct RegionMap {
 pub struct WorldDefinitions {
     models: ModelSourceRepository,
     context: DecoderContext,
+    profile_id: String,
+    build: u32,
     floors: FloorTable,
     textures: TextureTable,
     object_files: HashMap<u32, CacheFile>,
@@ -131,8 +130,8 @@ pub struct WorldDefinitions {
 impl WorldDefinitions {
     /// Open the pinned cache at `cache_dir` and load the floor and texture tables.
     pub fn open(cache_dir: impl AsRef<Path>) -> Result<Self, WorldError> {
-        let profile = TargetProfile::from_yaml_str(PROFILE_YAML)?;
-        let cache = CacheRepository::open(cache_dir, &profile)?;
+        let profiles = osrs_cache::registry::bundled_profiles()?;
+        let (cache, profile) = CacheRepository::open_matching(cache_dir, &profiles)?;
         let context = DecoderContext::from_profile(&profile)?;
 
         let mut floors = FloorTable::default();
@@ -240,6 +239,8 @@ impl WorldDefinitions {
         Ok(Self {
             models: ModelSourceRepository::new(cache),
             context,
+            profile_id: profile.id.clone(),
+            build: profile.cache_source.build,
             floors,
             textures,
             object_files,
@@ -276,6 +277,16 @@ impl WorldDefinitions {
             loc_type,
             orientation,
         )?)
+    }
+
+    /// The bundled profile the cache matched (for example `osrs-live-240-2026-09-23-openrs2-2720`).
+    pub fn profile_id(&self) -> &str {
+        &self.profile_id
+    }
+
+    /// The OSRS build of the cache.
+    pub const fn build(&self) -> u32 {
+        self.build
     }
 
     pub fn context(&self) -> &DecoderContext {
