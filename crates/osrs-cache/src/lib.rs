@@ -4,6 +4,7 @@
 //! target validation, provenance, binary decoding, and all revision-aware
 //! semantic codecs exposed by this crate.
 
+pub mod build_format;
 pub mod capability;
 pub mod decode;
 pub mod model_repository;

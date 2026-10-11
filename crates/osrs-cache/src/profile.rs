@@ -458,6 +458,7 @@ impl TargetProfile {
                 return validation_error(format!("revision gate {name:?} must include a state"));
             }
         }
+        crate::build_format::validate_profile_build(self).or_else(validation_error)?;
         Ok(())
     }
 
