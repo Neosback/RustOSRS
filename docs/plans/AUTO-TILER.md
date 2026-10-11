@@ -125,3 +125,22 @@ Built in `crates/osrs-editor/src/autotile.rs` (to move into `osrs-edit`): sub-ti
 real `FACE_CODES` tables (file shape + 1 indexes the builder's rows), Hamming-error choice, edge-portal passes,
 and the spline band. Used by the Spline tool. Not yet: the real-map frequency table for tie-breaking, multiple
 overlays with priorities, retile-selection, and flood fill.
+
+## 8. Review of outside notes (2026-10-11)
+
+Already built, differently: sub-tile masks from the real tables (16 x 16, not 8 x 8, so the 12.5% and 19%
+pieces separate cleanly; there is no 4-corner table anywhere); edge continuity (each tile's four edge profiles are
+compared with its neighbours' over three or four relaxation passes, with the shape error counted once and a
+mismatched edge cell twice); complements are ordinary candidates (4, 5, 8, 10 against 2, 3, 7, 9).
+
+Corrected: underlay id 0 is skipped by the blend, so a full overlay over "uninitialised" underlay does not
+bleed; silently inheriting the neighbours' underlay would break the keep-what-is-there rule, so it stays an
+explicit choice. Heights need a +-1 invalidation window (the blend sums underlay definitions, not shaded colours),
+not +-7.
+
+Worth doing next, in order: (1) paired underlays harvested from the real map (the most common underlay beneath
+each overlay) offered as one click; (2) the census prior: a histogram over all map squares of (3 x 3 same-overlay
+neighbour pattern) -> (shape, rotation), used as `- lambda * ln(1 + count)` to break saddle ties; (3) overlay
+priority arbitration at borders (the lower tile keeps its facing shape and takes the higher overlay's paired
+underlay); (4) an eraser that cuts partial gaps with the complement shapes; (5) per-channel invalidation reach in
+the edit layer (overlay, shape and flags need only their own tile, underlay +-5, height +-1).

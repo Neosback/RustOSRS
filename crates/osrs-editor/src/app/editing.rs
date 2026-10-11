@@ -324,7 +324,11 @@ impl EditorApp {
 
     /// Lay the auto-tiler's result: the brush's overlay with each tile's shape and rotation, plus the
     /// other armed channels (one undo step). Returns how many tiles changed.
-    pub(super) fn apply_path(&mut self, tiles: &[((i32, i32), TileChoice)]) -> usize {
+    pub(super) fn apply_path(
+        &mut self,
+        tiles: &[((i32, i32), TileChoice)],
+        grade: Option<(Vec<(f32, f32)>, i32, i32)>,
+    ) -> usize {
         let brush = self.prefs.brush.clone();
         if !(brush.overlay.armed || brush.underlay.armed) || tiles.is_empty() {
             return 0;
@@ -365,6 +369,14 @@ impl EditorApp {
             }
             if brush.height.armed {
                 after.height = brush.height.value;
+            }
+            if let Some((line, first, last)) = &grade {
+                // Slope the ground along the path from the first height to the last.
+                let t = crate::autotile::ramp_parameter(
+                    line,
+                    (tile.0 as f32 + 0.5, tile.1 as f32 + 0.5),
+                );
+                after.height = first + ((last - first) as f32 * t).round() as i32;
             }
             if brush.flags.armed {
                 after.flags = brush.flags.bits;

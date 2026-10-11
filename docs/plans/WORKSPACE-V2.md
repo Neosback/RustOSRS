@@ -50,6 +50,23 @@ exporting. `osrs-edit` (the pure document crate of section 6) is still to be ext
   Roughen; strength, falloff, brush size; applies to the selection too. Heights are stored as the map file does
   (a byte, relative to the plane below, a stored 1 reads as 0) through the edit layer, and the regions rebuild.
 
+## Status: RSPSi-style rails (built)
+
+Following RSPSi's "Contextual Multi-Rail Workspace" (`docs/UI_WORKSPACE_CONTRACT.md` there):
+
+* **Bottom tool strip**: the editing tools only (Paint, Spline, Height). No tool active = selecting.
+* **Floating picker rail** (draggable by its grip, collapsible, position persisted): pickers only. Auto (a click
+  takes the object under the cursor, else the tile; a box takes both), Objects, Tiles. Choosing one while a tool
+  is active returns to selecting.
+* **Left shelf**, only while a tool is active: how it acts. Paint: footprint and size. Height: footprint, size,
+  strength, falloff. Spline: width, curve or straight lines, edge style (smooth, chiselled, whole tiles), close
+  the loop, grade the terrain along the path.
+* **Drawer** above the strip: what it works with. Paint: channel palettes (full). Height: the op. Spline: a
+  compact row, overlay and underlay chosen from popup palettes, with Lay path and Clear.
+* **Spline**: points are placed exactly where you click (no snapping), centripetal Catmull-Rom or straight lines,
+  16 x 16 sub-tile matching, slivers dropped, edge continuity passes; Shift + click inserts, Cmd + click or Delete
+  removes, drag moves, a ghost segment follows the cursor.
+
 Reference: OpenRune Studio / RSPSi (`~/Documents/ChatGPT/RSPSi-master`), whose `MapEditorView` is "faithful to
 Displee's Map Editor UI layout". We keep what makes that layout fast to learn and drop what costs space or
 duplicates state.

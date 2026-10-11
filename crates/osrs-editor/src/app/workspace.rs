@@ -35,9 +35,9 @@ pub fn tool_icon(tool: Tool) -> &'static str {
 
 pub fn select_mode_icon(mode: SelectMode) -> &'static str {
     match mode {
+        SelectMode::Auto => icons::SELECT_AUTO,
         SelectMode::Objects => icons::SELECT_OBJECTS,
         SelectMode::Tiles => icons::SELECT_TILES,
-        SelectMode::Both => icons::SELECT_BOTH,
     }
 }
 
@@ -445,8 +445,9 @@ impl EditorApp {
                             .speed(0.1)
                             .suffix(" tiles"),
                     );
-                    ui.selectable_value(&mut self.prefs.spline.hard_edges, false, "Smooth");
-                    ui.selectable_value(&mut self.prefs.spline.hard_edges, true, "Whole tiles");
+                    for style in crate::autotile::EdgeStyle::ALL {
+                        ui.selectable_value(&mut self.prefs.spline.style, style, style.label());
+                    }
                 });
             }
             Tool::Height => {

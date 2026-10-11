@@ -8,8 +8,8 @@
 //! The drawer exists only for tools that have a palette; Select has none.
 
 use super::EditorApp;
-use super::widgets::{OverlayFill, chips, paint_tile, swatch};
-use crate::heights::{Falloff, HeightOp};
+use super::widgets::{OverlayFill, paint_tile, swatch};
+use crate::heights::HeightOp;
 use crate::icons;
 use crate::paint::{
     DrawerTab, FLAG_BITS, Fill, MAX_ELEVATION, MAX_SHAPE, PaletteFilter, Tool, elevation,
@@ -116,16 +116,26 @@ impl EditorApp {
 
     // ------------------------------------------------------------------ drawer
 
-    /// The drawer panel (only for tools with a palette).
+    /// The drawer panel above the tool strip (none while selecting). Each tool keeps its own height:
+    /// the painter wants room for palettes, the spline and height tools only a row or two.
     pub(super) fn tool_drawer(&mut self, ui: &mut egui::Ui) {
-        if !(self.prefs.tool.has_drawer() && self.prefs.drawer_open) {
+        let tool = self.prefs.tool;
+        if !(tool.has_drawer() && self.prefs.drawer_open) {
             return;
         }
         let line = ui.visuals().widgets.noninteractive.bg_stroke.color;
-        egui::Panel::bottom("tool_drawer")
+        let (default, min, max) = match tool {
+            Tool::Paint => (
+                (ui.ctx().content_rect().height() * 0.27).clamp(150.0, 210.0),
+                130.0,
+                380.0,
+            ),
+            _ => (104.0, 84.0, 200.0),
+        };
+        egui::Panel::bottom(egui::Id::new(("tool_drawer", tool as u8)))
             .resizable(true)
-            .default_size((ui.ctx().content_rect().height() * 0.27).clamp(150.0, 210.0))
-            .size_range(130.0..=380.0)
+            .default_size(default)
+            .size_range(min..=max)
             .frame(
                 egui::Frame::new()
                     .fill(ui.visuals().panel_fill)
@@ -136,8 +146,28 @@ impl EditorApp {
     }
 
     fn drawer(&mut self, ui: &mut egui::Ui) {
-        let tool = self.prefs.tool;
-        let tabs = tool.tabs();
+        match self.prefs.tool {
+            Tool::Paint => self.paint_drawer(ui),
+            Tool::Spline => self.spline_drawer(ui),
+            Tool::Height => self.height_drawer(ui),
+            Tool::Select => {}
+        }
+    }
+
+    /// The collapse chevron every drawer header ends with.
+    fn drawer_collapse(&mut self, ui: &mut egui::Ui) {
+        if ui
+            .small_button(egui_phosphor::regular::CARET_DOWN)
+            .on_hover_text("Hide the drawer (Tab)")
+            .clicked()
+        {
+            self.prefs.drawer_open = false;
+        }
+    }
+
+    /// The tile painter: one tab per channel, a checkbox arming each, palettes below.
+    fn paint_drawer(&mut self, ui: &mut egui::Ui) {
+        let tabs = Tool::Paint.tabs();
         if !tabs.contains(&self.prefs.drawer_tab)
             && let Some(first) = tabs.first()
         {
@@ -146,25 +176,15 @@ impl EditorApp {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             for tab in tabs {
-                let with_checkbox = tab.is_channel() && tool != Tool::Height;
                 let selected = self.prefs.drawer_tab == *tab;
-                if channel_tab(ui, selected, with_checkbox, *tab, self) {
+                if channel_tab(ui, selected, true, *tab, self) {
                     self.prefs.drawer_tab = *tab;
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .small_button(egui_phosphor::regular::CARET_DOWN)
-                    .on_hover_text("Hide the drawer (Tab)")
-                    .clicked()
-                {
-                    self.prefs.drawer_open = false;
-                }
-                if tool.uses_brush() {
-                    self.brush_controls(ui, false, true);
-                }
+                self.drawer_collapse(ui);
                 let selected = self.selection_tiles.len();
-                if tool == Tool::Paint && selected > 0 && !self.prefs.brush.is_empty() {
+                if selected > 0 && !self.prefs.brush.is_empty() {
                     ui.add_space(8.0);
                     if ui
                         .button(format!("{}  Fill {selected} selected", icons::SELECT_TILES))
@@ -178,23 +198,117 @@ impl EditorApp {
         });
         ui.add_space(4.0);
         ui.horizontal_top(|ui| {
-            if matches!(tool, Tool::Paint | Tool::Spline) {
-                self.drawer_preview(ui);
-                ui.separator();
-            }
+            self.drawer_preview(ui);
+            ui.separator();
             ui.vertical(|ui| {
                 ui.set_width(ui.available_width().max(200.0));
-                match (tool, self.prefs.drawer_tab) {
-                    (Tool::Height, _) => self.height_tool_options(ui),
-                    (_, DrawerTab::Overlay) => self.overlay_palette(ui),
-                    (_, DrawerTab::Underlay) => self.underlay_palette(ui),
-                    (_, DrawerTab::Shape) => self.shape_picker(ui),
-                    (_, DrawerTab::Height) => self.height_channel(ui),
-                    (_, DrawerTab::Mask) => self.flag_options(ui),
-                    (_, DrawerTab::Path) => self.path_options(ui),
+                match self.prefs.drawer_tab {
+                    DrawerTab::Overlay => self.overlay_palette(ui, false),
+                    DrawerTab::Underlay => self.underlay_palette(ui, false),
+                    DrawerTab::Shape => self.shape_picker(ui),
+                    DrawerTab::Height => self.height_channel(ui),
+                    DrawerTab::Mask => self.flag_options(ui),
                 }
             });
         });
+    }
+
+    /// The Height tool's drawer: what it does (the shelf has size, strength and falloff).
+    fn height_drawer(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Sculpt").strong());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                self.drawer_collapse(ui);
+            });
+        });
+        ui.add_space(2.0);
+        self.height_tool_options(ui);
+    }
+
+    /// The spline tool's drawer: only what the path is laid with, chosen from popups, and the actions.
+    fn spline_drawer(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Path").strong());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                self.drawer_collapse(ui);
+            });
+        });
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            // Overlay: the swatch opens the palette.
+            ui.weak("Overlay");
+            let overlay = match self.prefs.brush.overlay.fill {
+                Fill::Set(id) => self
+                    .overlay_swatch(id)
+                    .map(|swatch| self.overlay_fill(&ctx, &swatch)),
+                Fill::Clear => None,
+            };
+            let response = swatch(ui, 40.0, false, |painter, rect| match overlay {
+                Some(fill) => paint_overlay_swatch(painter, rect, fill, false),
+                None => {
+                    painter.rect_filled(rect, 3.0, Color32::from_gray(38));
+                    painter.line_segment(
+                        [rect.left_bottom(), rect.right_top()],
+                        Stroke::new(1.5, Color32::from_rgb(220, 90, 90)),
+                    );
+                }
+            })
+            .on_hover_text("Choose the overlay the path is laid with");
+            egui::Popup::from_toggle_button_response(&response)
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                .show(|ui| {
+                    ui.set_min_width(560.0);
+                    self.overlay_palette(ui, true);
+                });
+            if let Fill::Set(id) = self.prefs.brush.overlay.fill {
+                ui.weak(format!("#{id}"));
+            }
+            ui.separator();
+            // Underlay: optional.
+            let mut armed = self.prefs.brush.underlay.armed;
+            if ui.checkbox(&mut armed, "Underlay").changed() {
+                self.prefs.brush.underlay.armed = armed;
+            }
+            let under = match self.prefs.brush.underlay.fill {
+                Fill::Set(id) => self.underlay_color(id),
+                Fill::Clear => None,
+            };
+            let response = swatch(ui, 40.0, false, |painter, rect| {
+                painter.rect_filled(rect, 3.0, under.unwrap_or(Color32::from_gray(48)));
+            })
+            .on_hover_text("Choose an underlay to paint under the path");
+            egui::Popup::from_toggle_button_response(&response)
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                .show(|ui| {
+                    ui.set_min_width(560.0);
+                    self.underlay_palette(ui, true);
+                });
+            ui.separator();
+            let points = self.spline.points.len();
+            ui.weak(format!(
+                "{points} point{}  \u{b7}  {} tiles",
+                if points == 1 { "" } else { "s" },
+                self.spline_tile_count()
+            ));
+            if ui
+                .add_enabled(points >= 1, egui::Button::new("Lay path"))
+                .on_hover_text("Enter")
+                .clicked()
+            {
+                self.commit_spline();
+            }
+            if ui
+                .add_enabled(points >= 1, egui::Button::new("Clear"))
+                .on_hover_text("Esc")
+                .clicked()
+            {
+                self.spline.points.clear();
+            }
+        });
+        ui.add_space(4.0);
+        ui.weak("Click the terrain to add points \u{b7} drag a point to move it \u{b7} Shift + click inserts \u{b7} Cmd + click or Delete removes \u{b7} Enter lays the path");
     }
 
     /// What one painted tile will look like.
@@ -284,7 +398,7 @@ impl EditorApp {
         self.palette_search.trim().to_owned()
     }
 
-    fn overlay_palette(&mut self, ui: &mut egui::Ui) {
+    fn overlay_palette(&mut self, ui: &mut egui::Ui, popup: bool) {
         if self.palette_loading(ui) {
             return;
         }
@@ -310,7 +424,8 @@ impl EditorApp {
         let mut picked = None;
         let ctx = ui.ctx().clone();
         egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
+            .max_height(if popup { 300.0 } else { f32::INFINITY })
+            .auto_shrink([popup, popup])
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::splat(5.0);
@@ -335,13 +450,16 @@ impl EditorApp {
                     }
                 });
             });
+        if popup && picked.is_some() {
+            ui.close();
+        }
         if let Some(fill) = picked {
             self.prefs.brush.overlay.fill = fill;
             self.prefs.brush.overlay.armed = true;
         }
     }
 
-    fn underlay_palette(&mut self, ui: &mut egui::Ui) {
+    fn underlay_palette(&mut self, ui: &mut egui::Ui, popup: bool) {
         if self.palette_loading(ui) {
             return;
         }
@@ -365,7 +483,8 @@ impl EditorApp {
         let current = self.prefs.brush.underlay.fill;
         let mut picked = None;
         egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
+            .max_height(if popup { 300.0 } else { f32::INFINITY })
+            .auto_shrink([popup, popup])
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::splat(5.0);
@@ -387,6 +506,9 @@ impl EditorApp {
                     }
                 });
             });
+        if popup && picked.is_some() {
+            ui.close();
+        }
         if let Some(fill) = picked {
             self.prefs.brush.underlay.fill = fill;
             self.prefs.brush.underlay.armed = true;
@@ -525,53 +647,6 @@ impl EditorApp {
         ui.weak("Every tile the brush paints gets exactly these flags. Untick the channel to keep each tile's own.");
     }
 
-    /// The spline tool's path options.
-    fn path_options(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.weak("Width");
-            ui.add(egui::Slider::new(&mut self.prefs.spline.width, 1.0..=24.0).show_value(false));
-            ui.add(
-                egui::DragValue::new(&mut self.prefs.spline.width)
-                    .range(1.0..=32.0)
-                    .speed(0.1)
-                    .max_decimals(1)
-                    .suffix(" tiles"),
-            );
-        });
-        ui.horizontal(|ui| {
-            ui.weak("Edges");
-            if let Some(hard) = chips(
-                ui,
-                self.prefs.spline.hard_edges,
-                &[(false, "Smooth shapes"), (true, "Whole tiles")],
-            ) {
-                self.prefs.spline.hard_edges = hard;
-            }
-        });
-        let points = self.spline.points.len();
-        let tiles = self.spline_tile_count();
-        ui.horizontal(|ui| {
-            ui.weak(format!("{points} points  \u{b7}  {tiles} tiles"));
-            if ui
-                .add_enabled(points >= 1, egui::Button::new("Lay path"))
-                .on_hover_text("Enter")
-                .clicked()
-            {
-                self.commit_spline();
-            }
-            if ui
-                .add_enabled(points >= 1, egui::Button::new("Clear"))
-                .on_hover_text("Esc")
-                .clicked()
-            {
-                self.spline.points.clear();
-            }
-        });
-        ui.add_space(2.0);
-        ui.weak("Click the terrain to add points. Drag a point to move it, Cmd + click removes it. The auto-tiler picks every tile's shape and rotation from the overlay tab's floor.");
-    }
-
     /// The Height tool's options.
     fn height_tool_options(&mut self, ui: &mut egui::Ui) {
         let mut tool = self.prefs.height_tool.clone();
@@ -585,28 +660,6 @@ impl EditorApp {
                 {
                     tool.op = op;
                 }
-            }
-        });
-        ui.horizontal(|ui| {
-            ui.weak(if tool.op == HeightOp::Smooth {
-                "Strength"
-            } else {
-                "Step"
-            });
-            ui.add(
-                egui::Slider::new(&mut tool.strength, 8..=128)
-                    .step_by(8.0)
-                    .show_value(false),
-            );
-            ui.add(
-                egui::DragValue::new(&mut tool.strength)
-                    .range(8..=128)
-                    .speed(1.0),
-            );
-            ui.add_space(10.0);
-            ui.weak("Falloff");
-            for falloff in Falloff::ALL {
-                ui.selectable_value(&mut tool.falloff, falloff, falloff.label());
             }
         });
         if tool.op == HeightOp::Flatten {

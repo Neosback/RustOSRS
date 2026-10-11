@@ -240,6 +240,9 @@ pub struct Settings {
     pub drawer_tab: crate::paint::DrawerTab,
     pub brush: crate::paint::Brush,
     pub select_mode: crate::paint::SelectMode,
+    /// The floating picker rail's position (top-left, in points from the window) and collapse state.
+    pub picker_pos: [f32; 2],
+    pub picker_collapsed: bool,
     pub spline: crate::paint::SplineSettings,
     pub height_tool: crate::heights::HeightTool,
     pub palette_filter: crate::paint::PaletteFilter,
@@ -296,6 +299,8 @@ impl Default for Settings {
             drawer_tab: crate::paint::DrawerTab::Overlay,
             brush: crate::paint::Brush::default(),
             select_mode: crate::paint::SelectMode::default(),
+            picker_pos: [10.0, 12.0],
+            picker_collapsed: false,
             spline: crate::paint::SplineSettings::default(),
             height_tool: crate::heights::HeightTool::default(),
             palette_filter: crate::paint::PaletteFilter::default(),

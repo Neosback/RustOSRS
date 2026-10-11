@@ -57,13 +57,18 @@ impl Tool {
                 DrawerTab::Height,
                 DrawerTab::Mask,
             ],
-            Self::Spline => &[DrawerTab::Path, DrawerTab::Overlay, DrawerTab::Underlay],
-            Self::Height => &[DrawerTab::Height],
+            Self::Spline | Self::Height => &[],
         }
     }
 
-    pub fn has_drawer(self) -> bool {
-        !self.tabs().is_empty()
+    /// Every authoring tool has a drawer (Select has none).
+    pub const fn has_drawer(self) -> bool {
+        !matches!(self, Self::Select)
+    }
+
+    /// Whether the left shelf shows: every tool but Select has options to tune.
+    pub const fn has_shelf(self) -> bool {
+        !matches!(self, Self::Select)
     }
 
     /// Whether the tool paints with the brush footprint.
@@ -81,8 +86,6 @@ pub enum DrawerTab {
     Shape,
     Height,
     Mask,
-    /// The spline tool's own options.
-    Path,
 }
 
 impl DrawerTab {
@@ -93,42 +96,48 @@ impl DrawerTab {
             Self::Shape => "Shape",
             Self::Height => "Height",
             Self::Mask => "Mask",
-            Self::Path => "Path",
         }
-    }
-
-    /// Whether the tab has an arm checkbox (the brush channels do; the path tab does not).
-    pub const fn is_channel(self) -> bool {
-        !matches!(self, Self::Path)
     }
 }
 
 /// What a click or drag in the viewport selects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SelectMode {
+    /// A click takes the object under the cursor, else the tile; a box takes both.
     #[default]
+    #[serde(alias = "Both")]
+    Auto,
     Objects,
     Tiles,
-    Both,
 }
 
 impl SelectMode {
-    pub const ALL: [Self; 3] = [Self::Objects, Self::Tiles, Self::Both];
+    pub const ALL: [Self; 3] = [Self::Auto, Self::Objects, Self::Tiles];
 
     pub const fn label(self) -> &'static str {
         match self {
+            Self::Auto => "Auto",
             Self::Objects => "Objects",
             Self::Tiles => "Tiles",
-            Self::Both => "Objects and tiles",
+        }
+    }
+
+    pub const fn hint(self) -> &'static str {
+        match self {
+            Self::Auto => {
+                "Click takes the object under the cursor, else the tile; a box takes both"
+            }
+            Self::Objects => "Only objects: click one, or drag a box",
+            Self::Tiles => "Only tiles: click one, or drag a box",
         }
     }
 
     pub const fn objects(self) -> bool {
-        matches!(self, Self::Objects | Self::Both)
+        matches!(self, Self::Auto | Self::Objects)
     }
 
     pub const fn tiles(self) -> bool {
-        matches!(self, Self::Tiles | Self::Both)
+        matches!(self, Self::Auto | Self::Tiles)
     }
 }
 
@@ -138,15 +147,22 @@ impl SelectMode {
 pub struct SplineSettings {
     /// Path width in tiles.
     pub width: f32,
-    /// Whole tiles only, no shaped edges.
-    pub hard_edges: bool,
+    pub style: crate::autotile::EdgeStyle,
+    pub curve: crate::autotile::CurveKind,
+    /// Join the last point back to the first.
+    pub closed: bool,
+    /// Grade the terrain along the path from the first point's height to the last's.
+    pub ramp: bool,
 }
 
 impl Default for SplineSettings {
     fn default() -> Self {
         Self {
             width: 3.0,
-            hard_edges: false,
+            style: crate::autotile::EdgeStyle::Smooth,
+            curve: crate::autotile::CurveKind::Curve,
+            closed: false,
+            ramp: false,
         }
     }
 }
@@ -313,7 +329,6 @@ impl Brush {
             DrawerTab::Shape => self.shape.armed = armed,
             DrawerTab::Height => self.height.armed = armed,
             DrawerTab::Mask => self.flags.armed = armed,
-            DrawerTab::Path => {}
         }
     }
 
@@ -324,7 +339,6 @@ impl Brush {
             DrawerTab::Shape => self.shape.armed,
             DrawerTab::Height => self.height.armed,
             DrawerTab::Mask => self.flags.armed,
-            DrawerTab::Path => false,
         }
     }
 

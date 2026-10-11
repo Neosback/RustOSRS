@@ -12,8 +12,10 @@ mod plugins;
 mod properties;
 mod selection;
 mod settings_window;
+mod shelf;
 mod spline_tool;
 mod status;
+mod tool_strip;
 mod toolbar;
 mod widgets;
 mod workspace;
@@ -1231,7 +1233,10 @@ impl eframe::App for EditorApp {
                     .infos
                     .get(&pick.region)
                     .and_then(|info| info.locs.get(pick.index))
-                    .map(|loc| pick::TilePick { tile: loc.tile });
+                    .map(|loc| pick::TilePick {
+                        tile: loc.tile,
+                        at: (loc.tile.0 as f32 + 0.5, loc.tile.1 as f32 + 0.5),
+                    });
                 self.context_pick = Pick {
                     object: Some(pick.clone()),
                     tile: anchor,
@@ -1300,8 +1305,10 @@ impl eframe::App for EditorApp {
         self.menu_bar(ui);
         self.toolbar(ui);
         self.status_bar(ui);
+        self.tool_strip(ui);
         self.tool_drawer(ui);
         self.dock(ui);
+        self.tool_shelf(ui);
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
