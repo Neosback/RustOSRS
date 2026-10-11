@@ -8,20 +8,39 @@ use osrs_render::gpu::{Colorblind, ColorblindMode, Fog, HdParams, RenderProfile}
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, io, path::PathBuf};
 
-/// Tabs of the side panel (the inspector). Settings live in the settings window.
+/// Categories on the dock's icon rail; each swaps the dock panel's contents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum PanelTab {
-    /// The selected object.
+pub enum RailTab {
+    /// The selected object and the hovered tile.
+    #[default]
+    Inspect,
+    /// Camera, world and interface options used while working.
+    View,
+    /// Render profile, lighting, fog and shadows.
+    Graphics,
+    /// Plugin sections.
+    Plugins,
+}
+
+impl RailTab {
+    pub const ALL: [Self; 4] = [Self::Inspect, Self::View, Self::Graphics, Self::Plugins];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Inspect => "Inspector",
+            Self::View => "View",
+            Self::Graphics => "Graphics",
+            Self::Plugins => "Plugins",
+        }
+    }
+}
+
+/// Tabs inside the Inspector category.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum InspectTab {
     #[default]
     Object,
-    /// The frequently used settings (the rest are in the settings window).
-    Settings,
-    /// Retired: the camera and view options moved to the settings window (reads as `Object`).
-    View,
-    /// Retired: the shading options moved to the settings window (reads as `Object`).
-    Shading,
-    /// Plugin sections.
-    Tools,
+    Tile,
 }
 
 /// Pages of the settings window.
@@ -212,7 +231,14 @@ pub struct Settings {
     pub orbit_camera: bool,
     /// Side panel on the right (otherwise left).
     pub dock_right: bool,
-    pub side_tab: PanelTab,
+    /// Dock category and, inside the Inspector, its tab.
+    pub rail_tab: RailTab,
+    pub inspect_tab: InspectTab,
+    /// The active editing tool and its drawer.
+    pub tool: crate::paint::Tool,
+    pub drawer_open: bool,
+    pub drawer_tab: crate::paint::DrawerTab,
+    pub brush: crate::paint::Brush,
     /// The settings window's current page.
     pub settings_page: SettingsPage,
     /// Shift + right click: the editor's menu or the game's.
@@ -259,7 +285,12 @@ impl Default for Settings {
             fly_speed: 900.0,
             orbit_camera: false,
             dock_right: true,
-            side_tab: PanelTab::Object,
+            rail_tab: RailTab::Inspect,
+            inspect_tab: InspectTab::Object,
+            tool: crate::paint::Tool::Select,
+            drawer_open: true,
+            drawer_tab: crate::paint::DrawerTab::Overlay,
+            brush: crate::paint::Brush::default(),
             settings_page: SettingsPage::Interface,
             context_menu: ContextMenuStyle::Editor,
             keymap: BTreeMap::new(),
@@ -319,9 +350,7 @@ impl Settings {
             self.hd_exposure = HdParams::default().exposure;
             self.hd_lighting_revision = HD_LIGHTING_REVISION;
         }
-        if matches!(self.side_tab, PanelTab::View | PanelTab::Shading) {
-            self.side_tab = PanelTab::Object;
-        }
+        self.brush.radius = self.brush.radius.min(16);
         self.hd_exposure = self.hd_exposure.clamp(0.25, 4.0);
         self.hd_vignette = self.hd_vignette.clamp(0.0, 1.0);
         self.hd_brightness = self.hd_brightness.clamp(25.0, 400.0);
@@ -431,18 +460,17 @@ mod tests {
     }
 
     #[test]
-    fn the_context_menu_and_settings_page_persist_and_old_tabs_migrate()
-    -> Result<(), serde_json::Error> {
+    fn the_context_menu_settings_page_and_workspace_persist() -> Result<(), serde_json::Error> {
         assert_eq!(Settings::default().context_menu, ContextMenuStyle::Editor);
+        // Files from before the rail still load: the retired `side_tab` key is ignored.
         let settings: Settings = serde_json::from_str(
-            r#"{ "context_menu": "Game", "settings_page": "Controls", "side_tab": "Shading" }"#,
+            r#"{ "context_menu": "Game", "settings_page": "Controls", "side_tab": "Shading",
+                 "rail_tab": "Graphics", "tool": "Paint" }"#,
         )?;
         assert_eq!(settings.context_menu, ContextMenuStyle::Game);
         assert_eq!(settings.settings_page, SettingsPage::Controls);
-        // The View and Shading tabs moved into the settings window.
-        assert_eq!(settings.sanitized().side_tab, PanelTab::Object);
-        let tools: Settings = serde_json::from_str(r#"{ "side_tab": "Tools" }"#)?;
-        assert_eq!(tools.sanitized().side_tab, PanelTab::Tools);
+        assert_eq!(settings.rail_tab, RailTab::Graphics);
+        assert_eq!(settings.tool, crate::paint::Tool::Paint);
         Ok(())
     }
 

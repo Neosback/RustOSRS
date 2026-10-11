@@ -24,6 +24,9 @@ enum MenuAction {
     Select(ObjectPick),
     Focus(ObjectPick),
     TeleportHere((i32, i32)),
+    SetTool(crate::paint::Tool),
+    Eyedrop((i32, i32)),
+    ApplyBrush((i32, i32)),
 }
 
 impl EditorApp {
@@ -55,6 +58,13 @@ impl EditorApp {
                 self.selected = Some(object);
                 self.focus_selection();
             }
+            MenuAction::SetTool(tool) => self.set_tool(tool),
+            MenuAction::Eyedrop(tile) => {
+                if let Some(values) = pick::tile_values(&self.infos, tile, self.view_plane) {
+                    self.eyedrop(values);
+                }
+            }
+            MenuAction::ApplyBrush(tile) => self.apply_brush_at(tile),
             MenuAction::TeleportHere((x, y)) => {
                 let plane = self.view_plane;
                 self.teleport_to(Destination::Tile { x, y, plane });
@@ -150,6 +160,23 @@ impl EditorApp {
                     ui.spacing_mut().item_spacing.y = 2.0;
                     ui.visuals_mut().widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
                     ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                        // Quick tool switch: the tools as icons, the active one filled.
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 3.0;
+                            for tool in crate::paint::Tool::ALL {
+                                let active = self.prefs.tool == tool;
+                                if ui
+                                    .selectable_label(active, super::workspace::tool_icon(tool))
+                                    .on_hover_text(tool.label())
+                                    .clicked()
+                                {
+                                    outcome.action = Some(MenuAction::SetTool(tool));
+                                    outcome.close = true;
+                                }
+                            }
+                            ui.weak(self.prefs.tool.label());
+                        });
+                        ui.separator();
                         // What the menu is about.
                         if let (Some(object), Some(loc)) = (&pick.object, loc) {
                             let name = loc
@@ -191,6 +218,39 @@ impl EditorApp {
                             ui.strong(format!("Tile {}, {}", tile.tile.0, tile.tile.1));
                             ui.weak(format!("plane {}", self.view_plane));
                             ui.separator();
+                        }
+                        if let Some(tile) = &pick.tile
+                            && self.prefs.tool != crate::paint::Tool::Select
+                        {
+                            let verb = match self.prefs.tool {
+                                crate::paint::Tool::Paint => "Paint",
+                                crate::paint::Tool::Height => "Sculpt",
+                                _ => "Set flags",
+                            };
+                            let armed = self.prefs.brush.armed_channels().join(", ");
+                            if ui
+                                .button(format!(
+                                    "{}  {verb} here",
+                                    super::workspace::tool_icon(self.prefs.tool)
+                                ))
+                                .on_hover_text(if armed.is_empty() {
+                                    "Nothing armed: arm a channel in the drawer".to_owned()
+                                } else {
+                                    format!("Applies: {armed}")
+                                })
+                                .clicked()
+                            {
+                                outcome.action = Some(MenuAction::ApplyBrush(tile.tile));
+                                outcome.close = true;
+                            }
+                            if ui
+                                .button(format!("{}  Eyedrop tile", icons::EYEDROPPER))
+                                .on_hover_text("Copy this tile's values into the brush (I)")
+                                .clicked()
+                            {
+                                outcome.action = Some(MenuAction::Eyedrop(tile.tile));
+                                outcome.close = true;
+                            }
                         }
                         if let Some(tile) = &pick.tile
                             && ui

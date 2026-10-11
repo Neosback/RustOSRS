@@ -10,6 +10,7 @@ mod properties;
 mod settings_window;
 mod status;
 mod toolbar;
+mod workspace;
 mod worldmap;
 
 use crate::animation_smoothing::AnimationSmoothingPlugin;
@@ -129,6 +130,14 @@ pub struct EditorApp {
     last_build_ms: f32,
     stats: FrameStats,
     teleport: TeleportWindow,
+    /// Floor colours for the drawer's palettes, loaded on a worker thread.
+    palette: Option<std::sync::Arc<osrs_world::FloorPalette>>,
+    palette_rx:
+        Option<std::sync::mpsc::Receiver<Result<osrs_world::FloorPalette, osrs_world::WorldError>>>,
+    /// Where the quick tools HUD (Space) is open.
+    quick_open: Option<egui::Pos2>,
+    /// The last tile the cursor was over (the Tile tab keeps showing it after the cursor leaves).
+    last_hover_tile: Option<(i32, i32)>,
     /// Smoke-test hook: teleport on the first frame (`RUSTOSRS_TELEPORT="x,y,plane"`).
     pending_teleport: Option<Destination>,
     /// Smoke-test hook: select the object anchored on this tile (`RUSTOSRS_SELECT="x,y"`).
@@ -170,6 +179,7 @@ impl EditorApp {
             0.3 * REGION_UNITS as f32,
         );
         let asset_cache_dir = cache_dir.clone();
+        let palette_dir = cache_dir.clone();
         let streamer = RegionStreamer::spawn(cache_dir, Self::presentation(false, false));
         streamer.set_presentation(Self::presentation(false, false), 1);
 
@@ -224,6 +234,17 @@ impl EditorApp {
             last_build_ms: 0.0,
             stats: FrameStats::new(),
             teleport: TeleportWindow::new(),
+            palette: None,
+            palette_rx: {
+                let (sender, receiver) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let _ = sender.send(osrs_world::load_floor_palette(palette_dir));
+                });
+                Some(receiver)
+            },
+            // Smoke-test hook: open the quick tools HUD at start (`RUSTOSRS_QUICK=1`).
+            quick_open: std::env::var_os("RUSTOSRS_QUICK").map(|_| egui::pos2(520.0, 300.0)),
+            last_hover_tile: None,
             smoke_select: std::env::var("RUSTOSRS_SELECT").ok().and_then(|value| {
                 let (x, y) = value.split_once(',')?;
                 Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
@@ -640,7 +661,11 @@ impl EditorApp {
             (position.y - rect.min.y) * pixels_per_point,
         );
         self.hover = pick::pick(&self.infos, &ray, self.view_plane);
-        if response.clicked() {
+        if let Some(pick) = self.hover.tile {
+            self.last_hover_tile = Some(pick.tile);
+        }
+        // Left click selects with the Select tool; the brush tools keep the click for painting.
+        if response.clicked() && self.prefs.tool == crate::paint::Tool::Select {
             self.selected = self.hover.object.clone();
         }
         if response.secondary_clicked() && response.ctx.input(|i| i.modifiers.shift) {
@@ -911,6 +936,7 @@ impl EditorApp {
             clear = true;
         }
         let toggle_map = pressed("worldmap.toggle");
+
         let open_settings = pressed("settings.open");
         let switch_menu = pressed("contextmenu.style");
         for (index, id) in ["plane.0", "plane.1", "plane.2", "plane.3"]
@@ -963,6 +989,7 @@ impl EditorApp {
         if let Some(plane) = plane {
             self.view_plane = plane;
         }
+        self.tool_actions(ctx);
     }
 
     fn handle_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
@@ -1097,10 +1124,12 @@ impl eframe::App for EditorApp {
             .peak_resident
             .max(self.loaded.values().flatten().count());
 
+        self.poll_palette();
         self.menu_bar(ui);
         self.toolbar(ui);
         self.status_bar(ui);
-        self.properties_panel(ui);
+        self.tool_bars(ui);
+        self.dock(ui);
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
@@ -1170,6 +1199,7 @@ impl eframe::App for EditorApp {
                 self.viewport_overlays(ui, rect);
                 self.context_menu(&ctx);
             });
+        self.quick_tools_hud(&ctx);
 
         self.settings_window(&ctx);
         self.assets.poll(&ctx);

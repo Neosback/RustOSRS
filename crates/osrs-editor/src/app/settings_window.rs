@@ -624,11 +624,14 @@ impl EditorApp {
 
     /// The side panel's Settings tab: the frequently used rows, stacked (label over control) to
     /// fit a narrow panel. They are drawn by [`Self::draw_row`], like the window's.
-    pub(super) fn quick_settings_ui(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn quick_settings_ui(&mut self, ui: &mut egui::Ui, groups: &[&str]) {
         let hd = self.prefs.render_profile == ProfileChoice::Hd;
         // Leave room for the value box ("3x3 regions"); the cap stops a wide value from growing the panel.
         ui.spacing_mut().slider_width = (ui.available_width() - 120.0).clamp(80.0, 300.0);
         for (group, rows) in QUICK {
+            if !groups.contains(group) {
+                continue;
+            }
             let shown: Vec<&RowDef> = rows
                 .iter()
                 .filter_map(|row| ROWS.iter().find(|def| def.row == *row))
@@ -1272,7 +1275,8 @@ impl EditorApp {
                 self.prefs.stats_overlay = defaults.stats_overlay;
                 self.prefs.show_minimap = defaults.show_minimap;
                 self.prefs.minimap_size = defaults.minimap_size;
-                self.prefs.side_tab = defaults.side_tab;
+                self.prefs.rail_tab = defaults.rail_tab;
+                self.prefs.inspect_tab = defaults.inspect_tab;
             }
             if ui
                 .button("Reset the HD options")

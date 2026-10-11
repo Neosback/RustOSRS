@@ -501,6 +501,19 @@ pub fn summary(infos: &Infos, pick: &Pick) -> String {
     parts.join("  |  ")
 }
 
+/// The brush-relevant values of one tile on `plane` (`None` outside the resident regions).
+pub fn tile_values(infos: &Infos, tile: (i32, i32), plane: u8) -> Option<crate::paint::TileValues> {
+    let info = info_for(infos, tile)?.tile(usize::from(plane.min(3)), tile)?;
+    Some(crate::paint::TileValues {
+        underlay: info.underlay,
+        overlay: info.overlay_raw,
+        shape: info.shape,
+        rotation: info.rotation,
+        height: info.heights[0],
+        flags: info.settings,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

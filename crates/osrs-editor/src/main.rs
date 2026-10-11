@@ -16,6 +16,7 @@ mod hud;
 mod icons;
 mod interact;
 mod keymap;
+mod paint;
 mod pick;
 mod plugin;
 mod screenshot;
@@ -60,6 +61,17 @@ fn wgpu_options() -> eframe::egui_wgpu::WgpuConfiguration {
     configuration
 }
 
+/// 1360 x 860, or `RUSTOSRS_WINDOW="w,h"` (to look at the responsive layout).
+fn window_size() -> [f32; 2] {
+    std::env::var("RUSTOSRS_WINDOW")
+        .ok()
+        .and_then(|value| {
+            let (w, h) = value.split_once(',')?;
+            Some([w.trim().parse().ok()?, h.trim().parse().ok()?])
+        })
+        .unwrap_or([1360.0, 860.0])
+}
+
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let cache_dir = args
@@ -72,7 +84,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([1360.0, 860.0])
+            .with_inner_size(window_size())
             .with_title("RustOSRS"),
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: wgpu_options(),

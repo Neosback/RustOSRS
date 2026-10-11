@@ -1,55 +1,12 @@
-//! Right-hand inspector: the selected object, and the sections plugins add. It holds no
-//! settings; those live in the settings window (`settings_window.rs`).
+//! The Object tab of the inspector: the selected object as a card. The dock itself (rail, panel,
+//! tabs) is in `workspace.rs`; settings live in `settings_window.rs`.
 
 use super::EditorApp;
 use crate::pick::{self, Pick};
-use crate::settings::PanelTab;
 use eframe::egui;
 
-fn section(ui: &mut egui::Ui, title: &str, default_open: bool, body: impl FnOnce(&mut egui::Ui)) {
-    egui::CollapsingHeader::new(egui::RichText::new(title).strong())
-        .default_open(default_open)
-        .show(ui, body);
-}
-
 impl EditorApp {
-    /// Side panel: a tab strip (Object, Tools) over one scrolling page, docked on the right or
-    /// left (Settings > Interface).
-    pub(super) fn properties_panel(&mut self, ui: &mut egui::Ui) {
-        if !self.prefs.properties_panel {
-            return;
-        }
-        let panel = if self.prefs.dock_right {
-            egui::Panel::right("side_panel")
-        } else {
-            egui::Panel::left("side_panel")
-        };
-        panel.resizable(true).default_size(300.0).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                for (tab, label) in [
-                    (PanelTab::Object, "Object"),
-                    (PanelTab::Settings, "Settings"),
-                    (PanelTab::Tools, "Tools"),
-                ] {
-                    ui.selectable_value(&mut self.prefs.side_tab, tab, label);
-                }
-            });
-            ui.separator();
-            egui::ScrollArea::vertical().show(ui, |ui| match self.prefs.side_tab {
-                PanelTab::Object | PanelTab::View | PanelTab::Shading => self.selection_section(ui),
-                PanelTab::Settings => self.quick_settings_ui(ui),
-                PanelTab::Tools => {
-                    self.run_plugins(|plugin, cx| {
-                        if plugin.has_properties() {
-                            section(ui, plugin.title(), true, |ui| plugin.properties(ui, cx));
-                        }
-                    });
-                }
-            });
-        });
-    }
-
-    fn selection_section(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn selection_section(&mut self, ui: &mut egui::Ui) {
         let Some(object) = self.selected.clone() else {
             ui.add_space(24.0);
             ui.vertical_centered(|ui| {

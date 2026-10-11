@@ -35,11 +35,14 @@ impl EditorApp {
                         .request_repaint_after(std::time::Duration::from_millis(500));
                 }
                 ui.spacing_mut().item_spacing.x = 4.0;
+                let wide = ui.ctx().content_rect().width() >= 1000.0;
                 for (key, action) in match self.camera.mode {
                     crate::camera::CameraMode::Fly => FLY_HINTS,
                     crate::camera::CameraMode::Orbit => ORBIT_HINTS,
                 } {
-                    crate::theme::key_hint(ui, key, action);
+                    if wide || *key == "Click" {
+                        crate::theme::key_hint(ui, key, action);
+                    }
                 }
                 if let Some(status) = &self.status {
                     ui.separator();

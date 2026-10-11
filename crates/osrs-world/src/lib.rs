@@ -11,6 +11,7 @@ mod assets;
 mod definitions;
 mod error;
 mod extract;
+mod floor_palette;
 pub mod hd;
 mod info;
 mod loc_stage;
@@ -33,6 +34,7 @@ pub use extract::{
     OwnedTiles, extract_animated_instances, extract_owned_geometry, extract_scene_geometry,
     texture_layers,
 };
+pub use floor_palette::{FloorPalette, OverlaySwatch, UnderlaySwatch, load_floor_palette};
 pub use info::{
     LocInfo, RegionInfo, SlotInfo, SurfaceKind, TileInfo, extract_region_info,
     loc_outline_triangles,

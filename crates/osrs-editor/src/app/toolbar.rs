@@ -11,6 +11,7 @@ use eframe::egui;
 
 impl EditorApp {
     pub(super) fn toolbar(&mut self, ui: &mut egui::Ui) {
+        let compact = ui.ctx().content_rect().width() < super::workspace::COMPACT_WIDTH;
         egui::Panel::top("toolbar").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Plane");
@@ -22,13 +23,21 @@ impl EditorApp {
                 ui.selectable_value(
                     &mut self.camera.mode,
                     CameraMode::Fly,
-                    format!("{} Fly", icons::FLY),
+                    if compact {
+                        icons::FLY.to_owned()
+                    } else {
+                        format!("{} Fly", icons::FLY)
+                    },
                 )
                 .on_hover_text("Fly camera: right drag looks, WASD moves");
                 ui.selectable_value(
                     &mut self.camera.mode,
                     CameraMode::Orbit,
-                    format!("{} Orbit", icons::ORBIT),
+                    if compact {
+                        icons::ORBIT.to_owned()
+                    } else {
+                        format!("{} Orbit", icons::ORBIT)
+                    },
                 )
                 .on_hover_text(
                     "Orbit camera: right drag orbits, shift+right drag pans, scroll zooms",
@@ -36,23 +45,18 @@ impl EditorApp {
                 ui.separator();
                 self.run_plugins(|plugin, cx| plugin.toolbar(ui, cx));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .button(icons::SETTINGS)
-                        .on_hover_text("Settings (search every option)")
-                        .clicked()
-                    {
-                        self.open_settings(None);
-                        self.settings_focus_search = true;
-                    }
-                    ui.toggle_value(&mut self.prefs.properties_panel, icons::SIDE_PANEL)
-                        .on_hover_text("Side panel");
                     ui.toggle_value(&mut self.prefs.stats_overlay, icons::STATS)
                         .on_hover_text("Statistics overlay");
                     ui.toggle_value(&mut self.world_map.open, icons::WORLD_MAP)
                         .on_hover_text("World map (M): double-click a tile to go there");
+                    let label = if compact {
+                        icons::TELEPORT.to_owned()
+                    } else {
+                        format!("{} Teleport", icons::TELEPORT)
+                    };
                     if ui
-                        .button(format!("{} Teleport", icons::TELEPORT))
-                        .on_hover_text("Go to a tile or region")
+                        .button(label)
+                        .on_hover_text("Go to a tile or region (T)")
                         .clicked()
                     {
                         self.open_teleport();

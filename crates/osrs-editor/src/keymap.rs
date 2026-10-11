@@ -192,6 +192,40 @@ pub const CORE_ACTIONS: &[ActionDef] = &[
         "Edit",
         Binding::key(Key::Escape),
     ),
+    ActionDef::new(
+        "quick.tools",
+        "Quick tools",
+        "Tools",
+        Binding::key(Key::Space),
+    ),
+    ActionDef::new("tool.select", "Select tool", "Tools", Binding::key(Key::V)),
+    ActionDef::new("tool.paint", "Paint tool", "Tools", Binding::key(Key::B)),
+    ActionDef::new("tool.height", "Height tool", "Tools", Binding::key(Key::H)),
+    ActionDef::new("tool.flags", "Flags tool", "Tools", Binding::key(Key::X)),
+    ActionDef::new(
+        "tool.eyedrop",
+        "Eyedropper: take the tile under the cursor",
+        "Tools",
+        Binding::key(Key::I),
+    ),
+    ActionDef::new(
+        "brush.smaller",
+        "Smaller brush",
+        "Tools",
+        Binding::key(Key::OpenBracket),
+    ),
+    ActionDef::new(
+        "brush.bigger",
+        "Bigger brush",
+        "Tools",
+        Binding::key(Key::CloseBracket),
+    ),
+    ActionDef::new(
+        "drawer.toggle",
+        "Show / hide the tool drawer",
+        "Tools",
+        Binding::key(Key::Tab),
+    ),
 ];
 
 /// Registered actions and the user's overrides.
