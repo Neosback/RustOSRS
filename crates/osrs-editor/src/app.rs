@@ -5,7 +5,9 @@ use crate::hud::{self, Destination, FrameStats, TeleportWindow};
 use crate::pick::{self, Infos, ObjectPick, Pick};
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_core::coords::RegionCoord;
-use osrs_render::gpu::{COLOR_FORMAT, DEPTH_FORMAT, FrameParams, SceneRenderer};
+use osrs_render::gpu::{
+    COLOR_FORMAT, Colorblind, ColorblindMode, DEPTH_FORMAT, Fog, FrameParams, SceneRenderer,
+};
 use osrs_world::{AnimationSystem, RegionStreamer, StreamEvent, TerrainPresentation};
 use std::{
     collections::{HashMap, HashSet},
@@ -53,6 +55,10 @@ pub struct EditorApp {
     view_plane: u8,
     brightness: f32,
     remove_color_banding: bool,
+    bright_textures: bool,
+    fog: Fog,
+    colorblind: Colorblind,
+    shaders_open: bool,
     /// Non-reference option: wall normals merge across 1-2 unit vertical offsets (hides seams
     /// between wall pieces such as objects 1904/1907).
     snap_diagonal_decor: bool,
@@ -130,6 +136,13 @@ impl EditorApp {
             view_plane: 0,
             brightness: 0.8,
             remove_color_banding: true,
+            bright_textures: false,
+            fog: Fog::default(),
+            colorblind: Colorblind {
+                mode: ColorblindMode::None,
+                intensity: 100.0,
+            },
+            shaders_open: false,
             snap_diagonal_decor: true,
             smooth_terrain: false,
             presentation_generation: 1,
@@ -216,6 +229,42 @@ impl EditorApp {
     fn camera_tile(&self) -> (i32, i32) {
         let (x, z) = self.world_position();
         ((x / 128.0).floor() as i32, (z / 128.0).floor() as i32)
+    }
+
+    /// RuneLite GPU plugin shader options.
+    fn shader_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.shaders_open;
+        egui::Window::new("Shaders").open(&mut open).show(ctx, |ui| {
+            ui.add(egui::Slider::new(&mut self.brightness, 0.5..=1.0).text("brightness"));
+            ui.checkbox(&mut self.remove_color_banding, "Remove color banding");
+            ui.checkbox(&mut self.bright_textures, "Bright textures");
+            ui.add(
+                egui::Slider::new(&mut self.fog.depth_tiles, 0..=100)
+                    .text("Fog depth (0 = off)"),
+            );
+            ui.add(
+                egui::Slider::new(&mut self.fog.draw_distance_tiles, 8..=184)
+                    .text("Draw distance (tiles)"),
+            );
+            egui::ComboBox::from_label("Colorblindness correction")
+                .selected_text(format!("{:?}", self.colorblind.mode))
+                .show_ui(ui, |ui| {
+                    for mode in [
+                        ColorblindMode::None,
+                        ColorblindMode::Protanope,
+                        ColorblindMode::Deuteranope,
+                        ColorblindMode::Tritanope,
+                    ] {
+                        ui.selectable_value(&mut self.colorblind.mode, mode, format!("{mode:?}"));
+                    }
+                });
+            ui.add(
+                egui::Slider::new(&mut self.colorblind.intensity, 0.0..=100.0)
+                    .text("Colorblindness intensity"),
+            );
+            ui.label("Fog colour is the sky colour. Defaults match RuneLite (fog and colorblind off).");
+        });
+        self.shaders_open = open;
     }
 
     fn open_teleport(&mut self) {
@@ -711,8 +760,7 @@ impl eframe::App for EditorApp {
                     self.open_teleport();
                 }
                 ui.separator();
-                ui.add(egui::Slider::new(&mut self.brightness, 0.5..=1.0).text("brightness"));
-                ui.checkbox(&mut self.remove_color_banding, "smooth shading");
+                ui.toggle_value(&mut self.shaders_open, "Shaders");
                 let wall_changed = ui
                     .checkbox(&mut self.snap_diagonal_decor, "snap diagonal decor")
                     .changed();
@@ -807,6 +855,9 @@ impl eframe::App for EditorApp {
                             tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
                             brightness: self.brightness,
                             remove_color_banding: self.remove_color_banding,
+                            bright_textures: self.bright_textures,
+                            fog: self.fog,
+                            colorblind: self.colorblind,
                             clear_color: self.sky_color.map(f64::from),
                         },
                         targets.width,
@@ -829,6 +880,7 @@ impl eframe::App for EditorApp {
             self.context_menu(&response);
         });
 
+        self.shader_window(&ctx);
         if let Some(destination) = self.teleport.show(&ctx) {
             self.teleport_to(destination);
         }

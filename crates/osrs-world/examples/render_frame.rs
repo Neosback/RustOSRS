@@ -122,6 +122,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 [0.0, 0.0, 0.0]
             },
+            bright_textures: env::var("RENDER_BRIGHT_TEXTURES").is_ok(),
+            fog: osrs_render::gpu::Fog {
+                depth_tiles: env::var("RENDER_FOG")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0),
+                ..Default::default()
+            },
+            colorblind: osrs_render::gpu::Colorblind {
+                mode: match env::var("RENDER_COLORBLIND").as_deref() {
+                    Ok("protan") => osrs_render::gpu::ColorblindMode::Protanope,
+                    Ok("deutan") => osrs_render::gpu::ColorblindMode::Deuteranope,
+                    Ok("tritan") => osrs_render::gpu::ColorblindMode::Tritanope,
+                    _ => osrs_render::gpu::ColorblindMode::None,
+                },
+                intensity: 100.0,
+            },
         },
         width,
         height,

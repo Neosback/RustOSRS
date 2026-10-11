@@ -140,6 +140,46 @@ pub struct FrameParams {
     /// across the face. Off converts the interpolated 7-bit HSL per pixel like the CPU renderer.
     pub remove_color_banding: bool,
     pub clear_color: [f64; 3],
+    /// RuneLite "Bright textures" (default off).
+    pub bright_textures: bool,
+    /// RuneLite fog (`Fog depth`, default 0 = off); the fog colour is `clear_color`.
+    pub fog: Fog,
+    pub colorblind: Colorblind,
+}
+
+/// RuneLite fog settings.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fog {
+    /// Fog depth in tiles; `0` turns fog off.
+    pub depth_tiles: u32,
+    /// Draw distance in tiles (RuneLite default 50).
+    pub draw_distance_tiles: u32,
+}
+
+impl Default for Fog {
+    fn default() -> Self {
+        Self {
+            depth_tiles: 0,
+            draw_distance_tiles: 50,
+        }
+    }
+}
+
+/// RuneLite colourblindness correction.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Colorblind {
+    pub mode: ColorblindMode,
+    /// 0-100.
+    pub intensity: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ColorblindMode {
+    #[default]
+    None,
+    Protanope,
+    Deuteranope,
+    Tritanope,
 }
 
 #[repr(C)]
@@ -149,6 +189,15 @@ struct GlobalsUniform {
     brightness: f32,
     smooth_banding: f32,
     tick: u32,
+    texture_light_mode: f32,
+    fog_color: [f32; 4],
+    camera_x: f32,
+    camera_z: f32,
+    draw_distance: f32,
+    fog_depth: f32,
+    use_fog: u32,
+    colorblind_mode: u32,
+    colorblind_intensity: f32,
     pad: f32,
 }
 
@@ -583,6 +632,20 @@ impl SceneRenderer {
                 1.0
             },
             tick: params.tick,
+            texture_light_mode: if params.bright_textures { 1.0 } else { 0.0 },
+            fog_color: [
+                params.clear_color[0] as f32,
+                params.clear_color[1] as f32,
+                params.clear_color[2] as f32,
+                1.0,
+            ],
+            camera_x: params.camera.x,
+            camera_z: params.camera.z,
+            draw_distance: params.fog.draw_distance_tiles as f32 * 128.0,
+            fog_depth: params.fog.depth_tiles as f32 * 128.0,
+            use_fog: u32::from(params.fog.depth_tiles > 0),
+            colorblind_mode: params.colorblind.mode as u32,
+            colorblind_intensity: params.colorblind.intensity,
             pad: 0.0,
         };
         self.queue

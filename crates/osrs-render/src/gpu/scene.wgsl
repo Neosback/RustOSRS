@@ -1,5 +1,5 @@
 // Reference-profile scene shader: a WGSL port of RuneLite's `vert.glsl` / `frag.glsl` /
-// `hsl_to_rgb.glsl` without fog, textures, tint, or colorblind modes (those arrive in M12).
+// `hsl_to_rgb.glsl` / `colorblind.glsl`. Entity tint is not ported: the scene has no entities.
 //
 // Depth is reverse-Z with no far plane: the projection matrix produces clip.z = 2n and clip.w =
 // camera distance, so depth = 2n / distance. Authored face bias is added to clip.z before the
@@ -11,6 +11,19 @@ struct Globals {
     smooth_banding: f32,
     // Texture animation clock: the client's `gameCycle & 127`.
     tick: u32,
+    // RuneLite "Bright textures": 1 lights textures with the vertex RGB, 0 with `fHsl / 127`.
+    texture_light_mode: f32,
+    // Fog colour (the sky colour); `.w` unused.
+    fog_color: vec4<f32>,
+    // Camera x/z in render-local units, draw distance and fog depth in render units.
+    camera_x: f32,
+    camera_z: f32,
+    draw_distance: f32,
+    fog_depth: f32,
+    use_fog: u32,
+    // 0 off, 1 protanope, 2 deuteranope, 3 tritanope.
+    colorblind_mode: u32,
+    colorblind_intensity: f32,
     _pad: f32,
 };
 
@@ -43,6 +56,7 @@ struct VertexOut {
     @location(3) uv: vec2<f32>,
     // Vertex RGB (`fColor.rgb`), interpolated perspective-correct.
     @location(4) color: vec3<f32>,
+    @location(5) fog: f32,
 };
 
 fn hsl_to_rgb(hsl: vec3<f32>) -> vec3<f32> {
@@ -133,7 +147,62 @@ fn vs_main(input: VertexIn) -> VertexOut {
     }
     out.tex = tex;
     out.uv = uv;
+
+    // Fog distance from the draw-distance box around the camera. The scene has no hard edges
+    // (the streamed world is unbounded), so the reference's scene-edge clamps do not apply.
+    let fog_rounding = 1.5;
+    let fog_rounding_squared = fog_rounding * fog_rounding;
+    let x_dist = min(vert.x - (globals.camera_x - globals.draw_distance), (globals.camera_x + globals.draw_distance) - vert.x);
+    let z_dist = min(vert.z - (globals.camera_z - globals.draw_distance), (globals.camera_z + globals.draw_distance) - vert.z);
+    let nearest = min(x_dist, z_dist);
+    let second_nearest = max(x_dist, z_dist);
+    let fog_distance = nearest - fog_rounding * 128.0
+        * max(0.0, (nearest + fog_rounding_squared) / (second_nearest + fog_rounding_squared));
+    let fog_amount = 1.0 - clamp(fog_distance / max(globals.fog_depth, 1.0), 0.0, 1.0);
+    out.fog = fog_amount * f32(globals.use_fog);
     return out;
+}
+
+// RuneLite `colorblind.glsl` (Fidaner, Lin, Ozguven). WGSL has no `inverse`, so the inverse of
+// `rgb2lms` is precomputed.
+const rgb2lms = mat3x3<f32>(
+    vec3<f32>(17.8824, 43.5161, 4.11935),
+    vec3<f32>(3.45565, 27.1554, 3.86714),
+    vec3<f32>(0.0299566, 0.184309, 1.46709),
+);
+const lms2rgb = mat3x3<f32>(
+    vec3<f32>(0.08094444790497689, -0.13050440916032102, 0.1167210664396031),
+    vec3<f32>(-0.010248533514606797, 0.05401932663599884, -0.11361470821404349),
+    vec3<f32>(-0.0003652969378610495, -0.004121614685876284, 0.6935114048608589),
+);
+const lms2lmsp = mat3x3<f32>(vec3<f32>(0.0, 2.02344, -2.52581), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, 0.0, 1.0));
+const lms2lmsd = mat3x3<f32>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.494207, 0.0, 1.24827), vec3<f32>(0.0, 0.0, 1.0));
+const lms2lmst = mat3x3<f32>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(-0.395913, 0.801109, 0.0));
+const corrections = mat3x3<f32>(vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(0.7, 1.0, 0.0), vec3<f32>(0.7, 0.0, 1.0));
+
+fn colorblind(color: vec3<f32>) -> vec3<f32> {
+    let lms_in = color * rgb2lms;
+    var lms: vec3<f32>;
+    if (globals.colorblind_mode == 1u) {
+        lms = lms_in * lms2lmsp;
+    } else if (globals.colorblind_mode == 2u) {
+        lms = lms_in * lms2lmsd;
+    } else {
+        lms = lms_in * lms2lmst;
+    }
+    var error = lms * lms2rgb;
+    error = color - error;
+    var correction = error * corrections;
+    correction = correction * clamp(globals.colorblind_intensity / 100.0, 0.0, 1.0);
+    return color + correction;
+}
+
+fn finish(rgb_in: vec3<f32>, alpha: f32, fog: f32) -> vec4<f32> {
+    var rgb = rgb_in;
+    if (globals.colorblind_mode > 0u) {
+        rgb = colorblind(rgb);
+    }
+    return vec4<f32>(mix(rgb, globals.fog_color.rgb, fog), alpha);
 }
 
 @fragment
@@ -152,12 +221,14 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
         let rgb = pow(sampled.rgb, vec3<f32>(globals.brightness));
         // Textured faces carry a 7-bit baked lightness (`fHsl / 127`).
         let light = input.hsl / 127.0;
-        return vec4<f32>(rgb * light, input.alpha);
+        let tex_mul = (1.0 - globals.texture_light_mode) * vec3<f32>(light)
+            + globals.texture_light_mode * input.color;
+        return finish(rgb * tex_mul, input.alpha, input.fog);
     }
 
     let packed = i32(input.hsl);
     let hsl = vec3<f32>(f32((packed >> 10) & 63), f32((packed >> 7) & 7), f32(packed & 127));
     // `smoothBanding` is 0 when banding is removed (vertex RGB) and 1 for per-pixel HSL.
     let rgb = mix(input.color, hsl_to_rgb(hsl), globals.smooth_banding);
-    return vec4<f32>(rgb, input.alpha);
+    return finish(rgb, input.alpha, input.fog);
 }
