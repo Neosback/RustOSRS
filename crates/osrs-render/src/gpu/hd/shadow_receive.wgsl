@@ -368,14 +368,19 @@ fn sample_shadow_map(
         let texel_scale = map_size / terrain_size;
         let terrain_bias = bias * texel_scale + depth_precision_bias;
         let terrain_plane = vec4<f32>(tex * terrain_size, receiver_depth_per_texel * texel_scale);
-        let terrain_shadow = sample_shadow_filtered(
-            terrain_shadow_map,
-            false,
-            shadow_pos.z - terrain_bias,
-            shadow_pos,
-            terrain_plane,
-            frag_pos,
-        );
+        // The terrain map holds smooth hill shadows: a 2x2 kernel is enough (and a third cheaper
+        // than the 3x3 of the main map).
+        var terrain_shadow: f32;
+        if (env.shadow_flags.y == SHADOW_FILTER_PCSS) {
+            terrain_shadow = sample_shadow_pcss(
+                terrain_shadow_map, false, shadow_pos.z - terrain_bias, shadow_pos, terrain_plane, frag_pos);
+        } else if (env.shadow_flags.z >= 2u) {
+            terrain_shadow = sample_shadow_pcf2x2(
+                terrain_shadow_map, false, shadow_pos.z - terrain_bias, shadow_pos, terrain_plane);
+        } else {
+            terrain_shadow = sample_shadow_pcf1x1(
+                terrain_shadow_map, false, shadow_pos.z - terrain_bias, shadow_pos, terrain_plane);
+        }
         shadow = max(shadow, terrain_shadow);
     }
     return shadow * (1.0 - fade_out);
