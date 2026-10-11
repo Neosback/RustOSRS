@@ -1,5 +1,9 @@
 # Editor UI/UX: layout, interaction model, shortcuts
 
+> **2026-10-11:** the layout below is superseded by `WORKSPACE-V2.md` (settings window + Settings tab, left tool
+> rail, context drawer, editor/game context menus, tile-paint channel model, object move/place model). The
+> interaction model and shortcut conventions in this file still apply.
+
 ## 1. What the current layout is (implemented)
 
 ```
@@ -32,7 +36,7 @@ Principles taken from Blender, Unreal and the community RuneScape map editors (R
 |---|---|
 | Right drag | look (fly) / orbit (orbit camera) |
 | Shift + right drag, middle drag | pan |
-| Shift + right click | context menu (copy object / tile / neighbourhood) |
+| Shift + right click | context menu: editor menu or the game's own (Settings > Interface, Alt+M) |
 | Left click | select (left drag is free for box select and brushes) |
 | Scroll | fly speed (fly) / zoom (orbit) |
 | Shift + movement keys | boost |
