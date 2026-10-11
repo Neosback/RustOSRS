@@ -162,6 +162,28 @@ pub const CORE_ACTIONS: &[ActionDef] = &[
         "View",
         Binding::key(Key::N),
     ),
+    ActionDef::new(
+        "settings.open",
+        "Settings...",
+        "Edit",
+        Binding {
+            key: Key::Comma,
+            command: true,
+            shift: false,
+            alt: false,
+        },
+    ),
+    ActionDef::new(
+        "contextmenu.style",
+        "Switch editor / game context menu",
+        "View",
+        Binding {
+            key: Key::M,
+            command: false,
+            shift: false,
+            alt: true,
+        },
+    ),
     ActionDef::new("teleport.open", "Teleport...", "Go", Binding::key(Key::T)),
     ActionDef::new("worldmap.toggle", "World map", "Go", Binding::key(Key::M)),
     ActionDef::new(
@@ -204,6 +226,13 @@ impl Keymap {
             .get(id)
             .copied()
             .or_else(|| self.actions.iter().find(|a| a.id == id).map(|a| a.default))
+    }
+
+    /// The binding as text (`"Cmd+,"`), empty when unbound.
+    pub fn describe(&self, id: &str) -> String {
+        self.binding(id)
+            .map(|binding| binding.describe())
+            .unwrap_or_default()
     }
 
     pub fn is_overridden(&self, id: &str) -> bool {

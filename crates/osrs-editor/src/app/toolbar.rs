@@ -36,6 +36,14 @@ impl EditorApp {
                 ui.separator();
                 self.run_plugins(|plugin, cx| plugin.toolbar(ui, cx));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .button(icons::SETTINGS)
+                        .on_hover_text("Settings (search every option)")
+                        .clicked()
+                    {
+                        self.open_settings(None);
+                        self.settings_focus_search = true;
+                    }
                     ui.toggle_value(&mut self.prefs.properties_panel, icons::SIDE_PANEL)
                         .on_hover_text("Side panel");
                     ui.toggle_value(&mut self.prefs.stats_overlay, icons::STATS)

@@ -8,18 +8,55 @@ use osrs_render::gpu::{Colorblind, ColorblindMode, Fog, HdParams, RenderProfile}
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, io, path::PathBuf};
 
-/// Tabs of the side panel.
+/// Tabs of the side panel (the inspector). Settings live in the settings window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum PanelTab {
     /// The selected object.
     #[default]
     Object,
-    /// Camera, plane, loading.
+    /// The frequently used settings (the rest are in the settings window).
+    Settings,
+    /// Retired: the camera and view options moved to the settings window (reads as `Object`).
     View,
-    /// RuneLite GPU shader options.
+    /// Retired: the shading options moved to the settings window (reads as `Object`).
     Shading,
-    /// Scene options and plugin sections.
+    /// Plugin sections.
     Tools,
+}
+
+/// Pages of the settings window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum SettingsPage {
+    #[default]
+    Interface,
+    CameraWorld,
+    Graphics,
+    HdLighting,
+    HdShadowsWater,
+    Controls,
+    Advanced,
+}
+
+/// What Shift + right click opens in the viewport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ContextMenuStyle {
+    /// The editor's own menu: select, focus, teleport, copy, and (later) the editing actions.
+    #[default]
+    Editor,
+    /// The game's menu as the client draws it (`Choose Option`, the object's actions, `Examine`,
+    /// `Walk here`, `Cancel`), with nothing of the editor in it.
+    Game,
+}
+
+impl ContextMenuStyle {
+    pub const ALL: [Self; 2] = [Self::Editor, Self::Game];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Editor => "Editor menu",
+            Self::Game => "Game menu (OSRS / RuneLite)",
+        }
+    }
 }
 
 /// Size of the minimap assembly: the game's own sprites at 1x are `Medium`.
@@ -169,6 +206,10 @@ pub struct Settings {
     /// Side panel on the right (otherwise left).
     pub dock_right: bool,
     pub side_tab: PanelTab,
+    /// The settings window's current page.
+    pub settings_page: SettingsPage,
+    /// Shift + right click: the editor's menu or the game's.
+    pub context_menu: ContextMenuStyle,
     /// Keyboard shortcut overrides: action id -> `"Shift+G"`.
     pub keymap: BTreeMap<String, String>,
     /// Per-plugin state (see `EditorPlugin::save_settings`).
@@ -212,6 +253,8 @@ impl Default for Settings {
             orbit_camera: false,
             dock_right: true,
             side_tab: PanelTab::Object,
+            settings_page: SettingsPage::Interface,
+            context_menu: ContextMenuStyle::Editor,
             keymap: BTreeMap::new(),
             plugins: BTreeMap::new(),
         }
@@ -268,6 +311,9 @@ impl Settings {
         if self.hd_lighting_revision < HD_LIGHTING_REVISION {
             self.hd_exposure = HdParams::default().exposure;
             self.hd_lighting_revision = HD_LIGHTING_REVISION;
+        }
+        if matches!(self.side_tab, PanelTab::View | PanelTab::Shading) {
+            self.side_tab = PanelTab::Object;
         }
         self.hd_exposure = self.hd_exposure.clamp(0.25, 4.0);
         self.hd_vignette = self.hd_vignette.clamp(0.0, 1.0);
@@ -374,6 +420,22 @@ mod tests {
             ..migrated
         };
         assert_eq!(kept.sanitized().hd_exposure, 1.5);
+        Ok(())
+    }
+
+    #[test]
+    fn the_context_menu_and_settings_page_persist_and_old_tabs_migrate()
+    -> Result<(), serde_json::Error> {
+        assert_eq!(Settings::default().context_menu, ContextMenuStyle::Editor);
+        let settings: Settings = serde_json::from_str(
+            r#"{ "context_menu": "Game", "settings_page": "Controls", "side_tab": "Shading" }"#,
+        )?;
+        assert_eq!(settings.context_menu, ContextMenuStyle::Game);
+        assert_eq!(settings.settings_page, SettingsPage::Controls);
+        // The View and Shading tabs moved into the settings window.
+        assert_eq!(settings.sanitized().side_tab, PanelTab::Object);
+        let tools: Settings = serde_json::from_str(r#"{ "side_tab": "Tools" }"#)?;
+        assert_eq!(tools.sanitized().side_tab, PanelTab::Tools);
         Ok(())
     }
 

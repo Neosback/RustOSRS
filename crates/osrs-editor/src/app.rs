@@ -1,11 +1,13 @@
 //! The eframe application: scene loading, the wgpu viewport, and fly-camera input.
 
+mod context_menu;
 mod hd;
 mod menu;
 mod minimap;
 mod overlay;
 mod plugins;
 mod properties;
+mod settings_window;
 mod status;
 mod toolbar;
 mod worldmap;
@@ -102,7 +104,11 @@ pub struct EditorApp {
     context_menu: Option<egui::Pos2>,
     keymap: Keymap,
     /// Keyboard Shortcuts window state: open, and the action waiting for a key press.
-    keys_window_open: bool,
+    /// The settings window: open, its search text, and whether to focus the search box.
+    settings_open: bool,
+    settings_search: String,
+    settings_focus_search: bool,
+    /// The keyboard shortcut waiting for a key press (settings window, Controls page).
     capturing_binding: Option<&'static str>,
     streamer: RegionStreamer,
     animations: AnimationWorker,
@@ -195,7 +201,10 @@ impl EditorApp {
             context_pick: Pick::default(),
             context_menu: None,
             keymap: Keymap::new(),
-            keys_window_open: false,
+            // Smoke-test hook: open the settings window at start (`RUSTOSRS_OPEN_SETTINGS=1`).
+            settings_open: std::env::var_os("RUSTOSRS_OPEN_SETTINGS").is_some(),
+            settings_search: String::new(),
+            settings_focus_search: false,
             capturing_binding: None,
             streamer,
             animations: AnimationWorker::spawn(),
@@ -799,192 +808,6 @@ impl EditorApp {
         }
     }
 
-    /// Shift + right click menu in the game's own style: the entries the client would offer for
-    /// the object / tile (`Open Bank booth`, `Examine ...`, `Walk here`, `Cancel`), then the
-    /// editor's copy actions. (Plain right drag looks around, so the menu needs the modifier.)
-    fn context_menu(&mut self, ctx: &egui::Context) {
-        let Some(position) = self.context_menu else {
-            return;
-        };
-        let pick = self.context_pick.clone();
-        let entries = interact::entries(&self.infos, &pick);
-        let mut chosen: Option<interact::Effect> = None;
-        let mut close = false;
-        let brown = egui::Color32::from_rgb(93, 84, 71);
-        let header = egui::Color32::from_rgb(38, 34, 28);
-        let area = egui::Area::new(egui::Id::new("viewport_context_menu"))
-            .order(egui::Order::Foreground)
-            .fixed_pos(position)
-            .show(ctx, |ui| {
-                egui::Frame::new()
-                    .fill(brown)
-                    .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK))
-                    .inner_margin(egui::Margin::same(2))
-                    .show(ui, |ui| {
-                        ui.set_width(210.0);
-                        ui.spacing_mut().item_spacing.y = 0.0;
-                        egui::Frame::new()
-                            .fill(header)
-                            .inner_margin(egui::Margin::symmetric(6, 3))
-                            .show(ui, |ui| {
-                                ui.set_min_width(ui.available_width());
-                                ui.label(
-                                    egui::RichText::new("Choose Option")
-                                        .color(egui::Color32::from_rgb(220, 205, 170))
-                                        .size(13.0),
-                                );
-                            });
-                        let line = |ui: &mut egui::Ui, job: egui::text::LayoutJob| -> bool {
-                            let galley = ui.painter().layout_job(job);
-                            let size = egui::vec2(
-                                ui.available_width().max(galley.size().x + 12.0),
-                                galley.size().y + 6.0,
-                            );
-                            let (rect, response) =
-                                ui.allocate_exact_size(size, egui::Sense::click());
-                            if response.hovered() {
-                                ui.painter().rect_filled(
-                                    rect,
-                                    0.0,
-                                    egui::Color32::from_white_alpha(46),
-                                );
-                            }
-                            ui.painter().galley(
-                                rect.min + egui::vec2(6.0, 3.0),
-                                galley,
-                                egui::Color32::WHITE,
-                            );
-                            response.clicked()
-                        };
-                        for entry in &entries {
-                            if line(ui, interact::entry_job(entry, 13.5, None)) {
-                                chosen = Some(entry.effect.clone());
-                                close = true;
-                            }
-                        }
-                        let cancel = interact::Entry {
-                            action: "Cancel".to_owned(),
-                            target: None,
-                            effect: interact::Effect::Cancel,
-                        };
-                        if line(ui, interact::entry_job(&cancel, 13.5, None)) {
-                            close = true;
-                        }
-                        ui.add_space(3.0);
-                        ui.separator();
-                        ui.add_space(2.0);
-                        ui.label(
-                            egui::RichText::new("Editor")
-                                .size(11.5)
-                                .color(egui::Color32::from_rgb(190, 176, 148)),
-                        );
-                        ui.visuals_mut().override_text_color =
-                            Some(egui::Color32::from_rgb(235, 225, 200));
-                        ui.visuals_mut().widgets.inactive.weak_bg_fill =
-                            egui::Color32::from_black_alpha(40);
-                        close |= self.copy_menu(ui, &pick);
-                    });
-            });
-        let pressed_outside =
-            ctx.input(|i| i.pointer.any_pressed()) && !area.response.contains_pointer();
-        if close || pressed_outside || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            self.context_menu = None;
-        }
-        if let Some(effect) = chosen {
-            self.apply_effect(effect);
-        }
-    }
-
-    /// Carry out a chosen menu entry. Game actions are inert until the editor talks to a server;
-    /// walking here moves the camera there.
-    fn apply_effect(&mut self, effect: interact::Effect) {
-        let object_name = |app: &Self, object: &ObjectPick| {
-            app.infos
-                .get(&object.region)
-                .and_then(|info| info.locs.get(object.index))
-                .map(|loc| {
-                    (
-                        loc.definition.name.clone().unwrap_or_default(),
-                        loc.definition.identity.id.get(),
-                    )
-                })
-        };
-        match effect {
-            interact::Effect::Cancel => {}
-            interact::Effect::WalkHere((x, y)) => {
-                let plane = self.view_plane;
-                self.teleport_to(Destination::Tile { x, y, plane });
-            }
-            interact::Effect::Examine(object) => {
-                if let Some((name, id)) = object_name(self, &object) {
-                    self.notice = Some((format!("{name} (object {id})"), Instant::now()));
-                }
-            }
-            interact::Effect::ObjectAction { object, slot } => {
-                if let Some((name, id)) = object_name(self, &object) {
-                    let action = self
-                        .infos
-                        .get(&object.region)
-                        .and_then(|info| info.locs.get(object.index))
-                        .and_then(|loc| loc.definition.actions[slot].clone())
-                        .unwrap_or_default();
-                    self.notice = Some((
-                        format!(
-                            "{action} {name} (object {id}): game actions need a server connection"
-                        ),
-                        Instant::now(),
-                    ));
-                }
-            }
-        }
-    }
-
-    /// "Copy ..." actions for an object and/or tile (context menu and the Selection section).
-    fn copy_menu(&self, ui: &mut egui::Ui, pick: &Pick) -> bool {
-        let mut taken = false;
-        let loc = pick
-            .object
-            .as_ref()
-            .and_then(|object| self.infos.get(&object.region)?.locs.get(object.index));
-        let center = loc.map(|loc| loc.tile).or(pick.tile.map(|tile| tile.tile));
-        let plane = loc.map_or(usize::from(self.view_plane), |loc| usize::from(loc.plane));
-        let mut copy = |ui: &mut egui::Ui, label: &str, text: String| {
-            if ui.button(label).clicked() {
-                ui.ctx().copy_text(text);
-                ui.close();
-                taken = true;
-            }
-        };
-        if let Some(object) = &pick.object {
-            copy(
-                ui,
-                "Copy object",
-                pick::describe_object(&self.infos, object),
-            );
-        }
-        if let Some(tile) = center {
-            copy(ui, "Copy tile", pick::describe_tile(&self.infos, tile));
-            copy(
-                ui,
-                "Copy neighbourhood (3x3)",
-                pick::describe_neighbourhood(&self.infos, tile, plane, 1),
-            );
-            copy(
-                ui,
-                "Copy neighbourhood (5x5)",
-                pick::describe_neighbourhood(&self.infos, tile, plane, 2),
-            );
-            if let Some(object) = &pick.object {
-                let mut text = pick::describe_object(&self.infos, object);
-                text.push_str(&pick::describe_neighbourhood(&self.infos, tile, plane, 1));
-                copy(ui, "Copy object + neighbourhood", text);
-            }
-        } else {
-            ui.label("nothing under the cursor");
-        }
-        taken
-    }
-
     fn ensure_targets(&mut self, width: u32, height: u32) {
         if let Some(targets) = &self.targets
             && targets.width == width
@@ -1080,6 +903,8 @@ impl EditorApp {
             clear = true;
         }
         let toggle_map = pressed("worldmap.toggle");
+        let open_settings = pressed("settings.open");
+        let switch_menu = pressed("contextmenu.style");
         for (index, id) in ["plane.0", "plane.1", "plane.2", "plane.3"]
             .into_iter()
             .enumerate()
@@ -1090,6 +915,24 @@ impl EditorApp {
         }
         if toggle_map {
             self.toggle_world_map();
+        }
+        if open_settings {
+            self.open_settings(None);
+            self.settings_focus_search = true;
+        }
+        if switch_menu {
+            self.prefs.context_menu = match self.prefs.context_menu {
+                crate::settings::ContextMenuStyle::Editor => {
+                    crate::settings::ContextMenuStyle::Game
+                }
+                crate::settings::ContextMenuStyle::Game => {
+                    crate::settings::ContextMenuStyle::Editor
+                }
+            };
+            self.notice = Some((
+                format!("Context menu: {}", self.prefs.context_menu.label()),
+                Instant::now(),
+            ));
         }
         if open_teleport {
             self.open_teleport();
@@ -1278,7 +1121,7 @@ impl eframe::App for EditorApp {
             self.context_menu(&ctx);
         });
 
-        self.keys_window(&ctx);
+        self.settings_window(&ctx);
         self.assets.poll(&ctx);
         self.world_map_window(&ctx);
         if let Some(destination) = self.teleport.show(&ctx) {
