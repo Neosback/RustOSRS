@@ -110,9 +110,11 @@ mod tests {
         let directory =
             std::env::temp_dir().join(format!("rustosrs-settings-{}", std::process::id()));
         let path = directory.join("editor.json");
-        let mut settings = Settings::default();
-        settings.smooth_terrain = true;
-        settings.fly_speed = 1234.0;
+        let mut settings = Settings {
+            smooth_terrain: true,
+            fly_speed: 1234.0,
+            ..Settings::default()
+        };
         settings
             .plugins
             .insert("demo".to_owned(), serde_json::json!({ "n": 1 }));
