@@ -14,20 +14,30 @@ ALLOWED_INTERNAL: dict[str, set[str]] = {
     "osrs-core": set(),
     "osrs-cache": {"osrs-core"},
     "osrs-scene": {"osrs-core"},
-    "osrs-render": {"osrs-core", "osrs-scene"},
+    # 117HD data/settings are reusable renderer inputs and do not depend on renderer/world/editor.
+    "osrs-hd": set(),
+    "osrs-render": {"osrs-core", "osrs-scene", "osrs-hd"},
     # Runtime world composition/orchestration may consume the reusable decode,
-    # semantic-scene, and renderer layers, but none of those layers may depend back on it.
-    "osrs-world": {"osrs-core", "osrs-cache", "osrs-scene", "osrs-render"},
+    # semantic-scene, renderer, and HD-data layers, but none of those layers may depend back on it.
+    "osrs-world": {"osrs-core", "osrs-cache", "osrs-scene", "osrs-render", "osrs-hd"},
     # Reference infrastructure may exercise the composed world layer for integration parity.
     "osrs-reference": {"osrs-core", "osrs-cache", "osrs-scene", "osrs-world"},
     # The editor is the product composition root and may consume world orchestration directly.
-    "osrs-editor": {"osrs-core", "osrs-cache", "osrs-scene", "osrs-render", "osrs-world"},
+    "osrs-editor": {
+        "osrs-core",
+        "osrs-cache",
+        "osrs-scene",
+        "osrs-render",
+        "osrs-world",
+        "osrs-hd",
+    },
 }
 
 DEPENDENCY_SECTIONS = {"dependencies", "dev-dependencies", "build-dependencies"}
 CORE_FORBIDDEN = {
     "osrs-cache",
     "osrs-scene",
+    "osrs-hd",
     "osrs-render",
     "osrs-world",
     "osrs-reference",
