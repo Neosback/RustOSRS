@@ -1374,26 +1374,3 @@ mod tests {
         }
     }
 }
-
-impl EditorApp {
-    /// Apply the brush around `tile`. Until the edit backend lands this reports what it would do.
-    pub(super) fn apply_brush_at(&mut self, tile: (i32, i32)) {
-        let brush = &self.prefs.brush;
-        if brush.is_empty() {
-            self.notice = Some((
-                "Nothing armed: tick a channel in the drawer".to_owned(),
-                std::time::Instant::now(),
-            ));
-            return;
-        }
-        let tiles = brush.footprint_tiles(tile);
-        self.notice = Some((
-            format!(
-                "Brush would change {} on {} tile(s)",
-                brush.armed_channels().join(", ").to_lowercase(),
-                tiles.len()
-            ),
-            std::time::Instant::now(),
-        ));
-    }
-}

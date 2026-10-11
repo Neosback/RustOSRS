@@ -260,6 +260,7 @@ pub enum StreamEvent {
 enum Request {
     Build(RegionCoord),
     SetPresentation(TerrainPresentation, u32),
+    Edit(Vec<crate::TileEdit>),
     Outline {
         region: (i32, i32),
         index: usize,
@@ -311,6 +312,7 @@ impl RegionStreamer {
                                 triangles,
                             });
                         }
+                        Request::Edit(edits) => definitions.apply_edits(&edits),
                         Request::SetPresentation(new_presentation, new_generation) => {
                             presentation = new_presentation;
                             generation = new_generation;
@@ -416,6 +418,12 @@ impl RegionStreamer {
             index,
             loc: Box::new(loc),
         });
+    }
+
+    /// Record terrain edits. Requests are handled in order, so a build queued after this call
+    /// includes them.
+    pub fn edit(&self, edits: Vec<crate::TileEdit>) {
+        let _ = self.requests.send(Request::Edit(edits));
     }
 
     /// Queue a region build.

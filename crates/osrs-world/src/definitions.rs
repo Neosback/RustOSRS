@@ -125,6 +125,7 @@ pub struct WorldDefinitions {
     frame_groups: HashMap<u32, HashMap<u32, CacheFile>>,
     skeletons: HashMap<u16, Option<Arc<Vec<LegacySkeletonTransform>>>>,
     frames: HashMap<u32, Option<Arc<LegacyAnimationFrame>>>,
+    edits: crate::TerrainEdits,
 }
 
 impl WorldDefinitions {
@@ -248,7 +249,13 @@ impl WorldDefinitions {
             frame_groups: HashMap::new(),
             skeletons: HashMap::new(),
             frames: HashMap::new(),
+            edits: crate::TerrainEdits::default(),
         })
+    }
+
+    /// Record editor changes; later builds of the affected regions include them.
+    pub fn apply_edits(&mut self, edits: &[crate::TileEdit]) {
+        self.edits.apply(edits);
     }
 
     pub fn cache(&self) -> &CacheRepository {
@@ -462,7 +469,7 @@ impl WorldDefinitions {
             &square.locations.provenance,
             region,
         )?;
-        let tiles = terrain
+        let mut tiles: Vec<RegionTerrainTile> = terrain
             .tiles()
             .iter()
             .map(|tile| RegionTerrainTile {
@@ -481,6 +488,13 @@ impl WorldDefinitions {
                 underlay: tile.underlay_id,
             })
             .collect();
+        for edit in self.edits.region((region.x, region.y)) {
+            let (_, (x, y)) = edit.locate();
+            let index = (usize::from(edit.plane) * 64 + usize::from(x)) * 64 + usize::from(y);
+            if let Some(tile) = tiles.get_mut(index) {
+                edit.apply_to(tile);
+            }
+        }
         Ok(Some(RegionMap {
             terrain: RegionTerrain::new(tiles)?,
             locations,

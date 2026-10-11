@@ -19,6 +19,7 @@ pub mod minimap;
 pub mod oracle_dump;
 mod scene_builder;
 mod streaming;
+mod terrain_edits;
 mod terrain_stage;
 mod window;
 pub mod worldmap;
@@ -45,6 +46,7 @@ pub use streaming::{
     HdRegionStats, REGION_WINDOW_MARGIN, RegionGeometry, RegionRenderPath, RegionStreamer,
     StreamEvent, build_region_geometry, build_region_geometry_with, region_window,
 };
+pub use terrain_edits::{TerrainEdits, TileEdit};
 pub use terrain_stage::{
     DEFAULT_BRIGHTNESS, LoadedWindow, TerrainPresentation, apply_terrain, load_window,
     load_window_terrain,

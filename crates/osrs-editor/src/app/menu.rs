@@ -16,6 +16,33 @@ impl EditorApp {
                 });
                 ui.menu_button("Edit", |ui| {
                     if ui
+                        .add_enabled(
+                            self.can_undo(),
+                            egui::Button::new(format!(
+                                "Undo   {}",
+                                self.keymap.describe("edit.undo")
+                            )),
+                        )
+                        .clicked()
+                    {
+                        self.undo();
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.can_redo(),
+                            egui::Button::new(format!(
+                                "Redo   {}",
+                                self.keymap.describe("edit.redo")
+                            )),
+                        )
+                        .clicked()
+                    {
+                        self.redo();
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui
                         .button(format!(
                             "{} Settings...   {}",
                             icons::SETTINGS,

@@ -43,6 +43,32 @@ impl EditorApp {
                     "Orbit camera: right drag orbits, shift+right drag pans, scroll zooms",
                 );
                 ui.separator();
+                if self.prefs.tool != crate::paint::Tool::Select
+                    || self.can_undo()
+                    || self.can_redo()
+                {
+                    if ui
+                        .add_enabled(
+                            self.can_undo(),
+                            egui::Button::new(egui_phosphor::regular::ARROW_U_UP_LEFT),
+                        )
+                        .on_hover_text("Undo (Cmd+Z)")
+                        .clicked()
+                    {
+                        self.undo();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.can_redo(),
+                            egui::Button::new(egui_phosphor::regular::ARROW_U_UP_RIGHT),
+                        )
+                        .on_hover_text("Redo (Cmd+Shift+Z)")
+                        .clicked()
+                    {
+                        self.redo();
+                    }
+                    ui.separator();
+                }
                 self.run_plugins(|plugin, cx| plugin.toolbar(ui, cx));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.toggle_value(&mut self.prefs.stats_overlay, icons::STATS)

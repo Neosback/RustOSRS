@@ -1,6 +1,7 @@
 //! The eframe application: scene loading, the wgpu viewport, and fly-camera input.
 
 mod context_menu;
+mod editing;
 mod hd;
 mod menu;
 mod minimap;
@@ -134,12 +135,23 @@ pub struct EditorApp {
     palette: Option<std::sync::Arc<osrs_world::FloorPalette>>,
     palette_rx:
         Option<std::sync::mpsc::Receiver<Result<osrs_world::FloorPalette, osrs_world::WorldError>>>,
+    /// Tiles the editor has painted, by `(plane, x, y)`, and the undo / redo stacks of strokes.
+    edited: HashMap<editing::TileKey, crate::paint::TileValues>,
+    history: Vec<editing::EditStep>,
+    redo_stack: Vec<editing::EditStep>,
+    stroke: Option<editing::Stroke>,
+    /// Regions waiting for a rebuild after an edit.
+    dirty_regions: HashSet<(i32, i32)>,
     /// Where the quick tools HUD (Space) is open.
     quick_open: Option<egui::Pos2>,
     /// The last tile the cursor was over (the Tile tab keeps showing it after the cursor leaves).
     last_hover_tile: Option<(i32, i32)>,
     /// Smoke-test hook: teleport on the first frame (`RUSTOSRS_TELEPORT="x,y,plane"`).
     pending_teleport: Option<Destination>,
+    /// Smoke-test hook: undo the last stroke once this frame is reached (`RUSTOSRS_UNDO_AT`).
+    smoke_undo_at: Option<u64>,
+    /// Smoke-test hook: paint the brush here once the region is loaded (`RUSTOSRS_PAINT="x,y"`).
+    smoke_paint: Option<(i32, i32)>,
     /// Smoke-test hook: select the object anchored on this tile (`RUSTOSRS_SELECT="x,y"`).
     smoke_select: Option<(i32, i32)>,
     /// Smoke-test hook: exit after this many seconds (`RUSTOSRS_EXIT_AFTER_SECONDS`).
@@ -243,8 +255,20 @@ impl EditorApp {
                 Some(receiver)
             },
             // Smoke-test hook: open the quick tools HUD at start (`RUSTOSRS_QUICK=1`).
+            edited: HashMap::new(),
+            history: Vec::new(),
+            redo_stack: Vec::new(),
+            stroke: None,
+            dirty_regions: HashSet::new(),
             quick_open: std::env::var_os("RUSTOSRS_QUICK").map(|_| egui::pos2(520.0, 300.0)),
             last_hover_tile: None,
+            smoke_undo_at: std::env::var("RUSTOSRS_UNDO_AT")
+                .ok()
+                .and_then(|value| value.parse().ok()),
+            smoke_paint: std::env::var("RUSTOSRS_PAINT").ok().and_then(|value| {
+                let (x, y) = value.split_once(',')?;
+                Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
+            }),
             smoke_select: std::env::var("RUSTOSRS_SELECT").ok().and_then(|value| {
                 let (x, y) = value.split_once(',')?;
                 Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
@@ -551,6 +575,7 @@ impl EditorApp {
         if !self.ready {
             return;
         }
+        self.flush_dirty_regions();
 
         let (cx, cy) = self.camera_region();
         let radius = self.prefs.load_radius;
@@ -664,6 +689,7 @@ impl EditorApp {
         if let Some(pick) = self.hover.tile {
             self.last_hover_tile = Some(pick.tile);
         }
+        self.brush_input(&response.ctx, response);
         // Left click selects with the Select tool; the brush tools keep the click for painting.
         if response.clicked() && self.prefs.tool == crate::paint::Tool::Select {
             self.selected = self.hover.object.clone();
@@ -766,39 +792,68 @@ impl EditorApp {
                 egui::Color32::from_rgb(255, 200, 0),
             );
         }
-        // The hovered tile, outlined like RuneLite's tile indicator.
+        // The hovered tile, outlined like RuneLite's tile indicator; with a brush tool, the tiles
+        // the brush would paint (orange), or grey when nothing is armed.
         if self.prefs.hover_tile
             && let Some(tile) = &self.hover.tile
-            && let Some(corners) = interact::tile_corners(&self.infos, tile.tile, self.view_plane)
         {
-            let points: Vec<egui::Pos2> = corners
-                .iter()
-                .filter_map(|corner| {
-                    pick::project(
-                        &self.camera,
-                        self.renderer.render_origin(),
-                        width as f32,
-                        height as f32,
-                        *corner,
-                    )
-                })
-                .map(|p| {
-                    egui::pos2(
-                        rect.min.x + p[0] / pixels_per_point,
-                        rect.min.y + p[1] / pixels_per_point,
-                    )
-                })
-                .collect();
-            if points.len() == 4 {
-                painter.add(egui::Shape::convex_polygon(
-                    points,
+            let brushing = self.prefs.tool != crate::paint::Tool::Select;
+            let tiles = if brushing {
+                self.prefs.brush.footprint_tiles(tile.tile)
+            } else {
+                vec![tile.tile]
+            };
+            let (fill, edge) = if !brushing {
+                (
                     egui::Color32::from_rgba_unmultiplied(0, 255, 255, 28),
-                    egui::Stroke::new(1.5, egui::Color32::from_rgb(0, 255, 255)),
-                ));
+                    egui::Color32::from_rgb(0, 255, 255),
+                )
+            } else if self.prefs.brush.is_empty() {
+                (
+                    egui::Color32::from_rgba_unmultiplied(200, 200, 200, 22),
+                    egui::Color32::from_gray(190),
+                )
+            } else {
+                (
+                    egui::Color32::from_rgba_unmultiplied(255, 170, 40, 40),
+                    egui::Color32::from_rgb(255, 170, 40),
+                )
+            };
+            for tile in tiles {
+                let Some(corners) = interact::tile_corners(&self.infos, tile, self.view_plane)
+                else {
+                    continue;
+                };
+                let points: Vec<egui::Pos2> = corners
+                    .iter()
+                    .filter_map(|corner| {
+                        pick::project(
+                            &self.camera,
+                            self.renderer.render_origin(),
+                            width as f32,
+                            height as f32,
+                            *corner,
+                        )
+                    })
+                    .map(|p| {
+                        egui::pos2(
+                            rect.min.x + p[0] / pixels_per_point,
+                            rect.min.y + p[1] / pixels_per_point,
+                        )
+                    })
+                    .collect();
+                if points.len() == 4 {
+                    painter.add(egui::Shape::convex_polygon(
+                        points,
+                        fill,
+                        egui::Stroke::new(1.5, edge),
+                    ));
+                }
             }
         }
         // The in-game action text next to the cursor (RuneLite's mouse tooltips).
         if self.prefs.mouse_tooltips
+            && self.prefs.tool == crate::paint::Tool::Select
             && self.context_menu.is_none()
             && let Some(pointer) = ui.input(|i| i.pointer.hover_pos())
             && rect.contains(pointer)
@@ -990,6 +1045,7 @@ impl EditorApp {
             self.view_plane = plane;
         }
         self.tool_actions(ctx);
+        self.edit_actions(ctx);
     }
 
     fn handle_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
@@ -1102,6 +1158,20 @@ impl eframe::App for EditorApp {
             }
             self.selected = Some(pick);
             self.smoke_select = None;
+        }
+        if let Some(tile) = self.smoke_paint
+            && crate::pick::tile_values(&self.infos, tile, self.view_plane).is_some()
+        {
+            self.apply_brush_at(tile);
+            self.smoke_paint = None;
+        }
+        // Smoke-test hook: undo the last stroke on this frame (`RUSTOSRS_UNDO_AT=frame`).
+        if let Some(at) = self.smoke_undo_at
+            && self.frames >= at
+            && self.can_undo()
+        {
+            self.undo();
+            self.smoke_undo_at = None;
         }
         self.editor_actions(&ctx);
         self.plugin_actions(&ctx);

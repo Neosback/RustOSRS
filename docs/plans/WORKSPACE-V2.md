@@ -4,6 +4,28 @@ Status: **design + first slice built** (settings window, side-panel Settings tab
 2026-10-11). Everything below the "Built" section is the plan the next slices follow. It extends
 `UI-UX.md` (interaction model, shortcuts) and `ARCHITECTURE.md` (one home per fact, commands for every edit).
 
+## Status: workspace slice (built)
+
+The layout now follows Displee's: a **category rail** on the dock edge (Inspector, View, Graphics, Plugins, and
+the settings gear) whose icons swap the **dock panel** (the Inspector has Object | Tile tabs); a bottom **tool
+strip** (Select, Paint, Height, Flags, brush size and footprint) and, above it, the active tool's **drawer**: the
+tile painter with one tab per channel (Overlay, Underlay, Shape, Height, Mask), each with an *armed* checkbox,
+real floor-colour swatches from the cache, shape and rotation thumbnails drawn from the terrain tables, and a
+preview. Unarmed channels keep the tile's own values. **Space** opens the quick tools HUD (tools, armed
+channels, brush, plane, camera); `V B H X` pick tools, `I` or Alt+click is the eyedropper, `[` `]` resize the
+brush, Tab toggles the drawer. The editor context menu has a tool row and, with a brush tool, "Paint here" and
+"Eyedrop tile". Context awareness: no drawer for Select, brush controls only for brushing tools, the tile HUD
+only over terrain, undo/redo buttons only once a brush tool is active or there is history, game hover text only
+with Select. Below 1100 points the toolbar and tool strip collapse to icons; the stats overlay shrinks in narrow
+viewports.
+
+**Painting is real for the colour channels**: strokes (left drag) write into an edit layer in the world worker
+(`osrs-world::TerrainEdits`, applied right after the cache decodes a region, so the scene, the picker and the HD
+stream all see it), rebuild the regions within 6 tiles, and are undone and redone per stroke (Cmd+Z,
+Cmd+Shift+Z). Not yet: height edits, flags in the minimap and world map (they read the cache), objects, saving or
+exporting. `osrs-edit` (the pure document crate of section 6) is still to be extracted from `paint.rs`,
+`app/editing.rs` and `terrain_edits.rs`.
+
 Reference: OpenRune Studio / RSPSi (`~/Documents/ChatGPT/RSPSi-master`), whose `MapEditorView` is "faithful to
 Displee's Map Editor UI layout". We keep what makes that layout fast to learn and drop what costs space or
 duplicates state.

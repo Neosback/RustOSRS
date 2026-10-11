@@ -193,6 +193,28 @@ pub const CORE_ACTIONS: &[ActionDef] = &[
         Binding::key(Key::Escape),
     ),
     ActionDef::new(
+        "edit.undo",
+        "Undo",
+        "Edit",
+        Binding {
+            key: Key::Z,
+            command: true,
+            shift: false,
+            alt: false,
+        },
+    ),
+    ActionDef::new(
+        "edit.redo",
+        "Redo",
+        "Edit",
+        Binding {
+            key: Key::Z,
+            command: true,
+            shift: true,
+            alt: false,
+        },
+    ),
+    ActionDef::new(
         "quick.tools",
         "Quick tools",
         "Tools",
