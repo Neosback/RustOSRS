@@ -971,7 +971,7 @@ impl SceneRenderer {
                 u32::from(hd.normal_mapping),
                 hd.debug_view,
                 u32::from(lighting.underwater_environment),
-                0,
+                u32::from(hd.parallax_mapping),
             ],
         };
         self.queue

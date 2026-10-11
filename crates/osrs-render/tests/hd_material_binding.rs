@@ -207,17 +207,37 @@ fn scene_material_binding_samples_the_selected_texture_layer()
 #[test]
 fn hd_scene_shader_keeps_flow_map_stage_before_material_sampling() {
     let shader = include_str!("../src/gpu/hd/scene.wgsl");
-    let flow = shader
-        .find("let flow_offset = flow * material1.flow_map_strength;")
-        .expect("HD scene shader must apply the RLHD material flow map");
-    let material_derivatives = shader
-        .find("let ddx1 = dpdx(uv1);")
-        .expect("HD scene shader must derive the final material UVs");
-    let diffuse = shader
-        .find("let tex1 = sample_color(material1, uv1, ddx1, ddy1);")
-        .expect("HD scene shader must sample material 1 with the final UV");
+    let flow = shader.find("let flow_offset = flow * material1.flow_map_strength;");
+    let material_derivatives = shader.find("let ddx1 = dpdx(uv1);");
+    let diffuse = shader.find("let tex1 = sample_color(material1, uv1, ddx1, ddy1);");
+    let (Some(flow), Some(material_derivatives), Some(diffuse)) =
+        (flow, material_derivatives, diffuse)
+    else {
+        panic!("HD scene shader must keep flow-map distortion ahead of final material sampling");
+    };
 
     assert!(flow < material_derivatives);
     assert!(material_derivatives < diffuse);
     assert!(shader.contains("material1.flow_map >= 0"));
+}
+
+#[test]
+fn hd_scene_shader_applies_parallax_before_sampling_and_uses_displaced_shadows() {
+    let shader = include_str!("../src/gpu/hd/scene.wgsl");
+    let pom = shader.find("let pom1 = sample_displacement_map(");
+    let material_derivatives = shader.find("let ddx1 = dpdx(uv1);");
+    let diffuse = shader.find("let tex1 = sample_color(material1, uv1, ddx1, ddy1);");
+    let displaced_shadow = shader.find("sample_shadow_map(\n            frag_position,");
+    let (Some(pom), Some(material_derivatives), Some(diffuse), Some(displaced_shadow)) =
+        (pom, material_derivatives, diffuse, displaced_shadow)
+    else {
+        panic!("HD scene shader must apply POM before sampling and shadow the displaced fragment");
+    };
+
+    assert!(shader.contains("fn sample_displacement_map("));
+    assert!(shader.contains("material.displacement_map < 0"));
+    assert!(shader.contains("env.flags.w != 0u"));
+    assert!(pom < material_derivatives);
+    assert!(material_derivatives < diffuse);
+    assert!(pom < displaced_shadow);
 }

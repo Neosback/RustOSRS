@@ -54,6 +54,8 @@ pub struct HdLighting {
     /// (`osrs_hd::environment`).
     pub lighting: Lighting,
     pub normal_mapping: bool,
+    /// Parallax occlusion mapping for materials with displacement maps (RLHD default: on).
+    pub parallax_mapping: bool,
     /// Animation clock of the water, caustics and scrolling textures, in seconds.
     pub elapsed_seconds: f32,
     /// Debug output instead of the lit scene (`DISPLAY_*` of the plugin): 0 off, 1 base colour,
@@ -87,6 +89,7 @@ impl HdLighting {
         Self {
             lighting: Lighting::from_values(&values, &settings, 50.0, false, true, 0.0),
             normal_mapping: true,
+            parallax_mapping: true,
             elapsed_seconds: 0.0,
             debug_view: 0,
         }
