@@ -23,6 +23,13 @@ const HISTORY_LIMIT: usize = 200;
 /// How often a held sculpting brush applies again without moving.
 const SCULPT_REPEAT: Duration = Duration::from_millis(110);
 
+/// How the ground is graded along a laid path: the path's polyline and the heights at its ends.
+pub struct PathGrade {
+    pub line: Vec<(f32, f32)>,
+    pub first: i32,
+    pub last: i32,
+}
+
 /// `(plane, world x, world y)`.
 pub type TileKey = (u8, i32, i32);
 
@@ -327,7 +334,7 @@ impl EditorApp {
     pub(super) fn apply_path(
         &mut self,
         tiles: &[((i32, i32), TileChoice)],
-        grade: Option<(Vec<(f32, f32)>, i32, i32)>,
+        grade: Option<PathGrade>,
     ) -> usize {
         let brush = self.prefs.brush.clone();
         if !(brush.overlay.armed || brush.underlay.armed) || tiles.is_empty() {
@@ -370,7 +377,7 @@ impl EditorApp {
             if brush.height.armed {
                 after.height = brush.height.value;
             }
-            if let Some((line, first, last)) = &grade {
+            if let Some(PathGrade { line, first, last }) = &grade {
                 // Slope the ground along the path from the first height to the last.
                 let t = crate::autotile::ramp_parameter(
                     line,

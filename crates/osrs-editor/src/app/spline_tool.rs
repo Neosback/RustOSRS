@@ -217,7 +217,7 @@ impl EditorApp {
         }
         let grade = self.prefs.spline.ramp.then(|| {
             let line = autotile::path_polyline(&self.spline.points, self.path_params(), STEP);
-            self.ramp_heights().map(|(a, b)| (line, a, b))
+            self.ramp_heights().map(|(first, last)| super::editing::PathGrade { line, first, last })
         });
         let changed = self.apply_path(&tiles, grade.flatten());
         self.spline.points.clear();
