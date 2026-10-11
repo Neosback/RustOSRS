@@ -20,6 +20,18 @@ jobs:
         run: sed -i 's/    AnimatedHdState, AnimatedInstance,/    animation::AnimatedHdState, AnimatedInstance,/' scripts/apply_animated_hd_parity.py
       - name: Apply patch
         run: python3 scripts/apply_animated_hd_parity.py
+      - name: Update reference example
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("crates/osrs-world/examples/render_frame.rs")
+          text = path.read_text()
+          old = "extract_animated_instances(&world, None)"
+          if text.count(old) != 1:
+              raise SystemExit(f"expected one render_frame animation extraction call, got {text.count(old)}")
+          path.write_text(text.replace(old, "extract_animated_instances(&world, None, None)", 1))
+          PY
       - name: Format
         run: cargo fmt --all
       - name: Check
