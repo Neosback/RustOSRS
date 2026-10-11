@@ -32,6 +32,8 @@ mod timing;
 pub use overlay::LineVertex;
 pub use profile::{HdLighting, HdParams, RenderProfile};
 
+use osrs_hd::shadows::{ShadowCamera, ShadowFit, ShadowSettings};
+
 use frame_graph::{FrameGraph, TransientDesc, TransientPool};
 
 /// Multisampled attachments of the scene pass, resolved into the caller's color view.
@@ -301,11 +303,34 @@ struct ScenePassInputs<'a> {
     hd: Option<HdDraw<'a>>,
 }
 
+/// The light's camera for this frame and the zones drawn into the shadow map.
+struct ShadowPlan<'a> {
+    camera: ShadowCamera,
+    zones: Vec<&'a GpuZone>,
+    /// Shadow draw distance in render units.
+    radius: f32,
+    /// Shadow map edge in texels.
+    size: u32,
+}
+
+/// The shadow fields of [`hd::layout::HdEnvironmentUniform`].
+#[derive(Default)]
+struct ShadowUniform {
+    light_proj: [[f32; 4]; 4],
+    right: [f32; 4],
+    up: [f32; 4],
+    axis: [f32; 4],
+    params: [f32; 4],
+    flags: [u32; 4],
+}
+
 /// What the scene pass needs to draw zones that carry HD vertex data.
 #[derive(Clone, Copy)]
 struct HdDraw<'a> {
     pipelines: &'a ScenePipelines,
     bind_group: &'a wgpu::BindGroup,
+    /// The shadow maps (group 3).
+    shadow_group: &'a wgpu::BindGroup,
 }
 
 /// Opaque and alpha scene pipelines for one colour format.
@@ -320,6 +345,7 @@ struct HdResources {
     pipelines: ScenePipelines,
     /// The HD scene shader (two vertex buffers per draw).
     scene: ScenePipelines,
+    shadows: hd::shadow::ShadowPipelines,
     post: hd::post::PostPass,
 }
 
@@ -336,63 +362,10 @@ fn build_scene_pipelines(
     format: wgpu::TextureFormat,
     hd_stream: bool,
 ) -> ScenePipelines {
-    let vertex_attributes = [
-        wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Sint16x4,
-            offset: 0,
-            shader_location: 0,
-        },
-        wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Uint32,
-            offset: 8,
-            shader_location: 1,
-        },
-        wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Uint16x4,
-            offset: 12,
-            shader_location: 2,
-        },
-    ];
-    let vertex_layout = wgpu::VertexBufferLayout {
-        array_stride: PackedVertex::SIZE as u64,
-        step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: &vertex_attributes,
-    };
-    // The HD stream: octahedral normal, uv, packed corner colours / materials / water data.
-    let hd_attributes = [
-        wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Snorm16x2,
-            offset: 0,
-            shader_location: 3,
-        },
-        wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Float32x2,
-            offset: 4,
-            shader_location: 4,
-        },
-        wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Uint16x4,
-            offset: 12,
-            shader_location: 5,
-        },
-        wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Uint16x4,
-            offset: 20,
-            shader_location: 6,
-        },
-        wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Uint16x4,
-            offset: 28,
-            shader_location: 7,
-        },
-    ];
-    let mut vertex_buffers = vec![Some(vertex_layout.clone())];
+    let [vertex_layout, hd_layout] = hd::shadow::hd_vertex_buffers();
+    let mut vertex_buffers = vec![Some(vertex_layout)];
     if hd_stream {
-        vertex_buffers.push(Some(wgpu::VertexBufferLayout {
-            array_stride: HdVertex::SIZE as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &hd_attributes,
-        }));
+        vertex_buffers.push(Some(hd_layout));
     }
 
     let make_pipeline = |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
@@ -475,6 +448,14 @@ pub struct SceneRenderer {
     hd_layout: wgpu::BindGroupLayout,
     hd_env_buffer: wgpu::Buffer,
     hd_binding: Option<HdBinding>,
+    /// Shadow options and the shadow maps they ask for (rebuilt when the size changes).
+    hd_shadows: ShadowSettings,
+    hd_shadow_layout: wgpu::BindGroupLayout,
+    hd_shadow_maps: std::cell::RefCell<Option<hd::shadow::ShadowMaps>>,
+    /// One-texel maps bound while shadows are off.
+    hd_shadow_dummy: hd::shadow::ShadowMaps,
+    /// Edge of the previous shadow fit (shimmer hysteresis).
+    hd_shadow_size: std::cell::Cell<Option<f32>>,
     /// Transient textures of the HD frame graph (HDR colour, its MSAA and depth targets).
     transients: std::cell::RefCell<TransientPool>,
     globals_buffer: wgpu::Buffer,
@@ -594,6 +575,8 @@ impl SceneRenderer {
         let globals_bind_group =
             build_globals_bind_group(&device, &queue, &globals_layout, &globals_buffer, &[]);
         let hd_layout = hd::layout::scene_bind_group_layout(&device);
+        let hd_shadow_layout = hd::shadow::maps_bind_group_layout(&device);
+        let hd_shadow_dummy = hd::shadow::ShadowMaps::new(&device, &hd_shadow_layout, 1);
         let hd_env_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("hd-environment"),
             size: std::mem::size_of::<hd::layout::HdEnvironmentUniform>() as u64,
@@ -613,6 +596,11 @@ impl SceneRenderer {
             hd_layout,
             hd_env_buffer,
             hd_binding: None,
+            hd_shadows: ShadowSettings::default(),
+            hd_shadow_dummy,
+            hd_shadow_layout,
+            hd_shadow_maps: std::cell::RefCell::new(None),
+            hd_shadow_size: std::cell::Cell::new(None),
             transients: std::cell::RefCell::new(TransientPool::default()),
             globals_buffer,
             globals_layout,
@@ -907,9 +895,29 @@ impl SceneRenderer {
         };
         self.queue
             .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
+        let shadow_plan = if params.profile == RenderProfile::Hd {
+            self.plan_shadows(&params)
+        } else {
+            None
+        };
+        if let Some(plan) = &shadow_plan {
+            self.ensure_shadow_maps(plan.size);
+        }
+        let maps_guard = self.hd_shadow_maps.borrow();
+        let shadow_maps = match (&shadow_plan, maps_guard.as_ref()) {
+            (Some(_), Some(maps)) => maps,
+            _ => &self.hd_shadow_dummy,
+        };
         let hd = &self.hd_lighting;
         let lighting = &hd.lighting;
+        let shadow_uniform = self.shadow_uniform(shadow_plan.as_ref(), shadow_maps);
         let environment = hd::layout::HdEnvironmentUniform {
+            light_proj: shadow_uniform.light_proj,
+            shadow_right: shadow_uniform.right,
+            shadow_up: shadow_uniform.up,
+            shadow_axis: shadow_uniform.axis,
+            shadow_params: shadow_uniform.params,
+            shadow_flags: shadow_uniform.flags,
             camera: [
                 params.camera.x,
                 params.camera.y,
@@ -1047,9 +1055,26 @@ impl SceneRenderer {
                         sampled: true,
                     },
                 );
+                let shadow_token = shadow_plan.as_ref().map(|_| graph.token("shadow-maps"));
+                if let (Some(plan), Some(token)) = (&shadow_plan, shadow_token) {
+                    let binding = self.hd_binding.as_ref();
+                    graph.add_pass("shadow", &[], &[token], move |encoder, _| {
+                        if let Some(binding) = binding {
+                            self.record_shadow_pass(
+                                encoder,
+                                plan,
+                                shadow_maps,
+                                hd,
+                                binding,
+                                params.view_plane,
+                            );
+                        }
+                    });
+                }
+                let scene_reads: Vec<_> = shadow_token.into_iter().collect();
                 graph.add_pass(
                     "scene",
-                    &[],
+                    &scene_reads,
                     &[msaa_color, msaa_depth, hdr],
                     move |encoder, resources| {
                         let (Some(msaa_color), Some(msaa_depth), Some(resolve)) = (
@@ -1063,6 +1088,7 @@ impl SceneRenderer {
                             hd: self.hd_binding.as_ref().map(|binding| HdDraw {
                                 pipelines: &hd.scene,
                                 bind_group: &binding.bind_group,
+                                shadow_group: shadow_maps.bind_group(),
                             }),
                             ..inputs
                         };
@@ -1105,6 +1131,204 @@ impl SceneRenderer {
         }
     }
 
+    /// Shadow options of the HD profile (Properties > Shading > Shadows).
+    pub fn set_hd_shadows(&mut self, settings: ShadowSettings) {
+        self.hd_shadows = settings;
+    }
+
+    /// GPU memory the shadow maps currently take, in bytes.
+    pub fn hd_shadow_map_bytes(&self) -> u64 {
+        self.hd_shadow_maps
+            .borrow()
+            .as_ref()
+            .map_or(0, hd::shadow::ShadowMaps::bytes)
+    }
+
+    /// Frame the shadow map around the camera and pick the zones that can cast into it. `None`
+    /// when shadows are off, the light casts none, or there is nothing to shadow.
+    fn plan_shadows(&self, params: &FrameParams) -> Option<ShadowPlan<'_>> {
+        let settings = self.hd_shadows;
+        let lighting = &self.hd_lighting.lighting;
+        if !settings.enabled() || !lighting.casts_shadows || self.hd_binding.is_none() {
+            return None;
+        }
+        let radius = settings
+            .distance_tiles
+            .min(params.fog.draw_distance_tiles)
+            .max(1) as f32
+            * 128.0;
+        let origin = self.render_origin;
+        let camera = params.camera;
+        let has_hd = |zone: &&GpuZone| zone.opaque_hd.is_some() || zone.alpha_hd.is_some();
+        let near = |zone: &&GpuZone| {
+            let centre_x = (zone.world_origin.0 - origin.0) as f32 + ZONE_LOCAL_EXTENT / 2.0;
+            let centre_z = (zone.world_origin.1 - origin.1) as f32 + ZONE_LOCAL_EXTENT / 2.0;
+            (centre_x - camera.x).abs().max((centre_z - camera.z).abs())
+                <= radius + ZONE_LOCAL_EXTENT
+        };
+        let (mut y_min, mut y_max) = (f32::MAX, f32::MIN);
+        for zone in self
+            .regions
+            .values()
+            .flatten()
+            .filter(has_hd)
+            .filter(near)
+        {
+            y_min = y_min.min(zone.y_range.0 - 256.0);
+            y_max = y_max.max(zone.y_range.1 + 256.0);
+        }
+        if y_min > y_max {
+            return None;
+        }
+        let size = hd::shadow::map_size(&settings, self.device.limits().max_texture_dimension_2d);
+        let fitted = ShadowCamera::fit(&ShadowFit {
+            light_dir: lighting.light_dir,
+            focus: [camera.x, 0.0, camera.z],
+            radius,
+            y_range: (y_min, y_max),
+            resolution: size,
+            previous_size: self.hd_shadow_size.get(),
+        });
+        self.hd_shadow_size.set(Some(fitted.size));
+        let zones = self
+            .regions
+            .values()
+            .flatten()
+            .filter(has_hd)
+            .filter(|zone| zone_overlaps_shadow(zone, origin, &fitted))
+            .collect();
+        Some(ShadowPlan {
+            camera: fitted,
+            zones,
+            radius,
+            size,
+        })
+    }
+
+    /// (Re)create the shadow maps when their size changed.
+    fn ensure_shadow_maps(&self, size: u32) {
+        let mut slot = self.hd_shadow_maps.borrow_mut();
+        if slot.as_ref().is_none_or(|maps| maps.size != size) {
+            *slot = Some(hd::shadow::ShadowMaps::new(
+                &self.device,
+                &self.hd_shadow_layout,
+                size,
+            ));
+        }
+    }
+
+    /// The shadow fields of the environment uniform.
+    fn shadow_uniform(
+        &self,
+        plan: Option<&ShadowPlan<'_>>,
+        maps: &hd::shadow::ShadowMaps,
+    ) -> ShadowUniform {
+        use osrs_hd::shadows::FilterKind;
+        let Some(plan) = plan else {
+            return ShadowUniform::default();
+        };
+        let settings = &self.hd_shadows;
+        let camera = &plan.camera;
+        let kind = match settings.filtering.kind() {
+            FilterKind::Pcf => 0,
+            FilterKind::Dither => 1,
+            FilterKind::Average => 2,
+            FilterKind::Pcss => 3,
+        };
+        let bits = u32::from(settings.transparency)
+            | u32::from(settings.mode == osrs_hd::shadows::ShadowMode::Detailed) << 1
+            | u32::from(settings.terrain_shadows) << 2;
+        let with = |v: [f32; 3], w: f32| [v[0], v[1], v[2], w];
+        ShadowUniform {
+            light_proj: camera.view_proj,
+            right: with(camera.right, camera.size),
+            up: with(camera.up, camera.texel_world),
+            axis: with(camera.axis, camera.depth_range),
+            params: [
+                camera.bias_scale,
+                plan.radius,
+                maps.size as f32,
+                maps.terrain_size as f32,
+            ],
+            flags: [1, kind, settings.filtering.kernel(), bits],
+        }
+    }
+
+    /// Fill the shadow maps: the main map with everything that casts, the terrain map with the
+    /// ground plane's terrain.
+    fn record_shadow_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        plan: &ShadowPlan<'_>,
+        maps: &hd::shadow::ShadowMaps,
+        hd: &HdResources,
+        binding: &HdBinding,
+        view_plane: u8,
+    ) {
+        let settings = &self.hd_shadows;
+        for terrain_only in [false, true] {
+            if terrain_only && !settings.terrain_shadows {
+                continue;
+            }
+            let (view, pipeline) = if terrain_only {
+                (maps.terrain_view(), &hd.shadows.terrain)
+            } else if settings.transparency {
+                (maps.view(), &hd.shadows.packed)
+            } else {
+                (maps.view(), &hd.shadows.plain)
+            };
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some(if terrain_only {
+                    "terrain-shadow"
+                } else {
+                    "shadow"
+                }),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(2, &binding.bind_group, &[]);
+            for zone in &plan.zones {
+                pass.set_bind_group(1, &zone.bind_group, &[]);
+                if let (Some(buffer), Some(hd_buffer)) = (&zone.opaque, &zone.opaque_hd) {
+                    pass.set_vertex_buffer(0, buffer.slice(..));
+                    pass.set_vertex_buffer(1, hd_buffer.slice(..));
+                    for range in &zone.opaque_ranges {
+                        // Hidden roofs only cast when roof shadows are on.
+                        if settings.roof_shadows || range.min_plane <= view_plane {
+                            pass.draw(range.start..range.start + range.count, 0..1);
+                        }
+                    }
+                }
+                if !terrain_only
+                    && let (Some(buffer), Some(hd_buffer)) = (&zone.alpha, &zone.alpha_hd)
+                {
+                    let count = zone
+                        .alpha_models
+                        .iter()
+                        .map(|model| model.first_vertex + model.vertex_count)
+                        .max()
+                        .unwrap_or(0);
+                    if count > 0 {
+                        pass.set_vertex_buffer(0, buffer.slice(..));
+                        pass.set_vertex_buffer(1, hd_buffer.slice(..));
+                        pass.draw(0..count, 0..1);
+                    }
+                }
+            }
+        }
+    }
+
     /// The HD pipelines and resolve pass, built on first use.
     fn hd_resources(&self) -> &HdResources {
         self.hd.get_or_init(|| {
@@ -1113,11 +1337,11 @@ impl SceneRenderer {
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
                     label: Some("hd/scene.wgsl"),
                     source: wgpu::ShaderSource::Wgsl(
-                        format!(
+                        hd::shadow::shader_source(&format!(
                             "{}\n{}",
-                            hd::layout::MATERIAL_WGSL,
+                            include_str!("hd/shadow_receive.wgsl"),
                             include_str!("hd/scene.wgsl")
-                        )
+                        ))
                         .into(),
                     ),
                 });
@@ -1129,6 +1353,7 @@ impl SceneRenderer {
                         Some(&self.globals_layout),
                         Some(&self.zone_layout),
                         Some(&self.hd_layout),
+                        Some(&self.hd_shadow_layout),
                     ],
                     immediate_size: 0,
                 });
@@ -1141,6 +1366,11 @@ impl SceneRenderer {
                     false,
                 ),
                 scene: build_scene_pipelines(&self.device, &shader, &layout, hd::HDR_FORMAT, true),
+                shadows: hd::shadow::ShadowPipelines::new(
+                    &self.device,
+                    &self.zone_layout,
+                    &self.hd_layout,
+                ),
                 post: hd::post::PostPass::new(&self.device),
             }
         })
@@ -1249,6 +1479,7 @@ impl SceneRenderer {
                         Some(hd) => {
                             pass.set_pipeline(&hd.pipelines.opaque);
                             pass.set_bind_group(2, hd.bind_group, &[]);
+                            pass.set_bind_group(3, hd.shadow_group, &[]);
                         }
                         None => pass.set_pipeline(&pipelines.opaque),
                     }
@@ -1279,6 +1510,8 @@ impl SceneRenderer {
                             Some(hd) => {
                                 pass.set_pipeline(&hd.pipelines.alpha);
                                 pass.set_bind_group(2, hd.bind_group, &[]);
+                                pass.set_bind_group(3, hd.shadow_group, &[]);
+                            pass.set_bind_group(3, hd.shadow_group, &[]);
                             }
                             None => pass.set_pipeline(&pipelines.alpha),
                         }
@@ -1742,6 +1975,24 @@ fn within_draw_distance(zone: &GpuZone, origin: (i32, i32), params: &FrameParams
         .max(params.camera.z - (base_z + ZONE_LOCAL_EXTENT))
         .max(0.0);
     dx.max(dz) <= limit
+}
+
+/// Whether a zone's bounds (padded for overhanging models) project onto the shadow map.
+fn zone_overlaps_shadow(zone: &GpuZone, origin: (i32, i32), camera: &ShadowCamera) -> bool {
+    let base_x = (zone.world_origin.0 - origin.0) as f32;
+    let base_z = (zone.world_origin.1 - origin.1) as f32;
+    let pad = 512.0;
+    let (mut min, mut max) = ([f32::MAX; 2], [f32::MIN; 2]);
+    for dx in [-pad, ZONE_LOCAL_EXTENT + pad] {
+        for dz in [-pad, ZONE_LOCAL_EXTENT + pad] {
+            for y in [zone.y_range.0 - 256.0, zone.y_range.1 + 256.0] {
+                let [x, projected_y, _] = camera.project([base_x + dx, y, base_z + dz]);
+                min = [min[0].min(x), min[1].min(projected_y)];
+                max = [max[0].max(x), max[1].max(projected_y)];
+            }
+        }
+    }
+    max[0] >= -1.0 && min[0] <= 1.0 && max[1] >= -1.0 && min[1] <= 1.0
 }
 
 fn zone_visible(zone: &GpuZone, origin: (i32, i32), world_proj: &[[f32; 4]; 4]) -> bool {

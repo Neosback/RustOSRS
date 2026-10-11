@@ -173,6 +173,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             state.target(&hd.environments).label()
         );
         renderer.set_hd_lighting(lighting);
+
+        // RENDER_SHADOWS=off|fast|detailed, RENDER_SHADOW_FILTER=nearest|low|high|dither|pcss,
+        // RENDER_SHADOW_RES=1024..16384.
+        let mut shadows = osrs_hd::shadows::ShadowSettings::default();
+        match env::var("RENDER_SHADOWS").as_deref() {
+            Ok("off") => shadows.mode = osrs_hd::shadows::ShadowMode::Off,
+            Ok("fast") => shadows.mode = osrs_hd::shadows::ShadowMode::Fast,
+            _ => {}
+        }
+        shadows.filtering = match env::var("RENDER_SHADOW_FILTER").as_deref() {
+            Ok("nearest") => osrs_hd::shadows::ShadowFiltering::Nearest,
+            Ok("low") => osrs_hd::shadows::ShadowFiltering::SmoothLow,
+            Ok("dither") => osrs_hd::shadows::ShadowFiltering::DitheredHigh,
+            Ok("pcss") => osrs_hd::shadows::ShadowFiltering::Pcss,
+            _ => shadows.filtering,
+        };
+        if let Some(res) = env::var("RENDER_SHADOW_RES")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+        {
+            shadows.resolution = osrs_hd::shadows::ShadowResolution::ALL
+                .into_iter()
+                .find(|r| r.texels() == res)
+                .unwrap_or_default();
+        }
+        shadows.roof_shadows = env::var("RENDER_ROOF_SHADOWS").is_ok();
+        renderer.set_hd_shadows(shadows);
     }
     let (width, height) = (1280_u32, 720_u32);
     let started = Instant::now();

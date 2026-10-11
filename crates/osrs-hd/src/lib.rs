@@ -11,6 +11,7 @@ pub mod environment;
 pub mod expr;
 pub mod materials;
 pub mod settings;
+pub mod shadows;
 pub mod tiles;
 
 use serde::Deserialize;
@@ -218,6 +219,10 @@ pub struct ModelOverride {
     pub flat_normals: Option<bool>,
     pub upwards_normals: Option<bool>,
     pub hide_vanilla_shadows: Option<bool>,
+    pub retain_vanilla_shadows_in_pvm: Option<bool>,
+    pub hide_hd_shadows_in_pvm: Option<bool>,
+    pub shadow_normal_bias: Option<bool>,
+    pub shadow_opacity_threshold: Option<f32>,
     pub cast_shadows: Option<bool>,
     pub receive_shadows: Option<bool>,
     pub double_sided_faces: Option<bool>,

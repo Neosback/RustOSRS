@@ -74,6 +74,7 @@ impl EditorApp {
         self.hd
             .state
             .update(&set, &settings, focal, &NoVariables, elapsed, delta);
+        self.renderer.set_hd_shadows(self.prefs.hd_shadows);
         self.renderer.set_hd_lighting(HdLighting {
             lighting: self.hd.state.lighting(
                 &set,

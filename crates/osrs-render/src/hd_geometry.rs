@@ -21,6 +21,10 @@ pub const HD_FLAG_UPWARDS_NORMALS: u16 = 1;
 pub const HD_FLAG_FLAT_NORMALS: u16 = 1 << 1;
 /// Do not receive shadows.
 pub const HD_FLAG_NO_SHADOW_RECEIVE: u16 = 1 << 2;
+/// Do not cast shadows.
+pub const HD_FLAG_NO_SHADOW_CAST: u16 = 1 << 5;
+/// Offset the shadow lookup along the normal (`shadowNormalBias`).
+pub const HD_FLAG_SHADOW_NORMAL_BIAS: u16 = 1 << 6;
 /// The face is terrain (so `water_type`/`water_depth` are meaningful).
 pub const HD_FLAG_TERRAIN: u16 = 1 << 3;
 /// Textures use vanilla UVs (clamp horizontally for transparent textures).

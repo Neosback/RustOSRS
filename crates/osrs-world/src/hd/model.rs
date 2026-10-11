@@ -17,11 +17,11 @@ use osrs_hd::serde_json::{self, Value};
 use osrs_hd::{
     Gamevals, HdData, ModelOverride,
     materials::MaterialSet,
-    settings::{HdSettings, SeasonalTheme},
+    settings::{HdSettings, SeasonalTheme, VanillaShadowMode},
     tiles::Areas,
 };
 use osrs_render::{
-    HD_FLAG_FLAT_NORMALS, HD_FLAG_NO_SHADOW_RECEIVE, HD_FLAG_UPWARDS_NORMALS, HD_FLAG_VANILLA_UVS,
+    HD_FLAG_FLAT_NORMALS, HD_FLAG_NO_SHADOW_CAST, HD_FLAG_NO_SHADOW_RECEIVE, HD_FLAG_SHADOW_NORMAL_BIAS, HD_FLAG_UPWARDS_NORMALS, HD_FLAG_VANILLA_UVS,
     HdFace, ModelPlacement, vanilla_face_uvs,
 };
 use std::collections::HashMap;
@@ -155,6 +155,10 @@ pub struct ResolvedModelOverride {
     pub double_sided_faces: bool,
     pub undo_vanilla_shading: bool,
     pub receive_shadows: bool,
+    pub cast_shadows: bool,
+    pub shadow_normal_bias: bool,
+    /// Hide faces that are Jagex's baked ground shadow (`hideVanillaShadows`, after the PvM rule).
+    pub hide_vanilla_shadows: bool,
     pub depth_bias: Option<u8>,
     color: ColorMod,
     /// Overrides applied to faces that use a given vanilla material.
@@ -199,6 +203,18 @@ impl ResolvedModelOverride {
             }
             material_overrides.push((materials.index_of(name), resolved));
         }
+        // Models that keep their vanilla shadows for PvM show them and, in `PreferInPvm`, drop the
+        // dynamic ones (`ModelOverride.normalize`).
+        let mut hide_vanilla_shadows = o.hide_vanilla_shadows == Some(true);
+        let mut cast_shadows = o.cast_shadows != Some(false);
+        if o.retain_vanilla_shadows_in_pvm == Some(true) {
+            hide_vanilla_shadows = false;
+            if settings.vanilla_shadows == VanillaShadowMode::PreferInPvm
+                && o.hide_hd_shadows_in_pvm == Some(true)
+            {
+                cast_shadows = false;
+            }
+        }
         Self {
             base_material: base,
             texture_material: texture,
@@ -216,6 +232,9 @@ impl ResolvedModelOverride {
             double_sided_faces: o.double_sided_faces == Some(true),
             undo_vanilla_shading: o.undo_vanilla_shading.unwrap_or(true),
             receive_shadows: o.receive_shadows.unwrap_or(true),
+            cast_shadows,
+            shadow_normal_bias: o.shadow_normal_bias == Some(true),
+            hide_vanilla_shadows,
             depth_bias: o
                 .depth_bias
                 .filter(|bias| *bias != -1)
@@ -661,6 +680,14 @@ pub fn model_faces(hd: &HdContext, model: &ReferenceLitModel, site: ModelSite) -
         if idx.iter().any(|i| *i >= positions.len()) {
             continue;
         }
+        // Fake shadows or lighting baked into models are made transparent: the HD shadows replace
+        // them.
+        if hd.settings.hide_fake_shadows()
+            && face_override.hide_vanilla_shadows
+            && is_baked_ground_shading(model, face_index, transparency, texture_id.is_some())
+        {
+            continue;
+        }
         let mut keep_shading = false;
         if texture_id.is_some() {
             // Vanilla shading on textures is too visible even after reversing it; use a fixed
@@ -766,6 +793,12 @@ pub fn model_faces(hd: &HdContext, model: &ReferenceLitModel, site: ModelSite) -
         if !face_override.receive_shadows {
             flags |= HD_FLAG_NO_SHADOW_RECEIVE;
         }
+        if !face_override.cast_shadows {
+            flags |= HD_FLAG_NO_SHADOW_CAST;
+        }
+        if face_override.shadow_normal_bias {
+            flags |= HD_FLAG_SHADOW_NORMAL_BIAS;
+        }
         if uv_type == UvType::Vanilla && texture_id.is_some() {
             flags |= HD_FLAG_VANILLA_UVS;
         }
@@ -789,6 +822,29 @@ pub fn model_faces(hd: &HdContext, model: &ReferenceLitModel, site: ModelSite) -
         });
     }
     faces
+}
+
+/// `HDUtils.isBakedGroundShading`: a mostly transparent, untextured face lying flat near the model's
+/// origin is the shadow Jagex baked under the object.
+fn is_baked_ground_shading(
+    model: &ReferenceLitModel,
+    face_index: usize,
+    transparency: i32,
+    textured: bool,
+) -> bool {
+    if transparency <= 100 || textured {
+        return false;
+    }
+    let face = &model.faces[face_index];
+    let height = |vertex: usize| model.vertices.get(vertex).map(|v| v.y);
+    let (Some(a), Some(b), Some(c)) = (
+        height(face.a.get() as usize),
+        height(face.b.get() as usize),
+        height(face.c.get() as usize),
+    ) else {
+        return false;
+    };
+    a >= -8 && a == b && a == c
 }
 
 fn hd_undo(face_override: &ResolvedModelOverride) -> bool {

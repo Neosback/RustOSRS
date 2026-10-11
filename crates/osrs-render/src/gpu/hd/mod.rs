@@ -2,11 +2,13 @@
 //!
 //! * [`layout`]: GPU buffer layouts shared with the HD shaders (material table, frame uniform).
 //! * [`materials`]: the material texture-array loader and the layer plan derived from `osrs-hd`.
+//! * [`shadow`]: the shadow maps, their bind group and the depth-only shadow pipelines.
 //! * [`post`]: the resolve pass that turns the HDR scene target into the displayable image.
 
 pub mod layout;
 pub mod materials;
 pub(super) mod post;
+pub mod shadow;
 
 /// Colour format of the HD offscreen scene target.
 pub const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;

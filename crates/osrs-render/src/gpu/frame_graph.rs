@@ -26,6 +26,9 @@ pub struct TransientDesc {
 enum Kind {
     External,
     Transient(TransientDesc),
+    /// A dependency only: the resource lives outside the graph (a persistent shadow map) and the
+    /// graph just orders the passes that write and read it.
+    Token,
 }
 
 struct Resource {
@@ -175,6 +178,13 @@ impl<'a> FrameGraph<'a> {
         self.add_resource(name, Kind::Transient(desc))
     }
 
+    /// An ordering-only resource for data the passes keep outside the graph, such as a shadow map
+    /// the caller owns: a pass that reads it runs after the pass that writes it, and the writer
+    /// is kept alive by the readers.
+    pub fn token(&mut self, name: &'static str) -> ResourceId {
+        self.add_resource(name, Kind::Token)
+    }
+
     /// Append a pass. Passes run in the order they were added.
     pub fn add_pass(
         &mut self,
@@ -271,6 +281,7 @@ impl<'a> FrameGraph<'a> {
         for &id in &used {
             let resource = &self.resources[id.0];
             let view = match resource.kind {
+                Kind::Token => continue,
                 Kind::External => externals
                     .iter()
                     .find(|(external, _)| *external == id)
@@ -328,6 +339,24 @@ mod tests {
         graph.add_pass("shadow", &[], &[unused], nop);
         graph.add_pass("resolve", &[hdr], &[output], nop);
         assert_eq!(graph.plan()?, ["scene", "resolve"]);
+        Ok(())
+    }
+
+    #[test]
+    fn tokens_order_passes_without_textures() -> Result<(), FrameGraphError> {
+        let mut graph = FrameGraph::new(8, 8);
+        let output = graph.import("output");
+        let shadow = graph.token("shadow-map");
+        graph.add_pass("shadow", &[], &[shadow], nop);
+        graph.add_pass("scene", &[shadow], &[output], nop);
+        assert_eq!(graph.plan()?, ["shadow", "scene"]);
+        // Without a reader the writer is dropped.
+        let mut graph = FrameGraph::new(8, 8);
+        let output = graph.import("output");
+        let shadow = graph.token("shadow-map");
+        graph.add_pass("shadow", &[], &[shadow], nop);
+        graph.add_pass("scene", &[], &[output], nop);
+        assert_eq!(graph.plan()?, ["scene"]);
         Ok(())
     }
 

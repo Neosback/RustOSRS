@@ -36,45 +36,8 @@ struct Zone {
     base: vec4<f32>,
 };
 
-// Lighting environment (`UBOGlobal`): the area environment's light, fog and water fields.
-struct Environment {
-    // xyz = camera position in render-local units, w = animation clock in seconds.
-    camera: vec4<f32>,
-    // xyz = unit vector from the scene towards the light, w = the light casts shadows.
-    light_dir: vec4<f32>,
-    // rgb = linear colour, w = strength.
-    light_color: vec4<f32>,
-    ambient_color: vec4<f32>,
-    // rgb = underglow colour, w = strength.
-    underglow: vec4<f32>,
-    // rgb = linear fog (sky) colour, w = fog depth (0 = no fog).
-    fog_color: vec4<f32>,
-    // x = draw distance in tiles, y/z = ground fog start/end, w = ground fog opacity.
-    fog_params: vec4<f32>,
-    // rgb = linear water colour.
-    water_color: vec4<f32>,
-    // x = lightning brightness.
-    misc: vec4<f32>,
-    // x = normal mapping enabled, y = debug view, z = underwater environment.
-    flags: vec4<u32>,
-};
-
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(1) @binding(0) var<uniform> zone: Zone;
-@group(2) @binding(0) var<storage, read> materials: array<Material>;
-@group(2) @binding(1) var material_textures: texture_2d_array<f32>;
-@group(2) @binding(2) var material_sampler: sampler;
-@group(2) @binding(3) var<uniform> env: Environment;
-
-const FLAG_UPWARDS_NORMALS: u32 = 1u;
-const FLAG_FLAT_NORMALS: u32 = 2u;
-const FLAG_NO_SHADOW: u32 = 4u;
-const FLAG_TERRAIN: u32 = 8u;
-const FLAG_VANILLA_UVS: u32 = 16u;
-
-const MATERIAL_INDEX_MASK: u32 = 0x0FFFu;
-const MATERIAL_OVERLAY: u32 = 0x1000u;
-
 struct VertexIn {
     @builtin(vertex_index) index: u32,
     @location(0) position: vec4<i32>,
@@ -145,22 +108,6 @@ fn vs_main(input: VertexIn) -> VertexOut {
 }
 
 // ---- colour helpers (`utils/color_utils.glsl`) ----------------------------------------------
-
-fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
-    return select(
-        pow((c + vec3<f32>(0.055)) / vec3<f32>(1.055), vec3<f32>(2.4)),
-        c / 12.92,
-        c < vec3<f32>(0.04045),
-    );
-}
-
-fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
-    return select(
-        1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055),
-        c * 12.92,
-        c < vec3<f32>(0.0031308),
-    );
-}
 
 fn hsl_to_srgb(hsl: vec3<f32>) -> vec3<f32> {
     let c = (1.0 - abs(2.0 * hsl.z - 1.0)) * hsl.y;
@@ -409,6 +356,23 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
 
     let light_dir = env.light_dir.xyz;
     let light_dot_normals = dot(normals, light_dir);
+
+    // Directional shadow of the shadow map.
+    shadow_frag = input.clip.xy;
+    var shadow = 0.0;
+    if ((flags & FLAG_NO_SHADOW) == 0u) {
+        shadow = sample_shadow_map(
+            input.position,
+            vec2<f32>(0.0),
+            flat_normal,
+            true,
+            (flags & FLAG_SHADOW_NORMAL_BIAS) != 0u,
+        );
+    }
+    let inverse_shadow = 1.0 - shadow;
+    if (env.flags.y == 6u) {
+        return vec4<f32>(vec3<f32>(inverse_shadow), 1.0);
+    }
     let up_dot_normals = dot(vec3<f32>(0.0, -1.0, 0.0), normals);
 
     // Specular strength and gloss; semi-transparent faces get a window-like highlight.
@@ -433,7 +397,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     let ambient_out = env.ambient_color.rgb * env.ambient_color.w * ao;
 
     // Directional light and its specular highlight.
-    let dir_light = env.light_color.rgb * env.light_color.w;
+    let dir_light = env.light_color.rgb * env.light_color.w * inverse_shadow;
     let light_out = max(light_dot_normals, 0.0) * dir_light;
     let reflect_dir = reflect(-light_dir, normals);
     let v_dot_r = clamp(dot(view_dir, reflect_dir), 1e-10, 1.0);

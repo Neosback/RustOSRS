@@ -250,7 +250,7 @@ pub fn material_bind_group(
 }
 
 /// Lighting environment of the HD scene shader (`Environment` in `scene.wgsl`): the lighting,
-/// fog and water fields of the plugin's `UBOGlobal`, 160 bytes.
+/// fog and water fields of the plugin's `UBOGlobal` and the shadow camera, 304 bytes.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct HdEnvironmentUniform {
@@ -272,9 +272,22 @@ pub struct HdEnvironmentUniform {
     pub misc: [f32; 4],
     /// `x`: normal mapping enabled, `y`: debug view, `z`: underwater environment.
     pub flags: [u32; 4],
+    /// Render-local position to the light's clip space (column-major).
+    pub light_proj: [[f32; 4]; 4],
+    /// Shadow map right axis and the map edge in world units.
+    pub shadow_right: [f32; 4],
+    /// Shadow map up axis and the world size of a texel.
+    pub shadow_up: [f32; 4],
+    /// Axis towards the light and the depth range in world units.
+    pub shadow_axis: [f32; 4],
+    /// Texel depth bias, shadow draw distance, map size and terrain map size.
+    pub shadow_params: [f32; 4],
+    /// `x`: shadows on, `y`: filter kind, `z`: kernel size, `w`: bit 0 transparency, bit 1
+    /// detailed, bit 2 terrain shadows.
+    pub shadow_flags: [u32; 4],
 }
 
-const _: () = assert!(std::mem::size_of::<HdEnvironmentUniform>() == 160);
+const _: () = assert!(std::mem::size_of::<HdEnvironmentUniform>() == 160 + 64 + 80);
 
 /// Bind group layout of the HD scene shader's group 2: the material table, texture array,
 /// sampler and the lighting environment.

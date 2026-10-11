@@ -3,7 +3,7 @@
 //! Every field has a default and unknown fields are ignored, so adding settings never invalidates
 //! an existing file. Tools keep their own state under [`Settings::plugins`], keyed by plugin name.
 
-use osrs_hd::environment::EnvironmentSettings;
+use osrs_hd::{environment::EnvironmentSettings, shadows::ShadowSettings};
 use osrs_render::gpu::{Colorblind, ColorblindMode, Fog, HdParams, RenderProfile};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, io, path::PathBuf};
@@ -137,6 +137,8 @@ pub struct Settings {
     pub hd_normal_mapping: bool,
     /// HD: per-area environments (lighting, fog, sky and water colour; Properties > Shading).
     pub hd_environment: EnvironmentSettings,
+    /// HD: the shadow map (Properties > Shading > Shadows).
+    pub hd_shadows: ShadowSettings,
     pub brightness: f32,
     pub remove_color_banding: bool,
     pub bright_textures: bool,
@@ -175,6 +177,7 @@ impl Default for Settings {
             hd_vignette: HdParams::default().placeholder_vignette,
             hd_normal_mapping: true,
             hd_environment: EnvironmentSettings::default(),
+            hd_shadows: ShadowSettings::default(),
             brightness: 0.8,
             remove_color_banding: true,
             bright_textures: false,
@@ -247,6 +250,7 @@ impl Settings {
         self.hd_vignette = self.hd_vignette.clamp(0.0, 1.0);
         self.hd_environment.static_fog_depth =
             self.hd_environment.static_fog_depth.clamp(0.0, 100.0);
+        self.hd_shadows.distance_tiles = self.hd_shadows.distance_tiles.clamp(4, 184);
         self.brightness = self.brightness.clamp(0.5, 1.0);
         self.fog_depth_tiles = self.fog_depth_tiles.min(100);
         self.draw_distance_tiles = self.draw_distance_tiles.clamp(8, 184);
@@ -318,6 +322,13 @@ mod tests {
         assert!(settings.hd_environment.atmospheric_lighting);
         // Out-of-range values are clamped.
         assert_eq!(settings.sanitized().hd_environment.static_fog_depth, 100.0);
+        // Shadow options persist with their enum names and fall back to the plugin's defaults.
+        let shadows: Settings = serde_json::from_str(
+            r#"{ "hd_shadows": { "mode": "Fast", "filtering": "Pcss", "distance_tiles": 900 } }"#,
+        )?;
+        assert_eq!(shadows.hd_shadows.mode, osrs_hd::shadows::ShadowMode::Fast);
+        assert!(shadows.hd_shadows.terrain_shadows && shadows.hd_shadows.transparency);
+        assert_eq!(shadows.sanitized().hd_shadows.distance_tiles, 184);
         // The host sky colour is runtime state and is not persisted.
         let text = serde_json::to_string(&Settings::default())?;
         assert!(!text.contains("host_sky"));

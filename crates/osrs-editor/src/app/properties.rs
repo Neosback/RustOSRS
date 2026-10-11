@@ -6,7 +6,10 @@ use crate::camera::CameraMode;
 use crate::pick::{self, Pick};
 use crate::settings::{ColorblindChoice, PanelTab, ProfileChoice};
 use eframe::egui;
-use osrs_hd::environment::{DefaultSky, FogDepthMode};
+use osrs_hd::{
+    environment::{DefaultSky, FogDepthMode},
+    shadows::{ShadowFiltering, ShadowMode, ShadowResolution},
+};
 
 fn section(ui: &mut egui::Ui, title: &str, default_open: bool, body: impl FnOnce(&mut egui::Ui)) {
     egui::CollapsingHeader::new(egui::RichText::new(title).strong())
@@ -223,6 +226,72 @@ impl EditorApp {
             )
             .on_hover_text("Flashing lightning in storm areas (photosensitivity warning).");
         });
+        section(ui, "Shadows", true, |ui| {
+            let shadows = &mut self.prefs.hd_shadows;
+            egui::Grid::new("hd_shadow_grid")
+                .num_columns(2)
+                .spacing([8.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label("Shadow mode");
+                    egui::ComboBox::from_id_salt("hd_shadow_mode")
+                        .selected_text(shadows.mode.label())
+                        .show_ui(ui, |ui| {
+                            for mode in ShadowMode::ALL {
+                                ui.selectable_value(&mut shadows.mode, mode, mode.label());
+                            }
+                        });
+                    ui.end_row();
+
+                    if shadows.enabled() {
+                        ui.label("Shadow quality");
+                        egui::ComboBox::from_id_salt("hd_shadow_resolution")
+                            .selected_text(shadows.resolution.label())
+                            .show_ui(ui, |ui| {
+                                for resolution in ShadowResolution::ALL {
+                                    ui.selectable_value(
+                                        &mut shadows.resolution,
+                                        resolution,
+                                        resolution.label(),
+                                    );
+                                }
+                            });
+                        ui.end_row();
+
+                        ui.label("Shadow filtering");
+                        egui::ComboBox::from_id_salt("hd_shadow_filtering")
+                            .selected_text(shadows.filtering.label())
+                            .show_ui(ui, |ui| {
+                                for filtering in ShadowFiltering::ALL {
+                                    ui.selectable_value(
+                                        &mut shadows.filtering,
+                                        filtering,
+                                        filtering.label(),
+                                    );
+                                }
+                            });
+                        ui.end_row();
+
+                        ui.label("Shadow distance");
+                        ui.add(
+                            egui::Slider::new(&mut shadows.distance_tiles, 4..=184)
+                                .suffix(" tiles"),
+                        );
+                        ui.end_row();
+                    }
+                });
+            if shadows.enabled() {
+                ui.checkbox(&mut shadows.transparency, "Shadow transparency")
+                    .on_hover_text("Take model transparency into account.");
+                ui.checkbox(&mut shadows.terrain_shadows, "Terrain shadows")
+                    .on_hover_text("Allow terrain to cast shadows. May cause artifacts on slopes.");
+                ui.checkbox(&mut shadows.roof_shadows, "Roof shadows")
+                    .on_hover_text("Always cast shadows from roofs, even when they are hidden.");
+                let bytes = self.renderer.hd_shadow_map_bytes();
+                if bytes > 0 {
+                    ui.weak(format!("Shadow maps: {:.0} MiB", bytes as f64 / 1_048_576.0));
+                }
+            }
+        });
         section(ui, "Environment", true, |ui| {
             let environment = &mut self.prefs.hd_environment;
             egui::Grid::new("hd_environment_grid")
@@ -282,7 +351,7 @@ impl EditorApp {
         });
         ui.weak(
             "HD is a work in progress: materials, normal maps, specular, ground blending and \
-             area environments are in. Shadows, water, lights and the sky are still to come. \
+             area environments and shadows are in. Water, lights and the sky are still to come. \
              Animated objects still use Reference shading.",
         );
     }
