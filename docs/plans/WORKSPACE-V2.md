@@ -40,6 +40,12 @@ Layout (target):
 | status: hover info, hints, RAM/GPU, dirty regions, undo depth                       |
 +------------------------------------------------------------------------------------+
 ```
+Docking: the **right dock** and the **bottom drawer** are each an `egui_tiles::Tree` (crate 0.17.1, depends on
+egui ^0.36, same as ours). Panes are ours (inspector, quick settings, outliner, object viewer, minimap, tool palette,
+object library); egui_tiles only provides tabs, splits and drag to rearrange, plus a serialisable tree for "reset
+layout". The viewport stays the central panel (not a tile: it cannot be closed or tabbed away, and its input rect
+stays simple), and so do the menu bar, tool rail and status bar. See section 8.
+
 Rules: one active tool; the drawer shows only the active tool's content and collapses when it has none; the
 inspector never mutates render or cache state directly (it emits commands); every panel's state is part of
 `Settings`/workspace state with a "reset layout" escape hatch.
@@ -103,8 +109,22 @@ leave textures", "mark these tiles blocked". So the brush does not paint "a tile
   contours, hidden tiles); the heights tool owns sculpting (raise, lower, flatten, smooth, slope limit,
   falloffs from Terraini); the paint tool only *sets* height for deliberate flat patches.
 * **Safety**: hover shows a ghost of the result (change plan: calculate, validate, preview, commit); one
-  stroke is one undo step; edits mark dirty rectangles padded by 6 tiles (blend and normal windows); the
-  derived render, picker, world map and minimap data rebuild from the same pass.
+  stroke is one undo step; edits mark **two** dirty rectangles (see "Invalidation" below); the derived render,
+  picker, world map and minimap data rebuild from the same pass.
+* **Channel types** (`osrs-edit`): `ChannelAction<T> { Keep, Set(T), Clear }` for underlay, overlay and height;
+  `FlagAction { Keep, Set(u8), Add(u8), Remove(u8), Toggle(u8) }`; `shape_mode: Auto | Full | Fixed(shape, rot)`.
+  A tile edit is a sparse per-tile `(before, after)` record, so undo is exact.
+* **Invalidation** (checked against `terrain_build.rs`): underlay ids feed an 11 x 11 sliding window
+  (`BLEND_RADIUS = 5`, only ids > 0 contribute), so a changed underlay dirties colour **+-5**. Heights change
+  the slope-light and normals of the tile and its neighbours (**+-1**) and the models standing there; they do not
+  feed the underlay blend (the window sums underlay definitions, not shaded colour). Overlay id / shape / rotation
+  are **+-0**. `dirty_colour_rect` and `dirty_geometry_rect` stay separate; the rebuild takes the union of what
+  its edits touched. Unit tests pin each radius against a full rebuild (partial result == full result).
+* **Underlay under an overlay**: a tile with underlay 0 contributes nothing to its neighbours, so painting a full
+  overlay on it does not bleed anything. A tile that *has* an underlay keeps feeding the blend under its overlay,
+  which is why `Keep` is correct. The editor never rewrites a kept channel silently; when an overlay lands on a
+  tile with underlay 0 next to textured ground it only *offers* "copy the dominant neighbouring underlay"
+  (a checkbox on the stroke, off by default).
 * Region rules checked before commit: not editing outside loaded regions, bridge/plane linkage, hidden-tile
   colour 12345678, underlay ids that exist in the cache.
 
@@ -124,6 +144,19 @@ leave textures", "mark these tiles blocked". So the brush does not paint "a tile
   preview on the hovered tile with the **footprint outline** (width x depth by orientation), red when the slot
   is invalid; loc type picker (0..22, defaulting from the definition); scatter brush for trees and
   flowers (density, minimum spacing, random from a set, random orientation).
+* **Slots** (from `SceneGrid::insert_placement`): boundary (types 0-3), wall decoration (4-8), floor decoration
+  (22) are one slot each and replace; **game objects (types 9-21, including diagonal walls and roofs)** are a
+  list of up to five per tile, with per-tile edge masks, inserted atomically over the whole footprint. So a rug
+  (22) and a bench (10) share a tile, and two game objects can too while capacity allows. Validation asks
+  "is this slot taken / is there capacity", never "has the tile any loc".
+* **Rotating in place**: the footprint swaps width and depth for orientations 1 and 3. The default keeps the
+  south-west anchor tile (what the client does when only the orientation changes); "keep centre" re-derives the
+  anchor from the rotated footprint rectangle and is only offered when the result lands on the tile grid (even
+  differences of width and depth). The ghost uses the same function as the commit.
+* **Multi-selection rotation**: integer arithmetic only. The pivot is the south-west corner of the primary
+  object (the first selected or the hovered one), or `(floor cx, floor cy)` of the selection; every object's
+  footprint *rectangle* is rotated about the pivot and its new anchor is the rectangle's minimum corner (rotating
+  only the anchor tile would land the wrong corner for footprints larger than 1 x 1).
 * **Validation = the scene builder's own rules** (`PlacementPlan`: slot per loc type, footprint, plane,
   bridge handling), reported like Terraini's placement result ("skipped 3: occupied").
 * **Copy / paste as map piece** (Ctrl+C / V): ghost with anchor (origin / centre), height mode (relative /
@@ -141,18 +174,69 @@ leave textures", "mark these tiles blocked". So the brush does not paint "a tile
 * Every tool action is a keymap action id (palette, shortcuts and menus share it); tool options persist per
   tool; the context menu asks the active tool for its entries.
 
+### Stroke transactions
+
+Pointer down opens a `StrokeTransaction` holding a sparse scratch overlay of the touched tiles or objects (never a
+copy of the document). Drags mutate the scratch and refresh the preview and dirty rectangles; nothing reaches the
+undo stack. Pointer up diffs scratch against the base: empty -> dropped, otherwise one atomic `ChangePlan` is
+pushed (one stroke = one undo step). Escape aborts and restores the preview. Nudge-key repeats and gizmo drags
+use the same transaction.
+
+### Scatter determinism
+
+Scatter placement is a pure function `hash(tile.x, tile.y, stroke_seed, salt)` (a small integer mixer such as
+splitmix64; no dependency, no `thread_rng`). `stroke_seed` is fixed from pointer down to up, so the ghost does
+not flicker while the cursor moves or the radius changes and the committed result equals the preview.
+
+### Bridge tiles
+
+Tile flag bit 2 on **plane 1** is the bridge bit (`terrain_build::link_bridge_tiles`: plane 1 content is linked
+below, locs on a bridge tile render one plane lower via `tile_min_plane`); bit 8 forces render plane 0. Rules:
+locs on a bridge tile stay stored on plane 1 even though they are drawn and picked as plane 0; copying plane 1
+without plane 0 warns "bridge without support"; the place and paint tools refuse to set the bridge bit when the
+plane 0 tile below is not loaded, and warn when it is blocked or empty.
+
 ## 7. Order of work
 
 1. **Built**: settings registry, window, quick tab, editor/game context menus (this document's section 2-3).
 2. `osrs-edit` foundation + tests (document, commands, undo, selection, dirty rectangles, derivation hook).
 3. Workspace shell: `Tool` trait, left rail, context drawer, brush popover, undo/redo in the toolbar,
    Cmd+K palette, selection modes in the status/toolbar.
-4. Select tool + object move / rotate / delete / duplicate (first real editing, smallest data model).
-5. Tile paint tool: channel strip, presets, eyedropper, brush / line / rect / fill / replace, auto shape.
-6. Heights and flags tools with their overlays; map pieces (copy / paste).
+4. Tile paint tool: channel strip, presets, eyedropper, brush / line / rect / fill / replace, auto shape. First
+   because tile paint is the first thing a mapper does, and its data (a per-tile channel record) is the smallest
+   self-contained case to prove the `Tool` trait, transactions, undo and the partial-rebuild hook.
+5. Select tool + object move / rotate / delete / duplicate.
+6. Heights and flags tools with their overlays; map pieces (copy / paste, bridge rules).
 7. Place tool and library; scatter brush; query operations.
 8. Save/export: project overlay file, then cache write-back behind an explicit export.
 
 Acceptance for each slice: unit tests in `osrs-edit` for the commands, a golden round trip (edit then undo is
 byte-identical), the Reference pixel goldens unchanged, and the shortcut / palette / menu entry for every
 new action.
+
+## 8. Review of outside comments (2026-10-11), checked against the code
+
+Adopted as written: the `ChannelAction` / `FlagAction` model; stroke transactions; deterministic scatter; the
+bridge hazards; tile paint before objects (for the reason given in section 7, not for a cache-metadata
+dependency: loc definitions are already decoded and used by the picker and scene builder); separate colour and
+geometry dirty rectangles.
+
+Corrected before adopting:
+* "Uninitialised underlays bleed 5 tiles": underlay id 0 is skipped by the blend, so there is nothing to bleed.
+  A real underlay under a full overlay does bleed, which is correct client behaviour. Silent auto-seeding would
+  break `Keep`; it is an opt-in checkbox instead.
+* Height invalidation +-7: the blend window sums underlay definitions, not shaded colours, so heights need +-1
+  (normals and slope light), not +-7. Colour is +-5, overlay is +-0.
+* Slot table: game objects are types **9-21**, not 9-11, and several (up to five) may share a tile; only
+  boundary, wall decoration and floor decoration are single-slot.
+* The rotation anchor formula is an editor policy, not an OSRS rule, and rotating only anchor tiles of a
+  multi-selection is wrong for larger footprints; replaced by the rules in section 5.
+* "Camera plane is adjusted down" for bridges is not part of map data; the bridge rule is the link-below and
+  render-level one above.
+
+Crates. `egui_tiles` is adopted for the two docks (section 1). It is a tile tree with panes we write, not a
+ready-made outliner or inspector. Not adopted now: `egui_gizmo` / a gizmo (moves are tile-snapped; the arrow
+keys and inspector fields cover precision), `parry3d` (the picker and terrain ray march already exist),
+`fixedbitset`, `smallvec`, `postcard`, `flume`, `rhai` (add when a profile or a slice needs it). `bitflags` for the
+tile flag byte is fine to add with the paint tool; `rayon` only when a bulk operation (replace over a region,
+census) is measured to need it.
