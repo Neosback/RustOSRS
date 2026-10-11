@@ -577,8 +577,6 @@ const GEOMETRY_WEIGHT: f32 = 30.0;
 const PORTAL_WEIGHT: f32 = 3.0;
 /// Weight of the census cost: it breaks ties towards what people actually place.
 const PRIOR_WEIGHT: f32 = 0.25;
-/// Weight of a fully mismatched tile edge.
-
 /// The mask a tile that already carries the overlay shows (`None`: it does not).
 fn existing_mask(
     existing: &dyn Fn((i32, i32)) -> Option<(u8, u8)>,
