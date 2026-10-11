@@ -159,10 +159,15 @@ people actually lay shapes:
 * Rotating the neighbourhood a quarter turn clockwise (bits move two places) turns the shape one step, so
   every observation is counted in all four orientations.
 
-`autotile::generate` now works in two steps: occupancy (a tile belongs when the band covers at least half of
-it; tiles already carrying the overlay count too) and shapes (score = 7 x area mismatch + -ln P(shape |
-pattern) + 1.2 x portal mismatch, four relaxation passes). Existing whole tiles are not rewritten, and old
-partial pieces that end up surrounded become whole, so a new path flows into an old one. Result: staircases
-of whole tiles with 45 degree cut corners, like hand-made roads. Limits: the prior sees one ring of
-neighbours (long shallow slopes could use a 5 x 5 prior), existing neighbours are only retiled when they end
-up surrounded, and underlay pairs are not modelled.
+`autotile::generate` first tried to follow the census closely (occupancy by half coverage, shapes only on
+occupied tiles, census weight dominant). That reproduced the whole-tile staircase of straight edges but turned
+every slanted road into sawteeth, so the weights were reversed after looking at renders
+(`cargo test -p osrs-editor draw_paths -- --ignored` writes `/tmp/autotile-*.png`: shapes filled, ideal band
+outlined): every tile the band touches (at least 10 of 256 cells) picks nothing, whole or a shape; score =
+30 x area mismatch + 3 x portal mismatch (only partly covered edges count: whole against empty is just the
+outline running along a tile border) + 0.25 x census cost. Six relaxation passes. With the fit leading, the
+shape vocabulary (quarter-point triangles, half diagonals) follows slanted and curved edges within a quarter
+tile. Existing whole tiles are not rewritten, and old partial pieces that end up surrounded become whole, so a
+new path flows into an old one. Limits: thin paths (width 2) show small teeth, the prior sees one ring of
+neighbours, existing neighbours are only retiled when they end up surrounded, and underlay pairs are not
+modelled.
