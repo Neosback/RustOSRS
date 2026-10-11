@@ -586,26 +586,26 @@ mod interpolation_tests {
     }
 
     #[test]
-    fn endpoints_reproduce_the_frames() -> Option<()> {
+    fn endpoints_reproduce_the_frames() -> Result<(), &'static str> {
         let a = frame(vec![t(0, 10, 0, -4), t(1, 0, 0, 0)]);
         let b = frame(vec![t(0, 30, 8, 4)]);
-        let start = interpolate_legacy_frames(&a, &b, 0.0)?;
+        let start = interpolate_legacy_frames(&a, &b, 0.0).ok_or("skeleton")?;
         assert_eq!(start.transforms[0], t(0, 10, 0, -4));
-        let end = interpolate_legacy_frames(&a, &b, 1.0)?;
+        let end = interpolate_legacy_frames(&a, &b, 1.0).ok_or("skeleton")?;
         assert_eq!(end.transforms[0], t(0, 30, 8, 4));
         // The rotation slot only exists in `a`: it blends toward "no rotation".
         assert_eq!(end.transforms[1], t(1, 0, 0, 0));
-        Some(())
+        Ok(())
     }
 
     #[test]
-    fn rotations_take_the_short_way_around() -> Option<()> {
+    fn rotations_take_the_short_way_around() -> Result<(), &'static str> {
         let a = frame(vec![t(1, 250, 0, 0)]);
         let b = frame(vec![t(1, 6, 0, 0)]);
-        let half = interpolate_legacy_frames(&a, &b, 0.5)?;
+        let half = interpolate_legacy_frames(&a, &b, 0.5).ok_or("skeleton")?;
         // 250 -> 6 is +12 steps through 0, so the midpoint is 0 (not 128).
         assert_eq!(half.transforms[0].x, 0);
-        Some(())
+        Ok(())
     }
 
     #[test]
