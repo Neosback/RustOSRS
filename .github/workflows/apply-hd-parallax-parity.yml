@@ -1,0 +1,43 @@
+name: Apply HD parallax parity
+
+on:
+  push:
+    branches:
+      - "impl/117hd-material-terrain-parity"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: "impl/117hd-material-terrain-parity"
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+      - name: Apply parallax patch
+        run: python3 scripts/apply_hd_parallax_parity.py
+      - name: Format
+        run: cargo fmt --all
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check workspace
+        run: cargo check --locked --workspace --all-targets --all-features
+      - name: Strict clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Run HD material binding gate
+        run: cargo test --locked -p osrs-render --test hd_material_binding
+      - name: Run editor settings tests
+        run: cargo test --locked -p osrs-editor settings::tests
+      - name: Run material replacement gate
+        run: cargo test --locked -p osrs-hd --test material_replacement_parity
+      - name: Commit result
+        run: |
+          rm scripts/apply_hd_parallax_parity.py
+          rm .github/workflows/apply-hd-parallax-parity.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(hd): port RLHD parallax displacement"
+          git push origin HEAD:impl/117hd-material-terrain-parity
