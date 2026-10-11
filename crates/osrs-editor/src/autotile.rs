@@ -394,6 +394,9 @@ pub struct PathParams {
     /// Tiles beyond the path's edge that take its underlay colour too (a soft halo that blends the
     /// path into the ground), `0` for none.
     pub soften: f32,
+    /// How far (tiles) a control point may be nudged so the runs between points take one of the
+    /// slopes the shapes draw exactly straight (`0`: leave the points where they are).
+    pub snap: f32,
 }
 
 impl Default for PathParams {
@@ -404,6 +407,7 @@ impl Default for PathParams {
             curve: CurveKind::Curve,
             closed: false,
             soften: 0.0,
+            snap: 0.0,
         }
     }
 }
@@ -442,8 +446,158 @@ fn centripetal(
     lerp(b1, b2, t1, t2)
 }
 
+/// Directions (radians) along which the shapes draw an edge exactly straight: the axes, the
+/// diagonals and the 2:1 slopes (corner to the middle of the far side), in every quadrant.
+fn clean_angles() -> &'static [f32] {
+    static ANGLES: OnceLock<Vec<f32>> = OnceLock::new();
+    ANGLES.get_or_init(|| {
+        let mut list = Vec::new();
+        for quarter in 0..8 {
+            let base = quarter as f32 * std::f32::consts::FRAC_PI_2;
+            for a in [
+                0.0,
+                0.5_f32.atan(),
+                std::f32::consts::FRAC_PI_4,
+                2.0_f32.atan(),
+            ] {
+                list.push(base + a);
+                list.push(base - a);
+            }
+        }
+        list
+    })
+}
+
+/// The nearest clean direction (radians) to a run heading `angle`.
+fn nearest_clean(angle: f32) -> f32 {
+    clean_angles()
+        .iter()
+        .copied()
+        .min_by(|a, b| {
+            let diff = |x: f32| (x - angle).sin().abs();
+            diff(*a).total_cmp(&diff(*b))
+        })
+        .unwrap_or(angle)
+}
+
+/// The control points moved as little as possible (least squares) so that every run between
+/// them, two tiles or longer, takes a clean direction exactly. If that would move a point further
+/// than `reach` tiles, the run that asks for the most is left as it was and the rest is solved
+/// again.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "small dense elimination reads clearer indexed"
+)]
+pub fn snap_points(points: &[(f32, f32)], reach: f32) -> Vec<(f32, f32)> {
+    let count = points.len();
+    if count < 2 || reach <= 0.0 {
+        return points.to_vec();
+    }
+    // The wanted direction of each run (a unit normal), `None` for short runs.
+    let mut normals: Vec<Option<(f32, f32)>> = (0..count - 1)
+        .map(|i| {
+            let (dx, dy) = (points[i + 1].0 - points[i].0, points[i + 1].1 - points[i].1);
+            if (dx * dx + dy * dy).sqrt() < 2.0 {
+                return None;
+            }
+            let angle = nearest_clean(dy.atan2(dx));
+            Some((-angle.sin(), angle.cos()))
+        })
+        .collect();
+    loop {
+        let rows: Vec<usize> = (0..count - 1).filter(|i| normals[*i].is_some()).collect();
+        if rows.is_empty() {
+            return points.to_vec();
+        }
+        let m = rows.len();
+        // A A^T (m x m, dense: runs are few) and the residuals r = A P.
+        let mut matrix = vec![vec![0.0_f32; m + 1]; m];
+        for (a, &i) in rows.iter().enumerate() {
+            let ni = normals[i].unwrap_or((0.0, 0.0));
+            matrix[a][m] =
+                (points[i + 1].0 - points[i].0) * ni.0 + (points[i + 1].1 - points[i].1) * ni.1;
+            for (b, &j) in rows.iter().enumerate() {
+                let nj = normals[j].unwrap_or((0.0, 0.0));
+                let dot = ni.0 * nj.0 + ni.1 * nj.1;
+                // Rows touch the same point: i + 1 == j gives -dot, j + 1 == i gives -dot.
+                matrix[a][b] = if i == j {
+                    2.0
+                } else if i + 1 == j || j + 1 == i {
+                    -dot
+                } else {
+                    0.0
+                };
+            }
+        }
+        // Gaussian elimination with partial pivoting.
+        let mut solved = true;
+        for col in 0..m {
+            let pivot = (col..m)
+                .max_by(|a, b| matrix[*a][col].abs().total_cmp(&matrix[*b][col].abs()))
+                .unwrap_or(col);
+            if matrix[pivot][col].abs() < 1e-6 {
+                solved = false;
+                break;
+            }
+            matrix.swap(col, pivot);
+            for row in col + 1..m {
+                let factor = matrix[row][col] / matrix[col][col];
+                for k in col..=m {
+                    matrix[row][k] -= factor * matrix[col][k];
+                }
+            }
+        }
+        if !solved {
+            // Parallel runs make the system singular: drop the shortest and try again.
+            if let Some(&i) = rows.first() {
+                normals[i] = None;
+                continue;
+            }
+            return points.to_vec();
+        }
+        let mut lambda = vec![0.0_f32; m];
+        for row in (0..m).rev() {
+            let mut value = matrix[row][m];
+            for k in row + 1..m {
+                value -= matrix[row][k] * lambda[k];
+            }
+            lambda[row] = value / matrix[row][row];
+        }
+        // Q = P - A^T lambda.
+        let mut moved = points.to_vec();
+        for (a, &i) in rows.iter().enumerate() {
+            let ni = normals[i].unwrap_or((0.0, 0.0));
+            moved[i + 1].0 -= lambda[a] * ni.0;
+            moved[i + 1].1 -= lambda[a] * ni.1;
+            moved[i].0 += lambda[a] * ni.0;
+            moved[i].1 += lambda[a] * ni.1;
+        }
+        // Too far? Release the run whose points moved most.
+        let worst = rows
+            .iter()
+            .map(|&i| {
+                (
+                    i,
+                    dist(moved[i], points[i]).max(dist(moved[i + 1], points[i + 1])),
+                )
+            })
+            .max_by(|a, b| a.1.total_cmp(&b.1));
+        match worst {
+            Some((i, far)) if far > reach => normals[i] = None,
+            _ => return moved,
+        }
+    }
+}
+
 /// The path as a dense polyline (points about `step` tiles apart) in world tile coordinates.
 pub fn path_polyline(points: &[(f32, f32)], params: PathParams, step: f32) -> Vec<(f32, f32)> {
+    let snapped;
+    let points = if params.snap > 0.0 && !params.closed && points.len() >= 2 {
+        snapped = snap_points(points, params.snap);
+        &snapped[..]
+    } else {
+        points
+    };
     match points.len() {
         0 => return Vec::new(),
         1 => return vec![points[0]],
@@ -1332,6 +1486,11 @@ mod tests {
         assert!(a < b && b < c && a >= 0.0 && c <= 1.0, "{a} {b} {c}");
     }
 }
+
+mod refine;
+#[cfg(test)]
+use refine::measure;
+pub use refine::{Refined, generate_refined};
 
 #[cfg(test)]
 mod playground;

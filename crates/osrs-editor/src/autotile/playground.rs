@@ -103,10 +103,11 @@ pub fn cases(count: usize, seed: u64) -> Vec<Case> {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Score {
     pub area: f32,
-    pub blobs: f32,
     pub wobble: f32,
     pub max: f32,
     pub mean: f32,
+    /// Furthest a control point was nudged (tiles).
+    pub shift: f32,
     pub tiles: usize,
     pub millis: f32,
 }
@@ -115,7 +116,7 @@ impl Score {
     /// One number to rank by (lower is better): area error, wobble and the worst miss, weighted so
     /// a visible spike (max) and a wobbling edge (blobs) both outweigh a little area.
     pub fn total(&self) -> f32 {
-        self.area * 2.0 + self.wobble * 8.0 + self.max * 1.5 + self.mean * 3.0
+        self.area * 2.0 + self.wobble * 8.0 + self.max * 1.5 + self.mean * 3.0 + self.shift * 0.4
     }
 }
 
@@ -133,80 +134,41 @@ fn result_masks(result: &[((i32, i32), TileChoice)]) -> HashMap<(i32, i32), Mask
         .collect()
 }
 
-pub fn evaluate(case: &Case, tuning: &Tuning) -> (Score, Vec<((i32, i32), TileChoice)>) {
+pub fn evaluate(
+    case: &Case,
+    tuning: &Tuning,
+    refined: bool,
+) -> (Score, Vec<((i32, i32), TileChoice)>) {
     let none = |_: (i32, i32)| None;
     let started = std::time::Instant::now();
-    let result = generate_with(&case.points, case.params, &none, tuning);
+    let (points, params, result) = if refined {
+        generate_refined(&case.points, case.params, &none, tuning)
+    } else {
+        (
+            case.points.clone(),
+            case.params,
+            generate_with(&case.points, case.params, &none, tuning),
+        )
+    };
     let millis = started.elapsed().as_secs_f32() * 1000.0;
-
-    let half = (case.params.width / 2.0).max(0.5);
-    let line = path_polyline(&case.points, case.params, 0.25);
-    let index = SegmentIndex::new(&line, half + 0.1);
-    let masks = result_masks(&result);
-
-    // Error cells over every tile either side touches.
-    let mut tiles: HashSet<(i32, i32)> = masks.keys().copied().collect();
-    tiles.extend(index.cells.keys().copied());
-    let mut error: HashSet<(i32, i32)> = HashSet::new();
-    let mut ideal_cells = 0_u32;
-    let (mut max, mut sum) = (0.0_f32, 0.0_f32);
-    for tile in &tiles {
-        let target = band_mask(&index, half, *tile);
-        let mine = masks.get(tile).copied().unwrap_or(EMPTY);
-        ideal_cells += popcount(&target);
-        for y in 0..GRID {
-            for x in 0..GRID {
-                if get(&target, x, y) != get(&mine, x, y) {
-                    let cell = (
-                        tile.0 * GRID as i32 + x as i32,
-                        tile.1 * GRID as i32 + y as i32,
-                    );
-                    error.insert(cell);
-                    let c = cell_centre(x, y);
-                    let point = (tile.0 as f32 + c[0], tile.1 as f32 + c[1]);
-                    let deviation = (index.distance(*tile, point) - half).abs();
-                    max = max.max(deviation);
-                    sum += deviation;
-                }
-            }
-        }
-    }
-    // Error blobs: 4-connected groups of error cells with at least a few cells.
-    let mut seen: HashSet<(i32, i32)> = HashSet::new();
-    let mut blobs = 0;
-    for start in &error {
-        if seen.contains(start) {
-            continue;
-        }
-        let mut size = 0;
-        let mut queue = VecDeque::from([*start]);
-        seen.insert(*start);
-        while let Some(cell) = queue.pop_front() {
-            size += 1;
-            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
-                let next = (cell.0 + dx, cell.1 + dy);
-                if error.contains(&next) && seen.insert(next) {
-                    queue.push_back(next);
-                }
-            }
-        }
-        if size >= 4 {
-            blobs += 1;
-        }
-    }
-    let length: f32 = line
-        .windows(2)
-        .map(|p| dist(p[0], p[1]))
-        .sum::<f32>()
-        .max(1.0);
-    let ideal_tiles = ideal_cells as f32 / 256.0;
+    // Quality is judged against the path that was actually tiled (after sliding and nudging); how
+    // far the points moved is reported separately.
+    let quality = measure(&points, params, &result);
+    let shift = {
+        let tiled = path_points(&points, params);
+        tiled
+            .iter()
+            .zip(&case.points)
+            .map(|(a, b)| dist(*a, *b))
+            .fold(0.0_f32, f32::max)
+    };
     (
         Score {
-            area: error.len() as f32 / 256.0 / ideal_tiles.max(1.0),
-            blobs: blobs as f32 / length,
-            wobble: wobble(&line, half, case.params.closed, &masks),
-            max,
-            mean: sum / error.len().max(1) as f32,
+            area: quality.area,
+            wobble: quality.wobble,
+            max: quality.max,
+            mean: quality.mean,
+            shift,
             tiles: result.len(),
             millis,
         },
@@ -214,77 +176,13 @@ pub fn evaluate(case: &Case, tuning: &Tuning) -> (Score, Vec<((i32, i32), TileCh
     )
 }
 
-/// How much the offset between the made outline and the ideal one changes along the path.
-fn wobble(line: &[(f32, f32)], half: f32, closed: bool, masks: &HashMap<(i32, i32), Mask>) -> f32 {
-    let inside = |p: (f32, f32)| -> bool {
-        let tile = (p.0.floor() as i32, p.1.floor() as i32);
-        masks.get(&tile).is_some_and(|mask| {
-            get(
-                mask,
-                (((p.0 - tile.0 as f32) * GRID as f32) as usize).min(GRID - 1),
-                (((p.1 - tile.1 as f32) * GRID as f32) as usize).min(GRID - 1),
-            )
-        })
-    };
-    // Samples every half tile along the centre line, with its unit normal.
-    let mut samples: Vec<((f32, f32), (f32, f32))> = Vec::new();
-    let mut carried = 0.0_f32;
-    for pair in line.windows(2) {
-        let (a, b) = (pair[0], pair[1]);
-        let length = dist(a, b);
-        if length < 1e-4 {
-            continue;
-        }
-        let (tx, ty) = ((b.0 - a.0) / length, (b.1 - a.1) / length);
-        let mut at = carried;
-        while at < length {
-            samples.push(((a.0 + tx * at, a.1 + ty * at), (-ty, tx)));
-            at += 0.5;
-        }
-        carried = at - length;
+/// The control points the tiler actually used (after clean-direction nudging).
+fn path_points(points: &[(f32, f32)], params: PathParams) -> Vec<(f32, f32)> {
+    if params.snap > 0.0 && !params.closed && points.len() >= 2 {
+        snap_points(points, params.snap)
+    } else {
+        points.to_vec()
     }
-    let mut total = 0.0_f32;
-    let mut count = 0_u32;
-    for side in [1.0_f32, -1.0] {
-        // The made outline's offset from the ideal one at each sample, `None` where there is no
-        // outline within reach (path ends, a band narrower than its own width).
-        let offsets: Vec<Option<f32>> = samples
-            .iter()
-            .map(|(p, n)| {
-                let at = |t: f32| (p.0 + n.0 * side * (half + t), p.1 + n.1 * side * (half + t));
-                const REACH: f32 = 0.9;
-                const STEPS: i32 = 36;
-                let mut best: Option<f32> = None;
-                let mut previous = inside(at(-REACH));
-                for i in 1..=STEPS {
-                    let t = -REACH + 2.0 * REACH * i as f32 / STEPS as f32;
-                    let now = inside(at(t));
-                    // The outer edge: inside just before, outside just after.
-                    if previous && !now && best.is_none_or(|b| t.abs() < b.abs()) {
-                        best = Some(t - REACH / STEPS as f32);
-                    }
-                    previous = now;
-                }
-                best
-            })
-            .collect();
-        let n = offsets.len();
-        for i in 0..n {
-            let (prev, next) = if closed {
-                ((i + n - 1) % n, (i + 1) % n)
-            } else if i == 0 || i + 1 == n {
-                continue;
-            } else {
-                (i - 1, i + 1)
-            };
-            if let (Some(a), Some(b), Some(c)) = (offsets[prev], offsets[i], offsets[next]) {
-                let second = a - 2.0 * b + c;
-                total += second * second;
-                count += 1;
-            }
-        }
-    }
-    (total / count.max(1) as f32).sqrt()
 }
 
 pub fn mean(scores: &[Score]) -> Score {
@@ -292,10 +190,10 @@ pub fn mean(scores: &[Score]) -> Score {
     let sum = |f: fn(&Score) -> f32| scores.iter().map(f).sum::<f32>() / n;
     Score {
         area: sum(|s| s.area),
-        blobs: sum(|s| s.blobs),
         wobble: sum(|s| s.wobble),
         max: sum(|s| s.max),
         mean: sum(|s| s.mean),
+        shift: sum(|s| s.shift),
         tiles: (scores.iter().map(|s| s.tiles).sum::<usize>() as f32 / n) as usize,
         millis: sum(|s| s.millis),
     }
@@ -361,10 +259,18 @@ pub fn sheet(
 }
 
 fn run_all(cases: &[Case], tuning: &Tuning) -> (Vec<Score>, Vec<Vec<((i32, i32), TileChoice)>>) {
+    run_all_with(cases, tuning, false)
+}
+
+fn run_all_with(
+    cases: &[Case],
+    tuning: &Tuning,
+    refined: bool,
+) -> (Vec<Score>, Vec<Vec<((i32, i32), TileChoice)>>) {
     let mut scores = Vec::new();
     let mut results = Vec::new();
     for case in cases {
-        let (score, result) = evaluate(case, tuning);
+        let (score, result) = evaluate(case, tuning, refined);
         scores.push(score);
         results.push(result);
     }
@@ -373,13 +279,13 @@ fn run_all(cases: &[Case], tuning: &Tuning) -> (Vec<Score>, Vec<Vec<((i32, i32),
 
 fn print_row(label: &str, s: &Score) {
     println!(
-        "{label:<46} total {:6.3}  area {:5.3}  wobble {:5.3}  blobs/tile {:5.3}  max {:5.3}  mean {:5.3}  {:5.0} tiles  {:6.1} ms",
+        "{label:<46} total {:6.3}  area {:5.3}  wobble {:5.3}  max {:5.3}  mean {:5.3}  moved {:4.2}  {:5.0} tiles  {:6.1} ms",
         s.total(),
         s.area,
         s.wobble,
-        s.blobs,
         s.max,
         s.mean,
+        s.shift,
         s.tiles,
         s.millis
     );
@@ -467,4 +373,221 @@ fn playground_sweep() {
     let _ = sheet(&cases, &results, 8).save("/tmp/playground-sweep-default.png");
     let (_, results) = run_all(&cases, &ranked[0].0);
     let _ = sheet(&cases, &results, 8).save("/tmp/playground-sweep-best.png");
+}
+
+#[test]
+#[ignore = "compares how far control points may be nudged"]
+fn playground_snap() {
+    let base = cases(48, 21);
+    for snap in [0.0_f32, 0.4, 0.75, 1.0, 1.5, 2.5] {
+        let with: Vec<Case> = base
+            .iter()
+            .map(|case| Case {
+                points: case.points.clone(),
+                params: PathParams {
+                    snap,
+                    ..case.params
+                },
+            })
+            .collect();
+        let (scores, results) = run_all(&with, &Tuning::default());
+        print_row(&format!("snap {snap}"), &mean(&scores));
+        let _ = sheet(&with, &results, 8).save(format!("/tmp/playground-snap-{snap}.png"));
+    }
+}
+
+#[test]
+#[ignore = "straight runs at every angle, with and without nudging"]
+fn playground_straight() {
+    let mut rng = Rng(0xABCDEF);
+    let mut base = Vec::new();
+    for n in 0..48 {
+        let angle = n as f32 / 48.0 * std::f32::consts::FRAC_PI_2 * 1.0;
+        let length = rng.between(14.0, 24.0);
+        let start = (6.0 + rng.next(), 6.0 + rng.next());
+        base.push(Case {
+            points: vec![
+                start,
+                (
+                    start.0 + length * angle.cos(),
+                    start.1 + length * angle.sin(),
+                ),
+            ],
+            params: PathParams {
+                width: [1.5, 2.0, 3.0, 4.0, 5.0][n % 5],
+                curve: CurveKind::Lines,
+                ..PathParams::default()
+            },
+        });
+    }
+    for case in &base {
+        let (score, _) = evaluate(case, &Tuning::default(), false);
+        let d = (
+            case.points[1].0 - case.points[0].0,
+            case.points[1].1 - case.points[0].1,
+        );
+        println!(
+            "angle {:5.1} width {}: wobble {:5.3} max {:5.3} area {:5.3}",
+            d.1.atan2(d.0).to_degrees(),
+            case.params.width,
+            score.wobble,
+            score.max,
+            score.area
+        );
+    }
+    for snap in [0.0_f32, 1.0, 2.0] {
+        let with: Vec<Case> = base
+            .iter()
+            .map(|case| Case {
+                points: case.points.clone(),
+                params: PathParams {
+                    snap,
+                    ..case.params
+                },
+            })
+            .collect();
+        let (scores, results) = run_all(&with, &Tuning::default());
+        print_row(&format!("straight, snap {snap}"), &mean(&scores));
+        let _ = sheet(&with, &results, 8).save(format!("/tmp/playground-straight-{snap}.png"));
+    }
+}
+
+#[test]
+#[ignore = "how much the line's position against the tile lattice matters"]
+fn playground_phase() {
+    for (name, angle) in [
+        ("0 deg", 0.0_f32),
+        ("26.6 deg", 0.5_f32.atan()),
+        ("45 deg", std::f32::consts::FRAC_PI_4),
+        ("63.4 deg", 2.0_f32.atan()),
+        ("90 deg", std::f32::consts::FRAC_PI_2),
+        ("35 deg (not clean)", 35.0_f32.to_radians()),
+    ] {
+        for width in [2.0_f32, 3.0, 4.0] {
+            let mut row = String::new();
+            for step in 0..8 {
+                let offset = step as f32 / 8.0;
+                let (c, s) = (angle.cos(), angle.sin());
+                // Start at (10, 10), shifted across the run by `offset` tiles in x.
+                let start = (10.0 + offset, 10.0);
+                let case = Case {
+                    points: vec![start, (start.0 + 18.0 * c, start.1 + 18.0 * s)],
+                    params: PathParams {
+                        width,
+                        curve: CurveKind::Lines,
+                        ..PathParams::default()
+                    },
+                };
+                let (score, _) = evaluate(&case, &Tuning::default(), false);
+                row.push_str(&format!(" {:5.3}", score.wobble));
+            }
+            println!("{name:<20} width {width}: wobble by phase {row}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "refine (slide / widen the path to its cleanest position) against not"]
+fn playground_refine() {
+    for (name, cases) in [("mixed", cases(48, 31)), ("straight", straight_cases())] {
+        for refined in [false, true] {
+            let (scores, results) = run_all_with(&cases, &Tuning::default(), refined);
+            print_row(&format!("{name}, refine {refined}"), &mean(&scores));
+            let _ = sheet(&cases, &results, 8)
+                .save(format!("/tmp/playground-refine-{name}-{refined}.png"));
+        }
+    }
+}
+
+fn straight_cases() -> Vec<Case> {
+    let mut rng = Rng(0xABCDEF);
+    (0..48)
+        .map(|n| {
+            let angle = n as f32 / 48.0 * std::f32::consts::FRAC_PI_2;
+            let length = rng.between(14.0, 24.0);
+            let start = (6.0 + rng.next(), 6.0 + rng.next());
+            Case {
+                points: vec![
+                    start,
+                    (
+                        start.0 + length * angle.cos(),
+                        start.1 + length * angle.sin(),
+                    ),
+                ],
+                params: PathParams {
+                    width: [1.5, 2.0, 3.0, 4.0, 5.0][n % 5],
+                    curve: CurveKind::Lines,
+                    ..PathParams::default()
+                },
+            }
+        })
+        .collect()
+}
+
+/// Paths pasted from the editor's "Copy" button (`PATH ...` lines in `data/user-paths.txt`).
+fn user_cases() -> Vec<Case> {
+    include_str!("../../data/user-paths.txt")
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim().strip_prefix("PATH ")?;
+            let mut params = PathParams::default();
+            let mut points = Vec::new();
+            for field in rest.split_whitespace() {
+                let (key, value) = field.split_once('=')?;
+                match key {
+                    "width" => params.width = value.parse().ok()?,
+                    "closed" => params.closed = value == "true",
+                    "curve" => {
+                        params.curve = if value == "Lines" {
+                            CurveKind::Lines
+                        } else {
+                            CurveKind::Curve
+                        }
+                    }
+                    "snap" => params.snap = value.parse().ok()?,
+                    "soften" => params.soften = value.parse().ok()?,
+                    "style" => {
+                        params.style = match value {
+                            "Chiselled" => EdgeStyle::Chiselled,
+                            "Whole" => EdgeStyle::Whole,
+                            _ => EdgeStyle::Smooth,
+                        }
+                    }
+                    "points" => {
+                        points = value
+                            .split(';')
+                            .filter_map(|pair| {
+                                let (x, y) = pair.split_once(',')?;
+                                Some((x.parse().ok()?, y.parse().ok()?))
+                            })
+                            .collect();
+                    }
+                    _ => {}
+                }
+            }
+            // Move the area to the origin so the sheet shows it.
+            let (min_x, min_y) = points
+                .iter()
+                .fold((f32::MAX, f32::MAX), |m, p| (m.0.min(p.0), m.1.min(p.1)));
+            let points = points
+                .into_iter()
+                .map(|p| (p.0 - min_x.floor() + 6.0, p.1 - min_y.floor() + 6.0))
+                .collect();
+            Some(Case { points, params })
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "runs the paths pasted into data/user-paths.txt, as drawn and refined"]
+fn playground_user_paths() {
+    let cases = user_cases();
+    println!("{} pasted paths", cases.len());
+    for refined in [false, true] {
+        let (scores, results) = run_all_with(&cases, &Tuning::default(), refined);
+        for (n, s) in scores.iter().enumerate() {
+            print_row(&format!("pasted {n}, refine {refined}"), s);
+        }
+        let _ = sheet(&cases, &results, 4).save(format!("/tmp/playground-user-{refined}.png"));
+    }
 }

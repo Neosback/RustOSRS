@@ -306,6 +306,20 @@ impl EditorApp {
             {
                 self.spline.points.clear();
             }
+            if ui
+                .add_enabled(points >= 1, egui::Button::new("Copy"))
+                .on_hover_text(
+                    "Copy the path's details (points, options, result) to paste into a chat",
+                )
+                .clicked()
+            {
+                let text = self.spline_report();
+                ui.ctx().copy_text(text);
+                self.notice = Some((
+                    "Copied the path details".to_owned(),
+                    web_time::Instant::now(),
+                ));
+            }
         });
         ui.add_space(4.0);
         ui.weak("Click the terrain to add points \u{b7} drag a point to move it \u{b7} Shift + click inserts \u{b7} Cmd + click or Delete removes \u{b7} Enter lays the path");

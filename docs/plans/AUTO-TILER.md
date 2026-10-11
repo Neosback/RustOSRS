@@ -195,3 +195,25 @@ tolerances (0.3 and up) get worse: with nothing pulling, the stairs wander.
 `PathParams::soften` (shelf slider "Soften edge", 0 to 6 tiles) lays the path's underlay on the tiles around it
 too (needs the underlay channel armed), so the colour blends into the ground; those tiles are previewed as a
 faint wash and are part of the same undo step.
+
+### Where the lattice sits, and the Copy button (2026-10-11)
+
+The playground's `playground_phase` test lays the same straight road at eight offsets of a fraction of a tile:
+the outline wobble varies 0.04 to 0.22 tiles for one angle and width (a horizontal road is always 0; at the
+clean 45 and 26.6 degree angles the best phase is 0.04 to 0.07, the worst 0.15 to 0.21). So the position of an
+edge against the shape lattice matters more than any weight. Two nudges use that:
+
+* `refine` (auto-tiler, `autotile/refine.rs`): slides the whole path by up to 0.375 tiles in x and y and its
+  width by 0.25, judged by the playground measure (area, wobble, worst miss) plus a small cost for moving.
+  Mixed paths: wobble 0.125 to 0.105; straight runs 0.115 to 0.101; points move 0.18 tiles on average. The
+  search is about 300 ms, so the editor shows the path as drawn while you edit and the refined one once it has
+  sat still for 220 ms (computed on another thread; on wasm it only runs when laying).
+* `snap_points` ("Clean angles" slider, tiles): moves control points as little as possible (least squares)
+  so each run of 2 tiles or more takes one of the exact directions (flat, upright, 45 degrees, 2:1), and never
+  more than the slider's reach. Exact directions give the straightest outlines; straight runs: wobble
+  0.115 to 0.101 at 1 tile of reach (points move 0.28), 0.083 at 2.
+
+The editor's **Copy** button (spline drawer) puts the path's details on the clipboard: a `PATH ...` line
+(points, width, options) that the playground reads back from `crates/osrs-editor/data/user-paths.txt`
+(`playground_user_paths` draws them as drawn and refined), the points as tiled, ground heights and the made
+tiles.

@@ -23,7 +23,16 @@ pub struct SplineState {
     pub points: Vec<(f32, f32)>,
     drag: Option<usize>,
     preview: Option<Preview>,
+    /// When the points or options last changed (the refined tiling waits for things to settle).
+    changed_at: Option<web_time::Instant>,
+    /// The refined tiling being made on another thread, with the key it is for.
+    job: Option<(u64, std::sync::mpsc::Receiver<autotile::Refined>)>,
+    ctx: Option<egui::Context>,
 }
+
+/// How long the path must sit still before it is slid to its cleanest position (a search that is
+/// too slow to run on every drag frame).
+const REFINE_DELAY: std::time::Duration = std::time::Duration::from_millis(220);
 
 #[derive(Debug)]
 struct Preview {
@@ -31,6 +40,11 @@ struct Preview {
     tiles: Vec<((i32, i32), TileChoice)>,
     /// Halo tiles that take the underlay only.
     soft: Vec<(i32, i32)>,
+    /// Whether the path was slid to its cleanest position (otherwise it is as drawn).
+    refined: bool,
+    /// The points and options the tiles were made from (the refined ones when `refined`).
+    points: Vec<(f32, f32)>,
+    params: PathParams,
 }
 
 fn key_of(points: &[(f32, f32)], params: PathParams, terrain: u64) -> u64 {
@@ -44,6 +58,7 @@ fn key_of(points: &[(f32, f32)], params: PathParams, terrain: u64) -> u64 {
     mix(params.curve as u64);
     mix(u64::from(params.closed));
     mix(params.soften.to_bits().into());
+    mix(params.snap.to_bits().into());
     mix(0);
     mix(terrain);
     for (x, y) in points {
@@ -78,6 +93,7 @@ impl EditorApp {
             curve: spline.curve,
             closed: spline.closed,
             soften: spline.soften,
+            snap: spline.snap,
         }
     }
 
@@ -95,8 +111,13 @@ impl EditorApp {
         }
     }
 
-    /// Keep the preview in step with the points and options.
+    /// Keep the preview in step with the points and options: at once for the path as drawn, and
+    /// again, slid to its cleanest position, once it has sat still for a moment.
     pub(super) fn spline_update(&mut self) {
+        self.spline_refresh(false);
+    }
+
+    fn spline_refresh(&mut self, force_refine: bool) {
         let params = self.path_params();
         let overlay = self.laying_overlay();
         let key = key_of(
@@ -106,35 +127,204 @@ impl EditorApp {
                 ^ self.infos_version
                 ^ u64::from(overlay.unwrap_or(0)) << 48,
         );
-        if self.spline.preview.as_ref().is_some_and(|p| p.key == key) {
+        let current = self.spline.preview.as_ref().filter(|p| p.key == key);
+        if current.is_some_and(|p| p.refined) {
             return;
         }
-        let tiles = if self.spline.points.is_empty() {
-            Vec::new()
+        if current.is_none() {
+            self.spline.changed_at = Some(web_time::Instant::now());
+        }
+        let settled = self
+            .spline
+            .changed_at
+            .is_none_or(|at| at.elapsed() >= REFINE_DELAY)
+            && self.spline.drag.is_none();
+        let refine = !self.spline.points.is_empty() && (force_refine || settled);
+        if current.is_some() && !refine {
+            return;
+        }
+        let plane = self.view_plane;
+        let existing = |tile: (i32, i32)| {
+            let id = overlay?;
+            let values = self.current_tile_values((plane, tile.0, tile.1))?;
+            (values.overlay == id).then_some((values.shape, values.rotation))
+        };
+        let tuning = autotile::Tuning::default();
+        let mut refined_now = refine;
+        let (points, used, tiles) = if self.spline.points.is_empty() {
+            (Vec::new(), params, Vec::new())
+        } else if refine && !force_refine && cfg!(not(target_arch = "wasm32")) {
+            // The search takes a few hundred milliseconds: do it off the UI thread and keep
+            // showing the path as drawn until it lands.
+            let mut finished = None;
+            if let Some((job_key, receiver)) = &self.spline.job
+                && *job_key == key
+            {
+                match receiver.try_recv() {
+                    Ok(result) => finished = Some(result),
+                    Err(std::sync::mpsc::TryRecvError::Empty) => return,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {}
+                }
+            }
+            match finished {
+                Some(result) => {
+                    self.spline.job = None;
+                    result
+                }
+                None => {
+                    // Snapshot what the search needs from the editor: the path and the tiles
+                    // around it that already carry the overlay.
+                    let points = self.spline.points.clone();
+                    let reach = params.width + 8.0;
+                    let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+                    for p in &points {
+                        x0 = x0.min(p.0);
+                        y0 = y0.min(p.1);
+                        x1 = x1.max(p.0);
+                        y1 = y1.max(p.1);
+                    }
+                    let mut known: std::collections::HashMap<(i32, i32), (u8, u8)> =
+                        std::collections::HashMap::new();
+                    if overlay.is_some() {
+                        for x in (x0 - reach).floor() as i32..=(x1 + reach).ceil() as i32 {
+                            for y in (y0 - reach).floor() as i32..=(y1 + reach).ceil() as i32 {
+                                if let Some(found) = existing((x, y)) {
+                                    known.insert((x, y), found);
+                                }
+                            }
+                        }
+                    }
+                    let (sender, receiver) = std::sync::mpsc::channel();
+                    self.spline.job = Some((key, receiver));
+                    let repaint = self.spline.ctx.clone();
+                    std::thread::spawn(move || {
+                        let lookup = |tile: (i32, i32)| known.get(&tile).copied();
+                        let result = autotile::generate_refined(&points, params, &lookup, &tuning);
+                        let _ = sender.send(result);
+                        if let Some(ctx) = repaint {
+                            ctx.request_repaint();
+                        }
+                    });
+                    return;
+                }
+            }
+        } else if refine {
+            autotile::generate_refined(&self.spline.points, params, &existing, &tuning)
         } else {
-            let plane = self.view_plane;
-            let existing = |tile: (i32, i32)| {
-                let id = overlay?;
-                let values = self.current_tile_values((plane, tile.0, tile.1))?;
-                (values.overlay == id).then_some((values.shape, values.rotation))
-            };
-            autotile::generate(&self.spline.points, params, &existing)
+            refined_now = false;
+            (
+                self.spline.points.clone(),
+                params,
+                autotile::generate(&self.spline.points, params, &existing),
+            )
         };
         let soft = if self.prefs.brush.underlay.armed {
-            autotile::soft_tiles(&self.spline.points, params, &tiles)
+            autotile::soft_tiles(&points, used, &tiles)
         } else {
             Vec::new()
         };
-        self.spline.preview = Some(Preview { key, tiles, soft });
+        self.spline.preview = Some(Preview {
+            key,
+            tiles,
+            soft,
+            refined: refined_now,
+            points,
+            params: used,
+        });
+    }
+
+    /// Everything about the path in one block of text, to paste into a chat: the first line is a
+    /// `PATH ...` case the auto-tiler playground can read back (`data/user-paths.txt`), the rest is
+    /// what the editor made of it and the ground under it.
+    pub(super) fn spline_report(&self) -> String {
+        let (points, used) = self.drawn_path();
+        let raw: Vec<String> = self
+            .spline
+            .points
+            .iter()
+            .map(|p| format!("{:.3},{:.3}", p.0, p.1))
+            .collect();
+        let mut text = format!(
+            "PATH width={:.2} style={:?} curve={:?} closed={} snap={:.2} soften={:.2} points={}\n",
+            self.prefs.spline.width,
+            self.prefs.spline.style,
+            self.prefs.spline.curve,
+            self.prefs.spline.closed,
+            self.prefs.spline.snap,
+            self.prefs.spline.soften,
+            raw.join(";")
+        );
+        let brush = &self.prefs.brush;
+        text.push_str(&format!(
+            "plane={} overlay={:?} underlay={:?} build={}\n",
+            self.view_plane,
+            brush.overlay.fill,
+            brush.underlay.fill,
+            self.cache_build
+                .as_ref()
+                .map_or("?".to_owned(), |(b, _)| b.to_string())
+        ));
+        text.push_str(&format!(
+            "tiled as: width={:.2} points={}\n",
+            used.width,
+            points
+                .iter()
+                .map(|p| format!("{:.3},{:.3}", p.0, p.1))
+                .collect::<Vec<_>>()
+                .join(";")
+        ));
+        if let Some(preview) = &self.spline.preview {
+            let plane = self.view_plane;
+            let heights: Vec<i32> = preview
+                .tiles
+                .iter()
+                .filter_map(|(t, _)| {
+                    self.current_tile_values((plane, t.0, t.1))
+                        .map(|v| v.height)
+                })
+                .collect();
+            if let (Some(low), Some(high)) = (heights.iter().min(), heights.iter().max()) {
+                text.push_str(&format!(
+                    "ground height under the path (client units): {low} to {high}\n"
+                ));
+            }
+            text.push_str(&format!(
+                "refined={} tiles={}:",
+                preview.refined,
+                preview.tiles.len()
+            ));
+            for (tile, choice) in &preview.tiles {
+                match choice.shape_rotation() {
+                    Some((shape, rotation)) => {
+                        text.push_str(&format!(" {},{}:{shape}/{rotation}", tile.0, tile.1));
+                    }
+                    None => text.push_str(&format!(" {},{}:keep", tile.0, tile.1)),
+                }
+            }
+            text.push('\n');
+        }
+        text
+    }
+
+    /// The points and options the previewed tiles were made from (so the drawn curve matches them).
+    fn drawn_path(&self) -> (Vec<(f32, f32)>, PathParams) {
+        match &self.spline.preview {
+            Some(p) if !p.points.is_empty() => (p.points.clone(), p.params),
+            _ => (self.spline.points.clone(), self.path_params()),
+        }
     }
 
     /// Add, move, insert and remove control points; Enter lays the path.
     pub(super) fn spline_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
+        self.spline.ctx.get_or_insert_with(|| ctx.clone());
         if self.prefs.tool != Tool::Spline {
             self.spline.drag = None;
             return;
         }
         self.spline_update();
+        if self.spline.preview.as_ref().is_some_and(|p| !p.refined) {
+            ctx.request_repaint_after(REFINE_DELAY);
+        }
         if self.quick_open.is_some() || self.context_menu.is_some() {
             return;
         }
@@ -230,7 +420,7 @@ impl EditorApp {
 
     /// Lay the previewed path as one undo step.
     pub(super) fn commit_spline(&mut self) {
-        self.spline_update();
+        self.spline_refresh(true);
         let (tiles, soft) = self
             .spline
             .preview
@@ -249,7 +439,8 @@ impl EditorApp {
             return;
         }
         let grade = self.prefs.spline.ramp.then(|| {
-            let line = autotile::path_polyline(&self.spline.points, self.path_params(), STEP);
+            let (points, params) = self.drawn_path();
+            let line = autotile::path_polyline(&points, params, STEP);
             self.ramp_heights()
                 .map(|(first, last)| super::editing::PathGrade { line, first, last })
         });
@@ -385,7 +576,8 @@ impl EditorApp {
         }
 
         // The spline itself.
-        let line = autotile::path_polyline(&self.spline.points, self.path_params(), STEP);
+        let (drawn_points, drawn_params) = self.drawn_path();
+        let line = autotile::path_polyline(&drawn_points, drawn_params, STEP);
         let screen: Vec<Pos2> = line.iter().filter_map(|p| ground(*p, 10.0)).collect();
         if screen.len() >= 2 {
             painter.add(egui::Shape::line(

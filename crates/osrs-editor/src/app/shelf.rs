@@ -137,6 +137,17 @@ impl EditorApp {
             }
         }
         ui.add_space(4.0);
+        ui.label(egui::RichText::new("Clean angles").weak());
+        ui.add(
+            egui::Slider::new(&mut self.prefs.spline.snap, 0.0..=1.5)
+                .max_decimals(2)
+                .suffix(" tiles"),
+        )
+        .on_hover_text(
+            "Nudge control points up to this far so each run takes a slope the shapes draw \
+             perfectly straight (flat, 45 degrees, 2:1, upright). 0 keeps the points exactly",
+        );
+        ui.add_space(4.0);
         ui.label(egui::RichText::new("Soften edge").weak());
         ui.add(
             egui::Slider::new(&mut self.prefs.spline.soften, 0.0..=6.0)

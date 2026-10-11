@@ -155,6 +155,8 @@ pub struct SplineSettings {
     pub ramp: bool,
     /// Tiles of underlay halo beyond the path's edge (needs the underlay channel armed).
     pub soften: f32,
+    /// How far (tiles) control points may be nudged so runs take a clean slope.
+    pub snap: f32,
 }
 
 impl Default for SplineSettings {
@@ -166,6 +168,7 @@ impl Default for SplineSettings {
             closed: false,
             ramp: false,
             soften: 0.0,
+            snap: 0.75,
         }
     }
 }
