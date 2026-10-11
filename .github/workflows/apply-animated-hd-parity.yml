@@ -1,0 +1,347 @@
+name: Apply animated 117HD parity
+
+on:
+  push:
+    branches:
+      - impl/117hd-material-terrain-parity
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: impl/117hd-material-terrain-parity
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+      - name: Wire animated locs through the HD model pipeline
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}\n--- old ---\n{old}")
+              p.write_text(text.replace(old, new, 1))
+
+          # Animation system: retain the resolved HD context and use the same model_faces
+          # implementation as static locs after each frame is posed/contoured.
+          replace_once(
+              "crates/osrs-world/src/animation.rs",
+              "use osrs_core::{\n",
+              "use crate::hd::{HdContext, model::{ModelSite, model_faces}};\nuse osrs_core::{\n",
+          )
+          replace_once(
+              "crates/osrs-world/src/animation.rs",
+              '''pub struct AnimatedInstance {
+    pub model: Arc<AnimatedModel>,
+    /// World zone coordinates of the owning zone.
+    pub zone: (i32, i32),
+    pub level: u8,
+    pub min_plane: u8,
+    /// Model origin in zone-local units.
+    pub local: (i32, i32, i32),
+    /// Extra instance rotation in JAU.
+    pub rotation: u16,
+}''',
+              '''pub struct AnimatedInstance {
+    pub model: Arc<AnimatedModel>,
+    /// Object definition that owns this dynamic model, for 117HD model overrides.
+    pub object_id: u32,
+    /// World tile and source plane of the loc anchor.
+    pub world: (i32, i32, i32),
+    /// World zone coordinates of the owning zone.
+    pub zone: (i32, i32),
+    /// World-unit origin of the owning zone, used by world-projected 117HD UVs.
+    pub zone_origin_world: (i32, i32),
+    pub level: u8,
+    pub min_plane: u8,
+    /// Model origin in zone-local units.
+    pub local: (i32, i32, i32),
+    /// Extra instance rotation in JAU.
+    pub rotation: u16,
+}''',
+          )
+          replace_once(
+              "crates/osrs-world/src/animation.rs",
+              '''pub struct AnimationSystem {
+    regions: HashMap<(i32, i32), Vec<Live>>,
+    /// Blend each frame toward the next (RuneLite's Animation Smoothing plugin).
+    smoothing: bool,
+    /// Hold every instance at its rest pose (object animations switched off).
+    frozen: bool,
+}''',
+              '''pub struct AnimationSystem {
+    regions: HashMap<(i32, i32), Vec<Live>>,
+    /// Resolved 117HD material/model state shared with the region streamer.
+    hd: Option<Arc<HdContext>>,
+    /// The current render profile. The context stays cached across profile switches.
+    hd_enabled: bool,
+    /// Blend each frame toward the next (RuneLite's Animation Smoothing plugin).
+    smoothing: bool,
+    /// Hold every instance at its rest pose (object animations switched off).
+    frozen: bool,
+}''',
+          )
+          replace_once(
+              "crates/osrs-world/src/animation.rs",
+              '''    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Freeze or release playback.''',
+              '''    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Share the resolved 117HD model/material context used by static region extraction.
+    pub fn set_hd_context(&mut self, context: Arc<HdContext>) {
+        self.hd = Some(context);
+    }
+
+    /// Select whether rebuilt animation geometry uses the HD or Reference vertex path.
+    pub fn set_hd_enabled(&mut self, enabled: bool) {
+        self.hd_enabled = enabled;
+    }
+
+    /// Freeze or release playback.''',
+          )
+          replace_once(
+              "crates/osrs-world/src/animation.rs",
+              '''            let zone = geometry.zone_mut(instance.zone.0, instance.zone.1);
+            zone.group_mut(instance.level, instance.min_plane)
+                .push_model(
+                    &posed,
+                    ModelPlacement {
+                        x: instance.local.0,
+                        y: instance.local.1,
+                        z: instance.local.2,
+                        orientation: instance.rotation,
+                    },
+                );''',
+              '''            let placement = ModelPlacement {
+                x: instance.local.0,
+                y: instance.local.1,
+                z: instance.local.2,
+                orientation: instance.rotation,
+            };
+            let builder = geometry
+                .zone_mut(instance.zone.0, instance.zone.1)
+                .group_mut(instance.level, instance.min_plane);
+            if self.hd_enabled && let Some(hd) = self.hd.as_deref() {
+                let faces = model_faces(
+                    hd,
+                    posed.as_ref(),
+                    ModelSite {
+                        object_id: instance.object_id,
+                        world: instance.world,
+                        placement,
+                        zone_origin_world: instance.zone_origin_world,
+                    },
+                );
+                builder.push_hd_faces(
+                    &faces,
+                    [instance.local.0, instance.local.1, instance.local.2],
+                );
+            } else {
+                builder.push_model(posed.as_ref(), placement);
+            }''',
+          )
+
+          # Animation worker: accept the shared HD context and profile state. Both force a rebuild
+          # so a profile/context transition cannot leave stale Reference animation buffers behind.
+          replace_once(
+              "crates/osrs-world/src/animation_worker.rs",
+              "use crate::{AnimatedInstance, AnimationSystem};",
+              "use crate::{AnimatedInstance, AnimationSystem, hd::HdContext};",
+          )
+          replace_once(
+              "crates/osrs-world/src/animation_worker.rs",
+              '''use std::{
+    sync::mpsc::{Receiver, Sender, channel},
+    thread::JoinHandle,
+};''',
+              '''use std::{
+    sync::{
+        Arc,
+        mpsc::{Receiver, Sender, channel},
+    },
+    thread::JoinHandle,
+};''',
+          )
+          replace_once(
+              "crates/osrs-world/src/animation_worker.rs",
+              '''    SetSmoothing(bool),
+    SetFrozen(bool),''',
+              '''    SetHdContext(Arc<HdContext>),
+    SetHdEnabled(bool),
+    SetSmoothing(bool),
+    SetFrozen(bool),''',
+          )
+          replace_once(
+              "crates/osrs-world/src/animation_worker.rs",
+              '''                        Request::Insert(key, instances) => system.insert_region(key, instances),
+                        Request::Remove(key) => system.remove_region(key),
+                        Request::SetSmoothing(enabled) => system.set_smoothing(enabled),''',
+              '''                        Request::Insert(key, instances) => system.insert_region(key, instances),
+                        Request::Remove(key) => system.remove_region(key),
+                        Request::SetHdContext(context) => system.set_hd_context(context),
+                        Request::SetHdEnabled(enabled) => system.set_hd_enabled(enabled),
+                        Request::SetSmoothing(enabled) => system.set_smoothing(enabled),''',
+          )
+          replace_once(
+              "crates/osrs-world/src/animation_worker.rs",
+              '''    pub fn remove_region(&mut self, key: (i32, i32)) {
+        let _ = self.requests.send(Request::Remove(key));
+        self.pending_force = true;
+    }
+
+    /// Blend animation frames''',
+              '''    pub fn remove_region(&mut self, key: (i32, i32)) {
+        let _ = self.requests.send(Request::Remove(key));
+        self.pending_force = true;
+    }
+
+    /// Share the 117HD model/material context loaded by the region streamer.
+    pub fn set_hd_context(&mut self, context: Arc<HdContext>) {
+        let _ = self.requests.send(Request::SetHdContext(context));
+        self.pending_force = true;
+    }
+
+    /// Switch animated geometry between the HD and Reference vertex paths.
+    pub fn set_hd_enabled(&mut self, enabled: bool) {
+        let _ = self.requests.send(Request::SetHdEnabled(enabled));
+        self.pending_force = true;
+    }
+
+    /// Blend animation frames''',
+          )
+
+          # Extraction: retain the object/site identity needed by ModelOverrideManager and
+          # world-projected material UVs when the model is re-emitted after posing.
+          replace_once(
+              "crates/osrs-world/src/extract.rs",
+              '''            instances.push(AnimatedInstance {
+                model: model.clone(),
+                zone: (zone_base_x + scene_zone_x, zone_base_z + scene_zone_z),
+                level,
+                min_plane,
+                local: (slot.x, slot.y, slot.z),
+                rotation: slot.rotation,
+            });''',
+              '''            let zone = (zone_base_x + scene_zone_x, zone_base_z + scene_zone_z);
+            instances.push(AnimatedInstance {
+                model: model.clone(),
+                object_id: loc.object_id.get(),
+                world: (
+                    world.window.base_x + loc.tile.x as i32,
+                    world.window.base_y + loc.tile.y as i32,
+                    i32::from(loc.plane.index().get()),
+                ),
+                zone,
+                zone_origin_world: (zone.0 * ZONE_LOCAL_UNITS, zone.1 * ZONE_LOCAL_UNITS),
+                level,
+                min_plane,
+                local: (slot.x, slot.y, slot.z),
+                rotation: slot.rotation,
+            });''',
+          )
+
+          # Streamer: keep the single resolved context in an Arc and send that exact context to
+          # the animation worker alongside the GPU material payload.
+          replace_once(
+              "crates/osrs-world/src/streaming.rs",
+              '''fn load_hd(definitions: &WorldDefinitions) -> Result<(HdContext, Box<HdGpuData>), String> {''',
+              '''fn load_hd(definitions: &WorldDefinitions) -> Result<(Arc<HdContext>, Box<HdGpuData>), String> {''',
+          )
+          replace_once(
+              "crates/osrs-world/src/streaming.rs",
+              '''    let context = HdContext::load(&assets, osrs_hd::settings::HdSettings::default(), present)
+        .map_err(|error| error.to_string())?;''',
+              '''    let context = Arc::new(
+        HdContext::load(&assets, osrs_hd::settings::HdSettings::default(), present)
+            .map_err(|error| error.to_string())?,
+    );''',
+          )
+          replace_once(
+              "crates/osrs-world/src/streaming.rs",
+              '''    /// The HD profile's material table and textures, decoded (sent once, before the first HD
+    /// region).
+    HdMaterials(Box<HdGpuData>),''',
+              '''    /// The HD profile's material table/textures and the exact resolved context used to build
+    /// static geometry. The animation worker reuses this context for dynamic locs.
+    HdMaterials {
+        data: Box<HdGpuData>,
+        context: Arc<HdContext>,
+    },''',
+          )
+          replace_once(
+              "crates/osrs-world/src/streaming.rs",
+              '''                let mut hd: Option<HdContext> = None;''',
+              '''                let mut hd: Option<Arc<HdContext>> = None;''',
+          )
+          replace_once(
+              "crates/osrs-world/src/streaming.rs",
+              '''                                    Ok((context, gpu)) => {
+                                        hd = Some(context);
+                                        let _ = event_tx.send(StreamEvent::HdMaterials(gpu));
+                                    }''',
+              '''                                    Ok((context, gpu)) => {
+                                        let _ = event_tx.send(StreamEvent::HdMaterials {
+                                            data: gpu,
+                                            context: Arc::clone(&context),
+                                        });
+                                        hd = Some(context);
+                                    }''',
+          )
+          replace_once(
+              "crates/osrs-world/src/streaming.rs",
+              '''                                hd.as_ref(),
+                            ) {''',
+              '''                                hd.as_deref(),
+                            ) {''',
+          )
+
+          # Editor: forward the shared context to the animation worker and tell it which profile is
+          # active on every presentation rebuild.
+          replace_once(
+              "crates/osrs-editor/src/app.rs",
+              '''                StreamEvent::HdMaterials(data) => {
+                    self.hd.set_environments(Arc::clone(&data.environments));
+                    if let Err(error) = data.install(&mut self.renderer) {''',
+              '''                StreamEvent::HdMaterials { data, context } => {
+                    self.animations.set_hd_context(context);
+                    self.hd.set_environments(Arc::clone(&data.environments));
+                    if let Err(error) = data.install(&mut self.renderer) {''',
+          )
+          replace_once(
+              "crates/osrs-editor/src/app.rs",
+              '''        self.presentation_hd = self.prefs.render_profile == ProfileChoice::Hd;
+        self.streamer.set_presentation(''',
+              '''        self.presentation_hd = self.prefs.render_profile == ProfileChoice::Hd;
+        self.animations.set_hd_enabled(self.presentation_hd);
+        self.renderer.remove_region(ANIMATED_KEY);
+        self.streamer.set_presentation(''',
+          )
+
+          # The helper exists only to apply this multi-file patch with the repository's own pinned
+          # formatter/toolchain.
+          Path(".github/workflows/apply-animated-hd-parity.yml").unlink()
+          PY
+          cargo fmt --all
+      - name: Verify workspace compiles
+        run: cargo check --locked --workspace --all-targets --all-features
+      - name: Commit animated HD parity
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(hd): route animated locs through HD model materials"
+          git push origin HEAD:impl/117hd-material-terrain-parity
