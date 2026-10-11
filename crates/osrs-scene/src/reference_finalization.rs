@@ -117,11 +117,6 @@ impl SceneReferenceFinalizer {
         id
     }
 
-    /// Vertical tolerance for normal-merge vertex matching (`0` = reference-exact).
-    pub fn set_vertical_merge_tolerance(&mut self, tolerance: i32) {
-        self.model_data.set_vertical_merge_tolerance(tolerance);
-    }
-
     pub fn model_data(&self) -> &SceneModelDataGrid {
         &self.model_data
     }

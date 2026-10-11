@@ -54,22 +54,6 @@ pub fn merge_model_normals(
     translation: ModelTranslation,
     hide_matched_faces: bool,
 ) -> NormalMergeOutcome {
-    merge_model_normals_with_tolerance(left, right, translation, hide_matched_faces, 0)
-}
-
-/// [`merge_model_normals`] with a vertical match tolerance.
-///
-/// The reference compares `y` strictly (`y_tolerance == 0`). A positive tolerance is a
-/// deliberate, opt-in deviation: pieces authored with a small vertical offset (for example
-/// object 1904's `translation.y = 1` next to 1907) then still merge normals and hide their
-/// coincident end caps.
-pub fn merge_model_normals_with_tolerance(
-    left: &mut WorkingModel,
-    right: &mut WorkingModel,
-    translation: ModelTranslation,
-    hide_matched_faces: bool,
-    y_tolerance: i32,
-) -> NormalMergeOutcome {
     ensure_base_normal_state(left);
     ensure_base_normal_state(right);
 
@@ -87,7 +71,7 @@ pub fn merge_model_normals_with_tolerance(
         }
 
         let translated_y = left_vertex.y.wrapping_sub(translation.y);
-        if translated_y > right_bounds.max_y.saturating_add(y_tolerance) {
+        if translated_y > right_bounds.max_y {
             continue;
         }
         let translated_x = left_vertex.x.wrapping_sub(translation.x);
@@ -105,7 +89,7 @@ pub fn merge_model_normals_with_tolerance(
                 continue;
             }
             if translated_x == right_vertex.x
-                && translated_y.abs_diff(right_vertex.y) <= y_tolerance.unsigned_abs()
+                && translated_y == right_vertex.y
                 && translated_z == right_vertex.z
             {
                 matched_pairs.push((left_index, right_index));

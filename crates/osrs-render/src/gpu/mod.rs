@@ -577,7 +577,11 @@ impl SceneRenderer {
             world_proj: params.camera.world_projection(width as f32, height as f32),
             brightness: params.brightness,
             // The reference uniform is inverted: it is `1` when banding is *not* removed.
-            smooth_banding: if params.remove_color_banding { 0.0 } else { 1.0 },
+            smooth_banding: if params.remove_color_banding {
+                0.0
+            } else {
+                1.0
+            },
             tick: params.tick,
             pad: 0.0,
         };

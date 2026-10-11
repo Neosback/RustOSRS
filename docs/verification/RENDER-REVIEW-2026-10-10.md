@@ -97,9 +97,10 @@ type 9 / (2584,3085) type 1 there are 18 x/z-coincident vertices, **0** strict-e
 seam and visible coincident end caps. A third-party write-up and a project validated against the
 game show no such seam in OSRS, so the deob is probably behind build 241 here.
 
-Decision: opt-in, non-reference `TerrainPresentation::wall_merge_tolerance` (library default 0,
-exact client). The editor enables 2 by default ("merge wall seams"; toggling rebuilds loaded
-regions). Needs confirming against a 241 client if one becomes available.
+Decision (revised): the opt-in `wall_merge_tolerance` was **removed**. In the editor it also changed
+other walls (997/1602 near (2596,3095) looked wrong with it), so the strict client condition is
+the only behaviour now. The 1904/1907 end-cap seam is therefore left exactly as the deob client
+produces it; revisit only with evidence from a build-241 client.
 
 Diagonal decorations (shape 8 on diagonal wall 1902): type-9 diagonal walls are *game objects*,
 so `getBoundaryObjectTag` is 0 and the displacement is the default `8`; offsets `8 * (±1, ±1)`
@@ -244,7 +245,7 @@ The RuneLite commit "cache: rev 241" (87616aa) only adds loader changes (object 
   them; nothing in the repo consumes them. Semantics unverified.
 * No whole-scene oracle for objects: the January deob cannot decode build-241 object definitions
   (62,384 decode but 57,661 leave trailing bytes), so placement/normal/lighting parity for objects
-  rests on source reading plus the opt-in seam tolerance above.
+  rests on source reading.
 * Overlay/underlay data holes (e.g. overlay 442 shore tiles) are authentic client output.
 
 ## Work log: terrain oracle windows

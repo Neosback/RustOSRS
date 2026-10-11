@@ -1,11 +1,14 @@
 //! Stats: how animated objects animate (legacy frame sequences vs skeletal) in the real cache.
-use osrs_cache::decode::{ArchiveFileProvenance, DecoderContext, decode_object_definition, decode_sequence_definition};
+use osrs_cache::decode::{
+    ArchiveFileProvenance, DecoderContext, decode_object_definition, decode_sequence_definition,
+};
 use osrs_cache::profile::TargetProfile;
 use osrs_cache::transport::CacheRepository;
 use osrs_core::ids::{ObjectId, SequenceId};
 use std::collections::HashMap;
 
-const PROFILE_YAML: &str = include_str!("../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
+const PROFILE_YAML: &str =
+    include_str!("../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = std::env::args().nth(1).ok_or("cache dir")?;
@@ -15,7 +18,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sequences = HashMap::new();
     for (id, file) in cache.read_group_files(2, 12)? {
         let src = ArchiveFileProvenance::new(2, 12, Some(id));
-        sequences.insert(id, decode_sequence_definition(SequenceId::new(id), &file.bytes, &context, &src)?);
+        sequences.insert(
+            id,
+            decode_sequence_definition(SequenceId::new(id), &file.bytes, &context, &src)?,
+        );
     }
     let (mut legacy, mut skeletal, mut both, mut none) = (0, 0, 0, 0);
     let (mut with_step, mut without_step) = (0, 0);
@@ -23,14 +29,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (id, file) in cache.read_group_files(2, 6)? {
         let src = ArchiveFileProvenance::new(2, 6, Some(id));
         let def = decode_object_definition(ObjectId::new(id), &file.bytes, &context, &src)?;
-        let Some(animation) = def.animation else { continue };
-        let Some(seq) = sequences.get(&animation.get()) else { none += 1; continue };
+        let Some(animation) = def.animation else {
+            continue;
+        };
+        let Some(seq) = sequences.get(&animation.get()) else {
+            none += 1;
+            continue;
+        };
         match (!seq.frame_ids.is_empty(), seq.skeletal_animation.is_some()) {
             (true, false) => {
                 legacy += 1;
-                if seq.frame_step.is_some() { with_step += 1 } else {
+                if seq.frame_step.is_some() {
+                    with_step += 1
+                } else {
                     without_step += 1;
-                    if examples.len() < 8 { examples.push((id, animation.get(), seq.frame_ids.len(), seq.max_loops)); }
+                    if examples.len() < 8 {
+                        examples.push((id, animation.get(), seq.frame_ids.len(), seq.max_loops));
+                    }
                 }
             }
             (false, true) => skeletal += 1,
@@ -38,10 +53,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (false, false) => none += 1,
         }
     }
-    println!("animated object defs: legacy-frames={legacy} skeletal={skeletal} both={both} neither={none}");
-    println!("legacy: with frame_step={with_step} without={without_step}; examples (obj, seq, frames, max_loops): {examples:?}");
+    println!(
+        "animated object defs: legacy-frames={legacy} skeletal={skeletal} both={both} neither={none}"
+    );
+    println!(
+        "legacy: with frame_step={with_step} without={without_step}; examples (obj, seq, frames, max_loops): {examples:?}"
+    );
     let total = sequences.len();
-    let skel = sequences.values().filter(|s| s.skeletal_animation.is_some()).count();
+    let skel = sequences
+        .values()
+        .filter(|s| s.skeletal_animation.is_some())
+        .count();
     println!("sequences: total={total} skeletal={skel}");
     Ok(())
 }

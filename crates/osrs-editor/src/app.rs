@@ -54,7 +54,7 @@ pub struct EditorApp {
     remove_color_banding: bool,
     /// Non-reference option: wall normals merge across 1-2 unit vertical offsets (hides seams
     /// between wall pieces such as objects 1904/1907).
-    wall_seam_tolerance: bool,
+    snap_diagonal_decor: bool,
     smooth_terrain: bool,
     presentation_generation: u32,
     /// Background (and the colour holes in the terrain show). RuneLite's default sky is black.
@@ -126,7 +126,7 @@ impl EditorApp {
             view_plane: 0,
             brightness: 0.8,
             remove_color_banding: true,
-            wall_seam_tolerance: true,
+            snap_diagonal_decor: true,
             smooth_terrain: false,
             presentation_generation: 1,
             sky_color: [0.0, 0.0, 0.0],
@@ -162,11 +162,10 @@ impl EditorApp {
         })
     }
 
-    fn presentation(wall_seam_tolerance: bool, smooth_terrain: bool) -> TerrainPresentation {
+    fn presentation(snap_diagonal_decor: bool, smooth_terrain: bool) -> TerrainPresentation {
         TerrainPresentation {
             smooth_terrain,
-            wall_merge_tolerance: if wall_seam_tolerance { 2 } else { 0 },
-            flush_diagonal_decorations: wall_seam_tolerance,
+            flush_diagonal_decorations: snap_diagonal_decor,
             ..TerrainPresentation::default()
         }
     }
@@ -175,7 +174,7 @@ impl EditorApp {
     fn rebuild_all(&mut self) {
         self.presentation_generation += 1;
         self.streamer.set_presentation(
-            Self::presentation(self.wall_seam_tolerance, self.smooth_terrain),
+            Self::presentation(self.snap_diagonal_decor, self.smooth_terrain),
             self.presentation_generation,
         );
         for key in self.loaded.keys().copied().collect::<Vec<_>>() {
@@ -685,7 +684,7 @@ impl eframe::App for EditorApp {
                 ui.add(egui::Slider::new(&mut self.brightness, 0.5..=1.0).text("brightness"));
                 ui.checkbox(&mut self.remove_color_banding, "smooth shading");
                 let wall_changed = ui
-                    .checkbox(&mut self.wall_seam_tolerance, "wall fixes (seams, diagonal decor)")
+                    .checkbox(&mut self.snap_diagonal_decor, "snap diagonal decor")
                     .changed();
                 let terrain_changed = ui
                     .checkbox(&mut self.smooth_terrain, "smooth terrain")

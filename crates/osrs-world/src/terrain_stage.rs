@@ -17,8 +17,6 @@ pub const DEFAULT_BRIGHTNESS: f64 = 0.8;
 pub struct TerrainPresentation {
     pub brightness: f64,
     pub jitter: TerrainJitter,
-    /// Non-reference option: vertical tolerance for wall normal merging (`0` = exact client).
-    pub wall_merge_tolerance: i32,
     /// Non-reference option: snap diagonal (`256`) wall-decoration plates flush onto the faces of
     /// the type-9 diagonal wall on their tile instead of using the client's fixed displacement
     /// (see the render review).
@@ -33,7 +31,6 @@ impl Default for TerrainPresentation {
         Self {
             brightness: DEFAULT_BRIGHTNESS,
             jitter: TerrainJitter::default(),
-            wall_merge_tolerance: 0,
             flush_diagonal_decorations: false,
             smooth_terrain: false,
         }

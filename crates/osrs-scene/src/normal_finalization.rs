@@ -10,7 +10,7 @@ use osrs_core::{
     coords::{LOCAL_UNITS_PER_TILE, SceneTile, StoragePlane},
     definitions::ModelTranslation,
     model::WorkingModel,
-    normals::{NormalMergeOutcome, merge_model_normals_with_tolerance},
+    normals::{NormalMergeOutcome, merge_model_normals},
 };
 use std::{error::Error, fmt};
 
@@ -179,8 +179,6 @@ pub struct SceneModelDataGrid {
     tiles: Vec<SceneModelDataTile>,
     tile_heights: Vec<i32>,
     models: Vec<SceneModelDataEntry>,
-    /// Vertical match tolerance for normal merging (`0` = reference-exact).
-    vertical_merge_tolerance: i32,
 }
 
 impl SceneModelDataGrid {
@@ -224,12 +222,7 @@ impl SceneModelDataGrid {
             tiles: vec![SceneModelDataTile::default(); tile_len],
             tile_heights: vec![0; height_len],
             models: Vec::new(),
-            vertical_merge_tolerance: 0,
         })
-    }
-
-    pub fn set_vertical_merge_tolerance(&mut self, tolerance: i32) {
-        self.vertical_merge_tolerance = tolerance;
     }
 
     pub const fn width(&self) -> u32 {
@@ -660,14 +653,12 @@ impl SceneModelDataGrid {
         if source == neighbor {
             return Ok(());
         }
-        let tolerance = self.vertical_merge_tolerance;
         let (source_model, neighbor_model) = self.model_pair_mut(source, neighbor)?;
-        let outcome = merge_model_normals_with_tolerance(
+        let outcome = merge_model_normals(
             source_model,
             neighbor_model,
             translation,
             hide_matched_faces,
-            tolerance,
         );
         report.record_merge(outcome);
         Ok(())
