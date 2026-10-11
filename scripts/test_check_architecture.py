@@ -117,7 +117,49 @@ gpu = { package = "wgpu", version = "28" }
             errors = check_architecture.check_workspace(root)
             self.assertTrue(any("renderer/UI/cache-transport dependency leakage: wgpu" in error for error in errors))
 
-    def test_reference_may_depend_on_semantic_and_cache_crates(self) -> None:
+    def test_world_may_compose_reusable_runtime_layers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_manifest(
+                root,
+                "osrs-world",
+                """
+[package]
+name = "osrs-world"
+version = "0.0.0"
+
+[dependencies]
+osrs-core = { path = "../osrs-core" }
+osrs-cache = { path = "../osrs-cache" }
+osrs-scene = { path = "../osrs-scene" }
+osrs-render = { path = "../osrs-render" }
+""",
+            )
+
+            errors = check_architecture.check_workspace(root)
+            self.assertEqual(errors, [])
+
+    def test_world_cannot_depend_on_editor(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_manifest(
+                root,
+                "osrs-world",
+                """
+[package]
+name = "osrs-world"
+version = "0.0.0"
+
+[dependencies]
+osrs-core = { path = "../osrs-core" }
+osrs-editor = { path = "../osrs-editor" }
+""",
+            )
+
+            errors = check_architecture.check_workspace(root)
+            self.assertTrue(any("illegal internal dependencies: osrs-editor" in error for error in errors))
+
+    def test_reference_may_depend_on_semantic_cache_and_world_crates(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self.write_manifest(
@@ -132,6 +174,7 @@ version = "0.0.0"
 osrs-core = { path = "../osrs-core" }
 osrs-cache = { path = "../osrs-cache" }
 osrs-scene = { path = "../osrs-scene" }
+osrs-world = { path = "../osrs-world" }
 """,
             )
 
