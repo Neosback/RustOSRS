@@ -30,7 +30,7 @@ A tile is `underlay` only, or `overlay` (with shape and rotation) on top of an u
    per tile corner; the underlay lightness is adjusted per corner, so terrain shading follows the heights.
 3. **Overlay shape 0** (internal shape 1) -> `SceneTilePaint`: a flat quad (two triangles) in the overlay
    colour/texture. **Shapes 1..=11** -> `SceneTileModel` from the `VERTEX_CODES`/`FACE_CODES` tables
-   (up to 6 vertices: corners 1,3,5,7 + edge midpoints 2,4,6,8 + inner points 9-16), with rotation applied
+   (4-6 vertices per shape: corners 1,3,5,7 + edge midpoints 2,4,6,8 + inner points 9-16), with rotation applied
    to the vertex/face codes. Each face draws either underlay or overlay colours, which is what produces
    diagonal shoreline cuts, paths with rounded ends, and "L" shaped overlays.
 4. Textured overlays use the texture's average colour for minimap/lighting; magenta overlays are the
@@ -38,20 +38,28 @@ A tile is `underlay` only, or `overlay` (with shape and rotation) on top of an u
 
 ## 3. The shape alphabet (what an auto-tiler chooses between)
 
-The shape tables are a tiny tileset over the four corners/edges of a tile. With rotations they describe
-every way an overlay region can cover part of a tile:
+The map file stores `shape = 0..=11`; the builder adds 1 and indexes the tables in `terrain.rs`
+(rows 0 and 1 are "all underlay" / "all overlay"; file shape 0 is the plain paint quad). Overlay share of
+the tile, computed from `FACE_CODES` (vertex codes 1,3,5,7 are the corners, 2,4,6,8 edge midpoints,
+9-16 inner points at quarter positions):
 
-| shape | covered area (overlay) | typical use |
-|---|---|---|
-| 0 | whole tile | interior of a path/water/floor |
-| 1 | one corner triangle | outer corner of a diagonal edge |
-| 2 | half tile (diagonal) | straight diagonal edge |
-| 3 | corner triangle + ... | smooth corner variants |
-| 4-6 | quads/trapezoids on the tile edge | straight edges with a notch |
-| 7-9 | combinations using edge midpoints | rounded joins |
-| 10-12 | inner-corner / concave pieces | concave corners, single-tile islands |
+| file shape | table row | overlay share | geometry |
+|---|---|---|---|
+| 0 | 1 | 100% | whole tile (paint) |
+| 1 | 2 | 50% | diagonal half (corner to corner) |
+| 2, 3 | 3, 4 | 25% | corner triangle using the opposite edge midpoint (mirror pair) |
+| 4, 5 | 5, 6 | 75% | complement of 2/3 (mirror pair) |
+| 6 | 7 | 50% | half cut through two edge midpoints (straight edge) |
+| 7 | 8 | 12.5% | small corner triangle between two edge midpoints |
+| 8 | 9 | 87.5% | complement of 7 |
+| 9 | 10 | 34% | rounded concave piece using inner points 11/12 |
+| 10 | 11 | 66% | complement of 9 |
+| 11 | 12 | 19% | small rounded piece using inner points 13/14 |
 
-(Exact face lists: `FACE_CODES` in `terrain.rs`. Our tests render all 13 shapes x 4 rotations.)
+Rotation (0-3) turns any of these by 90 degrees: edge/corner codes rotate in steps of two, inner points
+in steps of one (`rotated_vertex_code`). So the alphabet is 11 shapes x 4 rotations plus "full" and
+"none", about 45 distinct tiles, of which the complements pair up (a shape and its complement are the
+same cut seen from the other overlay).
 
 ## 4. Auto-tiler design
 
@@ -83,7 +91,7 @@ Reverse direction for learning: statistics of (neighbour mask -> shape, rotation
 
 ## 5. Plan
 1. `osrs-scene::tile_rules`: pure functions `corner_mask -> Option<(shape, rotation)>` plus the inverse
-   `(shape, rotation) -> covered corners`, with exhaustive tests over all 13 x 4.
+   `(shape, rotation) -> covered corners`, with exhaustive tests over all 12 shapes x 4 rotations.
 2. Census example: over every region of the cache, count (neighbour overlay pattern -> shape/rotation) and
    report cases where the rule table disagrees with real maps (finds hidden conventions).
 3. Region-scoped `TileEdit` command (overlay/underlay/height/flags) with undo; dirty-rectangle rebuild
