@@ -7,6 +7,11 @@
 //! Field names follow the plugin's JSON schemas (`assets/117hd/schemas`); fields this port does not
 //! use yet are kept in `extra` so no information is lost.
 
+pub mod expr;
+pub mod materials;
+pub mod settings;
+pub mod tiles;
+
 use serde::Deserialize;
 use serde_json::Value;
 use std::{
@@ -104,11 +109,14 @@ pub struct Material {
     pub subsurface: Option<f32>,
     pub displacement_scale: Option<f32>,
     pub flow_map_strength: Option<f32>,
+    pub flow_map_duration: Option<Vec<f32>>,
     pub specular_strength: Option<f32>,
     pub specular_gloss: Option<f32>,
     pub scroll_speed: Option<Vec<f32>>,
     pub texture_scale: Option<Vec<f32>>,
     pub materials_to_replace: Option<Vec<String>>,
+    /// Condition under which this material is active/replaces others (see [`expr`]).
+    pub replacement_condition: Option<Value>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -141,9 +149,48 @@ pub struct TileOverride {
     pub uv_orientation: Option<i32>,
     pub uv_scale: Option<f32>,
     pub height_offset: Option<i32>,
-    pub replacements: Option<Value>,
+    pub set_hue: Option<i32>,
+    pub shift_hue: Option<i32>,
+    pub min_hue: Option<i32>,
+    pub max_hue: Option<i32>,
+    pub set_saturation: Option<i32>,
+    pub shift_saturation: Option<i32>,
+    pub min_saturation: Option<i32>,
+    pub max_saturation: Option<i32>,
+    pub set_lightness: Option<i32>,
+    pub shift_lightness: Option<i32>,
+    pub min_lightness: Option<i32>,
+    pub max_lightness: Option<i32>,
+    /// Replacement override name -> condition, in file order (the first match wins).
+    #[serde(deserialize_with = "ordered_map")]
+    pub replacements: Vec<(String, Value)>,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+/// Deserialize a JSON object keeping the order of its keys.
+fn ordered_map<'de, D>(deserializer: D) -> Result<Vec<(String, Value)>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct Visitor;
+    impl<'de> serde::de::Visitor<'de> for Visitor {
+        type Value = Vec<(String, Value)>;
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("an object")
+        }
+        fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut entries = Vec::new();
+            while let Some(entry) = map.next_entry::<String, Value>()? {
+                entries.push(entry);
+            }
+            Ok(entries)
+        }
+        fn visit_unit<E>(self) -> Result<Self::Value, E> {
+            Ok(Vec::new())
+        }
+    }
+    deserializer.deserialize_any(Visitor)
 }
 
 /// `model_overrides.json`: per npc/object/projectile/graphics-object shading rules.
