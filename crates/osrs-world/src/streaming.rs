@@ -27,6 +27,37 @@ use std::{
 pub const REGION_WINDOW_MARGIN: i32 = 16;
 const REGION_TILES: u32 = 64;
 
+/// Which extraction path actually produced a region's geometry.
+///
+/// `ReferenceFallback` is deliberately distinct from `Reference`: it means the caller requested
+/// HD geometry but no HD context was available, so the region would otherwise look like a valid
+/// Reference build and hide the real failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegionRenderPath {
+    Reference,
+    Hd,
+    ReferenceFallback,
+}
+
+impl RegionRenderPath {
+    const fn select(hd_requested: bool, hd_available: bool) -> Self {
+        match (hd_requested, hd_available) {
+            (false, _) => Self::Reference,
+            (true, true) => Self::Hd,
+            (true, false) => Self::ReferenceFallback,
+        }
+    }
+}
+
+fn env_flag(name: &str) -> bool {
+    std::env::var(name).is_ok_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+}
+
 /// The scene window used to build `region`.
 pub fn region_window(region: RegionCoord) -> SceneWindow {
     SceneWindow {
@@ -40,6 +71,8 @@ pub fn region_window(region: RegionCoord) -> SceneWindow {
 pub struct RegionGeometry {
     pub region: RegionCoord,
     pub geometry: SceneGeometry,
+    /// The extraction path that actually produced `geometry`.
+    pub render_path: RegionRenderPath,
     /// Animated locs of the region, posed at runtime.
     pub animations: Vec<AnimatedInstance>,
     /// Inspection data for the picker.
@@ -59,7 +92,8 @@ pub fn build_region_geometry(
 }
 
 /// [`build_region_geometry`] with the HD data of the 117 HD profile: when `hd` is given and
-/// `presentation.hd_geometry` is set the geometry carries the HD vertex stream.
+/// `presentation.hd_geometry` is set the geometry carries the HD vertex stream. When HD is
+/// requested without an HD context, the resulting region is marked [`RegionRenderPath::ReferenceFallback`].
 pub fn build_region_geometry_with(
     definitions: &mut WorldDefinitions,
     region: RegionCoord,
@@ -77,9 +111,10 @@ pub fn build_region_geometry_with(
         min: (margin, margin),
         max: (margin + REGION_TILES, margin + REGION_TILES),
     });
-    let geometry = match hd.filter(|_| presentation.hd_geometry) {
-        Some(hd) => extract_owned_geometry_hd(&world, owned, hd),
-        None => extract_owned_geometry(&world, owned),
+    let render_path = RegionRenderPath::select(presentation.hd_geometry, hd.is_some());
+    let geometry = match (render_path, hd) {
+        (RegionRenderPath::Hd, Some(hd)) => extract_owned_geometry_hd(&world, owned, hd),
+        _ => extract_owned_geometry(&world, owned),
     };
     let animations = extract_animated_instances(&world, owned);
     let info = Arc::new(extract_region_info(
@@ -94,6 +129,7 @@ pub fn build_region_geometry_with(
     Ok(Some(RegionGeometry {
         region,
         geometry,
+        render_path,
         animations,
         info,
         build_ms: started.elapsed().as_secs_f32() * 1000.0,
@@ -129,7 +165,8 @@ pub enum StreamEvent {
     /// The HD profile's material table and textures, decoded (sent once, before the first HD
     /// region).
     HdMaterials(Box<HdGpuData>),
-    /// The 117 HD data could not be loaded; regions keep Reference geometry.
+    /// The 117 HD data could not be loaded; regions keep Reference geometry unless
+    /// `RUSTOSRS_HD_STRICT=1` is set.
     HdFailed(String),
     /// The cache has no map data for this region (open ocean, unused squares).
     Empty(RegionCoord),
@@ -180,9 +217,10 @@ impl RegionStreamer {
                 });
                 let mut presentation = presentation;
                 let mut generation = 0_u32;
+                let hd_strict = env_flag("RUSTOSRS_HD_STRICT");
                 // Loaded the first time an HD region is requested.
                 let mut hd: Option<HdContext> = None;
-                let mut hd_failed = false;
+                let mut hd_failure: Option<String> = None;
                 while let Ok(request) = request_rx.recv() {
                     match request {
                         Request::Shutdown => break,
@@ -200,18 +238,37 @@ impl RegionStreamer {
                             generation = new_generation;
                         }
                         Request::Build(region) => {
-                            if presentation.hd_geometry && hd.is_none() && !hd_failed {
+                            if presentation.hd_geometry && hd.is_none() && hd_failure.is_none() {
                                 match load_hd(&definitions) {
                                     Ok((context, gpu)) => {
                                         hd = Some(context);
                                         let _ = event_tx.send(StreamEvent::HdMaterials(gpu));
                                     }
                                     Err(error) => {
-                                        hd_failed = true;
+                                        hd_failure = Some(error.clone());
                                         let _ = event_tx.send(StreamEvent::HdFailed(error));
                                     }
                                 }
                             }
+
+                            if presentation.hd_geometry && hd.is_none() && hd_strict {
+                                let reason = hd_failure
+                                    .as_deref()
+                                    .unwrap_or("HD context is unavailable");
+                                if event_tx
+                                    .send(StreamEvent::Failed(
+                                        region,
+                                        format!(
+                                            "117 HD strict mode blocked Reference fallback: {reason}"
+                                        ),
+                                    ))
+                                    .is_err()
+                                {
+                                    break;
+                                }
+                                continue;
+                            }
+
                             let event = match build_region_geometry_with(
                                 &mut definitions,
                                 region,
@@ -220,6 +277,15 @@ impl RegionStreamer {
                             ) {
                                 Ok(Some(mut geometry)) => {
                                     geometry.generation = generation;
+                                    if geometry.render_path == RegionRenderPath::ReferenceFallback {
+                                        let reason = hd_failure
+                                            .as_deref()
+                                            .unwrap_or("HD context is unavailable");
+                                        eprintln!(
+                                            "117 HD fallback for region {},{}: {reason}",
+                                            region.x, region.y
+                                        );
+                                    }
                                     StreamEvent::Region(Box::new(geometry))
                                 }
                                 Ok(None) => StreamEvent::Empty(region),
@@ -274,5 +340,27 @@ impl Drop for RegionStreamer {
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RegionRenderPath;
+
+    #[test]
+    fn render_path_distinguishes_reference_from_hd_fallback() {
+        assert_eq!(
+            RegionRenderPath::select(false, false),
+            RegionRenderPath::Reference
+        );
+        assert_eq!(
+            RegionRenderPath::select(false, true),
+            RegionRenderPath::Reference
+        );
+        assert_eq!(RegionRenderPath::select(true, true), RegionRenderPath::Hd);
+        assert_eq!(
+            RegionRenderPath::select(true, false),
+            RegionRenderPath::ReferenceFallback
+        );
     }
 }
