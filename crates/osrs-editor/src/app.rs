@@ -1,6 +1,7 @@
 //! The eframe application: scene loading, the wgpu viewport, and fly-camera input.
 
 use crate::camera::FlyCamera;
+use crate::hud::{self, Destination, FrameStats, TeleportWindow};
 use crate::pick::{self, Infos, ObjectPick, Pick};
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_core::coords::RegionCoord;
@@ -80,7 +81,10 @@ pub struct EditorApp {
     in_flight: HashSet<(i32, i32)>,
     stream_radius: i32,
     last_build_ms: f32,
-    fps: f32,
+    stats: FrameStats,
+    teleport: TeleportWindow,
+    /// Smoke-test hook: teleport on the first frame (`RUSTOSRS_TELEPORT="x,y,plane"`).
+    pending_teleport: Option<Destination>,
     /// Smoke-test hook: exit after this many seconds (`RUSTOSRS_EXIT_AFTER_SECONDS`).
     exit_after_seconds: Option<f32>,
     /// Smoke-test hook: constant camera velocity in local units per second
@@ -148,7 +152,16 @@ impl EditorApp {
             in_flight: HashSet::new(),
             stream_radius: 1,
             last_build_ms: 0.0,
-            fps: 0.0,
+            stats: FrameStats::new(),
+            teleport: TeleportWindow::new(),
+            pending_teleport: std::env::var("RUSTOSRS_TELEPORT").ok().and_then(|value| {
+                let mut parts = value.split(',').map(|part| part.trim().parse::<i32>().ok());
+                Some(Destination::Tile {
+                    x: parts.next()??,
+                    y: parts.next()??,
+                    plane: u8::try_from(parts.next()??).ok()?,
+                })
+            }),
             exit_after_seconds: std::env::var("RUSTOSRS_EXIT_AFTER_SECONDS")
                 .ok()
                 .and_then(|value| value.parse().ok()),
@@ -197,6 +210,38 @@ impl EditorApp {
             f64::from(origin.0) + f64::from(self.camera.x),
             f64::from(origin.1) + f64::from(self.camera.z),
         )
+    }
+
+    /// World tile under the camera.
+    fn camera_tile(&self) -> (i32, i32) {
+        let (x, z) = self.world_position();
+        ((x / 128.0).floor() as i32, (z / 128.0).floor() as i32)
+    }
+
+    fn open_teleport(&mut self) {
+        let tile = self.camera_tile();
+        self.teleport.prefill(tile, self.view_plane);
+        self.teleport.open = true;
+    }
+
+    /// Move the camera above `destination` and rebase the render origin onto it.
+    fn teleport_to(&mut self, destination: Destination) {
+        let (tile_x, tile_y, plane) = match destination {
+            Destination::Tile { x, y, plane } => (x, y, plane),
+            Destination::Region { x, y } => (x * 64 + 32, y * 64 + 32, self.view_plane),
+        };
+        let world_x = tile_x * 128 + 64;
+        let world_z = tile_y * 128 + 64;
+        let origin = (
+            (world_x as f32 / 1024.0).round() as i32 * 1024,
+            (world_z as f32 / 1024.0).round() as i32 * 1024,
+        );
+        self.renderer.set_render_origin(origin);
+        self.camera.x = (world_x - origin.0) as f32;
+        self.camera.z = (world_z - origin.1) as f32;
+        self.camera.y = -(1800.0 + 240.0 * f32::from(plane));
+        self.view_plane = plane;
+        self.animation_dirty = true;
     }
 
     fn camera_region(&self) -> (i32, i32) {
@@ -608,6 +653,9 @@ impl EditorApp {
                     (self.camera.speed * (1.0 + scroll * 0.002)).clamp(50.0, 20_000.0);
             }
         }
+        if ctx.egui_wants_keyboard_input() {
+            return;
+        }
         ctx.input(|i| {
             let axis = |plus: egui::Key, minus: egui::Key| {
                 f32::from(i.key_down(plus)) - f32::from(i.key_down(minus))
@@ -638,8 +686,13 @@ impl EditorApp {
 impl eframe::App for EditorApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        let dt = ctx.input(|i| i.unstable_dt).max(1e-4);
-        self.fps = self.fps * 0.9 + (1.0 / dt) * 0.1;
+        let frame_started = self.stats.begin_frame();
+        if let Some(destination) = self.pending_teleport.take() {
+            self.teleport_to(destination);
+        }
+        if !ctx.egui_wants_keyboard_input() && ctx.input(|i| i.key_pressed(egui::Key::T)) {
+            self.open_teleport();
+        }
         if let Some((vx, vz)) = self.autofly {
             let step = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
             self.camera.x += vx * step;
@@ -654,32 +707,9 @@ impl eframe::App for EditorApp {
 
         egui::Panel::top("top").show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(format!("{:.0} fps", self.fps));
-                ui.separator();
-                let resident: usize = self.loaded.values().flatten().map(|stats| stats.vertices).sum();
-                let loaded = self.loaded.values().flatten().count();
-                ui.label(format!(
-                    "{loaded} regions ({} loading, last {:.0} ms), {:.1}M vertices, {:.0} MiB GPU, {} zones",
-                    self.in_flight.len(),
-                    self.last_build_ms,
-                    resident as f32 / 1.0e6,
-                    self.renderer.resident_vertex_bytes() as f32 / (1024.0 * 1024.0),
-                    self.renderer.resident_zone_count()
-                ));
-                if let Some(status) = &self.status {
-                    ui.colored_label(egui::Color32::LIGHT_RED, status);
+                if ui.button("Teleport (T)").clicked() {
+                    self.open_teleport();
                 }
-                ui.separator();
-                let (region_x, region_y) = self.camera_region();
-                let (world_x, world_z) = self.world_position();
-                ui.label(format!(
-                    "tile ({:.0}, {:.0}) region ({region_x}, {region_y}) height {:.0}  plane {}  speed {:.0}",
-                    world_x / 128.0,
-                    world_z / 128.0,
-                    -self.camera.y,
-                    self.view_plane + 1,
-                    self.camera.speed
-                ));
                 ui.separator();
                 ui.add(egui::Slider::new(&mut self.brightness, 0.5..=1.0).text("brightness"));
                 ui.checkbox(&mut self.remove_color_banding, "smooth shading");
@@ -710,6 +740,42 @@ impl eframe::App for EditorApp {
             ui.label(
                 "WASD fly, Q/E down/up, Shift fast, mouse-drag look, scroll = speed, 1-4 = plane",
             );
+        });
+
+        egui::Panel::bottom("status").show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(self.stats.performance_text());
+                ui.separator();
+                ui.label(self.stats.memory_text(self.renderer.resident_vertex_bytes()));
+                ui.separator();
+                let resident: usize = self
+                    .loaded
+                    .values()
+                    .flatten()
+                    .map(|stats| stats.vertices)
+                    .sum();
+                ui.label(format!(
+                    "{} regions ({} loading, last {:.0} ms), {:.1}M vertices, {} zones",
+                    self.loaded.values().flatten().count(),
+                    self.in_flight.len(),
+                    self.last_build_ms,
+                    resident as f32 / 1.0e6,
+                    self.renderer.resident_zone_count()
+                ));
+                ui.separator();
+                let (region_x, region_y) = self.camera_region();
+                let (tile_x, tile_y) = self.camera_tile();
+                ui.label(format!(
+                    "tile ({tile_x}, {tile_y}, {}) | region ({region_x}, {region_y}) id {} | height {:.0} | speed {:.0}",
+                    self.view_plane,
+                    hud::region_id(region_x, region_y),
+                    -self.camera.y,
+                    self.camera.speed
+                ));
+                if let Some(status) = &self.status {
+                    ui.colored_label(egui::Color32::LIGHT_RED, status);
+                }
+            });
         });
 
         egui::CentralPanel::default().show(ui, |ui| {
@@ -747,6 +813,9 @@ impl eframe::App for EditorApp {
                         targets.height,
                     );
                     self.render_state.queue.submit(Some(encoder.finish()));
+                    self.render_state
+                        .queue
+                        .on_submitted_work_done(self.stats.gpu_probe());
                     let _ = &targets.color;
                     ui.painter().image(
                         targets.texture_id,
@@ -760,20 +829,29 @@ impl eframe::App for EditorApp {
             self.context_menu(&response);
         });
 
+        if let Some(destination) = self.teleport.show(&ctx) {
+            self.teleport_to(destination);
+        }
+        self.stats.end_frame(frame_started);
         self.frames += 1;
         if let Some(limit) = self.exit_after_seconds
             && self.started.elapsed().as_secs_f32() >= limit
         {
             let seconds = self.started.elapsed().as_secs_f32();
             eprintln!(
-                "smoke: {} frames in {:.2}s ({:.1} fps average); {} regions resident (peak {}), {:.0} MiB GPU, {} zones",
+                "smoke: {} frames in {:.2}s ({:.1} fps average); {} regions resident (peak {}), {:.0} MiB GPU, {} zones\nsmoke: tile {:?} region {:?}\nsmoke: {} | {}",
                 self.frames,
                 seconds,
                 self.frames as f32 / seconds,
                 self.loaded.values().flatten().count(),
                 self.peak_resident,
                 self.renderer.resident_vertex_bytes() as f32 / (1024.0 * 1024.0),
-                self.renderer.resident_zone_count()
+                self.renderer.resident_zone_count(),
+                self.camera_tile(),
+                self.camera_region(),
+                self.stats.performance_text(),
+                self.stats
+                    .memory_text(self.renderer.resident_vertex_bytes())
             );
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
