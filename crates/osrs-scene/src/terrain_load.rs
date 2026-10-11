@@ -95,7 +95,7 @@ impl RegionTerrain {
         Ok(Self { tiles })
     }
 
-    fn tile(&self, plane: usize, x: usize, y: usize) -> &RegionTerrainTile {
+    pub fn tile(&self, plane: usize, x: usize, y: usize) -> &RegionTerrainTile {
         &self.tiles[(plane * REGION_TILES + x) * REGION_TILES + y]
     }
 }

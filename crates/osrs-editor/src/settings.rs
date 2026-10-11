@@ -58,6 +58,8 @@ pub struct Settings {
     pub theme: usize,
     pub properties_panel: bool,
     pub stats_overlay: bool,
+    /// The compass in the viewport's corner.
+    pub show_compass: bool,
     pub brightness: f32,
     pub remove_color_banding: bool,
     pub bright_textures: bool,
@@ -86,6 +88,7 @@ impl Default for Settings {
             theme: 3,
             properties_panel: true,
             stats_overlay: true,
+            show_compass: false,
             brightness: 0.8,
             remove_color_banding: true,
             bright_textures: false,

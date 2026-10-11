@@ -37,6 +37,7 @@ impl EditorApp {
                     ui.checkbox(&mut self.prefs.properties_panel, "Side panel");
                     ui.checkbox(&mut self.prefs.dock_right, "Dock side panel on the right");
                     ui.checkbox(&mut self.prefs.stats_overlay, "Statistics overlay");
+                    ui.checkbox(&mut self.prefs.show_compass, "Compass");
                     ui.menu_button("Camera", |ui| self.camera_mode_picker(ui));
                     self.run_plugins(|plugin, cx| {
                         if plugin.has_menu() {
@@ -52,6 +53,10 @@ impl EditorApp {
                     ui.menu_button("Theme", |ui| self.theme_picker(ui));
                 });
                 ui.menu_button("Go", |ui| {
+                    if ui.button("World map...").clicked() {
+                        self.toggle_world_map();
+                        ui.close();
+                    }
                     if ui.button("Teleport...   T").clicked() {
                         self.open_teleport();
                         ui.close();

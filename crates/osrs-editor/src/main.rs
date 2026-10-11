@@ -8,6 +8,7 @@
 
 mod animation_smoothing;
 mod app;
+mod assets;
 mod camera;
 mod fonts;
 mod grid;
@@ -18,6 +19,7 @@ mod pick;
 mod plugin;
 mod settings;
 mod theme;
+mod wiki;
 
 use std::path::PathBuf;
 

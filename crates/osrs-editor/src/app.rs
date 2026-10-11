@@ -6,8 +6,10 @@ mod plugins;
 mod properties;
 mod status;
 mod toolbar;
+mod worldmap;
 
 use crate::animation_smoothing::AnimationSmoothingPlugin;
+use crate::assets::Assets;
 use crate::camera::{CameraMode, FlyCamera};
 use crate::grid::GridPlugin;
 use crate::hud::{Destination, FrameStats, TeleportWindow};
@@ -73,6 +75,8 @@ pub struct EditorApp {
     settings_checked: Instant,
     /// Bumped whenever `infos` changes.
     infos_version: u64,
+    assets: Assets,
+    world_map: worldmap::WorldMapView,
     /// Every persisted value (see `settings.rs`); the UI edits it in place.
     prefs: Settings,
     presentation_generation: u32,
@@ -143,6 +147,7 @@ impl EditorApp {
             -2600.0,
             0.3 * REGION_UNITS as f32,
         );
+        let asset_cache_dir = cache_dir.clone();
         let streamer = RegionStreamer::spawn(cache_dir, Self::presentation(false));
         streamer.set_presentation(Self::presentation(false), 1);
 
@@ -158,9 +163,12 @@ impl EditorApp {
             plugins: vec![
                 Box::new(GridPlugin::new()),
                 Box::new(AnimationSmoothingPlugin::new()),
+                Box::new(crate::wiki::WikiPlugin::new()),
             ],
             plugin_lines: std::collections::BTreeMap::new(),
             infos_version: 0,
+            assets: Assets::new(asset_cache_dir),
+            world_map: worldmap::WorldMapView::new(),
             prefs: Settings::default(),
             presentation_generation: 1,
             infos: Infos::new(),
@@ -853,6 +861,7 @@ impl EditorApp {
         if pressed("selection.clear") {
             clear = true;
         }
+        let toggle_map = pressed("worldmap.toggle");
         for (index, id) in ["plane.0", "plane.1", "plane.2", "plane.3"]
             .into_iter()
             .enumerate()
@@ -860,6 +869,9 @@ impl EditorApp {
             if pressed(id) {
                 plane = Some(index as u8);
             }
+        }
+        if toggle_map {
+            self.toggle_world_map();
         }
         if open_teleport {
             self.open_teleport();
@@ -1044,6 +1056,8 @@ impl eframe::App for EditorApp {
         });
 
         self.keys_window(&ctx);
+        self.assets.poll(&ctx);
+        self.world_map_window(&ctx);
         if let Some(destination) = self.teleport.show(&ctx) {
             self.teleport_to(destination);
         }

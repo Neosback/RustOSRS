@@ -74,6 +74,7 @@ impl EditorApp {
                 ..Pick::default()
             };
             ui.menu_button("Copy", |ui| self.copy_menu(ui, &pick));
+            self.run_plugins(|plugin, cx| plugin.selection_ui(ui, cx));
             if ui.button("Deselect").clicked() {
                 self.selected = None;
             }

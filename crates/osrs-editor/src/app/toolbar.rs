@@ -40,6 +40,8 @@ impl EditorApp {
                         .on_hover_text("Side panel");
                     ui.toggle_value(&mut self.prefs.stats_overlay, icons::STATS)
                         .on_hover_text("Statistics overlay");
+                    ui.toggle_value(&mut self.world_map.open, icons::WORLD_MAP)
+                        .on_hover_text("World map (M): double-click a tile to go there");
                     if ui
                         .button(format!("{} Teleport", icons::TELEPORT))
                         .on_hover_text("Go to a tile or region")

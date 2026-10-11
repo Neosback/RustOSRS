@@ -163,6 +163,7 @@ pub const CORE_ACTIONS: &[ActionDef] = &[
         Binding::key(Key::N),
     ),
     ActionDef::new("teleport.open", "Teleport...", "Go", Binding::key(Key::T)),
+    ActionDef::new("worldmap.toggle", "World map", "Go", Binding::key(Key::M)),
     ActionDef::new(
         "selection.clear",
         "Clear selection",

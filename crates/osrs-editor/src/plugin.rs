@@ -103,6 +103,9 @@ pub trait EditorPlugin {
     /// Compact controls for the toolbar under the menu bar (buttons, toggles).
     fn toolbar(&mut self, _ui: &mut egui::Ui, _cx: &mut PluginContext) {}
 
+    /// Buttons shown with the selected object (Object tab).
+    fn selection_ui(&mut self, _ui: &mut egui::Ui, _cx: &mut PluginContext) {}
+
     /// Draw over the 3D viewport.
     fn overlay(&mut self, _ctx: &egui::Context, _viewport: egui::Rect, _cx: &mut PluginContext) {}
 

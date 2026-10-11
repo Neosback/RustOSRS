@@ -16,6 +16,7 @@ fn overlay_frame() -> egui::Frame {
 impl EditorApp {
     pub(super) fn viewport_overlays(&mut self, ui: &egui::Ui, rect: egui::Rect) {
         let ctx = ui.ctx().clone();
+        self.compass_hud(ui, rect);
         self.run_plugins(|plugin, cx| plugin.overlay(&ctx, rect, cx));
 
         if self.prefs.stats_overlay {
