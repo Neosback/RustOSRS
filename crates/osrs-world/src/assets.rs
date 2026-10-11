@@ -62,6 +62,8 @@ pub enum AssetEvent {
     WorldMapIcons {
         area: usize,
         icons: Arc<Vec<MapIcon>>,
+        /// Element id -> object name (what the key shows).
+        names: Arc<std::collections::HashMap<u32, String>>,
     },
     WorldMapOverview {
         area: usize,
@@ -181,15 +183,15 @@ impl AssetWorker {
                                 }
                             },
                         ),
-                        Request::Icons { area } => Some(AssetEvent::WorldMapIcons {
-                            area,
-                            icons: Arc::new(worldmap::area_icons(
-                                &mut definitions,
-                                &catalog,
+                        Request::Icons { area } => {
+                            let (icons, names) =
+                                worldmap::area_icons(&mut definitions, &catalog, area, true);
+                            Some(AssetEvent::WorldMapIcons {
                                 area,
-                                true,
-                            )),
-                        }),
+                                icons: Arc::new(icons),
+                                names: Arc::new(names),
+                            })
+                        }
                         Request::Overview { area } => catalog
                             .areas
                             .get(area)

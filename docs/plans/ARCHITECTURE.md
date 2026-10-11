@@ -33,21 +33,38 @@ that stays easy to extend, debug, fast, and not a pile of parallel systems.
 7. **Measure before optimising; test before refactoring.** Timings in the overlay, pixel-diff goldens,
    oracle diffs, `cargo test` on every layer.
 
-## 3. Two UIs without two codebases
-The UI is a *profile*, not a fork. Everything the profile can change sits behind `Settings` + `theme.rs`
-+ layout flags:
+## 3. One look, and what a second GUI toolkit would take
 
-| | **Pro** (default) | **Classic OSRS** |
-|---|---|---|
-| Theme | Catppuccin Mocha etc. | `OSRS Classic` theme (brown stone panels, parchment text, orange accent, square corners) - exists |
-| Layout | menu bar, toolbar, tabbed side panel (dockable left/right), status bar | same panels re-skinned; side panel left like the game's key list; game fonts/sprites for chrome |
-| Icons | Phosphor | game sprites where they exist (wiki, compass, orbs) via the asset worker |
-| Density | compact | larger hit targets, fixed-width panel like the in-game interface |
+**Look.** The editor ships three themes (`theme.rs`: Graphite default, Midnight, Daylight). A theme is a
+palette; `set_theme` turns it into egui visuals plus one shared layout (spacing, rounding, type scale), so
+all themes feel the same and only colours differ. Flat widgets, soft corners, one accent. There is no
+"OSRS skin": the game's own look appears only where the game is the content (world map, minimap, compass,
+globe, icons), and those are drawn from the cache sprites.
 
-What exists: theme list with the Classic palette, the asset worker that can load any interface sprite
-from the cache. What a full Classic skin still needs (all cosmetic): 9-slice panel frames and buttons from
-sprites, the game's bitmap fonts (cache index 13) for headings, and a layout preset (`UiProfile`). Because
-all panels already read `Settings` and the keymap, none of this duplicates logic.
+**iced as a second GUI.** Evaluated, not adopted yet:
+* *Runtime switching between egui and iced is not practical.* Each toolkit owns the window, event loop
+  and wgpu surface (eframe vs iced's winit runtime); you cannot swap one under a running app. The
+  3D viewport would have to be re-hosted too (egui paint callback vs iced `shader` widget).
+* *Startup choice is possible* if the toolkit stays at the edge: `osrs-world`/`osrs-render`/`osrs-edit`
+  have no egui types, `Settings`, `Keymap`, `EditorPlugin` actions and the asset worker are
+  toolkit-agnostic already, and panels only read/write `Settings`. A second shell (`osrs-editor-iced`)
+  would re-implement the *views* (menu, toolbar, side panel, status bar, world map window, minimap HUD)
+  and the viewport host, about the size of today's `osrs-editor/src/app/*`. The expensive parts are the
+  viewport integration and the plugin `ui(&mut egui::Ui)` hooks, which would need a toolkit-neutral
+  description (a small retained widget tree) before a second backend is worth writing.
+* *Recommendation*: keep egui as the single shell for now. Before an iced shell, (1) move all state
+  changes behind `EditorAction`s, (2) give plugins a toolkit-neutral panel description, (3) make
+  `osrs-editor` a library with the app model separated from `egui` painting. Then `--ui iced` at
+  startup is a bounded project. Web (below) shares steps 1 and 3, so do those first.
+
+**World map and minimap** are exact ports of the client (`osrs_world::worldmap`, `osrs_world::minimap`):
+build-238+ layout (`index 19` details/compositemap/compositetexture, `index 18` geography with 32-bit
+decoration ids, `index 20` ground PNGs, group `x << 8 | y`, file = area id), the client's tile-shape
+masks, wall/door lines, map-scene sprites, icon placement formulas, zoom steps (25/37/50/75/100/200 %),
+Verdana bitmap-font labels, and the minimap's 4-pixel tile image through the resizable-mode mask,
+frame ring, compass and globe sprites. Known deviations: the key panel names icons by the object that
+shows them (the client reads category names from cs2 enums); transform objects use their zero-varp
+state; the minimap draws no player/NPC dots.
 
 ## 4. Web (third option)
 Is the project "good to go for web"? **Mostly yes at the architecture level, not yet in the build.**

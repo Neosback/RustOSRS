@@ -16,6 +16,7 @@
 //! A region image is `64 * ppt` pixels square, rendered once per pixels-per-tile value exactly as
 //! `WorldMapRegion.drawTile` does, and scaled by the viewer.
 
+pub mod font;
 mod templates;
 
 use crate::{WorldDefinitions, WorldError};
@@ -33,6 +34,7 @@ const GROUND_INDEX: u8 = 20;
 const CONFIG_INDEX: u8 = 2;
 const ELEMENT_GROUP: u32 = 35;
 const SPRITE_INDEX: u8 = 8;
+const FONT_METRICS_INDEX: u8 = 13;
 /// `Jagex name hash("mapscene")`: the sprite group holding the map-scene (tree, rock ...) tiles.
 const MAPSCENE_NAME_HASH: i32 = 197_029_040;
 /// The brightness the world map builds its colour palette with.
@@ -641,6 +643,8 @@ pub struct Element {
     /// Sprite id (cache index 8), or `-1`.
     pub sprite: i32,
     pub name: Option<String>,
+    /// The menu target name (opcode 17) or first menu action (opcodes 10-14): what the key shows.
+    pub key_name: Option<String>,
     /// Label colour (RGB).
     pub color: u32,
     /// 0 small (verdana 11), 1 medium (13), 2 large (15).
@@ -662,6 +666,7 @@ impl Element {
             id,
             sprite: -1,
             name: None,
+            key_name: None,
             color: 0,
             text_size: 0,
             visible: true,
@@ -697,7 +702,10 @@ impl Element {
                         reader.u8()?;
                     }
                     10..=14 => {
-                        reader.string()?;
+                        let action = reader.string()?;
+                        if element.key_name.is_none() && !action.is_empty() {
+                            element.key_name = Some(action);
+                        }
                     }
                     15 => {
                         let count = reader.u8()?;
@@ -715,7 +723,10 @@ impl Element {
                     }
                     16 => {}
                     17 => {
-                        reader.string()?;
+                        let target = reader.string()?;
+                        if !target.is_empty() {
+                            element.key_name = Some(target);
+                        }
                     }
                     18 => {
                         reader.nullable_large_smart()?;
@@ -788,6 +799,8 @@ pub struct Catalog {
     pub areas: Vec<Area>,
     pub elements: HashMap<u32, Element>,
     scenes: Vec<MapScene>,
+    /// Label fonts by `Element::text_size`: Verdana 11, 13 and 15.
+    fonts: [Option<font::BitmapFont>; 3],
 }
 
 impl MapScene {
@@ -816,6 +829,14 @@ impl MapScene {
 }
 
 impl Catalog {
+    /// A label drawn with the client's own font for `text_size` (see [`font::BitmapFont`]).
+    pub fn label(&self, text_size: u8, text: &str, colour: u32) -> Option<font::LabelImage> {
+        self.fonts
+            .get(usize::from(text_size.min(2)))?
+            .as_ref()?
+            .render_label(text, colour)
+    }
+
     /// A map-scene sprite (`mapscene` group), by object `mapSceneId`.
     pub fn map_scene(&self, id: u32) -> Option<&MapScene> {
         self.scenes.get(id as usize)
@@ -855,16 +876,39 @@ impl Catalog {
             }
         }
         let scenes = load_map_scenes(definitions);
+        let fonts = [
+            "verdana_11pt_regular",
+            "verdana_13pt_regular",
+            "verdana_15pt_regular",
+        ]
+        .map(|name| {
+            let group = named_group(definitions, FONT_METRICS_INDEX, name)?;
+            font::BitmapFont::load(definitions, group)
+        });
         Ok(Self {
             areas,
             elements,
             scenes,
+            fonts,
         })
     }
 
     pub fn main_area(&self) -> usize {
         self.areas.iter().position(|area| area.is_main).unwrap_or(0)
     }
+}
+
+/// The group of `index` whose name hashes to `name`.
+fn named_group(definitions: &WorldDefinitions, index: u8, name: &str) -> Option<u32> {
+    let hash = name.bytes().fold(0_i32, |hash, byte| {
+        hash.wrapping_mul(31).wrapping_add(i32::from(byte))
+    });
+    let cache = definitions.cache();
+    cache.group_ids(index).ok()?.into_iter().find(|&group| {
+        cache
+            .group_metadata(index, group)
+            .is_ok_and(|meta| meta.name_hash == hash)
+    })
 }
 
 fn load_map_scenes(definitions: &WorldDefinitions) -> Vec<MapScene> {
@@ -1157,9 +1201,11 @@ pub fn area_icons(
     catalog: &Catalog,
     area_index: usize,
     members: bool,
-) -> Vec<MapIcon> {
+) -> (Vec<MapIcon>, HashMap<u32, String>) {
     let area = &catalog.areas[area_index];
     let mut icons = Vec::new();
+    // What the key calls each icon: the name of the first object that shows it.
+    let mut names: HashMap<u32, String> = HashMap::new();
     for (region_x, region_y) in area.region_keys() {
         let Some((geography, _, _)) = load_geography(definitions, area, region_x, region_y) else {
             continue;
@@ -1176,6 +1222,14 @@ pub fn area_icons(
                                     .get(&element)
                                     .is_some_and(|element| element.visible);
                                 if visible {
+                                    if !names.contains_key(&element)
+                                        && let Ok(id) = u32::try_from(decoration.object)
+                                        && let Ok(Some(definition)) =
+                                            definitions.object(ObjectId::new(id))
+                                        && let Some(name) = &definition.name
+                                    {
+                                        names.insert(element, name.clone());
+                                    }
                                     icons.push(MapIcon {
                                         element,
                                         x: region_x * 64 + x as i32,
@@ -1208,7 +1262,7 @@ pub fn area_icons(
             });
         }
     }
-    icons
+    (icons, names)
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -101,6 +101,20 @@ fn pixels_per_tile(zoom: f32) -> i32 {
     (zoom.clamp(1.0, 8.0) - 0.0001).ceil().max(1.0) as i32
 }
 
+/// What the player calls an element: its label, its menu name, or the object that shows it.
+fn element_name(
+    catalog: &Catalog,
+    names: &std::collections::HashMap<u32, String>,
+    id: u32,
+) -> Option<String> {
+    let element = catalog.elements.get(&id)?;
+    element
+        .name
+        .clone()
+        .or_else(|| element.key_name.clone())
+        .or_else(|| names.get(&id).cloned())
+}
+
 fn argb(colour: u32) -> egui::Color32 {
     egui::Color32::from_rgb((colour >> 16) as u8, (colour >> 8) as u8, colour as u8)
 }
@@ -258,20 +272,29 @@ impl EditorApp {
             });
             return;
         };
-        let mut kinds: Vec<(u32, &str)> = Vec::new();
+        let names = self.assets.icon_names(area).unwrap_or_default();
+        let mut kinds: Vec<(u32, String)> = Vec::new();
         let mut seen = HashSet::new();
         for icon in icons_in_area.iter() {
             if !seen.insert(icon.element) {
                 continue;
             }
-            if let Some(element) = catalog.elements.get(&icon.element)
-                && let Some(name) = element.name.as_deref()
-                && element.sprite >= 0
-            {
+            let Some(element) = catalog.elements.get(&icon.element) else {
+                continue;
+            };
+            if element.sprite < 0 {
+                continue;
+            }
+            let name = element
+                .key_name
+                .clone()
+                .or_else(|| element.name.clone())
+                .or_else(|| names.get(&icon.element).cloned());
+            if let Some(name) = name {
                 kinds.push((icon.element, name));
             }
         }
-        kinds.sort_by(|a, b| a.1.cmp(b.1));
+        kinds.sort_by(|a, b| a.1.cmp(&b.1));
         kinds.dedup_by(|a, b| a.1 == b.1);
 
         let query = self.world_map.search.trim().to_lowercase();
@@ -279,19 +302,15 @@ impl EditorApp {
         if !query.is_empty() {
             ui.strong("Search results");
             let mut shown = 0;
-            let mut names = HashSet::new();
+            let mut seen_names = HashSet::new();
             for icon in icons_in_area.iter() {
-                let Some(name) = catalog
-                    .elements
-                    .get(&icon.element)
-                    .and_then(|element| element.name.as_deref())
-                else {
+                let Some(name) = element_name(catalog, &names, icon.element) else {
                     continue;
                 };
-                if !name.to_lowercase().contains(&query) || !names.insert(name.to_owned()) {
+                if !name.to_lowercase().contains(&query) || !seen_names.insert(name.clone()) {
                     continue;
                 }
-                if ui.selectable_label(false, name).clicked() {
+                if ui.selectable_label(false, name.as_str()).clicked() {
                     jump = Some(name.to_owned());
                 }
                 shown += 1;
@@ -310,11 +329,7 @@ impl EditorApp {
             let best = icons_in_area
                 .iter()
                 .filter(|icon| {
-                    catalog
-                        .elements
-                        .get(&icon.element)
-                        .and_then(|element| element.name.as_deref())
-                        == Some(name.as_str())
+                    element_name(catalog, &names, icon.element).as_deref() == Some(name.as_str())
                 })
                 .min_by(|a, b| {
                     let da =
@@ -590,35 +605,16 @@ impl EditorApp {
             };
             if let Some(name) = element.name.as_deref()
                 && zoom >= min_zoom
+                && let Some((texture, size, offset)) =
+                    self.assets
+                        .label(catalog, element.text_size, name, element.color)
             {
-                let size = match element.text_size {
-                    0 => 11.0,
-                    1 => 13.0,
-                    _ => 15.0,
-                };
-                let colour = argb(element.color);
-                let lines: Vec<&str> = name.split("<br>").collect();
-                let line_height = size + 1.0;
-                for (index, line) in lines.iter().enumerate() {
-                    let at = position + egui::vec2(0.0, index as f32 * line_height);
-                    {
-                        let offset = egui::vec2(1.0, 1.0);
-                        painter.text(
-                            at + offset,
-                            egui::Align2::CENTER_TOP,
-                            line,
-                            egui::FontId::proportional(size),
-                            egui::Color32::BLACK,
-                        );
-                    }
-                    painter.text(
-                        at,
-                        egui::Align2::CENTER_TOP,
-                        line,
-                        egui::FontId::proportional(size),
-                        colour,
-                    );
-                }
+                painter.image(
+                    texture,
+                    egui::Rect::from_min_size(position + offset, size),
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
             }
         }
     }

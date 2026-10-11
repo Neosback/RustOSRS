@@ -44,7 +44,11 @@ pub struct Assets {
     regions: HashMap<RegionKey, Option<egui::TextureHandle>>,
     region_requests: HashSet<RegionKey>,
     icons: HashMap<usize, Arc<Vec<MapIcon>>>,
+    icon_names: HashMap<usize, Arc<HashMap<u32, String>>>,
     icon_requests: HashSet<usize>,
+    /// Rendered map labels: `(text size, text)` -> texture and offset from the anchor.
+    labels: HashMap<(u8, String), Option<(egui::TextureHandle, egui::Vec2)>>,
+    label_context: Option<egui::Context>,
     overviews: HashMap<usize, egui::TextureHandle>,
     overview_requests: HashSet<usize>,
     epoch: u64,
@@ -65,7 +69,10 @@ impl Assets {
             regions: HashMap::new(),
             region_requests: HashSet::new(),
             icons: HashMap::new(),
+            icon_names: HashMap::new(),
             icon_requests: HashSet::new(),
+            labels: HashMap::new(),
+            label_context: None,
             overviews: HashMap::new(),
             overview_requests: HashSet::new(),
             epoch: 0,
@@ -125,11 +132,47 @@ impl Assets {
         self.region_requests.len()
     }
 
+    /// Names the key shows for an area's icon elements.
+    pub fn icon_names(&self, area: usize) -> Option<Arc<HashMap<u32, String>>> {
+        self.icon_names.get(&area).cloned()
+    }
+
     pub fn icons(&mut self, area: usize) -> Option<Arc<Vec<MapIcon>>> {
         if !self.icons.contains_key(&area) && self.icon_requests.insert(area) {
             self.worker.request_icons(area);
         }
         self.icons.get(&area).cloned()
+    }
+
+    /// A world-map label drawn with the client's bitmap font (cached): texture, size and the
+    /// offset of its top-left from the anchor.
+    pub fn label(
+        &mut self,
+        catalog: &Catalog,
+        text_size: u8,
+        text: &str,
+        colour: u32,
+    ) -> Option<(egui::TextureId, egui::Vec2, egui::Vec2)> {
+        let key = (text_size, format!("{colour:06x}{text}"));
+        if !self.labels.contains_key(&key) {
+            let entry = self.label_context.as_ref().and_then(|ctx| {
+                let image = catalog.label(text_size, text, colour)?;
+                let color = egui::ColorImage::from_rgba_unmultiplied(
+                    [image.width, image.height],
+                    &image.rgba,
+                );
+                let handle = ctx.load_texture("label", color, egui::TextureOptions::NEAREST);
+                Some((
+                    handle,
+                    egui::vec2(image.offset_x as f32, image.offset_y as f32),
+                ))
+            });
+            self.labels.insert(key.clone(), entry);
+        }
+        self.labels
+            .get(&key)?
+            .as_ref()
+            .map(|(handle, offset)| (handle.id(), handle.size_vec2(), *offset))
     }
 
     pub fn overview(&mut self, area: usize) -> Option<&egui::TextureHandle> {
@@ -141,6 +184,7 @@ impl Assets {
 
     /// Upload what the worker finished since the last call; returns whether anything arrived.
     pub fn poll(&mut self, ctx: &egui::Context) -> bool {
+        self.label_context.get_or_insert_with(|| ctx.clone());
         let mut changed = false;
         for _ in 0..64 {
             let Some(event) = self.worker.try_recv() else {
@@ -194,8 +238,9 @@ impl Assets {
                     self.region_requests.remove(&key);
                     self.regions.insert(key, Some(handle));
                 }
-                AssetEvent::WorldMapIcons { area, icons } => {
+                AssetEvent::WorldMapIcons { area, icons, names } => {
                     self.icons.insert(area, icons);
+                    self.icon_names.insert(area, names);
                 }
                 AssetEvent::WorldMapOverview {
                     area,
