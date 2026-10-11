@@ -6,10 +6,9 @@
 
 use crate::{AnimatedInstance, AnimationSystem};
 use osrs_render::SceneGeometry;
-use std::{
-    sync::mpsc::{Receiver, Sender, channel},
-    thread::JoinHandle,
-};
+use std::sync::mpsc::{Receiver, Sender, channel};
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread::JoinHandle;
 
 enum Request {
     Insert((i32, i32), Vec<AnimatedInstance>),
@@ -23,6 +22,7 @@ enum Request {
         /// Build even when no instance changed frame (regions or camera moved).
         force: bool,
     },
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     Shutdown,
 }
 
@@ -32,43 +32,72 @@ pub struct AnimationUpdate {
     pub geometry: Option<SceneGeometry>,
 }
 
+/// Applies requests to the animation system and answers rebuilds.
+struct AnimationState {
+    system: AnimationSystem,
+}
+
+impl AnimationState {
+    /// Handle one request; `false` when the worker should stop.
+    fn handle(&mut self, request: Request, updates: &Sender<AnimationUpdate>) -> bool {
+        let system = &mut self.system;
+        match request {
+            Request::Shutdown => return false,
+            Request::Insert(key, instances) => system.insert_region(key, instances),
+            Request::Remove(key) => system.remove_region(key),
+            Request::SetSmoothing(enabled) => system.set_smoothing(enabled),
+            Request::SetFrozen(frozen) => system.set_frozen(frozen),
+            Request::Rebuild {
+                cycles,
+                center_tile,
+                radius_tiles,
+                force,
+            } => {
+                let advanced = system.advance(cycles);
+                let geometry =
+                    (advanced || force).then(|| system.build_geometry(center_tile, radius_tiles));
+                return updates.send(AnimationUpdate { geometry }).is_ok();
+            }
+        }
+        true
+    }
+}
+
+/// Runs on a thread (native) or inside the owner, one slice per [`AnimationWorker::poll`] (the
+/// browser has no threads).
 pub struct AnimationWorker {
     requests: Sender<Request>,
     updates: Receiver<AnimationUpdate>,
+    #[cfg(not(target_arch = "wasm32"))]
     worker: Option<JoinHandle<()>>,
+    #[cfg(target_arch = "wasm32")]
+    local: LocalAnimation,
     in_flight: bool,
     /// Rebuild forced by changes made while a rebuild was in flight.
     pending_force: bool,
+}
+
+#[cfg(target_arch = "wasm32")]
+struct LocalAnimation {
+    queue: Receiver<Request>,
+    updates: Sender<AnimationUpdate>,
+    state: AnimationState,
 }
 
 impl AnimationWorker {
     pub fn spawn() -> Self {
         let (request_tx, request_rx) = channel::<Request>();
         let (update_tx, update_rx) = channel::<AnimationUpdate>();
+        #[cfg(not(target_arch = "wasm32"))]
         let worker = std::thread::Builder::new()
             .name("animation".to_owned())
             .spawn(move || {
-                let mut system = AnimationSystem::new();
+                let mut state = AnimationState {
+                    system: AnimationSystem::new(),
+                };
                 while let Ok(request) = request_rx.recv() {
-                    match request {
-                        Request::Shutdown => break,
-                        Request::Insert(key, instances) => system.insert_region(key, instances),
-                        Request::Remove(key) => system.remove_region(key),
-                        Request::SetSmoothing(enabled) => system.set_smoothing(enabled),
-                        Request::SetFrozen(frozen) => system.set_frozen(frozen),
-                        Request::Rebuild {
-                            cycles,
-                            center_tile,
-                            radius_tiles,
-                            force,
-                        } => {
-                            let advanced = system.advance(cycles);
-                            let geometry = (advanced || force)
-                                .then(|| system.build_geometry(center_tile, radius_tiles));
-                            if update_tx.send(AnimationUpdate { geometry }).is_err() {
-                                break;
-                            }
-                        }
+                    if !state.handle(request, &update_tx) {
+                        break;
                     }
                 }
             })
@@ -76,7 +105,16 @@ impl AnimationWorker {
         Self {
             requests: request_tx,
             updates: update_rx,
+            #[cfg(not(target_arch = "wasm32"))]
             worker,
+            #[cfg(target_arch = "wasm32")]
+            local: LocalAnimation {
+                queue: request_rx,
+                updates: update_tx,
+                state: AnimationState {
+                    system: AnimationSystem::new(),
+                },
+            },
             in_flight: false,
             pending_force: false,
         }
@@ -132,12 +170,17 @@ impl AnimationWorker {
 
     /// Finished rebuild, if any.
     pub fn poll(&mut self) -> Option<AnimationUpdate> {
+        #[cfg(target_arch = "wasm32")]
+        while let Ok(request) = self.local.queue.try_recv() {
+            self.local.state.handle(request, &self.local.updates);
+        }
         let update = self.updates.try_recv().ok()?;
         self.in_flight = false;
         Some(update)
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Drop for AnimationWorker {
     fn drop(&mut self) {
         let _ = self.requests.send(Request::Shutdown);

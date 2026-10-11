@@ -8,6 +8,7 @@ use crate::decode::{
     resolve_map_square,
 };
 use crate::profile::TargetProfile;
+use crate::source::CacheSource;
 use osrs_core::coords::RegionCoord;
 use runefs::codec::{Buffer, Encoded};
 use runefs::{Dat2, Indices, MAIN_DATA, REFERENCE_TABLE_ID};
@@ -403,14 +404,24 @@ impl CacheRepository {
     /// bundled profile whose fingerprint matches. An unknown cache is reported with what could be
     /// learned about it, so the caller can say which build to add a profile for.
     pub fn open_matching(
-        path: impl AsRef<Path>,
+        source: impl Into<CacheSource>,
         profiles: &[TargetProfile],
     ) -> Result<(Self, TargetProfile), OpenMatchingError> {
         let limits = CacheReadLimits::default();
-        let path = path.as_ref();
+        let source = source.into();
         let probed = catch_unwind(AssertUnwindSafe(|| {
-            let transport = CacheTransport::open(path)?;
-            let fingerprint = transport.fingerprint_v1(limits.max_encoded_group_bytes)?;
+            let transport = CacheTransport::open_source(&source)?;
+            let fingerprint = match &source {
+                CacheSource::Memory(files) => match files.fingerprint.get() {
+                    Some(bytes) => ComputedFingerprint(*bytes),
+                    None => {
+                        let computed = transport.fingerprint_v1(limits.max_encoded_group_bytes)?;
+                        let _ = files.fingerprint.set(computed.0);
+                        computed
+                    }
+                },
+                CacheSource::Dir(_) => transport.fingerprint_v1(limits.max_encoded_group_bytes)?,
+            };
             Ok::<_, TransportError>((transport, fingerprint))
         }));
         let (transport, fingerprint) = match probed {
@@ -987,6 +998,17 @@ impl CacheTransport {
         })
     }
 
+    fn open_source(source: &CacheSource) -> TransportResult<Self> {
+        match source {
+            CacheSource::Dir(path) => Self::open(path),
+            CacheSource::Memory(files) => {
+                let data = Dat2::from_bytes(files.dat2.clone());
+                let indices = Indices::from_memory(&data, &files.reference, &files.indices)?;
+                Ok(Self { data, indices })
+            }
+        }
+    }
+
     fn content_index_ids(&self) -> Vec<u8> {
         let mut ids: Vec<u8> = (&self.indices)
             .into_iter()
@@ -1293,6 +1315,37 @@ mod tests {
         assert_eq!(metadata.index_id, MAP_INDEX);
         assert_eq!(metadata.group_id, groups[0]);
         assert!(!metadata.file_ids.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn a_cache_read_into_memory_reads_the_same_groups_as_the_directory() -> TransportResult<()> {
+        let dir = repository_cache();
+        let mut files = crate::source::CacheFiles::default();
+        for entry in
+            std::fs::read_dir(&dir).map_err(|e| TransportError::Dependency(e.to_string()))?
+        {
+            let path = entry
+                .map_err(|e| TransportError::Dependency(e.to_string()))?
+                .path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            let bytes =
+                std::fs::read(&path).map_err(|e| TransportError::Dependency(e.to_string()))?;
+            files.add_file(&name, bytes);
+        }
+        assert!(files.is_complete());
+        let from_disk = CacheTransport::open(&dir)?;
+        let from_memory =
+            CacheTransport::open_source(&CacheSource::Memory(std::sync::Arc::new(files)))?;
+        assert_eq!(
+            from_disk.content_index_ids(),
+            from_memory.content_index_ids()
+        );
+        let limit = CacheReadLimits::default().max_encoded_group_bytes;
+        assert_eq!(
+            from_disk.fingerprint_v1(limit)?.to_hex(),
+            from_memory.fingerprint_v1(limit)?.to_hex()
+        );
         Ok(())
     }
 

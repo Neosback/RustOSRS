@@ -12,6 +12,7 @@ osrs-scene = { path = "../osrs-scene" }
 osrs-render = { path = "../osrs-render" }
 osrs-hd = { path = "../osrs-hd" }
 png = "0.18"
+web-time.workspace = true
 
 [lints]
 workspace = true

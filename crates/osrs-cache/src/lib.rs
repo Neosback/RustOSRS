@@ -11,4 +11,5 @@ pub mod model_repository;
 pub mod object_model;
 pub mod profile;
 pub mod registry;
+pub mod source;
 pub mod transport;

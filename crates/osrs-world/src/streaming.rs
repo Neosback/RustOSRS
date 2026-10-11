@@ -13,16 +13,17 @@ use crate::{
     hd::{HdContext, extract::extract_owned_geometry_hd, gpu::HdGpuData},
     texture_layers,
 };
+use osrs_cache::source::CacheSource;
 use osrs_core::coords::RegionCoord;
 use osrs_render::{HD_FLAG_TERRAIN, HD_MATERIAL_INDEX_MASK, SceneGeometry, gpu::TextureLayer};
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread::JoinHandle;
 use std::{
     collections::BTreeSet,
-    path::PathBuf,
     sync::Arc,
     sync::mpsc::{Receiver, Sender, channel},
-    thread::JoinHandle,
-    time::Instant,
 };
+use web_time::Instant;
 
 /// Tiles of context before a region inside its window.
 pub const REGION_WINDOW_MARGIN: i32 = 16;
@@ -269,144 +270,236 @@ enum Request {
         index: usize,
         loc: Box<crate::LocInfo>,
     },
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     Shutdown,
 }
 
+/// Everything the builder owns: the cache, the HD context and the presentation in force.
+struct StreamWorker {
+    definitions: WorldDefinitions,
+    presentation: TerrainPresentation,
+    generation: u32,
+    hd_strict: bool,
+    hd_diagnostics: bool,
+    /// Loaded the first time an HD region is requested.
+    hd: Option<HdContext>,
+    hd_failure: Option<String>,
+}
+
+impl StreamWorker {
+    /// Open the cache and announce the textures; `None` after reporting why it could not.
+    fn open(
+        source: &CacheSource,
+        presentation: TerrainPresentation,
+        events: &Sender<StreamEvent>,
+    ) -> Option<Self> {
+        let definitions = match WorldDefinitions::open(source) {
+            Ok(definitions) => definitions,
+            Err(error) => {
+                let _ = events.send(StreamEvent::InitFailed(error.to_string()));
+                return None;
+            }
+        };
+        let _ = events.send(StreamEvent::Ready {
+            textures: texture_layers(definitions.textures()),
+            profile_id: definitions.profile_id().to_owned(),
+            build: definitions.build(),
+        });
+        Some(Self {
+            definitions,
+            presentation,
+            generation: 0,
+            hd_strict: env_flag("RUSTOSRS_HD_STRICT"),
+            hd_diagnostics: env_flag("RUSTOSRS_HD_DIAGNOSTICS"),
+            hd: None,
+            hd_failure: None,
+        })
+    }
+
+    /// Handle one request; `false` when the worker should stop.
+    fn handle(&mut self, request: Request, events: &Sender<StreamEvent>) -> bool {
+        match request {
+            Request::Shutdown => return false,
+            Request::Outline { region, index, loc } => {
+                let triangles =
+                    crate::loc_outline_triangles(&mut self.definitions, &loc).unwrap_or_default();
+                let _ = events.send(StreamEvent::Outline {
+                    region,
+                    index,
+                    triangles,
+                });
+            }
+            Request::Edit(edits) => self.definitions.apply_edits(&edits),
+            Request::SetPresentation(presentation, generation) => {
+                self.presentation = presentation;
+                self.generation = generation;
+            }
+            Request::Build(region) => return self.build(region, events),
+        }
+        true
+    }
+
+    fn build(&mut self, region: RegionCoord, events: &Sender<StreamEvent>) -> bool {
+        if self.presentation.hd_geometry && self.hd.is_none() && self.hd_failure.is_none() {
+            match load_hd(&self.definitions) {
+                Ok((context, gpu)) => {
+                    self.hd = Some(context);
+                    let _ = events.send(StreamEvent::HdMaterials(gpu));
+                }
+                Err(error) => {
+                    self.hd_failure = Some(error.clone());
+                    let _ = events.send(StreamEvent::HdFailed(error));
+                }
+            }
+        }
+
+        if self.presentation.hd_geometry && self.hd.is_none() && self.hd_strict {
+            let reason = self
+                .hd_failure
+                .as_deref()
+                .unwrap_or("HD context is unavailable");
+            return events
+                .send(StreamEvent::Failed(
+                    region,
+                    format!("117 HD strict mode blocked Reference fallback: {reason}"),
+                ))
+                .is_ok();
+        }
+
+        let event = match build_region_geometry_with(
+            &mut self.definitions,
+            region,
+            self.presentation,
+            self.hd.as_ref(),
+        ) {
+            Ok(Some(mut geometry)) => {
+                geometry.generation = self.generation;
+                if geometry.render_path == RegionRenderPath::ReferenceFallback {
+                    let reason = self
+                        .hd_failure
+                        .as_deref()
+                        .unwrap_or("HD context is unavailable");
+                    eprintln!(
+                        "117 HD fallback for region {},{}: {reason}",
+                        region.x, region.y
+                    );
+                } else if self.hd_diagnostics
+                    && let Some(stats) = geometry.hd_stats
+                {
+                    eprintln!(
+                        "117 HD region {},{}: faces={} opaque={} alpha={} terrain={} models={} materialized={} none={} unique_materials={} max_material={}",
+                        region.x,
+                        region.y,
+                        stats.faces,
+                        stats.opaque_faces,
+                        stats.alpha_faces,
+                        stats.terrain_faces,
+                        stats.model_faces,
+                        stats.materialized_faces,
+                        stats.none_material_faces,
+                        stats.unique_materials,
+                        stats.max_material_index,
+                    );
+                }
+                StreamEvent::Region(Box::new(geometry))
+            }
+            Ok(None) => StreamEvent::Empty(region),
+            Err(error) => StreamEvent::Failed(region, error.to_string()),
+        };
+        events.send(event).is_ok()
+    }
+}
+
 /// Background builder that owns the cache and definitions.
+///
+/// Native builds run it on a thread. The browser has none, so there the same worker lives inside
+/// the streamer and [`RegionStreamer::pump`] runs its queue a slice at a time, once per frame.
 pub struct RegionStreamer {
     requests: Sender<Request>,
     events: Receiver<StreamEvent>,
+    #[cfg(not(target_arch = "wasm32"))]
     worker: Option<JoinHandle<()>>,
+    #[cfg(target_arch = "wasm32")]
+    local: std::cell::RefCell<LocalStreamer>,
+}
+
+#[cfg(target_arch = "wasm32")]
+struct LocalStreamer {
+    queue: Receiver<Request>,
+    events: Sender<StreamEvent>,
+    /// The cache is opened on the first `pump` so the page can draw a frame first.
+    opening: Option<(CacheSource, TerrainPresentation)>,
+    worker: Option<StreamWorker>,
 }
 
 impl RegionStreamer {
-    pub fn spawn(cache_dir: PathBuf, presentation: TerrainPresentation) -> Self {
+    pub fn spawn(source: impl Into<CacheSource>, presentation: TerrainPresentation) -> Self {
+        let source = source.into();
         let (request_tx, request_rx) = channel::<Request>();
         let (event_tx, event_rx) = channel::<StreamEvent>();
-        let worker = std::thread::Builder::new()
-            .name("region-streamer".to_owned())
-            .spawn(move || {
-                let mut definitions = match WorldDefinitions::open(&cache_dir) {
-                    Ok(definitions) => definitions,
-                    Err(error) => {
-                        let _ = event_tx.send(StreamEvent::InitFailed(error.to_string()));
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let worker = std::thread::Builder::new()
+                .name("region-streamer".to_owned())
+                .spawn(move || {
+                    let Some(mut worker) = StreamWorker::open(&source, presentation, &event_tx)
+                    else {
                         return;
-                    }
-                };
-                let _ = event_tx.send(StreamEvent::Ready {
-                    textures: texture_layers(definitions.textures()),
-                    profile_id: definitions.profile_id().to_owned(),
-                    build: definitions.build(),
-                });
-                let mut presentation = presentation;
-                let mut generation = 0_u32;
-                let hd_strict = env_flag("RUSTOSRS_HD_STRICT");
-                let hd_diagnostics = env_flag("RUSTOSRS_HD_DIAGNOSTICS");
-                // Loaded the first time an HD region is requested.
-                let mut hd: Option<HdContext> = None;
-                let mut hd_failure: Option<String> = None;
-                while let Ok(request) = request_rx.recv() {
-                    match request {
-                        Request::Shutdown => break,
-                        Request::Outline { region, index, loc } => {
-                            let triangles = crate::loc_outline_triangles(&mut definitions, &loc)
-                                .unwrap_or_default();
-                            let _ = event_tx.send(StreamEvent::Outline {
-                                region,
-                                index,
-                                triangles,
-                            });
-                        }
-                        Request::Edit(edits) => definitions.apply_edits(&edits),
-                        Request::SetPresentation(new_presentation, new_generation) => {
-                            presentation = new_presentation;
-                            generation = new_generation;
-                        }
-                        Request::Build(region) => {
-                            if presentation.hd_geometry && hd.is_none() && hd_failure.is_none() {
-                                match load_hd(&definitions) {
-                                    Ok((context, gpu)) => {
-                                        hd = Some(context);
-                                        let _ = event_tx.send(StreamEvent::HdMaterials(gpu));
-                                    }
-                                    Err(error) => {
-                                        hd_failure = Some(error.clone());
-                                        let _ = event_tx.send(StreamEvent::HdFailed(error));
-                                    }
-                                }
-                            }
-
-                            if presentation.hd_geometry && hd.is_none() && hd_strict {
-                                let reason = hd_failure
-                                    .as_deref()
-                                    .unwrap_or("HD context is unavailable");
-                                if event_tx
-                                    .send(StreamEvent::Failed(
-                                        region,
-                                        format!(
-                                            "117 HD strict mode blocked Reference fallback: {reason}"
-                                        ),
-                                    ))
-                                    .is_err()
-                                {
-                                    break;
-                                }
-                                continue;
-                            }
-
-                            let event = match build_region_geometry_with(
-                                &mut definitions,
-                                region,
-                                presentation,
-                                hd.as_ref(),
-                            ) {
-                                Ok(Some(mut geometry)) => {
-                                    geometry.generation = generation;
-                                    if geometry.render_path == RegionRenderPath::ReferenceFallback {
-                                        let reason = hd_failure
-                                            .as_deref()
-                                            .unwrap_or("HD context is unavailable");
-                                        eprintln!(
-                                            "117 HD fallback for region {},{}: {reason}",
-                                            region.x, region.y
-                                        );
-                                    } else if hd_diagnostics
-                                        && let Some(stats) = geometry.hd_stats
-                                    {
-                                        eprintln!(
-                                            "117 HD region {},{}: faces={} opaque={} alpha={} terrain={} models={} materialized={} none={} unique_materials={} max_material={}",
-                                            region.x,
-                                            region.y,
-                                            stats.faces,
-                                            stats.opaque_faces,
-                                            stats.alpha_faces,
-                                            stats.terrain_faces,
-                                            stats.model_faces,
-                                            stats.materialized_faces,
-                                            stats.none_material_faces,
-                                            stats.unique_materials,
-                                            stats.max_material_index,
-                                        );
-                                    }
-                                    StreamEvent::Region(Box::new(geometry))
-                                }
-                                Ok(None) => StreamEvent::Empty(region),
-                                Err(error) => StreamEvent::Failed(region, error.to_string()),
-                            };
-                            if event_tx.send(event).is_err() {
-                                break;
-                            }
+                    };
+                    while let Ok(request) = request_rx.recv() {
+                        if !worker.handle(request, &event_tx) {
+                            break;
                         }
                     }
-                }
-            })
-            .ok();
+                })
+                .ok();
+            Self {
+                requests: request_tx,
+                events: event_rx,
+                worker,
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
         Self {
             requests: request_tx,
             events: event_rx,
-            worker,
+            local: std::cell::RefCell::new(LocalStreamer {
+                queue: request_rx,
+                events: event_tx,
+                opening: Some((source, presentation)),
+                worker: None,
+            }),
         }
     }
+
+    /// Run queued work for about `budget`, always finishing at least one request. A no-op where the
+    /// worker has a thread of its own.
+    #[cfg(target_arch = "wasm32")]
+    pub fn pump(&self, budget: std::time::Duration) {
+        let started = Instant::now();
+        let mut local = self.local.borrow_mut();
+        let local = &mut *local;
+        if let Some((source, presentation)) = local.opening.take() {
+            local.worker = StreamWorker::open(&source, presentation, &local.events);
+            return;
+        }
+        let Some(worker) = local.worker.as_mut() else {
+            return;
+        };
+        while let Ok(request) = local.queue.try_recv() {
+            if !worker.handle(request, &local.events) {
+                local.worker = None;
+                return;
+            }
+            if started.elapsed() >= budget {
+                break;
+            }
+        }
+    }
+
+    /// Run queued work for about `budget`. A no-op where the worker has a thread of its own.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn pump(&self, _budget: std::time::Duration) {}
 
     /// Change how later builds are presented. Regions built under an older `generation` carry
     /// that generation in [`RegionGeometry::generation`] so the caller can discard them.
@@ -442,6 +535,7 @@ impl RegionStreamer {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Drop for RegionStreamer {
     fn drop(&mut self) {
         let _ = self.requests.send(Request::Shutdown);

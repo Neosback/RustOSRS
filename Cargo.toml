@@ -29,10 +29,11 @@ rust-version = "1.99"
 bytemuck = { version = "1.25", features = ["derive"] }
 pollster = "1.0"
 wgpu = "30"
-rune-fs = "0.2.0"
+rune-fs = { path = "vendor/rune-fs" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_yaml_ng = "0.10.0"
 sha2 = "0.10"
+web-time = "1.1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

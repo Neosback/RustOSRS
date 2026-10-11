@@ -17,7 +17,6 @@ use osrs_core::{
     coords::RegionCoord,
     ids::{FloorOverlayId, FloorUnderlayId, TextureId},
 };
-use std::path::Path;
 
 const CONFIG_INDEX: u8 = 2;
 const UNDERLAY_GROUP: u32 = 1;
@@ -59,9 +58,11 @@ fn split_rgb(rgb: i32) -> [u8; 3] {
 }
 
 /// Read the palette from the pinned cache at `cache_dir`.
-pub fn load_floor_palette(cache_dir: impl AsRef<Path>) -> Result<FloorPalette, WorldError> {
+pub fn load_floor_palette(
+    cache: impl Into<osrs_cache::source::CacheSource>,
+) -> Result<FloorPalette, WorldError> {
     let profiles = osrs_cache::registry::bundled_profiles()?;
-    let (cache, profile) = CacheRepository::open_matching(cache_dir, &profiles)?;
+    let (cache, profile) = CacheRepository::open_matching(cache, &profiles)?;
     let context = DecoderContext::from_profile(&profile)?;
     let colors = build_color_palette(0.8);
 

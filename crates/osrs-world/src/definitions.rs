@@ -24,7 +24,7 @@ use osrs_scene::{
     terrain_build::{FloorLookup, OverlayFloor},
     terrain_load::{RegionTerrain, RegionTerrainTile, RegionTileHeight, RegionTileOverlay},
 };
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 const CONFIG_INDEX: u8 = 2;
 const UNDERLAY_GROUP: u32 = 1;
@@ -129,9 +129,9 @@ pub struct WorldDefinitions {
 
 impl WorldDefinitions {
     /// Open the pinned cache at `cache_dir` and load the floor and texture tables.
-    pub fn open(cache_dir: impl AsRef<Path>) -> Result<Self, WorldError> {
+    pub fn open(cache: impl Into<osrs_cache::source::CacheSource>) -> Result<Self, WorldError> {
         let profiles = osrs_cache::registry::bundled_profiles()?;
-        let (cache, profile) = CacheRepository::open_matching(cache_dir, &profiles)?;
+        let (cache, profile) = CacheRepository::open_matching(cache, &profiles)?;
         let context = DecoderContext::from_profile(&profile)?;
 
         let mut floors = FloorTable::default();
