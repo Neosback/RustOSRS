@@ -31,7 +31,7 @@ impl ScreenshotHook {
     pub fn tick(&mut self, ctx: &egui::Context, frame: u64) {
         // Ask again every 30 frames until the capture arrives (a request can be dropped while a
         // popup is opening).
-        if frame >= self.at_frame && (!self.requested || frame % 30 == 0) {
+        if frame >= self.at_frame && (!self.requested || frame.is_multiple_of(30)) {
             self.requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
         }
