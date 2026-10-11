@@ -5,6 +5,13 @@ fn assets_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/117hd")
 }
 
+fn load_data() -> HdData {
+    match HdData::load(assets_dir()) {
+        Ok(data) => data,
+        Err(error) => panic!("failed to load checked-in 117HD data: {error}"),
+    }
+}
+
 fn vanilla_texture_ids(data: &HdData) -> Vec<i32> {
     data.materials
         .iter()
@@ -16,13 +23,14 @@ fn vanilla_texture_ids(data: &HdData) -> Vec<i32> {
 
 #[test]
 fn default_settings_replace_vanilla_brick_with_hd_brick() {
-    let data = HdData::load(assets_dir()).expect("load checked-in 117HD data");
+    let data = load_data();
     let set = MaterialSet::build(&data, &HdSettings::default(), vanilla_texture_ids(&data));
 
     let index = set.from_vanilla_texture(2);
-    let material = set
-        .get(index)
-        .expect("vanilla texture 2 should resolve to a material");
+    let material = match set.get(index) {
+        Some(material) => material,
+        None => panic!("vanilla texture 2 should resolve to a material"),
+    };
 
     assert_eq!(material.name, "HD_BRICK");
     assert_eq!(index, set.index_of("BRICK"));
@@ -34,15 +42,16 @@ fn default_settings_replace_vanilla_brick_with_hd_brick() {
 
 #[test]
 fn disabling_model_textures_restores_vanilla_brick_resolution() {
-    let data = HdData::load(assets_dir()).expect("load checked-in 117HD data");
+    let data = load_data();
     let mut settings = HdSettings::default();
     settings.model_textures = false;
     let set = MaterialSet::build(&data, &settings, vanilla_texture_ids(&data));
 
     let index = set.from_vanilla_texture(2);
-    let material = set
-        .get(index)
-        .expect("vanilla texture 2 should resolve to BRICK");
+    let material = match set.get(index) {
+        Some(material) => material,
+        None => panic!("vanilla texture 2 should resolve to BRICK"),
+    };
 
     assert_eq!(material.name, "BRICK");
     assert_eq!(index, set.index_of("BRICK"));
@@ -52,7 +61,7 @@ fn disabling_model_textures_restores_vanilla_brick_resolution() {
 
 #[test]
 fn checked_in_ground_materials_reference_known_materials() {
-    let data = HdData::load(assets_dir()).expect("load checked-in 117HD data");
+    let data = load_data();
     let material_names: HashSet<&str> = data
         .materials
         .iter()
