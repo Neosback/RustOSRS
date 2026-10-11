@@ -339,6 +339,7 @@ impl EditorApp {
     pub(super) fn apply_path(
         &mut self,
         tiles: &[((i32, i32), TileChoice)],
+        soft: &[(i32, i32)],
         grade: Option<PathGrade>,
     ) -> usize {
         let brush = self.prefs.brush.clone();
@@ -394,6 +395,21 @@ impl EditorApp {
                 after.flags = brush.flags.bits;
             }
             self.record(&mut stroke, key, after, &mut edits);
+        }
+        // The halo: the underlay only, so the path blends into the ground.
+        if brush.underlay.armed {
+            for tile in soft {
+                let key = (plane, tile.0, tile.1);
+                let Some(before) = self.current_tile(key) else {
+                    continue;
+                };
+                let mut after = before;
+                after.underlay = match brush.underlay.fill {
+                    Fill::Set(id) => id,
+                    Fill::Clear => 0,
+                };
+                self.record(&mut stroke, key, after, &mut edits);
+            }
         }
         let count = edits.len();
         self.send_edits(edits);

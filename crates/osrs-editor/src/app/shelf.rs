@@ -136,6 +136,17 @@ impl EditorApp {
                 self.prefs.spline.style = style;
             }
         }
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new("Soften edge").weak());
+        ui.add(
+            egui::Slider::new(&mut self.prefs.spline.soften, 0.0..=6.0)
+                .max_decimals(1)
+                .suffix(" tiles"),
+        )
+        .on_hover_text(
+            "Spread the underlay colour this far beyond the path so it blends into the ground \
+             (needs the Underlay channel armed)",
+        );
         crate::theme::section_heading(ui, "Shape");
         ui.checkbox(&mut self.prefs.spline.closed, "Close the loop")
             .on_hover_text("Join the last point back to the first");

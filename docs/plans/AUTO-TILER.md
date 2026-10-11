@@ -171,3 +171,27 @@ tile. Existing whole tiles are not rewritten, and old partial pieces that end up
 new path flows into an old one. Limits: thin paths (width 2) show small teeth, the prior sees one ring of
 neighbours, existing neighbours are only retiled when they end up surrounded, and underlay pairs are not
 modelled.
+
+### Playground and tolerance (2026-10-11)
+
+`crates/osrs-editor/src/autotile/playground.rs` generates many paths (widths 1 to 7, bends, S-curves, polylines,
+closed loops), runs the exact editor code on them, scores each against the ideal band on the same 16 x 16 cells
+the tiler fits (`area` wrongly covered share, `wobble` RMS second difference of the made outline's offset from the
+ideal one, `max` / `mean` distance), draws a contact sheet, and sweeps the search weights in parallel:
+
+```
+cargo test --release -p osrs-editor playground_sheet -- --ignored --nocapture   # /tmp/playground-default.png
+cargo test --release -p osrs-editor playground_sweep -- --ignored --nocapture   # ranks configs
+```
+
+Findings: the weights (geometry, portals, census, keep cost, annealing length) sit on a plateau; none of them
+moved the score more than 5%. What did: a **tolerance** (`Tuning::tolerance`, now 0.2 tiles). Cells within the
+tolerance of the ideal outline are free (a small pull towards the ideal remains), so the search can run one
+consistent stair along a slope instead of chasing every wiggle, which is what "look ahead / look behind" means
+here: the whole outline is optimised together by annealing, and each tile's choice is judged against its
+neighbours'. Wobble 0.164 to 0.120 (-27%), worst miss 0.30 to 0.24 tiles, mean 0.063 to 0.064. Larger
+tolerances (0.3 and up) get worse: with nothing pulling, the stairs wander.
+
+`PathParams::soften` (shelf slider "Soften edge", 0 to 6 tiles) lays the path's underlay on the tiles around it
+too (needs the underlay channel armed), so the colour blends into the ground; those tiles are previewed as a
+faint wash and are part of the same undo step.

@@ -30,7 +30,7 @@ use std::sync::OnceLock;
 const GRID: usize = 16;
 const WORDS: usize = GRID * GRID / 64;
 /// Annealing: sweeps over the tiles, and the temperature range (in cost units).
-const ANNEAL_SWEEPS: usize = 160;
+const ANNEAL_SWEEPS: usize = 300;
 const ANNEAL_START: f32 = 3.0;
 const ANNEAL_END: f32 = 0.05;
 /// A tile the band covers at least this many cells of may carry a small piece of the path.
@@ -391,6 +391,9 @@ pub struct PathParams {
     pub curve: CurveKind,
     /// Join the last point back to the first.
     pub closed: bool,
+    /// Tiles beyond the path's edge that take its underlay colour too (a soft halo that blends the
+    /// path into the ground), `0` for none.
+    pub soften: f32,
 }
 
 impl Default for PathParams {
@@ -400,6 +403,7 @@ impl Default for PathParams {
             style: EdgeStyle::Smooth,
             curve: CurveKind::Curve,
             closed: false,
+            soften: 0.0,
         }
     }
 }
@@ -573,14 +577,90 @@ fn band_mask(index: &SegmentIndex, half_width: f32, tile: (i32, i32)) -> Mask {
     mask
 }
 
-/// Weight of the shape mismatch (a whole tile's worth of area) against the census cost.
-/// Weight of the shape mismatch (a whole tile's worth of area) against the census cost. The fit leads:
-/// the shapes can follow a slanted edge closely, and a census-first choice turned slopes into stairs.
-const GEOMETRY_WEIGHT: f32 = 30.0;
-/// Weight of a fully mismatched, partly covered tile edge (a step in the outline).
-const PORTAL_WEIGHT: f32 = 3.0;
-/// Weight of the census cost: it breaks ties towards what people actually place.
-const PRIOR_WEIGHT: f32 = 0.25;
+/// The cells that must be covered (nearer than `half - tolerance` to the centre line) and the
+/// cells that may be (nearer than `half + tolerance`).
+fn tolerance_masks(
+    index: &SegmentIndex,
+    half_width: f32,
+    tolerance: f32,
+    tile: (i32, i32),
+) -> (Mask, Mask) {
+    let (mut inner, mut outer) = (EMPTY, EMPTY);
+    for y in 0..GRID {
+        for x in 0..GRID {
+            let c = cell_centre(x, y);
+            let d = index.distance(tile, (tile.0 as f32 + c[0], tile.1 as f32 + c[1]));
+            if d <= half_width - tolerance {
+                set(&mut inner, x, y);
+            }
+            if d <= half_width + tolerance {
+                set(&mut outer, x, y);
+            }
+        }
+    }
+    (inner, outer)
+}
+
+/// Mismatch of a candidate against the tolerant target (in cells): a cell that must be covered and
+/// is not, a cell outside the allowed zone that is covered, and a small pull towards the ideal.
+fn tolerant_cost(ideal: &Mask, inner: &Mask, outer: &Mask, candidate: &Mask, pull: f32) -> f32 {
+    let mut missing = 0;
+    let mut excess = 0;
+    for w in 0..WORDS {
+        missing += (inner[w] & !candidate[w]).count_ones();
+        excess += (candidate[w] & !outer[w]).count_ones();
+    }
+    (missing + excess) as f32 + pull * cost(ideal, candidate) as f32
+}
+
+/// The knobs of the shape search (the playground sweeps them).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Tuning {
+    /// Weight of the shape mismatch (a whole tile's worth of area). The fit leads: the shapes can
+    /// follow a slanted edge closely, and a census-first choice turned slopes into stairs.
+    pub geometry: f32,
+    /// Weight of a fully mismatched, partly covered tile edge (a step in the outline).
+    pub portal: f32,
+    /// Weight of the census cost: it breaks ties towards what people actually place.
+    pub prior: f32,
+    /// What leaving a tile alone costs, against the census cost of a piece.
+    pub keep: f32,
+    /// Annealing sweeps for a small path (long paths get fewer) and the temperature range.
+    pub sweeps: usize,
+    pub start: f32,
+    pub end: f32,
+    /// A tile the band covers at least this many cells (of 256) of may carry a small piece.
+    pub touched: u32,
+    /// Weight of differences between neighbouring tiles' area errors: an outline whose error
+    /// drifts smoothly looks straight; one whose error flips sign tile to tile looks jagged.
+    pub smooth: f32,
+    /// How far (tiles) the made outline may stray from the ideal one where that lets it run
+    /// straighter: cells nearer than this to the ideal outline are "don't care" (apart from a
+    /// small pull towards the ideal), so the search can pick one consistent stair instead of
+    /// chasing every wiggle.
+    pub tolerance: f32,
+    /// Inside the free zone, how strongly the fit still prefers the ideal outline.
+    pub pull: f32,
+}
+
+impl Default for Tuning {
+    fn default() -> Self {
+        Self {
+            geometry: 120.0,
+            portal: 3.0,
+            prior: 0.25,
+            keep: KEEP_COST,
+            sweeps: ANNEAL_SWEEPS,
+            start: ANNEAL_START,
+            end: ANNEAL_END,
+            touched: TOUCHED,
+            smooth: 0.0,
+            tolerance: 0.2,
+            pull: 0.04,
+        }
+    }
+}
+
 /// The mask a tile that already carries the overlay shows (`None`: it does not).
 fn existing_mask(
     existing: &dyn Fn((i32, i32)) -> Option<(u8, u8)>,
@@ -606,6 +686,16 @@ pub fn generate(
     params: PathParams,
     existing: &dyn Fn((i32, i32)) -> Option<(u8, u8)>,
 ) -> Vec<((i32, i32), TileChoice)> {
+    generate_with(points, params, existing, &Tuning::default())
+}
+
+/// [`generate`] with explicit search weights.
+pub fn generate_with(
+    points: &[(f32, f32)],
+    params: PathParams,
+    existing: &dyn Fn((i32, i32)) -> Option<(u8, u8)>,
+    tuning: &Tuning,
+) -> Vec<((i32, i32), TileChoice)> {
     if points.is_empty() {
         return Vec::new();
     }
@@ -616,10 +706,14 @@ pub fn generate(
     // The band mask of every tile it touches.
     let mut targets: HashMap<(i32, i32), Mask> = HashMap::new();
     let tiles: Vec<(i32, i32)> = index.cells.keys().copied().collect();
+    let mut free: HashMap<(i32, i32), (Mask, Mask)> = HashMap::new();
     for tile in tiles {
         let mask = band_mask(&index, half, tile);
         if popcount(&mask) > 0 {
             targets.insert(tile, mask);
+            if tuning.tolerance > 0.0 {
+                free.insert(tile, tolerance_masks(&index, half, tuning.tolerance, tile));
+            }
         }
     }
 
@@ -650,7 +744,7 @@ pub fn generate(
     let work: Vec<(i32, i32)> = {
         let mut tiles: Vec<(i32, i32)> = targets
             .iter()
-            .filter(|(_, mask)| popcount(mask) >= TOUCHED)
+            .filter(|(_, mask)| popcount(mask) >= tuning.touched)
             .map(|(tile, _)| *tile)
             .chain(occupied.iter().copied())
             .filter(|tile| existing(*tile).is_none_or(|(shape, _)| shape != 0))
@@ -710,9 +804,14 @@ pub fn generate(
     let energy = |chosen: &HashMap<(i32, i32), usize>, tile: (i32, i32), i: usize| -> f32 {
         let c = list[i];
         let target = target_of(tile);
-        let shape = GEOMETRY_WEIGHT * cost(&target, &c.mask) as f32 / 256.0;
+        let shape = tuning.geometry
+            * match free.get(&tile) {
+                Some((inner, outer)) => tolerant_cost(&target, inner, outer, &c.mask, tuning.pull),
+                None => cost(&target, &c.mask) as f32,
+            }
+            / 256.0;
         let census = if c.slot == KEEP_SLOT {
-            KEEP_COST
+            tuning.keep
         } else {
             let pattern = pattern_now(chosen, tile);
             if pattern == 255 {
@@ -732,7 +831,26 @@ pub fn generate(
             + side(1, 0, Side::East, Side::West)
             + side(0, -1, Side::South, Side::North)
             + side(0, 1, Side::North, Side::South);
-        shape + PRIOR_WEIGHT * census + PORTAL_WEIGHT * portals
+        // How far this tile's area is off, against its neighbours' (in tiles of area).
+        let smooth = if tuning.smooth > 0.0 {
+            let off = |mask: &Mask, tile: (i32, i32)| {
+                (popcount(mask) as f32 - popcount(&target_of(tile)) as f32) / 256.0
+            };
+            let mine = off(&c.mask, tile);
+            let mut sum = 0.0_f32;
+            for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                let next = (tile.0 + dx, tile.1 + dy);
+                if popcount(&target_of(next)) == 0 {
+                    continue;
+                }
+                let theirs = off(&neighbour_mask(chosen, next), next);
+                sum += (mine - theirs) * (mine - theirs);
+            }
+            sum
+        } else {
+            0.0
+        };
+        shape + tuning.prior * census + tuning.portal * portals + tuning.smooth * smooth
     };
 
     // Annealing first, so tiles can leave a locally good but jagged arrangement (a notch only
@@ -747,10 +865,10 @@ pub fn generate(
         rng
     };
     // Long paths get fewer sweeps so a live preview stays responsive.
-    let sweeps = (ANNEAL_SWEEPS * 200 / work.len().max(200)).max(40);
+    let sweeps = (tuning.sweeps * 200 / work.len().max(200)).max(tuning.sweeps.min(40));
     for sweep in 0..sweeps {
         let temperature =
-            ANNEAL_START * (ANNEAL_END / ANNEAL_START).powf(sweep as f32 / sweeps as f32);
+            tuning.start * (tuning.end / tuning.start).powf(sweep as f32 / sweeps as f32);
         for tile in &order {
             let current = chosen.get(tile).copied().unwrap_or(0);
             let before = energy(&chosen, *tile, current);
@@ -805,6 +923,31 @@ pub fn generate(
     }
     out.sort_by_key(|(tile, _)| *tile);
     out
+}
+
+/// The tiles of the halo [`PathParams::soften`] asks for: tiles whose centre is within the band's
+/// half width plus `soften` of the path's centre line, except the tiles the path itself covers.
+pub fn soft_tiles(
+    points: &[(f32, f32)],
+    params: PathParams,
+    path: &[((i32, i32), TileChoice)],
+) -> Vec<(i32, i32)> {
+    if points.is_empty() || params.soften <= 0.0 {
+        return Vec::new();
+    }
+    let reach = (params.width / 2.0).max(0.5) + params.soften;
+    let line = path_polyline(points, params, 0.25);
+    let index = SegmentIndex::new(&line, reach + 1.0);
+    let covered: std::collections::HashSet<(i32, i32)> = path.iter().map(|(t, _)| *t).collect();
+    let mut tiles: Vec<(i32, i32)> = index
+        .cells
+        .keys()
+        .copied()
+        .filter(|tile| !covered.contains(tile))
+        .filter(|tile| index.distance(*tile, (tile.0 as f32 + 0.5, tile.1 as f32 + 0.5)) <= reach)
+        .collect();
+    tiles.sort();
+    tiles
 }
 
 /// Total mismatch of a result against the ideal band: every tile the band touches counts, whether or
@@ -942,6 +1085,29 @@ mod tests {
             result.len()
         );
         eprintln!("{} tiles in {took:?}", result.len());
+    }
+
+    #[test]
+    fn the_halo_surrounds_the_path_and_never_overlaps_it() {
+        let points = [(5.5, 10.5), (25.5, 10.5)];
+        let soft_params = PathParams {
+            soften: 2.0,
+            ..params(3.0)
+        };
+        let path = generate(&points, soft_params, &none);
+        let halo = soft_tiles(&points, soft_params, &path);
+        assert!(!halo.is_empty());
+        let covered: std::collections::HashSet<_> = path.iter().map(|(t, _)| *t).collect();
+        assert!(halo.iter().all(|t| !covered.contains(t)));
+        // Rows 7, 8 and 12, 13 are the two tiles beyond a 3 wide band centred on row 10.
+        for y in [7, 8, 12, 13] {
+            assert!(
+                halo.contains(&(15, y)),
+                "tile 15, {y} missing from the halo"
+            );
+        }
+        assert!(!halo.contains(&(15, 5)) && !halo.contains(&(15, 15)));
+        assert!(soft_tiles(&points, params(3.0), &path).is_empty());
     }
 
     #[test]
@@ -1166,6 +1332,9 @@ mod tests {
         assert!(a < b && b < c && a >= 0.0 && c <= 1.0, "{a} {b} {c}");
     }
 }
+
+#[cfg(test)]
+mod playground;
 
 /// Draws what the tiler does to a few paths into `/tmp/autotile-*.png` (run with
 /// `cargo test -p osrs-editor draw_paths -- --ignored`): tiles filled as the shapes say, the ideal

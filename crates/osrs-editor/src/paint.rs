@@ -153,6 +153,8 @@ pub struct SplineSettings {
     pub closed: bool,
     /// Grade the terrain along the path from the first point's height to the last's.
     pub ramp: bool,
+    /// Tiles of underlay halo beyond the path's edge (needs the underlay channel armed).
+    pub soften: f32,
 }
 
 impl Default for SplineSettings {
@@ -163,6 +165,7 @@ impl Default for SplineSettings {
             curve: crate::autotile::CurveKind::Curve,
             closed: false,
             ramp: false,
+            soften: 0.0,
         }
     }
 }

@@ -29,6 +29,8 @@ pub struct SplineState {
 struct Preview {
     key: u64,
     tiles: Vec<((i32, i32), TileChoice)>,
+    /// Halo tiles that take the underlay only.
+    soft: Vec<(i32, i32)>,
 }
 
 fn key_of(points: &[(f32, f32)], params: PathParams, terrain: u64) -> u64 {
@@ -41,6 +43,8 @@ fn key_of(points: &[(f32, f32)], params: PathParams, terrain: u64) -> u64 {
     mix(params.style as u64);
     mix(params.curve as u64);
     mix(u64::from(params.closed));
+    mix(params.soften.to_bits().into());
+    mix(0);
     mix(terrain);
     for (x, y) in points {
         mix(x.to_bits().into());
@@ -73,6 +77,7 @@ impl EditorApp {
             style: spline.style,
             curve: spline.curve,
             closed: spline.closed,
+            soften: spline.soften,
         }
     }
 
@@ -115,7 +120,12 @@ impl EditorApp {
             };
             autotile::generate(&self.spline.points, params, &existing)
         };
-        self.spline.preview = Some(Preview { key, tiles });
+        let soft = if self.prefs.brush.underlay.armed {
+            autotile::soft_tiles(&self.spline.points, params, &tiles)
+        } else {
+            Vec::new()
+        };
+        self.spline.preview = Some(Preview { key, tiles, soft });
     }
 
     /// Add, move, insert and remove control points; Enter lays the path.
@@ -221,11 +231,11 @@ impl EditorApp {
     /// Lay the previewed path as one undo step.
     pub(super) fn commit_spline(&mut self) {
         self.spline_update();
-        let tiles = self
+        let (tiles, soft) = self
             .spline
             .preview
             .as_ref()
-            .map(|p| p.tiles.clone())
+            .map(|p| (p.tiles.clone(), p.soft.clone()))
             .unwrap_or_default();
         let brush = &self.prefs.brush;
         if !(brush.overlay.armed || brush.underlay.armed) {
@@ -243,7 +253,7 @@ impl EditorApp {
             self.ramp_heights()
                 .map(|(first, last)| super::editing::PathGrade { line, first, last })
         });
-        let changed = self.apply_path(&tiles, grade.flatten());
+        let changed = self.apply_path(&tiles, &soft, grade.flatten());
         self.spline.points.clear();
         self.spline.preview = None;
         self.notice = Some((
@@ -296,6 +306,25 @@ impl EditorApp {
                 );
             }
             return;
+        }
+
+        // The soft halo: a faint wash over the tiles that only take the underlay.
+        if let Some(preview) = &self.spline.preview {
+            let wash = Color32::from_rgba_unmultiplied(120, 200, 255, 38);
+            for tile in &preview.soft {
+                let Some(c) = interact::tile_corners(&self.infos, *tile, plane) else {
+                    continue;
+                };
+                if let (Some(a), Some(b), Some(cc), Some(d)) =
+                    (project(c[0]), project(c[1]), project(c[2]), project(c[3]))
+                {
+                    painter.add(egui::Shape::convex_polygon(
+                        vec![a, b, cc, d],
+                        wash,
+                        Stroke::NONE,
+                    ));
+                }
+            }
         }
 
         // The shaped tiles.
