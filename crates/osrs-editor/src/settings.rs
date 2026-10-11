@@ -28,6 +28,7 @@ pub struct Settings {
     pub load_radius: i32,
     pub fov_degrees: f32,
     pub fly_speed: f32,
+    pub orbit_camera: bool,
     /// Per-plugin state (see `EditorPlugin::save_settings`).
     pub plugins: BTreeMap<String, serde_json::Value>,
 }
@@ -53,6 +54,7 @@ impl Default for Settings {
             load_radius: 1,
             fov_degrees: 60.0,
             fly_speed: 900.0,
+            orbit_camera: false,
             plugins: BTreeMap::new(),
         }
     }

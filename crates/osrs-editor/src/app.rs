@@ -5,7 +5,7 @@ mod overlay;
 mod properties;
 mod status;
 
-use crate::camera::FlyCamera;
+use crate::camera::{CameraMode, FlyCamera};
 use crate::grid::{self, GridSettings};
 use crate::hud::{Destination, FrameStats, TeleportWindow};
 use crate::pick::{self, Infos, ObjectPick, Pick};
@@ -278,6 +278,7 @@ impl EditorApp {
             load_radius: self.stream_radius,
             fov_degrees: self.camera.fov_degrees,
             fly_speed: self.camera.speed,
+            orbit_camera: self.camera.mode == CameraMode::Orbit,
             plugins: self.saved_settings.plugins.clone(),
         }
     }
@@ -308,6 +309,11 @@ impl EditorApp {
         self.stream_radius = settings.load_radius.clamp(0, 4);
         self.camera.fov_degrees = settings.fov_degrees.clamp(30.0, 100.0);
         self.camera.speed = settings.fly_speed.clamp(50.0, 20_000.0);
+        self.camera.mode = if settings.orbit_camera {
+            CameraMode::Orbit
+        } else {
+            CameraMode::Fly
+        };
         if settings.smooth_terrain != self.smooth_terrain {
             self.smooth_terrain = settings.smooth_terrain;
             self.streamer.set_presentation(
@@ -368,6 +374,40 @@ impl EditorApp {
             f64::from(origin.0) + f64::from(self.camera.x),
             f64::from(origin.1) + f64::from(self.camera.z),
         )
+    }
+
+    /// Point the camera at the selected object (orbit pivot in orbit mode).
+    fn focus_selection(&mut self) {
+        let Some(object) = &self.selected else {
+            return;
+        };
+        let Some(info) = self.infos.get(&object.region) else {
+            return;
+        };
+        let Some(loc) = info.locs.get(object.index) else {
+            return;
+        };
+        let origin = self.renderer.render_origin();
+        let world = (
+            (loc.tile.0 * 128 + 64) as f32,
+            (loc.tile.1 * 128 + 64) as f32,
+        );
+        let ground = info
+            .height_at(usize::from(loc.plane), world.0, world.1)
+            .unwrap_or(0.0);
+        let extent = loc
+            .slots
+            .iter()
+            .flat_map(|slot| (0..3).map(move |a| (slot.max[a] - slot.min[a]) as f32))
+            .fold(0.0_f32, f32::max);
+        self.camera.focus(
+            [
+                world.0 - origin.0 as f32,
+                ground - 64.0,
+                world.1 - origin.1 as f32,
+            ],
+            (extent * 1.8).clamp(500.0, 4000.0),
+        );
     }
 
     /// World tile under the camera.
@@ -833,17 +873,40 @@ impl EditorApp {
 
     fn handle_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
         let dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
-        if response.dragged_by(egui::PointerButton::Secondary)
-            || response.dragged_by(egui::PointerButton::Primary)
-        {
-            let delta = response.drag_delta();
-            self.camera.look(delta.x, delta.y);
+        let delta = response.drag_delta();
+        match self.camera.mode {
+            CameraMode::Fly => {
+                if response.dragged_by(egui::PointerButton::Secondary)
+                    || response.dragged_by(egui::PointerButton::Primary)
+                {
+                    self.camera.look(delta.x, delta.y);
+                }
+            }
+            CameraMode::Orbit => {
+                let shift = ctx.input(|i| i.modifiers.shift);
+                if response.dragged_by(egui::PointerButton::Secondary)
+                    || response.dragged_by(egui::PointerButton::Middle)
+                    || (response.dragged_by(egui::PointerButton::Primary) && shift)
+                {
+                    self.camera.pan(delta.x, delta.y);
+                } else if response.dragged_by(egui::PointerButton::Primary) {
+                    self.camera.orbit(delta.x, delta.y);
+                }
+            }
         }
         if response.hovered() {
             let scroll = ctx.input(|i| i.smooth_scroll_delta.y);
-            if scroll != 0.0 {
-                self.camera.speed =
-                    (self.camera.speed * (1.0 + scroll * 0.002)).clamp(50.0, 20_000.0);
+            match self.camera.mode {
+                CameraMode::Fly => {
+                    if scroll != 0.0 {
+                        self.camera.speed =
+                            (self.camera.speed * (1.0 + scroll * 0.002)).clamp(50.0, 20_000.0);
+                    }
+                }
+                CameraMode::Orbit => {
+                    let pinch = ctx.input(|i| i.zoom_delta());
+                    self.camera.zoom(scroll + (pinch - 1.0) * 500.0);
+                }
             }
         }
         if ctx.egui_wants_keyboard_input() {
@@ -892,6 +955,15 @@ impl eframe::App for EditorApp {
         if !ctx.egui_wants_keyboard_input() {
             if ctx.input(|i| i.key_pressed(egui::Key::T)) {
                 self.open_teleport();
+            }
+            if ctx.input(|i| i.key_pressed(egui::Key::C)) {
+                self.camera.mode = match self.camera.mode {
+                    CameraMode::Fly => CameraMode::Orbit,
+                    CameraMode::Orbit => CameraMode::Fly,
+                };
+            }
+            if ctx.input(|i| i.key_pressed(egui::Key::F)) {
+                self.focus_selection();
             }
             if ctx.input(|i| i.key_pressed(egui::Key::N)) {
                 self.panels.properties = !self.panels.properties;

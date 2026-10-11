@@ -1,6 +1,7 @@
 //! Menu bar and the controls reference window.
 
 use super::EditorApp;
+use crate::camera::CameraMode;
 use eframe::egui;
 
 /// Mouse and keyboard reference shown by Help > Controls.
@@ -10,10 +11,13 @@ const CONTROLS: &[(&str, &str)] = &[
         "Right click",
         "copy menu for the object / tile under the cursor",
     ),
-    ("Drag", "look around"),
+    ("Drag", "look around (fly) / orbit (orbit camera)"),
+    ("Shift+drag, right drag", "pan (orbit camera)"),
+    ("C", "switch between fly and orbit camera"),
+    ("F", "focus the selected object"),
     ("W A S D", "fly (Shift = fast)"),
     ("Q / E", "down / up"),
-    ("Scroll", "change fly speed"),
+    ("Scroll", "fly speed (fly) / zoom (orbit)"),
     ("1 - 4", "show plane 0 - 3"),
     ("T", "teleport"),
     ("N", "toggle the Properties panel"),
@@ -31,6 +35,7 @@ impl EditorApp {
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.panels.properties, "Properties panel   N");
                     ui.checkbox(&mut self.panels.stats_overlay, "Statistics overlay");
+                    ui.menu_button("Camera", |ui| self.camera_mode_picker(ui));
                     ui.menu_button("Grid", |ui| self.grid_toggles(ui));
                     ui.separator();
                     ui.label("Plane");
@@ -54,6 +59,12 @@ impl EditorApp {
                 });
             });
         });
+    }
+
+    /// Fly / orbit camera choice.
+    pub(super) fn camera_mode_picker(&mut self, ui: &mut egui::Ui) {
+        ui.radio_value(&mut self.camera.mode, CameraMode::Fly, "Fly   C");
+        ui.radio_value(&mut self.camera.mode, CameraMode::Orbit, "Orbit   C");
     }
 
     /// Grid level toggles (shared by the View menu and the Properties panel).

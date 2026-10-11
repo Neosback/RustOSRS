@@ -10,7 +10,10 @@ impl EditorApp {
     pub(super) fn status_bar(&mut self, ui: &mut egui::Ui) {
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.weak(HINT);
+                ui.weak(match self.camera.mode {
+                    crate::camera::CameraMode::Fly => FLY_HINT,
+                    crate::camera::CameraMode::Orbit => ORBIT_HINT,
+                });
                 if let Some(status) = &self.status {
                     ui.separator();
                     ui.colored_label(egui::Color32::LIGHT_RED, status);

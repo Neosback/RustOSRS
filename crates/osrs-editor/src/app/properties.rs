@@ -2,6 +2,7 @@
 //! Scene, Interface). New tools add their own section here.
 
 use super::EditorApp;
+use crate::camera::CameraMode;
 use crate::pick::{self, Pick};
 use eframe::egui;
 use osrs_render::gpu::ColorblindMode;
@@ -66,6 +67,13 @@ impl EditorApp {
                     for plane in 0..4_u8 {
                         ui.selectable_value(&mut self.view_plane, plane, plane.to_string());
                     }
+                });
+                ui.end_row();
+
+                ui.label("Camera");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.camera.mode, CameraMode::Fly, "Fly");
+                    ui.selectable_value(&mut self.camera.mode, CameraMode::Orbit, "Orbit");
                 });
                 ui.end_row();
 
