@@ -698,8 +698,6 @@ pub fn generate(
         let partial = |bits: u16| bits != 0 && bits != u16::MAX;
         if partial(a) || partial(b) {
             (a ^ b).count_ones() as f32 / GRID as f32
-        } else if a != b {
-            0.0
         } else {
             0.0
         }
