@@ -123,7 +123,10 @@ fn hd_lumbridge_matches_golden_and_differs_from_reference() -> Result<(), Box<dy
 
     // The HD frame is a different look, not a recolour of the Reference one.
     let (mean, _) = compare(&reference, &hd, 0);
-    assert!(mean > 8.0, "HD differs from Reference by only {mean:.2} per channel");
+    assert!(
+        mean > 8.0,
+        "HD differs from Reference by only {mean:.2} per channel"
+    );
 
     let path = golden_path();
     if std::env::var_os("UPDATE_GOLDEN").is_some() || !path.exists() {
@@ -135,7 +138,14 @@ fn hd_lumbridge_matches_golden_and_differs_from_reference() -> Result<(), Box<dy
     let golden = read_png(&path)?;
     assert_eq!(golden.len(), hd.len());
     let (mean, share) = compare(&golden, &hd, 12);
-    assert!(mean < 1.5, "mean channel difference {mean:.3} from the golden image");
-    assert!(share < 0.005, "{:.3}% of pixels differ by more than 12", share * 100.0);
+    assert!(
+        mean < 1.5,
+        "mean channel difference {mean:.3} from the golden image"
+    );
+    assert!(
+        share < 0.005,
+        "{:.3}% of pixels differ by more than 12",
+        share * 100.0
+    );
     Ok(())
 }

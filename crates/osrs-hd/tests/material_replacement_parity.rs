@@ -1,8 +1,4 @@
-use osrs_hd::{
-    HdData,
-    materials::MaterialSet,
-    settings::HdSettings,
-};
+use osrs_hd::{HdData, materials::MaterialSet, settings::HdSettings};
 use std::{collections::HashSet, path::PathBuf};
 
 fn assets_dir() -> PathBuf {
@@ -21,11 +17,7 @@ fn vanilla_texture_ids(data: &HdData) -> Vec<i32> {
 #[test]
 fn default_settings_replace_vanilla_brick_with_hd_brick() {
     let data = HdData::load(assets_dir()).expect("load checked-in 117HD data");
-    let set = MaterialSet::build(
-        &data,
-        &HdSettings::default(),
-        vanilla_texture_ids(&data),
-    );
+    let set = MaterialSet::build(&data, &HdSettings::default(), vanilla_texture_ids(&data));
 
     let index = set.from_vanilla_texture(2);
     let material = set

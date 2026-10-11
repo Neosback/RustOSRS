@@ -32,7 +32,12 @@ fn toa_loot_chest_platform_keeps_the_first_nested_area_override() {
     // appears first in tile_overrides.json and must win, matching upstream's
     // first-match behavior for area-only overrides.
     let chest_tile = (3680, 5140, 0);
-    assert!(areas.contains("TOA_LOOT_ROOM_CHEST_PLATFORM", chest_tile.0, chest_tile.1, chest_tile.2));
+    assert!(areas.contains(
+        "TOA_LOOT_ROOM_CHEST_PLATFORM",
+        chest_tile.0,
+        chest_tile.1,
+        chest_tile.2
+    ));
     assert!(areas.contains("TOA_LOOT_ROOM", chest_tile.0, chest_tile.1, chest_tile.2));
 
     let chest = overrides.lookup(&areas, chest_tile, &[]);
@@ -53,6 +58,9 @@ fn toa_loot_chest_platform_keeps_the_first_nested_area_override() {
     assert!(areas.contains("TOA_LOOT_ROOM", room_tile.0, room_tile.1, room_tile.2));
 
     let room = overrides.lookup(&areas, room_tile, &[]);
-    assert_eq!(overrides.get(room.index).name, "TOA_DISABLE_BLENDING_LOOT_ROOM");
+    assert_eq!(
+        overrides.get(room.index).name,
+        "TOA_DISABLE_BLENDING_LOOT_ROOM"
+    );
     assert!(!room.queried_as_overlay);
 }

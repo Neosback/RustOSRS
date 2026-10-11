@@ -117,19 +117,22 @@ mod tests {
             .expect("checked-in 117 HD data must load");
 
         let material_index = context.materials.from_vanilla_texture(2);
-        assert_ne!(material_index, 0, "vanilla brick must resolve to a material");
+        assert_ne!(
+            material_index, 0,
+            "vanilla brick must resolve to a material"
+        );
         let material = context
             .materials
             .get(material_index)
             .expect("resolved brick material must exist");
         assert_eq!(material.name, "HD_BRICK");
 
-        let plan = LayerPlan::from_table(&context.materials.materials, &context.materials.definitions);
+        let plan =
+            LayerPlan::from_table(&context.materials.materials, &context.materials.definitions);
         let color_layer = plan.layer_of(&material.name);
         assert!(color_layer >= 0, "HD_BRICK must own a color texture layer");
         assert_eq!(
-            plan.layers[color_layer as usize].material,
-            "HD_BRICK",
+            plan.layers[color_layer as usize].material, "HD_BRICK",
             "CPU material index must resolve to the HD brick color owner"
         );
         assert!(
@@ -139,7 +142,10 @@ mod tests {
 
         let packed = GpuMaterial::from_hd(material, |name| plan.layer_of(name));
         assert_eq!(packed.color_map, color_layer);
-        assert!(packed.normal_map >= 0, "HD_BRICK normal map must have a layer");
+        assert!(
+            packed.normal_map >= 0,
+            "HD_BRICK normal map must have a layer"
+        );
         assert!(
             packed.displacement_map >= 0,
             "HD_BRICK displacement map must have a layer"

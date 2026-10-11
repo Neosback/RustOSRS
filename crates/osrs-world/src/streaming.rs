@@ -14,9 +14,7 @@ use crate::{
     texture_layers,
 };
 use osrs_core::coords::RegionCoord;
-use osrs_render::{
-    HD_FLAG_TERRAIN, HD_MATERIAL_INDEX_MASK, SceneGeometry, gpu::TextureLayer,
-};
+use osrs_render::{HD_FLAG_TERRAIN, HD_MATERIAL_INDEX_MASK, SceneGeometry, gpu::TextureLayer};
 use std::{
     collections::BTreeSet,
     path::PathBuf,
@@ -77,18 +75,8 @@ impl HdRegionStats {
         let mut unique = BTreeSet::new();
         for zone in &geometry.zones {
             for group in &zone.groups {
-                accumulate_hd_faces(
-                    &mut stats,
-                    &mut unique,
-                    &group.geometry.hd_opaque,
-                    false,
-                );
-                accumulate_hd_faces(
-                    &mut stats,
-                    &mut unique,
-                    &group.geometry.hd_alpha,
-                    true,
-                );
+                accumulate_hd_faces(&mut stats, &mut unique, &group.geometry.hd_opaque, false);
+                accumulate_hd_faces(&mut stats, &mut unique, &group.geometry.hd_alpha, true);
             }
         }
         stats.unique_materials = unique.len();
@@ -202,8 +190,8 @@ pub fn build_region_geometry_with(
         (RegionRenderPath::Hd, Some(hd)) => extract_owned_geometry_hd(&world, owned, hd),
         _ => extract_owned_geometry(&world, owned),
     };
-    let hd_stats = (render_path == RegionRenderPath::Hd)
-        .then(|| HdRegionStats::from_geometry(&geometry));
+    let hd_stats =
+        (render_path == RegionRenderPath::Hd).then(|| HdRegionStats::from_geometry(&geometry));
     let animations = extract_animated_instances(&world, owned);
     let info = Arc::new(extract_region_info(
         &world,
@@ -489,12 +477,7 @@ mod tests {
         };
         let mut stats = HdRegionStats::default();
         let mut unique = BTreeSet::new();
-        accumulate_hd_faces(
-            &mut stats,
-            &mut unique,
-            &[material_vertex; 3],
-            false,
-        );
+        accumulate_hd_faces(&mut stats, &mut unique, &[material_vertex; 3], false);
         accumulate_hd_faces(&mut stats, &mut unique, &[none_vertex; 3], true);
         stats.unique_materials = unique.len();
 

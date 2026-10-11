@@ -288,7 +288,10 @@ impl EditorApp {
                     .on_hover_text("Always cast shadows from roofs, even when they are hidden.");
                 let bytes = self.renderer.hd_shadow_map_bytes();
                 if bytes > 0 {
-                    ui.weak(format!("Shadow maps: {:.0} MiB", bytes as f64 / 1_048_576.0));
+                    ui.weak(format!(
+                        "Shadow maps: {:.0} MiB",
+                        bytes as f64 / 1_048_576.0
+                    ));
                 }
             }
         });

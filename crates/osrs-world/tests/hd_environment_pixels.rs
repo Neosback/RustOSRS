@@ -95,13 +95,14 @@ fn the_area_environment_changes_lighting_fog_and_sky() -> Result<(), Box<dyn std
     renderer.upload_scene(&extract_owned_geometry_hd(&world, None, &hd));
 
     let settings = EnvironmentSettings::default();
-    let mut render = |values: &osrs_hd::environment::EnvValues| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        renderer.set_hd_lighting(HdLighting {
-            lighting: Lighting::from_values(values, &settings, 50.0, false, true, 0.0),
-            ..HdLighting::default()
-        });
-        Ok(renderer.render_to_rgba(params(), WIDTH, HEIGHT)?)
-    };
+    let mut render =
+        |values: &osrs_hd::environment::EnvValues| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+            renderer.set_hd_lighting(HdLighting {
+                lighting: Lighting::from_values(values, &settings, 50.0, false, true, 0.0),
+                ..HdLighting::default()
+            });
+            Ok(renderer.render_to_rgba(params(), WIDTH, HEIGHT)?)
+        };
 
     // Lumbridge is overworld: a bright, sunny frame. The swamp caves are dim and fogged.
     let surface = hd.environments.environment_at(3222, 3218, 0).values;

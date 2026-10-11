@@ -31,9 +31,9 @@ pub use geometry::{
     ZONE_LOCAL_UNITS, ZoneGeometry, ZoneGroup, face_uvs as vanilla_face_uvs,
 };
 pub use hd_geometry::{
-    HD_FLAG_FLAT_NORMALS, HD_FLAG_NO_SHADOW_CAST, HD_FLAG_NO_SHADOW_RECEIVE, HD_FLAG_SHADOW_NORMAL_BIAS, HD_FLAG_TERRAIN, HD_FLAG_UPWARDS_NORMALS,
-    HD_FLAG_VANILLA_UVS, HD_MATERIAL_INDEX_MASK, HD_MATERIAL_OVERLAY, HdFace, HdVertex, oct_decode,
-    oct_encode,
+    HD_FLAG_FLAT_NORMALS, HD_FLAG_NO_SHADOW_CAST, HD_FLAG_NO_SHADOW_RECEIVE,
+    HD_FLAG_SHADOW_NORMAL_BIAS, HD_FLAG_TERRAIN, HD_FLAG_UPWARDS_NORMALS, HD_FLAG_VANILLA_UVS,
+    HD_MATERIAL_INDEX_MASK, HD_MATERIAL_OVERLAY, HdFace, HdVertex, oct_decode, oct_encode,
 };
 pub use material::{
     MaterialHandle, MaterialTable, MaterialTableError, REFERENCE_TEXTURE_ANIMATION_UNIT,
