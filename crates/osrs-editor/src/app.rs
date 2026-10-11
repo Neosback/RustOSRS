@@ -17,9 +17,7 @@ use crate::plugin::EditorPlugin;
 use crate::settings::{self, Settings};
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_core::coords::RegionCoord;
-use osrs_render::gpu::{
-    COLOR_FORMAT, Colorblind, ColorblindMode, DEPTH_FORMAT, Fog, FrameParams, SceneRenderer,
-};
+use osrs_render::gpu::{COLOR_FORMAT, DEPTH_FORMAT, FrameParams, SceneRenderer};
 use osrs_world::{AnimationWorker, RegionStreamer, StreamEvent, TerrainPresentation};
 use std::{
     collections::{HashMap, HashSet},
@@ -49,31 +47,6 @@ struct RegionStats {
     vertices: usize,
 }
 
-/// Tabs of the side panel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum PanelTab {
-    /// The selected object.
-    #[default]
-    Object,
-    /// Camera, plane, loading.
-    View,
-    /// RuneLite GPU shader options.
-    Shading,
-    /// Scene options and plugin sections.
-    Tools,
-}
-
-/// Which editor panels are shown (the layout state of the window chrome).
-struct Panels {
-    /// Side panel with the Object / View / Shading / Tools tabs.
-    properties: bool,
-    /// Dock the side panel on the right (otherwise left).
-    dock_right: bool,
-    tab: PanelTab,
-    /// Translucent fps and position readout over the viewport.
-    stats_overlay: bool,
-}
-
 /// `(region, loc index)` of a picked object.
 type OutlineKey = ((i32, i32), usize);
 
@@ -90,12 +63,6 @@ pub struct EditorApp {
     camera: FlyCamera,
     targets: Option<ViewportTargets>,
     view_plane: u8,
-    brightness: f32,
-    remove_color_banding: bool,
-    bright_textures: bool,
-    fog: Fog,
-    colorblind: Colorblind,
-    panels: Panels,
     /// Optional tools and overlays (see `plugin.rs`).
     plugins: Vec<Box<dyn EditorPlugin>>,
     /// Guide lines per plugin, merged into the renderer's line overlay.
@@ -106,11 +73,10 @@ pub struct EditorApp {
     settings_checked: Instant,
     /// Bumped whenever `infos` changes.
     infos_version: u64,
-    smooth_terrain: bool,
+    /// Every persisted value (see `settings.rs`); the UI edits it in place.
+    prefs: Settings,
     presentation_generation: u32,
     /// Background (and the colour holes in the terrain show). RuneLite's default sky is black.
-    sky_color: [f32; 3],
-    theme_index: usize,
     /// Inspection data of the resident regions (for picking).
     infos: Infos,
     hover: Pick,
@@ -137,7 +103,6 @@ pub struct EditorApp {
     /// Regions resident on the GPU (`None` = the cache has no map data there).
     loaded: HashMap<(i32, i32), Option<RegionStats>>,
     in_flight: HashSet<(i32, i32)>,
-    stream_radius: i32,
     last_build_ms: f32,
     stats: FrameStats,
     teleport: TeleportWindow,
@@ -160,6 +125,7 @@ impl EditorApp {
         base_x: i32,
         base_y: i32,
     ) -> Result<Self, String> {
+        crate::fonts::install(&cc.egui_ctx);
         crate::theme::set_theme(&cc.egui_ctx, crate::theme::MOCHA);
         let render_state = cc
             .wgpu_render_state
@@ -186,14 +152,6 @@ impl EditorApp {
             camera,
             targets: None,
             view_plane: 0,
-            brightness: 0.8,
-            remove_color_banding: true,
-            bright_textures: false,
-            fog: Fog::default(),
-            colorblind: Colorblind {
-                mode: ColorblindMode::None,
-                intensity: 100.0,
-            },
             settings_path: None,
             saved_settings: Settings::default(),
             settings_checked: Instant::now(),
@@ -203,16 +161,8 @@ impl EditorApp {
             ],
             plugin_lines: std::collections::BTreeMap::new(),
             infos_version: 0,
-            panels: Panels {
-                properties: true,
-                stats_overlay: true,
-                dock_right: true,
-                tab: PanelTab::Object,
-            },
-            smooth_terrain: false,
+            prefs: Settings::default(),
             presentation_generation: 1,
-            sky_color: [0.0, 0.0, 0.0],
-            theme_index: 3,
             infos: Infos::new(),
             hover: Pick::default(),
             selected: None,
@@ -233,7 +183,6 @@ impl EditorApp {
             status: None,
             loaded: HashMap::new(),
             in_flight: HashSet::new(),
-            stream_radius: 1,
             last_build_ms: 0.0,
             stats: FrameStats::new(),
             teleport: TeleportWindow::new(),
@@ -275,80 +224,38 @@ impl EditorApp {
             return;
         };
         let loaded = Settings::load(&path);
-        self.apply_settings(&loaded, ctx);
+        self.apply_settings(loaded, ctx);
         self.saved_settings = self.settings_snapshot();
     }
 
+    /// The settings as they are right now: the prefs plus the runtime state that persists.
     fn settings_snapshot(&self) -> Settings {
         Settings {
-            theme: self.theme_index,
-            properties_panel: self.panels.properties,
-            stats_overlay: self.panels.stats_overlay,
-            brightness: self.brightness,
-            remove_color_banding: self.remove_color_banding,
-            bright_textures: self.bright_textures,
-            fog_depth_tiles: self.fog.depth_tiles,
-            draw_distance_tiles: self.fog.draw_distance_tiles,
-            colorblind_mode: self.colorblind.mode as u8,
-            colorblind_intensity: self.colorblind.intensity,
-            sky_color: self.sky_color,
-            smooth_terrain: self.smooth_terrain,
-            load_radius: self.stream_radius,
             fov_degrees: self.camera.fov_degrees,
             fly_speed: self.camera.speed,
             orbit_camera: self.camera.mode == CameraMode::Orbit,
             keymap: self.keymap.to_saved(),
-            dock_right: self.panels.dock_right,
-            side_tab: self.panels.tab as u8,
             plugins: self
                 .plugins
                 .iter()
                 .filter_map(|plugin| Some((plugin.name().to_owned(), plugin.save_settings()?)))
                 .collect(),
+            ..self.prefs.clone()
         }
     }
 
-    fn apply_settings(&mut self, settings: &Settings, ctx: &egui::Context) {
-        self.theme_index = settings.theme.min(crate::theme::ALL.len() - 1);
-        crate::theme::set_theme(ctx, crate::theme::ALL[self.theme_index]);
-        self.panels.properties = settings.properties_panel;
-        self.panels.stats_overlay = settings.stats_overlay;
-        self.brightness = settings.brightness.clamp(0.5, 1.0);
-        self.remove_color_banding = settings.remove_color_banding;
-        self.bright_textures = settings.bright_textures;
-        self.fog.depth_tiles = settings.fog_depth_tiles.min(100);
-        self.fog.draw_distance_tiles = settings.draw_distance_tiles.clamp(8, 184);
-        self.colorblind.mode = match settings.colorblind_mode {
-            1 => ColorblindMode::Protanope,
-            2 => ColorblindMode::Deuteranope,
-            3 => ColorblindMode::Tritanope,
-            _ => ColorblindMode::None,
-        };
-        self.colorblind.intensity = settings.colorblind_intensity.clamp(0.0, 100.0);
-        self.sky_color = settings.sky_color;
-        self.stream_radius = settings.load_radius.clamp(0, 4);
-        self.camera.fov_degrees = settings.fov_degrees.clamp(30.0, 100.0);
-        self.camera.speed = settings.fly_speed.clamp(50.0, 20_000.0);
+    /// Adopt loaded settings: store them and push them into the runtime state that mirrors them.
+    fn apply_settings(&mut self, settings: Settings, ctx: &egui::Context) {
+        let settings = settings.sanitized();
+        crate::theme::set_theme(ctx, crate::theme::ALL[settings.theme]);
+        self.camera.fov_degrees = settings.fov_degrees;
+        self.camera.speed = settings.fly_speed;
         self.camera.mode = if settings.orbit_camera {
             CameraMode::Orbit
         } else {
             CameraMode::Fly
         };
-        if settings.smooth_terrain != self.smooth_terrain {
-            self.smooth_terrain = settings.smooth_terrain;
-            self.streamer.set_presentation(
-                Self::presentation(self.smooth_terrain),
-                self.presentation_generation,
-            );
-        }
         self.keymap.load(&settings.keymap);
-        self.panels.dock_right = settings.dock_right;
-        self.panels.tab = match settings.side_tab {
-            1 => PanelTab::View,
-            2 => PanelTab::Shading,
-            3 => PanelTab::Tools,
-            _ => PanelTab::Object,
-        };
         for plugin in &mut self.plugins {
             plugin.load_settings(
                 settings
@@ -357,6 +264,13 @@ impl EditorApp {
                     .unwrap_or(&serde_json::Value::Null),
             );
         }
+        if settings.smooth_terrain != self.prefs.smooth_terrain {
+            self.streamer.set_presentation(
+                Self::presentation(settings.smooth_terrain),
+                self.presentation_generation,
+            );
+        }
+        self.prefs = settings;
     }
 
     /// Save the settings when they changed (checked once a second).
@@ -389,7 +303,7 @@ impl EditorApp {
     fn rebuild_all(&mut self) {
         self.presentation_generation += 1;
         self.streamer.set_presentation(
-            Self::presentation(self.smooth_terrain),
+            Self::presentation(self.prefs.smooth_terrain),
             self.presentation_generation,
         );
         for key in self.loaded.keys().copied().collect::<Vec<_>>() {
@@ -560,7 +474,7 @@ impl EditorApp {
         }
 
         let (cx, cy) = self.camera_region();
-        let radius = self.stream_radius;
+        let radius = self.prefs.load_radius;
         let mut wanted: Vec<(i32, i32)> = Vec::new();
         for dx in -radius..=radius {
             for dy in -radius..=radius {
@@ -951,7 +865,7 @@ impl EditorApp {
             self.open_teleport();
         }
         if toggle_panel {
-            self.panels.properties = !self.panels.properties;
+            self.prefs.properties_panel = !self.prefs.properties_panel;
         }
         if toggle_camera {
             self.camera.mode = match self.camera.mode {
@@ -1098,12 +1012,12 @@ impl eframe::App for EditorApp {
                             view_plane: self.view_plane,
                             // The client's `gameCycle & 127`, at 50 cycles per second.
                             tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
-                            brightness: self.brightness,
-                            remove_color_banding: self.remove_color_banding,
-                            bright_textures: self.bright_textures,
-                            fog: self.fog,
-                            colorblind: self.colorblind,
-                            clear_color: self.sky_color.map(f64::from),
+                            brightness: self.prefs.brightness,
+                            remove_color_banding: self.prefs.remove_color_banding,
+                            bright_textures: self.prefs.bright_textures,
+                            fog: self.prefs.fog(),
+                            colorblind: self.prefs.colorblind(),
+                            clear_color: self.prefs.sky_color.map(f64::from),
                         },
                         targets.width,
                         targets.height,

@@ -18,7 +18,7 @@ impl EditorApp {
         let ctx = ui.ctx().clone();
         self.run_plugins(|plugin, cx| plugin.overlay(&ctx, rect, cx));
 
-        if self.panels.stats_overlay {
+        if self.prefs.stats_overlay {
             let (region_x, region_y) = self.camera_region();
             let (tile_x, tile_y) = self.camera_tile();
             egui::Area::new(egui::Id::new("stats_overlay"))

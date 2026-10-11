@@ -1,11 +1,11 @@
 //! Right-hand Properties dock, organised in collapsible sections (Selection, View, Shading,
 //! Scene, Interface). New tools add their own section here.
 
-use super::{EditorApp, PanelTab};
+use super::EditorApp;
 use crate::camera::CameraMode;
 use crate::pick::{self, Pick};
+use crate::settings::{ColorblindChoice, PanelTab};
 use eframe::egui;
-use osrs_render::gpu::ColorblindMode;
 
 fn section(ui: &mut egui::Ui, title: &str, default_open: bool, body: impl FnOnce(&mut egui::Ui)) {
     egui::CollapsingHeader::new(egui::RichText::new(title).strong())
@@ -17,10 +17,10 @@ impl EditorApp {
     /// Side panel: a tab strip (Object, View, Shading, Tools) over one scrolling page, docked on
     /// the right or left (View menu).
     pub(super) fn properties_panel(&mut self, ui: &mut egui::Ui) {
-        if !self.panels.properties {
+        if !self.prefs.properties_panel {
             return;
         }
-        let panel = if self.panels.dock_right {
+        let panel = if self.prefs.dock_right {
             egui::Panel::right("side_panel")
         } else {
             egui::Panel::left("side_panel")
@@ -33,11 +33,11 @@ impl EditorApp {
                     (PanelTab::Shading, "Shading"),
                     (PanelTab::Tools, "Tools"),
                 ] {
-                    ui.selectable_value(&mut self.panels.tab, tab, label);
+                    ui.selectable_value(&mut self.prefs.side_tab, tab, label);
                 }
             });
             ui.separator();
-            egui::ScrollArea::vertical().show(ui, |ui| match self.panels.tab {
+            egui::ScrollArea::vertical().show(ui, |ui| match self.prefs.side_tab {
                 PanelTab::Object => self.selection_section(ui),
                 PanelTab::View => {
                     self.view_section(ui);
@@ -111,7 +111,7 @@ impl EditorApp {
                 ui.end_row();
 
                 ui.label("Load radius");
-                ui.add(egui::Slider::new(&mut self.stream_radius, 0..=4).suffix(" regions"));
+                ui.add(egui::Slider::new(&mut self.prefs.load_radius, 0..=4).suffix(" regions"));
                 ui.end_row();
             });
     }
@@ -122,31 +122,29 @@ impl EditorApp {
             .spacing([8.0, 6.0])
             .show(ui, |ui| {
                 ui.label("Brightness");
-                ui.add(egui::Slider::new(&mut self.brightness, 0.5..=1.0));
+                ui.add(egui::Slider::new(&mut self.prefs.brightness, 0.5..=1.0));
                 ui.end_row();
 
                 ui.label("Fog depth");
-                ui.add(egui::Slider::new(&mut self.fog.depth_tiles, 0..=100).suffix(" tiles"));
+                ui.add(
+                    egui::Slider::new(&mut self.prefs.fog_depth_tiles, 0..=100).suffix(" tiles"),
+                );
                 ui.end_row();
 
                 ui.label("Draw distance");
                 ui.add(
-                    egui::Slider::new(&mut self.fog.draw_distance_tiles, 8..=184).suffix(" tiles"),
+                    egui::Slider::new(&mut self.prefs.draw_distance_tiles, 8..=184)
+                        .suffix(" tiles"),
                 );
                 ui.end_row();
 
                 ui.label("Colorblind mode");
                 egui::ComboBox::from_id_salt("colorblind_mode")
-                    .selected_text(format!("{:?}", self.colorblind.mode))
+                    .selected_text(format!("{:?}", self.prefs.colorblind_mode))
                     .show_ui(ui, |ui| {
-                        for mode in [
-                            ColorblindMode::None,
-                            ColorblindMode::Protanope,
-                            ColorblindMode::Deuteranope,
-                            ColorblindMode::Tritanope,
-                        ] {
+                        for mode in ColorblindChoice::ALL {
                             ui.selectable_value(
-                                &mut self.colorblind.mode,
+                                &mut self.prefs.colorblind_mode,
                                 mode,
                                 format!("{mode:?}"),
                             );
@@ -156,23 +154,26 @@ impl EditorApp {
 
                 ui.label("Colorblind strength");
                 ui.add(egui::Slider::new(
-                    &mut self.colorblind.intensity,
+                    &mut self.prefs.colorblind_intensity,
                     0.0..=100.0,
                 ));
                 ui.end_row();
             });
-        ui.checkbox(&mut self.remove_color_banding, "Remove color banding");
-        ui.checkbox(&mut self.bright_textures, "Bright textures");
+        ui.checkbox(&mut self.prefs.remove_color_banding, "Remove color banding");
+        ui.checkbox(&mut self.prefs.bright_textures, "Bright textures");
         ui.weak("Defaults match RuneLite's GPU plugin. Fog uses the sky colour.");
     }
 
     fn scene_section(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("Sky colour");
-            ui.color_edit_button_rgb(&mut self.sky_color);
+            ui.color_edit_button_rgb(&mut self.prefs.sky_color);
         });
         if ui
-            .checkbox(&mut self.smooth_terrain, "Smooth terrain (not in the game)")
+            .checkbox(
+                &mut self.prefs.smooth_terrain,
+                "Smooth terrain (not in the game)",
+            )
             .changed()
         {
             self.rebuild_all();

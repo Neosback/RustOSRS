@@ -155,6 +155,38 @@ pub const MOCHA: Theme = Theme {
     crust: Color32::from_rgb(17, 17, 27),
 };
 
+/// "OSRS Classic": the brown stone panels, light parchment text and orange headings of the game
+/// interface, with square corners. Mapped onto the Catppuccin slots (`blue` is the selection
+/// accent, here the interface orange).
+pub const OSRS: Theme = Theme {
+    rosewater: Color32::from_rgb(226, 190, 150),
+    flamingo: Color32::from_rgb(214, 160, 120),
+    pink: Color32::from_rgb(220, 120, 110),
+    mauve: Color32::from_rgb(170, 120, 200),
+    red: Color32::from_rgb(220, 60, 40),
+    maroon: Color32::from_rgb(200, 70, 50),
+    peach: Color32::from_rgb(255, 152, 31),
+    yellow: Color32::from_rgb(255, 224, 70),
+    green: Color32::from_rgb(70, 190, 60),
+    teal: Color32::from_rgb(40, 170, 170),
+    sky: Color32::from_rgb(90, 190, 230),
+    sapphire: Color32::from_rgb(60, 150, 220),
+    blue: Color32::from_rgb(255, 152, 31),
+    lavender: Color32::from_rgb(190, 170, 230),
+    text: Color32::from_rgb(222, 213, 190),
+    subtext1: Color32::from_rgb(190, 180, 158),
+    subtext0: Color32::from_rgb(165, 155, 134),
+    overlay2: Color32::from_rgb(140, 128, 106),
+    overlay1: Color32::from_rgb(104, 93, 76),
+    overlay0: Color32::from_rgb(84, 75, 61),
+    surface2: Color32::from_rgb(98, 88, 72),
+    surface1: Color32::from_rgb(79, 70, 57),
+    surface0: Color32::from_rgb(66, 58, 47),
+    base: Color32::from_rgb(56, 49, 40),
+    mantle: Color32::from_rgb(44, 38, 31),
+    crust: Color32::from_rgb(30, 26, 21),
+};
+
 /// Apply the given theme to a [`Context`](egui::Context).
 pub fn set_theme(ctx: &egui::Context, theme: Theme) {
     let slot = if theme == LATTE {
@@ -194,6 +226,30 @@ fn make_widget_visual(
             ..old.fg_stroke
         },
         ..old
+    }
+}
+
+trait SquareCorners {
+    fn with_square_corners(self, square: bool) -> Self;
+}
+
+impl SquareCorners for egui::Visuals {
+    fn with_square_corners(mut self, square: bool) -> Self {
+        if square {
+            let none = egui::CornerRadius::ZERO;
+            self.window_corner_radius = none;
+            self.menu_corner_radius = none;
+            for widget in [
+                &mut self.widgets.noninteractive,
+                &mut self.widgets.inactive,
+                &mut self.widgets.hovered,
+                &mut self.widgets.active,
+                &mut self.widgets.open,
+            ] {
+                widget.corner_radius = none;
+            }
+        }
+        self
     }
 }
 
@@ -244,10 +300,11 @@ impl Theme {
             dark_mode: !is_latte,
             ..old
         }
+        .with_square_corners(*self == OSRS)
     }
 }
 
 /// Variant names, parallel to [`ALL`].
-pub const NAMES: [&str; 4] = ["Latte", "Frappé", "Macchiato", "Mocha"];
+pub const NAMES: [&str; 5] = ["Latte", "Frappé", "Macchiato", "Mocha", "OSRS Classic"];
 /// All variants, light to dark.
-pub const ALL: [Theme; 4] = [LATTE, FRAPPE, MACCHIATO, MOCHA];
+pub const ALL: [Theme; 5] = [LATTE, FRAPPE, MACCHIATO, MOCHA, OSRS];

@@ -6,6 +6,7 @@
 
 use super::EditorApp;
 use crate::camera::CameraMode;
+use crate::icons;
 use eframe::egui;
 
 impl EditorApp {
@@ -14,17 +15,36 @@ impl EditorApp {
             ui.horizontal(|ui| {
                 ui.label("Plane");
                 for plane in 0..4_u8 {
-                    ui.selectable_value(&mut self.view_plane, plane, plane.to_string());
+                    ui.selectable_value(&mut self.view_plane, plane, plane.to_string())
+                        .on_hover_text(format!("Show plane {plane}"));
                 }
                 ui.separator();
-                ui.selectable_value(&mut self.camera.mode, CameraMode::Fly, "Fly");
-                ui.selectable_value(&mut self.camera.mode, CameraMode::Orbit, "Orbit");
+                ui.selectable_value(
+                    &mut self.camera.mode,
+                    CameraMode::Fly,
+                    format!("{} Fly", icons::FLY),
+                )
+                .on_hover_text("Fly camera: right drag looks, WASD moves");
+                ui.selectable_value(
+                    &mut self.camera.mode,
+                    CameraMode::Orbit,
+                    format!("{} Orbit", icons::ORBIT),
+                )
+                .on_hover_text(
+                    "Orbit camera: right drag orbits, shift+right drag pans, scroll zooms",
+                );
                 ui.separator();
                 self.run_plugins(|plugin, cx| plugin.toolbar(ui, cx));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.toggle_value(&mut self.panels.properties, "Panel");
-                    ui.toggle_value(&mut self.panels.stats_overlay, "Stats");
-                    if ui.button("Teleport").clicked() {
+                    ui.toggle_value(&mut self.prefs.properties_panel, icons::SIDE_PANEL)
+                        .on_hover_text("Side panel");
+                    ui.toggle_value(&mut self.prefs.stats_overlay, icons::STATS)
+                        .on_hover_text("Statistics overlay");
+                    if ui
+                        .button(format!("{} Teleport", icons::TELEPORT))
+                        .on_hover_text("Go to a tile or region")
+                        .clicked()
+                    {
                         self.open_teleport();
                     }
                 });

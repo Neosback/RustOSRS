@@ -9,8 +9,10 @@
 mod animation_smoothing;
 mod app;
 mod camera;
+mod fonts;
 mod grid;
 mod hud;
+mod icons;
 mod keymap;
 mod pick;
 mod plugin;

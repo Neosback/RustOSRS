@@ -3,9 +3,55 @@
 //! Every field has a default and unknown fields are ignored, so adding settings never invalidates
 //! an existing file. Tools keep their own state under [`Settings::plugins`], keyed by plugin name.
 
+use osrs_render::gpu::{Colorblind, ColorblindMode, Fog};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, io, path::PathBuf};
 
+/// Tabs of the side panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PanelTab {
+    /// The selected object.
+    #[default]
+    Object,
+    /// Camera, plane, loading.
+    View,
+    /// RuneLite GPU shader options.
+    Shading,
+    /// Scene options and plugin sections.
+    Tools,
+}
+
+/// Colourblindness correction mode (RuneLite's GPU plugin option).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ColorblindChoice {
+    #[default]
+    None,
+    Protanope,
+    Deuteranope,
+    Tritanope,
+}
+
+impl ColorblindChoice {
+    pub const ALL: [Self; 4] = [
+        Self::None,
+        Self::Protanope,
+        Self::Deuteranope,
+        Self::Tritanope,
+    ];
+
+    pub fn render_mode(self) -> ColorblindMode {
+        match self {
+            Self::None => ColorblindMode::None,
+            Self::Protanope => ColorblindMode::Protanope,
+            Self::Deuteranope => ColorblindMode::Deuteranope,
+            Self::Tritanope => ColorblindMode::Tritanope,
+        }
+    }
+}
+
+/// Every persisted editor value, in one place. The running editor reads and writes this struct
+/// directly (the UI binds sliders to its fields), so a value has exactly one home; only state
+/// that lives elsewhere at runtime (camera, keymap, plugins) is copied in and out on save/load.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -17,8 +63,7 @@ pub struct Settings {
     pub bright_textures: bool,
     pub fog_depth_tiles: u32,
     pub draw_distance_tiles: u32,
-    /// 0 off, 1 protanope, 2 deuteranope, 3 tritanope.
-    pub colorblind_mode: u8,
+    pub colorblind_mode: ColorblindChoice,
     pub colorblind_intensity: f32,
     pub sky_color: [f32; 3],
     pub smooth_terrain: bool,
@@ -28,8 +73,7 @@ pub struct Settings {
     pub orbit_camera: bool,
     /// Side panel on the right (otherwise left).
     pub dock_right: bool,
-    /// Active side panel tab (0 object, 1 view, 2 shading, 3 tools).
-    pub side_tab: u8,
+    pub side_tab: PanelTab,
     /// Keyboard shortcut overrides: action id -> `"Shift+G"`.
     pub keymap: BTreeMap<String, String>,
     /// Per-plugin state (see `EditorPlugin::save_settings`).
@@ -47,7 +91,7 @@ impl Default for Settings {
             bright_textures: false,
             fog_depth_tiles: 0,
             draw_distance_tiles: 50,
-            colorblind_mode: 0,
+            colorblind_mode: ColorblindChoice::None,
             colorblind_intensity: 100.0,
             sky_color: [0.0, 0.0, 0.0],
             smooth_terrain: false,
@@ -56,7 +100,7 @@ impl Default for Settings {
             fly_speed: 900.0,
             orbit_camera: false,
             dock_right: true,
-            side_tab: 0,
+            side_tab: PanelTab::Object,
             keymap: BTreeMap::new(),
             plugins: BTreeMap::new(),
         }
@@ -81,6 +125,34 @@ pub fn path() -> Option<PathBuf> {
 }
 
 impl Settings {
+    /// RuneLite-style fog settings for the renderer.
+    pub fn fog(&self) -> Fog {
+        Fog {
+            depth_tiles: self.fog_depth_tiles,
+            draw_distance_tiles: self.draw_distance_tiles,
+        }
+    }
+
+    pub fn colorblind(&self) -> Colorblind {
+        Colorblind {
+            mode: self.colorblind_mode.render_mode(),
+            intensity: self.colorblind_intensity,
+        }
+    }
+
+    /// Clamp every value to what the UI allows (a hand-edited file can hold anything).
+    pub fn sanitized(mut self) -> Self {
+        self.theme = self.theme.min(crate::theme::ALL.len() - 1);
+        self.brightness = self.brightness.clamp(0.5, 1.0);
+        self.fog_depth_tiles = self.fog_depth_tiles.min(100);
+        self.draw_distance_tiles = self.draw_distance_tiles.clamp(8, 184);
+        self.colorblind_intensity = self.colorblind_intensity.clamp(0.0, 100.0);
+        self.load_radius = self.load_radius.clamp(0, 4);
+        self.fov_degrees = self.fov_degrees.clamp(30.0, 100.0);
+        self.fly_speed = self.fly_speed.clamp(50.0, 20_000.0);
+        self
+    }
+
     /// Settings from `path`; defaults when the file is missing or unreadable.
     pub fn load(path: &std::path::Path) -> Self {
         fs::read_to_string(path)

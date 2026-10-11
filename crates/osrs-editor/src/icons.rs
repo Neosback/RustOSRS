@@ -1,0 +1,33 @@
+//! The editor's icon vocabulary: one place that maps each semantic action to an icon glyph
+//! (Phosphor Regular, an MIT icon font). The same action uses the same icon everywhere; every
+//! icon button must also carry a tooltip.
+
+#![allow(
+    dead_code,
+    reason = "vocabulary: icons are added before the tools that use them"
+)]
+
+use egui_phosphor::regular as ph;
+
+pub const FLY: &str = ph::AIRPLANE_TILT;
+pub const ORBIT: &str = ph::ARROWS_CLOCKWISE;
+pub const GRID: &str = ph::GRID_FOUR;
+pub const TELEPORT: &str = ph::MAP_PIN;
+pub const SIDE_PANEL: &str = ph::SIDEBAR_SIMPLE;
+pub const STATS: &str = ph::SLIDERS;
+pub const WORLD_MAP: &str = ph::GLOBE_HEMISPHERE_WEST;
+pub const COMPASS: &str = ph::COMPASS;
+pub const WIKI: &str = ph::BOOK_OPEN;
+pub const SELECT: &str = ph::CURSOR;
+pub const PAINT: &str = ph::PAINT_BRUSH;
+pub const LAYERS: &str = ph::STACK;
+pub const OBJECT: &str = ph::CUBE;
+pub const SEARCH: &str = ph::MAGNIFYING_GLASS;
+pub const KEYBOARD: &str = ph::KEYBOARD;
+pub const SETTINGS: &str = ph::GEAR;
+pub const THEME: &str = ph::PALETTE;
+pub const MOVE: &str = ph::ARROWS_OUT_CARDINAL;
+pub const MEASURE: &str = ph::RULER;
+pub const VISIBLE: &str = ph::EYE;
+pub const STAIRS: &str = ph::STAIRS;
+pub const MARQUEE: &str = ph::SELECTION;

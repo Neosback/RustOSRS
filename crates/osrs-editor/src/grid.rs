@@ -277,8 +277,12 @@ impl EditorPlugin for GridPlugin {
     }
 
     fn toolbar(&mut self, ui: &mut egui::Ui, _cx: &mut PluginContext) {
-        ui.toggle_value(&mut self.settings.tiles, "Grid");
-        ui.menu_button("v", |ui| self.toggles(ui));
+        ui.toggle_value(
+            &mut self.settings.tiles,
+            format!("{} Grid", crate::icons::GRID),
+        )
+        .on_hover_text("Tile grid (G); the arrow chooses zone and region lines");
+        ui.menu_button(egui_phosphor::regular::CARET_DOWN, |ui| self.toggles(ui));
     }
 
     fn has_properties(&self) -> bool {
