@@ -190,7 +190,11 @@ impl ShadowMaps {
 
 /// Edge of the shadow maps for `settings`, capped to what the device allows.
 pub fn map_size(settings: &ShadowSettings, max_texture_dimension: u32) -> u32 {
-    settings.resolution.texels().min(max_texture_dimension).max(1)
+    settings
+        .resolution
+        .texels()
+        .min(max_texture_dimension)
+        .max(1)
 }
 
 /// The three depth-only pipelines: the main map with packed transparency, the main map with plain

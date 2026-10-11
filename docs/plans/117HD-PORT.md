@@ -156,7 +156,21 @@ tone map / colour filter / AA resolve -> overlays (egui).
   south-west); the phase 2 placeholder pointed north-east. Not yet: day/night cycle and the sky (phase 7), roof
   shadows hiding, wind (phase 8). Tests: `osrs-hd` unit tests and `tests/environments.rs` (Lumbridge, Falador,
   Lumbridge swamp caves, wilderness blend), `osrs-world/tests/hd_environment_pixels.rs`.
-* Next: phase 4 (shadows) and 5 (water), then 6-8 as listed above.
+* Done (phase 4, 2026-10-11): directional shadows. `osrs-hd::shadows`: `ShadowSettings` (mode, resolution, the
+  seven filtering options, transparency, terrain shadows, roof shadows, distance) and `ShadowCamera::fit` (the light's
+  orthographic camera around the viewer: texel-snapped, 5 % size hysteresis, depth range covering casters up to four
+  tiles above the receivers; unit tested). `osrs-render::gpu::hd::shadow`: `Depth32Float` shadow maps (the terrain map is
+  half size) behind a group-3 bind group, and the depth-only pipelines. `shadow_cast.wgsl` ports `shadow_vert/frag`
+  without the geometry shader (per-corner materials come from the HD stream via `vertex_index % 3`); with shadow
+  transparency the fragment packs opacity (8 bits) and depth (16 bits) into the output depth like the plugin.
+  `shadow_receive.wgsl` ports `shadows.glsl`, `shadow_filtering.glsl` and `shadow_pcss.glsl` (PCF 1x1/2x2/3x3, dithered,
+  averaged, PCSS; receiver-plane bias, normal bias, edge fade, terrain map). The frame graph got ordering-only tokens
+  (`FrameGraph::token`); the shadow passes run before the scene pass and only when the light casts shadows. Fake
+  (baked) ground shadows are hidden for `hideVanillaShadows` models (`VanillaShadowMode`); model overrides' `castShadows`
+  and `shadowNormalBias` are honoured. Editor: `Settings::hd_shadows`, Properties > Shading > Shadows. Differences: the
+  map is centred on the camera (not the focal point), zones without HD streams (animated locs) cast no shadow, no
+  conservative "remove pop-in" culling. Tests: `osrs-hd` unit tests, `osrs-world/tests/hd_shadow_pixels.rs` (all filters).
+* Next: phase 5 (water), then 6-8 as listed above.
 
 ## 6. First concrete steps
 

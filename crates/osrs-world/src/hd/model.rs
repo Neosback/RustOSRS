@@ -21,8 +21,9 @@ use osrs_hd::{
     tiles::Areas,
 };
 use osrs_render::{
-    HD_FLAG_FLAT_NORMALS, HD_FLAG_NO_SHADOW_CAST, HD_FLAG_NO_SHADOW_RECEIVE, HD_FLAG_SHADOW_NORMAL_BIAS, HD_FLAG_UPWARDS_NORMALS, HD_FLAG_VANILLA_UVS,
-    HdFace, ModelPlacement, vanilla_face_uvs,
+    HD_FLAG_FLAT_NORMALS, HD_FLAG_NO_SHADOW_CAST, HD_FLAG_NO_SHADOW_RECEIVE,
+    HD_FLAG_SHADOW_NORMAL_BIAS, HD_FLAG_UPWARDS_NORMALS, HD_FLAG_VANILLA_UVS, HdFace,
+    ModelPlacement, vanilla_face_uvs,
 };
 use std::collections::HashMap;
 

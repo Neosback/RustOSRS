@@ -275,9 +275,9 @@ impl ShadowCamera {
 
         // Fit the receiver footprint with room for filtering and texel snapping, rounded to half
         // tiles; ignore shrinking below 5% (it only makes shadows shimmer).
-        let mut size =
-            (((max[0] - min[0]).max(max[1] - min[1]) + 8.0 * TILE) / (TILE / 2.0)).ceil()
-                * (TILE / 2.0);
+        let mut size = (((max[0] - min[0]).max(max[1] - min[1]) + 8.0 * TILE) / (TILE / 2.0))
+            .ceil()
+            * (TILE / 2.0);
         if let Some(previous) = fit.previous_size
             && (size - previous).abs() < previous * 0.05
             && size <= previous
@@ -294,14 +294,7 @@ impl ShadowCamera {
         let depth_range = h_top - h_bottom;
 
         let scale = 2.0 / size;
-        let column = |i: usize| {
-            [
-                right[i] * scale,
-                up[i] * scale,
-                -axis[i] / depth_range,
-                0.0,
-            ]
-        };
+        let column = |i: usize| [right[i] * scale, up[i] * scale, -axis[i] / depth_range, 0.0];
         let view_proj = [
             column(0),
             column(1),
@@ -351,7 +344,12 @@ mod tests {
 
     #[test]
     fn the_basis_is_orthonormal_even_for_a_vertical_light() {
-        for dir in [input().light_dir, [0.0, -1.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]] {
+        for dir in [
+            input().light_dir,
+            [0.0, -1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0],
+        ] {
             let (right, up, axis) = ShadowCamera::basis(dir);
             assert!(dot(right, up).abs() < 1e-5);
             assert!(dot(right, axis).abs() < 1e-5);
@@ -404,7 +402,11 @@ mod tests {
         let fit = input();
         let camera = ShadowCamera::fit(&fit);
         // A 1500-unit tower on the edge of the receiver square, seen from the light.
-        let top = [fit.focus[0] + fit.radius, -1500.0, fit.focus[2] + fit.radius];
+        let top = [
+            fit.focus[0] + fit.radius,
+            -1500.0,
+            fit.focus[2] + fit.radius,
+        ];
         let z = camera.project(top)[2];
         assert!((0.0..=1.0).contains(&z), "{z}");
     }
@@ -424,7 +426,10 @@ mod tests {
         let probe = [5000.0, -100.0, 7000.0];
         let shift = (first.project(probe)[0] - second.project(probe)[0]) * first.size / 2.0;
         let texels = shift / first.texel_world;
-        assert!((texels - texels.round()).abs() < 0.05 && texels.abs() <= 1.05, "{texels}");
+        assert!(
+            (texels - texels.round()).abs() < 0.05 && texels.abs() <= 1.05,
+            "{texels}"
+        );
 
         // A full texel step moves the map by exactly one texel.
         let mut stepped = input();
