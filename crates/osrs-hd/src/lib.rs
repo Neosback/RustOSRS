@@ -12,6 +12,7 @@ pub mod materials;
 pub mod settings;
 pub mod tiles;
 
+pub use serde_json;
 use serde::Deserialize;
 use serde_json::Value;
 use std::{
@@ -221,6 +222,28 @@ pub struct ModelOverride {
     pub wind_displacement_mode: Option<String>,
     pub depth_bias: Option<i32>,
     pub height_offset: Option<i32>,
+    pub uv_orientation: Option<i32>,
+    pub uv_orientation_x: Option<i32>,
+    pub uv_orientation_y: Option<i32>,
+    pub uv_orientation_z: Option<i32>,
+    pub retain_vanilla_uvs: Option<bool>,
+    pub force_material_changes: Option<bool>,
+    pub set_hue: Option<i32>,
+    pub shift_hue: Option<i32>,
+    pub min_hue: Option<i32>,
+    pub max_hue: Option<i32>,
+    pub set_saturation: Option<i32>,
+    pub shift_saturation: Option<i32>,
+    pub min_saturation: Option<i32>,
+    pub max_saturation: Option<i32>,
+    pub set_lightness: Option<i32>,
+    pub shift_lightness: Option<i32>,
+    pub min_lightness: Option<i32>,
+    pub max_lightness: Option<i32>,
+    pub set_alpha: Option<i32>,
+    pub shift_alpha: Option<i32>,
+    pub min_alpha: Option<i32>,
+    pub max_alpha: Option<i32>,
     pub material_overrides: Option<BTreeMap<String, Value>>,
     pub color_overrides: Option<Vec<Value>>,
     #[serde(flatten)]

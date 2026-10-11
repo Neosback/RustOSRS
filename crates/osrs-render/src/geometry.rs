@@ -33,7 +33,7 @@ pub struct PackedVertex {
 impl PackedVertex {
     pub const SIZE: usize = 20;
 
-    fn new(position: [i32; 3], abhsl: u32, texture: u16, uv: [i32; 2]) -> Self {
+    pub(crate) fn new(position: [i32; 3], abhsl: u32, texture: u16, uv: [i32; 2]) -> Self {
         Self {
             position: [
                 clamp_i16(position[0]),
@@ -58,6 +58,10 @@ fn clamp_i16(value: i32) -> i16 {
 pub struct GeometryBuilder {
     pub opaque: Vec<PackedVertex>,
     pub alpha: Vec<PackedVertex>,
+    /// HD-profile vertex data parallel to `opaque` (empty for Reference geometry).
+    pub hd_opaque: Vec<crate::hd_geometry::HdVertex>,
+    /// HD-profile vertex data parallel to `alpha` (empty for Reference geometry).
+    pub hd_alpha: Vec<crate::hd_geometry::HdVertex>,
     /// One record per model that contributed transparent faces to `alpha`, in emission order.
     pub alpha_models: Vec<AlphaModel>,
 }
@@ -292,7 +296,7 @@ impl GeometryBuilder {
 
 /// `Zone.addAlphaModel`'s face packing: centre the transparent face centroids, scale them into
 /// signed 11/10/11-bit fields, and return `(radius, packed faces)`.
-fn pack_alpha_faces(sums: &[[i32; 3]]) -> (i32, Vec<i32>) {
+pub(crate) fn pack_alpha_faces(sums: &[[i32; 3]]) -> (i32, Vec<i32>) {
     let mut min = [i32::MAX; 3];
     let mut max = [i32::MIN; 3];
     for sum in sums {
@@ -336,7 +340,7 @@ fn pack_alpha_faces(sums: &[[i32; 3]]) -> (i32, Vec<i32>) {
 /// Reference UVs of one textured face (`computeFaceUvs`, static path): the explicit texture
 /// triangle basis when the face has a texture-face selector, otherwise the canonical
 /// `(0,0) (1,0) (0,1)` mapping.
-fn face_uvs(model: &ReferenceLitModel, face_index: usize, indices: [u32; 3]) -> [[f32; 2]; 3] {
+pub fn face_uvs(model: &ReferenceLitModel, face_index: usize, indices: [u32; 3]) -> [[f32; 2]; 3] {
     let point = |index: u32| {
         model
             .vertices

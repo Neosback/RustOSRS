@@ -22,7 +22,7 @@ pub struct OwnedTiles {
 }
 
 impl OwnedTiles {
-    fn contains(self, x: u32, y: u32) -> bool {
+    pub(crate) fn contains(self, x: u32, y: u32) -> bool {
         x >= self.min.0 && x < self.max.0 && y >= self.min.1 && y < self.max.1
     }
 }

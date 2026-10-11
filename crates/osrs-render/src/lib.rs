@@ -11,6 +11,7 @@ mod draw_plan;
 mod generation;
 mod geometry;
 pub mod gpu;
+mod hd_geometry;
 mod material;
 mod mesh;
 mod priority;
@@ -26,8 +27,13 @@ pub use coordinates::{RenderCoordinateError, RenderOrigin, RenderPoint};
 pub use draw_plan::{RenderDrawPlan, RenderScenePass};
 pub use generation::SemanticGeneration;
 pub use geometry::{
-    GeometryBuilder, ModelPlacement, PackedVertex, SceneGeometry, TERRAIN_SKIP_COLOR,
+    GeometryBuilder, face_uvs as vanilla_face_uvs, ModelPlacement, PackedVertex, SceneGeometry, TERRAIN_SKIP_COLOR,
     ZONE_LOCAL_UNITS, ZoneGeometry, ZoneGroup,
+};
+pub use hd_geometry::{
+    HD_FLAG_FLAT_NORMALS, HD_FLAG_NO_SHADOW_RECEIVE, HD_FLAG_TERRAIN, HD_FLAG_UPWARDS_NORMALS,
+    HD_FLAG_VANILLA_UVS, HD_MATERIAL_INDEX_MASK, HD_MATERIAL_OVERLAY, HdFace, HdVertex, oct_decode,
+    oct_encode,
 };
 pub use material::{
     MaterialHandle, MaterialTable, MaterialTableError, REFERENCE_TEXTURE_ANIMATION_UNIT,

@@ -11,6 +11,7 @@ mod assets;
 mod definitions;
 mod error;
 mod extract;
+pub mod hd;
 mod info;
 mod loc_stage;
 pub mod minimap;
