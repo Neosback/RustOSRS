@@ -15,8 +15,13 @@ ALLOWED_INTERNAL: dict[str, set[str]] = {
     "osrs-cache": {"osrs-core"},
     "osrs-scene": {"osrs-core"},
     "osrs-render": {"osrs-core", "osrs-scene"},
-    "osrs-reference": {"osrs-core", "osrs-cache", "osrs-scene"},
-    "osrs-editor": {"osrs-core", "osrs-cache", "osrs-scene", "osrs-render"},
+    # Runtime world composition/orchestration may consume the reusable decode,
+    # semantic-scene, and renderer layers, but none of those layers may depend back on it.
+    "osrs-world": {"osrs-core", "osrs-cache", "osrs-scene", "osrs-render"},
+    # Reference infrastructure may exercise the composed world layer for integration parity.
+    "osrs-reference": {"osrs-core", "osrs-cache", "osrs-scene", "osrs-world"},
+    # The editor is the product composition root and may consume world orchestration directly.
+    "osrs-editor": {"osrs-core", "osrs-cache", "osrs-scene", "osrs-render", "osrs-world"},
 }
 
 DEPENDENCY_SECTIONS = {"dependencies", "dev-dependencies", "build-dependencies"}
@@ -24,6 +29,7 @@ CORE_FORBIDDEN = {
     "osrs-cache",
     "osrs-scene",
     "osrs-render",
+    "osrs-world",
     "osrs-reference",
     "osrs-editor",
     "wgpu",

@@ -124,20 +124,28 @@ fn vs_main(input: VertexIn) -> VertexOut {
     let vert = vec4<f32>(vec3<f32>(input.position.xyz) + zone.base.xyz, 1.0);
     let a = f32((input.abhsl >> 24u) & 0xffu) / 255.0;
     let bias = f32((input.abhsl >> 16u) & 0xffu);
+    // Texture id + 1 (`0` = untextured).
+    let tex = input.tex_uv.x;
 
     var screen = globals.world_proj * vert;
     screen.z = screen.z + bias / 128.0;
     out.clip = screen;
     out.alpha = 1.0 - a;
     out.hsl = f32(input.abhsl & 0xffffu);
-    out.color = hsl_to_rgb(vec3<f32>(
-        f32((input.abhsl >> 10u) & 63u),
-        f32((input.abhsl >> 7u) & 7u),
-        f32(input.abhsl & 127u),
-    ));
 
-    // Texture id + 1 (0 = untextured) and signed 8.8 UVs packed as u16 pairs.
-    let tex = input.tex_uv.x;
+    // Textured faces only consume vertex RGB when "Bright textures" is enabled. Avoid the
+    // relatively expensive HSL->RGB/pow path for the normal textured path where it is discarded.
+    if (tex == 0u || globals.texture_light_mode > 0.5) {
+        out.color = hsl_to_rgb(vec3<f32>(
+            f32((input.abhsl >> 10u) & 63u),
+            f32((input.abhsl >> 7u) & 7u),
+            f32(input.abhsl & 127u),
+        ));
+    } else {
+        out.color = vec3<f32>(0.0);
+    }
+
+    // Signed 8.8 UVs packed as u16 pairs.
     let u = f32(i32(input.tex_uv.y) - select(0, 65536, input.tex_uv.y >= 32768u));
     let v = f32(i32(input.tex_uv.z) - select(0, 65536, input.tex_uv.z >= 32768u));
     var uv = vec2<f32>(u, v) / 256.0;
@@ -148,18 +156,32 @@ fn vs_main(input: VertexIn) -> VertexOut {
     out.tex = tex;
     out.uv = uv;
 
-    // Fog distance from the draw-distance box around the camera. The scene has no hard edges
-    // (the streamed world is unbounded), so the reference's scene-edge clamps do not apply.
-    let fog_rounding = 1.5;
-    let fog_rounding_squared = fog_rounding * fog_rounding;
-    let x_dist = min(vert.x - (globals.camera_x - globals.draw_distance), (globals.camera_x + globals.draw_distance) - vert.x);
-    let z_dist = min(vert.z - (globals.camera_z - globals.draw_distance), (globals.camera_z + globals.draw_distance) - vert.z);
-    let nearest = min(x_dist, z_dist);
-    let second_nearest = max(x_dist, z_dist);
-    let fog_distance = nearest - fog_rounding * 128.0
-        * max(0.0, (nearest + fog_rounding_squared) / (second_nearest + fog_rounding_squared));
-    let fog_amount = 1.0 - clamp(fog_distance / max(globals.fog_depth, 1.0), 0.0, 1.0);
-    out.fog = fog_amount * f32(globals.use_fog);
+    // Fog is disabled by default. The old path still executed all draw-distance arithmetic and
+    // then multiplied the result by zero, so skip it entirely when the uniform says fog is off.
+    if (globals.use_fog != 0u) {
+        // Fog distance from the draw-distance box around the camera. The scene has no hard edges
+        // (the streamed world is unbounded), so the reference's scene-edge clamps do not apply.
+        let fog_rounding = 1.5;
+        let fog_rounding_squared = fog_rounding * fog_rounding;
+        let x_dist = min(
+            vert.x - (globals.camera_x - globals.draw_distance),
+            (globals.camera_x + globals.draw_distance) - vert.x,
+        );
+        let z_dist = min(
+            vert.z - (globals.camera_z - globals.draw_distance),
+            (globals.camera_z + globals.draw_distance) - vert.z,
+        );
+        let nearest = min(x_dist, z_dist);
+        let second_nearest = max(x_dist, z_dist);
+        let fog_distance = nearest - fog_rounding * 128.0
+            * max(
+                0.0,
+                (nearest + fog_rounding_squared) / (second_nearest + fog_rounding_squared),
+            );
+        out.fog = 1.0 - clamp(fog_distance / max(globals.fog_depth, 1.0), 0.0, 1.0);
+    } else {
+        out.fog = 0.0;
+    }
     return out;
 }
 
@@ -220,15 +242,25 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
         let sampled = textureSampleGrad(textures, tex_sampler, input.uv, layer, dx, dy);
         let rgb = pow(sampled.rgb, vec3<f32>(globals.brightness));
         // Textured faces carry a 7-bit baked lightness (`fHsl / 127`).
-        let light = input.hsl / 127.0;
-        let tex_mul = (1.0 - globals.texture_light_mode) * vec3<f32>(light)
-            + globals.texture_light_mode * input.color;
+        var tex_mul = vec3<f32>(input.hsl / 127.0);
+        if (globals.texture_light_mode > 0.5) {
+            tex_mul = input.color;
+        }
         return finish(rgb * tex_mul, input.alpha, input.fog);
     }
 
-    let packed = i32(input.hsl);
-    let hsl = vec3<f32>(f32((packed >> 10) & 63), f32((packed >> 7) & 7), f32(packed & 127));
-    // `smoothBanding` is 0 when banding is removed (vertex RGB) and 1 for per-pixel HSL.
-    let rgb = mix(input.color, hsl_to_rgb(hsl), globals.smooth_banding);
+    // `smoothBanding` is exactly 0 when banding is removed and 1 for per-pixel HSL. Branching on
+    // the uniform avoids doing the full HSL conversion and three pow operations on every
+    // untextured fragment when the default vertex-RGB path is selected.
+    var rgb = input.color;
+    if (globals.smooth_banding > 0.5) {
+        let packed = i32(input.hsl);
+        let hsl = vec3<f32>(
+            f32((packed >> 10) & 63),
+            f32((packed >> 7) & 7),
+            f32(packed & 127),
+        );
+        rgb = hsl_to_rgb(hsl);
+    }
     return finish(rgb, input.alpha, input.fog);
 }
