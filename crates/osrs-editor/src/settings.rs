@@ -22,9 +22,6 @@ pub struct Settings {
     pub colorblind_intensity: f32,
     pub sky_color: [f32; 3],
     pub smooth_terrain: bool,
-    pub grid_tiles: bool,
-    pub grid_zones: bool,
-    pub grid_regions: bool,
     pub load_radius: i32,
     pub fov_degrees: f32,
     pub fly_speed: f32,
@@ -48,9 +45,6 @@ impl Default for Settings {
             colorblind_intensity: 100.0,
             sky_color: [0.0, 0.0, 0.0],
             smooth_terrain: false,
-            grid_tiles: false,
-            grid_zones: false,
-            grid_regions: false,
             load_radius: 1,
             fov_degrees: 60.0,
             fly_speed: 900.0,
@@ -103,27 +97,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn missing_fields_fall_back_to_defaults() {
-        let settings: Settings = serde_json::from_str(r#"{ "brightness": 0.6 }"#).unwrap();
+    fn missing_fields_fall_back_to_defaults() -> Result<(), serde_json::Error> {
+        let settings: Settings = serde_json::from_str(r#"{ "brightness": 0.6 }"#)?;
         assert_eq!(settings.brightness, 0.6);
         assert_eq!(settings.draw_distance_tiles, 50);
         assert!(settings.properties_panel);
+        Ok(())
     }
 
     #[test]
-    fn save_and_load_round_trip() {
+    fn save_and_load_round_trip() -> io::Result<()> {
         let directory =
             std::env::temp_dir().join(format!("rustosrs-settings-{}", std::process::id()));
         let path = directory.join("editor.json");
         let mut settings = Settings::default();
-        settings.grid_zones = true;
+        settings.smooth_terrain = true;
         settings.fly_speed = 1234.0;
         settings
             .plugins
             .insert("demo".to_owned(), serde_json::json!({ "n": 1 }));
-        settings.save(&path).unwrap();
+        settings.save(&path)?;
         assert_eq!(Settings::load(&path), settings);
         let _ = fs::remove_dir_all(directory);
+        Ok(())
     }
 
     #[test]

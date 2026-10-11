@@ -29,6 +29,11 @@ impl EditorApp {
                     section(ui, "View", true, |ui| self.view_section(ui));
                     section(ui, "Shading", true, |ui| self.shading_section(ui));
                     section(ui, "Scene", true, |ui| self.scene_section(ui));
+                    self.run_plugins(|plugin, cx| {
+                        if plugin.has_properties() {
+                            section(ui, plugin.title(), true, |ui| plugin.properties(ui, cx));
+                        }
+                    });
                     section(ui, "Interface", false, |ui| self.theme_picker(ui));
                 });
             });
@@ -143,19 +148,11 @@ impl EditorApp {
         ui.weak("Defaults match RuneLite's GPU plugin. Fog uses the sky colour.");
     }
 
-    fn grid_toggles_inline(&mut self, ui: &mut egui::Ui) {
-        ui.checkbox(&mut self.grid.tiles, "Tiles");
-        ui.checkbox(&mut self.grid.zones, "Zones");
-        ui.checkbox(&mut self.grid.regions, "Regions");
-    }
-
     fn scene_section(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("Sky colour");
             ui.color_edit_button_rgb(&mut self.sky_color);
         });
-        ui.label("Grid");
-        ui.horizontal(|ui| self.grid_toggles_inline(ui));
         if ui
             .checkbox(&mut self.smooth_terrain, "Smooth terrain (not in the game)")
             .changed()

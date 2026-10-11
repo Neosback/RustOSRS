@@ -36,7 +36,11 @@ impl EditorApp {
                     ui.checkbox(&mut self.panels.properties, "Properties panel   N");
                     ui.checkbox(&mut self.panels.stats_overlay, "Statistics overlay");
                     ui.menu_button("Camera", |ui| self.camera_mode_picker(ui));
-                    ui.menu_button("Grid", |ui| self.grid_toggles(ui));
+                    self.run_plugins(|plugin, cx| {
+                        if plugin.has_menu() {
+                            ui.menu_button(plugin.title(), |ui| plugin.menu(ui, cx));
+                        }
+                    });
                     ui.separator();
                     ui.label("Plane");
                     for plane in 0..4_u8 {
@@ -67,13 +71,6 @@ impl EditorApp {
         ui.radio_value(&mut self.camera.mode, CameraMode::Orbit, "Orbit   C");
     }
 
-    /// Grid level toggles (shared by the View menu and the Properties panel).
-    pub(super) fn grid_toggles(&mut self, ui: &mut egui::Ui) {
-        ui.checkbox(&mut self.grid.tiles, "Tiles");
-        ui.checkbox(&mut self.grid.zones, "Zones (8 tiles)");
-        ui.checkbox(&mut self.grid.regions, "Regions (64 tiles)");
-    }
-
     /// Theme choices (shared by the View menu and the Properties panel).
     pub(super) fn theme_picker(&mut self, ui: &mut egui::Ui) {
         for (index, name) in crate::theme::NAMES.iter().enumerate() {
@@ -98,6 +95,13 @@ impl EditorApp {
                         ui.strong(*keys);
                         ui.label(*action);
                         ui.end_row();
+                    }
+                    for plugin in &self.plugins {
+                        for (key, action) in plugin.hotkeys() {
+                            ui.strong(key.name());
+                            ui.label(*action);
+                            ui.end_row();
+                        }
                     }
                 });
             });

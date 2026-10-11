@@ -2,13 +2,15 @@
 
 mod menu;
 mod overlay;
+mod plugins;
 mod properties;
 mod status;
 
 use crate::camera::{CameraMode, FlyCamera};
-use crate::grid::{self, GridSettings};
+use crate::grid::GridPlugin;
 use crate::hud::{Destination, FrameStats, TeleportWindow};
 use crate::pick::{self, Infos, ObjectPick, Pick};
+use crate::plugin::EditorPlugin;
 use crate::settings::{self, Settings};
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_core::coords::RegionCoord;
@@ -53,16 +55,6 @@ struct Panels {
     help: bool,
 }
 
-/// What the grid overlay geometry depends on.
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct GridKey {
-    settings: GridSettings,
-    center: (i32, i32),
-    plane: u8,
-    origin: (i32, i32),
-    infos_version: u64,
-}
-
 /// `(region, loc index)` of a picked object.
 type OutlineKey = ((i32, i32), usize);
 
@@ -85,13 +77,14 @@ pub struct EditorApp {
     fog: Fog,
     colorblind: Colorblind,
     panels: Panels,
-    grid: GridSettings,
+    /// Optional tools and overlays (see `plugin.rs`).
+    plugins: Vec<Box<dyn EditorPlugin>>,
+    /// Guide lines per plugin, merged into the renderer's line overlay.
+    plugin_lines: std::collections::BTreeMap<&'static str, Vec<osrs_render::gpu::LineVertex>>,
     /// Where settings persist (`None` disables saving).
     settings_path: Option<PathBuf>,
     saved_settings: Settings,
     settings_checked: Instant,
-    /// Inputs the grid lines were last built for (see `update_grid`).
-    grid_key: Option<GridKey>,
     /// Bumped whenever `infos` changes.
     infos_version: u64,
     smooth_terrain: bool,
@@ -177,15 +170,8 @@ impl EditorApp {
             settings_path: None,
             saved_settings: Settings::default(),
             settings_checked: Instant::now(),
-            grid: std::env::var("RUSTOSRS_GRID").map_or_else(
-                |_| GridSettings::default(),
-                |value| GridSettings {
-                    tiles: value.contains("tiles"),
-                    zones: value.contains("zones"),
-                    regions: value.contains("regions"),
-                },
-            ),
-            grid_key: None,
+            plugins: vec![Box::new(GridPlugin::new())],
+            plugin_lines: std::collections::BTreeMap::new(),
             infos_version: 0,
             panels: Panels {
                 properties: true,
@@ -250,11 +236,7 @@ impl EditorApp {
             return;
         };
         let loaded = Settings::load(&path);
-        let grid_override = std::env::var("RUSTOSRS_GRID").is_ok().then_some(self.grid);
         self.apply_settings(&loaded, ctx);
-        if let Some(grid) = grid_override {
-            self.grid = grid;
-        }
         self.saved_settings = self.settings_snapshot();
     }
 
@@ -272,14 +254,15 @@ impl EditorApp {
             colorblind_intensity: self.colorblind.intensity,
             sky_color: self.sky_color,
             smooth_terrain: self.smooth_terrain,
-            grid_tiles: self.grid.tiles,
-            grid_zones: self.grid.zones,
-            grid_regions: self.grid.regions,
             load_radius: self.stream_radius,
             fov_degrees: self.camera.fov_degrees,
             fly_speed: self.camera.speed,
             orbit_camera: self.camera.mode == CameraMode::Orbit,
-            plugins: self.saved_settings.plugins.clone(),
+            plugins: self
+                .plugins
+                .iter()
+                .filter_map(|plugin| Some((plugin.name().to_owned(), plugin.save_settings()?)))
+                .collect(),
         }
     }
 
@@ -301,11 +284,6 @@ impl EditorApp {
         };
         self.colorblind.intensity = settings.colorblind_intensity.clamp(0.0, 100.0);
         self.sky_color = settings.sky_color;
-        self.grid = GridSettings {
-            tiles: settings.grid_tiles,
-            zones: settings.grid_zones,
-            regions: settings.grid_regions,
-        };
         self.stream_radius = settings.load_radius.clamp(0, 4);
         self.camera.fov_degrees = settings.fov_degrees.clamp(30.0, 100.0);
         self.camera.speed = settings.fly_speed.clamp(50.0, 20_000.0);
@@ -321,7 +299,14 @@ impl EditorApp {
                 self.presentation_generation,
             );
         }
-        self.saved_settings.plugins = settings.plugins.clone();
+        for plugin in &mut self.plugins {
+            plugin.load_settings(
+                settings
+                    .plugins
+                    .get(plugin.name())
+                    .unwrap_or(&serde_json::Value::Null),
+            );
+        }
     }
 
     /// Save the settings when they changed (checked once a second).
@@ -556,33 +541,6 @@ impl EditorApp {
             self.infos_version += 1;
             self.animation_dirty = true;
         }
-    }
-
-    /// Rebuild the grid overlay when what it depends on changed.
-    fn update_grid(&mut self) {
-        let key = GridKey {
-            settings: self.grid,
-            center: self.camera_tile(),
-            plane: self.view_plane,
-            origin: self.renderer.render_origin(),
-            infos_version: self.infos_version,
-        };
-        if self.grid_key == Some(key) {
-            return;
-        }
-        self.grid_key = Some(key);
-        let lines = if self.grid.any() {
-            grid::build(
-                self.grid,
-                &self.infos,
-                key.center,
-                usize::from(key.plane),
-                key.origin,
-            )
-        } else {
-            Vec::new()
-        };
-        self.renderer.set_overlay_lines(&lines);
     }
 
     /// Advance animated locs to the current game cycle on the animation worker and upload the
@@ -969,6 +927,7 @@ impl eframe::App for EditorApp {
                 self.panels.properties = !self.panels.properties;
             }
         }
+        self.plugin_hotkeys(&ctx);
         if let Some((vx, vz)) = self.autofly {
             let step = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
             self.camera.x += vx * step;
@@ -982,8 +941,8 @@ impl eframe::App for EditorApp {
         self.update_animations();
         self.stats.phase("anim", phase);
         let phase = Instant::now();
-        self.update_grid();
-        self.stats.phase("grid", phase);
+        self.run_plugins(|plugin, cx| plugin.update(cx));
+        self.stats.phase("plugins", phase);
         self.peak_resident = self
             .peak_resident
             .max(self.loaded.values().flatten().count());

@@ -6,6 +6,8 @@
 //! depth-tested over the scene (see `SceneRenderer::set_overlay_lines`).
 
 use crate::pick::Infos;
+use crate::plugin::{EditorCommand, EditorPlugin, PluginContext};
+use eframe::egui;
 use osrs_render::gpu::LineVertex;
 
 const TILE_RADIUS: i32 = 24;
@@ -15,21 +17,11 @@ const REGION_RADIUS: i32 = 384;
 const LIFT: f32 = 2.0;
 
 /// Which grid levels are drawn.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct GridSettings {
     pub tiles: bool,
     pub zones: bool,
     pub regions: bool,
-}
-
-impl Default for GridSettings {
-    fn default() -> Self {
-        Self {
-            tiles: false,
-            zones: false,
-            regions: false,
-        }
-    }
 }
 
 impl GridSettings {
@@ -194,4 +186,131 @@ pub fn build(
         }
     }
     builder.lines
+}
+
+/// Inputs the grid lines were last built for.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct BuiltFor {
+    settings: GridSettings,
+    center: (i32, i32),
+    plane: u8,
+    origin: (i32, i32),
+    infos_version: u64,
+}
+
+/// The grid overlay as an editor plugin.
+pub struct GridPlugin {
+    settings: GridSettings,
+    built_for: Option<BuiltFor>,
+}
+
+impl GridPlugin {
+    pub fn new() -> Self {
+        let mut plugin = Self {
+            settings: GridSettings::default(),
+            built_for: None,
+        };
+        plugin.apply_env();
+        plugin
+    }
+
+    /// Smoke-test hook: `RUSTOSRS_GRID="tiles,zones,regions"`.
+    fn apply_env(&mut self) {
+        if let Ok(value) = std::env::var("RUSTOSRS_GRID") {
+            self.settings = GridSettings {
+                tiles: value.contains("tiles"),
+                zones: value.contains("zones"),
+                regions: value.contains("regions"),
+            };
+        }
+    }
+
+    fn toggles(&mut self, ui: &mut egui::Ui) {
+        ui.checkbox(&mut self.settings.tiles, "Tiles");
+        ui.checkbox(&mut self.settings.zones, "Zones (8 tiles)");
+        ui.checkbox(&mut self.settings.regions, "Regions (64 tiles)");
+    }
+}
+
+impl EditorPlugin for GridPlugin {
+    fn name(&self) -> &'static str {
+        "grid"
+    }
+
+    fn title(&self) -> &'static str {
+        "Grid"
+    }
+
+    fn update(&mut self, cx: &mut PluginContext) {
+        let key = BuiltFor {
+            settings: self.settings,
+            center: cx.view.camera_tile,
+            plane: cx.view.view_plane,
+            origin: cx.view.render_origin,
+            infos_version: cx.view.infos_version,
+        };
+        if self.built_for == Some(key) {
+            return;
+        }
+        self.built_for = Some(key);
+        let lines = if self.settings.any() {
+            build(
+                self.settings,
+                cx.view.infos,
+                key.center,
+                usize::from(key.plane),
+                key.origin,
+            )
+        } else {
+            Vec::new()
+        };
+        cx.send(EditorCommand::SetLines(lines));
+    }
+
+    fn has_menu(&self) -> bool {
+        true
+    }
+
+    fn menu(&mut self, ui: &mut egui::Ui, _cx: &mut PluginContext) {
+        self.toggles(ui);
+    }
+
+    fn has_properties(&self) -> bool {
+        true
+    }
+
+    fn properties(&mut self, ui: &mut egui::Ui, _cx: &mut PluginContext) {
+        self.toggles(ui);
+        ui.weak(
+            "Lines drape over the terrain; tile lines fade within 24 tiles, zones 96, regions 384.",
+        );
+    }
+
+    fn hotkeys(&self) -> &'static [(egui::Key, &'static str)] {
+        &[(egui::Key::G, "toggle the tile grid")]
+    }
+
+    fn on_hotkey(&mut self, key: egui::Key, _cx: &mut PluginContext) {
+        if key == egui::Key::G {
+            self.settings.tiles = !self.settings.tiles;
+        }
+    }
+
+    fn save_settings(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "tiles": self.settings.tiles,
+            "zones": self.settings.zones,
+            "regions": self.settings.regions,
+        }))
+    }
+
+    fn load_settings(&mut self, value: &serde_json::Value) {
+        let flag = |name: &str| value.get(name).and_then(serde_json::Value::as_bool);
+        self.settings = GridSettings {
+            tiles: flag("tiles").unwrap_or(false),
+            zones: flag("zones").unwrap_or(false),
+            regions: flag("regions").unwrap_or(false),
+        };
+        self.apply_env();
+    }
 }
