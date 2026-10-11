@@ -162,8 +162,18 @@ pub fn pick(infos: &Infos, ray: &Ray, view_plane: u8) -> Pick {
                 continue;
             }
             for slot in &loc.slots {
-                let Some(distance) = ray_box(ray, slot.min, slot.max) else {
+                let Some(box_distance) = ray_box(ray, slot.min, slot.max) else {
                     continue;
+                };
+                // The box is only a coarse filter: thin plates on diagonal walls fill most of
+                // their box. Hit the real triangles when the slot has them.
+                let distance = if slot.triangles.is_empty() {
+                    box_distance
+                } else {
+                    match ray_triangles(ray, slot.origin, &slot.triangles) {
+                        Some(distance) => distance,
+                        None => continue,
+                    }
                 };
                 // Ignore boxes that are only reached behind the terrain.
                 if terrain.is_some_and(|ground| distance > ground + 16.0) {
@@ -192,6 +202,54 @@ pub fn pick(infos: &Infos, ray: &Ray, view_plane: u8) -> Pick {
         object: best.map(|(_, _, pick)| pick),
         tile,
     }
+}
+
+/// Nearest hit of `ray` with the (double-sided) triangles of a slot placed at `origin`.
+fn ray_triangles(ray: &Ray, origin: [i32; 3], triangles: &[[[i16; 3]; 3]]) -> Option<f64> {
+    let origin = [f64::from(origin[0]), f64::from(origin[1]), f64::from(origin[2])];
+    let point = |p: [i16; 3]| {
+        [
+            origin[0] + f64::from(p[0]),
+            origin[1] + f64::from(p[1]),
+            origin[2] + f64::from(p[2]),
+        ]
+    };
+    let sub = |a: [f64; 3], b: [f64; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    let cross = |a: [f64; 3], b: [f64; 3]| {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let mut nearest: Option<f64> = None;
+    for triangle in triangles {
+        let (a, b, c) = (point(triangle[0]), point(triangle[1]), point(triangle[2]));
+        let edge1 = sub(b, a);
+        let edge2 = sub(c, a);
+        let p = cross(ray.dir, edge2);
+        let determinant = dot(edge1, p);
+        if determinant.abs() < 1e-9 {
+            continue;
+        }
+        let inverse = 1.0 / determinant;
+        let t_vec = sub(ray.origin, a);
+        let u = dot(t_vec, p) * inverse;
+        if !(0.0..=1.0).contains(&u) {
+            continue;
+        }
+        let q = cross(t_vec, edge1);
+        let v = dot(ray.dir, q) * inverse;
+        if v < 0.0 || u + v > 1.0 {
+            continue;
+        }
+        let t = dot(edge2, q) * inverse;
+        if t > 0.0 && nearest.is_none_or(|best| t < best) {
+            nearest = Some(t);
+        }
+    }
+    nearest
 }
 
 /// Project a world point to viewport pixels (`None` behind the camera).
@@ -566,11 +624,23 @@ mod tests {
             let Some(slot) = loc.slots.first() else {
                 continue;
             };
-            let center = [
-                f64::from(slot.min[0] + slot.max[0]) / 2.0,
-                f64::from(slot.min[1] + slot.max[1]) / 2.0,
-                f64::from(slot.min[2] + slot.max[2]) / 2.0,
-            ];
+            // Aim at the centroid of the slot's first drawn triangle (the box centre of a hollow
+            // or thin model may lie in empty space).
+            let center = match slot.triangles.first() {
+                Some(triangle) => {
+                    let mut c = [0.0_f64; 3];
+                    for axis in 0..3 {
+                        c[axis] = f64::from(slot.origin[axis])
+                            + triangle.iter().map(|p| f64::from(p[axis])).sum::<f64>() / 3.0;
+                    }
+                    c
+                }
+                None => [
+                    f64::from(slot.min[0] + slot.max[0]) / 2.0,
+                    f64::from(slot.min[1] + slot.max[1]) / 2.0,
+                    f64::from(slot.min[2] + slot.max[2]) / 2.0,
+                ],
+            };
             let mut camera = FlyCamera::new(0.0, 0.0, 0.0);
             camera.pitch = 0.9;
             // 700 units south and 900 up, looking north at the centre.

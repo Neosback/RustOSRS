@@ -108,7 +108,12 @@ fn snap_diagonal_decorations(
     fn used_points(model: &osrs_core::model_construction::AssembledModel) -> Vec<(i32, i32)> {
         let vertices = model.vertices();
         let mut used = vec![false; vertices.len()];
-        for face in model.faces() {
+        let render_types = model.face_render_types();
+        for (face_index, face) in model.faces().iter().enumerate() {
+            // Render types 2 and 3 are never drawn (end caps, texture-axis carriers).
+            if render_types.is_some_and(|types| matches!(types[face_index], 2 | 3)) {
+                continue;
+            }
             for index in [face.a.get(), face.b.get(), face.c.get()] {
                 if let Some(flag) = used.get_mut(index as usize) {
                     *flag = true;

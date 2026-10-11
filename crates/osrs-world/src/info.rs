@@ -68,6 +68,8 @@ pub struct SlotInfo {
     pub hidden_faces: usize,
     /// Highest depth bias on any face.
     pub max_bias: i32,
+    /// Drawn triangles as offsets from `origin` (hidden faces skipped), for exact picking.
+    pub triangles: Vec<[[i16; 3]; 3]>,
 }
 
 /// One placed loc.
@@ -141,6 +143,50 @@ impl RegionInfo {
             .flatten()
             .filter_map(|index| self.locs.get(*index as usize))
     }
+}
+
+/// Drawn triangles of `model` after the instance rotation, relative to the model origin.
+fn model_triangles(model: &ReferenceLitModel, rotation: u16) -> Vec<[[i16; 3]; 3]> {
+    let (sin, cos) = if rotation == 0 {
+        (0, 0)
+    } else {
+        let tables = osrs_core::trig::trig_tables();
+        let index = usize::from(rotation) & 2047;
+        (tables.sine(index), tables.cosine(index))
+    };
+    let points: Vec<[i16; 3]> = model
+        .vertices
+        .iter()
+        .map(|vertex| {
+            let (mut x, y, mut z) = (vertex.x, vertex.y, vertex.z);
+            if rotation != 0 {
+                let original_x = x;
+                x = (z
+                    .wrapping_mul(sin)
+                    .wrapping_add(original_x.wrapping_mul(cos)))
+                    >> 16;
+                z = (z
+                    .wrapping_mul(cos)
+                    .wrapping_sub(original_x.wrapping_mul(sin)))
+                    >> 16;
+            }
+            let clamp = |value: i32| value.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+            [clamp(x), clamp(y), clamp(z)]
+        })
+        .collect();
+    model
+        .faces
+        .iter()
+        .zip(&model.face_colors)
+        .filter(|(_, colors)| colors.c != -2)
+        .filter_map(|(face, _)| {
+            Some([
+                *points.get(face.a.get() as usize)?,
+                *points.get(face.b.get() as usize)?,
+                *points.get(face.c.get() as usize)?,
+            ])
+        })
+        .collect()
 }
 
 fn model_bounds(
@@ -289,6 +335,7 @@ pub fn extract_region_info(
                 }
                 None => (origin, origin, 0, 0),
             };
+            let triangles = model.map_or_else(Vec::new, |model| model_triangles(model, slot.rotation));
             let (biased_faces, alpha_faces, textured_faces, hidden_faces, max_bias) = model
                 .map(|model| {
                     let biased = model
@@ -328,6 +375,7 @@ pub fn extract_region_info(
                 textured_faces,
                 hidden_faces,
                 max_bias,
+                triangles,
             });
         }
         let tile = (base_x + loc.tile.x as i32, base_y + loc.tile.y as i32);
