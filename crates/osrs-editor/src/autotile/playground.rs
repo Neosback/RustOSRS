@@ -21,8 +21,8 @@
 use super::*;
 use std::collections::{HashSet, VecDeque};
 
-const AREA_TILES: i32 = 36;
-const SHEET_PX: i32 = 8;
+const AREA_TILES: i32 = 56;
+const SHEET_PX: i32 = 10;
 
 pub struct Case {
     pub points: Vec<(f32, f32)>,
@@ -156,11 +156,12 @@ pub fn evaluate(
     let quality = measure(&points, params, &result);
     let shift = {
         let tiled = path_points(&points, params);
-        tiled
+        let points_moved = tiled
             .iter()
             .zip(&case.points)
             .map(|(a, b)| dist(*a, *b))
-            .fold(0.0_f32, f32::max)
+            .fold(0.0_f32, f32::max);
+        points_moved
     };
     (
         Score {
@@ -179,7 +180,7 @@ pub fn evaluate(
 /// The control points the tiler actually used (after clean-direction nudging).
 fn path_points(points: &[(f32, f32)], params: PathParams) -> Vec<(f32, f32)> {
     if params.snap > 0.0 && !params.closed && points.len() >= 2 {
-        snap_points(points, params.snap)
+        snap_points(points, params.snap, params.curve)
     } else {
         points.to_vec()
     }
@@ -589,5 +590,45 @@ fn playground_user_paths() {
             print_row(&format!("pasted {n}, refine {refined}"), s);
         }
         let _ = sheet(&cases, &results, 4).save(format!("/tmp/playground-user-{refined}.png"));
+    }
+}
+
+#[test]
+#[ignore = "bake-off: which combination of the ideas scores best"]
+fn playground_bakeoff() {
+    let sets: Vec<(&str, Vec<Case>)> = vec![
+        ("mixed", cases(48, 41)),
+        ("straight", straight_cases()),
+        ("pasted", user_cases()),
+    ];
+    let base = Tuning::default();
+    // (label, snap, refine, tuning)
+    let variants: Vec<(&str, f32, bool, Tuning)> = vec![
+        ("plain", 0.0, false, base),
+        ("refine", 0.0, true, base),
+        ("snap 1.0", 1.0, false, base),
+        ("refine + snap 0.45", 0.45, true, base),
+        ("refine + snap 1.0", 1.0, true, base),
+    ];
+    for (name, cases) in &sets {
+        println!("--- {name} ({} paths)", cases.len());
+        for (label, snap, refined, tuning) in &variants {
+            let with: Vec<Case> = cases
+                .iter()
+                .map(|case| Case {
+                    points: case.points.clone(),
+                    params: PathParams {
+                        snap: *snap,
+                        ..case.params
+                    },
+                })
+                .collect();
+            let (scores, results) = run_all_with(&with, tuning, *refined);
+            print_row(label, &mean(&scores));
+            if *name == "pasted" {
+                let tag = label.replace([' ', '+', ',', '(', ')'], "_");
+                let _ = sheet(&with, &results, 4).save(format!("/tmp/playground-pasted-{tag}.png"));
+            }
+        }
     }
 }

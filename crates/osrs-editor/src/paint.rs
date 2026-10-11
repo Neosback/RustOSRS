@@ -168,7 +168,7 @@ impl Default for SplineSettings {
             closed: false,
             ramp: false,
             soften: 0.0,
-            snap: 0.75,
+            snap: 1.0,
         }
     }
 }

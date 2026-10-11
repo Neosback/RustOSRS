@@ -488,16 +488,28 @@ fn nearest_clean(angle: f32) -> f32 {
     clippy::needless_range_loop,
     reason = "small dense elimination reads clearer indexed"
 )]
-pub fn snap_points(points: &[(f32, f32)], reach: f32) -> Vec<(f32, f32)> {
+pub fn snap_points(points: &[(f32, f32)], reach: f32, curve: CurveKind) -> Vec<(f32, f32)> {
     let count = points.len();
     if count < 2 || reach <= 0.0 {
         return points.to_vec();
     }
     // The wanted direction of each run (a unit normal), `None` for short runs.
+    // Along a curve a run is only straightened where the curve is nearly straight there (a turn of
+    // more than 25 degrees at either end of the run is a bend, and moving its points reshapes the
+    // bend, which is worse than the stair it would save); polylines are straight everywhere.
+    let heading = |i: usize| (points[i + 1].1 - points[i].1).atan2(points[i + 1].0 - points[i].0);
+    let turn = |i: usize| {
+        let d = heading(i) - heading(i - 1);
+        d.sin().atan2(d.cos()).abs()
+    };
+    let gentle = |i: usize| {
+        curve == CurveKind::Lines
+            || ((i == 0 || turn(i) <= 0.44) && (i + 2 >= count || turn(i + 1) <= 0.44))
+    };
     let mut normals: Vec<Option<(f32, f32)>> = (0..count - 1)
         .map(|i| {
             let (dx, dy) = (points[i + 1].0 - points[i].0, points[i + 1].1 - points[i].1);
-            if (dx * dx + dy * dy).sqrt() < 2.0 {
+            if (dx * dx + dy * dy).sqrt() < 2.0 || !gentle(i) {
                 return None;
             }
             let angle = nearest_clean(dy.atan2(dx));
@@ -593,7 +605,7 @@ pub fn snap_points(points: &[(f32, f32)], reach: f32) -> Vec<(f32, f32)> {
 pub fn path_polyline(points: &[(f32, f32)], params: PathParams, step: f32) -> Vec<(f32, f32)> {
     let snapped;
     let points = if params.snap > 0.0 && !params.closed && points.len() >= 2 {
-        snapped = snap_points(points, params.snap);
+        snapped = snap_points(points, params.snap, params.curve);
         &snapped[..]
     } else {
         points

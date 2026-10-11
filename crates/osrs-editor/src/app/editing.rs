@@ -374,7 +374,10 @@ impl EditorApp {
                     }
                 }
             }
-            if brush.underlay.armed {
+            // The underlay goes under whole tiles only: an edge piece shows its tile's underlay
+            // wherever the overlay stops, and painting it there would put a tile-shaped fringe of
+            // the path's colour around the neat overlay outline.
+            if brush.underlay.armed && !matches!(choice, TileChoice::Shape { .. }) {
                 after.underlay = match brush.underlay.fill {
                     Fill::Set(id) => id,
                     Fill::Clear => 0,

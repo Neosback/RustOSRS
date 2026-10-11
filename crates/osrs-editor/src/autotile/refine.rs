@@ -166,7 +166,7 @@ pub(super) fn wobble(
 pub(super) fn refine(
     points: &[(f32, f32)],
     params: PathParams,
-    existing: &dyn Fn((i32, i32)) -> Option<(u8, u8)>,
+    existing: &(dyn Fn((i32, i32)) -> Option<(u8, u8)> + Sync),
     tuning: &Tuning,
 ) -> (Vec<(f32, f32)>, PathParams) {
     if points.is_empty() {
@@ -185,38 +185,72 @@ pub(super) fn refine(
         // Moving costs a little, so a path that is already clean stays where it was put.
         quality.cost() + 0.4 * (dx.hypot(dy) + 0.5 * (width - params.width).abs())
     };
-    let mut best = (
-        0.0_f32,
-        0.0_f32,
-        params.width,
-        evaluate(0.0, 0.0, params.width),
-    );
-    let consider = |dx: f32, dy: f32, width: f32, best: &mut (f32, f32, f32, f32)| {
-        let cost = evaluate(dx, dy, width);
-        if cost < best.3 {
-            *best = (dx, dy, width, cost);
+    // Candidates are independent, so each round is scored across the cores (the browser has one).
+    let score_all = |candidates: &[(f32, f32, f32)]| -> Vec<f32> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let threads = std::thread::available_parallelism().map_or(1, usize::from);
+            let chunk = candidates.len().div_ceil(threads).max(1);
+            std::thread::scope(|scope| {
+                let handles: Vec<_> = candidates
+                    .chunks(chunk)
+                    .map(|part| {
+                        let evaluate = &evaluate;
+                        scope.spawn(move || {
+                            part.iter()
+                                .map(|(dx, dy, w)| evaluate(*dx, *dy, *w))
+                                .collect::<Vec<f32>>()
+                        })
+                    })
+                    .collect();
+                handles
+                    .into_iter()
+                    .flat_map(|h| h.join().unwrap_or_default())
+                    .collect()
+            })
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            candidates
+                .iter()
+                .map(|(dx, dy, w)| evaluate(*dx, *dy, *w))
+                .collect()
         }
     };
+    let mut best = (0.0_f32, 0.0_f32, params.width);
+    let mut best_cost = evaluate(0.0, 0.0, params.width);
+    let mut round = |candidates: Vec<(f32, f32, f32)>| {
+        let costs = score_all(&candidates);
+        for (candidate, cost) in candidates.iter().zip(costs) {
+            if cost < best_cost {
+                best = *candidate;
+                best_cost = cost;
+            }
+        }
+        best
+    };
+    let mut first = Vec::new();
     for dx in [-0.375, -0.125, 0.125, 0.375] {
         for dy in [-0.375, -0.125, 0.125, 0.375] {
-            consider(dx, dy, params.width, &mut best);
+            first.push((dx, dy, params.width));
         }
     }
-    let centre = best;
+    let centre = round(first);
+    let mut second = Vec::new();
     for ox in [-0.0625, 0.0, 0.0625] {
         for oy in [-0.0625, 0.0, 0.0625] {
             if ox != 0.0 || oy != 0.0 {
-                consider(centre.0 + ox, centre.1 + oy, params.width, &mut best);
+                second.push((centre.0 + ox, centre.1 + oy, params.width));
             }
         }
     }
-    let at = best;
-    for dw in [-0.25, 0.25] {
-        let width = (params.width + dw).max(1.0);
-        if (width - params.width).abs() > 1e-3 {
-            consider(at.0, at.1, width, &mut best);
-        }
-    }
+    let at = round(second);
+    let widths: Vec<(f32, f32, f32)> = [-0.25_f32, 0.25]
+        .iter()
+        .map(|dw| (at.0, at.1, (params.width + dw).max(1.0)))
+        .filter(|(_, _, w)| (w - params.width).abs() > 1e-3)
+        .collect();
+    let best = round(widths);
     let moved = points
         .iter()
         .map(|p| (p.0 + best.0, p.1 + best.1))
@@ -238,7 +272,7 @@ pub type Refined = (Vec<(f32, f32)>, PathParams, Vec<((i32, i32), TileChoice)>);
 pub fn generate_refined(
     points: &[(f32, f32)],
     params: PathParams,
-    existing: &dyn Fn((i32, i32)) -> Option<(u8, u8)>,
+    existing: &(dyn Fn((i32, i32)) -> Option<(u8, u8)> + Sync),
     tuning: &Tuning,
 ) -> Refined {
     let (moved, adjusted) = refine(points, params, existing, tuning);

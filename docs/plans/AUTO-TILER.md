@@ -217,3 +217,22 @@ The editor's **Copy** button (spline drawer) puts the path's details on the clip
 (points, width, options) that the playground reads back from `crates/osrs-editor/data/user-paths.txt`
 (`playground_user_paths` draws them as drawn and refined), the points as tiled, ground heights and the made
 tiles.
+
+### Bake-off (2026-10-11, `playground_bakeoff`)
+
+48 mixed random paths, 48 straight runs at every angle, and the first pasted editor path (16 points, a
+scribble). Means of wobble (tiles, lower is better) with the points' average movement:
+
+| | mixed | straight | pasted |
+|---|---|---|---|
+| plain | 0.122 | 0.115 | 0.128 |
+| refine (slide up to 0.375, widen 0.25) | 0.102 | 0.101 | 0.118 |
+| refine + clean-angle snap 1.0 | 0.091 (moved 0.45) | 0.074 (0.43) | 0.118 (0.06) |
+| fair (ease bends tighter than the band) | 0.131 | 0.115 | 0.135 |
+| tolerance 0.3 / 600 sweeps | worse / same | | |
+
+Snapping only straightens runs that are nearly straight (turns of 25 degrees or less at both ends; polylines
+always): on the scribble it would otherwise reshape the bends and score worse. Easing tight bends made things
+worse and was removed. The refine search scores its candidates on all cores and takes about 0.1 s (0.7 s for the
+720-tile scribble) off the UI thread. Edge pieces no longer take the brush's underlay (only whole tiles do), so
+no tile-shaped fringe of the path's underlay shows beyond the overlay outline.

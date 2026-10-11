@@ -175,25 +175,7 @@ impl EditorApp {
                     // Snapshot what the search needs from the editor: the path and the tiles
                     // around it that already carry the overlay.
                     let points = self.spline.points.clone();
-                    let reach = params.width + 8.0;
-                    let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-                    for p in &points {
-                        x0 = x0.min(p.0);
-                        y0 = y0.min(p.1);
-                        x1 = x1.max(p.0);
-                        y1 = y1.max(p.1);
-                    }
-                    let mut known: std::collections::HashMap<(i32, i32), (u8, u8)> =
-                        std::collections::HashMap::new();
-                    if overlay.is_some() {
-                        for x in (x0 - reach).floor() as i32..=(x1 + reach).ceil() as i32 {
-                            for y in (y0 - reach).floor() as i32..=(y1 + reach).ceil() as i32 {
-                                if let Some(found) = existing((x, y)) {
-                                    known.insert((x, y), found);
-                                }
-                            }
-                        }
-                    }
+                    let known = self.overlay_snapshot(overlay, &points, params.width);
                     let (sender, receiver) = std::sync::mpsc::channel();
                     self.spline.job = Some((key, receiver));
                     let repaint = self.spline.ctx.clone();
@@ -209,7 +191,9 @@ impl EditorApp {
                 }
             }
         } else if refine {
-            autotile::generate_refined(&self.spline.points, params, &existing, &tuning)
+            let known = self.overlay_snapshot(overlay, &self.spline.points, params.width);
+            let lookup = |tile: (i32, i32)| known.get(&tile).copied();
+            autotile::generate_refined(&self.spline.points, params, &lookup, &tuning)
         } else {
             refined_now = false;
             (
@@ -304,6 +288,39 @@ impl EditorApp {
             text.push('\n');
         }
         text
+    }
+
+    /// The tiles around the path that already carry `overlay`, with their shape and rotation (a
+    /// snapshot the background search can read).
+    fn overlay_snapshot(
+        &self,
+        overlay: Option<u16>,
+        points: &[(f32, f32)],
+        width: f32,
+    ) -> std::collections::HashMap<(i32, i32), (u8, u8)> {
+        let mut known = std::collections::HashMap::new();
+        let Some(id) = overlay else {
+            return known;
+        };
+        let reach = width + 8.0;
+        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for p in points {
+            x0 = x0.min(p.0);
+            y0 = y0.min(p.1);
+            x1 = x1.max(p.0);
+            y1 = y1.max(p.1);
+        }
+        let plane = self.view_plane;
+        for x in (x0 - reach).floor() as i32..=(x1 + reach).ceil() as i32 {
+            for y in (y0 - reach).floor() as i32..=(y1 + reach).ceil() as i32 {
+                if let Some(values) = self.current_tile_values((plane, x, y))
+                    && values.overlay == id
+                {
+                    known.insert((x, y), (values.shape, values.rotation));
+                }
+            }
+        }
+        known
     }
 
     /// The points and options the previewed tiles were made from (so the drawn curve matches them).
