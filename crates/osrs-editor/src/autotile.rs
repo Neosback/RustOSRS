@@ -631,9 +631,6 @@ pub fn generate(
             occupied.insert((point.0.floor() as i32, point.1.floor() as i32));
         }
     }
-    let is_part = |tile: (i32, i32), occupied: &std::collections::BTreeSet<(i32, i32)>| {
-        occupied.contains(&tile) || existing(tile).is_some()
-    };
     if params.style == EdgeStyle::Whole {
         return occupied
             .iter()
