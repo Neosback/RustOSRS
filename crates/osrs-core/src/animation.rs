@@ -34,6 +34,16 @@ impl SequencePlaybackState {
         }
     }
 
+    /// Start at `frame` / `frame_cycle` (the dynamic-object constructor's randomized start).
+    pub const fn starting_at(frame: u32, frame_cycle: i32) -> Self {
+        Self {
+            frame,
+            frame_cycle,
+            completed_loops: 0,
+            active: true,
+        }
+    }
+
     pub const fn is_active(self) -> bool {
         self.active
     }

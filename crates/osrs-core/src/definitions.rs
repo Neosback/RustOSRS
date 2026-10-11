@@ -163,6 +163,9 @@ pub struct ObjectDefinition {
     pub full_recolor: Option<u16>,
     /// Opcode 96: ground raise byte (`raise`). Decoded; render semantics unverified.
     pub ground_raise: u8,
+    /// `boolean3` of the client's `ObjectComposition` (default true, cleared by opcode 89): a
+    /// looping animation starts at a random frame and cycle so neighbours are out of step.
+    pub random_animation_start: bool,
     pub animation: Option<SequenceId>,
     pub ambient: i16,
     pub contrast: i16,

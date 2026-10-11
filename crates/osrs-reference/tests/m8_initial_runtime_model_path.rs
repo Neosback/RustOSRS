@@ -113,6 +113,7 @@ fn object_definition() -> Result<ObjectDefinition, Box<dyn Error>> {
         contour_clip: None,
         full_recolor: None,
         ground_raise: 0,
+        random_animation_start: true,
         animation: None,
         ambient: 3,
         contrast: -4,

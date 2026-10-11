@@ -288,6 +288,7 @@ fn object_definition(
         contour_clip,
         full_recolor: None,
         ground_raise: 0,
+        random_animation_start: true,
         animation: None,
         ambient: 0,
         contrast: 0,

@@ -460,6 +460,7 @@ fn build_dynamic(
         frames,
         orientation: request.orientation,
         contour,
+        random_start: original.random_animation_start,
     })))
 }
 

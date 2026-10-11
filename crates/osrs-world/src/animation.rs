@@ -16,7 +16,11 @@ use osrs_core::{
     lighting::ReferenceLitModel,
 };
 use osrs_render::{ModelPlacement, SceneGeometry};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, hash_map::DefaultHasher},
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 /// Ground contour inputs of one animated loc.
 #[derive(Debug, Clone)]
@@ -39,6 +43,8 @@ pub struct AnimatedModel {
     /// Loc orientation used by the pose's pre/post rotation.
     pub orientation: u8,
     pub contour: Option<AnimatedContour>,
+    /// Looping sequences start at a random frame (`ObjectComposition.boolean3`).
+    pub random_start: bool,
 }
 
 /// One placed animated model slot.
@@ -60,6 +66,37 @@ struct Live {
     state: SequencePlaybackState,
     /// Frame index last emitted; `None` when playback stopped.
     frame: Option<u32>,
+}
+
+/// Start state of a freshly placed animated loc. `DynamicObject`'s constructor starts looping
+/// sequences (`frameCount != -1`) of objects without opcode 89 at a random frame and a random cycle
+/// inside it, so neighbouring fires and torches are out of step. The client uses `Math.random()`;
+/// a hash of the placement keeps rebuilds of the same region stable.
+fn initial_playback(instance: &AnimatedInstance) -> (SequencePlaybackState, u32) {
+    let sequence = &instance.model.sequence;
+    let eligible = instance.model.random_start
+        && sequence.frame_step.is_some()
+        && sequence.skeletal_animation.is_none()
+        && !sequence.frame_delays.is_empty();
+    if !eligible {
+        return (SequencePlaybackState::new(), 0);
+    }
+    let mut hasher = DefaultHasher::new();
+    (
+        instance.zone,
+        instance.local,
+        instance.level,
+        sequence.identity.id.get(),
+    )
+        .hash(&mut hasher);
+    let bits = hasher.finish();
+    let frame = (bits % sequence.frame_delays.len() as u64) as usize;
+    let delay = u64::from(sequence.frame_delays[frame]).max(1);
+    let cycle = ((bits >> 32) % delay) as i32;
+    (
+        SequencePlaybackState::starting_at(frame as u32, cycle),
+        frame as u32,
+    )
 }
 
 /// Playback state for every resident region's animated locs.
@@ -104,10 +141,13 @@ impl AnimationSystem {
         }
         let live = instances
             .into_iter()
-            .map(|instance| Live {
-                instance,
-                state: SequencePlaybackState::new(),
-                frame: Some(0),
+            .map(|instance| {
+                let (state, frame) = initial_playback(&instance);
+                Live {
+                    instance,
+                    state,
+                    frame: Some(frame),
+                }
             })
             .collect();
         self.regions.insert(key, live);
@@ -127,13 +167,9 @@ impl AnimationSystem {
         for live in self.regions.values_mut().flatten() {
             let model = &live.instance.model;
             let result = advance_dynamic_sequence(&model.sequence, &mut live.state, cycles);
+            // A sequence without a loop-back step plays once; `DynamicObject.getModel` then
+            // resets it and the loc shows its static, unposed model from then on.
             let frame = match result {
-                Ok(_) if live.state.frame().is_none() => {
-                    // A sequence without a loop-back step finishes and the client stops it.
-                    // Placed scenery is expected to keep cycling, so restart it from frame 0.
-                    live.state = SequencePlaybackState::new();
-                    live.state.frame()
-                }
                 Ok(_) => live.state.frame(),
                 Err(_) => {
                     live.state.reset();

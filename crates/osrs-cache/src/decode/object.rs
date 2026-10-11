@@ -45,6 +45,7 @@ pub fn decode_object_definition(
     let mut contour_clip = None;
     let mut full_recolor = None;
     let mut ground_raise = 0_u8;
+    let mut random_animation_start = true;
     let mut animation = None;
     let mut ambient = 0_i16;
     let mut contrast = 0_i16;
@@ -136,7 +137,8 @@ pub fn decode_object_definition(
             79 => consume_random_sounds(&mut reader, object_sound_layout_220_plus)?,
             81 => contour_clip = Some(u32::from(reader.read_u8()?) * 256),
             82 => map_icon = Some(MapIconId::new(u32::from(reader.read_u16_be()?))),
-            89 | 90 | 94 => {
+            89 => random_animation_start = false,
+            90 | 94 => {
                 // Verified target booleans/no-op metadata with no canonical
                 // consumer in M2's ObjectDefinition.
             }
@@ -191,6 +193,7 @@ pub fn decode_object_definition(
         contour_clip,
         full_recolor,
         ground_raise,
+        random_animation_start,
         animation,
         ambient,
         contrast,
