@@ -19,6 +19,8 @@ jobs:
       - name: Apply flow-map patch
         run: python3 scripts/apply_hd_flow_map_parity.py
       - name: Format
+        run: cargo fmt --all
+      - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Check workspace
         run: cargo check --locked --workspace --all-targets --all-features
