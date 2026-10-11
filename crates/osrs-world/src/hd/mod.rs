@@ -5,6 +5,7 @@
 //! [`terrain`] and [`model`] turn terrain tiles and loc models into the HD vertex stream.
 
 pub mod extract;
+pub mod gpu;
 pub mod model;
 pub mod procedural;
 pub mod terrain;

@@ -7,7 +7,7 @@
 //! all opaque geometry). Output is a non-sRGB `Rgba8Unorm` target so values reach the
 //! framebuffer unconverted, like the reference's default framebuffer.
 
-use crate::{PackedVertex, SceneGeometry};
+use crate::{HdVertex, PackedVertex, SceneGeometry};
 use bytemuck::{Pod, Zeroable};
 use std::{error::Error, fmt};
 use wgpu::util::DeviceExt;
@@ -30,7 +30,7 @@ mod profile;
 mod timing;
 
 pub use overlay::LineVertex;
-pub use profile::{HdParams, RenderProfile};
+pub use profile::{HdLighting, HdParams, RenderProfile};
 
 use frame_graph::{FrameGraph, TransientDesc, TransientPool};
 
@@ -274,6 +274,9 @@ struct GpuZone {
     bind_group: wgpu::BindGroup,
     opaque: Option<wgpu::Buffer>,
     alpha: Option<wgpu::Buffer>,
+    /// HD vertex streams parallel to `opaque` / `alpha` (`None` for Reference geometry).
+    opaque_hd: Option<wgpu::Buffer>,
+    alpha_hd: Option<wgpu::Buffer>,
     opaque_ranges: Vec<DrawRange>,
     alpha_models: Vec<GpuAlphaModel>,
 }
@@ -294,6 +297,15 @@ struct ScenePassInputs<'a> {
     alpha_draws: &'a [AlphaDraw],
     alpha_index_buffer: Option<&'a wgpu::Buffer>,
     params: &'a FrameParams,
+    /// The HD scene shader and its resources (HD profile with materials loaded).
+    hd: Option<HdDraw<'a>>,
+}
+
+/// What the scene pass needs to draw zones that carry HD vertex data.
+#[derive(Clone, Copy)]
+struct HdDraw<'a> {
+    pipelines: &'a ScenePipelines,
+    bind_group: &'a wgpu::BindGroup,
 }
 
 /// Opaque and alpha scene pipelines for one colour format.
@@ -304,8 +316,17 @@ struct ScenePipelines {
 
 /// GPU objects only the HD profile needs.
 struct HdResources {
+    /// Reference shading into the HDR target, for zones without HD vertex data.
     pipelines: ScenePipelines,
+    /// The HD scene shader (two vertex buffers per draw).
+    scene: ScenePipelines,
     post: hd::post::PostPass,
+}
+
+/// Material table, texture array and lighting bound for the HD scene shader.
+struct HdBinding {
+    bind_group: wgpu::BindGroup,
+    textures: hd::materials::MaterialTextureArray,
 }
 
 fn build_scene_pipelines(
@@ -313,6 +334,7 @@ fn build_scene_pipelines(
     shader: &wgpu::ShaderModule,
     pipeline_layout: &wgpu::PipelineLayout,
     format: wgpu::TextureFormat,
+    hd_stream: bool,
 ) -> ScenePipelines {
     let vertex_attributes = [
         wgpu::VertexAttribute {
@@ -336,6 +358,42 @@ fn build_scene_pipelines(
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &vertex_attributes,
     };
+    // The HD stream: octahedral normal, uv, packed corner colours / materials / water data.
+    let hd_attributes = [
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Snorm16x2,
+            offset: 0,
+            shader_location: 3,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x2,
+            offset: 4,
+            shader_location: 4,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Uint16x4,
+            offset: 12,
+            shader_location: 5,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Uint16x4,
+            offset: 20,
+            shader_location: 6,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Uint16x4,
+            offset: 28,
+            shader_location: 7,
+        },
+    ];
+    let mut vertex_buffers = vec![Some(vertex_layout.clone())];
+    if hd_stream {
+        vertex_buffers.push(Some(wgpu::VertexBufferLayout {
+            array_stride: HdVertex::SIZE as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &hd_attributes,
+        }));
+    }
 
     let make_pipeline = |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -345,7 +403,7 @@ fn build_scene_pipelines(
                 module: shader,
                 entry_point: Some("vs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[Some(vertex_layout.clone())],
+                buffers: &vertex_buffers,
             },
             fragment: Some(wgpu::FragmentState {
                 module: shader,
@@ -413,6 +471,10 @@ pub struct SceneRenderer {
     /// HD pipelines, built the first time an HD frame is encoded.
     hd: std::cell::OnceCell<HdResources>,
     hd_params: HdParams,
+    hd_lighting: HdLighting,
+    hd_layout: wgpu::BindGroupLayout,
+    hd_env_buffer: wgpu::Buffer,
+    hd_binding: Option<HdBinding>,
     /// Transient textures of the HD frame graph (HDR colour, its MSAA and depth targets).
     transients: std::cell::RefCell<TransientPool>,
     globals_buffer: wgpu::Buffer,
@@ -519,7 +581,8 @@ impl SceneRenderer {
             immediate_size: 0,
         });
 
-        let pipelines = build_scene_pipelines(&device, &shader, &pipeline_layout, COLOR_FORMAT);
+        let pipelines =
+            build_scene_pipelines(&device, &shader, &pipeline_layout, COLOR_FORMAT, false);
 
         let lines = overlay::LineOverlay::new(&device, &globals_layout);
         let globals_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -530,6 +593,13 @@ impl SceneRenderer {
         });
         let globals_bind_group =
             build_globals_bind_group(&device, &queue, &globals_layout, &globals_buffer, &[]);
+        let hd_layout = hd::layout::scene_bind_group_layout(&device);
+        let hd_env_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("hd-environment"),
+            size: std::mem::size_of::<hd::layout::HdEnvironmentUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
         Self {
             device,
@@ -539,6 +609,10 @@ impl SceneRenderer {
             scene_layout: pipeline_layout,
             hd: std::cell::OnceCell::new(),
             hd_params: HdParams::default(),
+            hd_lighting: HdLighting::default(),
+            hd_layout,
+            hd_env_buffer,
+            hd_binding: None,
             transients: std::cell::RefCell::new(TransientPool::default()),
             globals_buffer,
             globals_layout,
@@ -617,14 +691,17 @@ impl SceneRenderer {
             .collect();
         for zone in &geometry.zones {
             let world_origin = zone.origin();
-            let (old_buffers, old_opaque, old_alpha) = match reusable.remove(&world_origin) {
-                Some(old) => (
-                    Some((old.zone_buffer, old.bind_group)),
-                    old.opaque,
-                    old.alpha,
-                ),
-                None => (None, None, None),
-            };
+            let (old_buffers, old_opaque, old_alpha, old_opaque_hd, old_alpha_hd) =
+                match reusable.remove(&world_origin) {
+                    Some(old) => (
+                        Some((old.zone_buffer, old.bind_group)),
+                        old.opaque,
+                        old.alpha,
+                        old.opaque_hd,
+                        old.alpha_hd,
+                    ),
+                    None => (None, None, None, None, None),
+                };
             let zone_uniform = ZoneUniform {
                 base: [
                     (world_origin.0 - self.render_origin.0) as f32,
@@ -661,6 +738,8 @@ impl SceneRenderer {
 
             let mut opaque: Vec<PackedVertex> = Vec::new();
             let mut alpha: Vec<PackedVertex> = Vec::new();
+            let mut opaque_hd: Vec<HdVertex> = Vec::new();
+            let mut alpha_hd: Vec<HdVertex> = Vec::new();
             let mut opaque_ranges = Vec::new();
             let mut alpha_models: Vec<GpuAlphaModel> = Vec::new();
             let mut y_range = (f32::MAX, f32::MIN);
@@ -676,6 +755,7 @@ impl SceneRenderer {
                         count: group.geometry.opaque.len() as u32,
                     });
                     opaque.extend_from_slice(&group.geometry.opaque);
+                    opaque_hd.extend_from_slice(&group.geometry.hd_opaque);
                 }
                 if !group.geometry.alpha.is_empty() {
                     let base = alpha.len() as u32;
@@ -691,6 +771,7 @@ impl SceneRenderer {
                         });
                     }
                     alpha.extend_from_slice(&group.geometry.alpha);
+                    alpha_hd.extend_from_slice(&group.geometry.hd_alpha);
                 }
             }
             if y_range.0 > y_range.1 {
@@ -698,11 +779,10 @@ impl SceneRenderer {
             }
             // Reuse an existing buffer when the new vertices fit; grow with headroom when a
             // refreshed zone outgrows it (animated zones change size).
-            let fit = |old: Option<wgpu::Buffer>, vertices: &[PackedVertex], label: &str| {
-                if vertices.is_empty() {
+            let fit = |old: Option<wgpu::Buffer>, bytes: &[u8], label: &str| {
+                if bytes.is_empty() {
                     return None;
                 }
-                let bytes: &[u8] = bytemuck::cast_slice(vertices);
                 match old {
                     Some(buffer) if buffer.size() >= bytes.len() as u64 => {
                         self.queue.write_buffer(&buffer, 0, bytes);
@@ -733,8 +813,10 @@ impl SceneRenderer {
                 y_range,
                 zone_buffer,
                 bind_group,
-                opaque: fit(old_opaque, &opaque, "zone-opaque"),
-                alpha: fit(old_alpha, &alpha, "zone-alpha"),
+                opaque: fit(old_opaque, bytemuck::cast_slice(&opaque), "zone-opaque"),
+                alpha: fit(old_alpha, bytemuck::cast_slice(&alpha), "zone-alpha"),
+                opaque_hd: fit(old_opaque_hd, bytemuck::cast_slice(&opaque_hd), "zone-opaque-hd"),
+                alpha_hd: fit(old_alpha_hd, bytemuck::cast_slice(&alpha_hd), "zone-alpha-hd"),
                 opaque_ranges,
                 alpha_models,
             });
@@ -757,7 +839,14 @@ impl SceneRenderer {
         self.regions
             .values()
             .flatten()
-            .flat_map(|zone| [zone.opaque.as_ref(), zone.alpha.as_ref()])
+            .flat_map(|zone| {
+                [
+                    zone.opaque.as_ref(),
+                    zone.alpha.as_ref(),
+                    zone.opaque_hd.as_ref(),
+                    zone.alpha_hd.as_ref(),
+                ]
+            })
             .flatten()
             .map(wgpu::Buffer::size)
             .sum()
@@ -810,6 +899,32 @@ impl SceneRenderer {
         };
         self.queue
             .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
+        let lighting = &self.hd_lighting;
+        let environment = hd::layout::HdEnvironmentUniform {
+            camera: [params.camera.x, params.camera.y, params.camera.z, 0.0],
+            light_dir: [lighting.light_dir[0], lighting.light_dir[1], lighting.light_dir[2], 0.0],
+            light_color: [
+                lighting.light_color[0],
+                lighting.light_color[1],
+                lighting.light_color[2],
+                lighting.light_strength,
+            ],
+            ambient_color: [
+                lighting.ambient_color[0],
+                lighting.ambient_color[1],
+                lighting.ambient_color[2],
+                lighting.ambient_strength,
+            ],
+            water_color: [
+                lighting.water_color[0],
+                lighting.water_color[1],
+                lighting.water_color[2],
+                0.0,
+            ],
+            flags: [u32::from(lighting.normal_mapping), lighting.debug_view, 0, 0],
+        };
+        self.queue
+            .write_buffer(&self.hd_env_buffer, 0, bytemuck::bytes_of(&environment));
         let _ = depth_view;
         let visible: Vec<&GpuZone> = self
             .regions
@@ -827,6 +942,7 @@ impl SceneRenderer {
             alpha_draws: &alpha_draws,
             alpha_index_buffer: alpha_index_buffer.as_ref(),
             params: &params,
+            hd: None,
         };
 
         let mut graph = FrameGraph::new(width, height);
@@ -900,6 +1016,13 @@ impl SceneRenderer {
                         ) else {
                             return;
                         };
+                        let hd_inputs = ScenePassInputs {
+                            hd: self.hd_binding.as_ref().map(|binding| HdDraw {
+                                pipelines: &hd.scene,
+                                bind_group: &binding.bind_group,
+                            }),
+                            ..inputs
+                        };
                         self.record_scene_pass(
                             encoder,
                             ScenePassTargets {
@@ -909,7 +1032,7 @@ impl SceneRenderer {
                             },
                             &hd.pipelines,
                             true,
-                            &inputs,
+                            &hd_inputs,
                         );
                     },
                 );
@@ -941,15 +1064,74 @@ impl SceneRenderer {
 
     /// The HD pipelines and resolve pass, built on first use.
     fn hd_resources(&self) -> &HdResources {
-        self.hd.get_or_init(|| HdResources {
-            pipelines: build_scene_pipelines(
-                &self.device,
-                &self.scene_shader,
-                &self.scene_layout,
-                hd::HDR_FORMAT,
-            ),
-            post: hd::post::PostPass::new(&self.device),
+        self.hd.get_or_init(|| {
+            let shader = self
+                .device
+                .create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("hd/scene.wgsl"),
+                    source: wgpu::ShaderSource::Wgsl(
+                        format!(
+                            "{}\n{}",
+                            hd::layout::MATERIAL_WGSL,
+                            include_str!("hd/scene.wgsl")
+                        )
+                        .into(),
+                    ),
+                });
+            let layout = self
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("hd-scene"),
+                    bind_group_layouts: &[
+                        Some(&self.globals_layout),
+                        Some(&self.zone_layout),
+                        Some(&self.hd_layout),
+                    ],
+                    immediate_size: 0,
+                });
+            HdResources {
+                pipelines: build_scene_pipelines(
+                    &self.device,
+                    &self.scene_shader,
+                    &self.scene_layout,
+                    hd::HDR_FORMAT,
+                    false,
+                ),
+                scene: build_scene_pipelines(&self.device, &shader, &layout, hd::HDR_FORMAT, true),
+                post: hd::post::PostPass::new(&self.device),
+            }
         })
+    }
+
+    /// Bind the HD material table and texture array. [`RenderProfile::Hd`] frames shade zones that
+    /// carry HD vertex data with them; until this is called such zones use Reference shading.
+    pub fn set_hd_materials(
+        &mut self,
+        materials: &[hd::layout::GpuMaterial],
+        textures: hd::materials::MaterialTextureArray,
+    ) {
+        let table = hd::layout::MaterialTable::new(&self.device, materials);
+        let bind_group = hd::layout::scene_bind_group(
+            &self.device,
+            &self.hd_layout,
+            &table,
+            &textures,
+            &self.hd_env_buffer,
+        );
+        self.hd_binding = Some(HdBinding {
+            bind_group,
+            textures,
+        });
+    }
+
+    /// The bound HD material texture array, to fill vanilla texture layers.
+    pub fn hd_texture_array(&self) -> Option<&hd::materials::MaterialTextureArray> {
+        self.hd_binding.as_ref().map(|binding| &binding.textures)
+    }
+
+    /// Lighting of the HD scene shader.
+    pub fn set_hd_lighting(&mut self, lighting: HdLighting) {
+        self.hd_lighting = lighting;
     }
 
     /// Settings of the HD resolve pass (used by [`RenderProfile::Hd`] frames).
@@ -1004,11 +1186,26 @@ impl SceneRenderer {
             });
             pass.set_bind_group(0, &self.globals_bind_group, &[]);
 
-            pass.set_pipeline(&pipelines.opaque);
+            // The pipeline is switched only when consecutive zones disagree on HD shading.
+            let mut hd_active: Option<bool> = None;
             for zone in inputs.visible.iter().copied() {
                 let Some(buffer) = &zone.opaque else { continue };
+                let hd_buffer = inputs.hd.and(zone.opaque_hd.as_ref());
+                if hd_active != Some(hd_buffer.is_some()) {
+                    hd_active = Some(hd_buffer.is_some());
+                    match inputs.hd.filter(|_| hd_buffer.is_some()) {
+                        Some(hd) => {
+                            pass.set_pipeline(&hd.pipelines.opaque);
+                            pass.set_bind_group(2, hd.bind_group, &[]);
+                        }
+                        None => pass.set_pipeline(&pipelines.opaque),
+                    }
+                }
                 pass.set_bind_group(1, &zone.bind_group, &[]);
                 pass.set_vertex_buffer(0, buffer.slice(..));
+                if let Some(hd_buffer) = hd_buffer {
+                    pass.set_vertex_buffer(1, hd_buffer.slice(..));
+                }
                 for range in &zone.opaque_ranges {
                     if range.min_plane <= params.view_plane {
                         pass.draw(range.start..range.start + range.count, 0..1);
@@ -1019,12 +1216,26 @@ impl SceneRenderer {
             // Alpha pass: after all opaque geometry, level by level, far zones first; models inside
             // a zone and faces inside close models are ordered by `prepare_alpha`.
             if let Some(index_buffer) = inputs.alpha_index_buffer {
-                pass.set_pipeline(&pipelines.alpha);
+                let mut hd_active: Option<bool> = None;
                 for draw in inputs.alpha_draws {
                     let zone = inputs.alpha_zones[draw.zone];
                     let Some(buffer) = &zone.alpha else { continue };
+                    let hd_buffer = inputs.hd.and(zone.alpha_hd.as_ref());
+                    if hd_active != Some(hd_buffer.is_some()) {
+                        hd_active = Some(hd_buffer.is_some());
+                        match inputs.hd.filter(|_| hd_buffer.is_some()) {
+                            Some(hd) => {
+                                pass.set_pipeline(&hd.pipelines.alpha);
+                                pass.set_bind_group(2, hd.bind_group, &[]);
+                            }
+                            None => pass.set_pipeline(&pipelines.alpha),
+                        }
+                    }
                     pass.set_bind_group(1, &zone.bind_group, &[]);
                     pass.set_vertex_buffer(0, buffer.slice(..));
+                    if let Some(hd_buffer) = hd_buffer {
+                        pass.set_vertex_buffer(1, hd_buffer.slice(..));
+                    }
                     pass.set_index_buffer(
                         index_buffer.slice(
                             u64::from(draw.start) * 4..u64::from(draw.start + draw.count) * 4,

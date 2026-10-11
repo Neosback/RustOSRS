@@ -788,6 +788,213 @@ mod tests {
         assert!(normal[1] < 0, "both triangles face the same way");
     }
 
+
+    // ---- synthetic scenes -----------------------------------------------------------------
+
+    use crate::hd::HdContext;
+    use osrs_hd::{GroundMaterial as GroundJson, HdData, IdRef, Material, TileOverride, WaterType, settings::HdSettings};
+
+    fn material(name: &str) -> Material {
+        Material {
+            name: name.to_owned(),
+            ..Material::default()
+        }
+    }
+
+    fn override_for(name: &str, underlay: i64, ground: &str, water: Option<&str>) -> TileOverride {
+        TileOverride {
+            name: name.to_owned(),
+            area: Some("ALL".to_owned()),
+            underlay_ids: vec![IdRef::Number(underlay)],
+            ground_material: (!ground.is_empty()).then(|| ground.to_owned()),
+            water_type: water.map(str::to_owned),
+            ..TileOverride::default()
+        }
+    }
+
+    /// Underlay 1 = grass, 2 = dirt, 3 = water.
+    fn context() -> HdContext {
+        let data = HdData {
+            materials: vec![material("GRASS_1"), material("DIRT_1"), material("DIRT_2")],
+            ground_materials: vec![
+                GroundJson {
+                    name: "GRASS".into(),
+                    materials: vec!["GRASS_1".into()],
+                    ..GroundJson::default()
+                },
+                GroundJson {
+                    name: "PATH".into(),
+                    materials: vec!["DIRT_1".into()],
+                    ..GroundJson::default()
+                },
+            ],
+            tile_overrides: vec![
+                override_for("GRASS_T", 1, "GRASS", None),
+                override_for("PATH_T", 2, "PATH", None),
+                override_for("WATER_T", 3, "", Some("WATER")),
+            ],
+            water_types: vec![WaterType {
+                name: "WATER".into(),
+                ..WaterType::default()
+            }],
+            ..HdData::default()
+        };
+        HdContext::new(data, HdSettings::default(), [])
+    }
+
+    /// A `size` x `size` flat scene whose tile `(x, y)` has underlay `underlay(x, y)`.
+    fn scene(size: i32, underlay: impl Fn(i32, i32) -> i32) -> (Vec<TerrainSurface>, Vec<(i32, i32, i32)>) {
+        let mut surfaces = Vec::new();
+        let mut ids = Vec::new();
+        for x in 0..size {
+            for y in 0..size {
+                surfaces.push(flat([0; 4], (8 << 10) | (3 << 7) | 40));
+                ids.push((x, y, underlay(x, y)));
+            }
+        }
+        (surfaces, ids)
+    }
+
+    fn generate(surfaces: &[TerrainSurface], ids: &[(i32, i32, i32)], size: i32, ctx: &HdContext) -> ProceduralData {
+        let tiles = surfaces
+            .iter()
+            .zip(ids)
+            .map(|(surface, &(x, y, underlay))| SceneTileInput {
+                plane: 0,
+                tile: Some(TileInput {
+                    x,
+                    y,
+                    level: 0,
+                    surface,
+                    overlay_id: 0,
+                    underlay_id: underlay,
+                }),
+                bridge: None,
+            })
+            .collect();
+        ProceduralData::generate(
+            &ProceduralInput {
+                size: (size, size),
+                base: (3200, 3200),
+                tiles,
+            },
+            ctx,
+        )
+    }
+
+    #[test]
+    fn terrain_normals_tilt_towards_the_slope() {
+        let ctx = context();
+        // A ramp rising to the east: height 0 at x = 0 falling to -128 (up) at x = 2.
+        let ramp = |x: i32| -64 * x;
+        let surfaces: Vec<TerrainSurface> = (0..2)
+            .map(|x| {
+                let (west, east) = (ramp(x), ramp(x + 1));
+                let corners = |sw, se, ne, nw| TerrainCorners::new(sw, se, ne, nw);
+                TerrainSurface::Flat(FlatTerrainSurface::new(
+                    corners(west, east, east, west),
+                    corners(500, 500, 500, 500),
+                    None,
+                ))
+            })
+            .collect();
+        let tiles = surfaces
+            .iter()
+            .enumerate()
+            .map(|(x, surface)| SceneTileInput {
+                plane: 0,
+                tile: Some(TileInput {
+                    x: x as i32,
+                    y: 0,
+                    level: 0,
+                    surface,
+                    overlay_id: 0,
+                    underlay_id: 0,
+                }),
+                bridge: None,
+            })
+            .collect();
+        let data = ProceduralData::generate(
+            &ProceduralInput {
+                size: (2, 1),
+                base: (3200, 3200),
+                tiles,
+            },
+            &ctx,
+        );
+        let normal = data.normal((128, ramp(1), 0));
+        // Rising to the east means the surface faces up and towards the west (-x).
+        assert!(normal[1] < -0.85, "{normal:?}");
+        assert!(normal[0] < -0.4, "{normal:?}");
+        assert!((normal.iter().map(|c| c * c).sum::<f32>() - 1.0).abs() < 1e-3);
+        // A vertex nobody touches faces up.
+        assert_eq!(data.normal((9999, 0, 9999)), [0.0, -1.0, 0.0]);
+    }
+
+    #[test]
+    fn override_resolution_picks_the_ground_by_underlay_id() {
+        let ctx = context();
+        let (surfaces, ids) = scene(4, |x, _| if x < 2 { 1 } else { 2 });
+        let data = generate(&surfaces, &ids, 4, &ctx);
+        let grass = ctx.grounds.index_of("GRASS").expect("grass ground");
+        let path = ctx.grounds.index_of("PATH").expect("path ground");
+        let ground_at = |x: i32, y: i32| {
+            let found = data.tile_override(0, x, y, OverrideSlot::Main);
+            ctx.tile_overrides.get(found.index).ground_material
+        };
+        assert_eq!(ground_at(0, 0), grass);
+        assert_eq!(ground_at(1, 3), grass);
+        assert_eq!(ground_at(2, 0), path);
+        assert_eq!(ground_at(3, 3), path);
+    }
+
+    #[test]
+    fn ground_blending_shares_materials_along_shared_vertices() {
+        let ctx = context();
+        let (surfaces, ids) = scene(4, |x, _| if x < 2 { 1 } else { 2 });
+        let data = generate(&surfaces, &ids, 4, &ctx);
+        let grass = ctx.materials.index_of("GRASS_1") as u16;
+        let dirt = ctx.materials.index_of("DIRT_1") as u16;
+        // Vertices strictly inside one ground keep its material.
+        assert_eq!(data.vertex((0, 0, 0)).and_then(|v| v.material), Some(grass));
+        assert_eq!(data.vertex((512, 0, 256)).and_then(|v| v.material), Some(dirt));
+        // The vertex line x = 2 is shared by a grass and a dirt tile: it must carry one of the two
+        // materials (the tile processed last wins for underlays), and every vertex on it the same.
+        let border: Vec<Option<u16>> = (0..=4).map(|y| data.vertex((256, 0, y * 128)).and_then(|v| v.material)).collect();
+        assert!(border.iter().all(|m| *m == Some(grass) || *m == Some(dirt)), "{border:?}");
+        assert!(border[1..4].windows(2).all(|pair| pair[0] == pair[1]), "{border:?}");
+        // Every vertex got a blended colour with the lightness cap applied.
+        for key in [(0, 0, 0), (256, 0, 256), (512, 0, 512)] {
+            let color = data.vertex(key).and_then(|v| v.color).expect("colour");
+            assert!(color & 0x7F <= 55, "{color}");
+        }
+    }
+
+    #[test]
+    fn water_sinks_the_terrain_by_distance_from_the_shore() {
+        let ctx = context();
+        let size = 9;
+        // A 7x7 lake with a one-tile land border.
+        let (surfaces, ids) = scene(size, |x, y| if (1..8).contains(&x) && (1..8).contains(&y) { 3 } else { 1 });
+        let data = generate(&surfaces, &ids, size, &ctx);
+        let depth = |x: i32, y: i32| data.underwater_depth((x * 128, 0, y * 128));
+        // Shore vertices stay at the surface, depth grows towards the middle and is symmetric.
+        assert_eq!(depth(1, 1), 0, "shore");
+        assert_eq!(depth(0, 0), 0, "land");
+        assert!(depth(2, 4) > depth(1, 4) || depth(1, 4) == 0);
+        assert!(depth(4, 4) > depth(3, 4), "{} {}", depth(4, 4), depth(3, 4));
+        assert_eq!(depth(3, 5), depth(5, 3), "symmetric");
+        assert!(depth(4, 4) <= (DEPTH_LEVEL_SLOPE[11] as f32 * 0.55) as i32);
+        // Water tiles are flagged, land tiles are not, and water vertices carry the flag.
+        assert_ne!(data.tile_flags(0, 4, 4) & TILE_WATER, 0);
+        assert_eq!(data.tile_flags(0, 0, 0) & TILE_WATER, 0);
+        assert!(data.has((4 * 128, 0, 4 * 128), VERTEX_WATER));
+        // The terrain normal under water follows the sunk surface, so it tilts towards the lake
+        // centre: a vertex west of centre faces east-ish.
+        let n = data.normal((3 * 128, 0, 4 * 128));
+        assert!(n[0] > 0.0, "{n:?}");
+    }
+
     #[test]
     fn relight_brightens_lit_slopes_and_caps_lightness() {
         // Facing the vanilla light (+x, +z): lighter than facing away.

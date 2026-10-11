@@ -1879,6 +1879,7 @@ version = "0.0.0"
 dependencies = [
  "osrs-cache",
  "osrs-core",
+ "osrs-hd",
  "osrs-render",
  "osrs-scene",
  "png",

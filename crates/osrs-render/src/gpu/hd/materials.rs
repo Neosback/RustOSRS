@@ -56,14 +56,20 @@ impl LayerPlan {
     /// A material inherits its parent's layer; a parent that is not in the list (`NONE`) means the
     /// material has no texture of its own.
     pub fn from_materials(materials: &[Material]) -> Self {
-        let by_name: HashMap<&str, &Material> = materials
+        Self::from_table(materials, materials)
+    }
+
+    /// Like [`Self::from_materials`] for a material table whose parent chains may lead to
+    /// definitions outside it (`definitions` lists every resolved definition by name).
+    pub fn from_table(materials: &[Material], definitions: &[Material]) -> Self {
+        let by_name: HashMap<&str, &Material> = definitions
             .iter()
             .map(|material| (material.name.as_str(), material))
             .collect();
         let owner_of = |start: &Material| -> Option<String> {
             let mut current = start;
             // Bounded walk: a malformed parent loop must not hang the loader.
-            for _ in 0..=materials.len() {
+            for _ in 0..=definitions.len() {
                 match current.parent.as_deref() {
                     None => return Some(current.name.clone()),
                     Some(parent) => current = by_name.get(parent)?,
@@ -291,6 +297,19 @@ fn downsample(source: &[u8], size: usize, table: &SrgbTable) -> Vec<u8> {
         }
     }
     out
+}
+
+/// Mip chain of a vanilla texture (RGBA texels, zero alpha = cutout) resampled to `size`: the
+/// layer a material without an image file samples (`TextureManager.loadTexture` fallback).
+/// Vanilla textures keep their orientation; only plugin image files are flipped.
+pub fn vanilla_mip_chain(texels: &[[u8; 4]], source_size: u32, size: u32) -> MipChain {
+    let flat: Vec<u8> = texels.iter().flatten().copied().collect();
+    let base = match image::RgbaImage::from_raw(source_size, source_size, flat) {
+        Some(image) if source_size == size => image.into_raw(),
+        Some(image) => image::imageops::resize(&image, size, size, FilterType::CatmullRom).into_raw(),
+        None => vec![0; (size * size * 4) as usize],
+    };
+    build_mips(base, size)
 }
 
 /// The uploaded `texture_2d_array` and its sampler.

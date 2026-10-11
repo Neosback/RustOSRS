@@ -74,7 +74,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     )?;
     let assembled = started.elapsed();
-    let geometry: SceneGeometry = extract_scene_geometry(&world);
+    let hd_profile = env::var("RENDER_PROFILE").as_deref() == Ok("hd");
+    let hd_context = if hd_profile {
+        let textures: Vec<i32> = (0..definitions.textures().images.len() as i32).collect();
+        Some(osrs_world::hd::HdContext::load(
+            &osrs_world::hd::default_assets_dir(),
+            osrs_hd::settings::HdSettings::default(),
+            textures,
+        )?)
+    } else {
+        None
+    };
+    let geometry: SceneGeometry = match &hd_context {
+        Some(hd) => osrs_world::hd::extract::extract_owned_geometry_hd(&world, None, hd),
+        None => extract_scene_geometry(&world),
+    };
     let extracted = started.elapsed();
     println!(
         "assembled in {assembled:?}, extracted in {extracted:?}: {} zones, {} vertices ({} KiB)",
@@ -88,6 +102,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // scene-local.
     renderer.set_render_origin((window.base_x * 128, window.base_y * 128));
     renderer.set_textures(&texture_layers(definitions.textures()));
+    if let Some(hd) = &hd_context {
+        let started = Instant::now();
+        let gpu = hd.prepare_gpu(
+            &osrs_world::hd::default_assets_dir(),
+            definitions.textures(),
+            osrs_world::hd::gpu::HdGpuData::RESOLUTION,
+        )?;
+        gpu.install(&mut renderer).map_err(|error| error.to_string())?;
+        println!("hd materials installed in {:?}", started.elapsed());
+    }
     renderer.upload_scene(&geometry);
     let mut animations = AnimationSystem::new();
     animations.insert_region((0, 0), extract_animated_instances(&world, None));
@@ -108,6 +132,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         renderer.resident_vertex_bytes()
     );
 
+    if let Some(view) = env::var("RENDER_HD_DEBUG").ok().and_then(|v| v.parse().ok()) {
+        renderer.set_hd_lighting(osrs_render::gpu::HdLighting {
+            debug_view: view,
+            ..Default::default()
+        });
+    }
     let (width, height) = (1280_u32, 720_u32);
     let started = Instant::now();
     let pixels = renderer.render_to_rgba(

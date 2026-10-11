@@ -44,3 +44,45 @@ impl Default for HdParams {
         }
     }
 }
+
+/// Lighting of the HD scene shader. Placeholder values (an overworld-like sun) until phase 3 ports
+/// the per-area environments.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HdLighting {
+    /// Unit vector from the scene towards the light (game space: `y` is down).
+    pub light_dir: [f32; 3],
+    /// Linear directional light colour and strength.
+    pub light_color: [f32; 3],
+    pub light_strength: f32,
+    pub ambient_color: [f32; 3],
+    pub ambient_strength: f32,
+    pub water_color: [f32; 3],
+    pub normal_mapping: bool,
+    /// Debug output instead of the lit scene (`DISPLAY_*` of the plugin): 0 off, 1 base colour,
+    /// 2 UV, 3 normals, 4 tangent, 5 lighting.
+    pub debug_view: u32,
+}
+
+impl Default for HdLighting {
+    fn default() -> Self {
+        // Sun 52 degrees above the horizon from the vanilla light's side; the `OVERWORLD`
+        // environment's ambient hue (`#97baff`) lightened, and strengths picked to look right without
+        // the plugin's tone mapping.
+        let (altitude, azimuth) = (52.0_f32.to_radians(), 235.0_f32.to_radians());
+        let light_dir = [
+            -altitude.cos() * azimuth.sin(),
+            -altitude.sin(),
+            -altitude.cos() * azimuth.cos(),
+        ];
+        Self {
+            light_dir,
+            light_color: [1.0, 1.0, 1.0],
+            light_strength: 1.6,
+            ambient_color: [0.6, 0.72, 1.0],
+            ambient_strength: 0.9,
+            water_color: [0.14, 0.82, 1.0],
+            normal_mapping: true,
+            debug_view: 0,
+        }
+    }
+}

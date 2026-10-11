@@ -21,6 +21,9 @@ pub const NONE: &str = "NONE";
 pub struct MaterialSet {
     /// Definitions with parent defaults applied, without `NONE`; table index = position + 1.
     pub materials: Vec<Material>,
+    /// Every resolved definition, including replaced ones: parents of table materials may only
+    /// exist here (a replaced `ROOF_BRICK_TILE` still owns the texture its replacement inherits).
+    pub definitions: Vec<Material>,
     /// Original name -> table index (after replacement; inactive replacements map to `0`).
     by_name: HashMap<String, usize>,
     /// Vanilla texture id -> table index.
@@ -197,6 +200,7 @@ impl MaterialSet {
         }
         let mut set = Self {
             materials,
+            definitions: definitions.clone(),
             ..Self::default()
         };
         for (index, definition) in definitions.iter().enumerate() {

@@ -112,7 +112,7 @@ impl GpuMaterial {
             specular_strength: material.specular_strength.unwrap_or(0.0),
             specular_gloss: material.specular_gloss.unwrap_or(0.0),
             flow_map_strength: material.flow_map_strength.unwrap_or(0.0),
-            flow_map_duration: [0.0; 2],
+            flow_map_duration: pair(&material.flow_map_duration),
             scroll_duration: pair(&material.scroll_speed),
             pad0: [0.0; 2],
             // The shader multiplies UVs by the reciprocal (`divide(vec(1), textureScale)`).
@@ -187,35 +187,39 @@ impl MaterialTable {
 pub fn material_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("hd-materials"),
-        entries: &[
-            wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            },
-            wgpu::BindGroupLayoutEntry {
-                binding: 1,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2Array,
-                    multisampled: false,
-                },
-                count: None,
-            },
-            wgpu::BindGroupLayoutEntry {
-                binding: 2,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                count: None,
-            },
-        ],
+        entries: &material_layout_entries(),
     })
+}
+
+fn material_layout_entries() -> Vec<wgpu::BindGroupLayoutEntry> {
+    vec![
+        wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        },
+        wgpu::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2Array,
+                multisampled: false,
+            },
+            count: None,
+        },
+        wgpu::BindGroupLayoutEntry {
+            binding: 2,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            count: None,
+        },
+    ]
 }
 
 /// Material table, texture array and sampler bound together.
@@ -240,6 +244,77 @@ pub fn material_bind_group(
             wgpu::BindGroupEntry {
                 binding: 2,
                 resource: wgpu::BindingResource::Sampler(textures.sampler()),
+            },
+        ],
+    })
+}
+
+
+/// Lighting environment of the HD scene shader (`Environment` in `scene.wgsl`), 96 bytes.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
+pub struct HdEnvironmentUniform {
+    /// Camera position (render-local), `w` unused.
+    pub camera: [f32; 4],
+    /// Unit vector towards the light.
+    pub light_dir: [f32; 4],
+    /// Linear colour, strength in `w`.
+    pub light_color: [f32; 4],
+    pub ambient_color: [f32; 4],
+    pub water_color: [f32; 4],
+    /// `x`: normal mapping enabled.
+    pub flags: [u32; 4],
+}
+
+const _: () = assert!(std::mem::size_of::<HdEnvironmentUniform>() == 96);
+
+/// Bind group layout of the HD scene shader's group 2: the material table, texture array,
+/// sampler and the lighting environment.
+pub fn scene_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    let mut entries = material_layout_entries();
+    entries.push(wgpu::BindGroupLayoutEntry {
+        binding: 3,
+        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    });
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("hd-scene"),
+        entries: &entries,
+    })
+}
+
+/// Material table, texture array, sampler and environment bound together.
+pub fn scene_bind_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    table: &MaterialTable,
+    textures: &super::materials::MaterialTextureArray,
+    environment: &wgpu::Buffer,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("hd-scene"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: table.buffer().as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(textures.view()),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(textures.sampler()),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: environment.as_entire_binding(),
             },
         ],
     })
