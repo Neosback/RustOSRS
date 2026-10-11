@@ -236,6 +236,19 @@ fn corner_uv(material: Material, base: vec2<f32>, time: f32) -> vec2<f32> {
     return uv;
 }
 
+// `animationFrame(vec2)` from RLHD's misc.glsl. Durations are independent per axis; zero keeps
+// that axis stationary instead of dividing by zero.
+fn animation_frame(duration: vec2<f32>, time: f32) -> vec2<f32> {
+    var frame = vec2<f32>(0.0);
+    if (duration.x != 0.0) {
+        frame.x = fract(time / duration.x);
+    }
+    if (duration.y != 0.0) {
+        frame.y = fract(time / duration.y);
+    }
+    return frame;
+}
+
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     let flags = input.info.x;
@@ -258,9 +271,32 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     if ((flags & FLAG_VANILLA_UVS) != 0u && has_flag(material1, 1u)) {
         blended_uv.x = clamp(blended_uv.x, 0.0, 0.984375);
     }
-    let uv1 = corner_uv(material1, blended_uv, time);
-    let uv2 = corner_uv(material2, blended_uv, time);
-    let uv3 = corner_uv(material3, blended_uv, time);
+    var uv1 = corner_uv(material1, blended_uv, time);
+    var uv2 = corner_uv(material2, blended_uv, time);
+    var uv3 = corner_uv(material3, blended_uv, time);
+
+    // RLHD uses the first corner material as the single flow map for the whole fragment, then
+    // applies the same distortion to all three material UVs before any diffuse/normal/PBR sample.
+    // Keep derivatives outside the conditional so WebGPU's uniformity rules are satisfied even
+    // when the selected material index varies between primitives.
+    let flow_uv = uv1 - animation_frame(material1.flow_map_duration, time);
+    let flow_ddx = dpdx(flow_uv);
+    let flow_ddy = dpdy(flow_uv);
+    if (material1.flow_map >= 0 && material1.flow_map_strength != 0.0) {
+        let flow = textureSampleGrad(
+            material_textures,
+            material_sampler,
+            flow_uv,
+            material1.flow_map,
+            flow_ddx,
+            flow_ddy,
+        ).xy;
+        let flow_offset = flow * material1.flow_map_strength;
+        uv1 = uv1 + flow_offset;
+        uv2 = uv2 + flow_offset;
+        uv3 = uv3 + flow_offset;
+    }
+
     // Derivatives up front: the texture reads below sit in non-uniform control flow.
     let ddx1 = dpdx(uv1);
     let ddy1 = dpdy(uv1);

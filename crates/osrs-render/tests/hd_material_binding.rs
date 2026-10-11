@@ -203,3 +203,21 @@ fn scene_material_binding_samples_the_selected_texture_layer()
     assert_eq!(&pixels[..4], &[255, 0, 255, 255]);
     Ok(())
 }
+
+#[test]
+fn hd_scene_shader_keeps_flow_map_stage_before_material_sampling() {
+    let shader = include_str!("../src/gpu/hd/scene.wgsl");
+    let flow = shader
+        .find("let flow_offset = flow * material1.flow_map_strength;")
+        .expect("HD scene shader must apply the RLHD material flow map");
+    let material_derivatives = shader
+        .find("let ddx1 = dpdx(uv1);")
+        .expect("HD scene shader must derive the final material UVs");
+    let diffuse = shader
+        .find("let tex1 = sample_color(material1, uv1, ddx1, ddy1);")
+        .expect("HD scene shader must sample material 1 with the final UV");
+
+    assert!(flow < material_derivatives);
+    assert!(material_derivatives < diffuse);
+    assert!(shader.contains("material1.flow_map >= 0"));
+}
