@@ -16,6 +16,8 @@ jobs:
         with:
           ref: "impl/117hd-material-terrain-parity"
       - uses: actions-rust-lang/setup-rust-toolchain@v2
+      - name: Fix staged import
+        run: sed -i 's/    AnimatedHdState, AnimatedInstance,/    animation::AnimatedHdState, AnimatedInstance,/' scripts/apply_animated_hd_parity.py
       - name: Apply patch
         run: python3 scripts/apply_animated_hd_parity.py
       - name: Format
