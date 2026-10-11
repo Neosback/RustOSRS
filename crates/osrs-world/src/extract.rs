@@ -6,13 +6,17 @@
 //! boundary, floor decoration, and game object at their storage centers, wall decorations at the
 //! center plus the nudged offset, game objects with their 256-JAU instance rotation when diagonal.
 
-use crate::{AnimatedInstance, LocRenderable, TextureTable, WorldLoc, WorldScene};
+use crate::{
+    AnimatedInstance, LocRenderable, TextureTable, WorldLoc, WorldScene,
+    animation::AnimatedHdState, hd::HdContext,
+};
 use osrs_core::{
     coords::{SceneTile, StoragePlane},
     lighting::ReferenceLitModel,
 };
 use osrs_render::{ModelPlacement, SceneGeometry, ZONE_LOCAL_UNITS};
 use osrs_scene::placement::PlacementKind;
+use std::sync::Arc;
 
 /// Inclusive-exclusive tile range `[min, max)` in scene coordinates that a window owns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -230,6 +234,7 @@ pub(crate) fn loc_slots(loc: &WorldLoc, origin: (i32, i32)) -> Vec<Slot> {
 pub fn extract_animated_instances(
     world: &WorldScene,
     owned: Option<OwnedTiles>,
+    hd: Option<&HdContext>,
 ) -> Vec<AnimatedInstance> {
     let (zone_base_x, zone_base_z) = (world.window.base_x / 8, world.window.base_y / 8);
     let mut instances = Vec::new();
@@ -243,6 +248,24 @@ pub fn extract_animated_instances(
             scene_zone_x * ZONE_LOCAL_UNITS,
             scene_zone_z * ZONE_LOCAL_UNITS,
         );
+        let zone = (zone_base_x + scene_zone_x, zone_base_z + scene_zone_z);
+        let world_tile = (
+            world.window.base_x + loc.tile.x as i32,
+            world.window.base_y + loc.tile.y as i32,
+            i32::from(loc.plane.index().get()),
+        );
+        let animated_hd = hd.map(|hd| AnimatedHdState {
+            materials: Arc::clone(&hd.materials),
+            override_: Arc::new(
+                hd.models
+                    .get(loc.object_id.get(), world_tile, &hd.areas)
+                    .clone(),
+            ),
+            hide_fake_shadows: hd.settings.hide_fake_shadows(),
+            object_id: loc.object_id.get(),
+            world: world_tile,
+            zone_origin_world: (zone.0 * ZONE_LOCAL_UNITS, zone.1 * ZONE_LOCAL_UNITS),
+        });
         for slot in loc_slots(loc, origin) {
             let LocRenderable::Animated(index) = slot.renderable else {
                 continue;
@@ -252,7 +275,8 @@ pub fn extract_animated_instances(
             };
             instances.push(AnimatedInstance {
                 model: model.clone(),
-                zone: (zone_base_x + scene_zone_x, zone_base_z + scene_zone_z),
+                hd: animated_hd.clone(),
+                zone,
                 level,
                 min_plane,
                 local: (slot.x, slot.y, slot.z),

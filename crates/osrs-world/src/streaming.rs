@@ -192,7 +192,7 @@ pub fn build_region_geometry_with(
     };
     let hd_stats =
         (render_path == RegionRenderPath::Hd).then(|| HdRegionStats::from_geometry(&geometry));
-    let animations = extract_animated_instances(&world, owned);
+    let animations = extract_animated_instances(&world, owned, hd);
     let info = Arc::new(extract_region_info(
         &world,
         region,
