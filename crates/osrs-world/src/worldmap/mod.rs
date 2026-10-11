@@ -799,6 +799,8 @@ pub struct Catalog {
     pub areas: Vec<Area>,
     pub elements: HashMap<u32, Element>,
     scenes: Vec<MapScene>,
+    /// Key names by element category (enum 1713 of the config archive).
+    pub category_names: HashMap<i32, String>,
     /// Label fonts by `Element::text_size`: Verdana 11, 13 and 15.
     fonts: [Option<font::BitmapFont>; 3],
 }
@@ -876,6 +878,7 @@ impl Catalog {
             }
         }
         let scenes = load_map_scenes(definitions);
+        let category_names = load_category_names(definitions);
         let fonts = [
             "verdana_11pt_regular",
             "verdana_13pt_regular",
@@ -889,6 +892,7 @@ impl Catalog {
             areas,
             elements,
             scenes,
+            category_names,
             fonts,
         })
     }
@@ -896,6 +900,52 @@ impl Catalog {
     pub fn main_area(&self) -> usize {
         self.areas.iter().position(|area| area.is_main).unwrap_or(0)
     }
+}
+
+/// The key's category names: config enum 1713 maps a category id to its label.
+fn load_category_names(definitions: &WorldDefinitions) -> HashMap<i32, String> {
+    const KEY_ENUM: u32 = 1713;
+    let mut names = HashMap::new();
+    let Ok(file) = definitions
+        .cache()
+        .read_file(CONFIG_INDEX, 8, KEY_ENUM, None)
+    else {
+        return names;
+    };
+    let mut reader = Reader::new(&file.bytes);
+    while let Some(opcode) = reader.u8() {
+        let step = (|| -> Option<bool> {
+            match opcode {
+                0 => return Some(false),
+                1 | 2 => {
+                    reader.u8()?;
+                }
+                3 => {
+                    reader.string()?;
+                }
+                4 => {
+                    reader.i32()?;
+                }
+                5 | 6 => {
+                    let count = reader.u16()?;
+                    for _ in 0..count {
+                        let key = reader.i32()?;
+                        if opcode == 5 {
+                            names.insert(key, reader.string()?);
+                        } else {
+                            reader.i32()?;
+                        }
+                    }
+                }
+                _ => return Some(false),
+            }
+            Some(true)
+        })();
+        if step != Some(true) {
+            break;
+        }
+    }
+    names
 }
 
 /// The group of `index` whose name hashes to `name`.

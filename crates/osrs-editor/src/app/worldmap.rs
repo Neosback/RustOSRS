@@ -32,8 +32,8 @@ pub struct WorldMapView {
     zoom_target: f32,
     key_open: bool,
     search: String,
-    /// Element ids the player switched off in the key.
-    hidden: HashSet<u32>,
+    /// Element categories the player switched off in the key.
+    hidden: HashSet<i32>,
     /// The `(area, pixels per tile)` the queued region work belongs to.
     queued_for: Option<(usize, i32)>,
 }
@@ -108,9 +108,11 @@ fn element_name(
     id: u32,
 ) -> Option<String> {
     let element = catalog.elements.get(&id)?;
-    element
-        .name
-        .clone()
+    catalog
+        .category_names
+        .get(&element.category)
+        .cloned()
+        .or_else(|| element.name.clone())
         .or_else(|| element.key_name.clone())
         .or_else(|| names.get(&id).cloned())
 }
@@ -273,29 +275,21 @@ impl EditorApp {
             return;
         };
         let names = self.assets.icon_names(area).unwrap_or_default();
-        let mut kinds: Vec<(u32, String)> = Vec::new();
+        // One key row per category present in the area (the client's key is by category).
+        let mut kinds: Vec<(i32, String, i32)> = Vec::new();
         let mut seen = HashSet::new();
         for icon in icons_in_area.iter() {
-            if !seen.insert(icon.element) {
-                continue;
-            }
             let Some(element) = catalog.elements.get(&icon.element) else {
                 continue;
             };
-            if element.sprite < 0 {
+            if element.sprite < 0 || !seen.insert(element.category) {
                 continue;
             }
-            let name = element
-                .key_name
-                .clone()
-                .or_else(|| element.name.clone())
-                .or_else(|| names.get(&icon.element).cloned());
-            if let Some(name) = name {
-                kinds.push((icon.element, name));
+            if let Some(name) = element_name(catalog, &names, icon.element) {
+                kinds.push((element.category, name, element.sprite));
             }
         }
         kinds.sort_by(|a, b| a.1.cmp(&b.1));
-        kinds.dedup_by(|a, b| a.1 == b.1);
 
         let query = self.world_map.search.trim().to_lowercase();
         let mut jump = None;
@@ -346,11 +340,7 @@ impl EditorApp {
 
         ui.strong("Key");
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for (id, name) in kinds {
-                let sprite = catalog
-                    .elements
-                    .get(&id)
-                    .map_or(-1, |element| element.sprite);
+            for (id, name, sprite) in kinds {
                 ui.horizontal(|ui| {
                     let mut shown = !self.world_map.hidden.contains(&id);
                     if ui.checkbox(&mut shown, "").changed() {
@@ -559,12 +549,12 @@ impl EditorApp {
         let margin = 40.0;
         let clip = rect.expand(margin);
         for icon in icons_in_area {
-            if self.world_map.hidden.contains(&icon.element) {
-                continue;
-            }
             let Some(element) = catalog.elements.get(&icon.element) else {
                 continue;
             };
+            if self.world_map.hidden.contains(&element.category) {
+                continue;
+            }
             // Scenery icons sit half a tile left of their tile, vertically centred; fixed
             // icons at the tile's top-left corner.
             let position = if icon.link {
