@@ -728,7 +728,7 @@ pub fn generate(
                     + prior.cost[pattern][c.slot]
                     + PORTAL_WEIGHT * portals as f32 / GRID as f32
             };
-            let pick = (0..list.len()).min_by(|a, b| score(&list[*a]).total_cmp(&score(&list[*b])));
+            let pick = (0..list.len()).min_by(|a, b| score(list[*a]).total_cmp(&score(list[*b])));
             if let Some(pick) = pick {
                 chosen.insert(*tile, pick);
             }
