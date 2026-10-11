@@ -3,8 +3,24 @@
 use super::EditorApp;
 use eframe::egui;
 
-const FLY_HINT: &str = "click select   right drag look   WASD fly   scroll speed   shift+right click menu   F focus   T teleport";
-const ORBIT_HINT: &str = "click select   right drag orbit   shift+right drag pan   scroll zoom   shift+right click menu   F focus   T teleport";
+const FLY_HINTS: &[(&str, &str)] = &[
+    ("Click", "select"),
+    ("Right drag", "look"),
+    ("WASD", "fly"),
+    ("Scroll", "speed"),
+    ("Shift + right click", "menu"),
+    ("F", "focus"),
+    ("T", "teleport"),
+];
+const ORBIT_HINTS: &[(&str, &str)] = &[
+    ("Click", "select"),
+    ("Right drag", "orbit"),
+    ("Shift + right drag", "pan"),
+    ("Scroll", "zoom"),
+    ("Shift + right click", "menu"),
+    ("F", "focus"),
+    ("T", "teleport"),
+];
 
 impl EditorApp {
     pub(super) fn status_bar(&mut self, ui: &mut egui::Ui) {
@@ -18,10 +34,13 @@ impl EditorApp {
                     ui.ctx()
                         .request_repaint_after(std::time::Duration::from_millis(500));
                 }
-                ui.weak(match self.camera.mode {
-                    crate::camera::CameraMode::Fly => FLY_HINT,
-                    crate::camera::CameraMode::Orbit => ORBIT_HINT,
-                });
+                ui.spacing_mut().item_spacing.x = 4.0;
+                for (key, action) in match self.camera.mode {
+                    crate::camera::CameraMode::Fly => FLY_HINTS,
+                    crate::camera::CameraMode::Orbit => ORBIT_HINTS,
+                } {
+                    crate::theme::key_hint(ui, key, action);
+                }
                 if let Some(status) = &self.status {
                     ui.separator();
                     ui.colored_label(egui::Color32::LIGHT_RED, status);
@@ -33,9 +52,11 @@ impl EditorApp {
                         .flatten()
                         .map(|stats| stats.vertices)
                         .sum();
-                    ui.label(format!(
-                        "{} regions{}  {:.1}M vertices  {} zones",
-                        self.loaded.values().flatten().count(),
+                    let regions = self.loaded.values().flatten().count();
+                    ui.weak(format!(
+                        "{} region{}{}  \u{b7}  {:.1}M vertices  \u{b7}  {} zones",
+                        regions,
+                        if regions == 1 { "" } else { "s" },
                         if self.in_flight.is_empty() {
                             String::new()
                         } else {
@@ -45,7 +66,7 @@ impl EditorApp {
                         self.renderer.resident_zone_count()
                     ));
                     ui.separator();
-                    ui.label(
+                    ui.weak(
                         self.stats
                             .memory_text(self.renderer.resident_vertex_bytes()),
                     );

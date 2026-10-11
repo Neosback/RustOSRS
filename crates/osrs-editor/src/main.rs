@@ -18,6 +18,7 @@ mod interact;
 mod keymap;
 mod pick;
 mod plugin;
+mod screenshot;
 mod settings;
 mod theme;
 mod wiki;

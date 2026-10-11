@@ -131,8 +131,11 @@ pub struct EditorApp {
     teleport: TeleportWindow,
     /// Smoke-test hook: teleport on the first frame (`RUSTOSRS_TELEPORT="x,y,plane"`).
     pending_teleport: Option<Destination>,
+    /// Smoke-test hook: select the object anchored on this tile (`RUSTOSRS_SELECT="x,y"`).
+    smoke_select: Option<(i32, i32)>,
     /// Smoke-test hook: exit after this many seconds (`RUSTOSRS_EXIT_AFTER_SECONDS`).
     exit_after_seconds: Option<f32>,
+    screenshot: Option<crate::screenshot::ScreenshotHook>,
     /// Smoke-test hook: constant camera velocity in local units per second
     /// (`RUSTOSRS_AUTOFLY="vx,vz"`).
     autofly: Option<(f32, f32)>,
@@ -221,6 +224,10 @@ impl EditorApp {
             last_build_ms: 0.0,
             stats: FrameStats::new(),
             teleport: TeleportWindow::new(),
+            smoke_select: std::env::var("RUSTOSRS_SELECT").ok().and_then(|value| {
+                let (x, y) = value.split_once(',')?;
+                Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
+            }),
             pending_teleport: std::env::var("RUSTOSRS_TELEPORT").ok().and_then(|value| {
                 let mut parts = value.split(',').map(|part| part.trim().parse::<i32>().ok());
                 Some(Destination::Tile {
@@ -229,6 +236,7 @@ impl EditorApp {
                     plane: u8::try_from(parts.next()??).ok()?,
                 })
             }),
+            screenshot: crate::screenshot::ScreenshotHook::from_env(),
             exit_after_seconds: std::env::var("RUSTOSRS_EXIT_AFTER_SECONDS")
                 .ok()
                 .and_then(|value| value.parse().ok()),
@@ -1029,6 +1037,45 @@ impl eframe::App for EditorApp {
         if let Some(destination) = self.pending_teleport.take() {
             self.teleport_to(destination);
         }
+        if let Some(tile) = self.smoke_select
+            && let Some(pick) = self
+                .infos
+                .iter()
+                .flat_map(|(region, info)| {
+                    info.locs
+                        .iter()
+                        .enumerate()
+                        .filter_map(move |(index, loc)| {
+                            let named = loc
+                                .definition
+                                .name
+                                .as_deref()
+                                .is_some_and(|n| !n.is_empty());
+                            let distance =
+                                (loc.tile.0 - tile.0).abs().max((loc.tile.1 - tile.1).abs());
+                            (named && distance <= 4).then_some((
+                                distance,
+                                ObjectPick {
+                                    region: *region,
+                                    index,
+                                },
+                            ))
+                        })
+                })
+                .min_by_key(|(distance, _)| *distance)
+                .map(|(_, pick)| pick)
+        {
+            // `RUSTOSRS_CONTEXT=1` also opens the context menu on it, to look at the menus.
+            if std::env::var_os("RUSTOSRS_CONTEXT").is_some() {
+                self.context_pick = Pick {
+                    object: Some(pick.clone()),
+                    ..Pick::default()
+                };
+                self.context_menu = Some(egui::pos2(400.0, 300.0));
+            }
+            self.selected = Some(pick);
+            self.smoke_select = None;
+        }
         self.editor_actions(&ctx);
         self.plugin_actions(&ctx);
         if let Some((vx, vz)) = self.autofly {
@@ -1055,71 +1102,74 @@ impl eframe::App for EditorApp {
         self.status_bar(ui);
         self.properties_panel(ui);
 
-        egui::CentralPanel::default().show(ui, |ui| {
-            let available = ui.available_size();
-            let (rect, response) = ui.allocate_exact_size(available, egui::Sense::click_and_drag());
-            let pixels_per_point = ctx.pixels_per_point();
-            let width = ((rect.width() * pixels_per_point) as u32).max(16);
-            let height = ((rect.height() * pixels_per_point) as u32).max(16);
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE)
+            .show(ui, |ui| {
+                let available = ui.available_size();
+                let (rect, response) =
+                    ui.allocate_exact_size(available, egui::Sense::click_and_drag());
+                let pixels_per_point = ctx.pixels_per_point();
+                let width = ((rect.width() * pixels_per_point) as u32).max(16);
+                let height = ((rect.height() * pixels_per_point) as u32).max(16);
 
-            self.handle_input(&ctx, &response);
-            let phase = Instant::now();
-            self.update_picking(&response, rect, pixels_per_point, width, height);
-            self.stats.phase("pick", phase);
+                self.handle_input(&ctx, &response);
+                let phase = Instant::now();
+                self.update_picking(&response, rect, pixels_per_point, width, height);
+                self.stats.phase("pick", phase);
 
-            if self.ready {
-                self.ensure_targets(width, height);
-                if self.prefs.render_profile == ProfileChoice::Hd {
-                    self.update_hd_lighting();
+                if self.ready {
+                    self.ensure_targets(width, height);
+                    if self.prefs.render_profile == ProfileChoice::Hd {
+                        self.update_hd_lighting();
+                    }
+                    if let Some(targets) = &self.targets {
+                        let mut encoder = self.render_state.device.create_command_encoder(
+                            &wgpu::CommandEncoderDescriptor {
+                                label: Some("viewport"),
+                            },
+                        );
+                        let phase = Instant::now();
+                        self.renderer.set_hd_params(self.prefs.hd_params());
+                        self.renderer.encode_frame(
+                            &mut encoder,
+                            &targets.color_view,
+                            &targets.depth_view,
+                            FrameParams {
+                                camera: self.camera.reference(targets.width as f32),
+                                view_plane: self.view_plane,
+                                // The client's `gameCycle & 127`, at 50 cycles per second.
+                                tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
+                                brightness: self.prefs.brightness,
+                                remove_color_banding: self.prefs.remove_color_banding,
+                                bright_textures: self.prefs.bright_textures,
+                                fog: self.prefs.fog(),
+                                colorblind: self.prefs.colorblind(),
+                                clear_color: self.prefs.sky_color.map(f64::from),
+                                profile: self.prefs.render_profile.render_profile(),
+                            },
+                            targets.width,
+                            targets.height,
+                        );
+                        self.stats.phase("encode", phase);
+                        self.render_state.queue.submit(Some(encoder.finish()));
+                        self.renderer.finish_frame();
+                        self.stats.set_gpu_scene_ms(self.renderer.gpu_scene_ms());
+                        self.render_state
+                            .queue
+                            .on_submitted_work_done(self.stats.gpu_probe());
+                        let _ = &targets.color;
+                        ui.painter().image(
+                            targets.texture_id,
+                            rect,
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            egui::Color32::WHITE,
+                        );
+                    }
                 }
-                if let Some(targets) = &self.targets {
-                    let mut encoder = self.render_state.device.create_command_encoder(
-                        &wgpu::CommandEncoderDescriptor {
-                            label: Some("viewport"),
-                        },
-                    );
-                    let phase = Instant::now();
-                    self.renderer.set_hd_params(self.prefs.hd_params());
-                    self.renderer.encode_frame(
-                        &mut encoder,
-                        &targets.color_view,
-                        &targets.depth_view,
-                        FrameParams {
-                            camera: self.camera.reference(targets.width as f32),
-                            view_plane: self.view_plane,
-                            // The client's `gameCycle & 127`, at 50 cycles per second.
-                            tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
-                            brightness: self.prefs.brightness,
-                            remove_color_banding: self.prefs.remove_color_banding,
-                            bright_textures: self.prefs.bright_textures,
-                            fog: self.prefs.fog(),
-                            colorblind: self.prefs.colorblind(),
-                            clear_color: self.prefs.sky_color.map(f64::from),
-                            profile: self.prefs.render_profile.render_profile(),
-                        },
-                        targets.width,
-                        targets.height,
-                    );
-                    self.stats.phase("encode", phase);
-                    self.render_state.queue.submit(Some(encoder.finish()));
-                    self.renderer.finish_frame();
-                    self.stats.set_gpu_scene_ms(self.renderer.gpu_scene_ms());
-                    self.render_state
-                        .queue
-                        .on_submitted_work_done(self.stats.gpu_probe());
-                    let _ = &targets.color;
-                    ui.painter().image(
-                        targets.texture_id,
-                        rect,
-                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                        egui::Color32::WHITE,
-                    );
-                }
-            }
-            self.draw_selection(ui, rect, pixels_per_point, width, height);
-            self.viewport_overlays(ui, rect);
-            self.context_menu(&ctx);
-        });
+                self.draw_selection(ui, rect, pixels_per_point, width, height);
+                self.viewport_overlays(ui, rect);
+                self.context_menu(&ctx);
+            });
 
         self.settings_window(&ctx);
         self.assets.poll(&ctx);
@@ -1130,6 +1180,9 @@ impl eframe::App for EditorApp {
         self.autosave_settings();
         self.stats.end_frame(frame_started);
         self.frames += 1;
+        if let Some(hook) = &mut self.screenshot {
+            hook.tick(&ctx, self.frames);
+        }
         if let Some(limit) = self.exit_after_seconds
             && self.started.elapsed().as_secs_f32() >= limit
         {

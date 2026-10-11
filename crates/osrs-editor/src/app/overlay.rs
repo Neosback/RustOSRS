@@ -8,9 +8,9 @@ const OVERLAY_MARGIN: f32 = 10.0;
 
 fn overlay_frame() -> egui::Frame {
     egui::Frame::new()
-        .fill(egui::Color32::from_black_alpha(150))
-        .corner_radius(4.0)
-        .inner_margin(egui::Margin::symmetric(8, 6))
+        .fill(egui::Color32::from_black_alpha(165))
+        .corner_radius(6.0)
+        .inner_margin(egui::Margin::symmetric(10, 7))
 }
 
 impl EditorApp {
@@ -28,7 +28,11 @@ impl EditorApp {
                 .interactable(false)
                 .show(&ctx, |ui| {
                     overlay_frame().show(ui, |ui| {
-                        ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
+                        ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
+                        ui.style_mut().override_font_id =
+                            Some(egui::FontId::monospace(12.0));
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        ui.spacing_mut().item_spacing.y = 2.0;
                         ui.colored_label(egui::Color32::WHITE, self.stats.fps_text());
                         ui.colored_label(egui::Color32::WHITE, self.stats.timing_text());
                         ui.colored_label(egui::Color32::WHITE, self.stats.phases_text());

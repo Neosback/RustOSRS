@@ -147,63 +147,66 @@ impl EditorApp {
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_min_width(220.0);
-                    // What the menu is about.
-                    if let (Some(object), Some(loc)) = (&pick.object, loc) {
-                        let name = loc
-                            .definition
-                            .name
-                            .as_deref()
-                            .filter(|name| !name.is_empty() && *name != "null")
-                            .unwrap_or("(unnamed object)");
-                        ui.strong(name);
-                        ui.weak(format!(
-                            "object {} · tile {}, {} · plane {}",
-                            loc.definition.identity.id.get(),
-                            loc.tile.0,
-                            loc.tile.1,
-                            loc.plane
-                        ));
-                        ui.separator();
-                        let already = self
-                            .selected
-                            .as_ref()
-                            .is_some_and(|s| s.region == object.region && s.index == object.index);
-                        if ui
-                            .add_enabled(
-                                !already,
-                                egui::Button::new(format!("{}  Select", icons::SELECT)),
-                            )
-                            .clicked()
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    ui.visuals_mut().widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
+                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                        // What the menu is about.
+                        if let (Some(object), Some(loc)) = (&pick.object, loc) {
+                            let name = loc
+                                .definition
+                                .name
+                                .as_deref()
+                                .filter(|name| !name.is_empty() && *name != "null")
+                                .unwrap_or("(unnamed object)");
+                            ui.strong(name);
+                            ui.weak(format!(
+                                "object {} · tile {}, {} · plane {}",
+                                loc.definition.identity.id.get(),
+                                loc.tile.0,
+                                loc.tile.1,
+                                loc.plane
+                            ));
+                            ui.separator();
+                            let already = self.selected.as_ref().is_some_and(|s| {
+                                s.region == object.region && s.index == object.index
+                            });
+                            if ui
+                                .add_enabled(
+                                    !already,
+                                    egui::Button::new(format!("{}  Select", icons::SELECT)),
+                                )
+                                .clicked()
+                            {
+                                outcome.action = Some(MenuAction::Select(object.clone()));
+                                outcome.close = true;
+                            }
+                            if ui
+                                .button(format!("{}  Focus camera", icons::CROSSHAIR))
+                                .clicked()
+                            {
+                                outcome.action = Some(MenuAction::Focus(object.clone()));
+                                outcome.close = true;
+                            }
+                        } else if let Some(tile) = &pick.tile {
+                            ui.strong(format!("Tile {}, {}", tile.tile.0, tile.tile.1));
+                            ui.weak(format!("plane {}", self.view_plane));
+                            ui.separator();
+                        }
+                        if let Some(tile) = &pick.tile
+                            && ui
+                                .button(format!("{}  Teleport here", icons::TELEPORT))
+                                .clicked()
                         {
-                            outcome.action = Some(MenuAction::Select(object.clone()));
+                            outcome.action = Some(MenuAction::TeleportHere(tile.tile));
                             outcome.close = true;
                         }
-                        if ui
-                            .button(format!("{}  Focus camera", icons::CROSSHAIR))
-                            .clicked()
-                        {
-                            outcome.action = Some(MenuAction::Focus(object.clone()));
-                            outcome.close = true;
+                        ui.menu_button(format!("{}  Copy", ph_copy()), |ui| {
+                            outcome.close |= self.copy_menu(ui, pick);
+                        });
+                        if pick.object.is_none() && pick.tile.is_none() {
+                            ui.weak("nothing under the cursor");
                         }
-                    } else if let Some(tile) = &pick.tile {
-                        ui.strong(format!("Tile {}, {}", tile.tile.0, tile.tile.1));
-                        ui.weak(format!("plane {}", self.view_plane));
-                        ui.separator();
-                    }
-                    if let Some(tile) = &pick.tile
-                        && ui
-                            .button(format!("{}  Teleport here", icons::TELEPORT))
-                            .clicked()
-                    {
-                        outcome.action = Some(MenuAction::TeleportHere(tile.tile));
-                        outcome.close = true;
-                    }
-                    ui.menu_button(format!("{}  Copy", ph_copy()), |ui| {
-                        outcome.close |= self.copy_menu(ui, pick);
                     });
-                    if pick.object.is_none() && pick.tile.is_none() {
-                        ui.weak("nothing under the cursor");
-                    }
                 });
             });
         outcome.close |= ctx.input(|i| i.pointer.any_pressed())

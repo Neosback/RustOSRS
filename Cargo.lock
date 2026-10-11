@@ -1819,6 +1819,7 @@ version = "0.0.0"
 dependencies = [
  "eframe",
  "egui-phosphor",
+ "image",
  "memory-stats",
  "open",
  "osrs-cache",

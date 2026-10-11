@@ -57,6 +57,13 @@ impl ContextMenuStyle {
             Self::Game => "Game menu (OSRS / RuneLite)",
         }
     }
+
+    pub const fn short_label(self) -> &'static str {
+        match self {
+            Self::Editor => "Editor",
+            Self::Game => "Game",
+        }
+    }
 }
 
 /// Size of the minimap assembly: the game's own sprites at 1x are `Medium`.

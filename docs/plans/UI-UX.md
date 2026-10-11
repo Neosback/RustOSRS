@@ -84,3 +84,15 @@ Bevy renders with wgpu 30 like we do, so these are copyable (MIT/Apache):
   swatches). We stay on egui; borrow behaviour (drag-to-scrub numbers, Alt-click to reset).
 * Shaders for the HD port: `bevy_pbr/src/atmosphere` (sky), `volumetric_fog`, `ssao`, `bevy_anti_alias`
   (SMAA/FXAA/TAA), `bevy_post_process` (bloom, tonemapping). Do not use them for the Reference profile.
+
+## Looking at the UI (screenshot hook)
+
+`RUSTOSRS_SCREENSHOT=out.png` saves the whole editor window (panels, windows, menus included) after
+`RUSTOSRS_SCREENSHOT_FRAME` frames (default 300) and exits. Combine with `RUSTOSRS_SETTINGS=file.json` (for
+example `{"side_tab":"Settings","settings_page":"Controls","render_profile":"Hd"}`; the editor rewrites that file),
+`RUSTOSRS_OPEN_SETTINGS=1`, `RUSTOSRS_TELEPORT="x,y,plane"`, `RUSTOSRS_SELECT="x,y"` (selects the nearest named
+object) and `RUSTOSRS_CONTEXT=1` (opens its context menu). Add `RUSTOSRS_EXIT_AFTER_SECONDS=40` so a run can
+never hang. Polish work is checked against these captures, not guessed.
+
+Shared UI pieces: `theme::section_heading` (the one heading style), `theme::key_hint` (keycap + action),
+`settings_window::nav_item` (page list), the Object tab's placement card (`app/properties.rs`).

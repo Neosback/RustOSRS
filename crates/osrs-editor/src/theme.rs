@@ -96,6 +96,36 @@ pub const NAMES: [&str; 3] = [GRAPHITE.name, MIDNIGHT.name, DAYLIGHT.name];
 /// All variants.
 pub const ALL: [Theme; 3] = [GRAPHITE, MIDNIGHT, DAYLIGHT];
 
+/// A section heading: small, upper case, in the accent colour, with a hairline under it. The one
+/// heading style for the side panel and the settings window, so groups read the same everywhere.
+pub fn section_heading(ui: &mut egui::Ui, text: &str) {
+    ui.add_space(10.0);
+    ui.label(
+        egui::RichText::new(text.to_uppercase())
+            .size(11.0)
+            .strong()
+            .color(ui.visuals().selection.stroke.color.gamma_multiply(0.9)),
+    );
+    ui.add(egui::Separator::default().spacing(3.0));
+}
+
+/// A keycap: a key or mouse gesture in a small rounded box, followed by its action in dim text.
+pub fn key_hint(ui: &mut egui::Ui, key: &str, action: &str) {
+    egui::Frame::new()
+        .fill(ui.visuals().widgets.inactive.bg_fill)
+        .corner_radius(4.0)
+        .inner_margin(egui::Margin::symmetric(5, 1))
+        .show(ui, |ui| {
+            ui.label(egui::RichText::new(key).size(11.5).strong());
+        });
+    ui.label(
+        egui::RichText::new(action)
+            .size(12.0)
+            .color(ui.visuals().widgets.noninteractive.fg_stroke.color),
+    );
+    ui.add_space(6.0);
+}
+
 /// Apply `theme` (visuals and the shared style) to the context.
 pub fn set_theme(ctx: &egui::Context, theme: Theme) {
     let slot = if theme.dark {

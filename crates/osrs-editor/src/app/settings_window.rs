@@ -551,11 +551,49 @@ const PAGES: &[(SettingsPage, &str, &str)] = &[
     (Interface, ph::LAYOUT, "Interface"),
     (CameraWorld, ph::VIDEO_CAMERA, "Camera and world"),
     (Graphics, ph::MONITOR, "Graphics"),
-    (HdLighting, ph::SUN, "HD lighting and sky"),
-    (HdShadowsWater, ph::DROP, "HD shadows and water"),
+    (HdLighting, ph::SUN, "Sky and lighting"),
+    (HdShadowsWater, ph::DROP, "Shadows and water"),
     (Controls, ph::KEYBOARD, "Controls"),
     (Advanced, ph::WRENCH, "Advanced"),
 ];
+
+/// One entry of the settings page list: icon and title, left aligned, filled when selected.
+fn nav_item(ui: &mut egui::Ui, selected: bool, icon: &str, title: &str) -> egui::Response {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 30.0), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let visuals = ui.visuals();
+        let fill = if selected {
+            visuals.selection.bg_fill
+        } else if response.hovered() {
+            visuals.widgets.hovered.weak_bg_fill
+        } else {
+            egui::Color32::TRANSPARENT
+        };
+        ui.painter().rect_filled(rect, 6.0, fill);
+        let color = if selected {
+            visuals.selection.stroke.color
+        } else {
+            visuals.widgets.inactive.fg_stroke.color
+        };
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        ui.painter().text(
+            rect.left_center() + egui::vec2(10.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            icon,
+            font.clone(),
+            color,
+        );
+        ui.painter().text(
+            rect.left_center() + egui::vec2(36.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            title,
+            font,
+            color,
+        );
+    }
+    response
+}
 
 /// Mouse controls (keys are listed from the keymap).
 const MOUSE_CONTROLS: &[(&str, &str)] = &[
@@ -588,7 +626,8 @@ impl EditorApp {
     /// fit a narrow panel. They are drawn by [`Self::draw_row`], like the window's.
     pub(super) fn quick_settings_ui(&mut self, ui: &mut egui::Ui) {
         let hd = self.prefs.render_profile == ProfileChoice::Hd;
-        ui.spacing_mut().slider_width = (ui.available_width() - 90.0).max(80.0);
+        // Leave room for the value box ("3x3 regions"); the cap stops a wide value from growing the panel.
+        ui.spacing_mut().slider_width = (ui.available_width() - 120.0).clamp(80.0, 300.0);
         for (group, rows) in QUICK {
             let shown: Vec<&RowDef> = rows
                 .iter()
@@ -603,10 +642,18 @@ impl EditorApp {
             if shown.is_empty() {
                 continue;
             }
-            ui.add_space(4.0);
-            ui.strong(*group);
+            crate::theme::section_heading(ui, group);
             for def in shown {
-                ui.add_space(2.0);
+                let toggle = match def.row {
+                    Row::AnimateObjects => Some(&mut self.prefs.animate_objects),
+                    Row::ShowMinimap => Some(&mut self.prefs.show_minimap),
+                    Row::StatsOverlay => Some(&mut self.prefs.stats_overlay),
+                    _ => None,
+                };
+                if let Some(value) = toggle {
+                    ui.checkbox(value, def.label);
+                    continue;
+                }
                 ui.label(egui::RichText::new(def.label).weak());
                 self.draw_row(ui, def.row);
             }
@@ -662,6 +709,13 @@ impl EditorApp {
             .collapsible(false)
             .default_size([780.0, 560.0])
             .min_size([560.0, 360.0])
+            .default_pos({
+                let screen = ctx.content_rect();
+                egui::pos2(
+                    (screen.center().x - 390.0).max(screen.left() + 8.0),
+                    (screen.center().y - 290.0).max(screen.top() + 64.0),
+                )
+            })
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(ph::MAGNIFYING_GLASS);
@@ -681,14 +735,13 @@ impl EditorApp {
                 ui.separator();
                 ui.horizontal_top(|ui| {
                     ui.vertical(|ui| {
-                        ui.set_width(168.0);
+                        ui.set_width(176.0);
+                        ui.spacing_mut().item_spacing.y = 3.0;
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                         for (page, icon, title) in PAGES {
                             let selected = self.settings_search.is_empty()
                                 && self.prefs.settings_page == *page;
-                            if ui
-                                .selectable_label(selected, format!("{icon}  {title}"))
-                                .clicked()
-                            {
+                            if nav_item(ui, selected, icon, title).clicked() {
                                 self.prefs.settings_page = *page;
                                 self.settings_search.clear();
                             }
@@ -785,9 +838,8 @@ impl EditorApp {
             }
         }
         for section in sections {
-            ui.add_space(6.0);
-            ui.strong(section);
-            ui.add_space(4.0);
+            crate::theme::section_heading(ui, section);
+            ui.spacing_mut().slider_width = 220.0;
             egui::Grid::new(("settings_grid", section, page as u8))
                 .num_columns(2)
                 .spacing([14.0, 7.0])
@@ -857,11 +909,11 @@ impl EditorApp {
                 });
             }
             Row::ContextMenu => {
-                ui.vertical(|ui| {
+                ui.horizontal(|ui| {
                     for style in ContextMenuStyle::ALL {
-                        ui.radio_value(&mut prefs.context_menu, style, style.label());
+                        ui.selectable_value(&mut prefs.context_menu, style, style.short_label())
+                            .on_hover_text(style.label());
                     }
-                    ui.weak("Shift + right click in the viewport.");
                 });
             }
             Row::MouseTooltips => {
@@ -884,11 +936,21 @@ impl EditorApp {
             }
             Row::FlySpeed => {
                 ui.add(
-                    egui::Slider::new(&mut self.camera.speed, 50.0..=20_000.0).logarithmic(true),
+                    egui::Slider::new(&mut self.camera.speed, 50.0..=20_000.0)
+                        .logarithmic(true)
+                        .fixed_decimals(0)
+                        .suffix(" u/s"),
                 );
             }
             Row::LoadRadius => {
-                ui.add(egui::Slider::new(&mut prefs.load_radius, 0..=4).suffix(" regions"));
+                ui.add(
+                    egui::Slider::new(&mut prefs.load_radius, 0..=4).custom_formatter(
+                        |radius, _| {
+                            let side = radius as u32 * 2 + 1;
+                            format!("{side}\u{d7}{side} regions")
+                        },
+                    ),
+                );
             }
             Row::DrawDistance => {
                 ui.add(egui::Slider::new(&mut prefs.draw_distance_tiles, 8..=184).suffix(" tiles"));
@@ -1116,75 +1178,88 @@ impl EditorApp {
 
     /// Mouse controls and the editable keyboard shortcuts.
     fn controls_page(&mut self, ui: &mut egui::Ui) {
-        ui.strong("Mouse");
+        crate::theme::section_heading(ui, "Mouse");
         egui::Grid::new("mouse_controls")
             .num_columns(2)
-            .spacing([14.0, 4.0])
+            .spacing([14.0, 6.0])
+            .min_col_width(190.0)
             .show(ui, |ui| {
                 for (input, action) in MOUSE_CONTROLS {
-                    ui.label(*input);
+                    ui.weak(*input);
                     ui.label(*action);
                     ui.end_row();
                 }
             });
-        ui.add_space(8.0);
+        crate::theme::section_heading(ui, "Keyboard");
         ui.horizontal(|ui| {
-            ui.strong("Keyboard");
-            ui.weak("click a shortcut, then press the new keys (Esc cancels)");
-            if ui.small_button("Reset all").clicked() {
-                self.keymap.reset_all();
-            }
-        });
-        let actions: Vec<_> = self.keymap.actions().to_vec();
-        let mut category = "";
-        egui::Grid::new("key_bindings")
-            .num_columns(3)
-            .spacing([14.0, 4.0])
-            .show(ui, |ui| {
-                for action in actions {
-                    if action.category != category {
-                        category = action.category;
-                        ui.end_row();
-                        ui.strong(category);
-                        ui.end_row();
-                    }
-                    ui.label(action.label);
-                    let waiting = self.capturing_binding == Some(action.id);
-                    let text = if waiting {
-                        "press keys...".to_owned()
-                    } else {
-                        self.keymap
-                            .binding(action.id)
-                            .map_or_else(|| "unbound".to_owned(), |b| b.describe())
-                    };
-                    if ui.selectable_label(waiting, text).clicked() {
-                        self.capturing_binding = Some(action.id);
-                    }
-                    ui.horizontal(|ui| {
-                        if self.keymap.is_overridden(action.id)
-                            && ui.small_button("reset").clicked()
-                        {
-                            self.keymap.reset(action.id);
-                        }
-                        if let Some(binding) = self.keymap.binding(action.id) {
-                            let conflicts = self.keymap.conflicts(action.id, binding);
-                            if !conflicts.is_empty() {
-                                ui.colored_label(
-                                    egui::Color32::from_rgb(240, 160, 60),
-                                    format!("also: {}", conflicts.join(", ")),
-                                );
-                            }
-                        }
-                    });
-                    ui.end_row();
+            ui.weak("Click a shortcut, then press the new keys. Esc cancels.");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Reset all").clicked() {
+                    self.keymap.reset_all();
                 }
             });
+        });
+        ui.add_space(4.0);
+        let actions: Vec<_> = self.keymap.actions().to_vec();
+        let mut categories: Vec<&str> = Vec::new();
+        for action in &actions {
+            if !categories.contains(&action.category) {
+                categories.push(action.category);
+            }
+        }
+        for category in categories {
+            ui.add_space(6.0);
+            ui.label(egui::RichText::new(category).strong());
+            egui::Grid::new(("key_bindings", category))
+                .num_columns(3)
+                .spacing([14.0, 5.0])
+                .min_col_width(190.0)
+                .show(ui, |ui| {
+                    for action in actions.iter().filter(|a| a.category == category) {
+                        ui.weak(action.label);
+                        let waiting = self.capturing_binding == Some(action.id);
+                        let text = if waiting {
+                            "Press keys...".to_owned()
+                        } else {
+                            self.keymap
+                                .binding(action.id)
+                                .map_or_else(|| "Unbound".to_owned(), |b| b.describe())
+                        };
+                        if ui
+                            .add_sized(
+                                [150.0, 24.0],
+                                egui::Button::new(egui::RichText::new(text).monospace().size(12.5))
+                                    .selected(waiting),
+                            )
+                            .clicked()
+                        {
+                            self.capturing_binding = Some(action.id);
+                        }
+                        ui.horizontal(|ui| {
+                            if self.keymap.is_overridden(action.id)
+                                && ui.small_button("Reset").clicked()
+                            {
+                                self.keymap.reset(action.id);
+                            }
+                            if let Some(binding) = self.keymap.binding(action.id) {
+                                let conflicts = self.keymap.conflicts(action.id, binding);
+                                if !conflicts.is_empty() {
+                                    ui.colored_label(
+                                        ui.visuals().warn_fg_color,
+                                        format!("also: {}", conflicts.join(", ")),
+                                    );
+                                }
+                            }
+                        });
+                        ui.end_row();
+                    }
+                });
+        }
     }
 
     /// Reset buttons and where the settings file lives.
     fn advanced_page(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(6.0);
-        ui.strong("Reset");
+        crate::theme::section_heading(ui, "Reset");
         ui.horizontal(|ui| {
             if ui
                 .button("Reset the window layout")
@@ -1218,7 +1293,7 @@ impl EditorApp {
             }
         });
         ui.add_space(6.0);
-        ui.strong("Settings file");
+        crate::theme::section_heading(ui, "Settings file");
         match crate::settings::path() {
             Some(path) => {
                 ui.label(path.display().to_string());
