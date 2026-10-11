@@ -29,6 +29,10 @@ use std::sync::OnceLock;
 
 const GRID: usize = 16;
 const WORDS: usize = GRID * GRID / 64;
+/// Annealing: sweeps over the tiles, and the temperature range (in cost units).
+const ANNEAL_SWEEPS: usize = 160;
+const ANNEAL_START: f32 = 3.0;
+const ANNEAL_END: f32 = 0.05;
 /// A tile the band covers at least this many cells of may carry a small piece of the path.
 const TOUCHED: u32 = 10;
 /// What leaving a tile alone costs, against the census cost of a piece.
@@ -702,35 +706,75 @@ pub fn generate(
             0.0
         }
     };
+    // What a tile costs if it shows candidate `i`, given what its neighbours show now.
+    let energy = |chosen: &HashMap<(i32, i32), usize>, tile: (i32, i32), i: usize| -> f32 {
+        let c = list[i];
+        let target = target_of(tile);
+        let shape = GEOMETRY_WEIGHT * cost(&target, &c.mask) as f32 / 256.0;
+        let census = if c.slot == KEEP_SLOT {
+            KEEP_COST
+        } else {
+            let pattern = pattern_now(chosen, tile);
+            if pattern == 255 {
+                // Surrounded by the path: whole, whatever else is asked.
+                if c.slot == 0 { 0.0 } else { 12.0 }
+            } else {
+                prior.cost[pattern][c.slot]
+            }
+        };
+        let side = |dx: i32, dy: i32, mine: Side, theirs: Side| {
+            portal(
+                edge(&c.mask, mine),
+                edge(&neighbour_mask(chosen, (tile.0 + dx, tile.1 + dy)), theirs),
+            )
+        };
+        let portals = side(-1, 0, Side::West, Side::East)
+            + side(1, 0, Side::East, Side::West)
+            + side(0, -1, Side::South, Side::North)
+            + side(0, 1, Side::North, Side::South);
+        shape + PRIOR_WEIGHT * census + PORTAL_WEIGHT * portals
+    };
+
+    // Annealing first, so tiles can leave a locally good but jagged arrangement (a notch only
+    // disappears when two neighbours change together), then greedy passes to settle.
     let mut order = work.clone();
-    for pass in 0..6 {
+    let mut rng =
+        0x9E37_79B9_7F4A_7C15_u64 ^ (order.len() as u64).wrapping_mul(0xD1B5_4A32_D192_ED03);
+    let mut next = move || {
+        rng ^= rng << 13;
+        rng ^= rng >> 7;
+        rng ^= rng << 17;
+        rng
+    };
+    // Long paths get fewer sweeps so a live preview stays responsive.
+    let sweeps = (ANNEAL_SWEEPS * 200 / work.len().max(200)).max(40);
+    for sweep in 0..sweeps {
+        let temperature =
+            ANNEAL_START * (ANNEAL_END / ANNEAL_START).powf(sweep as f32 / sweeps as f32);
+        for tile in &order {
+            let current = chosen.get(tile).copied().unwrap_or(0);
+            let before = energy(&chosen, *tile, current);
+            let proposal = (next() % list.len() as u64) as usize;
+            if proposal == current {
+                continue;
+            }
+            let delta = energy(&chosen, *tile, proposal) - before;
+            let accept = delta <= 0.0 || {
+                let roll = (next() >> 11) as f32 / (1u64 << 53) as f32;
+                roll < (-delta / temperature).exp()
+            };
+            if accept {
+                chosen.insert(*tile, proposal);
+            }
+        }
+    }
+    for pass in 0..4 {
         if pass % 2 == 1 {
             order.reverse();
         }
         for tile in &order {
-            let target = target_of(*tile);
-            let pattern = pattern_now(&chosen, *tile);
-            let west = edge(&neighbour_mask(&chosen, (tile.0 - 1, tile.1)), Side::East);
-            let east = edge(&neighbour_mask(&chosen, (tile.0 + 1, tile.1)), Side::West);
-            let south = edge(&neighbour_mask(&chosen, (tile.0, tile.1 - 1)), Side::North);
-            let north = edge(&neighbour_mask(&chosen, (tile.0, tile.1 + 1)), Side::South);
-            let score = |c: &Candidate| {
-                let shape = GEOMETRY_WEIGHT * cost(&target, &c.mask) as f32 / 256.0;
-                let census = if c.slot == KEEP_SLOT {
-                    KEEP_COST
-                } else if pattern == 255 {
-                    // Surrounded by the path: whole, whatever else is asked.
-                    if c.slot == 0 { 0.0 } else { 12.0 }
-                } else {
-                    prior.cost[pattern][c.slot]
-                };
-                let portals = portal(edge(&c.mask, Side::West), west)
-                    + portal(edge(&c.mask, Side::East), east)
-                    + portal(edge(&c.mask, Side::South), south)
-                    + portal(edge(&c.mask, Side::North), north);
-                shape + PRIOR_WEIGHT * census + PORTAL_WEIGHT * portals
-            };
-            let pick = (0..list.len()).min_by(|a, b| score(list[*a]).total_cmp(&score(list[*b])));
+            let pick = (0..list.len())
+                .min_by(|a, b| energy(&chosen, *tile, *a).total_cmp(&energy(&chosen, *tile, *b)));
             if let Some(pick) = pick {
                 chosen.insert(*tile, pick);
             }
@@ -878,6 +922,21 @@ mod tests {
         };
         assert_eq!(probable(corner(0)), 4 + 2, "shape 1 rotation 2");
         assert_eq!(probable(corner(1)), 4 + 3, "shape 1 rotation 3");
+    }
+
+    #[test]
+    fn a_long_path_is_laid_quickly_enough_for_a_live_preview() {
+        let points = [(2.5, 2.5), (40.5, 20.5), (80.5, 5.5), (120.5, 30.5)];
+        let started = std::time::Instant::now();
+        let result = generate(&points, params(4.0), &none);
+        let took = started.elapsed();
+        assert!(!result.is_empty());
+        assert!(
+            took.as_millis() < 1500,
+            "{took:?} for {} tiles",
+            result.len()
+        );
+        eprintln!("{} tiles in {took:?}", result.len());
     }
 
     #[test]
@@ -1175,5 +1234,59 @@ mod draw {
             p(4.0),
         );
         render("thin", &[(2.5, 2.5), (14.5, 9.5), (24.5, 8.5)], p(2.0));
+        render("wide7", &[(3.5, 3.5), (14.2, 12.7), (28.5, 9.5)], p(7.0));
+        render("field", &[(3.5, 3.5), (8.5, 13.5), (4.5, 25.5)], p(3.0));
+        render("w1", &[(2.5, 2.5), (20.5, 11.5)], p(1.0));
+        render(
+            "loop",
+            &[(10.5, 6.5), (22.5, 6.5), (22.5, 18.5), (10.5, 18.5)],
+            PathParams {
+                closed: true,
+                ..p(3.0)
+            },
+        );
+        render(
+            "lines5",
+            &[(2.5, 2.5), (12.5, 14.5), (22.5, 4.5), (30.5, 12.5)],
+            PathParams {
+                curve: CurveKind::Lines,
+                ..p(5.0)
+            },
+        );
+        render(
+            "tight",
+            &[
+                (3.2, 3.7),
+                (8.1, 9.3),
+                (12.9, 3.1),
+                (17.4, 9.6),
+                (22.2, 3.4),
+            ],
+            p(3.0),
+        );
+    }
+}
+
+#[cfg(test)]
+mod dump {
+    use super::*;
+
+    #[test]
+    #[ignore = "prints the shape alphabet"]
+    fn dump_shapes() {
+        for shape in 1..=11_u8 {
+            println!("shape {shape} rotation 0 (y up), tris:");
+            for (t, overlay) in shape_triangles(shape, 0) {
+                println!("   overlay={overlay} {:?}", t);
+            }
+            let m = shape_mask(shape, 0);
+            for y in (0..16).rev().step_by(2) {
+                let row: String = (0..16)
+                    .step_by(1)
+                    .map(|x| if get(&m, x, y) { '#' } else { '.' })
+                    .collect();
+                println!("   {row}");
+            }
+        }
     }
 }
