@@ -327,6 +327,10 @@ impl EditorApp {
     fn presentation(smooth_terrain: bool) -> TerrainPresentation {
         TerrainPresentation {
             smooth_terrain,
+            // Always on, no switch: lifts diagonal wall-decoration plates off their wall so the
+            // depth buffer does not hide their recessed faces (the software client painted
+            // decorations over their wall regardless of depth).
+            flush_diagonal_decorations: true,
             ..TerrainPresentation::default()
         }
     }

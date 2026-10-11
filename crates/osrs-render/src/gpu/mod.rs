@@ -758,7 +758,10 @@ impl SceneRenderer {
             .regions
             .values()
             .flatten()
-            .filter(|zone| zone_visible(zone, self.render_origin, &globals.world_proj))
+            .filter(|zone| {
+                within_draw_distance(zone, self.render_origin, &params)
+                    && zone_visible(zone, self.render_origin, &globals.world_proj)
+            })
             .collect();
         let (alpha_zones, alpha_draws, alpha_index_buffer) = self.prepare_alpha(&visible, &params);
         let mut timer_guard = self.timer.borrow_mut();
@@ -1259,6 +1262,21 @@ fn build_globals_bind_group(
 /// The reference projection has clip `w` equal to camera distance, so a box is outside when all
 /// eight corners lie beyond the same clip plane, or all lie closer than the `2 * near` point where
 /// depth would exceed `1`.
+/// RuneLite's draw distance: zones farther than `draw_distance_tiles` from the camera (square
+/// distance to the nearest edge of the zone) are not drawn.
+fn within_draw_distance(zone: &GpuZone, origin: (i32, i32), params: &FrameParams) -> bool {
+    let limit = params.fog.draw_distance_tiles as f32 * 128.0;
+    let base_x = (zone.world_origin.0 - origin.0) as f32;
+    let base_z = (zone.world_origin.1 - origin.1) as f32;
+    let dx = (base_x - params.camera.x)
+        .max(params.camera.x - (base_x + ZONE_LOCAL_EXTENT))
+        .max(0.0);
+    let dz = (base_z - params.camera.z)
+        .max(params.camera.z - (base_z + ZONE_LOCAL_EXTENT))
+        .max(0.0);
+    dx.max(dz) <= limit
+}
+
 fn zone_visible(zone: &GpuZone, origin: (i32, i32), world_proj: &[[f32; 4]; 4]) -> bool {
     let base_x = (zone.world_origin.0 - origin.0) as f32;
     let base_z = (zone.world_origin.1 - origin.1) as f32;
