@@ -31,7 +31,7 @@ struct Preview {
     tiles: Vec<((i32, i32), TileChoice)>,
 }
 
-fn key_of(points: &[(f32, f32)], params: PathParams) -> u64 {
+fn key_of(points: &[(f32, f32)], params: PathParams, terrain: u64) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     let mut mix = |value: u64| {
         hash ^= value;
@@ -41,6 +41,7 @@ fn key_of(points: &[(f32, f32)], params: PathParams) -> u64 {
     mix(params.style as u64);
     mix(params.curve as u64);
     mix(u64::from(params.closed));
+    mix(terrain);
     for (x, y) in points {
         mix(x.to_bits().into());
         mix(y.to_bits().into());
@@ -80,17 +81,39 @@ impl EditorApp {
         self.spline.preview.as_ref().map_or(0, |p| p.tiles.len())
     }
 
+    /// The overlay id the path lays, when the brush sets one.
+    fn laying_overlay(&self) -> Option<u16> {
+        let brush = &self.prefs.brush;
+        match brush.overlay.fill {
+            crate::paint::Fill::Set(id) if brush.overlay.armed => Some(id),
+            _ => None,
+        }
+    }
+
     /// Keep the preview in step with the points and options.
     pub(super) fn spline_update(&mut self) {
         let params = self.path_params();
-        let key = key_of(&self.spline.points, params);
+        let overlay = self.laying_overlay();
+        let key = key_of(
+            &self.spline.points,
+            params,
+            (self.edited.len() as u64) << 32
+                ^ self.infos_version
+                ^ u64::from(overlay.unwrap_or(0)) << 48,
+        );
         if self.spline.preview.as_ref().is_some_and(|p| p.key == key) {
             return;
         }
         let tiles = if self.spline.points.is_empty() {
             Vec::new()
         } else {
-            autotile::generate(&self.spline.points, params)
+            let plane = self.view_plane;
+            let existing = |tile: (i32, i32)| {
+                let id = overlay?;
+                let values = self.current_tile_values((plane, tile.0, tile.1))?;
+                (values.overlay == id).then_some((values.shape, values.rotation))
+            };
+            autotile::generate(&self.spline.points, params, &existing)
         };
         self.spline.preview = Some(Preview { key, tiles });
     }

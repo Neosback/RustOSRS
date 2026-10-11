@@ -144,3 +144,25 @@ neighbour pattern) -> (shape, rotation), used as `- lambda * ln(1 + count)` to b
 priority arbitration at borders (the lower tile keeps its facing shape and takes the higher overlay's paired
 underlay); (4) an eraser that cuts partial gaps with the complement shapes; (5) per-channel invalidation reach in
 the edit layer (overlay, shape and flags need only their own tile, underlay +-5, height +-1).
+
+## 9. Census-driven tiler (2026-10-11)
+
+The 16 x 16 mask fit alone gave a diagonal sliver on every edge tile ("jagged ears"). A census of the whole
+b241 map (`osrs-world` example `shape_census`, output kept in `crates/osrs-editor/data/shape-census.txt`:
+`pattern shape rotation count`, pattern = which of the 8 neighbours carry the same overlay id) shows how
+people actually lay shapes:
+
+* 6.2 M of 7.8 M overlay tiles have all eight neighbours the same and are whole (99.9%).
+* On a straight edge (five neighbours in a row) the tile is whole 87% of the time; shape 6 (half tile) is
+  8%. Shapes concentrate at corners: a convex corner is cut with shape 1 (the diagonal) about 30%, whole
+  about 55%.
+* Rotating the neighbourhood a quarter turn clockwise (bits move two places) turns the shape one step, so
+  every observation is counted in all four orientations.
+
+`autotile::generate` now works in two steps: occupancy (a tile belongs when the band covers at least half of
+it; tiles already carrying the overlay count too) and shapes (score = 7 x area mismatch + -ln P(shape |
+pattern) + 1.2 x portal mismatch, four relaxation passes). Existing whole tiles are not rewritten, and old
+partial pieces that end up surrounded become whole, so a new path flows into an old one. Result: staircases
+of whole tiles with 45 degree cut corners, like hand-made roads. Limits: the prior sees one ring of
+neighbours (long shallow slopes could use a 5 x 5 prior), existing neighbours are only retiled when they end
+up surrounded, and underlay pairs are not modelled.

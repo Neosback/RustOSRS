@@ -164,8 +164,7 @@ impl AssetState {
                     None
                 } else {
                     Some(
-                        match renderer.render(definitions, catalog, area, region, pixels_per_tile)
-                        {
+                        match renderer.render(definitions, catalog, area, region, pixels_per_tile) {
                             Some(image) => {
                                 AssetEvent::WorldMapRegion(Box::new(WorldMapRegionImage {
                                     area,

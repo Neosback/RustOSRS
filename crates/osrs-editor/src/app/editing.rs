@@ -90,6 +90,10 @@ impl EditorApp {
         self.current_tile((self.view_plane, tile.0, tile.1))
     }
 
+    pub(super) fn current_tile_values(&self, key: TileKey) -> Option<TileValues> {
+        self.current_tile(key)
+    }
+
     fn current_tile(&self, key: TileKey) -> Option<TileValues> {
         self.edited
             .get(&key)

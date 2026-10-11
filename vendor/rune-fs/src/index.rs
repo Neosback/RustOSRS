@@ -169,7 +169,8 @@ impl Index {
         for (archive_id, archive_data) in buffer
             .chunks(ARCHIVE_REF_LEN)
             .filter(|chunk| chunk.len() == ARCHIVE_REF_LEN)
-            .enumerate() {
+            .enumerate()
+        {
             let archive_id = archive_id as u32;
 
             let archive_ref = match ArchiveRef::from_buffer(archive_id, id, archive_data) {
@@ -341,7 +342,8 @@ fn parse_whirlpools(
         .unwrap_or(&[])
         .chunks(64)
         .filter(|chunk| chunk.len() == 64)
-        .enumerate() {
+        .enumerate()
+    {
         whirlpools[index].copy_from_slice(chunk);
     }
     if whirlpools.len() != archive_count {

@@ -1,15 +1,21 @@
 //! The auto-tiler: turn a smooth path into tiles that look hand-made.
 //!
 //! An OSRS tile holds one overlay in one of 12 shapes and 4 rotations (the real tables in
-//! `osrs-scene::terrain`). Painting a path means choosing, for every tile the path touches, the
-//! (shape, rotation) whose overlay best matches the part of the tile the path covers.
+//! `osrs-scene::terrain`). A census of the real map (`osrs-world`'s `shape_census` example, stored in
+//! `data/shape-census.txt`) shows how people use them: 99.9% of tiles with eight same-overlay
+//! neighbours are whole, a straight edge is a whole tile 87% of the time, and shapes appear mainly at
+//! corners. Hand-made paths are staircases of whole tiles with the odd cut corner, not a thin
+//! diagonal sliver on every edge tile.
 //!
-//! Every tile is rasterised to a 16 x 16 sub-tile mask (256 bits, bit `y * 16 + x`, `y` up). All
-//! candidate shapes are rasterised from the real face tables once; the path band is rasterised per
-//! tile; the best candidate is the one with the smallest Hamming distance. Slivers (a few percent of a
-//! tile) are dropped and almost-full tiles become full, so the edge does not fray. Further passes
-//! compare each tile's edge with its neighbours' ("portals") so pieces connect instead of leaving
-//! notches, which is what makes the result read as intentional rather than as independent guesses.
+//! So the tiler works in two steps:
+//!
+//! 1. **Occupancy**: a tile belongs to the path when the band covers at least half of it (tiles that
+//!    already carry the path's overlay count too, so a new path flows into an old one).
+//! 2. **Shapes**: each tile's eight-neighbour pattern is looked up in the census (rotation-symmetric,
+//!    smoothed); every candidate (whole tile or one of the shapes) is scored by how unlikely that
+//!    choice is for the pattern, plus how far its sub-tile mask (16 x 16) is from the band's, plus a
+//!    penalty for edges that do not meet the neighbours' ("portals"). The cheapest wins, and a few
+//!    relaxation passes let neighbours settle.
 //!
 //! The path itself is a centripetal Catmull-Rom spline (no loops or overshoot when points are unevenly
 //! spaced), or straight lines, optionally closed.
@@ -24,10 +30,10 @@ use std::sync::OnceLock;
 
 const GRID: usize = 16;
 const WORDS: usize = GRID * GRID / 64;
-/// Fewer covered sub-cells than this (of 256) and a tile is left alone.
-const SLIVER: u32 = 14;
-/// More covered sub-cells than this and a tile is filled completely.
-const NEARLY_FULL: u32 = 242;
+/// A tile joins the path when the band covers at least this many of its 256 sub-cells.
+const OCCUPIED: u32 = 128;
+/// The census: `pattern shape rotation count` per line.
+const CENSUS: &str = include_str!("../data/shape-census.txt");
 
 /// A tile's 16 x 16 mask.
 type Mask = [u64; WORDS];
@@ -60,6 +66,10 @@ fn cost(target: &Mask, candidate: &Mask) -> u32 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TileChoice {
     /// Leave the tile alone.
+    #[allow(
+        dead_code,
+        reason = "part of the choice vocabulary; the tiler lists only changed tiles"
+    )]
     Keep,
     /// Whole tile is overlay (shape 0).
     Full,
@@ -226,32 +236,30 @@ pub enum CurveKind {
 struct Candidate {
     choice: TileChoice,
     mask: Mask,
+    /// `shape * 4 + rotation` in the census (0 for a whole tile).
+    slot: usize,
 }
 
-/// Every candidate, simplest first: Keep, Full, then shapes by file value and rotation.
+/// Every candidate: the whole tile, then each shape (file value `1..=11`) in each rotation. Shapes
+/// with the same mask stay separate: the census says which spelling people use.
 fn all_candidates() -> &'static [Candidate] {
     static CANDIDATES: OnceLock<Vec<Candidate>> = OnceLock::new();
     CANDIDATES.get_or_init(|| {
-        let mut list = vec![
-            Candidate {
-                choice: TileChoice::Keep,
-                mask: EMPTY,
-            },
-            Candidate {
-                choice: TileChoice::Full,
-                mask: FULL,
-            },
-        ];
+        let mut list = vec![Candidate {
+            choice: TileChoice::Full,
+            mask: FULL,
+            slot: 0,
+        }];
         for shape in 1..=11_u8 {
             for rotation in 0..4_u8 {
                 let mask = shape_mask(shape, rotation);
-                // Skip empty shapes and masks an earlier (simpler) shape already has.
-                if popcount(&mask) == 0 || list.iter().any(|candidate| candidate.mask == mask) {
+                if popcount(&mask) == 0 {
                     continue;
                 }
                 list.push(Candidate {
                     choice: TileChoice::Shape { shape, rotation },
                     mask,
+                    slot: usize::from(shape) * 4 + usize::from(rotation),
                 });
             }
         }
@@ -268,6 +276,69 @@ fn candidates_for(style: EdgeStyle) -> Vec<&'static Candidate> {
             TileChoice::Shape { shape, .. } => style.allows(shape),
         })
         .collect()
+}
+
+const SLOTS: usize = 12 * 4;
+
+/// How likely each (shape, rotation) is for each pattern of same-overlay neighbours (bit 0 = north,
+/// then clockwise: NE, E, SE, S, SW, W, NW), learned from the real map.
+struct Prior {
+    /// `-ln p` per pattern and slot.
+    cost: Vec<[f32; SLOTS]>,
+}
+
+fn prior() -> &'static Prior {
+    static PRIOR: OnceLock<Prior> = OnceLock::new();
+    PRIOR.get_or_init(|| {
+        let mut counts = vec![[0.0_f32; SLOTS]; 256];
+        for line in CENSUS.lines() {
+            let mut fields = line
+                .split_whitespace()
+                .map(|f| f.parse::<u32>().unwrap_or(0));
+            let (Some(pattern), Some(shape), Some(rotation), Some(count)) =
+                (fields.next(), fields.next(), fields.next(), fields.next())
+            else {
+                continue;
+            };
+            if pattern > 255 || shape > 11 {
+                continue;
+            }
+            // Turning the neighbourhood a quarter turn clockwise (bits move two places) turns the
+            // tile's rotation by one, so every observation counts in all four orientations.
+            for turn in 0..4_u32 {
+                let rotated = ((pattern << (2 * turn)) | (pattern >> (8 - 2 * turn))) & 255;
+                let slot = if shape == 0 {
+                    0
+                } else {
+                    (shape * 4 + (rotation + turn) % 4) as usize
+                };
+                counts[rotated as usize][slot] += count as f32;
+            }
+        }
+        // Background: how shapes are spread over every pattern with a boundary in it.
+        let mut background = [0.0_f32; SLOTS];
+        for row in &counts[..255] {
+            for (slot, count) in row.iter().enumerate() {
+                background[slot] += count;
+            }
+        }
+        let background_total: f32 = background.iter().sum::<f32>().max(1.0);
+        const WEIGHT: f32 = 12.0;
+        let cost = counts
+            .iter()
+            .map(|row| {
+                let total: f32 = row.iter().sum();
+                let mut out = [0.0_f32; SLOTS];
+                for slot in 0..SLOTS {
+                    let p = (row[slot] + WEIGHT * background[slot] / background_total)
+                        / (total + WEIGHT);
+                    out[slot] = -p.max(1e-4).ln();
+                }
+                out
+            })
+            .collect();
+        Prior { cost }
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -486,10 +557,36 @@ fn band_mask(index: &SegmentIndex, half_width: f32, tile: (i32, i32)) -> Mask {
     mask
 }
 
+/// Weight of the shape mismatch (a whole tile's worth of area) against the census cost.
+const GEOMETRY_WEIGHT: f32 = 7.0;
+/// Weight of a fully mismatched tile edge.
+const PORTAL_WEIGHT: f32 = 1.2;
+
+/// The mask a tile that already carries the overlay shows (`None`: it does not).
+fn existing_mask(
+    existing: &dyn Fn((i32, i32)) -> Option<(u8, u8)>,
+    tile: (i32, i32),
+) -> Option<Mask> {
+    let (shape, rotation) = existing(tile)?;
+    Some(if shape == 0 {
+        FULL
+    } else {
+        shape_mask(shape, rotation)
+    })
+}
+
 /// The tiles a path of `params` laid along `points` (world tile coordinates; a control point on tile
 /// `(x, y)` is at `(x + 0.5, y + 0.5)` or anywhere inside it) turns into. Tiles that stay as they are
 /// are not listed.
-pub fn generate(points: &[(f32, f32)], params: PathParams) -> Vec<((i32, i32), TileChoice)> {
+///
+/// `existing(tile)` says whether a tile already carries the overlay being laid, and in which
+/// `(shape, rotation)` (shape 0 = whole): those tiles count as part of the path, so a new path joins
+/// an old one instead of leaving a seam.
+pub fn generate(
+    points: &[(f32, f32)],
+    params: PathParams,
+    existing: &dyn Fn((i32, i32)) -> Option<(u8, u8)>,
+) -> Vec<((i32, i32), TileChoice)> {
     if points.is_empty() {
         return Vec::new();
     }
@@ -507,72 +604,131 @@ pub fn generate(points: &[(f32, f32)], params: PathParams) -> Vec<((i32, i32), T
         }
     }
 
-    let list = candidates_for(params.style);
+    // Step 1: which tiles belong to the path.
+    let mut occupied: std::collections::BTreeSet<(i32, i32)> = targets
+        .iter()
+        .filter(|(_, mask)| popcount(mask) >= OCCUPIED)
+        .map(|(tile, _)| *tile)
+        .collect();
+    if params.width < 2.0 {
+        // A thin path must stay joined: every tile its centre line crosses belongs to it.
+        for point in &line {
+            occupied.insert((point.0.floor() as i32, point.1.floor() as i32));
+        }
+    }
+    let is_part = |tile: (i32, i32), occupied: &std::collections::BTreeSet<(i32, i32)>| {
+        occupied.contains(&tile) || existing(tile).is_some()
+    };
+    let pattern_of = |tile: (i32, i32), occupied: &std::collections::BTreeSet<(i32, i32)>| {
+        const AROUND: [(i32, i32); 8] = [
+            (0, 1),
+            (1, 1),
+            (1, 0),
+            (1, -1),
+            (0, -1),
+            (-1, -1),
+            (-1, 0),
+            (-1, 1),
+        ];
+        let mut pattern = 0_usize;
+        for (bit, (dx, dy)) in AROUND.iter().enumerate() {
+            if is_part((tile.0 + dx, tile.1 + dy), occupied) {
+                pattern |= 1 << bit;
+            }
+        }
+        pattern
+    };
+
     if params.style == EdgeStyle::Whole {
-        let mut out: Vec<_> = targets
+        return occupied
             .iter()
-            .filter(|(_, mask)| popcount(mask) >= 128)
-            .map(|(tile, _)| (*tile, TileChoice::Full))
+            .filter(|tile| existing(**tile).is_none_or(|(shape, _)| shape != 0))
+            .map(|tile| (*tile, TileChoice::Full))
             .collect();
-        out.sort_by_key(|(tile, _)| *tile);
-        return out;
     }
 
-    // First choice: the smallest mismatch. Slivers and nearly full tiles snap to the simple answer
-    // (the list puts Keep and Full first, so ties go there too).
+    // Step 2: a shape for each tile. Whole tiles that are already there stay.
+    let list = candidates_for(params.style);
+    let prior = prior();
+    let work: Vec<(i32, i32)> = occupied
+        .iter()
+        .copied()
+        .filter(|tile| existing(*tile).is_none_or(|(shape, _)| shape != 0))
+        .collect();
+    let target_of = |tile: (i32, i32)| targets.get(&tile).copied().unwrap_or(EMPTY);
     let mut chosen: HashMap<(i32, i32), usize> = HashMap::new();
-    for (tile, target) in &targets {
-        let covered = popcount(target);
-        let best = if covered < SLIVER {
+    let patterns: HashMap<(i32, i32), usize> = work
+        .iter()
+        .map(|tile| (*tile, pattern_of(*tile, &occupied)))
+        .collect();
+    // Surrounded tiles are whole; everything else starts at the best shape by census and geometry.
+    for tile in &work {
+        let pattern = patterns[tile];
+        let target = target_of(*tile);
+        let best = if pattern == 255 {
             0
-        } else if covered > NEARLY_FULL {
-            1
         } else {
             (0..list.len())
-                .min_by_key(|i| cost(target, &list[*i].mask))
+                .min_by(|a, b| {
+                    let score = |i: usize| {
+                        let c = list[i];
+                        GEOMETRY_WEIGHT * cost(&target, &c.mask) as f32 / 256.0
+                            + prior.cost[pattern][c.slot]
+                    };
+                    score(*a).total_cmp(&score(*b))
+                })
                 .unwrap_or(0)
         };
         chosen.insert(*tile, best);
     }
 
-    // Portal passes: among near-best candidates, prefer the one whose edges agree with the
-    // neighbours' current choice.
-    let neighbour = |chosen: &HashMap<(i32, i32), usize>, tile: (i32, i32)| -> Mask {
-        chosen.get(&tile).map_or(EMPTY, |i| list[*i].mask)
+    // The mask a neighbour shows right now: its pick, what is already there, or nothing.
+    let neighbour_mask = |chosen: &HashMap<(i32, i32), usize>, tile: (i32, i32)| -> Mask {
+        if let Some(i) = chosen.get(&tile) {
+            return list[*i].mask;
+        }
+        if occupied.contains(&tile) {
+            return FULL;
+        }
+        existing_mask(existing, tile).unwrap_or(EMPTY)
     };
-    let mut order: Vec<(i32, i32)> = targets.keys().copied().collect();
-    order.sort();
+    let mut order = work.clone();
     for pass in 0..4 {
         if pass % 2 == 1 {
             order.reverse();
         }
         for tile in &order {
-            let target = &targets[tile];
-            let covered = popcount(target);
-            if !(SLIVER..=NEARLY_FULL).contains(&covered) {
+            let pattern = patterns[tile];
+            if pattern == 255 {
                 continue;
             }
-            let west = edge(&neighbour(&chosen, (tile.0 - 1, tile.1)), Side::East);
-            let east = edge(&neighbour(&chosen, (tile.0 + 1, tile.1)), Side::West);
-            let south = edge(&neighbour(&chosen, (tile.0, tile.1 - 1)), Side::North);
-            let north = edge(&neighbour(&chosen, (tile.0, tile.1 + 1)), Side::South);
-            let best_cost = list
-                .iter()
-                .map(|candidate| cost(target, &candidate.mask))
-                .min()
-                .unwrap_or(0);
-            let score = |mask: &Mask| {
-                let portals = (edge(mask, Side::West) ^ west).count_ones()
-                    + (edge(mask, Side::East) ^ east).count_ones()
-                    + (edge(mask, Side::South) ^ south).count_ones()
-                    + (edge(mask, Side::North) ^ north).count_ones();
-                // The shape error counts once, a mismatched edge cell twice: a slightly worse shape
-                // that joins its neighbours beats a better one that leaves a notch.
-                cost(target, mask) + 2 * portals
+            let target = target_of(*tile);
+            let west = edge(&neighbour_mask(&chosen, (tile.0 - 1, tile.1)), Side::East);
+            let east = edge(&neighbour_mask(&chosen, (tile.0 + 1, tile.1)), Side::West);
+            let south = edge(&neighbour_mask(&chosen, (tile.0, tile.1 - 1)), Side::North);
+            let north = edge(&neighbour_mask(&chosen, (tile.0, tile.1 + 1)), Side::South);
+            // An edge only has to agree with a neighbour that is part of the path: beside open
+            // ground the tile may end wherever its shape says.
+            let joined = |dx: i32, dy: i32| is_part((tile.0 + dx, tile.1 + dy), &occupied);
+            let score = |c: &Candidate| {
+                let mut portals = 0_u32;
+                if joined(-1, 0) {
+                    portals += (edge(&c.mask, Side::West) ^ west).count_ones();
+                }
+                if joined(1, 0) {
+                    portals += (edge(&c.mask, Side::East) ^ east).count_ones();
+                }
+                if joined(0, -1) {
+                    portals += (edge(&c.mask, Side::South) ^ south).count_ones();
+                }
+                if joined(0, 1) {
+                    portals += (edge(&c.mask, Side::North) ^ north).count_ones();
+                }
+                GEOMETRY_WEIGHT * cost(&target, &c.mask) as f32 / 256.0
+                    + prior.cost[pattern][c.slot]
+                    + PORTAL_WEIGHT * portals as f32 / GRID as f32
             };
-            let pick = (0..list.len())
-                .filter(|i| cost(target, &list[*i].mask) <= best_cost + 24)
-                .min_by_key(|i| score(&list[*i].mask));
+            let pick = (0..list.len()).min_by(|a, b| score(&list[*a]).total_cmp(&score(&list[*b])));
             if let Some(pick) = pick {
                 chosen.insert(*tile, pick);
             }
@@ -582,8 +738,24 @@ pub fn generate(points: &[(f32, f32)], params: PathParams) -> Vec<((i32, i32), T
     let mut out: Vec<_> = chosen
         .into_iter()
         .map(|(tile, i)| (tile, list[i].choice))
-        .filter(|(_, choice)| *choice != TileChoice::Keep)
         .collect();
+    // Old partial pieces now surrounded by the path become whole.
+    let mut seen: std::collections::BTreeSet<(i32, i32)> = std::collections::BTreeSet::new();
+    for tile in &occupied {
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                let near = (tile.0 + dx, tile.1 + dy);
+                if occupied.contains(&near) || !seen.insert(near) {
+                    continue;
+                }
+                if existing(near).is_some_and(|(shape, _)| shape != 0)
+                    && pattern_of(near, &occupied) == 255
+                {
+                    out.push((near, TileChoice::Full));
+                }
+            }
+        }
+    }
     out.sort_by_key(|(tile, _)| *tile);
     out
 }
@@ -621,6 +793,10 @@ mod tests {
 
     fn share(shape: u8, rotation: u8) -> f32 {
         shape_cells(shape, rotation) as f32 / 256.0
+    }
+
+    fn none(_: (i32, i32)) -> Option<(u8, u8)> {
+        None
     }
 
     fn params(width: f32) -> PathParams {
@@ -668,23 +844,73 @@ mod tests {
     }
 
     #[test]
-    fn candidates_are_distinct_and_start_with_keep_and_full() {
+    fn candidates_start_with_the_whole_tile_and_cover_every_shape() {
         let list = all_candidates();
-        assert_eq!(list[0].choice, TileChoice::Keep);
-        assert_eq!(list[1].choice, TileChoice::Full);
-        for i in 0..list.len() {
-            for j in i + 1..list.len() {
-                assert_ne!(list[i].mask, list[j].mask);
-            }
+        assert_eq!(list[0].choice, TileChoice::Full);
+        assert!(list.len() > 30, "{} candidates", list.len());
+    }
+
+    #[test]
+    fn the_census_knows_how_corners_and_edges_are_made() {
+        let prior = prior();
+        let best = |pattern: usize| {
+            (0..SLOTS)
+                .min_by(|a, b| prior.cost[pattern][*a].total_cmp(&prior.cost[pattern][*b]))
+                .unwrap_or(0)
+        };
+        // Neighbours on every side: whole. A straight edge (west side open): whole is the usual.
+        assert_eq!(best(255), 0);
+        assert_eq!(best(0b0001_1111), 0);
+        // A convex corner (only N, NE, E present, so the south-west is open) is cut with shape 1
+        // or left whole, never anything exotic; rotating the neighbourhood rotates the piece.
+        let corner = |turn: usize| {
+            let pattern = 0b0000_0111_usize;
+            ((pattern << (2 * turn)) | (pattern >> (8 - 2 * turn))) & 255
+        };
+        let probable = |pattern: usize| {
+            let mut slots: Vec<usize> = (1..SLOTS).collect();
+            slots.sort_by(|a, b| prior.cost[pattern][*a].total_cmp(&prior.cost[pattern][*b]));
+            slots[0]
+        };
+        assert_eq!(probable(corner(0)), 4 + 2, "shape 1 rotation 2");
+        assert_eq!(probable(corner(1)), 4 + 3, "shape 1 rotation 3");
+    }
+
+    #[test]
+    fn a_new_path_flows_into_an_old_one() {
+        // An existing whole-tile road runs along y = 10.5; a path starting on it and leaving to
+        // the north must not cut its own tiles or leave a seam.
+        let road = |tile: (i32, i32)| {
+            ((5..=25).contains(&tile.0) && (9..=11).contains(&tile.1)).then_some((0, 0))
+        };
+        let points = [(15.5, 10.5), (15.5, 25.5)];
+        let result = generate(&points, params(3.0), &road);
+        assert!(
+            result
+                .iter()
+                .all(|((x, y), _)| !(14..=16).contains(x) || *y >= 12 || *y <= 8),
+            "tiles of the road were rewritten: {:?}",
+            result
+                .iter()
+                .filter(|((x, y), _)| (14..=16).contains(x) && (9..=11).contains(y))
+                .collect::<Vec<_>>()
+        );
+        // Beside the junction the road's edge and the new path's edge are whole (no notch).
+        let junction = |x: i32, y: i32| result.iter().find(|(t, _)| *t == (x, y)).map(|(_, c)| *c);
+        for x in 14..=16 {
+            assert!(
+                matches!(junction(x, 12), Some(TileChoice::Full)),
+                "tile {x}, 12: {:?}",
+                junction(x, 12)
+            );
         }
-        assert!(list.len() > 20, "{} candidates", list.len());
     }
 
     #[test]
     fn a_tile_aligned_straight_band_is_all_full_tiles() {
         // Centre line y = 10.5 (the middle of tile row 10), width 3: rows 9, 10 and 11 exactly.
         let points = [(0.5, 10.5), (20.5, 10.5)];
-        let result = generate(&points, params(3.0));
+        let result = generate(&points, params(3.0), &none);
         assert!(result.iter().any(|(_, c)| *c == TileChoice::Full));
         for ((x, y), choice) in &result {
             if (9..=11).contains(y) && (3..=17).contains(x) {
@@ -703,7 +929,7 @@ mod tests {
     #[test]
     fn a_diagonal_band_uses_shaped_edge_tiles() {
         let points = [(2.5, 2.5), (22.5, 22.5)];
-        let result = generate(&points, params(3.0));
+        let result = generate(&points, params(3.0), &none);
         let shaped = result
             .iter()
             .filter(|(_, c)| matches!(c, TileChoice::Shape { .. }))
@@ -723,10 +949,10 @@ mod tests {
             style: EdgeStyle::Whole,
             ..smooth
         };
-        let smooth_error = total_error(&points, smooth, &generate(&points, smooth));
-        let whole_error = total_error(&points, smooth, &generate(&points, whole));
+        let smooth_error = total_error(&points, smooth, &generate(&points, smooth, &none));
+        let whole_error = total_error(&points, smooth, &generate(&points, whole, &none));
         assert!(
-            smooth_error * 2 < whole_error,
+            smooth_error < whole_error,
             "smooth {smooth_error} vs whole {whole_error}"
         );
     }
@@ -740,6 +966,7 @@ mod tests {
                 style: EdgeStyle::Whole,
                 ..params(4.0)
             },
+            &none,
         );
         assert!(whole.iter().all(|(_, c)| *c == TileChoice::Full));
         let chiselled = generate(
@@ -748,6 +975,7 @@ mod tests {
                 style: EdgeStyle::Chiselled,
                 ..params(4.0)
             },
+            &none,
         );
         assert!(
             chiselled
@@ -765,7 +993,7 @@ mod tests {
     fn slivers_do_not_become_shaped_tiles() {
         // The band's edges sit 0.02 tiles into rows 8 and 12: far too little to shape a tile.
         let points = [(0.5, 10.5), (20.5, 10.5)];
-        let result = generate(&points, params(3.04));
+        let result = generate(&points, params(3.04), &none);
         for ((x, y), choice) in &result {
             if (4..=16).contains(x) && (*y == 8 || *y == 12) {
                 assert_eq!(
@@ -781,15 +1009,15 @@ mod tests {
     fn the_result_is_deterministic() {
         let points = [(2.5, 2.5), (18.5, 11.5), (24.5, 3.5)];
         assert_eq!(
-            generate(&points, params(3.0)),
-            generate(&points, params(3.0))
+            generate(&points, params(3.0), &none),
+            generate(&points, params(3.0), &none)
         );
     }
 
     #[test]
     fn a_single_point_makes_a_small_blob_and_no_points_make_nothing() {
-        assert!(generate(&[], params(3.0)).is_empty());
-        assert!(!generate(&[(10.5, 10.5)], params(3.0)).is_empty());
+        assert!(generate(&[], params(3.0), &none).is_empty());
+        assert!(!generate(&[(10.5, 10.5)], params(3.0), &none).is_empty());
     }
 
     #[test]
