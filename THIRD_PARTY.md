@@ -8,6 +8,21 @@ settings guide are copied verbatim from the 117 HD RuneLite plugin
 Do not hand-edit these files; refresh them from upstream so diffs stay reviewable. The Rust port of the
 plugin's logic lives in `crates/osrs-hd` and keeps the upstream notices.
 
+### Ported code (BSD-2, same notice as below)
+
+Logic ported or adapted from the plugin's Java and GLSL sources keeps that notice and names its origin in
+the file header:
+
+| File | Origin |
+|---|---|
+| `crates/osrs-hd/src/lib.rs` | data model of the plugin's `scene/*.json` files (header links the upstream) |
+| `crates/osrs-render/src/gpu/hd/layout.rs`, `hd/materials.wgsl` | `opengl/uniforms/UBOMaterials.java`, `Material.fillMaterialStruct` (material table layout and packing) |
+| `crates/osrs-render/src/gpu/hd/materials.rs` | `MaterialManager.swapMaterials` (texture layer assignment), `TextureManager.uploadTexture` (flip, bicubic resample to 128/256 px, sRGB mip chain) |
+
+`gpu/hd/post.wgsl` and the frame graph are original; the placeholder resolve pass is replaced by ports of
+`utils/tone_mapping.glsl` (MIT, (c) 2022 Bjorn Ottosson, see the header of that file), `color_filters.glsl`
+and `color_blindness.glsl` in phase 8, which will carry their notices.
+
 BSD 2-Clause License
 
 Copyright (c) 2018, Adam <Adam@sigterm.info>

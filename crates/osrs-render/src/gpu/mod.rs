@@ -23,10 +23,16 @@ pub const REFERENCE_NEAR: f32 = 50.0;
 /// MSAA sample count of the scene pass (RuneLite's GPU plugin defaults to 2x MSAA).
 pub const MSAA_SAMPLES: u32 = 4;
 
+pub mod frame_graph;
+pub mod hd;
 mod overlay;
+mod profile;
 mod timing;
 
 pub use overlay::LineVertex;
+pub use profile::{HdParams, RenderProfile};
+
+use frame_graph::{FrameGraph, TransientDesc, TransientPool};
 
 /// Multisampled attachments of the scene pass, resolved into the caller's color view.
 struct MsaaTargets {
@@ -150,6 +156,8 @@ pub struct FrameParams {
     /// RuneLite fog (`Fog depth`, default 0 = off); the fog colour is `clear_color`.
     pub fog: Fog,
     pub colorblind: Colorblind,
+    /// Which renderer draws the frame; [`RenderProfile::Reference`] is the pinned default.
+    pub profile: RenderProfile,
 }
 
 /// RuneLite fog settings.
@@ -270,12 +278,143 @@ struct GpuZone {
     alpha_models: Vec<GpuAlphaModel>,
 }
 
+/// Attachments of the scene pass: multisampled colour and depth, and the single-sample colour the
+/// pass resolves into.
+struct ScenePassTargets<'a> {
+    msaa_color: &'a wgpu::TextureView,
+    resolve: &'a wgpu::TextureView,
+    msaa_depth: &'a wgpu::TextureView,
+}
+
+/// Per-frame draw lists of the scene pass.
+#[derive(Clone, Copy)]
+struct ScenePassInputs<'a> {
+    visible: &'a [&'a GpuZone],
+    alpha_zones: &'a [&'a GpuZone],
+    alpha_draws: &'a [AlphaDraw],
+    alpha_index_buffer: Option<&'a wgpu::Buffer>,
+    params: &'a FrameParams,
+}
+
+/// Opaque and alpha scene pipelines for one colour format.
+struct ScenePipelines {
+    opaque: wgpu::RenderPipeline,
+    alpha: wgpu::RenderPipeline,
+}
+
+/// GPU objects only the HD profile needs.
+struct HdResources {
+    pipelines: ScenePipelines,
+    post: hd::post::PostPass,
+}
+
+fn build_scene_pipelines(
+    device: &wgpu::Device,
+    shader: &wgpu::ShaderModule,
+    pipeline_layout: &wgpu::PipelineLayout,
+    format: wgpu::TextureFormat,
+) -> ScenePipelines {
+    let vertex_attributes = [
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Sint16x4,
+            offset: 0,
+            shader_location: 0,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Uint32,
+            offset: 8,
+            shader_location: 1,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Uint16x4,
+            offset: 12,
+            shader_location: 2,
+        },
+    ];
+    let vertex_layout = wgpu::VertexBufferLayout {
+        array_stride: PackedVertex::SIZE as u64,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &vertex_attributes,
+    };
+
+    let make_pipeline = |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(label),
+            layout: Some(pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[Some(vertex_layout.clone())],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(depth_write),
+                depth_compare: Some(wgpu::CompareFunction::Greater),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: MSAA_SAMPLES,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview_mask: None,
+            cache: None,
+        })
+    };
+
+    ScenePipelines {
+        opaque: make_pipeline("scene-opaque", None, true),
+        alpha: make_pipeline(
+            "scene-alpha",
+            Some(wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::One,
+                    operation: wgpu::BlendOperation::Add,
+                },
+            }),
+            // `Zone.flush` wraps every alpha draw in `glDepthMask(false)`.
+            false,
+        ),
+    }
+}
+
 /// Device, queue, and the scene pipelines.
 pub struct SceneRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    opaque_pipeline: wgpu::RenderPipeline,
-    alpha_pipeline: wgpu::RenderPipeline,
+    /// Reference-profile scene pipelines (`COLOR_FORMAT` target).
+    pipelines: ScenePipelines,
+    scene_shader: wgpu::ShaderModule,
+    scene_layout: wgpu::PipelineLayout,
+    /// HD pipelines, built the first time an HD frame is encoded.
+    hd: std::cell::OnceCell<HdResources>,
+    hd_params: HdParams,
+    /// Transient textures of the HD frame graph (HDR colour, its MSAA and depth targets).
+    transients: std::cell::RefCell<TransientPool>,
     globals_buffer: wgpu::Buffer,
     globals_layout: wgpu::BindGroupLayout,
     globals_bind_group: wgpu::BindGroup,
@@ -304,9 +443,11 @@ impl SceneRenderer {
             apply_limit_buckets: false,
         }))
         .map_err(|error| GpuError::NoAdapter(error.to_string()))?;
-        let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .map_err(|error| GpuError::Device(error.to_string()))?;
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: hd::raise_limits(wgpu::Limits::default(), &adapter.limits()),
+            ..Default::default()
+        }))
+        .map_err(|error| GpuError::Device(error.to_string()))?;
         Ok(Self::with_device(device, queue))
     }
 
@@ -378,90 +519,7 @@ impl SceneRenderer {
             immediate_size: 0,
         });
 
-        let vertex_attributes = [
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Sint16x4,
-                offset: 0,
-                shader_location: 0,
-            },
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Uint32,
-                offset: 8,
-                shader_location: 1,
-            },
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Uint16x4,
-                offset: 12,
-                shader_location: 2,
-            },
-        ];
-        let vertex_layout = wgpu::VertexBufferLayout {
-            array_stride: PackedVertex::SIZE as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &vertex_attributes,
-        };
-
-        let make_pipeline = |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(label),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_main"),
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    buffers: &[Some(vertex_layout.clone())],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: COLOR_FORMAT,
-                        blend,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(wgpu::Face::Back),
-                    ..Default::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DEPTH_FORMAT,
-                    depth_write_enabled: Some(depth_write),
-                    depth_compare: Some(wgpu::CompareFunction::Greater),
-                    stencil: wgpu::StencilState::default(),
-                    bias: wgpu::DepthBiasState::default(),
-                }),
-                multisample: wgpu::MultisampleState {
-                    count: MSAA_SAMPLES,
-                    mask: !0,
-                    alpha_to_coverage_enabled: false,
-                },
-                multiview_mask: None,
-                cache: None,
-            })
-        };
-
-        let opaque_pipeline = make_pipeline("scene-opaque", None, true);
-        let alpha_pipeline = make_pipeline(
-            "scene-alpha",
-            Some(wgpu::BlendState {
-                color: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::SrcAlpha,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                    operation: wgpu::BlendOperation::Add,
-                },
-                alpha: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::One,
-                    dst_factor: wgpu::BlendFactor::One,
-                    operation: wgpu::BlendOperation::Add,
-                },
-            }),
-            // `Zone.flush` wraps every alpha draw in `glDepthMask(false)`.
-            false,
-        );
+        let pipelines = build_scene_pipelines(&device, &shader, &pipeline_layout, COLOR_FORMAT);
 
         let lines = overlay::LineOverlay::new(&device, &globals_layout);
         let globals_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -476,8 +534,12 @@ impl SceneRenderer {
         Self {
             device,
             queue,
-            opaque_pipeline,
-            alpha_pipeline,
+            pipelines,
+            scene_shader: shader,
+            scene_layout: pipeline_layout,
+            hd: std::cell::OnceCell::new(),
+            hd_params: HdParams::default(),
+            transients: std::cell::RefCell::new(TransientPool::default()),
             globals_buffer,
             globals_layout,
             globals_bind_group,
@@ -701,11 +763,16 @@ impl SceneRenderer {
             .sum()
     }
 
-    /// Encode one frame's render pass into `encoder`, targeting caller-owned views.
+    /// Encode one frame into `encoder`, targeting caller-owned views.
     ///
     /// The color view must be [`COLOR_FORMAT`] and the depth view [`DEPTH_FORMAT`], both sized
     /// `width x height`. Camera uniforms are written through the queue, so the encoder must be
     /// submitted after this call.
+    ///
+    /// The frame is a [`FrameGraph`]. [`RenderProfile::Reference`] is a single scene pass that
+    /// resolves straight into `color_view`. [`RenderProfile::Hd`] renders the scene into a
+    /// multisampled HDR target resolved to a single-sample `Rgba16Float` texture, then runs the
+    /// resolve pass into `color_view`.
     pub fn encode_frame(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -743,16 +810,6 @@ impl SceneRenderer {
         };
         self.queue
             .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
-        let (msaa_color, msaa_depth) = {
-            let mut slot = self.msaa.borrow_mut();
-            let targets = match slot.take() {
-                Some(targets) if targets.width == width && targets.height == height => targets,
-                _ => self.create_msaa_targets(width, height),
-            };
-            let views = (targets.color.clone(), targets.depth.clone());
-            *slot = Some(targets);
-            views
-        };
         let _ = depth_view;
         let visible: Vec<&GpuZone> = self
             .regions
@@ -764,15 +821,162 @@ impl SceneRenderer {
             })
             .collect();
         let (alpha_zones, alpha_draws, alpha_index_buffer) = self.prepare_alpha(&visible, &params);
+        let inputs = ScenePassInputs {
+            visible: &visible,
+            alpha_zones: &alpha_zones,
+            alpha_draws: &alpha_draws,
+            alpha_index_buffer: alpha_index_buffer.as_ref(),
+            params: &params,
+        };
+
+        let mut graph = FrameGraph::new(width, height);
+        let output = graph.import("output");
+        match params.profile {
+            RenderProfile::Reference => {
+                let (msaa_color, msaa_depth) = {
+                    let mut slot = self.msaa.borrow_mut();
+                    let targets = match slot.take() {
+                        Some(targets) if targets.width == width && targets.height == height => {
+                            targets
+                        }
+                        _ => self.create_msaa_targets(width, height),
+                    };
+                    let views = (targets.color.clone(), targets.depth.clone());
+                    *slot = Some(targets);
+                    views
+                };
+                graph.add_pass("scene", &[], &[output], move |encoder, resources| {
+                    let Some(resolve) = resources.view(output) else {
+                        return;
+                    };
+                    self.record_scene_pass(
+                        encoder,
+                        ScenePassTargets {
+                            msaa_color: &msaa_color,
+                            resolve,
+                            msaa_depth: &msaa_depth,
+                        },
+                        &self.pipelines,
+                        false,
+                        &inputs,
+                    );
+                });
+            }
+            RenderProfile::Hd => {
+                let hd = self.hd_resources();
+                let msaa_color = graph.transient(
+                    "hdr-msaa-color",
+                    TransientDesc {
+                        format: hd::HDR_FORMAT,
+                        samples: MSAA_SAMPLES,
+                        sampled: false,
+                    },
+                );
+                let msaa_depth = graph.transient(
+                    "hdr-msaa-depth",
+                    TransientDesc {
+                        format: DEPTH_FORMAT,
+                        samples: MSAA_SAMPLES,
+                        sampled: false,
+                    },
+                );
+                let hdr = graph.transient(
+                    "hdr-color",
+                    TransientDesc {
+                        format: hd::HDR_FORMAT,
+                        samples: 1,
+                        sampled: true,
+                    },
+                );
+                graph.add_pass(
+                    "scene",
+                    &[],
+                    &[msaa_color, msaa_depth, hdr],
+                    move |encoder, resources| {
+                        let (Some(msaa_color), Some(msaa_depth), Some(resolve)) = (
+                            resources.view(msaa_color),
+                            resources.view(msaa_depth),
+                            resources.view(hdr),
+                        ) else {
+                            return;
+                        };
+                        self.record_scene_pass(
+                            encoder,
+                            ScenePassTargets {
+                                msaa_color,
+                                resolve,
+                                msaa_depth,
+                            },
+                            &hd.pipelines,
+                            true,
+                            &inputs,
+                        );
+                    },
+                );
+                graph.add_pass("resolve", &[hdr], &[output], move |encoder, resources| {
+                    let (Some(hdr), Some(target)) = (resources.view(hdr), resources.view(output))
+                    else {
+                        return;
+                    };
+                    hd.post.record(
+                        &self.device,
+                        &self.queue,
+                        encoder,
+                        hd::post::PostIo {
+                            hdr,
+                            target,
+                            size: (width, height),
+                        },
+                        self.hd_params,
+                    );
+                });
+            }
+        }
+        let mut pool = self.transients.borrow_mut();
+        if let Err(error) = graph.execute(&self.device, &mut pool, encoder, &[(output, color_view)])
+        {
+            eprintln!("frame graph: {error}");
+        }
+    }
+
+    /// The HD pipelines and resolve pass, built on first use.
+    fn hd_resources(&self) -> &HdResources {
+        self.hd.get_or_init(|| HdResources {
+            pipelines: build_scene_pipelines(
+                &self.device,
+                &self.scene_shader,
+                &self.scene_layout,
+                hd::HDR_FORMAT,
+            ),
+            post: hd::post::PostPass::new(&self.device),
+        })
+    }
+
+    /// Settings of the HD resolve pass (used by [`RenderProfile::Hd`] frames).
+    pub fn set_hd_params(&mut self, params: HdParams) {
+        self.hd_params = params;
+    }
+
+    /// The scene pass shared by both profiles: opaque geometry, then the sorted alpha geometry,
+    /// then the editor guide lines.
+    fn record_scene_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        targets: ScenePassTargets<'_>,
+        pipelines: &ScenePipelines,
+        hdr: bool,
+        inputs: &ScenePassInputs<'_>,
+    ) {
+        let params = inputs.params;
         let mut timer_guard = self.timer.borrow_mut();
         let timed = timer_guard.as_mut().is_some_and(timing::GpuTimer::begin);
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &msaa_color,
+                    view: targets.msaa_color,
                     depth_slice: None,
-                    resolve_target: Some(color_view),
+                    resolve_target: Some(targets.resolve),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: params.clear_color[0],
@@ -784,7 +988,7 @@ impl SceneRenderer {
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &msaa_depth,
+                    view: targets.msaa_depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(0.0),
                         store: wgpu::StoreOp::Discard,
@@ -800,8 +1004,8 @@ impl SceneRenderer {
             });
             pass.set_bind_group(0, &self.globals_bind_group, &[]);
 
-            pass.set_pipeline(&self.opaque_pipeline);
-            for zone in visible.iter().copied() {
+            pass.set_pipeline(&pipelines.opaque);
+            for zone in inputs.visible.iter().copied() {
                 let Some(buffer) = &zone.opaque else { continue };
                 pass.set_bind_group(1, &zone.bind_group, &[]);
                 pass.set_vertex_buffer(0, buffer.slice(..));
@@ -814,10 +1018,10 @@ impl SceneRenderer {
 
             // Alpha pass: after all opaque geometry, level by level, far zones first; models inside
             // a zone and faces inside close models are ordered by `prepare_alpha`.
-            if let Some(index_buffer) = &alpha_index_buffer {
-                pass.set_pipeline(&self.alpha_pipeline);
-                for draw in &alpha_draws {
-                    let zone = alpha_zones[draw.zone];
+            if let Some(index_buffer) = inputs.alpha_index_buffer {
+                pass.set_pipeline(&pipelines.alpha);
+                for draw in inputs.alpha_draws {
+                    let zone = inputs.alpha_zones[draw.zone];
                     let Some(buffer) = &zone.alpha else { continue };
                     pass.set_bind_group(1, &zone.bind_group, &[]);
                     pass.set_vertex_buffer(0, buffer.slice(..));
@@ -831,7 +1035,7 @@ impl SceneRenderer {
                 }
             }
 
-            self.lines.draw(&mut pass, &self.globals_bind_group);
+            self.lines.draw(&mut pass, &self.globals_bind_group, hdr);
         }
         if timed && let Some(timer) = timer_guard.as_ref() {
             timer.resolve(encoder);

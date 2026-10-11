@@ -1210,6 +1210,7 @@ impl eframe::App for EditorApp {
                         },
                     );
                     let phase = Instant::now();
+                    self.renderer.set_hd_params(self.prefs.hd_params());
                     self.renderer.encode_frame(
                         &mut encoder,
                         &targets.color_view,
@@ -1225,6 +1226,7 @@ impl eframe::App for EditorApp {
                             fog: self.prefs.fog(),
                             colorblind: self.prefs.colorblind(),
                             clear_color: self.prefs.sky_color.map(f64::from),
+                            profile: self.prefs.render_profile.render_profile(),
                         },
                         targets.width,
                         targets.height,

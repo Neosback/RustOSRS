@@ -4,7 +4,7 @@
 use super::EditorApp;
 use crate::camera::CameraMode;
 use crate::pick::{self, Pick};
-use crate::settings::{ColorblindChoice, PanelTab};
+use crate::settings::{ColorblindChoice, PanelTab, ProfileChoice};
 use eframe::egui;
 
 fn section(ui: &mut egui::Ui, title: &str, default_open: bool, body: impl FnOnce(&mut egui::Ui)) {
@@ -131,6 +131,30 @@ impl EditorApp {
             .num_columns(2)
             .spacing([8.0, 6.0])
             .show(ui, |ui| {
+                ui.label("Render profile");
+                egui::ComboBox::from_id_salt("render_profile")
+                    .selected_text(self.prefs.render_profile.label())
+                    .show_ui(ui, |ui| {
+                        for profile in ProfileChoice::ALL {
+                            ui.selectable_value(
+                                &mut self.prefs.render_profile,
+                                profile,
+                                profile.label(),
+                            );
+                        }
+                    });
+                ui.end_row();
+
+                if self.prefs.render_profile == ProfileChoice::Hd {
+                    ui.label("HD exposure");
+                    ui.add(egui::Slider::new(&mut self.prefs.hd_exposure, 0.25..=4.0));
+                    ui.end_row();
+
+                    ui.label("HD vignette");
+                    ui.add(egui::Slider::new(&mut self.prefs.hd_vignette, 0.0..=1.0));
+                    ui.end_row();
+                }
+
                 ui.label("Brightness");
                 ui.add(egui::Slider::new(&mut self.prefs.brightness, 0.5..=1.0));
                 ui.end_row();
@@ -171,6 +195,12 @@ impl EditorApp {
             });
         ui.checkbox(&mut self.prefs.remove_color_banding, "Remove color banding");
         ui.checkbox(&mut self.prefs.bright_textures, "Bright textures");
+        if self.prefs.render_profile == ProfileChoice::Hd {
+            ui.weak(
+                "HD is a work in progress: the scene is drawn into an HDR target and resolved \
+                 by a placeholder pass. 117 HD shading arrives phase by phase.",
+            );
+        }
         ui.weak("Defaults match RuneLite's GPU plugin. Fog uses the sky colour.");
     }
 

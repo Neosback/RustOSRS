@@ -3,7 +3,7 @@
 //! Every field has a default and unknown fields are ignored, so adding settings never invalidates
 //! an existing file. Tools keep their own state under [`Settings::plugins`], keyed by plugin name.
 
-use osrs_render::gpu::{Colorblind, ColorblindMode, Fog};
+use osrs_render::gpu::{Colorblind, ColorblindMode, Fog, HdParams, RenderProfile};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, io, path::PathBuf};
 
@@ -79,6 +79,31 @@ impl ColorblindChoice {
     }
 }
 
+/// Which renderer draws the viewport (the persisted form of `osrs_render::gpu::RenderProfile`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ProfileChoice {
+    /// RuneLite GPU plugin parity.
+    #[default]
+    Reference,
+    /// The 117 HD port (work in progress).
+    Hd,
+}
+
+impl ProfileChoice {
+    pub const ALL: [Self; 2] = [Self::Reference, Self::Hd];
+
+    pub const fn render_profile(self) -> RenderProfile {
+        match self {
+            Self::Reference => RenderProfile::Reference,
+            Self::Hd => RenderProfile::Hd,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        self.render_profile().label()
+    }
+}
+
 /// The client's default sky colour (`0xC8B8A8`): fog fades into it and the viewport clears to it.
 pub const DEFAULT_SKY: [f32; 3] = [200.0 / 255.0, 184.0 / 255.0, 168.0 / 255.0];
 
@@ -101,6 +126,12 @@ pub struct Settings {
     pub mouse_tooltips: bool,
     /// Outline the tile under the cursor.
     pub hover_tile: bool,
+    /// Reference (RuneLite parity, default) or HD (117 HD port).
+    pub render_profile: ProfileChoice,
+    /// HD resolve pass: linear exposure.
+    pub hd_exposure: f32,
+    /// HD resolve pass: phase-0 placeholder vignette strength.
+    pub hd_vignette: f32,
     pub brightness: f32,
     pub remove_color_banding: bool,
     pub bright_textures: bool,
@@ -134,6 +165,9 @@ impl Default for Settings {
             animate_objects: true,
             mouse_tooltips: true,
             hover_tile: true,
+            render_profile: ProfileChoice::Reference,
+            hd_exposure: HdParams::default().exposure,
+            hd_vignette: HdParams::default().placeholder_vignette,
             brightness: 0.8,
             remove_color_banding: true,
             bright_textures: false,
@@ -181,6 +215,13 @@ impl Settings {
         }
     }
 
+    pub fn hd_params(&self) -> HdParams {
+        HdParams {
+            exposure: self.hd_exposure,
+            placeholder_vignette: self.hd_vignette,
+        }
+    }
+
     pub fn colorblind(&self) -> Colorblind {
         Colorblind {
             mode: self.colorblind_mode.render_mode(),
@@ -195,6 +236,8 @@ impl Settings {
         if self.sky_color == [0.0, 0.0, 0.0] {
             self.sky_color = DEFAULT_SKY;
         }
+        self.hd_exposure = self.hd_exposure.clamp(0.25, 4.0);
+        self.hd_vignette = self.hd_vignette.clamp(0.0, 1.0);
         self.brightness = self.brightness.clamp(0.5, 1.0);
         self.fog_depth_tiles = self.fog_depth_tiles.min(100);
         self.draw_distance_tiles = self.draw_distance_tiles.clamp(8, 184);
@@ -235,6 +278,19 @@ mod tests {
         assert_eq!(settings.brightness, 0.6);
         assert_eq!(settings.draw_distance_tiles, 50);
         assert!(settings.properties_panel);
+        Ok(())
+    }
+
+    #[test]
+    fn the_reference_profile_is_the_default_and_persists() -> Result<(), serde_json::Error> {
+        assert_eq!(Settings::default().render_profile, ProfileChoice::Reference);
+        let hd: Settings =
+            serde_json::from_str(r#"{ "render_profile": "Hd", "hd_exposure": 9.0 }"#)?;
+        assert_eq!(hd.render_profile.render_profile(), RenderProfile::Hd);
+        assert_eq!(hd.sanitized().hd_exposure, 4.0);
+        // A file written before the switch existed keeps the Reference profile.
+        let old: Settings = serde_json::from_str(r#"{ "brightness": 0.7 }"#)?;
+        assert_eq!(old.render_profile, ProfileChoice::Reference);
         Ok(())
     }
 

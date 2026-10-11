@@ -8,7 +8,9 @@ publish = false
 [dependencies]
 osrs-core = { path = "../osrs-core" }
 osrs-scene = { path = "../osrs-scene" }
+osrs-hd = { path = "../osrs-hd" }
 bytemuck.workspace = true
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 pollster.workspace = true
 wgpu.workspace = true
 

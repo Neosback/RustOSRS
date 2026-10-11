@@ -1039,6 +1039,8 @@ dependencies = [
  "num-traits",
  "png",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
@@ -1855,7 +1857,9 @@ name = "osrs-render"
 version = "0.0.0"
 dependencies = [
  "bytemuck",
+ "image",
  "osrs-core",
+ "osrs-hd",
  "osrs-scene",
  "pollster",
  "wgpu",

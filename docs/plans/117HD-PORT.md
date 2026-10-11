@@ -97,7 +97,18 @@ tone map / colour filter / AA resolve -> overlays (egui).
   areas), environments, water types, sky presets, lights and the gameval tables (tests in
   `crates/osrs-hd/tests`). `DIRT` and `UNDERWATER_GENERIC` ground materials are defined in the plugin's code
   and must be added when `GroundMaterial` is ported.
-* Next: phase 0 (render profile switch, HDR target, frame graph), then phase 2 (vertex format with normals
+* Done (phase 0, 2026-10-11): `RenderProfile::{Reference, Hd}` in `osrs-render::gpu` (editor: Properties >
+  Shading > Render profile, persisted as `render_profile` in `editor.json`). `encode_frame` builds a small
+  frame graph (`gpu/frame_graph.rs`): Reference is one scene pass resolving into the caller's view (pinned
+  by `crates/osrs-world/tests/reference_profile_pixels.rs` against `tests/golden/*.png`); HD renders the scene
+  into a 4x MSAA `Rgba16Float` target, resolves it and runs the placeholder resolve pass (`gpu/hd/post.wgsl`:
+  exposure + vignette). Groundwork in `gpu/hd/`: `GpuMaterial` storage-buffer layout with its WGSL struct
+  (checked on a real device), `LayerPlan` + `DecodedLayers` + `MaterialTextureArray` (PNG/JPG ->
+  flipped, bicubic-resampled, sRGB mip-mapped `texture_2d_array`; 385 layers at 256 px for the vendored set,
+  so the device must allow >256 array layers: `hd::raise_limits`, applied in the editor's wgpu setup and
+  `new_headless`). Not wired into a shader yet: phase 2 consumes it. Vanilla (cache) texture layers are left
+  empty for phase 2 to fill via `MaterialTextureArray::write_layer`.
+* Next: phase 2 (vertex format with normals
   and material ids, `ProceduralGenerator`), then 3-8 as listed above.
 
 ## 6. First concrete steps

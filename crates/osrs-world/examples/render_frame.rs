@@ -139,6 +139,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
                 intensity: 100.0,
             },
+            // RENDER_PROFILE=hd renders through the HDR frame graph.
+            profile: if env::var("RENDER_PROFILE").as_deref() == Ok("hd") {
+                osrs_render::gpu::RenderProfile::Hd
+            } else {
+                osrs_render::gpu::RenderProfile::Reference
+            },
         },
         width,
         height,

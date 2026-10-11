@@ -33,7 +33,7 @@ fn default_cache_dir() -> PathBuf {
 }
 
 /// eframe's default wgpu setup plus GPU timestamp queries (for the scene pass timing) when the
-/// adapter has them.
+/// adapter has them, and the texture-array limit the HD profile needs.
 fn wgpu_options() -> eframe::egui_wgpu::WgpuConfiguration {
     use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
     use std::sync::Arc;
@@ -43,6 +43,9 @@ fn wgpu_options() -> eframe::egui_wgpu::WgpuConfiguration {
         let mut descriptor = default_descriptor(adapter);
         descriptor.required_features |=
             adapter.features() & eframe::wgpu::Features::TIMESTAMP_QUERY;
+        // The HD material texture array needs more layers than the WebGPU default.
+        descriptor.required_limits =
+            osrs_render::gpu::hd::raise_limits(descriptor.required_limits, &adapter.limits());
         descriptor
     });
     let mut configuration = WgpuConfiguration {
