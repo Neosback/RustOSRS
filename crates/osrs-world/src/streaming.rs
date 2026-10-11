@@ -14,8 +14,11 @@ use crate::{
     texture_layers,
 };
 use osrs_core::coords::RegionCoord;
-use osrs_render::{SceneGeometry, gpu::TextureLayer};
+use osrs_render::{
+    HD_FLAG_TERRAIN, HD_MATERIAL_INDEX_MASK, SceneGeometry, gpu::TextureLayer,
+};
 use std::{
+    collections::BTreeSet,
     path::PathBuf,
     sync::Arc,
     sync::mpsc::{Receiver, Sender, channel},
@@ -49,6 +52,87 @@ impl RegionRenderPath {
     }
 }
 
+/// Material coverage of one region after HD extraction.
+///
+/// Each HD triangle repeats the three corner material indices on all three vertices. Statistics
+/// therefore sample the first vertex of each triangle instead of triple-counting the face.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HdRegionStats {
+    pub faces: usize,
+    pub opaque_faces: usize,
+    pub alpha_faces: usize,
+    pub terrain_faces: usize,
+    pub model_faces: usize,
+    /// Faces where at least one corner carries a non-`NONE` material index.
+    pub materialized_faces: usize,
+    /// Faces whose three material indices are all `NONE`.
+    pub none_material_faces: usize,
+    pub unique_materials: usize,
+    pub max_material_index: u16,
+}
+
+impl HdRegionStats {
+    fn from_geometry(geometry: &SceneGeometry) -> Self {
+        let mut stats = Self::default();
+        let mut unique = BTreeSet::new();
+        for zone in &geometry.zones {
+            for group in &zone.groups {
+                accumulate_hd_faces(
+                    &mut stats,
+                    &mut unique,
+                    &group.geometry.hd_opaque,
+                    false,
+                );
+                accumulate_hd_faces(
+                    &mut stats,
+                    &mut unique,
+                    &group.geometry.hd_alpha,
+                    true,
+                );
+            }
+        }
+        stats.unique_materials = unique.len();
+        stats
+    }
+}
+
+fn accumulate_hd_faces(
+    stats: &mut HdRegionStats,
+    unique: &mut BTreeSet<u16>,
+    vertices: &[osrs_render::HdVertex],
+    alpha: bool,
+) {
+    for face in vertices.chunks_exact(3) {
+        let vertex = &face[0];
+        stats.faces += 1;
+        if alpha {
+            stats.alpha_faces += 1;
+        } else {
+            stats.opaque_faces += 1;
+        }
+        if vertex.hsl_flags[3] & HD_FLAG_TERRAIN != 0 {
+            stats.terrain_faces += 1;
+        } else {
+            stats.model_faces += 1;
+        }
+
+        let mut materialized = false;
+        for packed in &vertex.material_water[..3] {
+            let index = *packed & HD_MATERIAL_INDEX_MASK;
+            if index != 0 {
+                materialized = true;
+                unique.insert(index);
+                stats.max_material_index = stats.max_material_index.max(index);
+            }
+        }
+        if materialized {
+            stats.materialized_faces += 1;
+        } else {
+            stats.none_material_faces += 1;
+        }
+    }
+}
+
 fn env_flag(name: &str) -> bool {
     std::env::var(name).is_ok_and(|value| {
         matches!(
@@ -73,6 +157,8 @@ pub struct RegionGeometry {
     pub geometry: SceneGeometry,
     /// The extraction path that actually produced `geometry`.
     pub render_path: RegionRenderPath,
+    /// Material coverage when [`RegionRenderPath::Hd`] produced this region.
+    pub hd_stats: Option<HdRegionStats>,
     /// Animated locs of the region, posed at runtime.
     pub animations: Vec<AnimatedInstance>,
     /// Inspection data for the picker.
@@ -116,6 +202,8 @@ pub fn build_region_geometry_with(
         (RegionRenderPath::Hd, Some(hd)) => extract_owned_geometry_hd(&world, owned, hd),
         _ => extract_owned_geometry(&world, owned),
     };
+    let hd_stats = (render_path == RegionRenderPath::Hd)
+        .then(|| HdRegionStats::from_geometry(&geometry));
     let animations = extract_animated_instances(&world, owned);
     let info = Arc::new(extract_region_info(
         &world,
@@ -130,6 +218,7 @@ pub fn build_region_geometry_with(
         region,
         geometry,
         render_path,
+        hd_stats,
         animations,
         info,
         build_ms: started.elapsed().as_secs_f32() * 1000.0,
@@ -218,6 +307,7 @@ impl RegionStreamer {
                 let mut presentation = presentation;
                 let mut generation = 0_u32;
                 let hd_strict = env_flag("RUSTOSRS_HD_STRICT");
+                let hd_diagnostics = env_flag("RUSTOSRS_HD_DIAGNOSTICS");
                 // Loaded the first time an HD region is requested.
                 let mut hd: Option<HdContext> = None;
                 let mut hd_failure: Option<String> = None;
@@ -285,6 +375,23 @@ impl RegionStreamer {
                                             "117 HD fallback for region {},{}: {reason}",
                                             region.x, region.y
                                         );
+                                    } else if hd_diagnostics
+                                        && let Some(stats) = geometry.hd_stats
+                                    {
+                                        eprintln!(
+                                            "117 HD region {},{}: faces={} opaque={} alpha={} terrain={} models={} materialized={} none={} unique_materials={} max_material={}",
+                                            region.x,
+                                            region.y,
+                                            stats.faces,
+                                            stats.opaque_faces,
+                                            stats.alpha_faces,
+                                            stats.terrain_faces,
+                                            stats.model_faces,
+                                            stats.materialized_faces,
+                                            stats.none_material_faces,
+                                            stats.unique_materials,
+                                            stats.max_material_index,
+                                        );
                                     }
                                     StreamEvent::Region(Box::new(geometry))
                                 }
@@ -345,7 +452,9 @@ impl Drop for RegionStreamer {
 
 #[cfg(test)]
 mod tests {
-    use super::RegionRenderPath;
+    use super::{HdRegionStats, RegionRenderPath, accumulate_hd_faces};
+    use osrs_render::{HD_FLAG_TERRAIN, HD_MATERIAL_OVERLAY, HdVertex};
+    use std::collections::BTreeSet;
 
     #[test]
     fn render_path_distinguishes_reference_from_hd_fallback() {
@@ -362,5 +471,41 @@ mod tests {
             RegionRenderPath::select(true, false),
             RegionRenderPath::ReferenceFallback
         );
+    }
+
+    #[test]
+    fn hd_stats_count_faces_not_repeated_vertex_payloads() {
+        let material_vertex = HdVertex {
+            normal: [0; 2],
+            uv: [0.0; 2],
+            hsl_flags: [0, 0, 0, HD_FLAG_TERRAIN],
+            material_water: [2, 3 | HD_MATERIAL_OVERLAY, 0, 0],
+            depth: [0; 4],
+        };
+        let none_vertex = HdVertex {
+            hsl_flags: [0; 4],
+            material_water: [0; 4],
+            ..material_vertex
+        };
+        let mut stats = HdRegionStats::default();
+        let mut unique = BTreeSet::new();
+        accumulate_hd_faces(
+            &mut stats,
+            &mut unique,
+            &[material_vertex; 3],
+            false,
+        );
+        accumulate_hd_faces(&mut stats, &mut unique, &[none_vertex; 3], true);
+        stats.unique_materials = unique.len();
+
+        assert_eq!(stats.faces, 2);
+        assert_eq!(stats.opaque_faces, 1);
+        assert_eq!(stats.alpha_faces, 1);
+        assert_eq!(stats.terrain_faces, 1);
+        assert_eq!(stats.model_faces, 1);
+        assert_eq!(stats.materialized_faces, 1);
+        assert_eq!(stats.none_material_faces, 1);
+        assert_eq!(stats.unique_materials, 2);
+        assert_eq!(stats.max_material_index, 3);
     }
 }
