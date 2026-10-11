@@ -221,6 +221,7 @@ impl TerrainEmitter<'_> {
                 flags: HD_FLAG_TERRAIN,
                 alpha: 0,
                 alpha_pass: false,
+                cutout: false,
                 bias: 0,
                 double_sided: (!settings.visible_below && tile.level != 0)
                     || override_data.double_sided_faces,
@@ -313,6 +314,7 @@ impl TerrainEmitter<'_> {
                 flags: HD_FLAG_TERRAIN,
                 alpha: 0,
                 alpha_pass: true,
+                cutout: false,
                 bias,
                 double_sided: false,
             });

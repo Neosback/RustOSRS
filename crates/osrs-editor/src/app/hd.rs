@@ -84,6 +84,7 @@ impl EditorApp {
             normal_mapping: self.prefs.hd_normal_mapping,
             parallax_mapping: self.prefs.hd_parallax_mapping,
             underwater_caustics: self.prefs.hd_underwater_caustics,
+            gamma: 100.0 / self.prefs.hd_brightness.max(1.0),
             elapsed_seconds: (elapsed % 4096.0) as f32,
             debug_view: 0,
         });

@@ -196,6 +196,10 @@ pub struct ShadowFit {
     pub resolution: u32,
     /// Size of the previous fit: small size changes are ignored (shimmer).
     pub previous_size: Option<f32>,
+    /// Move the map in steps of at least this many world units (`0`: one texel). The map grows
+    /// by one step so every receiver stays covered; between steps the camera is unchanged and a
+    /// cached shadow map stays valid.
+    pub snap_world: f32,
 }
 
 /// The light's orthographic camera: render-space points map to clip space with `x`, `y` in
@@ -275,9 +279,11 @@ impl ShadowCamera {
 
         // Fit the receiver footprint with room for filtering and texel snapping, rounded to half
         // tiles; ignore shrinking below 5% (it only makes shadows shimmer).
-        let mut size = (((max[0] - min[0]).max(max[1] - min[1]) + 8.0 * TILE) / (TILE / 2.0))
-            .ceil()
-            * (TILE / 2.0);
+        // A coarse step moves the centre by up to half a step either way: widen by a whole one.
+        let coarse = fit.snap_world.max(0.0);
+        let mut size =
+            (((max[0] - min[0]).max(max[1] - min[1]) + 8.0 * TILE + coarse) / (TILE / 2.0)).ceil()
+                * (TILE / 2.0);
         if let Some(previous) = fit.previous_size
             && (size - previous).abs() < previous * 0.05
             && size <= previous
@@ -285,12 +291,15 @@ impl ShadowCamera {
             size = previous;
         }
         let texel_world = size / fit.resolution.max(1) as f32;
-        let snap = |value: f32| (value / texel_world).round() * texel_world;
+        // Whole texels, so the map never shimmers; at least `snap_world` apart, so it rarely moves.
+        let step = (coarse / texel_world).ceil().max(1.0) * texel_world;
+        let snap = |value: f32| (value / step).round() * step;
         let center = [snap((min[0] + max[0]) * 0.5), snap((min[1] + max[1]) * 0.5)];
 
         // Casters above the receivers (towards the light) are inside the range too.
-        let h_top = max[2] + 4.0 * TILE;
-        let h_bottom = min[2] - 2.0 * TILE;
+        // Rounded outwards to whole tiles so the matrix only changes when the map moves.
+        let h_top = ((max[2] + 4.0 * TILE) / TILE).ceil() * TILE;
+        let h_bottom = ((min[2] - 2.0 * TILE) / TILE).floor() * TILE;
         let depth_range = h_top - h_bottom;
 
         let scale = 2.0 / size;
@@ -339,6 +348,7 @@ mod tests {
             y_range: (-3000.0, 800.0),
             resolution: 4096,
             previous_size: None,
+            snap_world: 0.0,
         }
     }
 
@@ -441,6 +451,54 @@ mod tests {
         let shift = (a[0] - b[0]) * first.size / 2.0;
         let texels = shift / first.texel_world;
         assert!((texels - texels.round()).abs() < 0.05, "{texels}");
+    }
+
+    #[test]
+    fn a_coarse_snap_keeps_the_map_still_and_covers_the_receivers() {
+        let coarse = |dx: f32, dz: f32| {
+            let mut fit = input();
+            fit.snap_world = 256.0;
+            fit.previous_size = Some(
+                ShadowCamera::fit(&ShadowFit {
+                    snap_world: 256.0,
+                    ..input()
+                })
+                .size,
+            );
+            fit.focus[0] += dx;
+            fit.focus[2] += dz;
+            (ShadowCamera::fit(&fit), fit)
+        };
+        let (origin, _) = coarse(0.0, 0.0);
+        // Moving by less than a fifth of the step along the light's right axis changes nothing.
+        let (near, _) = coarse(origin.right[0] * 40.0, origin.right[2] * 40.0);
+        assert_eq!(origin.view_proj, near.view_proj);
+        // The steps are whole texels at least 256 units wide.
+        assert!(origin.texel_world > 0.0);
+        let (far, fit) = coarse(origin.right[0] * 600.0, origin.right[2] * 600.0);
+        let moved = (far.project([5000.0, -100.0, 7000.0])[0]
+            - origin.project([5000.0, -100.0, 7000.0])[0])
+            * origin.size
+            / 2.0;
+        assert!(moved.abs() >= 256.0 - 1.0, "{moved}");
+        // Every receiver stays inside the unit volume, even half a step off-centre.
+        for dx in [-1.0, 1.0] {
+            for dz in [-1.0, 1.0] {
+                for y in [fit.y_range.0, fit.y_range.1] {
+                    let p = [
+                        fit.focus[0] + dx * fit.radius,
+                        y,
+                        fit.focus[2] + dz * fit.radius,
+                    ];
+                    let [x, yy, z] = far.project(p);
+                    assert!(
+                        (-1.0..=1.0).contains(&x) && (-1.0..=1.0).contains(&yy),
+                        "{x} {yy}"
+                    );
+                    assert!((0.0..=1.0).contains(&z));
+                }
+            }
+        }
     }
 
     #[test]

@@ -105,6 +105,10 @@ impl ProfileChoice {
     }
 }
 
+/// Revision 1: HD lighting comes from the area environments. Exposures saved while the HD profile
+/// had a placeholder sun (often raised to brighten it) would now blow the image out.
+pub const HD_LIGHTING_REVISION: u32 = 1;
+
 /// The client's default sky colour (`0xC8B8A8`): fog fades into it and the viewport clears to it.
 pub const DEFAULT_SKY: [f32; 3] = [200.0 / 255.0, 184.0 / 255.0, 168.0 / 255.0];
 
@@ -129,6 +133,12 @@ pub struct Settings {
     pub hover_tile: bool,
     /// Reference (RuneLite parity, default) or HD (117 HD port).
     pub render_profile: ProfileChoice,
+    /// Bumped when the meaning of the HD lighting settings changed; older files are migrated in
+    /// [`Settings::sanitized`].
+    #[serde(default)]
+    pub hd_lighting_revision: u32,
+    /// HD: the plugin's Brightness, in percent (`100` = unchanged), applied as a gamma.
+    pub hd_brightness: f32,
     /// HD resolve pass: linear exposure.
     pub hd_exposure: f32,
     /// HD resolve pass: phase-0 placeholder vignette strength.
@@ -177,8 +187,11 @@ impl Default for Settings {
             mouse_tooltips: true,
             hover_tile: true,
             render_profile: ProfileChoice::Reference,
+            hd_lighting_revision: HD_LIGHTING_REVISION,
+            hd_brightness: 100.0,
             hd_exposure: HdParams::default().exposure,
-            hd_vignette: HdParams::default().placeholder_vignette,
+            // The placeholder vignette of the resolve pass is off unless asked for.
+            hd_vignette: 0.0,
             hd_normal_mapping: true,
             hd_underwater_caustics: true,
             hd_parallax_mapping: true,
@@ -252,8 +265,13 @@ impl Settings {
         if self.sky_color == [0.0, 0.0, 0.0] {
             self.sky_color = DEFAULT_SKY;
         }
+        if self.hd_lighting_revision < HD_LIGHTING_REVISION {
+            self.hd_exposure = HdParams::default().exposure;
+            self.hd_lighting_revision = HD_LIGHTING_REVISION;
+        }
         self.hd_exposure = self.hd_exposure.clamp(0.25, 4.0);
         self.hd_vignette = self.hd_vignette.clamp(0.0, 1.0);
+        self.hd_brightness = self.hd_brightness.clamp(25.0, 400.0);
         self.hd_environment.static_fog_depth =
             self.hd_environment.static_fog_depth.clamp(0.0, 100.0);
         self.hd_shadows.distance_tiles = self.hd_shadows.distance_tiles.clamp(4, 184);
@@ -304,8 +322,9 @@ mod tests {
     #[test]
     fn the_reference_profile_is_the_default_and_persists() -> Result<(), serde_json::Error> {
         assert_eq!(Settings::default().render_profile, ProfileChoice::Reference);
-        let hd: Settings =
-            serde_json::from_str(r#"{ "render_profile": "Hd", "hd_exposure": 9.0 }"#)?;
+        let hd: Settings = serde_json::from_str(
+            r#"{ "render_profile": "Hd", "hd_exposure": 9.0, "hd_lighting_revision": 1 }"#,
+        )?;
         assert_eq!(hd.render_profile.render_profile(), RenderProfile::Hd);
         assert_eq!(hd.sanitized().hd_exposure, 4.0);
         // A file written before the switch existed keeps the Reference profile.
@@ -339,6 +358,22 @@ mod tests {
         // The host sky colour is runtime state and is not persisted.
         let text = serde_json::to_string(&Settings::default())?;
         assert!(!text.contains("host_sky"));
+        Ok(())
+    }
+
+    #[test]
+    fn an_exposure_saved_with_the_placeholder_lighting_is_reset_once()
+    -> Result<(), serde_json::Error> {
+        let old: Settings = serde_json::from_str(r#"{ "hd_exposure": 1.67 }"#)?;
+        assert_eq!(old.hd_lighting_revision, 0);
+        let migrated = old.sanitized();
+        assert_eq!(migrated.hd_exposure, 1.0);
+        // A deliberate choice made afterwards survives later loads.
+        let kept = Settings {
+            hd_exposure: 1.5,
+            ..migrated
+        };
+        assert_eq!(kept.sanitized().hd_exposure, 1.5);
         Ok(())
     }
 

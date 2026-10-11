@@ -238,9 +238,14 @@ struct ZoneUniform {
 }
 
 struct DrawRange {
+    level: u8,
     min_plane: u8,
     start: u32,
     count: u32,
+    /// Vertices at the start of the range that are terrain (HD geometry only).
+    terrain_count: u32,
+    /// Vertices at the end of the range that use cutout materials (HD geometry only).
+    cutout_count: u32,
 }
 
 /// Sorting record of one model's transparent faces inside a zone's alpha buffer.
@@ -304,7 +309,26 @@ struct ScenePassInputs<'a> {
 }
 
 /// The light's camera for this frame and the zones drawn into the shadow map.
+/// What a drawn shadow map depends on: while it is unchanged the map is reused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ShadowSignature {
+    view_proj: [u32; 16],
+    size: u32,
+    geometry_version: u64,
+    mode: osrs_hd::shadows::ShadowMode,
+    transparency: bool,
+    terrain: bool,
+    roof_shadows: bool,
+    view_plane: u8,
+}
+
+/// The shadow map moves in steps of this many world units (two tiles), so it is redrawn only
+/// after the camera moved that far, not every frame.
+const SHADOW_SNAP_UNITS: f32 = 256.0;
+
 struct ShadowPlan<'a> {
+    /// The map has to be drawn again (its signature changed).
+    redraw: bool,
     camera: ShadowCamera,
     zones: Vec<&'a GpuZone>,
     /// Shadow draw distance in render units.
@@ -336,6 +360,8 @@ struct HdDraw<'a> {
 /// Opaque and alpha scene pipelines for one colour format.
 struct ScenePipelines {
     opaque: wgpu::RenderPipeline,
+    /// Opaque with alpha-to-coverage, for cutout materials (HD stream only).
+    cutout: Option<wgpu::RenderPipeline>,
     alpha: wgpu::RenderPipeline,
 }
 
@@ -369,51 +395,57 @@ fn build_scene_pipelines(
         vertex_buffers.push(Some(hd_layout));
     }
 
-    let make_pipeline = |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(label),
-            layout: Some(pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: shader,
-                entry_point: Some("vs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &vertex_buffers,
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: shader,
-                entry_point: Some("fs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: Some(depth_write),
-                depth_compare: Some(wgpu::CompareFunction::Greater),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: MSAA_SAMPLES,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview_mask: None,
-            cache: None,
-        })
-    };
+    // The cutout pipeline turns the fragment alpha into MSAA coverage, which cuts out the texels
+    // of transparent materials (leaves, fences) with depth writes and no sorting. Solid geometry
+    // keeps a plain opaque pipeline, which tile-based GPUs can resolve without shading hidden
+    // fragments.
+    let make_pipeline =
+        |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool, coverage: bool| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    buffers: &vertex_buffers,
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(depth_write),
+                    depth_compare: Some(wgpu::CompareFunction::Greater),
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState {
+                    count: MSAA_SAMPLES,
+                    mask: !0,
+                    alpha_to_coverage_enabled: coverage,
+                },
+                multiview_mask: None,
+                cache: None,
+            })
+        };
 
     ScenePipelines {
-        opaque: make_pipeline("scene-opaque", None, true),
+        opaque: make_pipeline("scene-opaque", None, true, false),
+        cutout: hd_stream.then(|| make_pipeline("scene-cutout", None, true, true)),
         alpha: make_pipeline(
             "scene-alpha",
             Some(wgpu::BlendState {
@@ -429,6 +461,7 @@ fn build_scene_pipelines(
                 },
             }),
             // `Zone.flush` wraps every alpha draw in `glDepthMask(false)`.
+            false,
             false,
         ),
     }
@@ -460,6 +493,10 @@ pub struct SceneRenderer {
     hd_shadow_dummy: hd::shadow::ShadowMaps,
     /// Edge of the previous shadow fit (shimmer hysteresis).
     hd_shadow_size: std::cell::Cell<Option<f32>>,
+    /// Signature of the shadow map currently held by the textures.
+    hd_shadow_drawn: std::cell::Cell<Option<ShadowSignature>>,
+    /// Bumped whenever geometry that can cast shadows changes.
+    shadow_geometry_version: u64,
     /// Transient textures of the HD frame graph (HDR colour, its MSAA and depth targets).
     transients: std::cell::RefCell<TransientPool>,
     globals_buffer: wgpu::Buffer,
@@ -609,6 +646,8 @@ impl SceneRenderer {
             hd_shadow_layout,
             hd_shadow_maps: std::cell::RefCell::new(None),
             hd_shadow_size: std::cell::Cell::new(None),
+            hd_shadow_drawn: std::cell::Cell::new(None),
+            shadow_geometry_version: 0,
             transients: std::cell::RefCell::new(TransientPool::default()),
             globals_buffer,
             globals_layout,
@@ -670,6 +709,7 @@ impl SceneRenderer {
     /// Upload extracted geometry as the only resident scene.
     pub fn upload_scene(&mut self, geometry: &SceneGeometry) {
         self.regions.clear();
+        self.shadow_geometry_version += 1;
         self.upload_region((0, 0), geometry);
     }
 
@@ -678,10 +718,11 @@ impl SceneRenderer {
         let mut gpu_zones = Vec::with_capacity(geometry.zones.len());
         // Re-uploads (animated locs every few cycles) reuse the zone's GPU objects, so a
         // refresh is a buffer write instead of fresh allocations.
-        let mut reusable: std::collections::HashMap<(i32, i32), GpuZone> = self
-            .regions
-            .remove(&key)
-            .unwrap_or_default()
+        let previous = self.regions.remove(&key).unwrap_or_default();
+        let had_hd = previous
+            .iter()
+            .any(|zone| zone.opaque_hd.is_some() || zone.alpha_hd.is_some());
+        let mut reusable: std::collections::HashMap<(i32, i32), GpuZone> = previous
             .into_iter()
             .map(|zone| (zone.world_origin, zone))
             .collect();
@@ -746,9 +787,12 @@ impl SceneRenderer {
                 }
                 if !group.geometry.opaque.is_empty() {
                     opaque_ranges.push(DrawRange {
+                        level: group.level,
                         min_plane: group.min_plane,
                         start: opaque.len() as u32,
                         count: group.geometry.opaque.len() as u32,
+                        terrain_count: group.geometry.hd_terrain_opaque,
+                        cutout_count: group.geometry.hd_cutout_opaque,
                     });
                     opaque.extend_from_slice(&group.geometry.opaque);
                     opaque_hd.extend_from_slice(&group.geometry.hd_opaque);
@@ -825,12 +869,26 @@ impl SceneRenderer {
                 alpha_models,
             });
         }
+        // Only geometry with HD streams casts shadows (the per-cycle animated zone does not).
+        if gpu_zones
+            .iter()
+            .any(|zone| zone.opaque_hd.is_some() || zone.alpha_hd.is_some())
+            || had_hd
+        {
+            self.shadow_geometry_version += 1;
+        }
         self.regions.insert(key, gpu_zones);
     }
 
     /// Drop a streamed region's GPU resources.
     pub fn remove_region(&mut self, key: (i32, i32)) {
-        self.regions.remove(&key);
+        if self.regions.remove(&key).is_some_and(|zones| {
+            zones
+                .iter()
+                .any(|zone| zone.opaque_hd.is_some() || zone.alpha_hd.is_some())
+        }) {
+            self.shadow_geometry_version += 1;
+        }
     }
 
     /// Number of resident zones.
@@ -999,7 +1057,7 @@ impl SceneRenderer {
             misc: [
                 lighting.lightning_brightness,
                 f32::from(u8::from(hd.underwater_caustics)),
-                0.0,
+                hd.gamma,
                 0.0,
             ],
             flags: [
@@ -1012,7 +1070,7 @@ impl SceneRenderer {
         self.queue
             .write_buffer(&self.hd_env_buffer, 0, bytemuck::bytes_of(&environment));
         let _ = depth_view;
-        let visible: Vec<&GpuZone> = self
+        let mut visible: Vec<&GpuZone> = self
             .regions
             .values()
             .flatten()
@@ -1021,6 +1079,21 @@ impl SceneRenderer {
                     && zone_visible(zone, self.render_origin, &globals.world_proj)
             })
             .collect();
+        if params.profile == RenderProfile::Hd {
+            // The HD fragment shader is expensive: draw the opaque zones front to back so the
+            // depth test rejects hidden fragments early. (The Reference profile keeps its order:
+            // coplanar faces resolve by draw order.)
+            let origin = self.render_origin;
+            let camera = params.camera;
+            let distance = |zone: &GpuZone| {
+                let x =
+                    (zone.world_origin.0 - origin.0) as f32 + ZONE_LOCAL_EXTENT / 2.0 - camera.x;
+                let z =
+                    (zone.world_origin.1 - origin.1) as f32 + ZONE_LOCAL_EXTENT / 2.0 - camera.z;
+                x * x + z * z
+            };
+            visible.sort_by(|a, b| distance(a).total_cmp(&distance(b)));
+        }
         let (alpha_zones, alpha_draws, alpha_index_buffer) = self.prepare_alpha(&visible, &params);
         let inputs = ScenePassInputs {
             visible: &visible,
@@ -1090,7 +1163,12 @@ impl SceneRenderer {
                         sampled: true,
                     },
                 );
-                let shadow_token = shadow_plan.as_ref().map(|_| graph.token("shadow-maps"));
+                // An unchanged shadow map is not drawn again: only the passes that run produce
+                // the token the scene pass waits for.
+                let shadow_token = shadow_plan
+                    .as_ref()
+                    .filter(|plan| plan.redraw)
+                    .map(|_| graph.token("shadow-maps"));
                 if let (Some(plan), Some(token)) = (&shadow_plan, shadow_token) {
                     let binding = self.hd_binding.as_ref();
                     graph.add_pass("shadow", &[], &[token], move |encoder, _| {
@@ -1217,6 +1295,7 @@ impl SceneRenderer {
             y_range: (y_min, y_max),
             resolution: size,
             previous_size: self.hd_shadow_size.get(),
+            snap_world: SHADOW_SNAP_UNITS,
         });
         self.hd_shadow_size.set(Some(fitted.size));
         let zones = self
@@ -1226,7 +1305,23 @@ impl SceneRenderer {
             .filter(has_hd)
             .filter(|zone| zone_overlaps_shadow(zone, origin, &fitted))
             .collect();
+        let signature = ShadowSignature {
+            view_proj: std::array::from_fn(|i| fitted.view_proj[i / 4][i % 4].to_bits()),
+            size,
+            geometry_version: self.shadow_geometry_version,
+            mode: settings.mode,
+            transparency: settings.transparency,
+            terrain: settings.terrain_shadows,
+            roof_shadows: settings.roof_shadows,
+            view_plane: params.view_plane,
+        };
+        let redraw = self.hd_shadow_drawn.get() != Some(signature);
+        if redraw && std::env::var_os("RUSTOSRS_SHADOW_DEBUG").is_some() {
+            eprintln!("shadow map redrawn: {signature:?}");
+        }
+        self.hd_shadow_drawn.set(Some(signature));
         Some(ShadowPlan {
+            redraw,
             camera: fitted,
             zones,
             radius,
@@ -1334,8 +1429,22 @@ impl SceneRenderer {
                     pass.set_vertex_buffer(1, hd_buffer.slice(..));
                     for range in &zone.opaque_ranges {
                         // Hidden roofs only cast when roof shadows are on.
-                        if settings.roof_shadows || range.min_plane <= view_plane {
-                            pass.draw(range.start..range.start + range.count, 0..1);
+                        if !(settings.roof_shadows || range.min_plane <= view_plane) {
+                            continue;
+                        }
+                        // The ground plane's terrain only exists in the terrain map; the main
+                        // map takes the models (and upper floors) of the group.
+                        let ground = range.level == 0;
+                        let terrain_end = range.start + range.terrain_count.min(range.count);
+                        let end = range.start + range.count;
+                        let drawn = match (terrain_only, ground) {
+                            (true, true) => range.start..terrain_end,
+                            (true, false) => continue,
+                            (false, true) => terrain_end..end,
+                            (false, false) => range.start..end,
+                        };
+                        if !drawn.is_empty() {
+                            pass.draw(drawn, 0..1);
                         }
                     }
                 }
@@ -1413,6 +1522,7 @@ impl SceneRenderer {
         textures: hd::materials::MaterialTextureArray,
     ) {
         let table = hd::layout::MaterialTable::new(&self.device, materials);
+        self.shadow_geometry_version += 1;
         let bind_group = self.hd_scene_bind_group(&table, &textures);
         self.hd_binding = Some(HdBinding {
             bind_group,
@@ -1547,7 +1657,49 @@ impl SceneRenderer {
                 }
                 for range in &zone.opaque_ranges {
                     if range.min_plane <= params.view_plane {
-                        pass.draw(range.start..range.start + range.count, 0..1);
+                        // Cutout vertices sit at the end of an HD range: drawn below.
+                        let solid = if hd_buffer.is_some() {
+                            range.count - range.cutout_count.min(range.count)
+                        } else {
+                            range.count
+                        };
+                        if solid > 0 {
+                            pass.draw(range.start..range.start + solid, 0..1);
+                        }
+                    }
+                }
+            }
+
+            // Cutout materials: opaque with alpha-to-coverage.
+            if let Some(hd) = inputs.hd
+                && let Some(cutout) = &hd.pipelines.cutout
+            {
+                let mut bound = false;
+                for zone in inputs.visible.iter().copied() {
+                    let (Some(buffer), Some(hd_buffer)) = (&zone.opaque, &zone.opaque_hd) else {
+                        continue;
+                    };
+                    if zone
+                        .opaque_ranges
+                        .iter()
+                        .all(|range| range.cutout_count == 0 || range.min_plane > params.view_plane)
+                    {
+                        continue;
+                    }
+                    if !bound {
+                        bound = true;
+                        pass.set_pipeline(cutout);
+                        pass.set_bind_group(2, hd.bind_group, &[]);
+                        pass.set_bind_group(3, hd.shadow_group, &[]);
+                    }
+                    pass.set_bind_group(1, &zone.bind_group, &[]);
+                    pass.set_vertex_buffer(0, buffer.slice(..));
+                    pass.set_vertex_buffer(1, hd_buffer.slice(..));
+                    for range in &zone.opaque_ranges {
+                        if range.min_plane <= params.view_plane && range.cutout_count > 0 {
+                            let end = range.start + range.count;
+                            pass.draw(end - range.cutout_count.min(range.count)..end, 0..1);
+                        }
                     }
                 }
             }

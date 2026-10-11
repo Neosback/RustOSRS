@@ -196,6 +196,8 @@ pub struct EnvironmentSettings {
     /// Change environmental lighting based on the area (`environmentalLighting`).
     pub atmospheric_lighting: bool,
     pub fog_depth_mode: FogDepthMode,
+    /// Distance fog and the haze at the draw-distance border (off: no fog at all).
+    pub distance_fog: bool,
     /// Fog depth when [`FogDepthMode::Static`], in tiles.
     pub static_fog_depth: f32,
     pub ground_fog: bool,
@@ -219,6 +221,7 @@ impl Default for EnvironmentSettings {
         Self {
             atmospheric_lighting: true,
             fog_depth_mode: FogDepthMode::Dynamic,
+            distance_fog: true,
             static_fog_depth: 5.0,
             ground_fog: true,
             default_sky: DefaultSky::Default,
@@ -726,6 +729,8 @@ pub struct EnvironmentState {
     transition_id: u64,
     previous_position: [i32; 3],
     lightning: Lightning,
+    /// The settings the target was last evaluated with: lighting-relevant changes re-apply it.
+    applied: Option<(bool, SeasonalTheme)>,
 }
 
 #[derive(Debug, Clone)]
@@ -785,6 +790,7 @@ impl Default for EnvironmentState {
             transition_start: 0.0,
             transition_id: 0,
             previous_position: [0; 3],
+            applied: None,
             lightning: Lightning {
                 enabled: false,
                 brightness: 0.0,
@@ -878,7 +884,11 @@ impl EnvironmentState {
         let skip_transition = tile_change >= SKIP_TRANSITION_DISTANCE;
 
         let index = set.index_at(focal[0], focal[1], focal[2], settings, vars);
-        self.change_environment(set, settings, index, skip_transition, now);
+        // Atmospheric lighting and the seasonal theme change what the same area resolves to: apply it again, blending like any other change.
+        let applied = (settings.atmospheric_lighting, settings.season);
+        let force = self.applied.is_some_and(|previous| previous != applied);
+        self.applied = Some(applied);
+        self.change_environment(set, settings, index, skip_transition, force, now);
 
         // Updated every frame, since the sky settings may change under a running transition.
         let resolved = set.get(self.resolved_index(set, settings));
@@ -921,9 +931,10 @@ impl EnvironmentState {
         settings: &EnvironmentSettings,
         index: usize,
         mut skip_transition: bool,
+        force: bool,
         now: f64,
     ) {
-        if self.target == Some(index) {
+        if self.target == Some(index) && !force {
             return;
         }
         let previous = self.target.map(|previous| set.get(previous));
@@ -1049,9 +1060,13 @@ impl Lighting {
                 color
             }
         };
-        let fog_depth = match settings.fog_depth_mode {
-            FogDepthMode::Dynamic => values.fog_depth,
-            FogDepthMode::Static => settings.static_fog_depth,
+        let fog_depth = if settings.distance_fog {
+            match settings.fog_depth_mode {
+                FogDepthMode::Dynamic => values.fog_depth,
+                FogDepthMode::Static => settings.static_fog_depth,
+            }
+        } else {
+            0.0
         } * draw_distance_tiles.min(90.0)
             / 10.0;
 
@@ -1353,6 +1368,43 @@ mod tests {
         assert_eq!(state.target(&set).area, "TOWN");
         assert_eq!(state.current().directional_strength, 4.0);
         assert_eq!(state.current().fog_depth, 40.0);
+    }
+
+    #[test]
+    fn changing_atmospheric_lighting_re_applies_the_current_area() {
+        let (set, _) = hand_made();
+        let mut state = EnvironmentState::new();
+        let on = EnvironmentSettings::default();
+        let off = EnvironmentSettings {
+            atmospheric_lighting: false,
+            ..on
+        };
+        let update = |state: &mut EnvironmentState, settings: &EnvironmentSettings, now: f64| {
+            state.update(&set, settings, [3050, 3050, 0], &NoVariables, now, 0.016);
+        };
+        update(&mut state, &on, 0.0);
+        assert_eq!(state.current().directional_strength, 1.0);
+        // Standing still, the switch makes the overworld light the town after the blend.
+        update(&mut state, &off, 1.0);
+        assert!(state.transition_progress() < 0.1);
+        update(&mut state, &off, 5.0);
+        assert_eq!(state.current().directional_strength, 4.0);
+        // And back.
+        update(&mut state, &on, 6.0);
+        update(&mut state, &on, 10.0);
+        assert_eq!(state.current().directional_strength, 1.0);
+    }
+
+    #[test]
+    fn distance_fog_can_be_switched_off() {
+        let (set, _) = hand_made();
+        let town = set.environment_at(3050, 3050, 0);
+        let mut settings = EnvironmentSettings::default();
+        let fogged = Lighting::from_values(&town.values, &settings, 50.0, false, true, 0.0);
+        assert!(fogged.fog_depth > 0.0);
+        settings.distance_fog = false;
+        let clear = Lighting::from_values(&town.values, &settings, 50.0, false, true, 0.0);
+        assert_eq!(clear.fog_depth, 0.0);
     }
 
     #[test]

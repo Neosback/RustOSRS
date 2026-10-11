@@ -156,6 +156,13 @@ pub fn extract_owned_geometry_hd(
         }
     }
 
+    // Everything emitted so far is terrain: remember where it ends in each group's opaque stream.
+    for zone in &mut geometry.zones {
+        for group in &mut zone.groups {
+            group.geometry.hd_terrain_opaque = group.geometry.opaque.len() as u32;
+        }
+    }
+
     // Locs.
     for loc in &world.locs {
         if loc.renderables.is_empty() || !in_range(loc.tile.x, loc.tile.y) {
@@ -201,6 +208,12 @@ pub fn extract_owned_geometry_hd(
                 .zone_mut(zone_base_x + scene_zone_x, zone_base_z + scene_zone_z)
                 .group_mut(level, min_plane)
                 .push_hd_faces(&faces, [slot.x, slot.y, slot.z]);
+        }
+    }
+    // Cutout faces go after the solid ones of their group.
+    for zone in &mut geometry.zones {
+        for group in &mut zone.groups {
+            group.geometry.finish_hd();
         }
     }
     geometry

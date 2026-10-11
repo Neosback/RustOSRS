@@ -59,6 +59,8 @@ pub struct HdLighting {
     pub parallax_mapping: bool,
     /// Caustics on the sea floor and under the surface (`underwaterCaustics`).
     pub underwater_caustics: bool,
+    /// Output gamma (`100 / brightness`, `1` = unchanged): the plugin's Brightness setting.
+    pub gamma: f32,
     /// Animation clock of the water, caustics and scrolling textures, in seconds.
     pub elapsed_seconds: f32,
     /// Debug output instead of the lit scene (`DISPLAY_*` of the plugin): 0 off, 1 base colour,
@@ -94,6 +96,7 @@ impl HdLighting {
             normal_mapping: true,
             parallax_mapping: true,
             underwater_caustics: true,
+            gamma: 1.0,
             elapsed_seconds: 0.0,
             debug_view: 0,
         }

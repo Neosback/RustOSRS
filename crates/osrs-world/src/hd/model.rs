@@ -822,7 +822,6 @@ pub(crate) fn model_faces_resolved(
         if uv_type == UvType::Vanilla && texture_id.is_some() {
             flags |= HD_FLAG_VANILLA_UVS;
         }
-        let material_flags = materials.has_transparency(material);
         let double_sided = face_override.double_sided_faces || materials.double_sided(material);
         faces.push(HdFace {
             positions: idx.map(|i| positions[i]),
@@ -835,8 +834,10 @@ pub(crate) fn model_faces_resolved(
             plane: 0,
             flags,
             alpha: transparency as u8,
-            // Materials with transparency draw in the alpha pass even when the face is opaque.
-            alpha_pass: material_flags,
+            // Cutout materials (leaves, fences) stay in the opaque stream: the scene shader writes
+            // their alpha as coverage, so they are depth-correct without any sorting.
+            alpha_pass: false,
+            cutout: transparency == 0 && materials.has_transparency(material),
             bias,
             double_sided,
         });

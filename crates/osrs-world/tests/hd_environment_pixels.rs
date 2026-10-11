@@ -62,9 +62,7 @@ fn redness(pixels: &[u8]) -> f64 {
     sum / (pixels.len() / 4) as f64
 }
 
-#[test]
-#[ignore = "requires the pinned build-241 cache (RUSTOSRS_TARGET_CACHE_DIR) and a GPU"]
-fn the_area_environment_changes_lighting_fog_and_sky() -> Result<(), Box<dyn std::error::Error>> {
+fn scene() -> Result<(SceneRenderer, HdContext), Box<dyn std::error::Error>> {
     let dir = std::env::var("RUSTOSRS_TARGET_CACHE_DIR")?;
     let mut definitions = WorldDefinitions::open(dir)?;
     let window = SceneWindow::new(3176, 3176).ok_or("window alignment")?;
@@ -94,6 +92,13 @@ fn the_area_environment_changes_lighting_fog_and_sky() -> Result<(), Box<dyn std
     .map_err(|error| error.to_string())?;
     renderer.upload_scene(&extract_owned_geometry_hd(&world, None, &hd));
 
+    Ok((renderer, hd))
+}
+
+#[test]
+#[ignore = "requires the pinned build-241 cache (RUSTOSRS_TARGET_CACHE_DIR) and a GPU"]
+fn the_area_environment_changes_lighting_fog_and_sky() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut renderer, hd) = scene()?;
     let settings = EnvironmentSettings::default();
     let mut render =
         |values: &osrs_hd::environment::EnvValues| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -136,5 +141,62 @@ fn the_area_environment_changes_lighting_fog_and_sky() -> Result<(), Box<dyn std
     no_fog.fog_color = [1.0, 0.0, 0.0];
     let plain = render(&no_fog)?;
     assert!(redness(&plain) < redness(&red_frame));
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires the pinned build-241 cache (RUSTOSRS_TARGET_CACHE_DIR) and a GPU"]
+fn fog_and_colour_blindness_settings_reach_the_hd_frame() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (mut renderer, hd) = scene()?;
+    let settings = EnvironmentSettings::default();
+    let surface = hd.environments.environment_at(3222, 3218, 0).values;
+    // Distance fog is a setting: without it the far scenery keeps its own colours.
+    let fogged = {
+        let mut values = surface;
+        values.fog_color = [1.0, 0.0, 0.0];
+        values.fog_depth = 12.0;
+        values
+    };
+    renderer.set_hd_lighting(HdLighting {
+        lighting: Lighting::from_values(&fogged, &settings, 50.0, false, true, 0.0),
+        ..HdLighting::default()
+    });
+    let with_fog = renderer.render_to_rgba(params(), WIDTH, HEIGHT)?;
+    let no_fog_settings = EnvironmentSettings {
+        distance_fog: false,
+        ..settings
+    };
+    renderer.set_hd_lighting(HdLighting {
+        lighting: Lighting::from_values(&fogged, &no_fog_settings, 50.0, false, true, 0.0),
+        ..HdLighting::default()
+    });
+    let without_fog = renderer.render_to_rgba(params(), WIDTH, HEIGHT)?;
+    assert!(redness(&with_fog) > redness(&without_fog) + 3.0);
+
+    // The colour blindness correction reaches the HD frame like the Reference one.
+    renderer.set_hd_lighting(HdLighting::default());
+    let plain = renderer.render_to_rgba(params(), WIDTH, HEIGHT)?;
+    let corrected = renderer.render_to_rgba(
+        FrameParams {
+            colorblind: Colorblind {
+                mode: osrs_render::gpu::ColorblindMode::Protanope,
+                intensity: 100.0,
+            },
+            ..params()
+        },
+        WIDTH,
+        HEIGHT,
+    )?;
+    let changed = plain
+        .iter()
+        .zip(&corrected)
+        .filter(|(a, b)| a.abs_diff(**b) > 2)
+        .count();
+    assert!(
+        changed > plain.len() / 20,
+        "{changed} channel values changed"
+    );
+
     Ok(())
 }

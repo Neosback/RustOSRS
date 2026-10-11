@@ -186,6 +186,21 @@ tone map / colour filter / AA resolve -> overlays (egui).
   (surface/shoreline/underwater faces on the Lumbridge river, blue share of a top-down frame, the water clock animates).
   Visual checks 2026-10-11: Lumbridge river (foam, ripples, shadows), Falador town, Lumbridge swamp caves (dark, fogged:
   its environment is lit by placed point lights, phase 6). Reference profile unchanged (`reference_profile_pixels`).
+* Fixes and performance after phase 5 (2026-10-11):
+  * Cutout materials (leaves, fences) are drawn in the **opaque** pass with alpha-to-coverage instead of the unsorted alpha
+    pass: from a distance the alpha pass drew a canopy's inner faces over its outer ones (dark wedges on every tree) because
+    only models near the camera sort their faces. Only faces with their own transparency stay in the alpha pass.
+  * The shadow map is redrawn only when its signature changes (light camera, resident HD geometry, settings, plane): the
+    light camera moves in steps of two tiles (`ShadowFit::snap_world`, texel-aligned, depth range rounded to tiles), so a
+    still or slowly moving camera reuses the map. The ground plane's terrain is drawn only into the terrain map and the main
+    map skips it (`DrawRange::terrain_count`). Fragments facing away from the light skip the lookup.
+  * The HD fragment shader samples a face's material once when all three corners use the same one (pixel-identical).
+  * Why not indirect drawing: WebGPU only has single `drawIndirect`; multi-draw-indirect is a native wgpu feature, and the
+    scene's ~700 zone draws cost about 1 ms of CPU. The time is in the fragment shader and the shadow pass.
+  * Settings audit: distance fog has its own switch (`EnvironmentSettings::distance_fog`; the Reference "Fog depth" slider
+    never reached HD), atmospheric lighting / season changes re-apply the current area, colour blindness and Brightness (a
+    gamma, `100 / brightness`) are applied by the HD shader, `hd_exposure` saved with the placeholder lighting is migrated
+    to 1.0 once (`hd_lighting_revision`).
 * Next: phases 6-8 as listed above.
 
 ## 6. First concrete steps

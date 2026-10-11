@@ -62,6 +62,15 @@ pub struct GeometryBuilder {
     pub hd_opaque: Vec<crate::hd_geometry::HdVertex>,
     /// HD-profile vertex data parallel to `alpha` (empty for Reference geometry).
     pub hd_alpha: Vec<crate::hd_geometry::HdVertex>,
+    /// HD geometry: how many vertices at the start of `opaque` are terrain (extraction emits a
+    /// zone's terrain before its models); the shadow passes draw the two parts separately.
+    pub hd_terrain_opaque: u32,
+    /// HD geometry: vertices at the **end** of `opaque` that belong to cutout materials (leaves,
+    /// fences). They are drawn with alpha-to-coverage; everything before them is solid and keeps
+    /// the cheaper, hidden-surface-removal-friendly pipeline.
+    pub hd_cutout_opaque: u32,
+    /// Cutout faces waiting for [`Self::finish_hd`] to be placed after the solid ones.
+    pub hd_pending_cutout: Vec<(PackedVertex, crate::hd_geometry::HdVertex)>,
     /// One record per model that contributed transparent faces to `alpha`, in emission order.
     pub alpha_models: Vec<AlphaModel>,
 }

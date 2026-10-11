@@ -113,8 +113,11 @@ pub struct HdFace {
     pub flags: u16,
     /// Transparency, `0` = opaque (the Reference `alpha` byte).
     pub alpha: u8,
-    /// Draw in the alpha pass even when `alpha` is `0` (materials with cutout transparency).
+    /// Draw in the alpha pass even when `alpha` is `0`.
     pub alpha_pass: bool,
+    /// The face uses a cutout material (leaves, fences): it stays opaque but is drawn with
+    /// alpha-to-coverage, after the solid faces of its group.
+    pub cutout: bool,
     /// Authored depth bias.
     pub bias: u8,
     /// Also emit the back side (reversed winding and normals).
@@ -175,6 +178,16 @@ impl HdFace {
 }
 
 impl GeometryBuilder {
+    /// Place the cutout faces collected by [`Self::push_hd_faces`] after the solid ones. Call once
+    /// when the group is complete.
+    pub fn finish_hd(&mut self) {
+        self.hd_cutout_opaque = self.hd_pending_cutout.len() as u32;
+        for (packed, hd) in std::mem::take(&mut self.hd_pending_cutout) {
+            self.opaque.push(packed);
+            self.hd_opaque.push(hd);
+        }
+    }
+
     /// Emit faces of one model (or one terrain tile) into the HD streams. `origin` is the model
     /// origin in zone-local units, used to sort the transparent faces like the Reference path.
     ///
@@ -196,7 +209,9 @@ impl GeometryBuilder {
                     alpha_face_sums.push([sum(0), sum(1), sum(2)]);
                 }
                 for (packed, hd) in face.vertices() {
-                    if alpha {
+                    if !alpha && face.cutout {
+                        builder.hd_pending_cutout.push((packed, hd));
+                    } else if alpha {
                         builder.alpha.push(packed);
                         builder.hd_alpha.push(hd);
                     } else {
@@ -240,6 +255,7 @@ mod tests {
             flags: HD_FLAG_TERRAIN,
             alpha,
             alpha_pass: false,
+            cutout: false,
             bias: 7,
             double_sided,
         }

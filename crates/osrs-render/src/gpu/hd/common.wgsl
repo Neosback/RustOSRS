@@ -23,7 +23,7 @@ struct Environment {
     fog_params: vec4<f32>,
     // rgb = linear water colour.
     water_color: vec4<f32>,
-    // x = lightning brightness.
+    // x = lightning brightness, y = underwater caustics on, z = output gamma.
     misc: vec4<f32>,
     // x = normal mapping enabled, y = debug view, z = underwater environment.
     flags: vec4<u32>,

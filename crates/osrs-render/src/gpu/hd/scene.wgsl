@@ -193,6 +193,53 @@ fn calculate_fog_amount(position: vec3<f32>) -> f32 {
     return max(max(distance_fog1, distance_fog2), edge_fog);
 }
 
+// ---- output (`utils/output_transform.glsl`) -------------------------------------------------
+
+// RuneLite/117 HD colour blindness compensation (Fidaner, Lin, Ozguven); the inverse of
+// `rgb2lms` is precomputed because WGSL has no `inverse`.
+const rgb2lms = mat3x3<f32>(
+    vec3<f32>(17.8824, 43.5161, 4.11935),
+    vec3<f32>(3.45565, 27.1554, 3.86714),
+    vec3<f32>(0.0299566, 0.184309, 1.46709),
+);
+const lms2rgb = mat3x3<f32>(
+    vec3<f32>(0.08094444790497689, -0.13050440916032102, 0.1167210664396031),
+    vec3<f32>(-0.010248533514606797, 0.05401932663599884, -0.11361470821404349),
+    vec3<f32>(-0.0003652969378610495, -0.004121614685876284, 0.6935114048608589),
+);
+const lms2lmsp = mat3x3<f32>(vec3<f32>(0.0, 2.02344, -2.52581), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, 0.0, 1.0));
+const lms2lmsd = mat3x3<f32>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.494207, 0.0, 1.24827), vec3<f32>(0.0, 0.0, 1.0));
+const lms2lmst = mat3x3<f32>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(-0.395913, 0.801109, 0.0));
+const daltonization = mat3x3<f32>(vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(0.7, 1.0, 0.0), vec3<f32>(0.7, 0.0, 1.0));
+
+fn color_blindness_compensation(color: vec3<f32>) -> vec3<f32> {
+    let lms_in = color * rgb2lms;
+    var lms: vec3<f32>;
+    if (globals.colorblind_mode == 1u) {
+        lms = lms_in * lms2lmsp;
+    } else if (globals.colorblind_mode == 2u) {
+        lms = lms_in * lms2lmsd;
+    } else {
+        lms = lms_in * lms2lmst;
+    }
+    let error = color - lms * lms2rgb;
+    let compensation = error * daltonization;
+    return color + compensation * clamp(globals.colorblind_intensity / 100.0, 0.0, 1.0);
+}
+
+// `applyColorAdjustments`: clamp to the displayable range, then the colour blindness correction.
+fn apply_color_adjustments(srgb: vec3<f32>) -> vec3<f32> {
+    var color = clamp(srgb, vec3<f32>(0.0), vec3<f32>(1.0));
+    if (globals.colorblind_mode != 0u) {
+        color = color_blindness_compensation(color);
+    }
+    // `applyOutputCorrection`: the Brightness setting as a gamma.
+    if (env.misc.z != 1.0) {
+        color = pow(max(color, vec3<f32>(0.0)), vec3<f32>(env.misc.z));
+    }
+    return color;
+}
+
 // Distance fog and ground fog combined: the share of the sky colour at `position`.
 fn combined_fog_amount(position: vec3<f32>) -> f32 {
     let eye_distance = length(position - env.camera.xyz);
@@ -221,6 +268,22 @@ fn sample_color(material: Material, uv: vec2<f32>, ddx: vec2<f32>, ddy: vec2<f32
     var c = textureSampleGrad(material_textures, material_sampler, uv, material.color_map, ddx, ddy);
     c = vec4<f32>(c.rgb * material.brightness, c.a);
     return c;
+}
+
+// Specular strength multiplier of the roughness map (`1` without one).
+fn sample_roughness(material: Material, uv: vec2<f32>, ddx: vec2<f32>, ddy: vec2<f32>) -> f32 {
+    if (material.roughness_map < 0) {
+        return 1.0;
+    }
+    return linear_to_srgb(textureSampleGrad(material_textures, material_sampler, uv, material.roughness_map, ddx, ddy).rgb).r;
+}
+
+// Ambient light multiplier of the baked occlusion map (`1` without one).
+fn sample_ambient_occlusion(material: Material, uv: vec2<f32>, ddx: vec2<f32>, ddy: vec2<f32>) -> f32 {
+    if (material.ambient_occlusion_map < 0) {
+        return 1.0;
+    }
+    return textureSampleGrad(material_textures, material_sampler, uv, material.ambient_occlusion_map, ddx, ddy).r;
 }
 
 // `sampleNormalMap`: the tangent-space map rotated into world space.
@@ -557,6 +620,8 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     let material1 = materials[mat_index1];
     let material2 = materials[mat_index2];
     let material3 = materials[mat_index3];
+    // Most faces carry one material on all three corners: sample it once.
+    let same_material = mat_index1 == mat_index2 && mat_index2 == mat_index3;
 
     let water_depth = f32(input.depths.x) * blend.x + f32(input.depths.y) * blend.y + f32(input.depths.z) * blend.z;
     let is_underwater = is_terrain && water_depth > 0.0;
@@ -575,7 +640,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
         let fog = combined_fog_amount(input.position);
         var water_rgb = mix(surface.rgb, linear_to_srgb(env.fog_color.rgb), fog);
         let water_alpha = fog + surface.a * (1.0 - fog);
-        water_rgb = clamp(water_rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+        water_rgb = apply_color_adjustments(water_rgb);
         return vec4<f32>(water_rgb, water_alpha);
     }
 
@@ -639,8 +704,12 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     if (env.flags.w != 0u) {
         let ts_view_dir = transpose(tbn) * view_dir;
         let pom1 = sample_displacement_map(material1, ts_view_dir, uv1, pom_ddx1, pom_ddy1);
-        let pom2 = sample_displacement_map(material2, ts_view_dir, uv2, pom_ddx2, pom_ddy2);
-        let pom3 = sample_displacement_map(material3, ts_view_dir, uv3, pom_ddx3, pom_ddy3);
+        var pom2 = pom1;
+        var pom3 = pom1;
+        if (!same_material) {
+            pom2 = sample_displacement_map(material2, ts_view_dir, uv2, pom_ddx2, pom_ddy2);
+            pom3 = sample_displacement_map(material3, ts_view_dir, uv3, pom_ddx3, pom_ddy3);
+        }
         uv1 = pom1.uv;
         uv2 = pom2.uv;
         uv3 = pom3.uv;
@@ -665,8 +734,12 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     let base3 = packed_hsl_to_linear(input.hsl.z);
 
     let tex1 = sample_color(material1, uv1, ddx1, ddy1);
-    let tex2 = sample_color(material2, uv2, ddx2, ddy2);
-    let tex3 = sample_color(material3, uv3, ddx3, ddy3);
+    var tex2 = tex1;
+    var tex3 = tex1;
+    if (!same_material) {
+        tex2 = sample_color(material2, uv2, ddx2, ddy2);
+        tex3 = sample_color(material3, uv3, ddx3, ddy3);
+    }
 
     let override1 = has_flag(material1, 4u);
     let override2 = has_flag(material2, 4u);
@@ -729,8 +802,12 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
         normals = vec3<f32>(0.0, -1.0, 0.0);
     } else {
         let n1 = sample_normal_map(material1, uv1, ddx1, ddy1, tbn);
-        let n2 = sample_normal_map(material2, uv2, ddx2, ddy2, tbn);
-        let n3 = sample_normal_map(material3, uv3, ddx3, ddy3, tbn);
+        var n2 = n1;
+        var n3 = n1;
+        if (!same_material) {
+            n2 = sample_normal_map(material2, uv2, ddx2, ddy2, tbn);
+            n3 = sample_normal_map(material3, uv3, ddx3, ddy3, tbn);
+        }
         normals = normalize(n1 * blend.x + n2 * blend.y + n3 * blend.z);
     }
 
@@ -739,7 +816,8 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
 
     // Directional shadow of the shadow map.
     var shadow = 0.0;
-    if ((flags & FLAG_NO_SHADOW) == 0u) {
+    // Surfaces facing away from the light get none of it: no lookup needed.
+    if ((flags & FLAG_NO_SHADOW) == 0u && light_dot_normals > 0.0) {
         shadow = sample_shadow_map(
             frag_position,
             vec2<f32>(0.0),
@@ -757,11 +835,14 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     // Specular strength and gloss; semi-transparent faces get a window-like highlight.
     var spec_gloss = vec3<f32>(material1.specular_gloss, material2.specular_gloss, material3.specular_gloss);
     var spec_strength = vec3<f32>(material1.specular_strength, material2.specular_strength, material3.specular_strength);
-    spec_strength = spec_strength * vec3<f32>(
-        select(1.0, linear_to_srgb(textureSampleGrad(material_textures, material_sampler, uv1, max(material1.roughness_map, 0), ddx1, ddy1).rgb).r, material1.roughness_map >= 0),
-        select(1.0, linear_to_srgb(textureSampleGrad(material_textures, material_sampler, uv2, max(material2.roughness_map, 0), ddx2, ddy2).rgb).r, material2.roughness_map >= 0),
-        select(1.0, linear_to_srgb(textureSampleGrad(material_textures, material_sampler, uv3, max(material3.roughness_map, 0), ddx3, ddy3).rgb).r, material3.roughness_map >= 0),
-    );
+    let rough1 = sample_roughness(material1, uv1, ddx1, ddy1);
+    var rough2 = rough1;
+    var rough3 = rough1;
+    if (!same_material) {
+        rough2 = sample_roughness(material2, uv2, ddx2, ddy2);
+        rough3 = sample_roughness(material3, uv3, ddx3, ddy3);
+    }
+    spec_strength = spec_strength * vec3<f32>(rough1, rough2, rough3);
     if (alpha * 3.0 < 2.99) {
         spec_gloss = vec3<f32>(30.0);
         spec_strength = vec3<f32>(clamp((1.0 - alpha) * 2.0, 0.0, 1.0));
@@ -769,9 +850,13 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     let combined_spec_strength = dot(spec_strength, blend);
 
     // Ambient light with the baked ambient-occlusion maps.
-    let ao1 = select(1.0, textureSampleGrad(material_textures, material_sampler, uv1, max(material1.ambient_occlusion_map, 0), ddx1, ddy1).r, material1.ambient_occlusion_map >= 0);
-    let ao2 = select(1.0, textureSampleGrad(material_textures, material_sampler, uv2, max(material2.ambient_occlusion_map, 0), ddx2, ddy2).r, material2.ambient_occlusion_map >= 0);
-    let ao3 = select(1.0, textureSampleGrad(material_textures, material_sampler, uv3, max(material3.ambient_occlusion_map, 0), ddx3, ddy3).r, material3.ambient_occlusion_map >= 0);
+    let ao1 = sample_ambient_occlusion(material1, uv1, ddx1, ddy1);
+    var ao2 = ao1;
+    var ao3 = ao1;
+    if (!same_material) {
+        ao2 = sample_ambient_occlusion(material2, uv2, ddx2, ddy2);
+        ao3 = sample_ambient_occlusion(material3, uv3, ddx3, ddy3);
+    }
     let ao = ao1 * blend.x + ao2 * blend.y + ao3 * blend.z;
     let ambient_out = env.ambient_color.rgb * env.ambient_color.w * ao;
 
@@ -825,7 +910,6 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     if (!is_underwater) {
         rgb = mix(rgb, linear_to_srgb(env.fog_color.rgb), combined_fog_amount(input.position));
     }
-    // `applyColorAdjustments` clamps to the displayable range.
-    rgb = clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+    rgb = apply_color_adjustments(rgb);
     return vec4<f32>(rgb, output_color.a);
 }

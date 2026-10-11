@@ -151,12 +151,11 @@ impl EditorApp {
                 ui.end_row();
 
                 if hd {
-                    ui.label("HD exposure");
-                    ui.add(egui::Slider::new(&mut self.prefs.hd_exposure, 0.25..=4.0));
-                    ui.end_row();
-
-                    ui.label("HD vignette");
-                    ui.add(egui::Slider::new(&mut self.prefs.hd_vignette, 0.0..=1.0));
+                    ui.label("Brightness");
+                    ui.add(
+                        egui::Slider::new(&mut self.prefs.hd_brightness, 25.0..=400.0).suffix(" %"),
+                    )
+                    .on_hover_text("Brightness of the game (a gamma), 100 % = as authored.");
                     ui.end_row();
                 } else {
                     ui.label("Brightness");
@@ -212,6 +211,17 @@ impl EditorApp {
     /// Environment.
     fn hd_shading_sections(&mut self, ui: &mut egui::Ui) {
         ui.separator();
+        section(ui, "Post processing (placeholder)", false, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Exposure");
+                ui.add(egui::Slider::new(&mut self.prefs.hd_exposure, 0.25..=4.0));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Vignette");
+                ui.add(egui::Slider::new(&mut self.prefs.hd_vignette, 0.0..=1.0));
+            });
+            ui.weak("A multiplier on the finished image; the plugin has none. Keep at 1.0.");
+        });
         section(ui, "Lighting", true, |ui| {
             ui.checkbox(
                 &mut self.prefs.hd_environment.atmospheric_lighting,
@@ -355,7 +365,15 @@ impl EditorApp {
                         });
                     ui.end_row();
                 });
+            ui.checkbox(&mut environment.distance_fog, "Distance fog")
+                .on_hover_text(
+                    "Fog towards the draw distance and the haze at its border. Off removes all \
+                     fog; the sky colour still lights surfaces facing up.",
+                );
             ui.checkbox(&mut environment.ground_fog, "Ground fog");
+            if environment.default_sky == DefaultSky::Host {
+                ui.weak("Uses the sky colour of Tools > Scene.");
+            }
             ui.checkbox(&mut environment.override_sky, "Override sky colour")
                 .on_hover_text("Force the default sky colour in all environments.");
             ui.checkbox(

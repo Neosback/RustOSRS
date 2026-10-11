@@ -1,5 +1,5 @@
 //! Debug: find placements of object ids across all map squares and list adjacent pairs.
-//! usage: loc_finder <cache> <id-a> <id-b>
+//! usage: loc_finder <cache> <id-a> <id-b> [min-x min-y max-x max-y]  (with a box, lists the hits inside it)
 use osrs_core::{coords::RegionCoord, ids::ObjectId};
 use osrs_world::WorldDefinitions;
 
@@ -29,6 +29,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     println!("{} hits", hits.len());
+    if let [min_x, min_y, max_x, max_y] = args[4..]
+        .iter()
+        .filter_map(|v| v.parse::<i32>().ok())
+        .collect::<Vec<_>>()[..]
+    {
+        for hit in hits
+            .iter()
+            .filter(|h| (min_x..=max_x).contains(&h.1) && (min_y..=max_y).contains(&h.2))
+        {
+            println!("hit: {hit:?}");
+        }
+    }
     for (i, h) in hits.iter().enumerate() {
         for g in &hits[i + 1..] {
             if h.0 != g.0 && h.3 == g.3 && (h.1 - g.1).abs() <= 1 && (h.2 - g.2).abs() <= 1 {
