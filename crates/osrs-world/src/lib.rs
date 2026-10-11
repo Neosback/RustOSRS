@@ -18,13 +18,11 @@ mod scene_builder;
 mod streaming;
 mod terrain_stage;
 mod window;
+pub mod worldmap;
 
 pub use animation::{AnimatedContour, AnimatedInstance, AnimatedModel, AnimationSystem};
 pub use animation_worker::{AnimationUpdate, AnimationWorker};
-pub use assets::{
-    AssetEvent, AssetWorker, IMAGE as WORLD_MAP_IMAGE, SpriteImage, WorldMapTile,
-    render_region_image,
-};
+pub use assets::{AssetEvent, AssetWorker, SpriteImage, WorldMapRegionImage};
 pub use definitions::{
     FloorTable, RegionMap, TEXTURE_SIZE, TextureImage, TextureTable, WorldDefinitions,
 };

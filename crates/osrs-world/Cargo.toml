@@ -10,6 +10,7 @@ osrs-core = { path = "../osrs-core" }
 osrs-cache = { path = "../osrs-cache" }
 osrs-scene = { path = "../osrs-scene" }
 osrs-render = { path = "../osrs-render" }
+png = "0.18"
 
 [lints]
 workspace = true

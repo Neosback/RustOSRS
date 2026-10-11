@@ -1869,6 +1869,7 @@ dependencies = [
  "osrs-core",
  "osrs-render",
  "osrs-scene",
+ "png",
 ]
 
 [[package]]

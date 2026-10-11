@@ -90,6 +90,7 @@ fn object_definition(
         map_icon: None,
         category: None,
         actions: std::array::from_fn(|_| None),
+        interactive_hint: None,
     })
 }
 

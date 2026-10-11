@@ -1,10 +1,14 @@
-//! Editor-side asset cache: sprites and world-map tiles delivered by the `AssetWorker` thread,
+//! Editor-side asset cache: sprites and the world map delivered by the `AssetWorker` thread,
 //! uploaded as egui textures. Everything is requested lazily and at most once.
 
 use eframe::egui;
-use osrs_world::{AssetEvent, AssetWorker, SpriteImage, WORLD_MAP_IMAGE, WorldMapTile};
+use osrs_world::{
+    AssetEvent, AssetWorker, SpriteImage, WorldMapRegionImage,
+    worldmap::{Catalog, MapIcon},
+};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Interface sprite ids used by the editor (the same ids as the game's `SpriteID`).
 pub mod sprite {
@@ -15,15 +19,26 @@ pub mod sprite {
     pub const WIKI_ICON: u32 = 2420;
 }
 
+/// A world-map region image: area index, region, pixels per tile.
+pub type RegionKey = (usize, i32, i32, i32);
+
+/// Region textures kept before the ones for other zoom levels are dropped.
+const REGION_TEXTURE_BUDGET: usize = 700;
+
 pub struct Assets {
     worker: AssetWorker,
     sprites: HashMap<u32, egui::TextureHandle>,
     missing: HashSet<u32>,
     requested: HashSet<u32>,
-    /// World-map region textures, keyed by region.
-    pub map_tiles: HashMap<(i32, i32), egui::TextureHandle>,
-    pub map_requested: bool,
-    pub map_done: bool,
+    pub catalog: Option<Arc<Catalog>>,
+    /// `None` = the area has no data for that region.
+    regions: HashMap<RegionKey, Option<egui::TextureHandle>>,
+    region_requests: HashSet<RegionKey>,
+    icons: HashMap<usize, Arc<Vec<MapIcon>>>,
+    icon_requests: HashSet<usize>,
+    overviews: HashMap<usize, egui::TextureHandle>,
+    overview_requests: HashSet<usize>,
+    epoch: u64,
     pub status: Option<String>,
 }
 
@@ -34,9 +49,14 @@ impl Assets {
             sprites: HashMap::new(),
             missing: HashSet::new(),
             requested: HashSet::new(),
-            map_tiles: HashMap::new(),
-            map_requested: false,
-            map_done: false,
+            catalog: None,
+            regions: HashMap::new(),
+            region_requests: HashSet::new(),
+            icons: HashMap::new(),
+            icon_requests: HashSet::new(),
+            overviews: HashMap::new(),
+            overview_requests: HashSet::new(),
+            epoch: 0,
             status: None,
         }
     }
@@ -52,12 +72,40 @@ impl Assets {
         self.sprites.get(&id)
     }
 
-    /// Start the world-map sweep (nearest to `center_region` first), once.
-    pub fn ensure_world_map(&mut self, center_region: (i32, i32)) {
-        if !self.map_requested {
-            self.map_requested = true;
-            self.worker.request_world_map(center_region);
+    /// Forget queued region work (the view changed area or zoom).
+    pub fn new_map_view(&mut self) {
+        self.epoch = self.worker.new_epoch();
+        self.region_requests.clear();
+        if self.regions.len() > REGION_TEXTURE_BUDGET {
+            self.regions.clear();
         }
+    }
+
+    /// The texture of a region, requesting it when unknown. `Some(None)` means "no data here".
+    pub fn region(&mut self, key: RegionKey) -> Option<Option<&egui::TextureHandle>> {
+        if !self.regions.contains_key(&key) && self.region_requests.insert(key) {
+            self.worker
+                .request_region(key.0, (key.1, key.2), key.3, self.epoch);
+        }
+        self.regions.get(&key).map(Option::as_ref)
+    }
+
+    pub fn region_requests_in_flight(&self) -> usize {
+        self.region_requests.len()
+    }
+
+    pub fn icons(&mut self, area: usize) -> Option<Arc<Vec<MapIcon>>> {
+        if !self.icons.contains_key(&area) && self.icon_requests.insert(area) {
+            self.worker.request_icons(area);
+        }
+        self.icons.get(&area).cloned()
+    }
+
+    pub fn overview(&mut self, area: usize) -> Option<&egui::TextureHandle> {
+        if !self.overviews.contains_key(&area) && self.overview_requests.insert(area) {
+            self.worker.request_overview(area);
+        }
+        self.overviews.get(&area)
     }
 
     /// Upload what the worker finished since the last call; returns whether anything arrived.
@@ -89,20 +137,54 @@ impl Assets {
                 AssetEvent::SpriteMissing(id) => {
                     self.missing.insert(id);
                 }
-                AssetEvent::WorldMapTile(tile) => {
-                    let WorldMapTile { region, rgba } = *tile;
-                    let image = egui::ColorImage::from_rgba_unmultiplied(
-                        [WORLD_MAP_IMAGE, WORLD_MAP_IMAGE],
+                AssetEvent::WorldMapCatalog(catalog) => self.catalog = Some(catalog),
+                AssetEvent::WorldMapRegionEmpty {
+                    area,
+                    region,
+                    pixels_per_tile,
+                } => {
+                    let key = (area, region.0, region.1, pixels_per_tile);
+                    self.region_requests.remove(&key);
+                    self.regions.insert(key, None);
+                }
+                AssetEvent::WorldMapRegion(image) => {
+                    let WorldMapRegionImage {
+                        area,
+                        region,
+                        pixels_per_tile,
+                        rgba,
+                    } = *image;
+                    let key = (area, region.0, region.1, pixels_per_tile);
+                    let side = (64 * pixels_per_tile) as usize;
+                    let color = egui::ColorImage::from_rgba_unmultiplied([side, side], &rgba);
+                    let handle = ctx.load_texture(
+                        format!("map-{area}-{}-{}-{pixels_per_tile}", region.0, region.1),
+                        color,
+                        egui::TextureOptions::NEAREST,
+                    );
+                    self.region_requests.remove(&key);
+                    self.regions.insert(key, Some(handle));
+                }
+                AssetEvent::WorldMapIcons { area, icons } => {
+                    self.icons.insert(area, icons);
+                }
+                AssetEvent::WorldMapOverview {
+                    area,
+                    width,
+                    height,
+                    rgba,
+                } => {
+                    let color = egui::ColorImage::from_rgba_unmultiplied(
+                        [width as usize, height as usize],
                         &rgba,
                     );
                     let handle = ctx.load_texture(
-                        format!("map-{}-{}", region.0, region.1),
-                        image,
-                        egui::TextureOptions::NEAREST,
+                        format!("overview-{area}"),
+                        color,
+                        egui::TextureOptions::LINEAR,
                     );
-                    self.map_tiles.insert(region, handle);
+                    self.overviews.insert(area, handle);
                 }
-                AssetEvent::WorldMapDone => self.map_done = true,
                 AssetEvent::Failed(message) => self.status = Some(message),
             }
         }

@@ -178,6 +178,26 @@ pub struct ObjectDefinition {
     pub map_icon: Option<MapIconId>,
     pub category: Option<CategoryId>,
     pub actions: [Option<String>; 5],
+    /// Raw opcode 19 (`int1`), the client's interaction hint; `None` when the definition omits it.
+    pub interactive_hint: Option<u8>,
+}
+
+impl ObjectDefinition {
+    /// The client's `int1` after `postDecode`: an explicit opcode-19 value, otherwise `1` when the
+    /// object has a type-10 model or any menu action. The world map colours doors by it.
+    pub fn map_interactive(&self) -> bool {
+        if let Some(hint) = self.interactive_hint {
+            return hint != 0;
+        }
+        let has_model = match &self.models {
+            None => false,
+            Some(ObjectModels::Untyped(_)) => true,
+            Some(ObjectModels::Typed(models)) => {
+                models.first().is_none_or(|model| model.loc_type.get() == 10)
+            }
+        };
+        has_model || self.actions.iter().any(Option::is_some)
+    }
 }
 
 /// Canonical floor-underlay definition including exact post-decode HSL state.

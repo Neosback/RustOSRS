@@ -132,6 +132,7 @@ fn object_definition(
         map_icon: None,
         category: None,
         actions: [None, None, None, None, None],
+        interactive_hint: None,
     })
 }
 

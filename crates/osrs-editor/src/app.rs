@@ -6,6 +6,7 @@ mod plugins;
 mod properties;
 mod status;
 mod toolbar;
+mod minimap;
 mod worldmap;
 
 use crate::animation_smoothing::AnimationSmoothingPlugin;

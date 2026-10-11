@@ -31,3 +31,6 @@ pub const MEASURE: &str = ph::RULER;
 pub const VISIBLE: &str = ph::EYE;
 pub const STAIRS: &str = ph::STAIRS;
 pub const MARQUEE: &str = ph::SELECTION;
+pub const ZOOM_IN: &str = ph::MAGNIFYING_GLASS_PLUS;
+pub const ZOOM_OUT: &str = ph::MAGNIFYING_GLASS_MINUS;
+pub const CROSSHAIR: &str = ph::CROSSHAIR_SIMPLE;

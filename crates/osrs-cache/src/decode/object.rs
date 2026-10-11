@@ -57,6 +57,7 @@ pub fn decode_object_definition(
     let mut map_scene = None;
     let mut map_icon = None;
     let mut category = None;
+    let mut interactive_hint = None;
     let mut actions: [Option<String>; 5] = std::array::from_fn(|_| None);
 
     loop {
@@ -93,9 +94,7 @@ pub fn decode_object_definition(
             }
             18 => blocks_projectiles = false,
             19 => {
-                // Target `int1` is a client interaction hint whose postDecode
-                // inference is not part of the current canonical definition.
-                reader.skip(1)?;
+                interactive_hint = Some(reader.read_u8()?);
             }
             21 => contour_clip = Some(0),
             22 => non_flat_shading = true,
@@ -206,6 +205,7 @@ pub fn decode_object_definition(
         map_icon,
         category,
         actions,
+        interactive_hint,
     })
 }
 

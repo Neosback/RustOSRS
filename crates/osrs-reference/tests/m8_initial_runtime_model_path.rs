@@ -126,6 +126,7 @@ fn object_definition() -> Result<ObjectDefinition, Box<dyn Error>> {
         map_icon: None,
         category: None,
         actions: [None, None, None, None, None],
+        interactive_hint: None,
     })
 }
 
