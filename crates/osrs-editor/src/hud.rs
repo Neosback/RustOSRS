@@ -110,16 +110,24 @@ impl FrameStats {
         if work > 0.0 { 1000.0 / work } else { 0.0 }
     }
 
-    /// One-line summary for the status bar.
-    pub fn performance_text(&self) -> String {
+    /// Frame rate and frame time.
+    pub fn fps_text(&self) -> String {
+        format!("{:.0} fps ({:.1} ms)", self.fps(), self.frame_ms)
+    }
+
+    /// Per-frame cpu / gpu time and the estimated uncapped frame rate.
+    pub fn timing_text(&self) -> String {
         format!(
-            "{:.0} fps ({:.1} ms) | cpu {:.1} ms, gpu {:.1} ms | uncapped est. ~{:.0} fps",
-            self.fps(),
-            self.frame_ms,
+            "cpu {:.1} ms  gpu {:.1} ms  uncapped est. ~{:.0} fps",
             self.cpu_ms,
             self.gpu_ms(),
             self.uncapped_fps()
         )
+    }
+
+    /// Single-line summary (smoke-test output).
+    pub fn performance_text(&self) -> String {
+        format!("{} | {}", self.fps_text(), self.timing_text())
     }
 
     pub fn memory_text(&self, gpu_geometry_bytes: u64) -> String {

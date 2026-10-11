@@ -1,7 +1,12 @@
 //! The eframe application: scene loading, the wgpu viewport, and fly-camera input.
 
+mod menu;
+mod overlay;
+mod properties;
+mod status;
+
 use crate::camera::FlyCamera;
-use crate::hud::{self, Destination, FrameStats, TeleportWindow};
+use crate::hud::{Destination, FrameStats, TeleportWindow};
 use crate::pick::{self, Infos, ObjectPick, Pick};
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_core::coords::RegionCoord;
@@ -37,6 +42,15 @@ struct RegionStats {
     vertices: usize,
 }
 
+/// Which editor panels are shown (the layout state of the window chrome).
+struct Panels {
+    /// Right dock with the Selection / View / Shading / Scene sections.
+    properties: bool,
+    /// Translucent fps and position readout over the viewport.
+    stats_overlay: bool,
+    help: bool,
+}
+
 /// `(region, loc index)` of a picked object.
 type OutlineKey = ((i32, i32), usize);
 
@@ -58,10 +72,7 @@ pub struct EditorApp {
     bright_textures: bool,
     fog: Fog,
     colorblind: Colorblind,
-    shaders_open: bool,
-    /// Non-reference option: wall normals merge across 1-2 unit vertical offsets (hides seams
-    /// between wall pieces such as objects 1904/1907).
-    snap_diagonal_decor: bool,
+    panels: Panels,
     smooth_terrain: bool,
     presentation_generation: u32,
     /// Background (and the colour holes in the terrain show). RuneLite's default sky is black.
@@ -125,8 +136,8 @@ impl EditorApp {
             -2600.0,
             0.3 * REGION_UNITS as f32,
         );
-        let streamer = RegionStreamer::spawn(cache_dir, Self::presentation(true, false));
-        streamer.set_presentation(Self::presentation(true, false), 1);
+        let streamer = RegionStreamer::spawn(cache_dir, Self::presentation(false));
+        streamer.set_presentation(Self::presentation(false), 1);
 
         Ok(Self {
             render_state,
@@ -142,8 +153,11 @@ impl EditorApp {
                 mode: ColorblindMode::None,
                 intensity: 100.0,
             },
-            shaders_open: false,
-            snap_diagonal_decor: true,
+            panels: Panels {
+                properties: true,
+                stats_overlay: true,
+                help: false,
+            },
             smooth_terrain: false,
             presentation_generation: 1,
             sky_color: [0.0, 0.0, 0.0],
@@ -188,10 +202,9 @@ impl EditorApp {
         })
     }
 
-    fn presentation(snap_diagonal_decor: bool, smooth_terrain: bool) -> TerrainPresentation {
+    fn presentation(smooth_terrain: bool) -> TerrainPresentation {
         TerrainPresentation {
             smooth_terrain,
-            flush_diagonal_decorations: snap_diagonal_decor,
             ..TerrainPresentation::default()
         }
     }
@@ -200,7 +213,7 @@ impl EditorApp {
     fn rebuild_all(&mut self) {
         self.presentation_generation += 1;
         self.streamer.set_presentation(
-            Self::presentation(self.snap_diagonal_decor, self.smooth_terrain),
+            Self::presentation(self.smooth_terrain),
             self.presentation_generation,
         );
         for key in self.loaded.keys().copied().collect::<Vec<_>>() {
@@ -229,42 +242,6 @@ impl EditorApp {
     fn camera_tile(&self) -> (i32, i32) {
         let (x, z) = self.world_position();
         ((x / 128.0).floor() as i32, (z / 128.0).floor() as i32)
-    }
-
-    /// RuneLite GPU plugin shader options.
-    fn shader_window(&mut self, ctx: &egui::Context) {
-        let mut open = self.shaders_open;
-        egui::Window::new("Shaders").open(&mut open).show(ctx, |ui| {
-            ui.add(egui::Slider::new(&mut self.brightness, 0.5..=1.0).text("brightness"));
-            ui.checkbox(&mut self.remove_color_banding, "Remove color banding");
-            ui.checkbox(&mut self.bright_textures, "Bright textures");
-            ui.add(
-                egui::Slider::new(&mut self.fog.depth_tiles, 0..=100)
-                    .text("Fog depth (0 = off)"),
-            );
-            ui.add(
-                egui::Slider::new(&mut self.fog.draw_distance_tiles, 8..=184)
-                    .text("Draw distance (tiles)"),
-            );
-            egui::ComboBox::from_label("Colorblindness correction")
-                .selected_text(format!("{:?}", self.colorblind.mode))
-                .show_ui(ui, |ui| {
-                    for mode in [
-                        ColorblindMode::None,
-                        ColorblindMode::Protanope,
-                        ColorblindMode::Deuteranope,
-                        ColorblindMode::Tritanope,
-                    ] {
-                        ui.selectable_value(&mut self.colorblind.mode, mode, format!("{mode:?}"));
-                    }
-                });
-            ui.add(
-                egui::Slider::new(&mut self.colorblind.intensity, 0.0..=100.0)
-                    .text("Colorblindness intensity"),
-            );
-            ui.label("Fog colour is the sky colour. Defaults match RuneLite (fog and colorblind off).");
-        });
-        self.shaders_open = open;
     }
 
     fn open_teleport(&mut self) {
@@ -572,53 +549,50 @@ impl EditorApp {
 
     /// Right-click menu: copy diagnostics of the clicked object / tile / surroundings.
     fn context_menu(&self, response: &egui::Response) {
-        response.context_menu(|ui| {
-            let pick = &self.context_pick;
-            let center = pick
-                .object
-                .as_ref()
-                .and_then(|object| self.infos.get(&object.region)?.locs.get(object.index))
-                .map(|loc| loc.tile)
-                .or(pick.tile.map(|tile| tile.tile));
-            let plane = pick
-                .object
-                .as_ref()
-                .and_then(|object| self.infos.get(&object.region)?.locs.get(object.index))
-                .map_or(usize::from(self.view_plane), |loc| usize::from(loc.plane));
-            let copy = |ui: &mut egui::Ui, label: &str, text: String| {
-                if ui.button(label).clicked() {
-                    ui.ctx().copy_text(text);
-                    ui.close();
-                }
-            };
+        response.context_menu(|ui| self.copy_menu(ui, &self.context_pick));
+    }
+
+    /// "Copy ..." actions for an object and/or tile (context menu and the Selection section).
+    fn copy_menu(&self, ui: &mut egui::Ui, pick: &Pick) {
+        let loc = pick
+            .object
+            .as_ref()
+            .and_then(|object| self.infos.get(&object.region)?.locs.get(object.index));
+        let center = loc.map(|loc| loc.tile).or(pick.tile.map(|tile| tile.tile));
+        let plane = loc.map_or(usize::from(self.view_plane), |loc| usize::from(loc.plane));
+        let copy = |ui: &mut egui::Ui, label: &str, text: String| {
+            if ui.button(label).clicked() {
+                ui.ctx().copy_text(text);
+                ui.close();
+            }
+        };
+        if let Some(object) = &pick.object {
+            copy(
+                ui,
+                "Copy object",
+                pick::describe_object(&self.infos, object),
+            );
+        }
+        if let Some(tile) = center {
+            copy(ui, "Copy tile", pick::describe_tile(&self.infos, tile));
+            copy(
+                ui,
+                "Copy neighbourhood (3x3)",
+                pick::describe_neighbourhood(&self.infos, tile, plane, 1),
+            );
+            copy(
+                ui,
+                "Copy neighbourhood (5x5)",
+                pick::describe_neighbourhood(&self.infos, tile, plane, 2),
+            );
             if let Some(object) = &pick.object {
-                copy(
-                    ui,
-                    "Copy object",
-                    pick::describe_object(&self.infos, object),
-                );
+                let mut text = pick::describe_object(&self.infos, object);
+                text.push_str(&pick::describe_neighbourhood(&self.infos, tile, plane, 1));
+                copy(ui, "Copy object + neighbourhood", text);
             }
-            if let Some(tile) = center {
-                copy(ui, "Copy tile", pick::describe_tile(&self.infos, tile));
-                copy(
-                    ui,
-                    "Copy neighbourhood (3x3)",
-                    pick::describe_neighbourhood(&self.infos, tile, plane, 1),
-                );
-                copy(
-                    ui,
-                    "Copy neighbourhood (5x5)",
-                    pick::describe_neighbourhood(&self.infos, tile, plane, 2),
-                );
-                if let Some(object) = &pick.object {
-                    let mut text = pick::describe_object(&self.infos, object);
-                    text.push_str(&pick::describe_neighbourhood(&self.infos, tile, plane, 1));
-                    copy(ui, "Copy object + neighbourhood", text);
-                }
-            } else {
-                ui.label("nothing under the cursor");
-            }
-        });
+        } else {
+            ui.label("nothing under the cursor");
+        }
     }
 
     fn ensure_targets(&mut self, width: u32, height: u32) {
@@ -739,8 +713,13 @@ impl eframe::App for EditorApp {
         if let Some(destination) = self.pending_teleport.take() {
             self.teleport_to(destination);
         }
-        if !ctx.egui_wants_keyboard_input() && ctx.input(|i| i.key_pressed(egui::Key::T)) {
-            self.open_teleport();
+        if !ctx.egui_wants_keyboard_input() {
+            if ctx.input(|i| i.key_pressed(egui::Key::T)) {
+                self.open_teleport();
+            }
+            if ctx.input(|i| i.key_pressed(egui::Key::N)) {
+                self.panels.properties = !self.panels.properties;
+            }
         }
         if let Some((vx, vz)) = self.autofly {
             let step = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
@@ -754,77 +733,9 @@ impl eframe::App for EditorApp {
             .peak_resident
             .max(self.loaded.values().flatten().count());
 
-        egui::Panel::top("top").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("Teleport (T)").clicked() {
-                    self.open_teleport();
-                }
-                ui.separator();
-                ui.toggle_value(&mut self.shaders_open, "Shaders");
-                let wall_changed = ui
-                    .checkbox(&mut self.snap_diagonal_decor, "snap diagonal decor")
-                    .changed();
-                let terrain_changed = ui
-                    .checkbox(&mut self.smooth_terrain, "smooth terrain")
-                    .changed();
-                if wall_changed || terrain_changed {
-                    self.rebuild_all();
-                }
-                ui.color_edit_button_rgb(&mut self.sky_color);
-                let before = self.theme_index;
-                egui::ComboBox::from_id_salt("theme")
-                    .selected_text(crate::theme::NAMES[self.theme_index])
-                    .show_ui(ui, |ui| {
-                        for (index, name) in crate::theme::NAMES.iter().enumerate() {
-                            ui.selectable_value(&mut self.theme_index, index, *name);
-                        }
-                    });
-                if self.theme_index != before {
-                    crate::theme::set_theme(ui.ctx(), crate::theme::ALL[self.theme_index]);
-                }
-                ui.add(egui::Slider::new(&mut self.stream_radius, 0..=4).text("radius"));
-                ui.add(egui::Slider::new(&mut self.camera.fov_degrees, 30.0..=100.0).text("fov"));
-            });
-            ui.label(
-                "WASD fly, Q/E down/up, Shift fast, mouse-drag look, scroll = speed, 1-4 = plane",
-            );
-        });
-
-        egui::Panel::bottom("status").show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.label(self.stats.performance_text());
-                ui.separator();
-                ui.label(self.stats.memory_text(self.renderer.resident_vertex_bytes()));
-                ui.separator();
-                let resident: usize = self
-                    .loaded
-                    .values()
-                    .flatten()
-                    .map(|stats| stats.vertices)
-                    .sum();
-                ui.label(format!(
-                    "{} regions ({} loading, last {:.0} ms), {:.1}M vertices, {} zones",
-                    self.loaded.values().flatten().count(),
-                    self.in_flight.len(),
-                    self.last_build_ms,
-                    resident as f32 / 1.0e6,
-                    self.renderer.resident_zone_count()
-                ));
-                ui.separator();
-                let (region_x, region_y) = self.camera_region();
-                let (tile_x, tile_y) = self.camera_tile();
-                ui.label(format!(
-                    "tile ({tile_x}, {tile_y}, {}) | region ({region_x}, {region_y}) id {} | height {:.0} | speed {:.0}",
-                    self.view_plane,
-                    hud::region_id(region_x, region_y),
-                    -self.camera.y,
-                    self.camera.speed
-                ));
-                if let Some(status) = &self.status {
-                    ui.colored_label(egui::Color32::LIGHT_RED, status);
-                }
-            });
-        });
+        self.menu_bar(ui);
+        self.status_bar(ui);
+        self.properties_panel(ui);
 
         egui::CentralPanel::default().show(ui, |ui| {
             let available = ui.available_size();
@@ -877,10 +788,11 @@ impl eframe::App for EditorApp {
                 }
             }
             self.draw_selection(ui, rect, pixels_per_point, width, height);
+            self.viewport_overlays(ui, rect);
             self.context_menu(&response);
         });
 
-        self.shader_window(&ctx);
+        self.help_window(&ctx);
         if let Some(destination) = self.teleport.show(&ctx) {
             self.teleport_to(destination);
         }
