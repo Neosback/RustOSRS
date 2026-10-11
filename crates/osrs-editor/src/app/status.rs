@@ -3,8 +3,8 @@
 use super::EditorApp;
 use eframe::egui;
 
-const HINT: &str =
-    "LMB select   drag look   WASD fly   scroll speed   1-4 plane   T teleport   N properties";
+const FLY_HINT: &str = "click select   drag look   WASD fly   scroll speed   F focus   C orbit camera   1-4 plane   T teleport   N properties";
+const ORBIT_HINT: &str = "click select   drag orbit   shift/right drag pan   scroll zoom   F focus   C fly camera   1-4 plane   T teleport   N properties";
 
 impl EditorApp {
     pub(super) fn status_bar(&mut self, ui: &mut egui::Ui) {
