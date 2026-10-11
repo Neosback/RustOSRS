@@ -2,9 +2,10 @@
 //! ground blending. Upstream: `rs117.hd.utils.HDVariables` (BSD 2-Clause, see `THIRD_PARTY.md`).
 
 use crate::expr::{Value, Variables};
+use serde::{Deserialize, Serialize};
 
 /// `SeasonalTheme`, in the plugin's ordinal order (the JSON compares `season` with these).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SeasonalTheme {
     Automatic,
     #[default]

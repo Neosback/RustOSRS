@@ -1,8 +1,9 @@
 // HD-profile scene shader: a WGSL port of the 117 HD plugin's `scene_vert.glsl` / `scene_frag.glsl`
 // (zone renderer), phase 2 subset: per-corner materials with ground blending, diffuse + normal map +
 // specular, vertex-colour and underlay/overlay blending, tangent frame from derivatives, underwater
-// tint. Shadows (phase 4), water surfaces (5), point lights (6) and tone mapping (8) are not ported
-// yet; lighting comes from a placeholder environment until phase 3.
+// tint, area environments (ambient/directional light, fog, ground fog, sky light, underglow,
+// lightning; phase 3). Shadows (phase 4), water surfaces (5), point lights (6) and tone mapping (8)
+// are not ported yet.
 //
 // Ported from the 117 HD plugin (https://github.com/117HD/RLHD). Copyright (c) 2018, Adam
 // <Adam@sigterm.info>; (c) 2021, 117 <https://twitter.com/117scape>; (c) 2022, Hooder
@@ -35,18 +36,26 @@ struct Zone {
     base: vec4<f32>,
 };
 
-// Lighting environment (`UBOGlobal`): placeholder values until phase 3 ports the environments.
+// Lighting environment (`UBOGlobal`): the area environment's light, fog and water fields.
 struct Environment {
-    // xyz = camera position in render-local units.
+    // xyz = camera position in render-local units, w = animation clock in seconds.
     camera: vec4<f32>,
-    // xyz = unit vector from the scene towards the light.
+    // xyz = unit vector from the scene towards the light, w = the light casts shadows.
     light_dir: vec4<f32>,
     // rgb = linear colour, w = strength.
     light_color: vec4<f32>,
     ambient_color: vec4<f32>,
+    // rgb = underglow colour, w = strength.
+    underglow: vec4<f32>,
+    // rgb = linear fog (sky) colour, w = fog depth (0 = no fog).
+    fog_color: vec4<f32>,
+    // x = draw distance in tiles, y/z = ground fog start/end, w = ground fog opacity.
+    fog_params: vec4<f32>,
     // rgb = linear water colour.
     water_color: vec4<f32>,
-    // x = normal mapping enabled, y = debug view.
+    // x = lightning brightness.
+    misc: vec4<f32>,
+    // x = normal mapping enabled, y = debug view, z = underwater environment.
     flags: vec4<u32>,
 };
 
@@ -169,6 +178,58 @@ fn packed_hsl_to_linear(packed: u32) -> vec3<f32> {
     let s = f32((packed >> 7u) & 7u) / 8.0 + 0.0625;
     let l = f32(packed & 127u) / 128.0;
     return srgb_to_linear(hsl_to_srgb(vec3<f32>(h, s, l)));
+}
+
+// ---- fog (`utils/fog.glsl`, sky-less path) --------------------------------------------------
+
+const TILE_SIZE: f32 = 128.0;
+
+fn fog_factor_linear(distance: f32, start: f32, end: f32) -> f32 {
+    return 1.0 - clamp((distance - start) / (end - start), 0.0, 1.0);
+}
+
+// `calculateFogAmount`. The streamed world has no hard scene edge, so the plugin's scene-edge
+// clamps are dropped: the fog edge is the draw-distance box around the camera.
+fn calculate_fog_amount(position: vec3<f32>) -> f32 {
+    let fog_depth = env.fog_color.w;
+    if (fog_depth == 0.0) {
+        return 0.0;
+    }
+    let draw_distance = env.fog_params.x;
+    var draw_distance2 = draw_distance * TILE_SIZE;
+
+    // The client draws one less tile to the north and east than to the south and west.
+    let fog_west = env.camera.x - draw_distance2;
+    let fog_east = env.camera.x + draw_distance2 - TILE_SIZE;
+    let fog_south = env.camera.z - draw_distance2;
+    let fog_north = env.camera.z + draw_distance2 - TILE_SIZE;
+
+    let x_dist = min(position.x - fog_west, fog_east - position.x);
+    let z_dist = min(position.z - fog_south, fog_north - position.z);
+    let nearest = min(x_dist, z_dist);
+    let second_nearest = max(x_dist, z_dist);
+    let rounding = 1.5;
+    let rounding_squared = rounding * rounding;
+    let fog_distance = nearest - rounding * TILE_SIZE * max(0.0,
+        (nearest + rounding_squared) / (second_nearest + rounding_squared));
+    let edge_fog = fog_factor_linear(fog_distance, 0.0, 5.0 * TILE_SIZE);
+
+    // Two arbitrary distance fogs, eyeballed for a similar look at different draw distances.
+    let fog_start1 = draw_distance2 * 0.85;
+    let distance1 = length(env.camera.xz - position.xz);
+    let distance_fog1 = clamp((distance1 - fog_start1) / (draw_distance2 * 0.15), 0.0, 1.0);
+
+    let min_fog_start = 0.0;
+    let max_fog_start = 0.3;
+    draw_distance2 = min(draw_distance, 90.0) * TILE_SIZE;
+    let fog_depth_multiplier = clamp(fog_depth, 0.0, 1000.0) / 1000.0;
+    let fog_start2 = (max_fog_start - fog_depth_multiplier * (max_fog_start - min_fog_start)) * draw_distance2;
+    let cam_to_vertex = length(env.camera.xyz - vec3<f32>(position.x, (position.y + env.camera.y) / 2.0, position.z));
+    let distance2 = max(cam_to_vertex - fog_start2, 0.0) / max(draw_distance2 - fog_start2, 1.0);
+    let density = fog_depth / 100.0;
+    let distance_fog2 = 1.0 - clamp(exp(-distance2 * density), 0.0, 1.0);
+
+    return max(max(distance_fog1, distance_fog2), edge_fog);
 }
 
 // ---- fragment ---------------------------------------------------------------------------------
@@ -379,10 +440,17 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     let specular = dot(pow(vec3<f32>(v_dot_r), spec_gloss) * spec_strength, blend);
     let light_specular_out = dir_light * specular;
 
-    // Sky light from above.
-    let sky_out = max(up_dot_normals, 0.0) * globals.fog_color.rgb * 0.5;
+    // Sky light from above, tinted by the fog colour.
+    let sky_out = max(up_dot_normals, 0.0) * env.fog_color.rgb * 0.5;
 
-    let composite = ambient_out + light_out + light_specular_out + sky_out;
+    // Lightning flashes light surfaces facing up.
+    let lightning_out = max(up_dot_normals, 0.0) * vec3<f32>(0.25) * env.misc.x;
+
+    // Underglow lights surfaces facing down (`normals.y` is positive downwards).
+    let underglow_out = env.underglow.rgb * max(normals.y, 0.0) * env.underglow.w;
+
+    let composite = ambient_out + light_out + light_specular_out + sky_out + lightning_out
+        + underglow_out;
     if (env.flags.y == 5u) {
         return vec4<f32>(composite, 1.0);
     }
@@ -400,5 +468,23 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
         let tint = linear_to_srgb(env.water_color.rgb);
         rgb = mix(rgb, tint * (0.35 + 0.65 * (1.0 - depth)), 0.35 + 0.55 * depth);
     }
+
+    // Fog: distance fog and the ground fog layer, fading into the sky colour.
+    if (!is_underwater) {
+        let eye_distance = length(input.position - env.camera.xyz);
+        let close_fade_distance = 1500.0;
+        var ground_fog = 1.0 - clamp(
+            (input.position.y - env.fog_params.y) / (env.fog_params.z - env.fog_params.y),
+            0.0,
+            1.0,
+        );
+        ground_fog = mix(0.0, env.fog_params.w, ground_fog);
+        ground_fog = ground_fog * clamp(eye_distance / close_fade_distance, 0.0, 1.0);
+        let fog_amount = calculate_fog_amount(input.position);
+        let combined_fog = 1.0 - (1.0 - fog_amount) * (1.0 - ground_fog);
+        rgb = mix(rgb, linear_to_srgb(env.fog_color.rgb), combined_fog);
+    }
+    // `applyColorAdjustments` clamps to the displayable range.
+    rgb = clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0));
     return vec4<f32>(rgb, output_color.a);
 }

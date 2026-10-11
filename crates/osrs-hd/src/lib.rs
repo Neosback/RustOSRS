@@ -7,6 +7,7 @@
 //! Field names follow the plugin's JSON schemas (`assets/117hd/schemas`); fields this port does not
 //! use yet are kept in `extra` so no information is lost.
 
+pub mod environment;
 pub mod expr;
 pub mod materials;
 pub mod settings;

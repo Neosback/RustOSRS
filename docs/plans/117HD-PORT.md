@@ -140,7 +140,23 @@ tone map / colour filter / AA resolve -> overlays (egui).
     locs are shaded the Reference way. HD geometry costs 56 bytes per vertex (Reference 20): the Lumbridge window
     is 100 MB, so large load radii need the vertex diet noted in the phase 3 follow-ups (drop the per-corner
     HSL/material copies for non-terrain faces, 16-bit UVs).
-* Next: phase 3 (environments, fog, sky colour, default sky), then 4-8 as listed above.
+* Done (phase 3, 2026-10-11): per-area environments. `osrs-hd::environment`: `Environment` normalised like
+  `Environment.normalize()` (defaults, overworld-derived ambient light, default fog/water colour for non-overworld
+  areas, colours in linear sRGB), `EnvironmentSet` (file order, first area match wins via `Areas`, legacy ToB / POH
+  themes and varbit/varp conditions filtered at lookup; `HdData::environment_at` is superseded: it predates the
+  two-number region boxes), `EnvironmentState` (teleport skip at 41 tiles, 3 s smoothstep blend, `instantTransition`,
+  shortest-way shadow angles, atmospheric-lighting fallback to the overworld, seasonal overworld, lightning) and
+  `Lighting` (the sky-less `SkyRenderer` path: luminance-normalised ambient/directional light, fog depth scaled by the
+  draw distance, water light/mid/dark colours). The renderer's `HdLighting` carries a `Lighting`; the HD scene shader
+  has the plugin's fog (`calculateFogAmount` without scene-edge clamps), ground fog, sky light from the fog colour,
+  underglow, lightning, and clamps like `applyColorAdjustments`; the HD frame clears to the fog colour. Editor:
+  `Settings::hd_environment` (`EnvironmentSettings`), `app/hd.rs` drives the state from the camera's focal tile (orbit
+  pivot or camera) and plane; Properties > Shading shows Lighting and Environment sections in the HD profile.
+  The light direction follows `Camera.getForwardDirection` of the plugin's directional camera (azimuth 235 is
+  south-west); the phase 2 placeholder pointed north-east. Not yet: day/night cycle and the sky (phase 7), roof
+  shadows hiding, wind (phase 8). Tests: `osrs-hd` unit tests and `tests/environments.rs` (Lumbridge, Falador,
+  Lumbridge swamp caves, wilderness blend), `osrs-world/tests/hd_environment_pixels.rs`.
+* Next: phase 4 (shadows) and 5 (water), then 6-8 as listed above.
 
 ## 6. First concrete steps
 

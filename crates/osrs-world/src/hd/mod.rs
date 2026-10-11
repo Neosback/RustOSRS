@@ -12,11 +12,15 @@ pub mod terrain;
 
 use osrs_hd::{
     Gamevals, HdData, HdError,
+    environment::EnvironmentSet,
     materials::MaterialSet,
     settings::HdSettings,
     tiles::{Areas, GroundMaterials, TileOverrides, WaterTypes},
 };
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 /// Where the vendored plugin data lives in the source tree.
 pub fn default_assets_dir() -> PathBuf {
@@ -36,6 +40,8 @@ pub struct HdContext {
     pub areas: Areas,
     pub tile_overrides: TileOverrides,
     pub models: model::ModelOverrides,
+    /// The per-area lighting environments (phase 3).
+    pub environments: Arc<EnvironmentSet>,
 }
 
 impl HdContext {
@@ -62,6 +68,7 @@ impl HdContext {
             Gamevals::resolve(&data.gamevals.objects, id)
         });
         let models = model::ModelOverrides::with_settings(&data, &materials, &settings);
+        let environments = Arc::new(EnvironmentSet::new(&data, &areas));
         Self {
             settings,
             data,
@@ -71,6 +78,7 @@ impl HdContext {
             areas,
             tile_overrides,
             models,
+            environments,
         }
     }
 }

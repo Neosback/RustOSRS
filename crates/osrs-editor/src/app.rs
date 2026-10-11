@@ -1,5 +1,6 @@
 //! The eframe application: scene loading, the wgpu viewport, and fly-camera input.
 
+mod hd;
 mod menu;
 mod minimap;
 mod overlay;
@@ -86,6 +87,8 @@ pub struct EditorApp {
     presentation_generation: u32,
     /// Whether regions are being built with the HD vertex stream (the HD render profile).
     presentation_hd: bool,
+    /// The HD profile's area environments and their transition state.
+    hd: hd::HdRuntime,
     /// Background (and the colour holes in the terrain show). RuneLite's default sky is black.
     /// Inspection data of the resident regions (for picking).
     infos: Infos,
@@ -183,6 +186,7 @@ impl EditorApp {
             prefs: Settings::default(),
             presentation_generation: 1,
             presentation_hd: false,
+            hd: hd::HdRuntime::new(),
             infos: Infos::new(),
             hover: Pick::default(),
             selected: None,
@@ -453,6 +457,7 @@ impl EditorApp {
         while let Some(event) = self.streamer.try_recv() {
             match event {
                 StreamEvent::HdMaterials(data) => {
+                    self.hd.set_environments(Arc::clone(&data.environments));
                     if let Err(error) = data.install(&mut self.renderer) {
                         self.status = Some(format!("HD materials failed: {error}"));
                     }
@@ -1221,6 +1226,9 @@ impl eframe::App for EditorApp {
 
             if self.ready {
                 self.ensure_targets(width, height);
+                if self.prefs.render_profile == ProfileChoice::Hd {
+                    self.update_hd_lighting();
+                }
                 if let Some(targets) = &self.targets {
                     let mut encoder = self.render_state.device.create_command_encoder(
                         &wgpu::CommandEncoderDescriptor {

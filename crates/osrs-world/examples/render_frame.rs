@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect();
         (parts.len() == 6).then_some(parts)
     });
-    let camera = if let Some(p) = aimed {
+    let camera = if let Some(p) = &aimed {
         let (yaw, pitch) = (p[3].to_radians(), p[4].to_radians());
         let target = [
             (p[0] - window.base_x as f32 + 0.5) * 128.0,
@@ -133,14 +133,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         renderer.resident_vertex_bytes()
     );
 
-    if let Some(view) = env::var("RENDER_HD_DEBUG")
-        .ok()
-        .and_then(|v| v.parse().ok())
-    {
-        renderer.set_hd_lighting(osrs_render::gpu::HdLighting {
-            debug_view: view,
+    if let Some(hd) = &hd_context {
+        // The area environment of RENDER_ENV="x,y,plane" (default: the aimed tile or the window
+        // centre), settled instantly.
+        let tile: Vec<i32> = env::var("RENDER_ENV")
+            .ok()
+            .map(|value| {
+                value
+                    .split(',')
+                    .filter_map(|v| v.trim().parse().ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let focal = match (tile.as_slice(), &aimed) {
+            (&[x, y, plane], _) => [x, y, plane],
+            (_, Some(p)) => [p[0] as i32, p[1] as i32, 0],
+            _ => [window.base_x + 52, window.base_y + 52, 0],
+        };
+        let settings = osrs_hd::environment::EnvironmentSettings::default();
+        let mut state = osrs_hd::environment::EnvironmentState::new();
+        state.update(
+            &hd.environments,
+            &settings,
+            focal,
+            &osrs_hd::expr::NoVariables,
+            0.0,
+            0.0,
+        );
+        let mut lighting = osrs_render::gpu::HdLighting {
+            lighting: state.lighting(&hd.environments, &settings, 50.0),
             ..Default::default()
-        });
+        };
+        lighting.debug_view = env::var("RENDER_HD_DEBUG")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        println!(
+            "environment at {focal:?}: {}",
+            state.target(&hd.environments).label()
+        );
+        renderer.set_hd_lighting(lighting);
     }
     let (width, height) = (1280_u32, 720_u32);
     let started = Instant::now();

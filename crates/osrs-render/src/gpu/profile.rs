@@ -6,6 +6,8 @@
 //! resolve pass writes the displayable result. Phase 0 only provides that frame graph; the HD scene
 //! shading itself arrives with the later phases.
 
+use osrs_hd::environment::Lighting;
+
 /// Which renderer draws the frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RenderProfile {
@@ -45,19 +47,15 @@ impl Default for HdParams {
     }
 }
 
-/// Lighting of the HD scene shader. Placeholder values (an overworld-like sun) until phase 3 ports
-/// the per-area environments.
+/// Lighting of the HD scene shader: the current area environment plus the shading options.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HdLighting {
-    /// Unit vector from the scene towards the light (game space: `y` is down).
-    pub light_dir: [f32; 3],
-    /// Linear directional light colour and strength.
-    pub light_color: [f32; 3],
-    pub light_strength: f32,
-    pub ambient_color: [f32; 3],
-    pub ambient_strength: f32,
-    pub water_color: [f32; 3],
+    /// Ambient and directional light, fog, sky and water colours of the current environment
+    /// (`osrs_hd::environment`).
+    pub lighting: Lighting,
     pub normal_mapping: bool,
+    /// Animation clock of the water, caustics and scrolling textures, in seconds.
+    pub elapsed_seconds: f32,
     /// Debug output instead of the lit scene (`DISPLAY_*` of the plugin): 0 off, 1 base colour,
     /// 2 UV, 3 normals, 4 tangent, 5 lighting.
     pub debug_view: u32,
@@ -65,23 +63,31 @@ pub struct HdLighting {
 
 impl Default for HdLighting {
     fn default() -> Self {
-        // Sun 52 degrees above the horizon from the vanilla light's side; the `OVERWORLD`
-        // environment's ambient hue (`#97baff`) lightened, and strengths picked to look right without
-        // the plugin's tone mapping.
-        let (altitude, azimuth) = (52.0_f32.to_radians(), 235.0_f32.to_radians());
-        let light_dir = [
-            -altitude.cos() * azimuth.sin(),
-            -altitude.sin(),
-            -altitude.cos() * azimuth.cos(),
-        ];
+        Self::overworld()
+    }
+}
+
+impl HdLighting {
+    /// The `OVERWORLD` environment's look (the default), for headless renders without an
+    /// environment table: a white sun 52 degrees above the south-west horizon, blue ambient light, no fog.
+    pub fn overworld() -> Self {
+        let values = osrs_hd::environment::EnvValues {
+            ambient_color: osrs_hd::environment::srgb_to_linear3([0.592, 0.729, 1.0]),
+            ambient_strength: 1.0,
+            directional_color: [1.0; 3],
+            directional_strength: 4.0,
+            shadow_angles: osrs_hd::environment::sun_angles(52.0, 235.0),
+            fog_depth: 6.5,
+            ..osrs_hd::environment::Environment::fallback().values
+        };
+        let settings = osrs_hd::environment::EnvironmentSettings::default();
+        let mut values = values;
+        values.fog_color = settings.default_sky_rgb();
+        values.water_color = settings.default_sky_rgb();
         Self {
-            light_dir,
-            light_color: [1.0, 1.0, 1.0],
-            light_strength: 1.6,
-            ambient_color: [0.6, 0.72, 1.0],
-            ambient_strength: 0.9,
-            water_color: [0.14, 0.82, 1.0],
+            lighting: Lighting::from_values(&values, &settings, 50.0, false, true, 0.0),
             normal_mapping: true,
+            elapsed_seconds: 0.0,
             debug_view: 0,
         }
     }

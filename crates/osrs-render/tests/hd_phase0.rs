@@ -5,7 +5,8 @@
 
 use osrs_hd::HdData;
 use osrs_render::gpu::{
-    Colorblind, Fog, FrameParams, HdParams, ReferenceCamera, RenderProfile, SceneRenderer,
+    Colorblind, Fog, FrameParams, HdLighting, HdParams, ReferenceCamera, RenderProfile,
+    SceneRenderer,
     hd::{
         layout::{
             GpuMaterial, MATERIAL_WGSL, MaterialTable, material_bind_group,
@@ -102,6 +103,10 @@ fn hd_profile_runs_the_resolve_pass() -> Result<(), Box<dyn std::error::Error>> 
         return Ok(());
     };
     let reference = renderer.render_to_rgba(params(RenderProfile::Reference), 64, 48)?;
+    // The HD profile clears to the environment's fog (sky) colour: use the Reference clear colour.
+    let mut lighting = HdLighting::default();
+    lighting.lighting.fog_color = CLEAR.map(|c| osrs_hd::environment::srgb_to_linear(c as f32));
+    renderer.set_hd_lighting(lighting);
 
     // Neutral resolve settings reproduce the Reference image through the HDR target.
     renderer.set_hd_params(HdParams {

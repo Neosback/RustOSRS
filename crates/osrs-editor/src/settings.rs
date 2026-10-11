@@ -3,6 +3,7 @@
 //! Every field has a default and unknown fields are ignored, so adding settings never invalidates
 //! an existing file. Tools keep their own state under [`Settings::plugins`], keyed by plugin name.
 
+use osrs_hd::environment::EnvironmentSettings;
 use osrs_render::gpu::{Colorblind, ColorblindMode, Fog, HdParams, RenderProfile};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, io, path::PathBuf};
@@ -132,6 +133,10 @@ pub struct Settings {
     pub hd_exposure: f32,
     /// HD resolve pass: phase-0 placeholder vignette strength.
     pub hd_vignette: f32,
+    /// HD: normal mapping on materials that have a normal map.
+    pub hd_normal_mapping: bool,
+    /// HD: per-area environments (lighting, fog, sky and water colour; Properties > Shading).
+    pub hd_environment: EnvironmentSettings,
     pub brightness: f32,
     pub remove_color_banding: bool,
     pub bright_textures: bool,
@@ -168,6 +173,8 @@ impl Default for Settings {
             render_profile: ProfileChoice::Reference,
             hd_exposure: HdParams::default().exposure,
             hd_vignette: HdParams::default().placeholder_vignette,
+            hd_normal_mapping: true,
+            hd_environment: EnvironmentSettings::default(),
             brightness: 0.8,
             remove_color_banding: true,
             bright_textures: false,
@@ -238,6 +245,8 @@ impl Settings {
         }
         self.hd_exposure = self.hd_exposure.clamp(0.25, 4.0);
         self.hd_vignette = self.hd_vignette.clamp(0.0, 1.0);
+        self.hd_environment.static_fog_depth =
+            self.hd_environment.static_fog_depth.clamp(0.0, 100.0);
         self.brightness = self.brightness.clamp(0.5, 1.0);
         self.fog_depth_tiles = self.fog_depth_tiles.min(100);
         self.draw_distance_tiles = self.draw_distance_tiles.clamp(8, 184);
@@ -291,6 +300,27 @@ mod tests {
         // A file written before the switch existed keeps the Reference profile.
         let old: Settings = serde_json::from_str(r#"{ "brightness": 0.7 }"#)?;
         assert_eq!(old.render_profile, ProfileChoice::Reference);
+        Ok(())
+    }
+
+    #[test]
+    fn hd_environment_settings_persist_and_default_like_the_plugin() -> Result<(), serde_json::Error>
+    {
+        use osrs_hd::environment::{DefaultSky, FogDepthMode};
+        let defaults = Settings::default().hd_environment;
+        assert!(defaults.atmospheric_lighting && defaults.ground_fog);
+        assert_eq!(defaults.default_sky, DefaultSky::Default);
+        // Partial environment tables keep the other defaults.
+        let settings: Settings = serde_json::from_str(
+            r#"{ "hd_environment": { "fog_depth_mode": "Static", "static_fog_depth": 250.0 } }"#,
+        )?;
+        assert_eq!(settings.hd_environment.fog_depth_mode, FogDepthMode::Static);
+        assert!(settings.hd_environment.atmospheric_lighting);
+        // Out-of-range values are clamped.
+        assert_eq!(settings.sanitized().hd_environment.static_fog_depth, 100.0);
+        // The host sky colour is runtime state and is not persisted.
+        let text = serde_json::to_string(&Settings::default())?;
+        assert!(!text.contains("host_sky"));
         Ok(())
     }
 

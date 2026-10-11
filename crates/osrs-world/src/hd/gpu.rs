@@ -3,6 +3,7 @@
 
 use super::HdContext;
 use crate::{TEXTURE_SIZE, TextureTable};
+use osrs_hd::environment::EnvironmentSet;
 use osrs_render::gpu::{
     SceneRenderer,
     hd::{
@@ -13,7 +14,7 @@ use osrs_render::gpu::{
         },
     },
 };
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 /// Everything [`SceneRenderer::set_hd_materials`] needs, decoded on the CPU.
 pub struct HdGpuData {
@@ -23,6 +24,8 @@ pub struct HdGpuData {
     pub decoded: DecodedLayers,
     /// Vanilla texture layers: `(layer, pixels)` for materials without an image file.
     pub vanilla: Vec<(u32, MipChain)>,
+    /// The per-area lighting environments, for the render thread's environment state.
+    pub environments: Arc<EnvironmentSet>,
 }
 
 impl HdContext {
@@ -80,6 +83,7 @@ impl HdContext {
             plan,
             decoded,
             vanilla,
+            environments: Arc::clone(&self.environments),
         })
     }
 }

@@ -907,14 +907,20 @@ impl SceneRenderer {
         };
         self.queue
             .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
-        let lighting = &self.hd_lighting;
+        let hd = &self.hd_lighting;
+        let lighting = &hd.lighting;
         let environment = hd::layout::HdEnvironmentUniform {
-            camera: [params.camera.x, params.camera.y, params.camera.z, 0.0],
+            camera: [
+                params.camera.x,
+                params.camera.y,
+                params.camera.z,
+                hd.elapsed_seconds,
+            ],
             light_dir: [
                 lighting.light_dir[0],
                 lighting.light_dir[1],
                 lighting.light_dir[2],
-                0.0,
+                f32::from(u8::from(lighting.casts_shadows)),
             ],
             light_color: [
                 lighting.light_color[0],
@@ -928,16 +934,35 @@ impl SceneRenderer {
                 lighting.ambient_color[2],
                 lighting.ambient_strength,
             ],
+            underglow: [
+                lighting.underglow_color[0],
+                lighting.underglow_color[1],
+                lighting.underglow_color[2],
+                lighting.underglow_strength,
+            ],
+            fog_color: [
+                lighting.fog_color[0],
+                lighting.fog_color[1],
+                lighting.fog_color[2],
+                lighting.fog_depth,
+            ],
+            fog_params: [
+                params.fog.draw_distance_tiles as f32,
+                lighting.ground_fog_start,
+                lighting.ground_fog_end,
+                lighting.ground_fog_opacity,
+            ],
             water_color: [
                 lighting.water_color[0],
                 lighting.water_color[1],
                 lighting.water_color[2],
                 0.0,
             ],
+            misc: [lighting.lightning_brightness, 0.0, 0.0, 0.0],
             flags: [
-                u32::from(lighting.normal_mapping),
-                lighting.debug_view,
-                0,
+                u32::from(hd.normal_mapping),
+                hd.debug_view,
+                u32::from(lighting.underwater_environment),
                 0,
             ],
         };
@@ -1168,6 +1193,15 @@ impl SceneRenderer {
         inputs: &ScenePassInputs<'_>,
     ) {
         let params = inputs.params;
+        // The HD profile clears to the area's fog (sky) colour.
+        let clear = if hdr {
+            self.hd_lighting
+                .lighting
+                .fog_color
+                .map(|c| f64::from(osrs_hd::environment::linear_to_srgb(c)))
+        } else {
+            params.clear_color
+        };
         let mut timer_guard = self.timer.borrow_mut();
         let timed = timer_guard.as_mut().is_some_and(timing::GpuTimer::begin);
         {
@@ -1179,9 +1213,9 @@ impl SceneRenderer {
                     resolve_target: Some(targets.resolve),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: params.clear_color[0],
-                            g: params.clear_color[1],
-                            b: params.clear_color[2],
+                            r: clear[0],
+                            g: clear[1],
+                            b: clear[2],
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Discard,

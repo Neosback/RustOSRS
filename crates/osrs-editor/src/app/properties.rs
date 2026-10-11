@@ -6,6 +6,7 @@ use crate::camera::CameraMode;
 use crate::pick::{self, Pick};
 use crate::settings::{ColorblindChoice, PanelTab, ProfileChoice};
 use eframe::egui;
+use osrs_hd::environment::{DefaultSky, FogDepthMode};
 
 fn section(ui: &mut egui::Ui, title: &str, default_open: bool, body: impl FnOnce(&mut egui::Ui)) {
     egui::CollapsingHeader::new(egui::RichText::new(title).strong())
@@ -127,6 +128,7 @@ impl EditorApp {
     }
 
     fn shading_section(&mut self, ui: &mut egui::Ui) {
+        let hd = self.prefs.render_profile == ProfileChoice::Hd;
         egui::Grid::new("shading_grid")
             .num_columns(2)
             .spacing([8.0, 6.0])
@@ -145,7 +147,7 @@ impl EditorApp {
                     });
                 ui.end_row();
 
-                if self.prefs.render_profile == ProfileChoice::Hd {
+                if hd {
                     ui.label("HD exposure");
                     ui.add(egui::Slider::new(&mut self.prefs.hd_exposure, 0.25..=4.0));
                     ui.end_row();
@@ -153,17 +155,18 @@ impl EditorApp {
                     ui.label("HD vignette");
                     ui.add(egui::Slider::new(&mut self.prefs.hd_vignette, 0.0..=1.0));
                     ui.end_row();
+                } else {
+                    ui.label("Brightness");
+                    ui.add(egui::Slider::new(&mut self.prefs.brightness, 0.5..=1.0));
+                    ui.end_row();
+
+                    ui.label("Fog depth");
+                    ui.add(
+                        egui::Slider::new(&mut self.prefs.fog_depth_tiles, 0..=100)
+                            .suffix(" tiles"),
+                    );
+                    ui.end_row();
                 }
-
-                ui.label("Brightness");
-                ui.add(egui::Slider::new(&mut self.prefs.brightness, 0.5..=1.0));
-                ui.end_row();
-
-                ui.label("Fog depth");
-                ui.add(
-                    egui::Slider::new(&mut self.prefs.fog_depth_tiles, 0..=100).suffix(" tiles"),
-                );
-                ui.end_row();
 
                 ui.label("Draw distance");
                 ui.add(
@@ -193,16 +196,95 @@ impl EditorApp {
                 ));
                 ui.end_row();
             });
-        ui.checkbox(&mut self.prefs.remove_color_banding, "Remove color banding");
-        ui.checkbox(&mut self.prefs.bright_textures, "Bright textures");
-        if self.prefs.render_profile == ProfileChoice::Hd {
-            ui.weak(
-                "HD is a work in progress: materials, normal maps, specular and ground blending \
-                 are in; lighting and the resolve pass are placeholders until the later phases. \
-                 Animated objects still use Reference shading.",
-            );
+        if hd {
+            self.hd_shading_sections(ui);
+        } else {
+            ui.checkbox(&mut self.prefs.remove_color_banding, "Remove color banding");
+            ui.checkbox(&mut self.prefs.bright_textures, "Bright textures");
+            ui.weak("Defaults match RuneLite's GPU plugin. Fog uses the sky colour.");
         }
-        ui.weak("Defaults match RuneLite's GPU plugin. Fog uses the sky colour.");
+    }
+
+    /// The 117 HD sections of Properties > Shading (mirroring `HdPluginConfig`): Lighting and
+    /// Environment.
+    fn hd_shading_sections(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        section(ui, "Lighting", true, |ui| {
+            ui.checkbox(
+                &mut self.prefs.hd_environment.atmospheric_lighting,
+                "Atmospheric lighting",
+            )
+            .on_hover_text("Change environmental lighting based on the current area.");
+            ui.checkbox(&mut self.prefs.hd_normal_mapping, "Normal mapping")
+                .on_hover_text("Affects how light interacts with certain materials.");
+            ui.checkbox(
+                &mut self.prefs.hd_environment.flashing_effects,
+                "Lightning flashes",
+            )
+            .on_hover_text("Flashing lightning in storm areas (photosensitivity warning).");
+        });
+        section(ui, "Environment", true, |ui| {
+            let environment = &mut self.prefs.hd_environment;
+            egui::Grid::new("hd_environment_grid")
+                .num_columns(2)
+                .spacing([8.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label("Current area");
+                    ui.label(
+                        self.hd
+                            .current_name()
+                            .unwrap_or_else(|| "(loading)".to_owned()),
+                    );
+                    ui.end_row();
+
+                    ui.label("Fog depth mode");
+                    egui::ComboBox::from_id_salt("hd_fog_depth_mode")
+                        .selected_text(environment.fog_depth_mode.label())
+                        .show_ui(ui, |ui| {
+                            for mode in FogDepthMode::ALL {
+                                ui.selectable_value(
+                                    &mut environment.fog_depth_mode,
+                                    mode,
+                                    mode.label(),
+                                );
+                            }
+                        });
+                    ui.end_row();
+
+                    if environment.fog_depth_mode == FogDepthMode::Static {
+                        ui.label("Static fog depth");
+                        ui.add(
+                            egui::Slider::new(&mut environment.static_fog_depth, 0.0..=100.0)
+                                .suffix(" tiles"),
+                        );
+                        ui.end_row();
+                    }
+
+                    ui.label("Default sky");
+                    egui::ComboBox::from_id_salt("hd_default_sky")
+                        .selected_text(environment.default_sky.label())
+                        .show_ui(ui, |ui| {
+                            for sky in DefaultSky::ALL {
+                                ui.selectable_value(&mut environment.default_sky, sky, sky.label());
+                            }
+                        });
+                    ui.end_row();
+                });
+            ui.checkbox(&mut environment.ground_fog, "Ground fog");
+            ui.checkbox(&mut environment.override_sky, "Override sky colour")
+                .on_hover_text("Force the default sky colour in all environments.");
+            ui.checkbox(
+                &mut environment.decouple_sky_and_water,
+                "Decouple sky and water colour",
+            );
+            ui.checkbox(&mut environment.poh_themes, "Player-owned house themes");
+            ui.checkbox(&mut environment.legacy_tob, "Legacy Theatre of Blood");
+        });
+        ui.weak(
+            "HD is a work in progress: materials, normal maps, specular, ground blending and \
+             area environments are in. Shadows, water, lights and the sky are still to come. \
+             Animated objects still use Reference shading.",
+        );
     }
 
     fn scene_section(&mut self, ui: &mut egui::Ui) {
