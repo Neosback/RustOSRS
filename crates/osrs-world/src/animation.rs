@@ -10,7 +10,7 @@
 
 use osrs_core::{
     animation::{SequencePlaybackState, advance_dynamic_sequence},
-    animation_pose::{LegacyAnimationFrame, pose_legacy_object_model},
+    animation_pose::{LegacyAnimationFrame, interpolate_legacy_frames, pose_legacy_object_model},
     contour::{ContourGroundInput, contour_ground_in_place},
     definitions::SequenceDefinition,
     lighting::ReferenceLitModel,
@@ -103,11 +103,25 @@ fn initial_playback(instance: &AnimatedInstance) -> (SequencePlaybackState, u32)
 #[derive(Default)]
 pub struct AnimationSystem {
     regions: HashMap<(i32, i32), Vec<Live>>,
+    /// Blend each frame toward the next (RuneLite's Animation Smoothing plugin).
+    smoothing: bool,
 }
+
+/// Sequences the Animation Smoothing plugin leaves alone (`isAnimationInterpolatable` returns
+/// false): interpolating them distorts rotating wheels, sails and a few NPC cycles.
+const NOT_SMOOTHED: [u32; 23] = [
+    6566, 8266, 8267, 8270, 8271, 4652, 5530, 5531, 5583, 6818, 244, 1051, 5857, 6495, 7898, 9450,
+    8977, 367, 3558, 4519, 9493, 8499, 11291,
+];
 
 impl AnimationSystem {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Turn frame blending on or off.
+    pub fn set_smoothing(&mut self, enabled: bool) {
+        self.smoothing = enabled;
     }
 
     pub fn instance_count(&self) -> usize {
@@ -184,6 +198,30 @@ impl AnimationSystem {
         changed
     }
 
+    /// The current frame blended toward the next by the elapsed share of its length, when
+    /// smoothing applies to this loc.
+    fn smoothed_frame(&self, live: &Live) -> Option<LegacyAnimationFrame> {
+        if !self.smoothing {
+            return None;
+        }
+        let model = &live.instance.model;
+        let sequence = &model.sequence;
+        if NOT_SMOOTHED.contains(&sequence.identity.id.get()) {
+            return None;
+        }
+        let current = live.frame? as usize;
+        let length = model.frames.len();
+        let mut next = current + 1;
+        if next >= length {
+            // Loop back like the client (`frame -= frameStep`); sequences without a step end here.
+            let step = usize::from(sequence.frame_step?);
+            next = next.checked_sub(step).filter(|&n| n < length)?;
+        }
+        let delay = f32::from(*sequence.frame_delays.get(current)?).max(1.0);
+        let t = live.state.frame_cycle() as f32 / delay;
+        interpolate_legacy_frames(&model.frames[current], &model.frames[next], t)
+    }
+
     /// Geometry of the instances whose zone origin lies within `radius_tiles` of
     /// `center_tile` (world tile coordinates).
     pub fn build_geometry(&self, center_tile: (i32, i32), radius_tiles: i32) -> SceneGeometry {
@@ -201,7 +239,10 @@ impl AnimationSystem {
             let frame = live
                 .frame
                 .and_then(|index| model.frames.get(index as usize));
-            let posed = frame
+            let blended = self.smoothed_frame(live);
+            let posed = blended
+                .as_ref()
+                .or(frame.map(|frame| &**frame))
                 .and_then(|frame| {
                     pose_legacy_object_model(&model.base, frame, model.orientation).ok()
                 })

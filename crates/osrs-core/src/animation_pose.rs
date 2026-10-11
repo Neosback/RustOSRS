@@ -40,6 +40,76 @@ pub struct LegacyAnimationFrame {
     pub transforms: Vec<LegacyFrameTransform>,
 }
 
+/// Blend two frames of the same skeleton by `t` (`0.0` = `from`, `1.0` = `to`), like RuneLite's
+/// Animation Smoothing (`client.setAnimationInterpolationFilter`).
+///
+/// A frame lists only the skeleton slots it touches; a missing slot means "no change" (translation
+/// and rotation 0, scale 128, pivot offset 0). Slots are merged in ascending order, which is the
+/// order the client applies them. Rotations (the low 8 bits, 1/256 of a turn) blend along the
+/// shorter arc. Returns `None` when the frames use different skeletons.
+pub fn interpolate_legacy_frames(
+    from: &LegacyAnimationFrame,
+    to: &LegacyAnimationFrame,
+    t: f32,
+) -> Option<LegacyAnimationFrame> {
+    if from.skeleton != to.skeleton {
+        return None;
+    }
+    let t = t.clamp(0.0, 1.0);
+    let mut slots: Vec<usize> = from
+        .transforms
+        .iter()
+        .chain(&to.transforms)
+        .map(|transform| transform.skeleton_transform)
+        .collect();
+    slots.sort_unstable();
+    slots.dedup();
+
+    let find = |frame: &LegacyAnimationFrame, slot: usize| {
+        frame
+            .transforms
+            .iter()
+            .find(|transform| transform.skeleton_transform == slot)
+            .copied()
+    };
+    let mut transforms = Vec::with_capacity(slots.len());
+    for slot in slots {
+        let transform_type = from.skeleton.get(slot).map_or(255, |s| s.transform_type);
+        let identity = if transform_type == 3 { 128 } else { 0 };
+        let a = find(from, slot).unwrap_or(LegacyFrameTransform {
+            skeleton_transform: slot,
+            x: identity,
+            y: identity,
+            z: identity,
+        });
+        let b = find(to, slot).unwrap_or(LegacyFrameTransform {
+            skeleton_transform: slot,
+            x: identity,
+            y: identity,
+            z: identity,
+        });
+        let blend = |a: i32, b: i32| -> i32 {
+            if transform_type == 2 {
+                // Angles live in the low 8 bits; take the shorter way round.
+                let delta = ((b & 255) - (a & 255) + 128).rem_euclid(256) - 128;
+                ((a & 255) as f32 + delta as f32 * t).round() as i32 & 255
+            } else {
+                (a as f32 + (b - a) as f32 * t).round() as i32
+            }
+        };
+        transforms.push(LegacyFrameTransform {
+            skeleton_transform: slot,
+            x: blend(a.x, b.x),
+            y: blend(a.y, b.y),
+            z: blend(a.z, b.z),
+        });
+    }
+    Some(LegacyAnimationFrame {
+        skeleton: from.skeleton.clone(),
+        transforms,
+    })
+}
+
 /// Invalid semantic frame/model state that the reference client would be unable
 /// to consume safely.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -483,5 +553,66 @@ fn rotate_y_270_ccw(model: &mut ReferenceLitModel) {
         let z = point.z;
         point.z = point.x;
         point.x = z.wrapping_neg();
+    }
+}
+
+#[cfg(test)]
+mod interpolation_tests {
+    use super::*;
+
+    fn frame(transforms: Vec<LegacyFrameTransform>) -> LegacyAnimationFrame {
+        LegacyAnimationFrame {
+            skeleton: vec![
+                LegacySkeletonTransform {
+                    transform_type: 1,
+                    labels: vec![0],
+                },
+                LegacySkeletonTransform {
+                    transform_type: 2,
+                    labels: vec![0],
+                },
+            ],
+            transforms,
+        }
+    }
+
+    fn t(slot: usize, x: i32, y: i32, z: i32) -> LegacyFrameTransform {
+        LegacyFrameTransform {
+            skeleton_transform: slot,
+            x,
+            y,
+            z,
+        }
+    }
+
+    #[test]
+    fn endpoints_reproduce_the_frames() -> Option<()> {
+        let a = frame(vec![t(0, 10, 0, -4), t(1, 0, 0, 0)]);
+        let b = frame(vec![t(0, 30, 8, 4)]);
+        let start = interpolate_legacy_frames(&a, &b, 0.0)?;
+        assert_eq!(start.transforms[0], t(0, 10, 0, -4));
+        let end = interpolate_legacy_frames(&a, &b, 1.0)?;
+        assert_eq!(end.transforms[0], t(0, 30, 8, 4));
+        // The rotation slot only exists in `a`: it blends toward "no rotation".
+        assert_eq!(end.transforms[1], t(1, 0, 0, 0));
+        Some(())
+    }
+
+    #[test]
+    fn rotations_take_the_short_way_around() -> Option<()> {
+        let a = frame(vec![t(1, 250, 0, 0)]);
+        let b = frame(vec![t(1, 6, 0, 0)]);
+        let half = interpolate_legacy_frames(&a, &b, 0.5)?;
+        // 250 -> 6 is +12 steps through 0, so the midpoint is 0 (not 128).
+        assert_eq!(half.transforms[0].x, 0);
+        Some(())
+    }
+
+    #[test]
+    fn different_skeletons_do_not_blend() {
+        let a = frame(vec![t(0, 1, 1, 1)]);
+        let mut b = frame(vec![t(0, 2, 2, 2)]);
+        b.skeleton[0].labels = vec![3];
+        assert!(interpolate_legacy_frames(&a, &b, 0.5).is_none());
     }
 }

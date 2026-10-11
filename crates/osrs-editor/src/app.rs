@@ -6,6 +6,7 @@ mod plugins;
 mod properties;
 mod status;
 
+use crate::animation_smoothing::AnimationSmoothingPlugin;
 use crate::camera::{CameraMode, FlyCamera};
 use crate::grid::GridPlugin;
 use crate::hud::{Destination, FrameStats, TeleportWindow};
@@ -102,6 +103,8 @@ pub struct EditorApp {
     context_pick: Pick,
     streamer: RegionStreamer,
     animations: AnimationWorker,
+    /// Whether animation frames are blended (changes the update stride).
+    animation_smoothing: bool,
     animation_cycle: u64,
     animation_center: (i32, i32),
     animation_dirty: bool,
@@ -170,7 +173,10 @@ impl EditorApp {
             settings_path: None,
             saved_settings: Settings::default(),
             settings_checked: Instant::now(),
-            plugins: vec![Box::new(GridPlugin::new())],
+            plugins: vec![
+                Box::new(GridPlugin::new()),
+                Box::new(AnimationSmoothingPlugin::new()),
+            ],
             plugin_lines: std::collections::BTreeMap::new(),
             infos_version: 0,
             panels: Panels {
@@ -190,6 +196,7 @@ impl EditorApp {
             context_pick: Pick::default(),
             streamer,
             animations: AnimationWorker::spawn(),
+            animation_smoothing: false,
             animation_cycle: 0,
             animation_center: (0, 0),
             animation_dirty: true,
@@ -567,8 +574,13 @@ impl EditorApp {
             .abs()
             .max((center.1 - self.animation_center.1).abs())
             >= 8;
-        if cycle < self.animation_cycle + ANIMATION_STRIDE_CYCLES && !self.animation_dirty && !moved
-        {
+        // Smoothing blends inside a frame, so it needs every game cycle.
+        let stride = if self.animation_smoothing {
+            1
+        } else {
+            ANIMATION_STRIDE_CYCLES
+        };
+        if cycle < self.animation_cycle + stride && !self.animation_dirty && !moved {
             return;
         }
         let delta = (cycle - self.animation_cycle).min(500) as i32;

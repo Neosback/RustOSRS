@@ -6,6 +6,7 @@
 //! usage: osrs-editor [cache-dir] [base-x base-y]
 //! The cache directory defaults to `$RUSTOSRS_TARGET_CACHE_DIR`, then `~/RustOSRS-cache/b241/cache`.
 
+mod animation_smoothing;
 mod app;
 mod camera;
 mod grid;

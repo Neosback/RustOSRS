@@ -46,6 +46,8 @@ pub enum EditorCommand {
     SetLines(Vec<LineVertex>),
     /// Message for the status bar.
     Status(String),
+    /// Blend animation frames (RuneLite's Animation Smoothing plugin).
+    SetAnimationSmoothing(bool),
 }
 
 /// What a plugin sees and can ask for while it runs.

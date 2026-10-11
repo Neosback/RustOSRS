@@ -57,6 +57,10 @@ impl EditorApp {
                     lines_changed = true;
                 }
                 EditorCommand::Status(message) => self.status = Some(message),
+                EditorCommand::SetAnimationSmoothing(enabled) => {
+                    self.animation_smoothing = enabled;
+                    self.animations.set_smoothing(enabled);
+                }
             }
         }
         if lines_changed {
