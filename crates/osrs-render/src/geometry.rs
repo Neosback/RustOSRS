@@ -438,3 +438,24 @@ impl SceneGeometry {
         self.zones.iter().map(ZoneGeometry::vertex_count).sum()
     }
 }
+
+#[cfg(test)]
+mod alpha_pack_tests {
+    use super::*;
+
+    #[test]
+    fn packed_alpha_faces_round_trip_and_bound_the_radius() {
+        // Centroid sums (3x) of three faces spread along x.
+        let sums = [[-300, 0, 30], [0, 0, 0], [300, 0, -30]];
+        let (radius, packed) = pack_alpha_faces(&sums);
+        let model = AlphaModel {
+            packed_faces: packed,
+            radius,
+            ..AlphaModel::default()
+        };
+        let (x0, _, _) = model.face(0);
+        let (x2, _, _) = model.face(2);
+        assert!(x0 < 0 && x2 > 0, "faces keep their side of the centre");
+        assert!(radius >= 2 + x2.abs(), "radius covers the farthest face");
+    }
+}

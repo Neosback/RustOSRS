@@ -223,8 +223,31 @@ struct ZoneUniform {
 }
 
 struct DrawRange {
+    min_plane: u8,
+    start: u32,
+    count: u32,
+}
+
+/// Sorting record of one model's transparent faces inside a zone's alpha buffer.
+struct GpuAlphaModel {
     level: u8,
     min_plane: u8,
+    first_vertex: u32,
+    vertex_count: u32,
+    origin: [i32; 3],
+    radius: i32,
+    packed_faces: Vec<i32>,
+}
+
+/// Alpha models farther than this (squared) from a zone's origin corner keep model order only
+/// (`GpuPlugin.ALPHA_ZSORT_CLOSE`).
+const ALPHA_ZSORT_CLOSE: f32 = 2048.0;
+/// `ModelUploader.MAX_DIAMETER`: models with larger sort radius are not drawn sorted.
+const ALPHA_MAX_DIAMETER: i32 = 6000;
+
+/// One indexed alpha draw: zone slot in the frame's alpha zone list and its index range.
+struct AlphaDraw {
+    zone: usize,
     start: u32,
     count: u32,
 }
@@ -239,7 +262,7 @@ struct GpuZone {
     opaque: Option<wgpu::Buffer>,
     alpha: Option<wgpu::Buffer>,
     opaque_ranges: Vec<DrawRange>,
-    alpha_ranges: Vec<DrawRange>,
+    alpha_models: Vec<GpuAlphaModel>,
 }
 
 /// Device, queue, and the scene pipelines.
@@ -257,6 +280,8 @@ pub struct SceneRenderer {
     /// World point that renders at local `(0, 0)`; keeps f32 values small far from the origin.
     render_origin: (i32, i32),
     msaa: std::cell::RefCell<Option<MsaaTargets>>,
+    /// Per-frame index buffer for the sorted alpha pass.
+    alpha_indices: std::cell::RefCell<Option<(wgpu::Buffer, u64)>>,
 }
 
 impl SceneRenderer {
@@ -449,6 +474,7 @@ impl SceneRenderer {
             regions: std::collections::BTreeMap::new(),
             render_origin: (0, 0),
             msaa: std::cell::RefCell::new(None),
+            alpha_indices: std::cell::RefCell::new(None),
         }
     }
 
@@ -534,7 +560,7 @@ impl SceneRenderer {
             let mut opaque: Vec<PackedVertex> = Vec::new();
             let mut alpha: Vec<PackedVertex> = Vec::new();
             let mut opaque_ranges = Vec::new();
-            let mut alpha_ranges = Vec::new();
+            let mut alpha_models: Vec<GpuAlphaModel> = Vec::new();
             let mut y_range = (f32::MAX, f32::MIN);
             for group in &zone.groups {
                 for vertex in group.geometry.opaque.iter().chain(&group.geometry.alpha) {
@@ -543,7 +569,6 @@ impl SceneRenderer {
                 }
                 if !group.geometry.opaque.is_empty() {
                     opaque_ranges.push(DrawRange {
-                        level: group.level,
                         min_plane: group.min_plane,
                         start: opaque.len() as u32,
                         count: group.geometry.opaque.len() as u32,
@@ -551,12 +576,18 @@ impl SceneRenderer {
                     opaque.extend_from_slice(&group.geometry.opaque);
                 }
                 if !group.geometry.alpha.is_empty() {
-                    alpha_ranges.push(DrawRange {
-                        level: group.level,
-                        min_plane: group.min_plane,
-                        start: alpha.len() as u32,
-                        count: group.geometry.alpha.len() as u32,
-                    });
+                    let base = alpha.len() as u32;
+                    for model in &group.geometry.alpha_models {
+                        alpha_models.push(GpuAlphaModel {
+                            level: group.level,
+                            min_plane: group.min_plane,
+                            first_vertex: base + model.first_vertex,
+                            vertex_count: model.vertex_count,
+                            origin: model.origin,
+                            radius: model.radius,
+                            packed_faces: model.packed_faces.clone(),
+                        });
+                    }
                     alpha.extend_from_slice(&group.geometry.alpha);
                 }
             }
@@ -581,7 +612,7 @@ impl SceneRenderer {
                 opaque: make(&opaque, "zone-opaque"),
                 alpha: make(&alpha, "zone-alpha"),
                 opaque_ranges,
-                alpha_ranges,
+                alpha_models,
             });
         }
         self.regions.insert(key, gpu_zones);
@@ -661,6 +692,13 @@ impl SceneRenderer {
             views
         };
         let _ = depth_view;
+        let visible: Vec<&GpuZone> = self
+            .regions
+            .values()
+            .flatten()
+            .filter(|zone| zone_visible(zone, self.render_origin, &globals.world_proj))
+            .collect();
+        let (alpha_zones, alpha_draws, alpha_index_buffer) = self.prepare_alpha(&visible, &params);
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scene"),
@@ -692,13 +730,6 @@ impl SceneRenderer {
             });
             pass.set_bind_group(0, &self.globals_bind_group, &[]);
 
-            let visible: Vec<&GpuZone> = self
-                .regions
-                .values()
-                .flatten()
-                .filter(|zone| zone_visible(zone, self.render_origin, &globals.world_proj))
-                .collect();
-
             pass.set_pipeline(&self.opaque_pipeline);
             for zone in visible.iter().copied() {
                 let Some(buffer) = &zone.opaque else { continue };
@@ -711,35 +742,143 @@ impl SceneRenderer {
                 }
             }
 
-            // Alpha pass: after all opaque geometry, level by level, farthest zones first.
-            // (The reference also depth-sorts alpha models and their faces; zone order is the
-            // coarse part of that ordering.)
-            let camera = (params.camera.x, params.camera.z);
-            let distance_squared = |zone: &GpuZone| {
-                let center_x = (zone.world_origin.0 - self.render_origin.0) as f32 + 512.0;
-                let center_z = (zone.world_origin.1 - self.render_origin.1) as f32 + 512.0;
-                (center_x - camera.0).powi(2) + (center_z - camera.1).powi(2)
-            };
-            let mut alpha_zones: Vec<&GpuZone> = visible
-                .iter()
-                .copied()
-                .filter(|zone| zone.alpha.is_some())
-                .collect();
-            alpha_zones.sort_by(|a, b| distance_squared(b).total_cmp(&distance_squared(a)));
-            pass.set_pipeline(&self.alpha_pipeline);
-            for level in 0..=3_u8 {
-                for zone in alpha_zones.iter().copied() {
+            // Alpha pass: after all opaque geometry, level by level, far zones first; models inside
+            // a zone and faces inside close models are ordered by `prepare_alpha`.
+            if let Some(index_buffer) = &alpha_index_buffer {
+                pass.set_pipeline(&self.alpha_pipeline);
+                for draw in &alpha_draws {
+                    let zone = alpha_zones[draw.zone];
                     let Some(buffer) = &zone.alpha else { continue };
                     pass.set_bind_group(1, &zone.bind_group, &[]);
                     pass.set_vertex_buffer(0, buffer.slice(..));
-                    for range in &zone.alpha_ranges {
-                        if range.level == level && range.min_plane <= params.view_plane {
-                            pass.draw(range.start..range.start + range.count, 0..1);
-                        }
-                    }
+                    pass.set_index_buffer(
+                        index_buffer.slice(
+                            u64::from(draw.start) * 4..u64::from(draw.start + draw.count) * 4,
+                        ),
+                        wgpu::IndexFormat::Uint32,
+                    );
+                    pass.draw_indexed(0..draw.count, 0, 0..1);
                 }
             }
         }
+    }
+
+    /// Order the transparent geometry like RuneLite's `Zone.alphaSort` / `renderAlpha`.
+    ///
+    /// Zones go far to near; inside a zone and level, models go far to near by origin distance;
+    /// inside models near the camera (zone origin within [`ALPHA_ZSORT_CLOSE`]) faces go back to
+    /// front in camera-depth bins of the face centroid. Returns the zone list the draws index
+    /// into, the draws, and the uploaded index buffer.
+    fn prepare_alpha<'a>(
+        &self,
+        visible: &[&'a GpuZone],
+        params: &FrameParams,
+    ) -> (Vec<&'a GpuZone>, Vec<AlphaDraw>, Option<wgpu::Buffer>) {
+        let camera = params.camera;
+        let origin = self.render_origin;
+        let zone_base = |zone: &GpuZone| {
+            (
+                (zone.world_origin.0 - origin.0) as f32,
+                (zone.world_origin.1 - origin.1) as f32,
+            )
+        };
+        let distance_squared = |zone: &GpuZone| {
+            let (x, z) = zone_base(zone);
+            (x + 512.0 - camera.x).powi(2) + (z + 512.0 - camera.z).powi(2)
+        };
+        let mut alpha_zones: Vec<&GpuZone> = visible
+            .iter()
+            .copied()
+            .filter(|zone| zone.alpha.is_some() && !zone.alpha_models.is_empty())
+            .collect();
+        alpha_zones.sort_by(|a, b| distance_squared(b).total_cmp(&distance_squared(a)));
+
+        let (sin_yaw, cos_yaw) = camera.yaw.sin_cos();
+        let (sin_pitch, cos_pitch) = camera.pitch.sin_cos();
+        let mut indices: Vec<u32> = Vec::new();
+        let mut draws: Vec<AlphaDraw> = Vec::new();
+        for level in 0..=3_u8 {
+            for (slot, zone) in alpha_zones.iter().enumerate() {
+                let (base_x, base_z) = zone_base(zone);
+                let mut models: Vec<(f32, &GpuAlphaModel)> = zone
+                    .alpha_models
+                    .iter()
+                    .filter(|m| m.level == level && m.min_plane <= params.view_plane)
+                    .map(|m| {
+                        let dx = base_x + m.origin[0] as f32 - camera.x;
+                        let dy = m.origin[1] as f32 - camera.y;
+                        let dz = base_z + m.origin[2] as f32 - camera.z;
+                        (dx * dx + dy * dy + dz * dz, m)
+                    })
+                    .collect();
+                if models.is_empty() {
+                    continue;
+                }
+                // Stable: equal distances keep emission order like `List.sort`.
+                models.sort_by(|a, b| b.0.total_cmp(&a.0));
+                let close = (camera.x - base_x).powi(2) + (camera.z - base_z).powi(2)
+                    < ALPHA_ZSORT_CLOSE * ALPHA_ZSORT_CLOSE;
+                let start = indices.len() as u32;
+                for (_, model) in models {
+                    if !close {
+                        indices.extend(model.first_vertex..model.first_vertex + model.vertex_count);
+                        continue;
+                    }
+                    let diameter = 1 + model.radius * 2;
+                    if diameter >= ALPHA_MAX_DIAMETER {
+                        continue;
+                    }
+                    let mut faces: Vec<(i32, u32)> = (0..model.packed_faces.len())
+                        .map(|face| {
+                            let pack = model.packed_faces[face];
+                            let x = (pack >> 21) as f32;
+                            let y = ((pack << 11) >> 22) as f32;
+                            let z = ((pack << 21) >> 21) as f32;
+                            let t = (z * cos_yaw - x * sin_yaw).floor();
+                            let depth = (y * sin_pitch + t * cos_pitch).floor() as i32;
+                            ((depth + model.radius).clamp(0, diameter - 1), face as u32)
+                        })
+                        .collect();
+                    // Highest bin (farthest) first; faces in a bin keep their order.
+                    faces.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+                    for (_, face) in faces {
+                        let first = model.first_vertex + face * 3;
+                        indices.extend(first..first + 3);
+                    }
+                }
+                let count = indices.len() as u32 - start;
+                if count > 0 {
+                    draws.push(AlphaDraw {
+                        zone: slot,
+                        start,
+                        count,
+                    });
+                }
+            }
+        }
+        if indices.is_empty() {
+            return (alpha_zones, draws, None);
+        }
+        let needed = indices.len() as u64;
+        let mut slot = self.alpha_indices.borrow_mut();
+        if slot.as_ref().is_none_or(|(_, capacity)| *capacity < needed) {
+            let capacity = needed.next_power_of_two().max(4096);
+            *slot = Some((
+                self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("alpha-indices"),
+                    size: capacity * 4,
+                    usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }),
+                capacity,
+            ));
+        }
+        let buffer = slot.as_ref().map(|(buffer, _)| buffer.clone());
+        if let Some(buffer) = &buffer {
+            self.queue
+                .write_buffer(buffer, 0, bytemuck::cast_slice(&indices));
+        }
+        (alpha_zones, draws, buffer)
     }
 
     fn create_msaa_targets(&self, width: u32, height: u32) -> MsaaTargets {
