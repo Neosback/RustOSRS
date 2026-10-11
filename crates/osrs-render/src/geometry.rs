@@ -58,6 +58,35 @@ fn clamp_i16(value: i32) -> i16 {
 pub struct GeometryBuilder {
     pub opaque: Vec<PackedVertex>,
     pub alpha: Vec<PackedVertex>,
+    /// One record per model that contributed transparent faces to `alpha`, in emission order.
+    pub alpha_models: Vec<AlphaModel>,
+}
+
+/// Sorting data of one model's transparent faces (`Zone.AlphaModel`).
+///
+/// RuneLite draws alpha models far to near by model origin and, for models near the camera, orders
+/// each model's faces back to front in camera depth bins. This keeps what that sort needs.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AlphaModel {
+    /// First vertex of the model inside [`GeometryBuilder::alpha`].
+    pub first_vertex: u32,
+    /// Number of vertices (3 per face).
+    pub vertex_count: u32,
+    /// Model origin in zone-local units (`AlphaModel.x/y/z`).
+    pub origin: [i32; 3],
+    /// Face bin radius (`AlphaModel.radius`).
+    pub radius: i32,
+    /// Per face, in emission order: the centroid relative to the model centre packed as
+    /// `x:11 | y:10 | z:11` bits (`AlphaModel.packedFaces`).
+    pub packed_faces: Vec<i32>,
+}
+
+impl AlphaModel {
+    /// Unpack face `index` into `(x, y, z)` in the shifted model-centre space.
+    pub fn face(&self, index: usize) -> (i32, i32, i32) {
+        let pack = self.packed_faces[index];
+        (pack >> 21, (pack << 11) >> 22, (pack << 21) >> 21)
+    }
 }
 
 /// Placement of a model relative to the zone origin that owns its tile.
@@ -186,6 +215,9 @@ impl GeometryBuilder {
             })
             .collect();
 
+        let first_alpha_vertex = self.alpha.len();
+        // Centroid sums (3x the centroid) of the transparent faces, in the model's own space.
+        let mut alpha_face_sums: Vec<[i32; 3]> = Vec::new();
         for (face_index, face) in model.faces.iter().enumerate() {
             let colors = model.face_colors[face_index];
             let (color_a, color_b, color_c) = match colors.c {
@@ -216,6 +248,16 @@ impl GeometryBuilder {
                 [[0.0; 2]; 3]
             };
             let target = if alpha != 0 {
+                let sum = |axis: usize| -> i32 {
+                    indices
+                        .iter()
+                        .map(|&i| {
+                            let v = &model.vertices[i as usize];
+                            [v.x, v.y, v.z][axis]
+                        })
+                        .fold(0_i32, i32::wrapping_add)
+                };
+                alpha_face_sums.push([sum(0), sum(1), sum(2)]);
                 &mut self.alpha
             } else {
                 &mut self.opaque
@@ -235,7 +277,60 @@ impl GeometryBuilder {
                 ));
             }
         }
+        if !alpha_face_sums.is_empty() {
+            let (radius, packed_faces) = pack_alpha_faces(&alpha_face_sums);
+            self.alpha_models.push(AlphaModel {
+                first_vertex: first_alpha_vertex as u32,
+                vertex_count: (self.alpha.len() - first_alpha_vertex) as u32,
+                origin: [placement.x, placement.y, placement.z],
+                radius,
+                packed_faces,
+            });
+        }
     }
+}
+
+/// `Zone.addAlphaModel`'s face packing: centre the transparent face centroids, scale them into
+/// signed 11/10/11-bit fields, and return `(radius, packed faces)`.
+fn pack_alpha_faces(sums: &[[i32; 3]]) -> (i32, Vec<i32>) {
+    let mut min = [i32::MAX; 3];
+    let mut max = [i32::MIN; 3];
+    for sum in sums {
+        for axis in 0..3 {
+            min[axis] = min[axis].min(sum[axis]);
+            max[axis] = max[axis].max(sum[axis]);
+        }
+    }
+    // Java integer division truncates toward zero, like Rust's `/`.
+    let center = [
+        (min[0] + max[0]) / 6,
+        (min[1] + max[1]) / 6,
+        (min[2] + max[2]) / 6,
+    ];
+    let size = (max[0] / 3 - center[0])
+        .max(min[0] / -3 - center[0])
+        .max((max[1] / 3 - center[1]).max(min[1] / -3 - center[1]) * 2)
+        .max((max[2] / 3 - center[2]).max(min[2] / -3 - center[2]));
+    let mut shift = 0;
+    let mut v = size >> 10;
+    while v > 0 {
+        shift += 1;
+        v >>= 1;
+    }
+    let mut radius = 0_i32;
+    let packed = sums
+        .iter()
+        .map(|sum| {
+            let f = [
+                ((sum[0] / 3) - center[0]) >> shift,
+                ((sum[1] / 3) - center[1]) >> shift,
+                ((sum[2] / 3) - center[2]) >> shift,
+            ];
+            radius = radius.max(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+            ((f[0] & 0x7ff) << 21) | ((f[1] & 0x3ff) << 11) | (f[2] & 0x7ff)
+        })
+        .collect();
+    (2 + f64::from(radius).sqrt() as i32, packed)
 }
 
 /// Reference UVs of one textured face (`computeFaceUvs`, static path): the explicit texture
