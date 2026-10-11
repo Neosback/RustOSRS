@@ -197,8 +197,9 @@ impl EditorApp {
         ui.checkbox(&mut self.prefs.bright_textures, "Bright textures");
         if self.prefs.render_profile == ProfileChoice::Hd {
             ui.weak(
-                "HD is a work in progress: the scene is drawn into an HDR target and resolved \
-                 by a placeholder pass. 117 HD shading arrives phase by phase.",
+                "HD is a work in progress: materials, normal maps, specular and ground blending \
+                 are in; lighting and the resolve pass are placeholders until the later phases. \
+                 Animated objects still use Reference shading.",
             );
         }
         ui.weak("Defaults match RuneLite's GPU plugin. Fog uses the sky colour.");

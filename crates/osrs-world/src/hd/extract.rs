@@ -53,7 +53,9 @@ pub fn procedural_input(world: &WorldScene) -> ProceduralInput<'_> {
                     continue;
                 };
                 let main = tile_input(world, tile, x, y);
-                let bridge = tile.linked_below().and_then(|below| tile_input(world, below, x, y));
+                let bridge = tile
+                    .linked_below()
+                    .and_then(|below| tile_input(world, below, x, y));
                 if main.is_some() {
                     tiles.push(SceneTileInput {
                         plane: plane_index,
@@ -95,13 +97,16 @@ pub fn extract_owned_geometry_hd(
             continue;
         }
         let Some(semantic) = world.scene.tile(
-            StoragePlane::new(slot.plane).unwrap_or_else(|| unreachable_plane()),
+            StoragePlane::new(slot.plane).unwrap_or_else(unreachable_plane),
             SceneTile::new(main.x as u32, main.y as u32),
         ) else {
             continue;
         };
         let (scene_zone_x, scene_zone_z) = (main.x / 8, main.y / 8);
-        let zone_origin = (scene_zone_x * ZONE_LOCAL_UNITS, scene_zone_z * ZONE_LOCAL_UNITS);
+        let zone_origin = (
+            scene_zone_x * ZONE_LOCAL_UNITS,
+            scene_zone_z * ZONE_LOCAL_UNITS,
+        );
         let sources = [
             (Some(main), slot.plane, semantic.min_plane()),
             (
@@ -112,11 +117,12 @@ pub fn extract_owned_geometry_hd(
         ];
         for (tile, level, min_plane) in sources {
             let Some(tile) = tile else { continue };
-            let visible_below = world
-                .load
-                .settings(usize::from(tile.level), tile.x as usize, tile.y as usize)
-                & TILE_FLAG_VIS_BELOW
-                != 0;
+            let visible_below =
+                world
+                    .load
+                    .settings(usize::from(tile.level), tile.x as usize, tile.y as usize)
+                    & TILE_FLAG_VIS_BELOW
+                    != 0;
             let faces = emitter.tile_faces(
                 tile,
                 TileSettings {
@@ -141,7 +147,10 @@ pub fn extract_owned_geometry_hd(
         }
         let (level, min_plane) = effective_level(world, loc.plane, loc.tile);
         let (scene_zone_x, scene_zone_z) = (loc.tile.x as i32 / 8, loc.tile.y as i32 / 8);
-        let origin = (scene_zone_x * ZONE_LOCAL_UNITS, scene_zone_z * ZONE_LOCAL_UNITS);
+        let origin = (
+            scene_zone_x * ZONE_LOCAL_UNITS,
+            scene_zone_z * ZONE_LOCAL_UNITS,
+        );
         let world_tile = (
             world.window.base_x + loc.tile.x as i32,
             world.window.base_y + loc.tile.y as i32,

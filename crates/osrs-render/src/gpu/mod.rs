@@ -815,8 +815,16 @@ impl SceneRenderer {
                 bind_group,
                 opaque: fit(old_opaque, bytemuck::cast_slice(&opaque), "zone-opaque"),
                 alpha: fit(old_alpha, bytemuck::cast_slice(&alpha), "zone-alpha"),
-                opaque_hd: fit(old_opaque_hd, bytemuck::cast_slice(&opaque_hd), "zone-opaque-hd"),
-                alpha_hd: fit(old_alpha_hd, bytemuck::cast_slice(&alpha_hd), "zone-alpha-hd"),
+                opaque_hd: fit(
+                    old_opaque_hd,
+                    bytemuck::cast_slice(&opaque_hd),
+                    "zone-opaque-hd",
+                ),
+                alpha_hd: fit(
+                    old_alpha_hd,
+                    bytemuck::cast_slice(&alpha_hd),
+                    "zone-alpha-hd",
+                ),
                 opaque_ranges,
                 alpha_models,
             });
@@ -902,7 +910,12 @@ impl SceneRenderer {
         let lighting = &self.hd_lighting;
         let environment = hd::layout::HdEnvironmentUniform {
             camera: [params.camera.x, params.camera.y, params.camera.z, 0.0],
-            light_dir: [lighting.light_dir[0], lighting.light_dir[1], lighting.light_dir[2], 0.0],
+            light_dir: [
+                lighting.light_dir[0],
+                lighting.light_dir[1],
+                lighting.light_dir[2],
+                0.0,
+            ],
             light_color: [
                 lighting.light_color[0],
                 lighting.light_color[1],
@@ -921,7 +934,12 @@ impl SceneRenderer {
                 lighting.water_color[2],
                 0.0,
             ],
-            flags: [u32::from(lighting.normal_mapping), lighting.debug_view, 0, 0],
+            flags: [
+                u32::from(lighting.normal_mapping),
+                lighting.debug_view,
+                0,
+                0,
+            ],
         };
         self.queue
             .write_buffer(&self.hd_env_buffer, 0, bytemuck::bytes_of(&environment));

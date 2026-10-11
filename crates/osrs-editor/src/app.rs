@@ -18,6 +18,7 @@ use crate::interact;
 use crate::keymap::Keymap;
 use crate::pick::{self, Infos, ObjectPick, Pick};
 use crate::plugin::EditorPlugin;
+use crate::settings::ProfileChoice;
 use crate::settings::{self, Settings};
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_core::coords::RegionCoord;
@@ -83,6 +84,8 @@ pub struct EditorApp {
     /// Every persisted value (see `settings.rs`); the UI edits it in place.
     prefs: Settings,
     presentation_generation: u32,
+    /// Whether regions are being built with the HD vertex stream (the HD render profile).
+    presentation_hd: bool,
     /// Background (and the colour holes in the terrain show). RuneLite's default sky is black.
     /// Inspection data of the resident regions (for picking).
     infos: Infos,
@@ -155,8 +158,8 @@ impl EditorApp {
             0.3 * REGION_UNITS as f32,
         );
         let asset_cache_dir = cache_dir.clone();
-        let streamer = RegionStreamer::spawn(cache_dir, Self::presentation(false));
-        streamer.set_presentation(Self::presentation(false), 1);
+        let streamer = RegionStreamer::spawn(cache_dir, Self::presentation(false, false));
+        streamer.set_presentation(Self::presentation(false, false), 1);
 
         let mut app = Self {
             render_state,
@@ -179,6 +182,7 @@ impl EditorApp {
             minimap_hud: minimap::MinimapHud::default(),
             prefs: Settings::default(),
             presentation_generation: 1,
+            presentation_hd: false,
             infos: Infos::new(),
             hover: Pick::default(),
             selected: None,
@@ -284,7 +288,7 @@ impl EditorApp {
         }
         if settings.smooth_terrain != self.prefs.smooth_terrain {
             self.streamer.set_presentation(
-                Self::presentation(settings.smooth_terrain),
+                Self::presentation(settings.smooth_terrain, self.presentation_hd),
                 self.presentation_generation,
             );
         }
@@ -306,9 +310,10 @@ impl EditorApp {
         }
     }
 
-    fn presentation(smooth_terrain: bool) -> TerrainPresentation {
+    fn presentation(smooth_terrain: bool, hd_geometry: bool) -> TerrainPresentation {
         TerrainPresentation {
             smooth_terrain,
+            hd_geometry,
             // Always on, no switch: lifts diagonal wall-decoration plates off their wall so the
             // depth buffer does not hide their recessed faces (the software client painted
             // decorations over their wall regardless of depth).
@@ -320,8 +325,9 @@ impl EditorApp {
     /// Rebuild every resident region (after a presentation change).
     fn rebuild_all(&mut self) {
         self.presentation_generation += 1;
+        self.presentation_hd = self.prefs.render_profile == ProfileChoice::Hd;
         self.streamer.set_presentation(
-            Self::presentation(self.prefs.smooth_terrain),
+            Self::presentation(self.prefs.smooth_terrain, self.presentation_hd),
             self.presentation_generation,
         );
         for key in self.loaded.keys().copied().collect::<Vec<_>>() {
@@ -440,8 +446,20 @@ impl EditorApp {
 
     /// Apply finished builds, then request and unload regions around the camera.
     fn stream(&mut self) {
+        // The HD profile needs geometry with the HD vertex stream: rebuild when it is switched.
+        if (self.prefs.render_profile == ProfileChoice::Hd) != self.presentation_hd {
+            self.rebuild_all();
+        }
         while let Some(event) = self.streamer.try_recv() {
             match event {
+                StreamEvent::HdMaterials(data) => {
+                    if let Err(error) = data.install(&mut self.renderer) {
+                        self.status = Some(format!("HD materials failed: {error}"));
+                    }
+                }
+                StreamEvent::HdFailed(error) => {
+                    self.status = Some(format!("117 HD data failed to load: {error}"));
+                }
                 StreamEvent::Ready { textures } => {
                     self.renderer.set_textures(&textures);
                     self.ready = true;

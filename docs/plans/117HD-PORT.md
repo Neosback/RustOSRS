@@ -108,8 +108,39 @@ tone map / colour filter / AA resolve -> overlays (egui).
   so the device must allow >256 array layers: `hd::raise_limits`, applied in the editor's wgpu setup and
   `new_headless`). Not wired into a shader yet: phase 2 consumes it. Vanilla (cache) texture layers are left
   empty for phase 2 to fill via `MaterialTextureArray::write_layer`.
-* Next: phase 2 (vertex format with normals
-  and material ids, `ProceduralGenerator`), then 3-8 as listed above.
+* Done (phase 2, 2026-10-11): HD vertex stream, `ProceduralGenerator` and `SceneUploader` terrain/model
+  ports, the HD scene shader. Layout:
+  * `osrs-hd`: `expr` (the JSON expression language), `settings` (`HdSettings`: season, texture and ground
+    blending toggles), `materials::MaterialSet` (parent defaults, conditional replacements such as
+    `HD_BRICK` for `BRICK`, vanilla-texture map, material table order), `tiles` (areas as boxes, ground
+    materials incl. the built-in `DIRT`/`UNDERWATER_GENERIC`, water types, tile-override lookup +
+    colour-conditional replacements). Tests in the crate and `tests/resolve.rs`.
+  * `osrs-render`: `HdVertex` (36 bytes: octahedral normal, f32 UV, packed HSL/material/water data of all three
+    triangle corners, like the plugin's zone renderer) lives in a second vertex buffer parallel to the
+    unchanged Reference `PackedVertex` stream (`GeometryBuilder::{hd_opaque, hd_alpha}`, `push_hd_faces`);
+    `gpu/hd/scene.wgsl` (diffuse + normal map + specular + AO maps, per-corner material blending,
+    underlay/overlay colour blending, underwater tint; BSD-2 notice kept) and its pipelines. Zones without HD
+    data (animated locs) and frames before `set_hd_materials` fall back to Reference shading in the HDR target.
+  * `osrs-world::hd`: `HdContext` (resolved data), `procedural` (`ProceduralGenerator`: main tile overrides,
+    underwater depth (`DEPTH_LEVEL_SLOPE`), terrain normals, ground blending of colour and material),
+    `terrain` (tile paint/model emission: blended colours and materials, world-aligned UVs, water depth, double
+    sided upper floors), `model` (model overrides: base/texture materials, `materialOverrides`, box/model/world/
+    vanilla UVs, undo-vanilla-shading, flat/upward normals, colour/alpha modifiers), `extract`
+    (`extract_owned_geometry_hd`), `gpu` (`HdGpuData`: material table, layer plan, decoded textures, vanilla
+    texture layers). `TerrainPresentation::hd_geometry` and `StreamEvent::HdMaterials` stream it; the editor
+    rebuilds regions when the profile is switched.
+  * Tests: unit tests (normals, blending, water depth, override resolution, UV types, octahedral encoding, vertex
+    stream), `osrs-world/tests/hd_extract.rs` (Lumbridge: terrain is grass/dirt materials, brick -> `HD_BRICK`,
+    wood materials, normals face the way the triangles face), `hd_profile_pixels.rs` (HD golden with tolerance;
+    Reference stays pixel-identical: `reference_profile_pixels.rs`). `render_frame` example: `RENDER_PROFILE=hd`
+    (+ `RENDER_HD_DEBUG=1..5` for base colour, UV, normals, tangent, lighting views).
+  * Not yet (later phases or follow-ups): water surfaces (5), colour-conditional model overrides, terrain vertex
+    snapping, wind/character displacement, tile-colour inheritance, TzHaar recolouring, fake-shadow hiding,
+    parallax occlusion, flow maps; lighting is a placeholder sun/ambient (`HdLighting`) until phase 3; animated
+    locs are shaded the Reference way. HD geometry costs 56 bytes per vertex (Reference 20): the Lumbridge window
+    is 100 MB, so large load radii need the vertex diet noted in the phase 3 follow-ups (drop the per-corner
+    HSL/material copies for non-terrain faces, 16-bit UVs).
+* Next: phase 3 (environments, fog, sky colour, default sky), then 4-8 as listed above.
 
 ## 6. First concrete steps
 

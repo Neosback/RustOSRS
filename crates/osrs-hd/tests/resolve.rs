@@ -35,7 +35,9 @@ fn vanilla_textures_map_to_hd_materials() -> Result<(), Box<dyn std::error::Erro
         },
         0..200,
     );
-    let plain = vanilla_only.get(vanilla_only.from_vanilla_texture(2)).ok_or("BRICK")?;
+    let plain = vanilla_only
+        .get(vanilla_only.from_vanilla_texture(2))
+        .ok_or("BRICK")?;
     assert_eq!(plain.name, "BRICK");
     // Every vanilla texture resolves to something.
     assert!((0..200).all(|id| set.from_vanilla_texture(id) != 0));
@@ -54,7 +56,13 @@ fn ground_materials_and_tile_overrides_resolve() -> Result<(), Box<dyn std::erro
         osrs_hd::Gamevals::resolve(&data.gamevals.objects, id)
     });
 
-    assert!(grounds.get(GroundMaterials::DIRT).materials.iter().all(|m| *m != 0));
+    assert!(
+        grounds
+            .get(GroundMaterials::DIRT)
+            .materials
+            .iter()
+            .all(|m| *m != 0)
+    );
     assert_eq!(water.seasonal(WaterTypes::NONE, 1), water.index_of("WATER"));
     assert_eq!(water.seasonal(WaterTypes::NONE, -1), WaterTypes::NONE);
 
@@ -74,7 +82,10 @@ fn ground_materials_and_tile_overrides_resolve() -> Result<(), Box<dyn std::erro
         hsl: [8, 3, 40],
     };
     let resolved = overrides.resolve(hit.index, &vars);
-    assert_ne!(overrides.get(resolved).ground_material, GroundMaterials::NONE);
+    assert_ne!(
+        overrides.get(resolved).ground_material,
+        GroundMaterials::NONE
+    );
 
     // The seasonal wrappers pick the summer variant unless the theme is winter.
     let seasonal = data

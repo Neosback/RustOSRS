@@ -130,7 +130,15 @@ impl MaterialSet {
             .collect();
         let mut resolved = vec![None; data.materials.len()];
         let definitions: Vec<Material> = (0..data.materials.len())
-            .filter_map(|index| resolve(index, &data.materials, &by_name, &mut resolved, &mut Vec::new()))
+            .filter_map(|index| {
+                resolve(
+                    index,
+                    &data.materials,
+                    &by_name,
+                    &mut resolved,
+                    &mut Vec::new(),
+                )
+            })
             .collect();
 
         let condition = |material: &Material| -> Option<Expression> {
@@ -271,6 +279,7 @@ impl MaterialSet {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::settings::HdSettings;

@@ -396,6 +396,7 @@ impl Parser {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -445,7 +446,10 @@ mod tests {
 
     #[test]
     fn enum_constants_and_unknown_variables() {
-        let winter = [("season", Value::Int(3)), ("SeasonalTheme.WINTER", Value::Int(3))];
+        let winter = [
+            ("season", Value::Int(3)),
+            ("SeasonalTheme.WINTER", Value::Int(3)),
+        ];
         assert!(check("season == SeasonalTheme.WINTER", &winter));
         assert!(!check("season == SeasonalTheme.AUTUMN", &winter));
         // An undefined identifier is false, so a stray variable disables a condition.

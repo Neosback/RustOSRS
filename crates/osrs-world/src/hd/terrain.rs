@@ -44,6 +44,7 @@ fn fract(value: f32) -> f32 {
 
 impl TerrainEmitter<'_> {
     /// The HD faces of one tile.
+    #[allow(clippy::needless_range_loop, clippy::too_many_lines)]
     pub fn tile_faces(&self, tile: TileInput<'_>, settings: TileSettings) -> Vec<HdFace> {
         let geometry = tile_geometry(tile.surface, tile.x, tile.y);
         if geometry.corners.is_some() && geometry.corner_colors[3] == HIDDEN_HSL {
@@ -55,9 +56,15 @@ impl TerrainEmitter<'_> {
             self.base.1 + tile.y,
             i32::from(tile.level),
         );
-        let main = self.data.tile_override(tile.level, tile.x, tile.y, OverrideSlot::Main);
-        let overlay = self.data.tile_override(tile.level, tile.x, tile.y, OverrideSlot::Overlay);
-        let underlay = self.data.tile_override(tile.level, tile.x, tile.y, OverrideSlot::Underlay);
+        let main = self
+            .data
+            .tile_override(tile.level, tile.x, tile.y, OverrideSlot::Main);
+        let overlay = self
+            .data
+            .tile_override(tile.level, tile.x, tile.y, OverrideSlot::Overlay);
+        let underlay = self
+            .data
+            .tile_override(tile.level, tile.x, tile.y, OverrideSlot::Underlay);
         let textured = has_vanilla_texture(tile.surface);
         let is_paint = geometry.corners.is_some();
 
@@ -74,9 +81,10 @@ impl TerrainEmitter<'_> {
                 underlay
             };
             let mut override_index = found.index;
-            let water = ctx
-                .water
-                .seasonal(ctx.tile_overrides.get(override_index).water_type, face.texture);
+            let water = ctx.water.seasonal(
+                ctx.tile_overrides.get(override_index).water_type,
+                face.texture,
+            );
             let mut colors = face.colors;
             let mut materials = [0_usize; 3];
             let mut depths = [0_i32; 3];
@@ -94,8 +102,8 @@ impl TerrainEmitter<'_> {
                     materials = [material; 3];
                 }
                 let override_data = ctx.tile_overrides.get(override_index);
-                let use_default_color = textured
-                    || (override_index != TileOverrides::NONE && !override_data.blended);
+                let use_default_color =
+                    textured || (override_index != TileOverrides::NONE && !override_data.blended);
                 // Overlay faces of models are not blended when they keep the default colour.
                 let blocked = if is_paint {
                     use_default_color
@@ -178,11 +186,14 @@ impl TerrainEmitter<'_> {
             }
             let packed_materials = [0, 1, 2].map(|corner| {
                 let vertex = self.data.vertex(face.keys[corner]);
-                let both = vertex.is_some_and(|v| {
-                    v.is(VERTEX_OVERLAY) && v.is(VERTEX_UNDERLAY)
-                }) && water == WaterTypes::NONE;
+                let both = vertex.is_some_and(|v| v.is(VERTEX_OVERLAY) && v.is(VERTEX_UNDERLAY))
+                    && water == WaterTypes::NONE;
                 let index = materials[corner].min(0x0FFF) as u16;
-                if both { index | HD_MATERIAL_OVERLAY } else { index }
+                if both {
+                    index | HD_MATERIAL_OVERLAY
+                } else {
+                    index
+                }
             });
             let uvs = self.face_uvs(face, tile, world, uv_orientation, uv_scale, is_paint);
             let positions = [0, 1, 2].map(|corner| {
@@ -199,7 +210,11 @@ impl TerrainEmitter<'_> {
                 normals: face.keys.map(|key| self.data.normal(key)),
                 hsl: colors.map(|color| (color & 0xFFFF) as u16),
                 material: packed_materials,
-                water_depth: depths.map(|depth| depth.clamp(0, 0x0FFF).max(i32::from(water != WaterTypes::NONE)) as u16),
+                water_depth: depths.map(|depth| {
+                    depth
+                        .clamp(0, 0x0FFF)
+                        .max(i32::from(water != WaterTypes::NONE)) as u16
+                }),
                 water_type: water,
                 plane: tile.level,
                 flags: HD_FLAG_TERRAIN,

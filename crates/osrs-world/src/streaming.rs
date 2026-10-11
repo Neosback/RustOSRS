@@ -9,7 +9,9 @@
 use crate::{
     AnimatedInstance, OwnedTiles, RegionInfo, SceneWindow, TerrainPresentation, WorldDefinitions,
     WorldError, build_world_scene, extract_animated_instances, extract_owned_geometry,
-    extract_region_info, texture_layers,
+    extract_region_info,
+    hd::{HdContext, extract::extract_owned_geometry_hd, gpu::HdGpuData},
+    texture_layers,
 };
 use osrs_core::coords::RegionCoord;
 use osrs_render::{SceneGeometry, gpu::TextureLayer};
@@ -53,6 +55,17 @@ pub fn build_region_geometry(
     region: RegionCoord,
     presentation: TerrainPresentation,
 ) -> Result<Option<RegionGeometry>, WorldError> {
+    build_region_geometry_with(definitions, region, presentation, None)
+}
+
+/// [`build_region_geometry`] with the HD data of the 117 HD profile: when `hd` is given and
+/// `presentation.hd_geometry` is set the geometry carries the HD vertex stream.
+pub fn build_region_geometry_with(
+    definitions: &mut WorldDefinitions,
+    region: RegionCoord,
+    presentation: TerrainPresentation,
+    hd: Option<&HdContext>,
+) -> Result<Option<RegionGeometry>, WorldError> {
     if definitions.region(region)?.is_none() {
         return Ok(None);
     }
@@ -64,7 +77,10 @@ pub fn build_region_geometry(
         min: (margin, margin),
         max: (margin + REGION_TILES, margin + REGION_TILES),
     });
-    let geometry = extract_owned_geometry(&world, owned);
+    let geometry = match hd.filter(|_| presentation.hd_geometry) {
+        Some(hd) => extract_owned_geometry_hd(&world, owned, hd),
+        None => extract_owned_geometry(&world, owned),
+    };
     let animations = extract_animated_instances(&world, owned);
     let info = Arc::new(extract_region_info(
         &world,
@@ -85,6 +101,24 @@ pub fn build_region_geometry(
     }))
 }
 
+/// Load the 117 HD data and prepare its GPU material table (textures decode on all cores).
+fn load_hd(definitions: &WorldDefinitions) -> Result<(HdContext, Box<HdGpuData>), String> {
+    let assets = crate::hd::default_assets_dir();
+    let textures = definitions.textures();
+    let present = textures
+        .images
+        .iter()
+        .enumerate()
+        .filter(|(_, image)| image.is_some())
+        .map(|(id, _)| id as i32);
+    let context = HdContext::load(&assets, osrs_hd::settings::HdSettings::default(), present)
+        .map_err(|error| error.to_string())?;
+    let gpu = context
+        .prepare_gpu(&assets, textures, HdGpuData::RESOLUTION)
+        .map_err(|error| error.to_string())?;
+    Ok((context, Box::new(gpu)))
+}
+
 /// Messages from the streaming worker.
 pub enum StreamEvent {
     /// The cache is open; textures are ready to upload.
@@ -92,6 +126,11 @@ pub enum StreamEvent {
         textures: Vec<Option<TextureLayer>>,
     },
     Region(Box<RegionGeometry>),
+    /// The HD profile's material table and textures, decoded (sent once, before the first HD
+    /// region).
+    HdMaterials(Box<HdGpuData>),
+    /// The 117 HD data could not be loaded; regions keep Reference geometry.
+    HdFailed(String),
     /// The cache has no map data for this region (open ocean, unused squares).
     Empty(RegionCoord),
     /// Triangles of one picked loc (`[[x, height, z]; 3]` world units).
@@ -141,6 +180,9 @@ impl RegionStreamer {
                 });
                 let mut presentation = presentation;
                 let mut generation = 0_u32;
+                // Loaded the first time an HD region is requested.
+                let mut hd: Option<HdContext> = None;
+                let mut hd_failed = false;
                 while let Ok(request) = request_rx.recv() {
                     match request {
                         Request::Shutdown => break,
@@ -158,16 +200,31 @@ impl RegionStreamer {
                             generation = new_generation;
                         }
                         Request::Build(region) => {
-                            let event =
-                                match build_region_geometry(&mut definitions, region, presentation)
-                                {
-                                    Ok(Some(mut geometry)) => {
-                                        geometry.generation = generation;
-                                        StreamEvent::Region(Box::new(geometry))
+                            if presentation.hd_geometry && hd.is_none() && !hd_failed {
+                                match load_hd(&definitions) {
+                                    Ok((context, gpu)) => {
+                                        hd = Some(context);
+                                        let _ = event_tx.send(StreamEvent::HdMaterials(gpu));
                                     }
-                                    Ok(None) => StreamEvent::Empty(region),
-                                    Err(error) => StreamEvent::Failed(region, error.to_string()),
-                                };
+                                    Err(error) => {
+                                        hd_failed = true;
+                                        let _ = event_tx.send(StreamEvent::HdFailed(error));
+                                    }
+                                }
+                            }
+                            let event = match build_region_geometry_with(
+                                &mut definitions,
+                                region,
+                                presentation,
+                                hd.as_ref(),
+                            ) {
+                                Ok(Some(mut geometry)) => {
+                                    geometry.generation = generation;
+                                    StreamEvent::Region(Box::new(geometry))
+                                }
+                                Ok(None) => StreamEvent::Empty(region),
+                                Err(error) => StreamEvent::Failed(region, error.to_string()),
+                            };
                             if event_tx.send(event).is_err() {
                                 break;
                             }

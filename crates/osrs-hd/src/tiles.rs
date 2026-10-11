@@ -347,7 +347,8 @@ pub struct ResolvedTileOverride {
 impl ResolvedTileOverride {
     /// `TileOverride.modifyColor` on a packed Jagex HSL colour.
     pub fn modify_color(&self, hsl: i32) -> i32 {
-        let apply = |value: i32, (shift, min, max): (i32, i32, i32)| (value + shift).clamp(min, max);
+        let apply =
+            |value: i32, (shift, min, max): (i32, i32, i32)| (value + shift).clamp(min, max);
         let h = apply((hsl >> 10) & 0x3F, self.hue);
         let s = apply((hsl >> 7) & 7, self.saturation);
         let l = apply(hsl & 0x7F, self.lightness);
@@ -501,7 +502,11 @@ impl TileOverrides {
                 .iter()
                 .filter_map(resolve_id)
                 .map(|id| OVERLAY_FLAG | id as i32);
-            let underlays = o.underlay_ids.iter().filter_map(resolve_id).map(|id| id as i32);
+            let underlays = o
+                .underlay_ids
+                .iter()
+                .filter_map(resolve_id)
+                .map(|id| id as i32);
             let ids: Vec<i32> = overlays.chain(underlays).collect();
             if ids.is_empty() {
                 set.any_match.push(index);
@@ -629,7 +634,14 @@ fn resolve_override(
         uv_orientation: o.uv_orientation.unwrap_or(0),
         uv_scale: 1.0 / o.uv_scale.filter(|scale| *scale != 0.0).unwrap_or(1.0),
         height_offset: o.height_offset.unwrap_or(0),
-        hue: limits(o.set_hue, o.shift_hue, o.min_hue, o.max_hue, 63, forced_value(0)),
+        hue: limits(
+            o.set_hue,
+            o.shift_hue,
+            o.min_hue,
+            o.max_hue,
+            63,
+            forced_value(0),
+        ),
         saturation: limits(
             o.set_saturation,
             o.shift_saturation,
@@ -668,6 +680,7 @@ impl Variables for TileVariables<'_> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

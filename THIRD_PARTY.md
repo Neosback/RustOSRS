@@ -18,6 +18,11 @@ the file header:
 | `crates/osrs-hd/src/lib.rs` | data model of the plugin's `scene/*.json` files (header links the upstream) |
 | `crates/osrs-render/src/gpu/hd/layout.rs`, `hd/materials.wgsl` | `opengl/uniforms/UBOMaterials.java`, `Material.fillMaterialStruct` (material table layout and packing) |
 | `crates/osrs-render/src/gpu/hd/materials.rs` | `MaterialManager.swapMaterials` (texture layer assignment), `TextureManager.uploadTexture` (flip, bicubic resample to 128/256 px, sRGB mip chain) |
+| `crates/osrs-render/src/gpu/hd/scene.wgsl` | `scene_vert.glsl`, `scene_frag.glsl`, `utils/{color_utils,normals,specular,uvs}.glsl` (phase 2 subset) |
+| `crates/osrs-render/src/hd_geometry.rs` | vertex data layout of `scene_vert.glsl` / `SceneUploader` (per-corner colour, material and terrain data) |
+| `crates/osrs-hd/src/{expr,settings,materials,tiles}.rs` | `ExpressionParser`, `HDVariables`, `MaterialManager`, `AreaManager`, `GroundMaterial(Manager)`, `WaterTypeManager`, `TileOverride(Manager)` |
+| `crates/osrs-world/src/hd/procedural.rs` | `scene/ProceduralGenerator.java` (tile overrides, underwater depth, terrain normals, ground blending) |
+| `crates/osrs-world/src/hd/terrain.rs`, `hd/model.rs` | `SceneUploader.uploadTilePaint/uploadTileModel/uploadStaticModel`, `ModelOverride(Manager)` (UV types, undo vanilla shading) |
 
 `gpu/hd/post.wgsl` and the frame graph are original; the placeholder resolve pass is replaced by ports of
 `utils/tone_mapping.glsl` (MIT, (c) 2022 Bjorn Ottosson, see the header of that file), `color_filters.glsl`

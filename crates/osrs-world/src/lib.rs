@@ -41,7 +41,7 @@ pub use loc_stage::{LocRenderable, LocStageOutput, LocStageStats, WorldLoc, plac
 pub use scene_builder::{WorldScene, build_world_scene};
 pub use streaming::{
     REGION_WINDOW_MARGIN, RegionGeometry, RegionStreamer, StreamEvent, build_region_geometry,
-    region_window,
+    build_region_geometry_with, region_window,
 };
 pub use terrain_stage::{
     DEFAULT_BRIGHTNESS, LoadedWindow, TerrainPresentation, apply_terrain, load_window,

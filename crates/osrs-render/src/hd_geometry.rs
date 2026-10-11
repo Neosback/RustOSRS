@@ -157,12 +157,7 @@ impl HdFace {
                 normal: oct_encode(self.normals[corner]),
                 uv: self.uvs[corner],
                 hsl_flags: [self.hsl[0], self.hsl[1], self.hsl[2], self.flags],
-                material_water: [
-                    self.material[0],
-                    self.material[1],
-                    self.material[2],
-                    water,
-                ],
+                material_water: [self.material[0], self.material[1], self.material[2], water],
                 depth: [
                     self.water_depth[0] & 0x0FFF,
                     self.water_depth[1] & 0x0FFF,
@@ -256,14 +251,17 @@ mod tests {
             [0.3, -0.8, 0.2],
             [-0.6, 0.1, -0.5],
         ] {
-            let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2])
-                .sqrt();
+            let length =
+                (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
             let unit = normal.map(|c| c / length);
             let decoded = oct_decode(oct_encode(unit));
             let dot: f32 = unit.iter().zip(decoded).map(|(a, b)| a * b).sum();
             assert!(dot > 0.9999, "{unit:?} -> {decoded:?} (dot {dot})");
         }
-        assert_eq!(oct_decode(oct_encode([0.0; 3])), oct_decode(oct_encode([0.0, -1.0, 0.0])));
+        assert_eq!(
+            oct_decode(oct_encode([0.0; 3])),
+            oct_decode(oct_encode([0.0, -1.0, 0.0]))
+        );
     }
 
     #[test]
@@ -287,7 +285,10 @@ mod tests {
     #[test]
     fn transparent_faces_become_one_sorted_model() {
         let mut builder = GeometryBuilder::default();
-        builder.push_hd_faces(&[face(0, false), face(128, false), face(128, true)], [64, 0, 64]);
+        builder.push_hd_faces(
+            &[face(0, false), face(128, false), face(128, true)],
+            [64, 0, 64],
+        );
         assert_eq!(builder.opaque.len(), 3);
         assert_eq!(builder.alpha.len(), 9);
         assert_eq!(builder.hd_alpha.len(), 9);

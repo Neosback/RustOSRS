@@ -24,6 +24,8 @@ pub struct TerrainPresentation {
     /// Non-reference option: average the colour of every vertex shared by flat terrain tiles, so
     /// the per-tile hue/lightness steps of the client's terrain disappear.
     pub smooth_terrain: bool,
+    /// Extract the 117 HD vertex stream (the HD render profile) instead of Reference geometry.
+    pub hd_geometry: bool,
 }
 
 impl Default for TerrainPresentation {
@@ -33,6 +35,7 @@ impl Default for TerrainPresentation {
             jitter: TerrainJitter::default(),
             flush_diagonal_decorations: false,
             smooth_terrain: false,
+            hd_geometry: false,
         }
     }
 }

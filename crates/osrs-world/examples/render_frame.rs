@@ -109,7 +109,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             definitions.textures(),
             osrs_world::hd::gpu::HdGpuData::RESOLUTION,
         )?;
-        gpu.install(&mut renderer).map_err(|error| error.to_string())?;
+        gpu.install(&mut renderer)
+            .map_err(|error| error.to_string())?;
         println!("hd materials installed in {:?}", started.elapsed());
     }
     renderer.upload_scene(&geometry);
@@ -132,7 +133,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         renderer.resident_vertex_bytes()
     );
 
-    if let Some(view) = env::var("RENDER_HD_DEBUG").ok().and_then(|v| v.parse().ok()) {
+    if let Some(view) = env::var("RENDER_HD_DEBUG")
+        .ok()
+        .and_then(|v| v.parse().ok())
+    {
         renderer.set_hd_lighting(osrs_render::gpu::HdLighting {
             debug_view: view,
             ..Default::default()

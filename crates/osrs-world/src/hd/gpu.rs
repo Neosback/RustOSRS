@@ -8,8 +8,8 @@ use osrs_render::gpu::{
     hd::{
         layout::GpuMaterial,
         materials::{
-            DEFAULT_RESOLUTION, DecodedLayers, LayerPlan, MaterialArrayError,
-            MaterialTextureArray, MipChain, vanilla_mip_chain,
+            DEFAULT_RESOLUTION, DecodedLayers, LayerPlan, MaterialArrayError, MaterialTextureArray,
+            MipChain, vanilla_mip_chain,
         },
     },
 };
@@ -90,7 +90,8 @@ impl HdGpuData {
 
     /// Upload the texture array and bind it with the material table.
     pub fn install(self, renderer: &mut SceneRenderer) -> Result<(), MaterialArrayError> {
-        let array = MaterialTextureArray::upload(renderer.device(), renderer.queue(), &self.decoded)?;
+        let array =
+            MaterialTextureArray::upload(renderer.device(), renderer.queue(), &self.decoded)?;
         for (layer, chain) in &self.vanilla {
             array.write_layer(renderer.queue(), *layer, chain);
         }

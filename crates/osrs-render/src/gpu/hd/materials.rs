@@ -306,7 +306,9 @@ pub fn vanilla_mip_chain(texels: &[[u8; 4]], source_size: u32, size: u32) -> Mip
     let flat: Vec<u8> = texels.iter().flatten().copied().collect();
     let base = match image::RgbaImage::from_raw(source_size, source_size, flat) {
         Some(image) if source_size == size => image.into_raw(),
-        Some(image) => image::imageops::resize(&image, size, size, FilterType::CatmullRom).into_raw(),
+        Some(image) => {
+            image::imageops::resize(&image, size, size, FilterType::CatmullRom).into_raw()
+        }
         None => vec![0; (size * size * 4) as usize],
     };
     build_mips(base, size)

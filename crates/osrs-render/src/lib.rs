@@ -27,8 +27,8 @@ pub use coordinates::{RenderCoordinateError, RenderOrigin, RenderPoint};
 pub use draw_plan::{RenderDrawPlan, RenderScenePass};
 pub use generation::SemanticGeneration;
 pub use geometry::{
-    GeometryBuilder, face_uvs as vanilla_face_uvs, ModelPlacement, PackedVertex, SceneGeometry, TERRAIN_SKIP_COLOR,
-    ZONE_LOCAL_UNITS, ZoneGeometry, ZoneGroup,
+    GeometryBuilder, ModelPlacement, PackedVertex, SceneGeometry, TERRAIN_SKIP_COLOR,
+    ZONE_LOCAL_UNITS, ZoneGeometry, ZoneGroup, face_uvs as vanilla_face_uvs,
 };
 pub use hd_geometry::{
     HD_FLAG_FLAT_NORMALS, HD_FLAG_NO_SHADOW_RECEIVE, HD_FLAG_TERRAIN, HD_FLAG_UPWARDS_NORMALS,

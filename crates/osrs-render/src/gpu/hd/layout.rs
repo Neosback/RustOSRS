@@ -249,7 +249,6 @@ pub fn material_bind_group(
     })
 }
 
-
 /// Lighting environment of the HD scene shader (`Environment` in `scene.wgsl`), 96 bytes.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]

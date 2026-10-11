@@ -13,6 +13,7 @@
 
 use super::HdContext;
 use osrs_core::{lighting::ReferenceLitModel, trig::trig_tables};
+use osrs_hd::serde_json::{self, Value};
 use osrs_hd::{
     Gamevals, HdData, ModelOverride,
     materials::MaterialSet,
@@ -23,7 +24,6 @@ use osrs_render::{
     HD_FLAG_FLAT_NORMALS, HD_FLAG_NO_SHADOW_RECEIVE, HD_FLAG_UPWARDS_NORMALS, HD_FLAG_VANILLA_UVS,
     HdFace, ModelPlacement, vanilla_face_uvs,
 };
-use osrs_hd::serde_json::{self, Value};
 use std::collections::HashMap;
 
 const TILE: f32 = 128.0;
@@ -35,7 +35,11 @@ pub enum UvType {
     Vanilla,
     Geometry,
     /// Planar projection along a model axis pair: `(u axis, v axis)` of x=0, y=1, z=2.
-    Model { u: usize, v: usize, mirror: Mirror },
+    Model {
+        u: usize,
+        v: usize,
+        mirror: Mirror,
+    },
     /// Planar projection of the world position along a fixed normal.
     World([f32; 3]),
     Box,
@@ -85,16 +89,29 @@ struct ColorMod {
 
 impl ColorMod {
     fn new(o: &ModelOverride) -> Self {
-        let channel = |set: Option<i32>, shift: Option<i32>, min: Option<i32>, max: Option<i32>, top: i32| {
-            let (mut lo, mut hi) = (min.unwrap_or(0), max.unwrap_or(top));
-            if let Some(set) = set.filter(|set| *set != -1) {
-                (lo, hi) = (set, set);
-            }
-            (shift.unwrap_or(0), lo.clamp(0, top), hi.clamp(0, top))
-        };
+        let channel =
+            |set: Option<i32>, shift: Option<i32>, min: Option<i32>, max: Option<i32>, top: i32| {
+                let (mut lo, mut hi) = (min.unwrap_or(0), max.unwrap_or(top));
+                if let Some(set) = set.filter(|set| *set != -1) {
+                    (lo, hi) = (set, set);
+                }
+                (shift.unwrap_or(0), lo.clamp(0, top), hi.clamp(0, top))
+            };
         let hue = channel(o.set_hue, o.shift_hue, o.min_hue, o.max_hue, 63);
-        let saturation = channel(o.set_saturation, o.shift_saturation, o.min_saturation, o.max_saturation, 7);
-        let lightness = channel(o.set_lightness, o.shift_lightness, o.min_lightness, o.max_lightness, 127);
+        let saturation = channel(
+            o.set_saturation,
+            o.shift_saturation,
+            o.min_saturation,
+            o.max_saturation,
+            7,
+        );
+        let lightness = channel(
+            o.set_lightness,
+            o.shift_lightness,
+            o.min_lightness,
+            o.max_lightness,
+            127,
+        );
         let alpha = channel(o.set_alpha, o.shift_alpha, o.min_alpha, o.max_alpha, 255);
         let modifies_alpha = alpha != (0, 0, 255);
         Self {
@@ -111,7 +128,8 @@ impl ColorMod {
     }
 
     fn color(&self, hsl: i32) -> i32 {
-        let apply = |value: i32, (shift, min, max): (i32, i32, i32)| (value + shift).clamp(min, max);
+        let apply =
+            |value: i32, (shift, min, max): (i32, i32, i32)| (value + shift).clamp(min, max);
         (apply((hsl >> 10) & 0x3F, self.hue) << 10)
             | (apply((hsl >> 7) & 7, self.saturation) << 7)
             | apply(hsl & 0x7F, self.lightness)
@@ -146,11 +164,16 @@ pub struct ResolvedModelOverride {
 impl ResolvedModelOverride {
     /// `ModelOverride.NONE`.
     pub fn none() -> Self {
-        Self::resolve(&ModelOverride::default(), &MaterialSet::default(), &HdSettings::default())
+        Self::resolve(
+            &ModelOverride::default(),
+            &MaterialSet::default(),
+            &HdSettings::default(),
+        )
     }
 
     fn resolve(o: &ModelOverride, materials: &MaterialSet, settings: &HdSettings) -> Self {
-        let named = |name: &Option<String>| name.as_deref().map_or(0, |name| materials.index_of(name));
+        let named =
+            |name: &Option<String>| name.as_deref().map_or(0, |name| materials.index_of(name));
         let (mut base, mut texture) = (named(&o.base_material), named(&o.texture_material));
         // Without object textures only materials that do not replace vanilla textures remain.
         if !settings.model_textures && o.force_material_changes != Some(true) {
@@ -169,7 +192,9 @@ impl ResolvedModelOverride {
                 continue;
             };
             let resolved = Self::resolve(&inner, materials, settings);
-            if !settings.model_textures && modifies_vanilla_texture(materials, resolved.texture_material) {
+            if !settings.model_textures
+                && modifies_vanilla_texture(materials, resolved.texture_material)
+            {
                 continue;
             }
             material_overrides.push((materials.index_of(name), resolved));
@@ -177,10 +202,7 @@ impl ResolvedModelOverride {
         Self {
             base_material: base,
             texture_material: texture,
-            uv_type: o
-                .uv_type
-                .as_deref()
-                .map_or(UvType::Vanilla, UvType::parse),
+            uv_type: o.uv_type.as_deref().map_or(UvType::Vanilla, UvType::parse),
             uv_scale: o.uv_scale.filter(|scale| *scale != 0.0).unwrap_or(1.0),
             uv_orientation: [
                 pick(o.uv_orientation_x),
@@ -422,26 +444,25 @@ fn box_uvs(
     let n = cross(sub(v[1], v[0]), sub(v[2], v[0]));
     let (ax, ay, az) = (n[0].abs(), n[1].abs(), n[2].abs());
     let mut out = [[0.0_f32; 2]; 3];
-    let rotation;
-    if ax > ay && ax > az {
+    let rotation = if ax > ay && ax > az {
         let flip = sign(n[0]);
         for (uv, p) in out.iter_mut().zip(&v) {
             *uv = [flip * -p[2], p[1]];
         }
-        rotation = orientation[0];
+        orientation[0]
     } else if ay > ax && ay > az {
         let flip = sign(n[1]);
         for (uv, p) in out.iter_mut().zip(&v) {
             *uv = [flip * -p[0], p[2]];
         }
-        rotation = orientation[1];
+        orientation[1]
     } else {
         let flip = sign(n[2]);
         for (uv, p) in out.iter_mut().zip(&v) {
             *uv = [flip * p[0], p[1]];
         }
-        rotation = orientation[2];
-    }
+        orientation[2]
+    };
     if rotation % 2048 != 0 {
         let (sin, cos) = (rotation as f32 * JAU_TO_RAD).sin_cos();
         for uv in &mut out {
@@ -554,11 +575,18 @@ pub fn model_faces(hd: &HdContext, model: &ReferenceLitModel, site: ModelSite) -
     // Vertex normals: area-weighted sum of the adjacent face normals (the client's base normals).
     let mut vertex_normals = vec![[0.0_f32; 3]; model.vertices.len()];
     for face in &model.faces {
-        let idx = [face.a.get() as usize, face.b.get() as usize, face.c.get() as usize];
+        let idx = [
+            face.a.get() as usize,
+            face.b.get() as usize,
+            face.c.get() as usize,
+        ];
         if idx.iter().any(|i| *i >= local.len()) {
             continue;
         }
-        let n = cross(sub(local[idx[1]], local[idx[0]]), sub(local[idx[2]], local[idx[0]]));
+        let n = cross(
+            sub(local[idx[1]], local[idx[0]]),
+            sub(local[idx[2]], local[idx[0]]),
+        );
         for i in idx {
             for axis in 0..3 {
                 vertex_normals[i][axis] += n[axis];
@@ -625,7 +653,11 @@ pub fn model_faces(hd: &HdContext, model: &ReferenceLitModel, site: ModelSite) -
             continue;
         }
 
-        let idx = [face.a.get() as usize, face.b.get() as usize, face.c.get() as usize];
+        let idx = [
+            face.a.get() as usize,
+            face.b.get() as usize,
+            face.c.get() as usize,
+        ];
         if idx.iter().any(|i| *i >= positions.len()) {
             continue;
         }
@@ -663,9 +695,8 @@ pub fn model_faces(hd: &HdContext, model: &ReferenceLitModel, site: ModelSite) -
             sub(corner_points[2], corner_points[0]),
         ));
         let vertex_n = idx.map(|i| vertex_normals[i]);
-        let use_face_normal = face_override.flat_normals
-            || flat_lit
-            || vertex_n.iter().all(|n| *n == [0.0; 3]);
+        let use_face_normal =
+            face_override.flat_normals || flat_lit || vertex_n.iter().all(|n| *n == [0.0; 3]);
         let normals_unrotated = if use_face_normal {
             [face_normal; 3]
         } else {
@@ -697,7 +728,11 @@ pub fn model_faces(hd: &HdContext, model: &ReferenceLitModel, site: ModelSite) -
             UvType::Geometry => [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
             UvType::Vanilla => {
                 if texture_id.is_some() {
-                    vanilla_face_uvs(model, face_index, [idx[0] as u32, idx[1] as u32, idx[2] as u32])
+                    vanilla_face_uvs(
+                        model,
+                        face_index,
+                        [idx[0] as u32, idx[1] as u32, idx[2] as u32],
+                    )
                 } else {
                     [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]
                 }
@@ -776,7 +811,10 @@ mod tests {
         // Hue and saturation survive; lightness is capped by the saturation limit (59 at s=2).
         assert_eq!(toward & 0xFF80, color & 0xFF80);
         assert!(toward & 0x7F <= 59);
-        assert_eq!(undo_vanilla_shading((3 << 7) | 120, false, [1.0, 1.0, 1.0]) & 0x7F, 57);
+        assert_eq!(
+            undo_vanilla_shading((3 << 7) | 120, false, [1.0, 1.0, 1.0]) & 0x7F,
+            57
+        );
     }
 
     #[test]
@@ -785,9 +823,8 @@ mod tests {
         let floor = [[0.0, 0.0, 0.0], [128.0, 0.0, 0.0], [0.0, 0.0, 128.0]];
         let uv = box_uvs(floor, 0, 1.0, [0; 3]);
         assert!((uv[1][0] - uv[0][0]).abs() > 0.5 || (uv[1][1] - uv[0][1]).abs() > 0.5);
-        let spread = |uvs: [[f32; 2]; 3]| {
-            (uvs[1][0] - uvs[0][0]).abs() + (uvs[2][1] - uvs[0][1]).abs()
-        };
+        let spread =
+            |uvs: [[f32; 2]; 3]| (uvs[1][0] - uvs[0][0]).abs() + (uvs[2][1] - uvs[0][1]).abs();
         assert!(spread(uv) > 1.0);
         // A wall face in the XY plane maps x to u and y to v.
         let wall = [[0.0, 0.0, 0.0], [128.0, 0.0, 0.0], [0.0, -128.0, 0.0]];
@@ -803,7 +840,11 @@ mod tests {
         assert_eq!(UvType::parse("BOX"), UvType::Box);
         assert_eq!(
             UvType::parse("MODEL_XZ_MIRROR_A"),
-            UvType::Model { u: 0, v: 2, mirror: Mirror::A }
+            UvType::Model {
+                u: 0,
+                v: 2,
+                mirror: Mirror::A
+            }
         );
         assert_eq!(UvType::parse("WORLD_XZ"), UvType::World([0.0, -1.0, 0.0]));
         assert_eq!(UvType::parse("GEOMETRY"), UvType::Geometry);

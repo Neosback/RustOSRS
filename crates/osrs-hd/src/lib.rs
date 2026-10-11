@@ -12,8 +12,8 @@ pub mod materials;
 pub mod settings;
 pub mod tiles;
 
-pub use serde_json;
 use serde::Deserialize;
+pub use serde_json;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -180,7 +180,10 @@ where
         fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.write_str("an object")
         }
-        fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        fn visit_map<A: serde::de::MapAccess<'de>>(
+            self,
+            mut map: A,
+        ) -> Result<Self::Value, A::Error> {
             let mut entries = Vec::new();
             while let Some(entry) = map.next_entry::<String, Value>()? {
                 entries.push(entry);

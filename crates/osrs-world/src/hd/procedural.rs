@@ -26,7 +26,9 @@ pub const HIDDEN_HSL: i32 = 12_345_678;
 /// `HDUtils.UNDERWATER_HSL`.
 pub const UNDERWATER_HSL: i32 = 6_676;
 /// `ProceduralGenerator.DEPTH_LEVEL_SLOPE`: depth of the terrain by distance level from the shore.
-pub const DEPTH_LEVEL_SLOPE: [i32; 12] = [150, 300, 470, 610, 700, 750, 820, 920, 1080, 1300, 1350, 1380];
+pub const DEPTH_LEVEL_SLOPE: [i32; 12] = [
+    150, 300, 470, 610, 700, 750, 820, 920, 1080, 1300, 1350, 1380,
+];
 const TILE: i32 = 128;
 const PLANES: usize = 4;
 
@@ -380,14 +382,23 @@ impl ProceduralData {
                         self.tile_flags[index] |= TILE_SKIP;
                         continue;
                     }
-                    self.mark_water_tile(z, x as i32, y as i32, &mut bounds, &mut min_plane, &mut max_plane);
+                    self.mark_water_tile(
+                        z,
+                        x as i32,
+                        y as i32,
+                        &mut bounds,
+                        &mut min_plane,
+                        &mut max_plane,
+                    );
                     for key in corners {
                         self.vertex_mut(key).flags |= VERTEX_WATER;
                     }
                 }
             } else {
-                let overlay_match = self.tile_override(level, tile.x, tile.y, OverrideSlot::Overlay);
-                let underlay_match = self.tile_override(level, tile.x, tile.y, OverrideSlot::Underlay);
+                let overlay_match =
+                    self.tile_override(level, tile.x, tile.y, OverrideSlot::Overlay);
+                let underlay_match =
+                    self.tile_override(level, tile.x, tile.y, OverrideSlot::Underlay);
                 let face_water = |this: &Self, face: &TileFace| {
                     let index = if face.overlay {
                         overlay_match.index
@@ -420,13 +431,22 @@ impl ProceduralData {
                             }
                             if key.0 % TILE == 0 && key.2 % TILE == 0 {
                                 let (vx, vy) = ((key.0 / TILE) as usize, (key.2 / TILE) as usize);
-                                if let Some(cell) = levels[z].get_mut(vx).and_then(|c| c.get_mut(vy)) {
+                                if let Some(cell) =
+                                    levels[z].get_mut(vx).and_then(|c| c.get_mut(vy))
+                                {
                                     *cell = 0;
                                 }
                             }
                         }
                     } else {
-                        self.mark_water_tile(z, x as i32, y as i32, &mut bounds, &mut min_plane, &mut max_plane);
+                        self.mark_water_tile(
+                            z,
+                            x as i32,
+                            y as i32,
+                            &mut bounds,
+                            &mut min_plane,
+                            &mut max_plane,
+                        );
                         for key in face.keys {
                             self.vertex_mut(key).flags |= VERTEX_WATER;
                         }
@@ -587,7 +607,11 @@ impl ProceduralData {
             let [x, y, z] = vertex.normal_sum.map(|c| c as f64);
             let length = (x * x + y * y + z * z).sqrt();
             if length > 0.0 {
-                vertex.normal = [(x / length) as f32, (y / length) as f32, (z / length) as f32];
+                vertex.normal = [
+                    (x / length) as f32,
+                    (y / length) as f32,
+                    (z / length) as f32,
+                ];
             }
         }
     }
@@ -620,7 +644,12 @@ impl ProceduralData {
         }
     }
 
-    fn tile_terrain_data(&mut self, input: &ProceduralInput<'_>, tile: TileInput<'_>, ctx: &HdContext) {
+    fn tile_terrain_data(
+        &mut self,
+        input: &ProceduralInput<'_>,
+        tile: TileInput<'_>,
+        ctx: &HdContext,
+    ) {
         let geometry = tile_geometry(tile.surface, tile.x, tile.y);
         let world = (
             input.base.0 + tile.x,
@@ -637,7 +666,9 @@ impl ProceduralData {
         }
         let mut entries: Vec<Entry> = Vec::new();
         let textured = has_vanilla_texture(tile.surface);
-        let default_color = |index: usize| textured || (index != TileOverrides::NONE && !ctx.tile_overrides.get(index).blended);
+        let default_color = |index: usize| {
+            textured || (index != TileOverrides::NONE && !ctx.tile_overrides.get(index).blended)
+        };
 
         if let Some(corners) = geometry.corners {
             let main = self.tile_override(tile.level, tile.x, tile.y, OverrideSlot::Main);
@@ -656,10 +687,16 @@ impl ProceduralData {
                 });
             }
         } else {
-            let overlay_match = self.tile_override(tile.level, tile.x, tile.y, OverrideSlot::Overlay);
-            let underlay_match = self.tile_override(tile.level, tile.x, tile.y, OverrideSlot::Underlay);
+            let overlay_match =
+                self.tile_override(tile.level, tile.x, tile.y, OverrideSlot::Overlay);
+            let underlay_match =
+                self.tile_override(tile.level, tile.x, tile.y, OverrideSlot::Underlay);
             for face in &geometry.faces {
-                let found = if face.overlay { overlay_match } else { underlay_match };
+                let found = if face.overlay {
+                    overlay_match
+                } else {
+                    underlay_match
+                };
                 if ctx.tile_overrides.get(found.index).water_type != WaterTypes::NONE {
                     continue;
                 }
@@ -692,7 +729,11 @@ impl ProceduralData {
             let is_overlay = entry.is_overlay != override_data.blended_as_opposite;
 
             let vertex = self.vertex_mut(entry.key);
-            vertex.flags |= if is_overlay { VERTEX_OVERLAY } else { VERTEX_UNDERLAY };
+            vertex.flags |= if is_overlay {
+                VERTEX_OVERLAY
+            } else {
+                VERTEX_UNDERLAY
+            };
             if (!low_priority || !vertex.is(VERTEX_HIGH_PRIORITY_COLOR)) && !entry.default_color {
                 if is_overlay || vertex.color.is_none() {
                     vertex.color = Some(color);
@@ -725,7 +766,8 @@ pub fn relight(color: i32, normal: [f32; 3]) -> i32 {
     };
     let mut lightness = color & 0x7F;
     let light_factor = dot.max(0.0);
-    let adjusted = ((lightness - LIGHTEN_ADD).max(0) as f32 * LIGHTEN_MULTIPLIER) as i32 + LIGHTEN_BASE;
+    let adjusted =
+        ((lightness - LIGHTEN_ADD).max(0) as f32 * LIGHTEN_MULTIPLIER) as i32 + LIGHTEN_BASE;
     lightness = mix(lightness as f32, adjusted as f32, light_factor) as i32;
     let dark_factor = -dot.min(0.0);
     let darkened = (lightness as f32 * DARKEN_MULTIPLIER) as i32;
@@ -755,13 +797,19 @@ pub fn surface_normal(points: [VertexKey; 3]) -> [i64; 3] {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use osrs_scene::terrain::{FlatTerrainSurface, TerrainCorners};
 
     fn flat(heights: [i32; 4], color: i32) -> TerrainSurface {
-        let corners = |values: [i32; 4]| TerrainCorners::new(values[0], values[1], values[2], values[3]);
-        TerrainSurface::Flat(FlatTerrainSurface::new(corners(heights), corners([color; 4]), None))
+        let corners =
+            |values: [i32; 4]| TerrainCorners::new(values[0], values[1], values[2], values[3]);
+        TerrainSurface::Flat(FlatTerrainSurface::new(
+            corners(heights),
+            corners([color; 4]),
+            None,
+        ))
     }
 
     #[test]
@@ -788,11 +836,13 @@ mod tests {
         assert!(normal[1] < 0, "both triangles face the same way");
     }
 
-
     // ---- synthetic scenes -----------------------------------------------------------------
 
     use crate::hd::HdContext;
-    use osrs_hd::{GroundMaterial as GroundJson, HdData, IdRef, Material, TileOverride, WaterType, settings::HdSettings};
+    use osrs_hd::{
+        GroundMaterial as GroundJson, HdData, IdRef, Material, TileOverride, WaterType,
+        settings::HdSettings,
+    };
 
     fn material(name: &str) -> Material {
         Material {
@@ -843,7 +893,10 @@ mod tests {
     }
 
     /// A `size` x `size` flat scene whose tile `(x, y)` has underlay `underlay(x, y)`.
-    fn scene(size: i32, underlay: impl Fn(i32, i32) -> i32) -> (Vec<TerrainSurface>, Vec<(i32, i32, i32)>) {
+    fn scene(
+        size: i32,
+        underlay: impl Fn(i32, i32) -> i32,
+    ) -> (Vec<TerrainSurface>, Vec<(i32, i32, i32)>) {
         let mut surfaces = Vec::new();
         let mut ids = Vec::new();
         for x in 0..size {
@@ -855,7 +908,12 @@ mod tests {
         (surfaces, ids)
     }
 
-    fn generate(surfaces: &[TerrainSurface], ids: &[(i32, i32, i32)], size: i32, ctx: &HdContext) -> ProceduralData {
+    fn generate(
+        surfaces: &[TerrainSurface],
+        ids: &[(i32, i32, i32)],
+        size: i32,
+        ctx: &HdContext,
+    ) -> ProceduralData {
         let tiles = surfaces
             .iter()
             .zip(ids)
@@ -957,12 +1015,23 @@ mod tests {
         let dirt = ctx.materials.index_of("DIRT_1") as u16;
         // Vertices strictly inside one ground keep its material.
         assert_eq!(data.vertex((0, 0, 0)).and_then(|v| v.material), Some(grass));
-        assert_eq!(data.vertex((512, 0, 256)).and_then(|v| v.material), Some(dirt));
+        assert_eq!(
+            data.vertex((512, 0, 256)).and_then(|v| v.material),
+            Some(dirt)
+        );
         // The vertex line x = 2 is shared by a grass and a dirt tile: it must carry one of the two
         // materials (the tile processed last wins for underlays), and every vertex on it the same.
-        let border: Vec<Option<u16>> = (0..=4).map(|y| data.vertex((256, 0, y * 128)).and_then(|v| v.material)).collect();
-        assert!(border.iter().all(|m| *m == Some(grass) || *m == Some(dirt)), "{border:?}");
-        assert!(border[1..4].windows(2).all(|pair| pair[0] == pair[1]), "{border:?}");
+        let border: Vec<Option<u16>> = (0..=4)
+            .map(|y| data.vertex((256, 0, y * 128)).and_then(|v| v.material))
+            .collect();
+        assert!(
+            border.iter().all(|m| *m == Some(grass) || *m == Some(dirt)),
+            "{border:?}"
+        );
+        assert!(
+            border[1..4].windows(2).all(|pair| pair[0] == pair[1]),
+            "{border:?}"
+        );
         // Every vertex got a blended colour with the lightness cap applied.
         for key in [(0, 0, 0), (256, 0, 256), (512, 0, 512)] {
             let color = data.vertex(key).and_then(|v| v.color).expect("colour");
@@ -975,7 +1044,13 @@ mod tests {
         let ctx = context();
         let size = 9;
         // A 7x7 lake with a one-tile land border.
-        let (surfaces, ids) = scene(size, |x, y| if (1..8).contains(&x) && (1..8).contains(&y) { 3 } else { 1 });
+        let (surfaces, ids) = scene(size, |x, y| {
+            if (1..8).contains(&x) && (1..8).contains(&y) {
+                3
+            } else {
+                1
+            }
+        });
         let data = generate(&surfaces, &ids, size, &ctx);
         let depth = |x: i32, y: i32| data.underwater_depth((x * 128, 0, y * 128));
         // Shore vertices stay at the surface, depth grows towards the middle and is symmetric.
@@ -1003,9 +1078,15 @@ mod tests {
         let shaded = relight(colour, [-0.7, -0.1, -0.7]) & 0x7F;
         assert!(lit > shaded, "{lit} vs {shaded}");
         // Hue and saturation are untouched and lightness never exceeds 55.
-        assert_eq!(relight(colour | 0x7F, [0.7, 0.0, 0.7]) & !0x7F, colour & !0x7F);
+        assert_eq!(
+            relight(colour | 0x7F, [0.7, 0.0, 0.7]) & !0x7F,
+            colour & !0x7F
+        );
         assert!(relight(127 | (1 << 10), [0.7, 0.0, 0.7]) & 0x7F <= 55);
         // Flat ground (no xz component) keeps the colour apart from the x1.25 re-expansion.
-        assert_eq!(relight(colour, [0.0, -1.0, 0.0]) & 0x7F, (30.0_f32 * 1.25) as i32);
+        assert_eq!(
+            relight(colour, [0.0, -1.0, 0.0]) & 0x7F,
+            (30.0_f32 * 1.25) as i32
+        );
     }
 }
