@@ -182,6 +182,35 @@ model's own triangles (ghosted fill + edges), rebuilt on the worker from the def
 The RuneLite commit "cache: rev 241" (87616aa) only adds loader changes (object opcode 42
 `fullRecolor`, opcode reorder, item/npc/spotanim fields); `runelite-master` already contains it.
 
+## Three-way review: RuneLite master, melxin RuneLite, Dodian (ub3r game-client)
+
+* **Depth model.** The Dodian client carries the *original* RuneLite GPU plugin: compute shaders
+  sort faces (priority, then depth) like the CPU painter and it draws with **no depth test**
+  (only cull + blend). RuneLite master and the melxin fork use the newer zone renderer: Z-buffer
+  (`GREATER`, reverse-Z) plus the model's per-face **bias**, with face priorities only used for
+  dynamic models (`FacePrioritySorter`/`uploadSortedModel`). We follow master. Consequence:
+  geometry that the painter showed only because decorations are drawn after their wall (recessed
+  slots, plates 0.7 units inside a wall) is hidden by a depth buffer, which is what the plate lift
+  compensates for.
+* **Face bias is real data.** 1,083 of 7,152 typed object models (15%) carry a face-bias array in
+  build 241 (torch decorations 196-206, many wall models). We decode it and pack it exactly like
+  master (`(bias & 0xff) << 16`, `clip.z += bias / 128`). Decoration 1938 (arrow slit) has none.
+* **Transparency.** Master applies per-face alpha to textured and untextured faces; the old plugin
+  (`packAlphaPriority`) applied it only to untextured faces. Ours = master. Alpha pass, blend and
+  `-1/-2` alpha handling in lighting (`-1` hidden, `-2` flat black-ish colour 128) match the
+  client's `toModel`. Model-level transparency override (`faceTransparency`) only exists for
+  dynamic/faded models and is not modelled.
+* **Lighting.** `ModelData.toModel` / `calculateVertexNormals` (normal sign, `/ (var7 * magnitude)`,
+  `ambient + dot`, `(-50,-10,-50)`, clamp `2..126`) and the 317 `Model.light` agree with
+  `osrs-core::lighting`/`normals`. Nothing found that differs.
+* **Decorative second offset.** melxin (older) draws the second renderable at `getX()/getY()`;
+  master adds `getXOffset2/getYOffset2` (new 241 client fields, values unknown). The 317 client
+  and melxin both place the second plate with no extra offset, which is what we do and what makes
+  matched-orientation windows flush on both faces.
+* Verified in the current build: the arrow-slit decoration 1938 renders its full black cross on
+  straight castle walls (Lumbridge) and, with the plate lift, on the diagonal Yanille walls
+  (`RENDER_AT=...` examples).
+
 ## RuneLite / client behaviour we know about but do not reproduce yet
 
 * **Alpha ordering.** `Zone.renderAlpha` sorts alpha models by squared distance (far first) and,

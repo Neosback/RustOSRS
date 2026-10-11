@@ -57,6 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     class.clone()
                 };
+                if class_key != "flush" || loc.definition.identity.id.get() == 1938 { println!("  {class} : obj {} t{} r{} at {:?} host {} t{} r{} {}  plate[{pl},{ph}] wall[{wl},{wh}]", loc.definition.identity.id.get(), loc.loc_type, loc.orientation, loc.tile, host.definition.identity.id.get(), host.loc_type, host.orientation, host.definition.decoration_displacement); }
                 let key = (loc.loc_type, format!("{class_key} (slot {si})"));
                 *stats.entry(key.clone()).or_default() += 1;
                 examples.entry(key).or_insert_with(|| format!("obj {} r{} at {:?} host {} r{} {} plate[{pl},{ph}] wall[{wl},{wh}] axis {axis}", loc.definition.identity.id.get(), loc.orientation, loc.tile, host.definition.identity.id.get(), host.orientation, class));

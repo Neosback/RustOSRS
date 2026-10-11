@@ -23,14 +23,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(|v| v.parse().ok())
             .unwrap_or(default)
     };
-    let camera = ReferenceCamera {
-        x: number(5, 34.0 * 128.0),
-        y: number(6, -2400.0),
-        z: number(7, 18.0 * 128.0),
-        yaw: number(8, 0.0),
-        pitch: number(9, 0.75),
-        // Horizontal FOV of 60 degrees at 1280 pixels wide: (w/2)/tan(30deg).
-        scale: number(10, 640.0 / 30f32.to_radians().tan()),
+    // RENDER_AT="tile-x,tile-y,height,yaw-deg,pitch-deg,distance": aim at a world tile.
+    let aimed = env::var("RENDER_AT").ok().and_then(|value| {
+        let parts: Vec<f32> = value
+            .split(',')
+            .filter_map(|v| v.trim().parse().ok())
+            .collect();
+        (parts.len() == 6).then_some(parts)
+    });
+    let camera = if let Some(p) = aimed {
+        let (yaw, pitch) = (p[3].to_radians(), p[4].to_radians());
+        let target = [
+            (p[0] - window.base_x as f32 + 0.5) * 128.0,
+            -p[2],
+            (p[1] - window.base_y as f32 + 0.5) * 128.0,
+        ];
+        let forward = [
+            -yaw.sin() * pitch.cos(),
+            pitch.sin(),
+            yaw.cos() * pitch.cos(),
+        ];
+        ReferenceCamera {
+            x: target[0] - forward[0] * p[5],
+            y: target[1] - forward[1] * p[5],
+            z: target[2] - forward[2] * p[5],
+            yaw,
+            pitch,
+            scale: number(10, 640.0 / 30f32.to_radians().tan()),
+        }
+    } else {
+        ReferenceCamera {
+            x: number(5, 34.0 * 128.0),
+            y: number(6, -2400.0),
+            z: number(7, 18.0 * 128.0),
+            yaw: number(8, 0.0),
+            pitch: number(9, 0.75),
+            // Horizontal FOV of 60 degrees at 1280 pixels wide: (w/2)/tan(30deg).
+            scale: number(10, 640.0 / 30f32.to_radians().tan()),
+        }
     };
 
     let started = Instant::now();
