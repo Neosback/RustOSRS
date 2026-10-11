@@ -8,6 +8,7 @@
 
 mod app;
 mod camera;
+mod grid;
 mod hud;
 mod pick;
 mod theme;

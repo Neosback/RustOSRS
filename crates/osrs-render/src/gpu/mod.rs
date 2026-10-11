@@ -23,7 +23,10 @@ pub const REFERENCE_NEAR: f32 = 50.0;
 /// MSAA sample count of the scene pass (RuneLite's GPU plugin defaults to 2x MSAA).
 pub const MSAA_SAMPLES: u32 = 4;
 
+mod overlay;
 mod timing;
+
+pub use overlay::LineVertex;
 
 /// Multisampled attachments of the scene pass, resolved into the caller's color view.
 struct MsaaTargets {
@@ -286,6 +289,8 @@ pub struct SceneRenderer {
     alpha_indices: std::cell::RefCell<Option<(wgpu::Buffer, u64)>>,
     /// Scene-pass GPU timing, when the device supports timestamp queries.
     timer: std::cell::RefCell<Option<timing::GpuTimer>>,
+    /// Editor guide lines drawn over the scene.
+    lines: overlay::LineOverlay,
 }
 
 impl SceneRenderer {
@@ -458,6 +463,7 @@ impl SceneRenderer {
             false,
         );
 
+        let lines = overlay::LineOverlay::new(&device, &globals_layout);
         let globals_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("globals"),
             size: std::mem::size_of::<GlobalsUniform>() as u64,
@@ -481,6 +487,7 @@ impl SceneRenderer {
             msaa: std::cell::RefCell::new(None),
             alpha_indices: std::cell::RefCell::new(None),
             timer: std::cell::RefCell::new(timer),
+            lines,
         }
     }
 
@@ -820,10 +827,17 @@ impl SceneRenderer {
                     pass.draw_indexed(0..draw.count, 0, 0..1);
                 }
             }
+
+            self.lines.draw(&mut pass, &self.globals_bind_group);
         }
         if timed && let Some(timer) = timer_guard.as_ref() {
             timer.resolve(encoder);
         }
+    }
+
+    /// Replace the editor guide lines (pairs of vertices, render-local positions).
+    pub fn set_overlay_lines(&mut self, lines: &[LineVertex]) {
+        self.lines.set(&self.device, &self.queue, lines);
     }
 
     /// Call after the encoder from [`Self::encode_frame`] was submitted: collects GPU timings.

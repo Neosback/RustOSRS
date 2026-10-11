@@ -31,6 +31,7 @@ impl EditorApp {
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.panels.properties, "Properties panel   N");
                     ui.checkbox(&mut self.panels.stats_overlay, "Statistics overlay");
+                    ui.menu_button("Grid", |ui| self.grid_toggles(ui));
                     ui.separator();
                     ui.label("Plane");
                     for plane in 0..4_u8 {
@@ -53,6 +54,13 @@ impl EditorApp {
                 });
             });
         });
+    }
+
+    /// Grid level toggles (shared by the View menu and the Properties panel).
+    pub(super) fn grid_toggles(&mut self, ui: &mut egui::Ui) {
+        ui.checkbox(&mut self.grid.tiles, "Tiles");
+        ui.checkbox(&mut self.grid.zones, "Zones (8 tiles)");
+        ui.checkbox(&mut self.grid.regions, "Regions (64 tiles)");
     }
 
     /// Theme choices (shared by the View menu and the Properties panel).

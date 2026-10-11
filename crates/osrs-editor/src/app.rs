@@ -6,6 +6,7 @@ mod properties;
 mod status;
 
 use crate::camera::FlyCamera;
+use crate::grid::{self, GridSettings};
 use crate::hud::{Destination, FrameStats, TeleportWindow};
 use crate::pick::{self, Infos, ObjectPick, Pick};
 use eframe::{egui, egui_wgpu, wgpu};
@@ -51,6 +52,16 @@ struct Panels {
     help: bool,
 }
 
+/// What the grid overlay geometry depends on.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct GridKey {
+    settings: GridSettings,
+    center: (i32, i32),
+    plane: u8,
+    origin: (i32, i32),
+    infos_version: u64,
+}
+
 /// `(region, loc index)` of a picked object.
 type OutlineKey = ((i32, i32), usize);
 
@@ -73,6 +84,11 @@ pub struct EditorApp {
     fog: Fog,
     colorblind: Colorblind,
     panels: Panels,
+    grid: GridSettings,
+    /// Inputs the grid lines were last built for (see `update_grid`).
+    grid_key: Option<GridKey>,
+    /// Bumped whenever `infos` changes.
+    infos_version: u64,
     smooth_terrain: bool,
     presentation_generation: u32,
     /// Background (and the colour holes in the terrain show). RuneLite's default sky is black.
@@ -153,6 +169,16 @@ impl EditorApp {
                 mode: ColorblindMode::None,
                 intensity: 100.0,
             },
+            grid: std::env::var("RUSTOSRS_GRID").map_or_else(
+                |_| GridSettings::default(),
+                |value| GridSettings {
+                    tiles: value.contains("tiles"),
+                    zones: value.contains("zones"),
+                    regions: value.contains("regions"),
+                },
+            ),
+            grid_key: None,
+            infos_version: 0,
             panels: Panels {
                 properties: true,
                 stats_overlay: true,
@@ -220,6 +246,7 @@ impl EditorApp {
             self.renderer.remove_region(key);
             self.animations.remove_region(key);
             self.infos.remove(&key);
+            self.infos_version += 1;
         }
         self.loaded.clear();
         self.outlines.clear();
@@ -312,6 +339,7 @@ impl EditorApp {
                     self.renderer.upload_region(key, &region.geometry);
                     self.animations.insert_region(key, region.animations);
                     self.infos.insert(key, region.info);
+                    self.infos_version += 1;
                     self.animation_dirty = true;
                     self.last_build_ms = region.build_ms;
                     self.loaded.insert(
@@ -380,8 +408,36 @@ impl EditorApp {
             self.renderer.remove_region(key);
             self.animations.remove_region(key);
             self.infos.remove(&key);
+            self.infos_version += 1;
             self.animation_dirty = true;
         }
+    }
+
+    /// Rebuild the grid overlay when what it depends on changed.
+    fn update_grid(&mut self) {
+        let key = GridKey {
+            settings: self.grid,
+            center: self.camera_tile(),
+            plane: self.view_plane,
+            origin: self.renderer.render_origin(),
+            infos_version: self.infos_version,
+        };
+        if self.grid_key == Some(key) {
+            return;
+        }
+        self.grid_key = Some(key);
+        let lines = if self.grid.any() {
+            grid::build(
+                self.grid,
+                &self.infos,
+                key.center,
+                usize::from(key.plane),
+                key.origin,
+            )
+        } else {
+            Vec::new()
+        };
+        self.renderer.set_overlay_lines(&lines);
     }
 
     /// Advance animated locs to the current game cycle on the animation worker and upload the
@@ -742,6 +798,9 @@ impl eframe::App for EditorApp {
         let phase = Instant::now();
         self.update_animations();
         self.stats.phase("anim", phase);
+        let phase = Instant::now();
+        self.update_grid();
+        self.stats.phase("grid", phase);
         self.peak_resident = self
             .peak_resident
             .max(self.loaded.values().flatten().count());
