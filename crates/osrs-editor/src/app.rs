@@ -5,11 +5,13 @@ mod overlay;
 mod plugins;
 mod properties;
 mod status;
+mod toolbar;
 
 use crate::animation_smoothing::AnimationSmoothingPlugin;
 use crate::camera::{CameraMode, FlyCamera};
 use crate::grid::GridPlugin;
 use crate::hud::{Destination, FrameStats, TeleportWindow};
+use crate::keymap::Keymap;
 use crate::pick::{self, Infos, ObjectPick, Pick};
 use crate::plugin::EditorPlugin;
 use crate::settings::{self, Settings};
@@ -47,13 +49,29 @@ struct RegionStats {
     vertices: usize,
 }
 
+/// Tabs of the side panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum PanelTab {
+    /// The selected object.
+    #[default]
+    Object,
+    /// Camera, plane, loading.
+    View,
+    /// RuneLite GPU shader options.
+    Shading,
+    /// Scene options and plugin sections.
+    Tools,
+}
+
 /// Which editor panels are shown (the layout state of the window chrome).
 struct Panels {
-    /// Right dock with the Selection / View / Shading / Scene sections.
+    /// Side panel with the Object / View / Shading / Tools tabs.
     properties: bool,
+    /// Dock the side panel on the right (otherwise left).
+    dock_right: bool,
+    tab: PanelTab,
     /// Translucent fps and position readout over the viewport.
     stats_overlay: bool,
-    help: bool,
 }
 
 /// `(region, loc index)` of a picked object.
@@ -101,6 +119,12 @@ pub struct EditorApp {
     outlines: HashMap<OutlineKey, Arc<Vec<[[i32; 3]; 3]>>>,
     outline_requested: HashSet<OutlineKey>,
     context_pick: Pick,
+    /// Where the viewport context menu (Shift + right click) is open.
+    context_menu: Option<egui::Pos2>,
+    keymap: Keymap,
+    /// Keyboard Shortcuts window state: open, and the action waiting for a key press.
+    keys_window_open: bool,
+    capturing_binding: Option<&'static str>,
     streamer: RegionStreamer,
     animations: AnimationWorker,
     /// Whether animation frames are blended (changes the update stride).
@@ -182,7 +206,8 @@ impl EditorApp {
             panels: Panels {
                 properties: true,
                 stats_overlay: true,
-                help: false,
+                dock_right: true,
+                tab: PanelTab::Object,
             },
             smooth_terrain: false,
             presentation_generation: 1,
@@ -194,6 +219,10 @@ impl EditorApp {
             outlines: HashMap::new(),
             outline_requested: HashSet::new(),
             context_pick: Pick::default(),
+            context_menu: None,
+            keymap: Keymap::new(),
+            keys_window_open: false,
+            capturing_binding: None,
             streamer,
             animations: AnimationWorker::spawn(),
             animation_smoothing: false,
@@ -227,6 +256,9 @@ impl EditorApp {
             peak_resident: 0,
             started: Instant::now(),
         };
+        for plugin in &app.plugins {
+            app.keymap.register(plugin.actions());
+        }
         app.init_settings(&cc.egui_ctx);
         Ok(app)
     }
@@ -265,6 +297,9 @@ impl EditorApp {
             fov_degrees: self.camera.fov_degrees,
             fly_speed: self.camera.speed,
             orbit_camera: self.camera.mode == CameraMode::Orbit,
+            keymap: self.keymap.to_saved(),
+            dock_right: self.panels.dock_right,
+            side_tab: self.panels.tab as u8,
             plugins: self
                 .plugins
                 .iter()
@@ -306,6 +341,14 @@ impl EditorApp {
                 self.presentation_generation,
             );
         }
+        self.keymap.load(&settings.keymap);
+        self.panels.dock_right = settings.dock_right;
+        self.panels.tab = match settings.side_tab {
+            1 => PanelTab::View,
+            2 => PanelTab::Shading,
+            3 => PanelTab::Tools,
+            _ => PanelTab::Object,
+        };
         for plugin in &mut self.plugins {
             plugin.load_settings(
                 settings
@@ -622,8 +665,9 @@ impl EditorApp {
         if response.clicked() {
             self.selected = self.hover.object.clone();
         }
-        if response.secondary_clicked() {
+        if response.secondary_clicked() && response.ctx.input(|i| i.modifiers.shift) {
             self.context_pick = self.hover.clone();
+            self.context_menu = response.interact_pointer_pos();
         }
         let wanted: Vec<ObjectPick> = [
             self.hover.object.clone(),
@@ -731,23 +775,44 @@ impl EditorApp {
         }
     }
 
-    /// Right-click menu: copy diagnostics of the clicked object / tile / surroundings.
-    fn context_menu(&self, response: &egui::Response) {
-        response.context_menu(|ui| self.copy_menu(ui, &self.context_pick));
+    /// Shift + right click menu: copy diagnostics of the clicked object / tile / surroundings.
+    /// (Plain right drag looks around, so the menu needs the modifier.)
+    fn context_menu(&mut self, ctx: &egui::Context) {
+        let Some(position) = self.context_menu else {
+            return;
+        };
+        let pick = self.context_pick.clone();
+        let mut close = false;
+        let area = egui::Area::new(egui::Id::new("viewport_context_menu"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(position)
+            .show(ctx, |ui| {
+                egui::Frame::menu(ui.style()).show(ui, |ui| {
+                    ui.set_min_width(190.0);
+                    close = self.copy_menu(ui, &pick);
+                });
+            });
+        let pressed_outside =
+            ctx.input(|i| i.pointer.any_pressed()) && !area.response.contains_pointer();
+        if close || pressed_outside || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.context_menu = None;
+        }
     }
 
     /// "Copy ..." actions for an object and/or tile (context menu and the Selection section).
-    fn copy_menu(&self, ui: &mut egui::Ui, pick: &Pick) {
+    fn copy_menu(&self, ui: &mut egui::Ui, pick: &Pick) -> bool {
+        let mut taken = false;
         let loc = pick
             .object
             .as_ref()
             .and_then(|object| self.infos.get(&object.region)?.locs.get(object.index));
         let center = loc.map(|loc| loc.tile).or(pick.tile.map(|tile| tile.tile));
         let plane = loc.map_or(usize::from(self.view_plane), |loc| usize::from(loc.plane));
-        let copy = |ui: &mut egui::Ui, label: &str, text: String| {
+        let mut copy = |ui: &mut egui::Ui, label: &str, text: String| {
             if ui.button(label).clicked() {
                 ui.ctx().copy_text(text);
                 ui.close();
+                taken = true;
             }
         };
         if let Some(object) = &pick.object {
@@ -777,6 +842,7 @@ impl EditorApp {
         } else {
             ui.label("nothing under the cursor");
         }
+        taken
     }
 
     fn ensure_targets(&mut self, width: u32, height: u32) {
@@ -845,25 +911,87 @@ impl EditorApp {
         });
     }
 
+    /// Fire the editor's own bound actions (none while a text field has keyboard focus, and none
+    /// while a binding is being captured in the Keyboard Shortcuts window).
+    fn editor_actions(&mut self, ctx: &egui::Context) {
+        if ctx.egui_wants_keyboard_input() || self.capturing_binding.is_some() {
+            return;
+        }
+        let pressed = |id: &str| ctx.input(|i| self.keymap.pressed(i, id));
+        let mut open_teleport = false;
+        let mut toggle_panel = false;
+        let mut toggle_camera = false;
+        let mut focus = false;
+        let mut clear = false;
+        let mut plane = None;
+        if pressed("teleport.open") {
+            open_teleport = true;
+        }
+        if pressed("panel.properties") {
+            toggle_panel = true;
+        }
+        if pressed("camera.mode") {
+            toggle_camera = true;
+        }
+        if pressed("camera.focus") {
+            focus = true;
+        }
+        if pressed("selection.clear") {
+            clear = true;
+        }
+        for (index, id) in ["plane.0", "plane.1", "plane.2", "plane.3"]
+            .into_iter()
+            .enumerate()
+        {
+            if pressed(id) {
+                plane = Some(index as u8);
+            }
+        }
+        if open_teleport {
+            self.open_teleport();
+        }
+        if toggle_panel {
+            self.panels.properties = !self.panels.properties;
+        }
+        if toggle_camera {
+            self.camera.mode = match self.camera.mode {
+                CameraMode::Fly => CameraMode::Orbit,
+                CameraMode::Orbit => CameraMode::Fly,
+            };
+        }
+        if focus {
+            self.focus_selection();
+        }
+        if clear {
+            self.selected = None;
+        }
+        if let Some(plane) = plane {
+            self.view_plane = plane;
+        }
+    }
+
     fn handle_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
         let dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
         let delta = response.drag_delta();
+        let shift = ctx.input(|i| i.modifiers.shift);
+        // Right drag moves the view in both modes; the left button is left to selection and tools.
         match self.camera.mode {
             CameraMode::Fly => {
-                if response.dragged_by(egui::PointerButton::Secondary)
-                    || response.dragged_by(egui::PointerButton::Primary)
-                {
+                if response.dragged_by(egui::PointerButton::Secondary) && !shift {
                     self.camera.look(delta.x, delta.y);
+                }
+                if response.dragged_by(egui::PointerButton::Middle)
+                    || (response.dragged_by(egui::PointerButton::Secondary) && shift)
+                {
+                    self.camera.pan(delta.x, delta.y);
                 }
             }
             CameraMode::Orbit => {
-                let shift = ctx.input(|i| i.modifiers.shift);
-                if response.dragged_by(egui::PointerButton::Secondary)
-                    || response.dragged_by(egui::PointerButton::Middle)
-                    || (response.dragged_by(egui::PointerButton::Primary) && shift)
+                if response.dragged_by(egui::PointerButton::Middle)
+                    || (response.dragged_by(egui::PointerButton::Secondary) && shift)
                 {
                     self.camera.pan(delta.x, delta.y);
-                } else if response.dragged_by(egui::PointerButton::Primary) {
+                } else if response.dragged_by(egui::PointerButton::Secondary) {
                     self.camera.orbit(delta.x, delta.y);
                 }
             }
@@ -883,31 +1011,19 @@ impl EditorApp {
                 }
             }
         }
-        if ctx.egui_wants_keyboard_input() {
+        if ctx.egui_wants_keyboard_input() || self.capturing_binding.is_some() {
             return;
         }
         ctx.input(|i| {
-            let axis = |plus: egui::Key, minus: egui::Key| {
-                f32::from(i.key_down(plus)) - f32::from(i.key_down(minus))
+            let axis = |plus: &str, minus: &str| {
+                f32::from(self.keymap.held(i, plus)) - f32::from(self.keymap.held(i, minus))
             };
             let boost = if i.modifiers.shift { 4.0 } else { 1.0 };
-            let forward = axis(egui::Key::W, egui::Key::S) * boost;
-            let right = axis(egui::Key::D, egui::Key::A) * boost;
-            let up = axis(egui::Key::E, egui::Key::Q) * boost;
+            let forward = axis("camera.forward", "camera.back") * boost;
+            let right = axis("camera.right", "camera.left") * boost;
+            let up = axis("camera.up", "camera.down") * boost;
             if forward != 0.0 || right != 0.0 || up != 0.0 {
                 self.camera.translate(forward, right, up, dt);
-            }
-        });
-        ctx.input(|i| {
-            for (key, plane) in [
-                (egui::Key::Num1, 0),
-                (egui::Key::Num2, 1),
-                (egui::Key::Num3, 2),
-                (egui::Key::Num4, 3),
-            ] {
-                if i.key_pressed(key) {
-                    self.view_plane = plane;
-                }
             }
         });
     }
@@ -926,24 +1042,8 @@ impl eframe::App for EditorApp {
         if let Some(destination) = self.pending_teleport.take() {
             self.teleport_to(destination);
         }
-        if !ctx.egui_wants_keyboard_input() {
-            if ctx.input(|i| i.key_pressed(egui::Key::T)) {
-                self.open_teleport();
-            }
-            if ctx.input(|i| i.key_pressed(egui::Key::C)) {
-                self.camera.mode = match self.camera.mode {
-                    CameraMode::Fly => CameraMode::Orbit,
-                    CameraMode::Orbit => CameraMode::Fly,
-                };
-            }
-            if ctx.input(|i| i.key_pressed(egui::Key::F)) {
-                self.focus_selection();
-            }
-            if ctx.input(|i| i.key_pressed(egui::Key::N)) {
-                self.panels.properties = !self.panels.properties;
-            }
-        }
-        self.plugin_hotkeys(&ctx);
+        self.editor_actions(&ctx);
+        self.plugin_actions(&ctx);
         if let Some((vx, vz)) = self.autofly {
             let step = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
             self.camera.x += vx * step;
@@ -964,6 +1064,7 @@ impl eframe::App for EditorApp {
             .max(self.loaded.values().flatten().count());
 
         self.menu_bar(ui);
+        self.toolbar(ui);
         self.status_bar(ui);
         self.properties_panel(ui);
 
@@ -1025,10 +1126,10 @@ impl eframe::App for EditorApp {
             }
             self.draw_selection(ui, rect, pixels_per_point, width, height);
             self.viewport_overlays(ui, rect);
-            self.context_menu(&response);
+            self.context_menu(&ctx);
         });
 
-        self.help_window(&ctx);
+        self.keys_window(&ctx);
         if let Some(destination) = self.teleport.show(&ctx) {
             self.teleport_to(destination);
         }

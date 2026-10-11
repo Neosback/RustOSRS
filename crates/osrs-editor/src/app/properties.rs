@@ -1,7 +1,7 @@
 //! Right-hand Properties dock, organised in collapsible sections (Selection, View, Shading,
 //! Scene, Interface). New tools add their own section here.
 
-use super::EditorApp;
+use super::{EditorApp, PanelTab};
 use crate::camera::CameraMode;
 use crate::pick::{self, Pick};
 use eframe::egui;
@@ -14,29 +14,47 @@ fn section(ui: &mut egui::Ui, title: &str, default_open: bool, body: impl FnOnce
 }
 
 impl EditorApp {
+    /// Side panel: a tab strip (Object, View, Shading, Tools) over one scrolling page, docked on
+    /// the right or left (View menu).
     pub(super) fn properties_panel(&mut self, ui: &mut egui::Ui) {
         if !self.panels.properties {
             return;
         }
-        egui::Panel::right("properties")
-            .resizable(true)
-            .default_size(300.0)
-            .show(ui, |ui| {
-                ui.heading("Properties");
-                ui.separator();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    section(ui, "Selection", true, |ui| self.selection_section(ui));
-                    section(ui, "View", true, |ui| self.view_section(ui));
-                    section(ui, "Shading", true, |ui| self.shading_section(ui));
+        let panel = if self.panels.dock_right {
+            egui::Panel::right("side_panel")
+        } else {
+            egui::Panel::left("side_panel")
+        };
+        panel.resizable(true).default_size(300.0).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                for (tab, label) in [
+                    (PanelTab::Object, "Object"),
+                    (PanelTab::View, "View"),
+                    (PanelTab::Shading, "Shading"),
+                    (PanelTab::Tools, "Tools"),
+                ] {
+                    ui.selectable_value(&mut self.panels.tab, tab, label);
+                }
+            });
+            ui.separator();
+            egui::ScrollArea::vertical().show(ui, |ui| match self.panels.tab {
+                PanelTab::Object => self.selection_section(ui),
+                PanelTab::View => {
+                    self.view_section(ui);
+                    ui.separator();
+                    section(ui, "Interface", true, |ui| self.theme_picker(ui));
+                }
+                PanelTab::Shading => self.shading_section(ui),
+                PanelTab::Tools => {
                     section(ui, "Scene", true, |ui| self.scene_section(ui));
                     self.run_plugins(|plugin, cx| {
                         if plugin.has_properties() {
                             section(ui, plugin.title(), true, |ui| plugin.properties(ui, cx));
                         }
                     });
-                    section(ui, "Interface", false, |ui| self.theme_picker(ui));
-                });
+                }
             });
+        });
     }
 
     fn selection_section(&mut self, ui: &mut egui::Ui) {

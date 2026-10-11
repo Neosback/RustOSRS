@@ -206,7 +206,11 @@ pub fn pick(infos: &Infos, ray: &Ray, view_plane: u8) -> Pick {
 
 /// Nearest hit of `ray` with the (double-sided) triangles of a slot placed at `origin`.
 fn ray_triangles(ray: &Ray, origin: [i32; 3], triangles: &[[[i16; 3]; 3]]) -> Option<f64> {
-    let origin = [f64::from(origin[0]), f64::from(origin[1]), f64::from(origin[2])];
+    let origin = [
+        f64::from(origin[0]),
+        f64::from(origin[1]),
+        f64::from(origin[2]),
+    ];
     let point = |p: [i16; 3]| {
         [
             origin[0] + f64::from(p[0]),

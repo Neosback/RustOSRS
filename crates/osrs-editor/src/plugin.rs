@@ -9,6 +9,7 @@
 //! exporters later) are written against this interface so `app.rs` stays small.
 
 use crate::hud::Destination;
+use crate::keymap::ActionDef;
 use crate::pick::{Infos, ObjectPick};
 use eframe::egui;
 use osrs_render::gpu::LineVertex;
@@ -99,15 +100,20 @@ pub trait EditorPlugin {
         false
     }
 
+    /// Compact controls for the toolbar under the menu bar (buttons, toggles).
+    fn toolbar(&mut self, _ui: &mut egui::Ui, _cx: &mut PluginContext) {}
+
     /// Draw over the 3D viewport.
     fn overlay(&mut self, _ctx: &egui::Context, _viewport: egui::Rect, _cx: &mut PluginContext) {}
 
-    /// Keys the plugin reacts to when no text field has focus, with a short description for Help.
-    fn hotkeys(&self) -> &'static [(egui::Key, &'static str)] {
+    /// Rebindable actions the plugin offers (registered in the keymap, listed in the Keyboard
+    /// Shortcuts window).
+    fn actions(&self) -> &'static [ActionDef] {
         &[]
     }
 
-    fn on_hotkey(&mut self, _key: egui::Key, _cx: &mut PluginContext) {}
+    /// An action of this plugin fired (its binding was pressed, no text field has focus).
+    fn on_action(&mut self, _id: &'static str, _cx: &mut PluginContext) {}
 
     /// State to persist (stored under the plugin's name in the settings file).
     fn save_settings(&self) -> Option<serde_json::Value> {

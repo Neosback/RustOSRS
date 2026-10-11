@@ -26,6 +26,12 @@ pub struct Settings {
     pub fov_degrees: f32,
     pub fly_speed: f32,
     pub orbit_camera: bool,
+    /// Side panel on the right (otherwise left).
+    pub dock_right: bool,
+    /// Active side panel tab (0 object, 1 view, 2 shading, 3 tools).
+    pub side_tab: u8,
+    /// Keyboard shortcut overrides: action id -> `"Shift+G"`.
+    pub keymap: BTreeMap<String, String>,
     /// Per-plugin state (see `EditorPlugin::save_settings`).
     pub plugins: BTreeMap<String, serde_json::Value>,
 }
@@ -49,6 +55,9 @@ impl Default for Settings {
             fov_degrees: 60.0,
             fly_speed: 900.0,
             orbit_camera: false,
+            dock_right: true,
+            side_tab: 0,
+            keymap: BTreeMap::new(),
             plugins: BTreeMap::new(),
         }
     }

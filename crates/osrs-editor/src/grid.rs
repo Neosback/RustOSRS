@@ -5,6 +5,7 @@
 //! lines reach farther and region (64 tiles) borders farthest. The renderer draws the lines
 //! depth-tested over the scene (see `SceneRenderer::set_overlay_lines`).
 
+use crate::keymap::{ActionDef, Binding};
 use crate::pick::Infos;
 use crate::plugin::{EditorCommand, EditorPlugin, PluginContext};
 use eframe::egui;
@@ -275,6 +276,11 @@ impl EditorPlugin for GridPlugin {
         self.toggles(ui);
     }
 
+    fn toolbar(&mut self, ui: &mut egui::Ui, _cx: &mut PluginContext) {
+        ui.toggle_value(&mut self.settings.tiles, "Grid");
+        ui.menu_button("v", |ui| self.toggles(ui));
+    }
+
     fn has_properties(&self) -> bool {
         true
     }
@@ -286,12 +292,18 @@ impl EditorPlugin for GridPlugin {
         );
     }
 
-    fn hotkeys(&self) -> &'static [(egui::Key, &'static str)] {
-        &[(egui::Key::G, "toggle the tile grid")]
+    fn actions(&self) -> &'static [ActionDef] {
+        const ACTIONS: &[ActionDef] = &[ActionDef::new(
+            "grid.toggle",
+            "Toggle tile grid",
+            "View",
+            Binding::key(egui::Key::G),
+        )];
+        ACTIONS
     }
 
-    fn on_hotkey(&mut self, key: egui::Key, _cx: &mut PluginContext) {
-        if key == egui::Key::G {
+    fn on_action(&mut self, id: &'static str, _cx: &mut PluginContext) {
+        if id == "grid.toggle" {
             self.settings.tiles = !self.settings.tiles;
         }
     }

@@ -335,7 +335,8 @@ pub fn extract_region_info(
                 }
                 None => (origin, origin, 0, 0),
             };
-            let triangles = model.map_or_else(Vec::new, |model| model_triangles(model, slot.rotation));
+            let triangles =
+                model.map_or_else(Vec::new, |model| model_triangles(model, slot.rotation));
             let (biased_faces, alpha_faces, textured_faces, hidden_faces, max_bias) = model
                 .map(|model| {
                     let biased = model

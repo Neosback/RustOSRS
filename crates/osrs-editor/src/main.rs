@@ -11,6 +11,7 @@ mod app;
 mod camera;
 mod grid;
 mod hud;
+mod keymap;
 mod pick;
 mod plugin;
 mod settings;

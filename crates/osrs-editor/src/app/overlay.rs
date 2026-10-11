@@ -22,7 +22,7 @@ impl EditorApp {
             let (region_x, region_y) = self.camera_region();
             let (tile_x, tile_y) = self.camera_tile();
             egui::Area::new(egui::Id::new("stats_overlay"))
-                .order(egui::Order::Foreground)
+                .order(egui::Order::Background)
                 .fixed_pos(rect.min + egui::vec2(OVERLAY_MARGIN, OVERLAY_MARGIN))
                 .interactable(false)
                 .show(&ctx, |ui| {
@@ -42,23 +42,5 @@ impl EditorApp {
                     });
                 });
         }
-
-        egui::Area::new(egui::Id::new("plane_switcher"))
-            .order(egui::Order::Foreground)
-            .anchor(
-                egui::Align2::RIGHT_TOP,
-                egui::vec2(-OVERLAY_MARGIN, OVERLAY_MARGIN),
-            )
-            .constrain_to(rect)
-            .show(&ctx, |ui| {
-                overlay_frame().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("z");
-                        for plane in 0..4_u8 {
-                            ui.selectable_value(&mut self.view_plane, plane, plane.to_string());
-                        }
-                    });
-                });
-            });
     }
 }

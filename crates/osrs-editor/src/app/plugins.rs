@@ -32,15 +32,29 @@ impl EditorApp {
         self.apply_commands(commands);
     }
 
-    /// Hotkeys of every plugin, when no text field has keyboard focus.
-    pub(super) fn plugin_hotkeys(&mut self, ctx: &egui::Context) {
+    /// Fire the plugin actions whose bindings were pressed (no text field has focus).
+    pub(super) fn plugin_actions(&mut self, ctx: &egui::Context) {
         if ctx.egui_wants_keyboard_input() {
             return;
         }
+        let keymap = &self.keymap;
+        let mut fired: Vec<&'static str> = Vec::new();
+        ctx.input(|input| {
+            for plugin in &self.plugins {
+                for action in plugin.actions() {
+                    if keymap.pressed(input, action.id) {
+                        fired.push(action.id);
+                    }
+                }
+            }
+        });
+        if fired.is_empty() {
+            return;
+        }
         self.run_plugins(|plugin, cx| {
-            for (key, _) in plugin.hotkeys() {
-                if ctx.input(|i| i.key_pressed(*key)) {
-                    plugin.on_hotkey(*key, cx);
+            for action in plugin.actions() {
+                if fired.contains(&action.id) {
+                    plugin.on_action(action.id, cx);
                 }
             }
         });
