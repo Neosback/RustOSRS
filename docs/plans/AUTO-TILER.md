@@ -106,3 +106,15 @@ above and handles painting finer than one tile.
 4. Editor tool on top of the plugin trait: brush with preview, mask-to-tiles, and a "retile selection"
    command that re-derives shape/rotation for existing maps (also a fixer for hand-made inconsistencies).
 5. Optional Lua rule sets (see `FOUNDATION.md`) for project-specific tilesets.
+
+## 6. How the other editors handle it (comparison)
+* **Terraini**: the most developed. Sub-tile mask atlas + edge portals + frequency grammar (see
+  `TERRAINI-IDEAS.md`), driven by *road/path tools* (curve -> tiles) rather than free painting.
+* **OpenRune Studio** (`RSPSi-master/docs/ROADMAP.md`): plans an **AutoTile service** that "centralizes OSRS
+  overlay shape/rotation/topology logic" shared by all tools (tile painter, roads, streams, fences,
+  bridges); also lists overlay flood fill with a tile cap, rotate/mirror paste that remaps overlay shape
+  rotation, and closed-room detection to suggest roof flags. Its rule: no per-tool math stacks.
+* **rspsi-imgui**: no auto-tile; paints overlay/underlay from swatch panels, with ramp/spline/prefab tools
+  and a radial brush menu for quick brush switching.
+* Our choice: one `osrs-edit::autotile` service (pure, tested against `FACE_CODES` and the real map census),
+  used by the tile painter, road tool, fill and "retile selection".
