@@ -54,7 +54,8 @@ pub struct HdLighting {
     /// (`osrs_hd::environment`).
     pub lighting: Lighting,
     pub normal_mapping: bool,
-    /// Parallax occlusion mapping for materials with displacement maps (RLHD default: on).
+    /// RLHD's independently toggleable parallax occlusion mapping for materials with displacement
+    /// maps. This defaults on even though it is controlled separately from normal mapping.
     pub parallax_mapping: bool,
     /// Animation clock of the water, caustics and scrolling textures, in seconds.
     pub elapsed_seconds: f32,
