@@ -90,7 +90,7 @@ fn accumulate_hd_faces(
     vertices: &[osrs_render::HdVertex],
     alpha: bool,
 ) {
-    for face in vertices.chunks_exact(3) {
+    for face in vertices.as_chunks::<3>().0 {
         let vertex = &face[0];
         stats.faces += 1;
         if alpha {
