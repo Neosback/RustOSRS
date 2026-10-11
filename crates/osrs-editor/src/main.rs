@@ -22,6 +22,25 @@ fn default_cache_dir() -> PathBuf {
     home.join("RustOSRS-cache/b241/cache")
 }
 
+/// eframe's default wgpu setup plus GPU timestamp queries (for the scene pass timing) when the
+/// adapter has them.
+fn wgpu_options() -> eframe::egui_wgpu::WgpuConfiguration {
+    use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
+    use std::sync::Arc;
+    let mut setup = WgpuSetupCreateNew::without_display_handle();
+    let default_descriptor = setup.device_descriptor.clone();
+    setup.device_descriptor = Arc::new(move |adapter| {
+        let mut descriptor = default_descriptor(adapter);
+        descriptor.required_features |=
+            adapter.features() & eframe::wgpu::Features::TIMESTAMP_QUERY;
+        descriptor
+    });
+    WgpuConfiguration {
+        wgpu_setup: WgpuSetup::CreateNew(setup),
+        ..Default::default()
+    }
+}
+
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let cache_dir = args
@@ -37,6 +56,7 @@ fn main() -> eframe::Result<()> {
             .with_inner_size([1360.0, 860.0])
             .with_title("RustOSRS"),
         renderer: eframe::Renderer::Wgpu,
+        wgpu_options: wgpu_options(),
         ..Default::default()
     };
     eframe::run_native(

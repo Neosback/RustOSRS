@@ -29,6 +29,7 @@ impl EditorApp {
                         ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
                         ui.colored_label(egui::Color32::WHITE, self.stats.fps_text());
                         ui.colored_label(egui::Color32::WHITE, self.stats.timing_text());
+                        ui.colored_label(egui::Color32::WHITE, self.stats.phases_text());
                         ui.colored_label(
                             egui::Color32::WHITE,
                             format!(

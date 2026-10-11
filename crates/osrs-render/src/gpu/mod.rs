@@ -23,6 +23,8 @@ pub const REFERENCE_NEAR: f32 = 50.0;
 /// MSAA sample count of the scene pass (RuneLite's GPU plugin defaults to 2x MSAA).
 pub const MSAA_SAMPLES: u32 = 4;
 
+mod timing;
+
 /// Multisampled attachments of the scene pass, resolved into the caller's color view.
 struct MsaaTargets {
     width: u32,
@@ -282,6 +284,8 @@ pub struct SceneRenderer {
     msaa: std::cell::RefCell<Option<MsaaTargets>>,
     /// Per-frame index buffer for the sorted alpha pass.
     alpha_indices: std::cell::RefCell<Option<(wgpu::Buffer, u64)>>,
+    /// Scene-pass GPU timing, when the device supports timestamp queries.
+    timer: std::cell::RefCell<Option<timing::GpuTimer>>,
 }
 
 impl SceneRenderer {
@@ -303,6 +307,7 @@ impl SceneRenderer {
 
     /// Build the pipelines on an existing device (for example the eframe-owned one).
     pub fn with_device(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+        let timer = timing::GpuTimer::new(&device, &queue);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("scene.wgsl"),
             source: wgpu::ShaderSource::Wgsl(include_str!("scene.wgsl").into()),
@@ -475,6 +480,7 @@ impl SceneRenderer {
             render_origin: (0, 0),
             msaa: std::cell::RefCell::new(None),
             alpha_indices: std::cell::RefCell::new(None),
+            timer: std::cell::RefCell::new(timer),
         }
     }
 
@@ -531,8 +537,25 @@ impl SceneRenderer {
     /// Upload (or replace) one streamed region's zones under `key`.
     pub fn upload_region(&mut self, key: (i32, i32), geometry: &SceneGeometry) {
         let mut gpu_zones = Vec::with_capacity(geometry.zones.len());
+        // Re-uploads (animated locs every few cycles) reuse the zone's GPU objects, so a
+        // refresh is a buffer write instead of fresh allocations.
+        let mut reusable: std::collections::HashMap<(i32, i32), GpuZone> = self
+            .regions
+            .remove(&key)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|zone| (zone.world_origin, zone))
+            .collect();
         for zone in &geometry.zones {
             let world_origin = zone.origin();
+            let (old_buffers, old_opaque, old_alpha) = match reusable.remove(&world_origin) {
+                Some(old) => (
+                    Some((old.zone_buffer, old.bind_group)),
+                    old.opaque,
+                    old.alpha,
+                ),
+                None => (None, None, None),
+            };
             let zone_uniform = ZoneUniform {
                 base: [
                     (world_origin.0 - self.render_origin.0) as f32,
@@ -541,21 +564,31 @@ impl SceneRenderer {
                     0.0,
                 ],
             };
-            let zone_buffer = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("zone"),
-                    contents: bytemuck::bytes_of(&zone_uniform),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                });
-            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("zone"),
-                layout: &self.zone_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: zone_buffer.as_entire_binding(),
-                }],
-            });
+            let (zone_buffer, bind_group) = match old_buffers {
+                Some((buffer, bind_group)) => {
+                    self.queue
+                        .write_buffer(&buffer, 0, bytemuck::bytes_of(&zone_uniform));
+                    (buffer, bind_group)
+                }
+                None => {
+                    let buffer =
+                        self.device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("zone"),
+                                contents: bytemuck::bytes_of(&zone_uniform),
+                                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                            });
+                    let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("zone"),
+                        layout: &self.zone_layout,
+                        entries: &[wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: buffer.as_entire_binding(),
+                        }],
+                    });
+                    (buffer, bind_group)
+                }
+            };
 
             let mut opaque: Vec<PackedVertex> = Vec::new();
             let mut alpha: Vec<PackedVertex> = Vec::new();
@@ -594,23 +627,45 @@ impl SceneRenderer {
             if y_range.0 > y_range.1 {
                 continue;
             }
-            let make = |vertices: &[PackedVertex], label: &str| {
-                (!vertices.is_empty()).then(|| {
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            // Reuse an existing buffer when the new vertices fit; grow with headroom when a
+            // refreshed zone outgrows it (animated zones change size).
+            let fit = |old: Option<wgpu::Buffer>, vertices: &[PackedVertex], label: &str| {
+                if vertices.is_empty() {
+                    return None;
+                }
+                let bytes: &[u8] = bytemuck::cast_slice(vertices);
+                match old {
+                    Some(buffer) if buffer.size() >= bytes.len() as u64 => {
+                        self.queue.write_buffer(&buffer, 0, bytes);
+                        Some(buffer)
+                    }
+                    Some(_) => {
+                        let size = (bytes.len() as u64 * 5 / 4 + 3) & !3;
+                        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                             label: Some(label),
-                            contents: bytemuck::cast_slice(vertices),
-                            usage: wgpu::BufferUsages::VERTEX,
-                        })
-                })
+                            size,
+                            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                            mapped_at_creation: false,
+                        });
+                        self.queue.write_buffer(&buffer, 0, bytes);
+                        Some(buffer)
+                    }
+                    None => Some(self.device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some(label),
+                            contents: bytes,
+                            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                        },
+                    )),
+                }
             };
             gpu_zones.push(GpuZone {
                 world_origin,
                 y_range,
                 zone_buffer,
                 bind_group,
-                opaque: make(&opaque, "zone-opaque"),
-                alpha: make(&alpha, "zone-alpha"),
+                opaque: fit(old_opaque, &opaque, "zone-opaque"),
+                alpha: fit(old_alpha, &alpha, "zone-alpha"),
                 opaque_ranges,
                 alpha_models,
             });
@@ -699,6 +754,8 @@ impl SceneRenderer {
             .filter(|zone| zone_visible(zone, self.render_origin, &globals.world_proj))
             .collect();
         let (alpha_zones, alpha_draws, alpha_index_buffer) = self.prepare_alpha(&visible, &params);
+        let mut timer_guard = self.timer.borrow_mut();
+        let timed = timer_guard.as_mut().is_some_and(timing::GpuTimer::begin);
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scene"),
@@ -724,7 +781,10 @@ impl SceneRenderer {
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: timer_guard
+                    .as_ref()
+                    .filter(|_| timed)
+                    .map(timing::GpuTimer::pass_writes),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
@@ -761,6 +821,30 @@ impl SceneRenderer {
                 }
             }
         }
+        if timed && let Some(timer) = timer_guard.as_ref() {
+            timer.resolve(encoder);
+        }
+    }
+
+    /// Call after the encoder from [`Self::encode_frame`] was submitted: collects GPU timings.
+    pub fn finish_frame(&self) {
+        if let Some(timer) = self.timer.borrow_mut().as_mut() {
+            timer.finish(&self.device);
+        }
+    }
+
+    /// Smoothed GPU time of the scene pass in milliseconds (`None` without timestamp queries or
+    /// before the first result).
+    pub fn gpu_scene_ms(&self) -> Option<f32> {
+        self.timer
+            .borrow()
+            .as_ref()
+            .and_then(timing::GpuTimer::scene_ms)
+    }
+
+    /// Whether GPU timestamp queries are available on this device.
+    pub fn gpu_timing_supported(&self) -> bool {
+        self.timer.borrow().is_some()
     }
 
     /// Order the transparent geometry like RuneLite's `Zone.alphaSort` / `renderAlpha`.

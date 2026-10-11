@@ -13,7 +13,7 @@ use osrs_core::coords::RegionCoord;
 use osrs_render::gpu::{
     COLOR_FORMAT, Colorblind, ColorblindMode, DEPTH_FORMAT, Fog, FrameParams, SceneRenderer,
 };
-use osrs_world::{AnimationSystem, RegionStreamer, StreamEvent, TerrainPresentation};
+use osrs_world::{AnimationWorker, RegionStreamer, StreamEvent, TerrainPresentation};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -87,7 +87,7 @@ pub struct EditorApp {
     outline_requested: HashSet<OutlineKey>,
     context_pick: Pick,
     streamer: RegionStreamer,
-    animations: AnimationSystem,
+    animations: AnimationWorker,
     animation_cycle: u64,
     animation_center: (i32, i32),
     animation_dirty: bool,
@@ -169,7 +169,7 @@ impl EditorApp {
             outline_requested: HashSet::new(),
             context_pick: Pick::default(),
             streamer,
-            animations: AnimationSystem::new(),
+            animations: AnimationWorker::spawn(),
             animation_cycle: 0,
             animation_center: (0, 0),
             animation_dirty: true,
@@ -384,8 +384,19 @@ impl EditorApp {
         }
     }
 
-    /// Advance animated locs to the current game cycle and refresh their geometry.
+    /// Advance animated locs to the current game cycle on the animation worker and upload the
+    /// geometry it finishes.
     fn update_animations(&mut self) {
+        if let Some(update) = self.animations.poll()
+            && let Some(geometry) = update.geometry
+        {
+            let phase = Instant::now();
+            self.renderer.upload_region(ANIMATED_KEY, &geometry);
+            self.stats.phase("anim-upload", phase);
+        }
+        if !self.animations.is_idle() {
+            return;
+        }
         let cycle = (self.started.elapsed().as_secs_f32() * 50.0) as u64;
         let (world_x, world_z) = self.world_position();
         let center = ((world_x / 128.0) as i32, (world_z / 128.0) as i32);
@@ -399,15 +410,13 @@ impl EditorApp {
         }
         let delta = (cycle - self.animation_cycle).min(500) as i32;
         self.animation_cycle = cycle;
-        let advanced = self.animations.advance(delta);
-        if advanced || self.animation_dirty || moved {
+        if self.animation_dirty || moved {
             self.animation_dirty = false;
             self.animation_center = center;
-            let geometry = self
-                .animations
-                .build_geometry(center, ANIMATION_RADIUS_TILES);
-            self.renderer.upload_region(ANIMATED_KEY, &geometry);
+            self.animations.force_rebuild();
         }
+        self.animations
+            .request(delta, self.animation_center, ANIMATION_RADIUS_TILES);
     }
 
     /// Hover / click / right-click picking against the resident regions' inspection data.
@@ -727,8 +736,12 @@ impl eframe::App for EditorApp {
             self.camera.z += vz * step;
         }
         self.rebase_if_needed();
+        let phase = Instant::now();
         self.stream();
+        self.stats.phase("stream", phase);
+        let phase = Instant::now();
         self.update_animations();
+        self.stats.phase("anim", phase);
         self.peak_resident = self
             .peak_resident
             .max(self.loaded.values().flatten().count());
@@ -745,7 +758,9 @@ impl eframe::App for EditorApp {
             let height = ((rect.height() * pixels_per_point) as u32).max(16);
 
             self.handle_input(&ctx, &response);
+            let phase = Instant::now();
             self.update_picking(&response, rect, pixels_per_point, width, height);
+            self.stats.phase("pick", phase);
 
             if self.ready {
                 self.ensure_targets(width, height);
@@ -755,6 +770,7 @@ impl eframe::App for EditorApp {
                             label: Some("viewport"),
                         },
                     );
+                    let phase = Instant::now();
                     self.renderer.encode_frame(
                         &mut encoder,
                         &targets.color_view,
@@ -774,7 +790,10 @@ impl eframe::App for EditorApp {
                         targets.width,
                         targets.height,
                     );
+                    self.stats.phase("encode", phase);
                     self.render_state.queue.submit(Some(encoder.finish()));
+                    self.renderer.finish_frame();
+                    self.stats.set_gpu_scene_ms(self.renderer.gpu_scene_ms());
                     self.render_state
                         .queue
                         .on_submitted_work_done(self.stats.gpu_probe());
@@ -813,7 +832,11 @@ impl eframe::App for EditorApp {
                 self.renderer.resident_zone_count(),
                 self.camera_tile(),
                 self.camera_region(),
-                self.stats.performance_text(),
+                format!(
+                    "{} | {}",
+                    self.stats.performance_text(),
+                    self.stats.phases_text()
+                ),
                 self.stats
                     .memory_text(self.renderer.resident_vertex_bytes())
             );

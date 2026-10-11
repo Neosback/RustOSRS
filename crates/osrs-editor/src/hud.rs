@@ -12,6 +12,8 @@ use std::{
 const MIB: f32 = 1024.0 * 1024.0;
 /// Smoothing factor of the per-frame timings.
 const SMOOTHING: f32 = 0.1;
+/// Frames considered for the worst-frame readout.
+const WORST_WINDOW: usize = 120;
 
 /// Frame pacing and memory statistics.
 ///
@@ -21,9 +23,16 @@ const SMOOTHING: f32 = 0.1;
 /// rate the application could reach with vsync off, which is the *uncapped* estimate.
 pub struct FrameStats {
     gpu_bits: Arc<AtomicU32>,
+    /// Scene pass time from timestamp queries (more accurate than `gpu_bits`).
+    gpu_scene_ms: Option<f32>,
     last_frame: Option<Instant>,
     frame_ms: f32,
+    /// Longest frame interval of the last [`WORST_WINDOW`] frames.
+    worst_ms: f32,
+    recent: std::collections::VecDeque<f32>,
     cpu_ms: f32,
+    /// Named CPU phases of the frame (smoothed ms), in insertion order.
+    phases: Vec<(&'static str, f32)>,
     process_mib: f32,
     peak_process_mib: f32,
     memory_sampled: Option<Instant>,
@@ -33,9 +42,13 @@ impl FrameStats {
     pub fn new() -> Self {
         Self {
             gpu_bits: Arc::new(AtomicU32::new(0)),
+            gpu_scene_ms: None,
             last_frame: None,
             frame_ms: 0.0,
+            worst_ms: 0.0,
+            recent: std::collections::VecDeque::new(),
             cpu_ms: 0.0,
+            phases: Vec::new(),
             process_mib: 0.0,
             peak_process_mib: 0.0,
             memory_sampled: None,
@@ -47,6 +60,11 @@ impl FrameStats {
         let now = Instant::now();
         if let Some(last) = self.last_frame {
             let ms = now.duration_since(last).as_secs_f32() * 1000.0;
+            self.recent.push_back(ms);
+            if self.recent.len() > WORST_WINDOW {
+                self.recent.pop_front();
+            }
+            self.worst_ms = self.recent.iter().copied().fold(0.0, f32::max);
             self.frame_ms = if self.frame_ms == 0.0 {
                 ms
             } else {
@@ -65,6 +83,24 @@ impl FrameStats {
             }
         }
         now
+    }
+
+    /// Record how long a named part of this frame took.
+    pub fn phase(&mut self, name: &'static str, started: Instant) {
+        let ms = started.elapsed().as_secs_f32() * 1000.0;
+        match self.phases.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, value)) => *value += (ms - *value) * SMOOTHING,
+            None => self.phases.push((name, ms)),
+        }
+    }
+
+    /// `name x.x ms` for each recorded phase.
+    pub fn phases_text(&self) -> String {
+        self.phases
+            .iter()
+            .map(|(name, ms)| format!("{name} {ms:.1}"))
+            .collect::<Vec<_>>()
+            .join("  ")
     }
 
     pub fn end_frame(&mut self, started: Instant) {
@@ -100,8 +136,15 @@ impl FrameStats {
         }
     }
 
+    pub fn set_gpu_scene_ms(&mut self, ms: Option<f32>) {
+        self.gpu_scene_ms = ms;
+    }
+
+    /// GPU time per frame: the measured scene pass when timestamp queries exist, otherwise the
+    /// submit-to-done latency (which also includes waiting).
     pub fn gpu_ms(&self) -> f32 {
-        f32::from_bits(self.gpu_bits.load(Ordering::Relaxed))
+        self.gpu_scene_ms
+            .unwrap_or_else(|| f32::from_bits(self.gpu_bits.load(Ordering::Relaxed)))
     }
 
     /// Frame rate the CPU and GPU work would allow without a display-rate cap.
@@ -112,14 +155,24 @@ impl FrameStats {
 
     /// Frame rate and frame time.
     pub fn fps_text(&self) -> String {
-        format!("{:.0} fps ({:.1} ms)", self.fps(), self.frame_ms)
+        format!(
+            "{:.0} fps ({:.1} ms, worst {:.0} ms)",
+            self.fps(),
+            self.frame_ms,
+            self.worst_ms
+        )
     }
 
     /// Per-frame cpu / gpu time and the estimated uncapped frame rate.
     pub fn timing_text(&self) -> String {
         format!(
-            "cpu {:.1} ms  gpu {:.1} ms  uncapped est. ~{:.0} fps",
+            "cpu {:.1} ms  gpu {}{:.1} ms  uncapped est. ~{:.0} fps",
             self.cpu_ms,
+            if self.gpu_scene_ms.is_some() {
+                "scene "
+            } else {
+                "~"
+            },
             self.gpu_ms(),
             self.uncapped_fps()
         )
