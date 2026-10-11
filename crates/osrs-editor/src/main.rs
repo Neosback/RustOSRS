@@ -35,10 +35,15 @@ fn wgpu_options() -> eframe::egui_wgpu::WgpuConfiguration {
             adapter.features() & eframe::wgpu::Features::TIMESTAMP_QUERY;
         descriptor
     });
-    WgpuConfiguration {
+    let mut configuration = WgpuConfiguration {
         wgpu_setup: WgpuSetup::CreateNew(setup),
         ..Default::default()
+    };
+    // `RUSTOSRS_VSYNC=0` presents without waiting for the display, to measure real frame rates.
+    if std::env::var("RUSTOSRS_VSYNC").is_ok_and(|value| value == "0") {
+        configuration.surface.present_mode = eframe::wgpu::PresentMode::AutoNoVsync;
     }
+    configuration
 }
 
 fn main() -> eframe::Result<()> {

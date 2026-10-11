@@ -821,6 +821,11 @@ impl eframe::App for EditorApp {
             && self.started.elapsed().as_secs_f32() >= limit
         {
             let seconds = self.started.elapsed().as_secs_f32();
+            let timings = format!(
+                "{} | {}",
+                self.stats.performance_text(),
+                self.stats.phases_text()
+            );
             eprintln!(
                 "smoke: {} frames in {:.2}s ({:.1} fps average); {} regions resident (peak {}), {:.0} MiB GPU, {} zones\nsmoke: tile {:?} region {:?}\nsmoke: {} | {}",
                 self.frames,
@@ -832,11 +837,7 @@ impl eframe::App for EditorApp {
                 self.renderer.resident_zone_count(),
                 self.camera_tile(),
                 self.camera_region(),
-                format!(
-                    "{} | {}",
-                    self.stats.performance_text(),
-                    self.stats.phases_text()
-                ),
+                timings,
                 self.stats
                     .memory_text(self.renderer.resident_vertex_bytes())
             );
