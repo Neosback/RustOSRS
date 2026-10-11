@@ -13,7 +13,7 @@ Per tile, per plane (4 planes, 64x64 tiles per region):
 | height | opcode 1 (u8) | `-value * 8`, special-cased `1 -> 0`; no value -> procedural noise (plane 0) or `plane-1 height - 240` |
 | underlay id | opcode > 81 | `id = opcode - 81`; colour of the whole tile, blended (below) |
 | overlay id | opcode 2..=49 | followed by the overlay id (u16) |
-| overlay shape | same opcode | `shape = (opcode - 2) / 4` (0..=11), plus 1 internally -> 13 shape tables |
+| overlay shape | same opcode | `shape = (opcode - 2) / 4` (0..=11), plus 1 internally to index the 13-row shape tables |
 | overlay rotation | same opcode | `(opcode - 2 + region_rotation) & 3` |
 | settings flags | opcode 50..=81 | `value = opcode - 49`: bit 1 blocked, bit 2 bridge (draw one plane lower), bit 8 visible-below (`min_plane = 0`) |
 | shadow | separate lighting data | baked into corner lightness (`field868`) |
