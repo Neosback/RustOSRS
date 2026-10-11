@@ -932,7 +932,12 @@ mod tests {
         let took = started.elapsed();
         assert!(!result.is_empty());
         assert!(
-            took.as_millis() < 1500,
+            took.as_millis()
+                < if cfg!(debug_assertions) {
+                    20_000
+                } else {
+                    1_500
+                },
             "{took:?} for {} tiles",
             result.len()
         );
