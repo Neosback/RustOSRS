@@ -111,11 +111,17 @@ pub fn validate_profile_build(profile: &TargetProfile) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     const PROFILE_241: &str =
         include_str!("../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
 
-    fn profile() -> TargetProfile {
-        TargetProfile::from_yaml_str(PROFILE_241).expect("committed profile parses")
+    fn profile() -> Result<TargetProfile, Box<dyn std::error::Error>> {
+        Ok(TargetProfile::from_yaml_str(PROFILE_241)?)
+    }
+
+    fn error_of(profile: &TargetProfile) -> String {
+        validate_profile_build(profile).err().unwrap_or_default()
     }
 
     #[test]
@@ -138,38 +144,40 @@ mod tests {
     }
 
     #[test]
-    fn committed_profile_agrees_with_its_build() {
-        validate_profile_build(&profile()).expect("241 profile is consistent");
+    fn committed_profile_agrees_with_its_build() -> TestResult {
+        assert_eq!(validate_profile_build(&profile()?), Ok(()));
+        Ok(())
     }
 
     #[test]
-    fn build_240_and_later_accept_the_same_gate_set() {
-        let mut p = profile();
+    fn build_240_and_later_accept_the_same_gate_set() -> TestResult {
+        let mut p = profile()?;
         for build in [240, 241, 242, 250] {
             p.cache_source.build = build;
             assert_eq!(validate_profile_build(&p), Ok(()), "build {build}");
         }
+        Ok(())
     }
 
     #[test]
-    fn builds_below_the_supported_range_are_rejected() {
-        let mut p = profile();
+    fn builds_below_the_supported_range_are_rejected() -> TestResult {
+        let mut p = profile()?;
         p.cache_source.build = 239;
-        let error = validate_profile_build(&p).unwrap_err();
-        assert!(error.contains("minimum supported build 240"), "{error}");
+        assert!(error_of(&p).contains("minimum supported build 240"));
+        Ok(())
     }
 
     #[test]
-    fn a_dropped_or_downgraded_gate_is_rejected() {
-        let mut p = profile();
+    fn a_dropped_or_downgraded_gate_is_rejected() -> TestResult {
+        let mut p = profile()?;
         p.revision_gates.remove("texture_layout_233_plus");
-        assert!(validate_profile_build(&p).unwrap_err().contains("does not declare"));
+        assert!(error_of(&p).contains("does not declare"));
 
-        let mut p = profile();
-        p.revision_gates
-            .get_mut("sequence_layout_226_plus")
-            .expect("gate")
-            .state = "blocked".to_owned();
-        assert!(validate_profile_build(&p).unwrap_err().contains("\"blocked\""));
+        let mut p = profile()?;
+        if let Some(gate) = p.revision_gates.get_mut("sequence_layout_226_plus") {
+            gate.state = "blocked".to_owned();
+        }
+        assert!(error_of(&p).contains("\"blocked\""));
+        Ok(())
     }
 }
