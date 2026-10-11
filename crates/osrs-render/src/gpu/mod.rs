@@ -971,7 +971,7 @@ impl SceneRenderer {
                 u32::from(hd.normal_mapping),
                 hd.debug_view,
                 u32::from(lighting.underwater_environment),
-                0,
+                u32::from(hd.parallax_mapping),
             ],
         };
         self.queue
@@ -1167,13 +1167,7 @@ impl SceneRenderer {
                 <= radius + ZONE_LOCAL_EXTENT
         };
         let (mut y_min, mut y_max) = (f32::MAX, f32::MIN);
-        for zone in self
-            .regions
-            .values()
-            .flatten()
-            .filter(has_hd)
-            .filter(near)
-        {
+        for zone in self.regions.values().flatten().filter(has_hd).filter(near) {
             y_min = y_min.min(zone.y_range.0 - 256.0);
             y_max = y_max.max(zone.y_range.1 + 256.0);
         }
@@ -1511,7 +1505,7 @@ impl SceneRenderer {
                                 pass.set_pipeline(&hd.pipelines.alpha);
                                 pass.set_bind_group(2, hd.bind_group, &[]);
                                 pass.set_bind_group(3, hd.shadow_group, &[]);
-                            pass.set_bind_group(3, hd.shadow_group, &[]);
+                                pass.set_bind_group(3, hd.shadow_group, &[]);
                             }
                             None => pass.set_pipeline(&pipelines.alpha),
                         }

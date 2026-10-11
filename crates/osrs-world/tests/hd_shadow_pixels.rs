@@ -46,7 +46,12 @@ fn luminance(pixel: &[u8]) -> f64 {
 }
 
 fn mean_luminance(pixels: &[u8]) -> f64 {
-    pixels.as_chunks::<4>().0.iter().map(|p| luminance(p)).sum::<f64>()
+    pixels
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|p| luminance(p))
+        .sum::<f64>()
         / (pixels.len() / 4) as f64
 }
 
@@ -109,9 +114,15 @@ fn the_shadow_map_darkens_the_lee_of_buildings_and_trees() -> Result<(), Box<dyn
     // Shadows only remove light: the frame gets darker, and a visible share of it (the lee of the
     // castle walls, the trees) clearly so.
     let (lit_mean, shadow_mean) = (mean_luminance(&off), mean_luminance(&detailed));
-    assert!(shadow_mean < lit_mean * 0.97, "{shadow_mean:.1} vs {lit_mean:.1}");
+    assert!(
+        shadow_mean < lit_mean * 0.97,
+        "{shadow_mean:.1} vs {lit_mean:.1}"
+    );
     let dark = darker_share(&off, &detailed, 20.0);
-    assert!(dark > 0.03 && dark < 0.6, "{dark:.3} of the frame is shadowed");
+    assert!(
+        dark > 0.03 && dark < 0.6,
+        "{dark:.3} of the frame is shadowed"
+    );
     // Nothing gets brighter (up to filtering noise).
     assert!(darker_share(&detailed, &off, 20.0) < 0.002);
 

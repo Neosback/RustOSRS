@@ -579,7 +579,10 @@ impl TileOverrides {
                 break;
             }
             if in_area(entry) {
-                matched.index = self.constant_target[entry];
+                return OverrideMatch {
+                    index: self.constant_target[entry],
+                    queried_as_overlay: false,
+                };
             }
         }
         matched
@@ -745,5 +748,54 @@ mod tests {
         o.lightness = (40, 0, 70);
         assert_eq!(o.modify_color(color), (10 << 10) | (3 << 7) | 70);
         assert!(!o.is_color_identity());
+    }
+
+    #[test]
+    fn any_match_uses_first_upstream_match_and_clears_overlay_origin() {
+        let data = HdData {
+            areas: vec![
+                crate::Area {
+                    name: "OUTER".into(),
+                    aabbs: vec![vec![0, 0, 10, 10]],
+                    ..crate::Area::default()
+                },
+                crate::Area {
+                    name: "INNER".into(),
+                    aabbs: vec![vec![2, 2, 8, 8]],
+                    ..crate::Area::default()
+                },
+            ],
+            tile_overrides: vec![
+                TileOverride {
+                    name: "FIRST_ANY".into(),
+                    area: Some("OUTER".into()),
+                    ..TileOverride::default()
+                },
+                TileOverride {
+                    name: "SECOND_ANY".into(),
+                    area: Some("INNER".into()),
+                    ..TileOverride::default()
+                },
+                TileOverride {
+                    name: "LATER_OVERLAY_ID".into(),
+                    area: Some("OUTER".into()),
+                    overlay_ids: vec![IdRef::Number(7)],
+                    ..TileOverride::default()
+                },
+            ],
+            ..HdData::default()
+        };
+        let materials = MaterialSet::default();
+        let grounds = GroundMaterials::new(&data, &materials);
+        let water = WaterTypes::new(&data);
+        let areas = Areas::new(&data);
+        let overrides = TileOverrides::new(&data, &grounds, &water, &|id| match id {
+            IdRef::Number(number) => Some(*number),
+            IdRef::Name(_) => None,
+        });
+
+        let found = overrides.lookup(&areas, (5, 5, 0), &[OVERLAY_FLAG | 7]);
+        assert_eq!(overrides.get(found.index).name, "FIRST_ANY");
+        assert!(!found.queried_as_overlay);
     }
 }

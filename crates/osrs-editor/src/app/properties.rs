@@ -221,6 +221,11 @@ impl EditorApp {
             ui.checkbox(&mut self.prefs.hd_normal_mapping, "Normal mapping")
                 .on_hover_text("Affects how light interacts with certain materials.");
             ui.checkbox(
+                &mut self.prefs.hd_parallax_mapping,
+                "Parallax occlusion mapping",
+            )
+            .on_hover_text("Adds depth to materials with displacement maps at higher GPU cost.");
+            ui.checkbox(
                 &mut self.prefs.hd_environment.flashing_effects,
                 "Lightning flashes",
             )
@@ -288,7 +293,10 @@ impl EditorApp {
                     .on_hover_text("Always cast shadows from roofs, even when they are hidden.");
                 let bytes = self.renderer.hd_shadow_map_bytes();
                 if bytes > 0 {
-                    ui.weak(format!("Shadow maps: {:.0} MiB", bytes as f64 / 1_048_576.0));
+                    ui.weak(format!(
+                        "Shadow maps: {:.0} MiB",
+                        bytes as f64 / 1_048_576.0
+                    ));
                 }
             }
         });
@@ -350,9 +358,9 @@ impl EditorApp {
             ui.checkbox(&mut environment.legacy_tob, "Legacy Theatre of Blood");
         });
         ui.weak(
-            "HD is a work in progress: materials, normal maps, specular, ground blending and \
-             area environments and shadows are in. Water, lights and the sky are still to come. \
-             Animated objects still use Reference shading.",
+            "HD is a work in progress: materials, normal maps, parallax displacement, specular, \
+             ground blending, animated-object HD materials, area environments and shadows are in. \
+             Water, dynamic lights and the full sky are still to come.",
         );
     }
 

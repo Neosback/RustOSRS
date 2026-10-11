@@ -21,8 +21,9 @@ use osrs_hd::{
     tiles::Areas,
 };
 use osrs_render::{
-    HD_FLAG_FLAT_NORMALS, HD_FLAG_NO_SHADOW_CAST, HD_FLAG_NO_SHADOW_RECEIVE, HD_FLAG_SHADOW_NORMAL_BIAS, HD_FLAG_UPWARDS_NORMALS, HD_FLAG_VANILLA_UVS,
-    HdFace, ModelPlacement, vanilla_face_uvs,
+    HD_FLAG_FLAT_NORMALS, HD_FLAG_NO_SHADOW_CAST, HD_FLAG_NO_SHADOW_RECEIVE,
+    HD_FLAG_SHADOW_NORMAL_BIAS, HD_FLAG_UPWARDS_NORMALS, HD_FLAG_VANILLA_UVS, HdFace,
+    ModelPlacement, vanilla_face_uvs,
 };
 use std::collections::HashMap;
 
@@ -557,6 +558,25 @@ pub struct ModelSite {
 /// The HD faces of one lit model.
 pub fn model_faces(hd: &HdContext, model: &ReferenceLitModel, site: ModelSite) -> Vec<HdFace> {
     let override_ = hd.models.get(site.object_id, site.world, &hd.areas);
+    model_faces_resolved(
+        &hd.materials,
+        hd.settings.hide_fake_shadows(),
+        override_,
+        model,
+        site,
+    )
+}
+
+/// Emit one model after its object/location override has already been resolved. Dynamic objects
+/// use this after posing so their material replacement, UV, alpha and shadow semantics are the
+/// same as static locs.
+pub(crate) fn model_faces_resolved(
+    materials: &MaterialSet,
+    hide_fake_shadows: bool,
+    override_: &ResolvedModelOverride,
+    model: &ReferenceLitModel,
+    site: ModelSite,
+) -> Vec<HdFace> {
     let placement = site.placement;
 
     // Placed vertex positions, rotated like the Reference path.
@@ -657,7 +677,7 @@ pub fn model_faces(hd: &HdContext, model: &ReferenceLitModel, site: ModelSite) -
             if override_.texture_material != 0 {
                 material = override_.texture_material;
             } else {
-                material = hd.materials.from_vanilla_texture(id);
+                material = materials.from_vanilla_texture(id);
                 if let Some((_, special)) = override_
                     .material_overrides
                     .iter()
@@ -682,7 +702,7 @@ pub fn model_faces(hd: &HdContext, model: &ReferenceLitModel, site: ModelSite) -
         }
         // Fake shadows or lighting baked into models are made transparent: the HD shadows replace
         // them.
-        if hd.settings.hide_fake_shadows()
+        if hide_fake_shadows
             && face_override.hide_vanilla_shadows
             && is_baked_ground_shading(model, face_index, transparency, texture_id.is_some())
         {
@@ -802,8 +822,8 @@ pub fn model_faces(hd: &HdContext, model: &ReferenceLitModel, site: ModelSite) -
         if uv_type == UvType::Vanilla && texture_id.is_some() {
             flags |= HD_FLAG_VANILLA_UVS;
         }
-        let material_flags = hd.materials.has_transparency(material);
-        let double_sided = face_override.double_sided_faces || hd.materials.double_sided(material);
+        let material_flags = materials.has_transparency(material);
+        let double_sided = face_override.double_sided_faces || materials.double_sided(material);
         faces.push(HdFace {
             positions: idx.map(|i| positions[i]),
             uvs,

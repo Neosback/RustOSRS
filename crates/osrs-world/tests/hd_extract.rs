@@ -73,7 +73,10 @@ fn lumbridge_terrain_brick_and_wood_use_the_hd_materials() -> Result<(), Box<dyn
     let geometry = extract_owned_geometry_hd(&world, None, &hd);
     let (terrain, models) = material_counts(&geometry, &hd);
     let count = |table: &BTreeMap<String, usize>, names: &[&str]| -> usize {
-        names.iter().map(|name| table.get(*name).copied().unwrap_or(0)).sum()
+        names
+            .iter()
+            .map(|name| table.get(*name).copied().unwrap_or(0))
+            .sum()
     };
     let terrain_total: usize = terrain.values().sum();
     assert!(terrain_total > 10_000, "{terrain_total} terrain faces");
@@ -81,7 +84,10 @@ fn lumbridge_terrain_brick_and_wood_use_the_hd_materials() -> Result<(), Box<dyn
     // Terrain: grass and dirt/path ground, no un-materialled terrain to speak of.
     let grass = count(&terrain, &["GRASS_1", "GRASS_2", "GRASS_3"]);
     let dirt = count(&terrain, &["DIRT_1", "DIRT_2"]);
-    assert!(grass * 2 > terrain_total, "grass {grass} of {terrain_total}: {terrain:?}");
+    assert!(
+        grass * 2 > terrain_total,
+        "grass {grass} of {terrain_total}: {terrain:?}"
+    );
     assert!(dirt > 100, "dirt {dirt}: {terrain:?}");
     assert!(
         terrain.get("NONE").copied().unwrap_or(0) * 10 < terrain_total,
@@ -90,9 +96,15 @@ fn lumbridge_terrain_brick_and_wood_use_the_hd_materials() -> Result<(), Box<dyn
 
     // Brick and wood: the vanilla textures 2 and 3 are replaced by their HD materials, and the
     // castle's faces carry them.
-    let brick = hd.materials.get(hd.materials.from_vanilla_texture(2)).ok_or("brick")?;
+    let brick = hd
+        .materials
+        .get(hd.materials.from_vanilla_texture(2))
+        .ok_or("brick")?;
     assert_eq!(brick.name, "HD_BRICK");
-    let wood = hd.materials.get(hd.materials.from_vanilla_texture(3)).ok_or("wood")?;
+    let wood = hd
+        .materials
+        .get(hd.materials.from_vanilla_texture(3))
+        .ok_or("wood")?;
     assert_eq!(wood.name, "HD_WOOD_PLANKS_1");
     let brick_faces = count(&models, &[brick.name.as_str()]);
     // Wooden objects take their wood from model overrides (`WOOD_GRAIN_*`, `*_WOOD`) as well as
@@ -145,6 +157,10 @@ fn hd_normals_point_the_way_the_triangles_face() -> Result<(), Box<dyn std::erro
         }
     }
     assert!(up > 1_000, "{up} up-facing");
-    assert!(down * 20 < up, "{down} of {} front faces point down", up + down);
+    assert!(
+        down * 20 < up,
+        "{down} of {} front faces point down",
+        up + down
+    );
     Ok(())
 }

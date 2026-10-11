@@ -14,8 +14,9 @@ use crate::{
     texture_layers,
 };
 use osrs_core::coords::RegionCoord;
-use osrs_render::{SceneGeometry, gpu::TextureLayer};
+use osrs_render::{HD_FLAG_TERRAIN, HD_MATERIAL_INDEX_MASK, SceneGeometry, gpu::TextureLayer};
 use std::{
+    collections::BTreeSet,
     path::PathBuf,
     sync::Arc,
     sync::mpsc::{Receiver, Sender, channel},
@@ -26,6 +27,108 @@ use std::{
 /// Tiles of context before a region inside its window.
 pub const REGION_WINDOW_MARGIN: i32 = 16;
 const REGION_TILES: u32 = 64;
+
+/// Which extraction path actually produced a region's geometry.
+///
+/// `ReferenceFallback` is deliberately distinct from `Reference`: it means the caller requested
+/// HD geometry but no HD context was available, so the region would otherwise look like a valid
+/// Reference build and hide the real failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegionRenderPath {
+    Reference,
+    Hd,
+    ReferenceFallback,
+}
+
+impl RegionRenderPath {
+    const fn select(hd_requested: bool, hd_available: bool) -> Self {
+        match (hd_requested, hd_available) {
+            (false, _) => Self::Reference,
+            (true, true) => Self::Hd,
+            (true, false) => Self::ReferenceFallback,
+        }
+    }
+}
+
+/// Material coverage of one region after HD extraction.
+///
+/// Each HD triangle repeats the three corner material indices on all three vertices. Statistics
+/// therefore sample the first vertex of each triangle instead of triple-counting the face.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HdRegionStats {
+    pub faces: usize,
+    pub opaque_faces: usize,
+    pub alpha_faces: usize,
+    pub terrain_faces: usize,
+    pub model_faces: usize,
+    /// Faces where at least one corner carries a non-`NONE` material index.
+    pub materialized_faces: usize,
+    /// Faces whose three material indices are all `NONE`.
+    pub none_material_faces: usize,
+    pub unique_materials: usize,
+    pub max_material_index: u16,
+}
+
+impl HdRegionStats {
+    fn from_geometry(geometry: &SceneGeometry) -> Self {
+        let mut stats = Self::default();
+        let mut unique = BTreeSet::new();
+        for zone in &geometry.zones {
+            for group in &zone.groups {
+                accumulate_hd_faces(&mut stats, &mut unique, &group.geometry.hd_opaque, false);
+                accumulate_hd_faces(&mut stats, &mut unique, &group.geometry.hd_alpha, true);
+            }
+        }
+        stats.unique_materials = unique.len();
+        stats
+    }
+}
+
+fn accumulate_hd_faces(
+    stats: &mut HdRegionStats,
+    unique: &mut BTreeSet<u16>,
+    vertices: &[osrs_render::HdVertex],
+    alpha: bool,
+) {
+    for face in vertices.as_chunks::<3>().0 {
+        let vertex = &face[0];
+        stats.faces += 1;
+        if alpha {
+            stats.alpha_faces += 1;
+        } else {
+            stats.opaque_faces += 1;
+        }
+        if vertex.hsl_flags[3] & HD_FLAG_TERRAIN != 0 {
+            stats.terrain_faces += 1;
+        } else {
+            stats.model_faces += 1;
+        }
+
+        let mut materialized = false;
+        for packed in &vertex.material_water[..3] {
+            let index = *packed & HD_MATERIAL_INDEX_MASK;
+            if index != 0 {
+                materialized = true;
+                unique.insert(index);
+                stats.max_material_index = stats.max_material_index.max(index);
+            }
+        }
+        if materialized {
+            stats.materialized_faces += 1;
+        } else {
+            stats.none_material_faces += 1;
+        }
+    }
+}
+
+fn env_flag(name: &str) -> bool {
+    std::env::var(name).is_ok_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+}
 
 /// The scene window used to build `region`.
 pub fn region_window(region: RegionCoord) -> SceneWindow {
@@ -40,6 +143,10 @@ pub fn region_window(region: RegionCoord) -> SceneWindow {
 pub struct RegionGeometry {
     pub region: RegionCoord,
     pub geometry: SceneGeometry,
+    /// The extraction path that actually produced `geometry`.
+    pub render_path: RegionRenderPath,
+    /// Material coverage when [`RegionRenderPath::Hd`] produced this region.
+    pub hd_stats: Option<HdRegionStats>,
     /// Animated locs of the region, posed at runtime.
     pub animations: Vec<AnimatedInstance>,
     /// Inspection data for the picker.
@@ -59,7 +166,8 @@ pub fn build_region_geometry(
 }
 
 /// [`build_region_geometry`] with the HD data of the 117 HD profile: when `hd` is given and
-/// `presentation.hd_geometry` is set the geometry carries the HD vertex stream.
+/// `presentation.hd_geometry` is set the geometry carries the HD vertex stream. When HD is
+/// requested without an HD context, the resulting region is marked [`RegionRenderPath::ReferenceFallback`].
 pub fn build_region_geometry_with(
     definitions: &mut WorldDefinitions,
     region: RegionCoord,
@@ -77,11 +185,14 @@ pub fn build_region_geometry_with(
         min: (margin, margin),
         max: (margin + REGION_TILES, margin + REGION_TILES),
     });
-    let geometry = match hd.filter(|_| presentation.hd_geometry) {
-        Some(hd) => extract_owned_geometry_hd(&world, owned, hd),
-        None => extract_owned_geometry(&world, owned),
+    let render_path = RegionRenderPath::select(presentation.hd_geometry, hd.is_some());
+    let geometry = match (render_path, hd) {
+        (RegionRenderPath::Hd, Some(hd)) => extract_owned_geometry_hd(&world, owned, hd),
+        _ => extract_owned_geometry(&world, owned),
     };
-    let animations = extract_animated_instances(&world, owned);
+    let hd_stats =
+        (render_path == RegionRenderPath::Hd).then(|| HdRegionStats::from_geometry(&geometry));
+    let animations = extract_animated_instances(&world, owned, hd);
     let info = Arc::new(extract_region_info(
         &world,
         region,
@@ -94,6 +205,8 @@ pub fn build_region_geometry_with(
     Ok(Some(RegionGeometry {
         region,
         geometry,
+        render_path,
+        hd_stats,
         animations,
         info,
         build_ms: started.elapsed().as_secs_f32() * 1000.0,
@@ -129,7 +242,8 @@ pub enum StreamEvent {
     /// The HD profile's material table and textures, decoded (sent once, before the first HD
     /// region).
     HdMaterials(Box<HdGpuData>),
-    /// The 117 HD data could not be loaded; regions keep Reference geometry.
+    /// The 117 HD data could not be loaded; regions keep Reference geometry unless
+    /// `RUSTOSRS_HD_STRICT=1` is set.
     HdFailed(String),
     /// The cache has no map data for this region (open ocean, unused squares).
     Empty(RegionCoord),
@@ -180,9 +294,11 @@ impl RegionStreamer {
                 });
                 let mut presentation = presentation;
                 let mut generation = 0_u32;
+                let hd_strict = env_flag("RUSTOSRS_HD_STRICT");
+                let hd_diagnostics = env_flag("RUSTOSRS_HD_DIAGNOSTICS");
                 // Loaded the first time an HD region is requested.
                 let mut hd: Option<HdContext> = None;
-                let mut hd_failed = false;
+                let mut hd_failure: Option<String> = None;
                 while let Ok(request) = request_rx.recv() {
                     match request {
                         Request::Shutdown => break,
@@ -200,18 +316,37 @@ impl RegionStreamer {
                             generation = new_generation;
                         }
                         Request::Build(region) => {
-                            if presentation.hd_geometry && hd.is_none() && !hd_failed {
+                            if presentation.hd_geometry && hd.is_none() && hd_failure.is_none() {
                                 match load_hd(&definitions) {
                                     Ok((context, gpu)) => {
                                         hd = Some(context);
                                         let _ = event_tx.send(StreamEvent::HdMaterials(gpu));
                                     }
                                     Err(error) => {
-                                        hd_failed = true;
+                                        hd_failure = Some(error.clone());
                                         let _ = event_tx.send(StreamEvent::HdFailed(error));
                                     }
                                 }
                             }
+
+                            if presentation.hd_geometry && hd.is_none() && hd_strict {
+                                let reason = hd_failure
+                                    .as_deref()
+                                    .unwrap_or("HD context is unavailable");
+                                if event_tx
+                                    .send(StreamEvent::Failed(
+                                        region,
+                                        format!(
+                                            "117 HD strict mode blocked Reference fallback: {reason}"
+                                        ),
+                                    ))
+                                    .is_err()
+                                {
+                                    break;
+                                }
+                                continue;
+                            }
+
                             let event = match build_region_geometry_with(
                                 &mut definitions,
                                 region,
@@ -220,6 +355,32 @@ impl RegionStreamer {
                             ) {
                                 Ok(Some(mut geometry)) => {
                                     geometry.generation = generation;
+                                    if geometry.render_path == RegionRenderPath::ReferenceFallback {
+                                        let reason = hd_failure
+                                            .as_deref()
+                                            .unwrap_or("HD context is unavailable");
+                                        eprintln!(
+                                            "117 HD fallback for region {},{}: {reason}",
+                                            region.x, region.y
+                                        );
+                                    } else if hd_diagnostics
+                                        && let Some(stats) = geometry.hd_stats
+                                    {
+                                        eprintln!(
+                                            "117 HD region {},{}: faces={} opaque={} alpha={} terrain={} models={} materialized={} none={} unique_materials={} max_material={}",
+                                            region.x,
+                                            region.y,
+                                            stats.faces,
+                                            stats.opaque_faces,
+                                            stats.alpha_faces,
+                                            stats.terrain_faces,
+                                            stats.model_faces,
+                                            stats.materialized_faces,
+                                            stats.none_material_faces,
+                                            stats.unique_materials,
+                                            stats.max_material_index,
+                                        );
+                                    }
                                     StreamEvent::Region(Box::new(geometry))
                                 }
                                 Ok(None) => StreamEvent::Empty(region),
@@ -274,5 +435,60 @@ impl Drop for RegionStreamer {
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HdRegionStats, RegionRenderPath, accumulate_hd_faces};
+    use osrs_render::{HD_FLAG_TERRAIN, HD_MATERIAL_OVERLAY, HdVertex};
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn render_path_distinguishes_reference_from_hd_fallback() {
+        assert_eq!(
+            RegionRenderPath::select(false, false),
+            RegionRenderPath::Reference
+        );
+        assert_eq!(
+            RegionRenderPath::select(false, true),
+            RegionRenderPath::Reference
+        );
+        assert_eq!(RegionRenderPath::select(true, true), RegionRenderPath::Hd);
+        assert_eq!(
+            RegionRenderPath::select(true, false),
+            RegionRenderPath::ReferenceFallback
+        );
+    }
+
+    #[test]
+    fn hd_stats_count_faces_not_repeated_vertex_payloads() {
+        let material_vertex = HdVertex {
+            normal: [0; 2],
+            uv: [0.0; 2],
+            hsl_flags: [0, 0, 0, HD_FLAG_TERRAIN],
+            material_water: [2, 3 | HD_MATERIAL_OVERLAY, 0, 0],
+            depth: [0; 4],
+        };
+        let none_vertex = HdVertex {
+            hsl_flags: [0; 4],
+            material_water: [0; 4],
+            ..material_vertex
+        };
+        let mut stats = HdRegionStats::default();
+        let mut unique = BTreeSet::new();
+        accumulate_hd_faces(&mut stats, &mut unique, &[material_vertex; 3], false);
+        accumulate_hd_faces(&mut stats, &mut unique, &[none_vertex; 3], true);
+        stats.unique_materials = unique.len();
+
+        assert_eq!(stats.faces, 2);
+        assert_eq!(stats.opaque_faces, 1);
+        assert_eq!(stats.alpha_faces, 1);
+        assert_eq!(stats.terrain_faces, 1);
+        assert_eq!(stats.model_faces, 1);
+        assert_eq!(stats.materialized_faces, 1);
+        assert_eq!(stats.none_material_faces, 1);
+        assert_eq!(stats.unique_materials, 2);
+        assert_eq!(stats.max_material_index, 3);
     }
 }
