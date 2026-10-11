@@ -207,7 +207,11 @@ impl EditorApp {
                     .desired_width(180.0),
             );
             ui.separator();
-            if ui.button(icons::ZOOM_OUT).on_hover_text("Zoom out").clicked() {
+            if ui
+                .button(icons::ZOOM_OUT)
+                .on_hover_text("Zoom out")
+                .clicked()
+            {
                 self.world_map.step_zoom(-1);
             }
             ui.label(format!("{}%", self.world_map.zoom_percent()));
@@ -313,8 +317,10 @@ impl EditorApp {
                         == Some(name.as_str())
                 })
                 .min_by(|a, b| {
-                    let da = (f64::from(a.x) - center.0).powi(2) + (f64::from(a.y) - center.1).powi(2);
-                    let db = (f64::from(b.x) - center.0).powi(2) + (f64::from(b.y) - center.1).powi(2);
+                    let da =
+                        (f64::from(a.x) - center.0).powi(2) + (f64::from(a.y) - center.1).powi(2);
+                    let db =
+                        (f64::from(b.x) - center.0).powi(2) + (f64::from(b.y) - center.1).powi(2);
                     da.total_cmp(&db)
                 });
             if let Some(icon) = best {
@@ -326,7 +332,10 @@ impl EditorApp {
         ui.strong("Key");
         egui::ScrollArea::vertical().show(ui, |ui| {
             for (id, name) in kinds {
-                let sprite = catalog.elements.get(&id).map_or(-1, |element| element.sprite);
+                let sprite = catalog
+                    .elements
+                    .get(&id)
+                    .map_or(-1, |element| element.sprite);
                 ui.horizontal(|ui| {
                     let mut shown = !self.world_map.hidden.contains(&id);
                     if ui.checkbox(&mut shown, "").changed() {
@@ -400,8 +409,14 @@ impl EditorApp {
 
         // The overview picture underneath while regions load.
         if let Some(overview) = self.assets.overview(area_index) {
-            let top_left = to_screen(f64::from(area.low_x) * 64.0, f64::from(area.high_y + 1) * 64.0);
-            let bottom_right = to_screen(f64::from(area.high_x + 1) * 64.0, f64::from(area.low_y) * 64.0);
+            let top_left = to_screen(
+                f64::from(area.low_x) * 64.0,
+                f64::from(area.high_y + 1) * 64.0,
+            );
+            let bottom_right = to_screen(
+                f64::from(area.high_x + 1) * 64.0,
+                f64::from(area.low_y) * 64.0,
+            );
             painter.image(
                 overview.id(),
                 egui::Rect::from_min_max(top_left, bottom_right),
@@ -425,14 +440,17 @@ impl EditorApp {
             }
         }
         visible.sort_by(|a, b| {
-            let da = (f64::from(a.0) * 64.0 + 32.0 - center.0).powi(2) + (f64::from(a.1) * 64.0 + 32.0 - center.1).powi(2);
-            let db = (f64::from(b.0) * 64.0 + 32.0 - center.0).powi(2) + (f64::from(b.1) * 64.0 + 32.0 - center.1).powi(2);
+            let da = (f64::from(a.0) * 64.0 + 32.0 - center.0).powi(2)
+                + (f64::from(a.1) * 64.0 + 32.0 - center.1).powi(2);
+            let db = (f64::from(b.0) * 64.0 + 32.0 - center.0).powi(2)
+                + (f64::from(b.1) * 64.0 + 32.0 - center.1).powi(2);
             da.total_cmp(&db)
         });
         let mut loading = false;
         for (rx, ry) in visible {
             let top_left = to_screen(f64::from(rx) * 64.0, f64::from(ry + 1) * 64.0);
-            let region_rect = egui::Rect::from_min_size(top_left, egui::vec2(64.0 * zoom, 64.0 * zoom));
+            let region_rect =
+                egui::Rect::from_min_size(top_left, egui::vec2(64.0 * zoom, 64.0 * zoom));
             match self.assets.region((area_index, rx, ry, ppt)) {
                 Some(Some(texture)) => {
                     painter.image(
@@ -462,7 +480,12 @@ impl EditorApp {
                 let tip = marker + egui::vec2(-yaw.sin(), -yaw.cos()) * 16.0;
                 let gold = egui::Color32::from_rgb(255, 204, 0);
                 painter.line_segment([marker, tip], egui::Stroke::new(2.0, gold));
-                painter.circle(marker, 4.5, gold, egui::Stroke::new(1.5, egui::Color32::BLACK));
+                painter.circle(
+                    marker,
+                    4.5,
+                    gold,
+                    egui::Stroke::new(1.5, egui::Color32::BLACK),
+                );
             }
         }
 
@@ -578,7 +601,8 @@ impl EditorApp {
                 let line_height = size + 1.0;
                 for (index, line) in lines.iter().enumerate() {
                     let at = position + egui::vec2(0.0, index as f32 * line_height);
-                    for offset in [egui::vec2(1.0, 1.0)] {
+                    {
+                        let offset = egui::vec2(1.0, 1.0);
                         painter.text(
                             at + offset,
                             egui::Align2::CENTER_TOP,

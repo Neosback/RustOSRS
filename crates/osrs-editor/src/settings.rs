@@ -55,11 +55,12 @@ impl ColorblindChoice {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    pub theme: usize,
+    /// Index into `theme::ALL`.
+    pub appearance: usize,
     pub properties_panel: bool,
     pub stats_overlay: bool,
-    /// The compass in the viewport's corner.
-    pub show_compass: bool,
+    /// The minimap assembly (map, compass, globe) in the viewport's corner.
+    pub show_minimap: bool,
     pub brightness: f32,
     pub remove_color_banding: bool,
     pub bright_textures: bool,
@@ -85,10 +86,10 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            theme: 3,
+            appearance: 0,
             properties_panel: true,
             stats_overlay: true,
-            show_compass: false,
+            show_minimap: true,
             brightness: 0.8,
             remove_color_banding: true,
             bright_textures: false,
@@ -145,7 +146,7 @@ impl Settings {
 
     /// Clamp every value to what the UI allows (a hand-edited file can hold anything).
     pub fn sanitized(mut self) -> Self {
-        self.theme = self.theme.min(crate::theme::ALL.len() - 1);
+        self.appearance = self.appearance.min(crate::theme::ALL.len() - 1);
         self.brightness = self.brightness.clamp(0.5, 1.0);
         self.fog_depth_tiles = self.fog_depth_tiles.min(100);
         self.draw_distance_tiles = self.draw_distance_tiles.clamp(8, 184);

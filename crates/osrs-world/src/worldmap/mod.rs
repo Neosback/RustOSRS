@@ -20,11 +20,7 @@ mod templates;
 
 use crate::{WorldDefinitions, WorldError};
 use osrs_cache::decode::decode_sprite_group;
-use osrs_core::{
-    color_palette::build_color_palette,
-    floor_color::pack_terrain_hsl,
-    ids::ObjectId,
-};
+use osrs_core::{color_palette::build_color_palette, floor_color::pack_terrain_hsl, ids::ObjectId};
 use osrs_scene::terrain_build::FloorLookup;
 use std::collections::HashMap;
 
@@ -88,7 +84,10 @@ impl<'a> Reader<'a> {
         while *self.bytes.get(self.at)? != 0 {
             self.at += 1;
         }
-        let text = self.bytes[start..self.at].iter().map(|&b| char::from(b)).collect();
+        let text = self.bytes[start..self.at]
+            .iter()
+            .map(|&b| char::from(b))
+            .collect();
         self.at += 1;
         Some(text)
     }
@@ -335,8 +334,14 @@ impl Section {
             return None;
         }
         Some(match *self {
-            Self::Rect { world, map, .. } => (map[0] * 64 - world[0] * 64 + x, y + (map[1] * 64 - world[1] * 64)),
-            Self::Region { world, map, .. } => (map.0 * 64 - world.0 * 64 + x, y + (map.1 * 64 - world.1 * 64)),
+            Self::Rect { world, map, .. } => (
+                map[0] * 64 - world[0] * 64 + x,
+                y + (map[1] * 64 - world[1] * 64),
+            ),
+            Self::Region { world, map, .. } => (
+                map.0 * 64 - world.0 * 64 + x,
+                y + (map.1 * 64 - world.1 * 64),
+            ),
             Self::Chunks {
                 world_region,
                 world_chunks,
@@ -344,8 +349,11 @@ impl Section {
                 map_chunks,
                 ..
             } => (
-                map_region.0 * 64 - world_region.0 * 64 + x + (map_chunks[0] * 8 - world_chunks[0] * 8),
-                y + (map_region.1 * 64 - world_region.1 * 64) + (map_chunks[1] * 8 - world_chunks[1] * 8),
+                map_region.0 * 64 - world_region.0 * 64
+                    + x
+                    + (map_chunks[0] * 8 - world_chunks[0] * 8),
+                y + (map_region.1 * 64 - world_region.1 * 64)
+                    + (map_chunks[1] * 8 - world_chunks[1] * 8),
             ),
             Self::Chunk {
                 world_region,
@@ -355,7 +363,8 @@ impl Section {
                 ..
             } => (
                 map_region.0 * 64 - world_region.0 * 64 + x + (map_chunk.0 * 8 - world_chunk.0 * 8),
-                y + (map_region.1 * 64 - world_region.1 * 64) + (map_chunk.1 * 8 - world_chunk.1 * 8),
+                y + (map_region.1 * 64 - world_region.1 * 64)
+                    + (map_chunk.1 * 8 - world_chunk.1 * 8),
             ),
         })
     }
@@ -395,8 +404,12 @@ impl Section {
                 ..
             } => Coord {
                 plane: world_plane,
-                x: world_region.0 * 64 - map_region.0 * 64 + (world_chunks[0] * 8 - map_chunks[0] * 8) + x,
-                y: world_region.1 * 64 - map_region.1 * 64 + y + (world_chunks[1] * 8 - map_chunks[1] * 8),
+                x: world_region.0 * 64 - map_region.0 * 64
+                    + (world_chunks[0] * 8 - map_chunks[0] * 8)
+                    + x,
+                y: world_region.1 * 64 - map_region.1 * 64
+                    + y
+                    + (world_chunks[1] * 8 - map_chunks[1] * 8),
             },
             Self::Chunk {
                 world_plane,
@@ -407,8 +420,12 @@ impl Section {
                 ..
             } => Coord {
                 plane: world_plane,
-                x: world_region.0 * 64 - map_region.0 * 64 + (world_chunk.0 * 8 - map_chunk.0 * 8) + x,
-                y: world_region.1 * 64 - map_region.1 * 64 + y + (world_chunk.1 * 8 - map_chunk.1 * 8),
+                x: world_region.0 * 64 - map_region.0 * 64
+                    + (world_chunk.0 * 8 - map_chunk.0 * 8)
+                    + x,
+                y: world_region.1 * 64 - map_region.1 * 64
+                    + y
+                    + (world_chunk.1 * 8 - map_chunk.1 * 8),
             },
         })
     }
@@ -464,20 +481,30 @@ pub struct Area {
 impl Area {
     /// `containsCoord`: does the area show this world coordinate?
     pub fn contains_world(&self, plane: i32, x: i32, y: i32) -> bool {
-        self.sections.iter().any(|section| section.contains_world(plane, x, y))
+        self.sections
+            .iter()
+            .any(|section| section.contains_world(plane, x, y))
     }
 
     /// `position`: the map tile (area coordinates) of a world coordinate.
     pub fn position(&self, plane: i32, x: i32, y: i32) -> Option<(i32, i32)> {
-        self.sections.iter().find_map(|section| section.to_map(plane, x, y))
+        self.sections
+            .iter()
+            .find_map(|section| section.to_map(plane, x, y))
     }
 
     /// `coord`: the world coordinate shown at a map tile.
     pub fn world_coord(&self, x: i32, y: i32) -> Option<Coord> {
-        if x >> 6 < self.low_x || x >> 6 > self.high_x || y >> 6 < self.low_y || y >> 6 > self.high_y {
+        if x >> 6 < self.low_x
+            || x >> 6 > self.high_x
+            || y >> 6 < self.low_y
+            || y >> 6 > self.high_y
+        {
             return None;
         }
-        self.sections.iter().find_map(|section| section.to_world(x, y))
+        self.sections
+            .iter()
+            .find_map(|section| section.to_world(x, y))
     }
 
     /// The map tile the area opens on (its origin).
@@ -488,8 +515,13 @@ impl Area {
 
     /// Does any geography exist for this map region?
     pub fn has_region(&self, region_x: i32, region_y: i32) -> bool {
-        self.regions.iter().any(|data| data.region == (region_x, region_y))
-            || self.chunks.iter().any(|data| data.region == (region_x, region_y))
+        self.regions
+            .iter()
+            .any(|data| data.region == (region_x, region_y))
+            || self
+                .chunks
+                .iter()
+                .any(|data| data.region == (region_x, region_y))
     }
 
     /// Every map region that has geography.
@@ -615,6 +647,8 @@ pub struct Element {
     pub text_size: u8,
     /// Shown unless the player hides its category.
     pub visible: bool,
+    /// Also drawn on the minimap (opcode 7, bit 1).
+    pub minimap: bool,
     pub category: i32,
     /// Horizontal anchor: 0 centred, 1 left edge at the point, 2 right edge at the point.
     pub horizontal: u8,
@@ -631,6 +665,7 @@ impl Element {
             color: 0,
             text_size: 0,
             visible: true,
+            minimap: false,
             category: -1,
             horizontal: 0,
             vertical: 0,
@@ -653,6 +688,9 @@ impl Element {
                         let flags = reader.u8()?;
                         if flags & 1 == 0 {
                             element.visible = false;
+                        }
+                        if flags & 2 == 2 {
+                            element.minimap = true;
                         }
                     }
                     8 => {
@@ -752,7 +790,37 @@ pub struct Catalog {
     scenes: Vec<MapScene>,
 }
 
+impl MapScene {
+    /// The drawn frame's size (`subWidth`, `subHeight`).
+    pub fn frame_size(&self) -> (i32, i32) {
+        (self.sub_width, self.sub_height)
+    }
+
+    /// `IndexedSprite.drawAt`: call `put(x, y, rgb)` for every opaque pixel, the frame placed at
+    /// `(x, y)` plus its canvas offset.
+    pub fn blit(&self, x: i32, y: i32, mut put: impl FnMut(i32, i32, u32)) {
+        for row in 0..self.sub_height {
+            for column in 0..self.sub_width {
+                let index = self.indices[(row * self.sub_width + column) as usize];
+                if index != 0 {
+                    let rgb = self.palette.get(usize::from(index)).copied().unwrap_or(0);
+                    put(
+                        x + self.x_offset + column,
+                        y + self.y_offset + row,
+                        rgb & 0xFF_FFFF,
+                    );
+                }
+            }
+        }
+    }
+}
+
 impl Catalog {
+    /// A map-scene sprite (`mapscene` group), by object `mapSceneId`.
+    pub fn map_scene(&self, id: u32) -> Option<&MapScene> {
+        self.scenes.get(id as usize)
+    }
+
     pub fn load(definitions: &WorldDefinitions) -> Result<Self, WorldError> {
         let cache = definitions.cache();
         let missing = |what: &str| WorldError::Placement(format!("world map: {what}"));
@@ -814,7 +882,8 @@ fn load_map_scenes(definitions: &WorldDefinitions) -> Vec<MapScene> {
     let Ok(file) = cache.read_file(SPRITE_INDEX, group, 0, None) else {
         return Vec::new();
     };
-    let Ok(frames) = decode_sprite_group(group, &file.bytes, definitions.context(), &file.provenance)
+    let Ok(frames) =
+        decode_sprite_group(group, &file.bytes, definitions.context(), &file.provenance)
     else {
         return Vec::new();
     };
@@ -935,7 +1004,10 @@ fn load_geography(
     region_x: i32,
     region_y: i32,
 ) -> Option<(Geography, u32, u32)> {
-    let whole = area.regions.iter().any(|data| data.region == (region_x, region_y));
+    let whole = area
+        .regions
+        .iter()
+        .any(|data| data.region == (region_x, region_y));
     let chunks: Vec<(i32, i32)> = area
         .chunks
         .iter()
@@ -949,7 +1021,10 @@ fn load_geography(
     // a zoned region the 8x8 zones listed in the compositemap, back to back.
     let file_id = area.id;
     let group = region_group(region_x, region_y);
-    let file = definitions.cache().read_file(GEOGRAPHY_INDEX, group, file_id, None).ok()?;
+    let file = definitions
+        .cache()
+        .read_file(GEOGRAPHY_INDEX, group, file_id, None)
+        .ok()?;
     let mut reader = Reader::new(&file.bytes);
     let mut geography = Geography::new();
     if whole {
@@ -962,7 +1037,11 @@ fn load_geography(
         for &(chunk_x, chunk_y) in &chunks {
             for x in 0..8 {
                 for y in 0..8 {
-                    geography.read_tile(chunk_x as usize * 8 + x, chunk_y as usize * 8 + y, &mut reader)?;
+                    geography.read_tile(
+                        chunk_x as usize * 8 + x,
+                        chunk_y as usize * 8 + y,
+                        &mut reader,
+                    )?;
                 }
             }
         }
@@ -974,7 +1053,10 @@ fn load_geography(
 /// The 64x64 pre-blended ground colours (`WorldMapSprite`), ARGB, indexed `y * 64 + x`.
 fn load_ground(definitions: &WorldDefinitions, group: u32, file_id: u32) -> Vec<u32> {
     let mut colours = vec![0_u32; TILE_COUNT];
-    let Ok(file) = definitions.cache().read_file(GROUND_INDEX, group, file_id, None) else {
+    let Ok(file) = definitions
+        .cache()
+        .read_file(GROUND_INDEX, group, file_id, None)
+    else {
         return colours;
     };
     let mut decoder = png::Decoder::new(std::io::Cursor::new(&file.bytes));
@@ -993,15 +1075,21 @@ fn load_ground(definitions: &WorldDefinitions, group: u32, file_id: u32) -> Vec<
         png::ColorType::GrayscaleAlpha => 2,
         png::ColorType::Indexed => return colours,
     };
-    for index in 0..TILE_COUNT.min((info.width * info.height) as usize) {
+    let pixel_count = TILE_COUNT.min((info.width * info.height) as usize);
+    for (index, slot) in colours.iter_mut().enumerate().take(pixel_count) {
         let base = index * channels;
         let (r, g, b, a) = match channels {
             1 => (buffer[base], buffer[base], buffer[base], 255),
             2 => (buffer[base], buffer[base], buffer[base], buffer[base + 1]),
             3 => (buffer[base], buffer[base + 1], buffer[base + 2], 255),
-            _ => (buffer[base], buffer[base + 1], buffer[base + 2], buffer[base + 3]),
+            _ => (
+                buffer[base],
+                buffer[base + 1],
+                buffer[base + 2],
+                buffer[base + 3],
+            ),
         };
-        colours[index] = u32::from(a) << 24 | u32::from(r) << 16 | u32::from(g) << 8 | u32::from(b);
+        *slot = u32::from(a) << 24 | u32::from(r) << 16 | u32::from(g) << 8 | u32::from(b);
     }
     colours
 }
@@ -1024,9 +1112,16 @@ pub struct MapIcon {
 
 /// An object's current map icon: the object itself, or its first transform at all-zero varps.
 fn object_icon(definitions: &mut WorldDefinitions, object: i32) -> Option<u32> {
-    let definition = definitions.object(ObjectId::new(u32::try_from(object).ok()?)).ok()??;
+    let definition = definitions
+        .object(ObjectId::new(u32::try_from(object).ok()?))
+        .ok()??;
     if let Some(morphs) = &definition.morphs {
-        let target = morphs.transforms.first().copied().flatten().or(morphs.fallback);
+        let target = morphs
+            .transforms
+            .first()
+            .copied()
+            .flatten()
+            .or(morphs.fallback);
         let target = definitions.object(target?).ok()??;
         return target.map_icon.map(|icon| icon.get());
     }
@@ -1048,9 +1143,9 @@ fn has_icon(definitions: &mut WorldDefinitions, object: i32) -> bool {
             .copied()
             .chain(morphs.fallback)
             .collect();
-        return targets.into_iter().any(|target| {
-            matches!(definitions.object(target), Ok(Some(def)) if def.map_icon.is_some())
-        });
+        return targets.into_iter().any(
+            |target| matches!(definitions.object(target), Ok(Some(def)) if def.map_icon.is_some()),
+        );
     }
     definition.map_icon.is_some()
 }
@@ -1186,7 +1281,14 @@ impl Canvas {
     }
 
     /// `IndexedSprite.method12104`: nearest-neighbour scaled blit of a map-scene sprite.
-    fn blit_scene(&mut self, sprite: &MapScene, mut x: i32, mut y: i32, mut width: i32, mut height: i32) {
+    fn blit_scene(
+        &mut self,
+        sprite: &MapScene,
+        mut x: i32,
+        mut y: i32,
+        mut width: i32,
+        mut height: i32,
+    ) {
         if width <= 0 || height <= 0 {
             return;
         }
@@ -1236,11 +1338,17 @@ impl Canvas {
             let mut column_source = source_x;
             for column in 0..width.max(0) {
                 let index = (column_source >> 16) + line;
-                if let Some(&palette_index) = usize::try_from(index).ok().and_then(|i| sprite.indices.get(i)) {
-                    if palette_index != 0 {
-                        let rgb = sprite.palette.get(usize::from(palette_index)).copied().unwrap_or(0);
-                        self.put(x + column, y + row, 0xFF00_0000 | rgb);
-                    }
+                if let Some(&palette_index) = usize::try_from(index)
+                    .ok()
+                    .and_then(|i| sprite.indices.get(i))
+                    && palette_index != 0
+                {
+                    let rgb = sprite
+                        .palette
+                        .get(usize::from(palette_index))
+                        .copied()
+                        .unwrap_or(0);
+                    self.put(x + column, y + row, 0xFF00_0000 | rgb);
                 }
                 column_source += step_x;
             }
@@ -1293,7 +1401,8 @@ impl RegionRenderer {
         ppt: i32,
     ) -> Option<RegionImage> {
         let area = catalog.areas.get(area_index)?;
-        let (geography, ground_group, ground_file) = load_geography(definitions, area, region.0, region.1)?;
+        let (geography, ground_group, ground_file) =
+            load_geography(definitions, area, region.0, region.1)?;
         let ground = load_ground(definitions, ground_group, ground_file);
         let size = 64 * ppt;
         let mut canvas = Canvas {
@@ -1304,8 +1413,25 @@ impl RegionRenderer {
         // Pass 1: ground and upper overlays.
         for x in 0..64_i32 {
             for y in 0..64_i32 {
-                self.draw_ground(&mut canvas, definitions, &geography, &ground, x, y, ppt, background);
-                self.draw_upper_overlays(&mut canvas, definitions, &geography, x, y, ppt, background);
+                self.draw_ground(
+                    &mut canvas,
+                    definitions,
+                    &geography,
+                    &ground,
+                    x,
+                    y,
+                    ppt,
+                    background,
+                );
+                self.draw_upper_overlays(
+                    &mut canvas,
+                    definitions,
+                    &geography,
+                    x,
+                    y,
+                    ppt,
+                    background,
+                );
             }
         }
         // Pass 2: wall lines then map scenes, tile by tile.
@@ -1373,7 +1499,16 @@ impl RegionRenderer {
         if overlay == -1 {
             canvas.fill(px, py, ppt, ppt, ground_colour);
         } else {
-            self.gradient(canvas, px, py, ppt, ground_colour, overlay_colour, shape, geography.rotation[0][at]);
+            self.gradient(
+                canvas,
+                px,
+                py,
+                ppt,
+                ground_colour,
+                overlay_colour,
+                shape,
+                geography.rotation[0][at],
+            );
         }
     }
 
@@ -1401,7 +1536,16 @@ impl RegionRenderer {
             if shape == 0 {
                 canvas.fill(px, py, ppt, ppt, colour);
             } else {
-                self.gradient(canvas, px, py, ppt, 0, colour, shape, geography.rotation[plane][at]);
+                self.gradient(
+                    canvas,
+                    px,
+                    py,
+                    ppt,
+                    0,
+                    colour,
+                    shape,
+                    geography.rotation[plane][at],
+                );
             }
         }
     }
@@ -1500,7 +1644,12 @@ impl RegionRenderer {
                     9 => {
                         if rotation % 2 == 0 {
                             for step in 0..ppt {
-                                canvas.horizontal(step + left, (64 - y) * ppt - 1 - step, 1, colour);
+                                canvas.horizontal(
+                                    step + left,
+                                    (64 - y) * ppt - 1 - step,
+                                    1,
+                                    colour,
+                                );
                             }
                         } else {
                             for step in 0..ppt {
@@ -1569,8 +1718,12 @@ pub fn load_overview(definitions: &WorldDefinitions, area: &Area) -> Option<(u32
     let mut rgba = vec![255_u8; pixels * 4];
     for index in 0..pixels {
         match info.color_type {
-            png::ColorType::Rgb => rgba[index * 4..index * 4 + 3].copy_from_slice(&buffer[index * 3..index * 3 + 3]),
-            png::ColorType::Rgba => rgba[index * 4..index * 4 + 4].copy_from_slice(&buffer[index * 4..index * 4 + 4]),
+            png::ColorType::Rgb => {
+                rgba[index * 4..index * 4 + 3].copy_from_slice(&buffer[index * 3..index * 3 + 3])
+            }
+            png::ColorType::Rgba => {
+                rgba[index * 4..index * 4 + 4].copy_from_slice(&buffer[index * 4..index * 4 + 4])
+            }
             png::ColorType::Grayscale => rgba[index * 4..index * 4 + 3].fill(buffer[index]),
             png::ColorType::GrayscaleAlpha => {
                 rgba[index * 4..index * 4 + 3].fill(buffer[index * 2]);

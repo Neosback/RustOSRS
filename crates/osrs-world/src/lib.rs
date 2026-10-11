@@ -13,6 +13,7 @@ mod error;
 mod extract;
 mod info;
 mod loc_stage;
+pub mod minimap;
 pub mod oracle_dump;
 mod scene_builder;
 mod streaming;

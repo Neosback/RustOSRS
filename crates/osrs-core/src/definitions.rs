@@ -192,9 +192,9 @@ impl ObjectDefinition {
         let has_model = match &self.models {
             None => false,
             Some(ObjectModels::Untyped(_)) => true,
-            Some(ObjectModels::Typed(models)) => {
-                models.first().is_none_or(|model| model.loc_type.get() == 10)
-            }
+            Some(ObjectModels::Typed(models)) => models
+                .first()
+                .is_none_or(|model| model.loc_type.get() == 10),
         };
         has_model || self.actions.iter().any(Option::is_some)
     }

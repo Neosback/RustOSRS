@@ -37,7 +37,7 @@ impl EditorApp {
                     ui.checkbox(&mut self.prefs.properties_panel, "Side panel");
                     ui.checkbox(&mut self.prefs.dock_right, "Dock side panel on the right");
                     ui.checkbox(&mut self.prefs.stats_overlay, "Statistics overlay");
-                    ui.checkbox(&mut self.prefs.show_compass, "Compass");
+                    ui.checkbox(&mut self.prefs.show_minimap, "Minimap");
                     ui.menu_button("Camera", |ui| self.camera_mode_picker(ui));
                     self.run_plugins(|plugin, cx| {
                         if plugin.has_menu() {
@@ -82,7 +82,7 @@ impl EditorApp {
     pub(super) fn theme_picker(&mut self, ui: &mut egui::Ui) {
         for (index, name) in crate::theme::NAMES.iter().enumerate() {
             if ui
-                .radio_value(&mut self.prefs.theme, index, *name)
+                .radio_value(&mut self.prefs.appearance, index, *name)
                 .clicked()
             {
                 crate::theme::set_theme(ui.ctx(), crate::theme::ALL[index]);

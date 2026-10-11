@@ -1,310 +1,233 @@
-//! Catppuccin theme for egui.
+//! The editor's look: a calm, flat, modern interface.
 //!
-//! Vendored and adapted from <https://github.com/catppuccin/egui> (MIT, Copyright (c) 2023
-//! Catppuccin). The published crate supports egui up to 0.33; this app uses egui 0.36, so the
-//! (small) palette and visuals mapping live here against the egui version eframe provides.
+//! A theme is a small palette (background, surfaces, text, one accent); [`set_theme`] turns it
+//! into egui visuals plus the shared spacing, rounding and type scale, so every theme has the same
+//! layout and only the colours change. Widgets are flat (no outlines at rest), corners are soft,
+//! the accent colour is used sparingly for selection and focus.
 
-#![allow(dead_code)]
+use eframe::egui::{
+    self, Color32, CornerRadius, FontFamily, FontId, Margin, Shadow, Stroke, TextStyle, style,
+};
 
-use eframe::egui::{self, Color32, epaint, style};
-
-/// The colors for a theme variant.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+/// The colours of one theme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Theme {
-    pub rosewater: Color32,
-    pub flamingo: Color32,
-    pub pink: Color32,
-    pub mauve: Color32,
-    pub red: Color32,
-    pub maroon: Color32,
-    pub peach: Color32,
-    pub yellow: Color32,
-    pub green: Color32,
-    pub teal: Color32,
-    pub sky: Color32,
-    pub sapphire: Color32,
-    pub blue: Color32,
-    pub lavender: Color32,
+    pub name: &'static str,
+    pub dark: bool,
+    /// Side panels and the status bar.
+    pub panel: Color32,
+    /// Windows, menus and popups (a step above the panels).
+    pub window: Color32,
+    /// Text fields and the viewport surround (a step below the panels).
+    pub inset: Color32,
+    /// Buttons and inputs at rest, hovered, and pressed.
+    pub widget: Color32,
+    pub widget_hover: Color32,
+    pub widget_active: Color32,
+    /// Hairlines and separators.
+    pub border: Color32,
     pub text: Color32,
-    pub subtext1: Color32,
-    pub subtext0: Color32,
-    pub overlay2: Color32,
-    pub overlay1: Color32,
-    pub overlay0: Color32,
-    pub surface2: Color32,
-    pub surface1: Color32,
-    pub surface0: Color32,
-    pub base: Color32,
-    pub mantle: Color32,
-    pub crust: Color32,
+    pub text_dim: Color32,
+    pub accent: Color32,
+    pub danger: Color32,
+    pub warning: Color32,
 }
 
-pub const LATTE: Theme = Theme {
-    rosewater: Color32::from_rgb(220, 138, 120),
-    flamingo: Color32::from_rgb(221, 120, 120),
-    pink: Color32::from_rgb(234, 118, 203),
-    mauve: Color32::from_rgb(136, 57, 239),
-    red: Color32::from_rgb(210, 15, 57),
-    maroon: Color32::from_rgb(230, 69, 83),
-    peach: Color32::from_rgb(254, 100, 11),
-    yellow: Color32::from_rgb(223, 142, 29),
-    green: Color32::from_rgb(64, 160, 43),
-    teal: Color32::from_rgb(23, 146, 153),
-    sky: Color32::from_rgb(4, 165, 229),
-    sapphire: Color32::from_rgb(32, 159, 181),
-    blue: Color32::from_rgb(30, 102, 245),
-    lavender: Color32::from_rgb(114, 135, 253),
-    text: Color32::from_rgb(76, 79, 105),
-    subtext1: Color32::from_rgb(92, 95, 119),
-    subtext0: Color32::from_rgb(108, 111, 133),
-    overlay2: Color32::from_rgb(124, 127, 147),
-    overlay1: Color32::from_rgb(140, 143, 161),
-    overlay0: Color32::from_rgb(156, 160, 176),
-    surface2: Color32::from_rgb(172, 176, 190),
-    surface1: Color32::from_rgb(188, 192, 204),
-    surface0: Color32::from_rgb(204, 208, 218),
-    base: Color32::from_rgb(239, 241, 245),
-    mantle: Color32::from_rgb(230, 233, 239),
-    crust: Color32::from_rgb(220, 224, 232),
+const fn rgb(r: u8, g: u8, b: u8) -> Color32 {
+    Color32::from_rgb(r, g, b)
+}
+
+/// The default: neutral graphite with a soft blue accent.
+pub const GRAPHITE: Theme = Theme {
+    name: "Graphite",
+    dark: true,
+    panel: rgb(31, 34, 40),
+    window: rgb(38, 42, 49),
+    inset: rgb(24, 26, 31),
+    widget: rgb(50, 55, 64),
+    widget_hover: rgb(61, 67, 78),
+    widget_active: rgb(72, 79, 92),
+    border: rgb(58, 63, 73),
+    text: rgb(228, 231, 236),
+    text_dim: rgb(147, 155, 168),
+    accent: rgb(108, 142, 255),
+    danger: rgb(255, 107, 107),
+    warning: rgb(245, 165, 36),
 };
 
-pub const FRAPPE: Theme = Theme {
-    rosewater: Color32::from_rgb(242, 213, 207),
-    flamingo: Color32::from_rgb(238, 190, 190),
-    pink: Color32::from_rgb(244, 184, 228),
-    mauve: Color32::from_rgb(202, 158, 230),
-    red: Color32::from_rgb(231, 130, 132),
-    maroon: Color32::from_rgb(234, 153, 156),
-    peach: Color32::from_rgb(239, 159, 118),
-    yellow: Color32::from_rgb(229, 200, 144),
-    green: Color32::from_rgb(166, 209, 137),
-    teal: Color32::from_rgb(129, 200, 190),
-    sky: Color32::from_rgb(153, 209, 219),
-    sapphire: Color32::from_rgb(133, 193, 220),
-    blue: Color32::from_rgb(140, 170, 238),
-    lavender: Color32::from_rgb(186, 187, 241),
-    text: Color32::from_rgb(198, 208, 245),
-    subtext1: Color32::from_rgb(181, 191, 226),
-    subtext0: Color32::from_rgb(165, 173, 206),
-    overlay2: Color32::from_rgb(148, 156, 187),
-    overlay1: Color32::from_rgb(131, 139, 167),
-    overlay0: Color32::from_rgb(115, 121, 148),
-    surface2: Color32::from_rgb(98, 104, 128),
-    surface1: Color32::from_rgb(81, 87, 109),
-    surface0: Color32::from_rgb(65, 69, 89),
-    base: Color32::from_rgb(48, 52, 70),
-    mantle: Color32::from_rgb(41, 44, 60),
-    crust: Color32::from_rgb(35, 38, 52),
+/// Deep blue-black with a teal accent, for dark rooms.
+pub const MIDNIGHT: Theme = Theme {
+    name: "Midnight",
+    dark: true,
+    panel: rgb(14, 17, 24),
+    window: rgb(20, 24, 33),
+    inset: rgb(9, 11, 16),
+    widget: rgb(31, 37, 50),
+    widget_hover: rgb(40, 48, 65),
+    widget_active: rgb(50, 60, 80),
+    border: rgb(36, 43, 58),
+    text: rgb(222, 228, 240),
+    text_dim: rgb(128, 140, 163),
+    accent: rgb(72, 207, 190),
+    danger: rgb(255, 120, 120),
+    warning: rgb(240, 180, 70),
 };
 
-pub const MACCHIATO: Theme = Theme {
-    rosewater: Color32::from_rgb(244, 219, 214),
-    flamingo: Color32::from_rgb(240, 198, 198),
-    pink: Color32::from_rgb(245, 189, 230),
-    mauve: Color32::from_rgb(198, 160, 246),
-    red: Color32::from_rgb(237, 135, 150),
-    maroon: Color32::from_rgb(238, 153, 160),
-    peach: Color32::from_rgb(245, 169, 127),
-    yellow: Color32::from_rgb(238, 212, 159),
-    green: Color32::from_rgb(166, 218, 149),
-    teal: Color32::from_rgb(139, 213, 202),
-    sky: Color32::from_rgb(145, 215, 227),
-    sapphire: Color32::from_rgb(125, 196, 228),
-    blue: Color32::from_rgb(138, 173, 244),
-    lavender: Color32::from_rgb(183, 189, 248),
-    text: Color32::from_rgb(202, 211, 245),
-    subtext1: Color32::from_rgb(184, 192, 224),
-    subtext0: Color32::from_rgb(165, 173, 203),
-    overlay2: Color32::from_rgb(147, 154, 183),
-    overlay1: Color32::from_rgb(128, 135, 162),
-    overlay0: Color32::from_rgb(110, 115, 141),
-    surface2: Color32::from_rgb(91, 96, 120),
-    surface1: Color32::from_rgb(73, 77, 100),
-    surface0: Color32::from_rgb(54, 58, 79),
-    base: Color32::from_rgb(36, 39, 58),
-    mantle: Color32::from_rgb(30, 32, 48),
-    crust: Color32::from_rgb(24, 25, 38),
+/// A clean light theme.
+pub const DAYLIGHT: Theme = Theme {
+    name: "Daylight",
+    dark: false,
+    panel: rgb(243, 244, 247),
+    window: rgb(255, 255, 255),
+    inset: rgb(231, 233, 238),
+    widget: rgb(232, 235, 241),
+    widget_hover: rgb(220, 224, 233),
+    widget_active: rgb(205, 211, 224),
+    border: rgb(211, 215, 224),
+    text: rgb(30, 35, 48),
+    text_dim: rgb(98, 107, 125),
+    accent: rgb(52, 104, 240),
+    danger: rgb(214, 55, 62),
+    warning: rgb(196, 118, 0),
 };
 
-pub const MOCHA: Theme = Theme {
-    rosewater: Color32::from_rgb(245, 224, 220),
-    flamingo: Color32::from_rgb(242, 205, 205),
-    pink: Color32::from_rgb(245, 194, 231),
-    mauve: Color32::from_rgb(203, 166, 247),
-    red: Color32::from_rgb(243, 139, 168),
-    maroon: Color32::from_rgb(235, 160, 172),
-    peach: Color32::from_rgb(250, 179, 135),
-    yellow: Color32::from_rgb(249, 226, 175),
-    green: Color32::from_rgb(166, 227, 161),
-    teal: Color32::from_rgb(148, 226, 213),
-    sky: Color32::from_rgb(137, 220, 235),
-    sapphire: Color32::from_rgb(116, 199, 236),
-    blue: Color32::from_rgb(137, 180, 250),
-    lavender: Color32::from_rgb(180, 190, 254),
-    text: Color32::from_rgb(205, 214, 244),
-    subtext1: Color32::from_rgb(186, 194, 222),
-    subtext0: Color32::from_rgb(166, 173, 200),
-    overlay2: Color32::from_rgb(147, 153, 178),
-    overlay1: Color32::from_rgb(127, 132, 156),
-    overlay0: Color32::from_rgb(108, 112, 134),
-    surface2: Color32::from_rgb(88, 91, 112),
-    surface1: Color32::from_rgb(69, 71, 90),
-    surface0: Color32::from_rgb(49, 50, 68),
-    base: Color32::from_rgb(30, 30, 46),
-    mantle: Color32::from_rgb(24, 24, 37),
-    crust: Color32::from_rgb(17, 17, 27),
-};
+/// Variant names, parallel to [`ALL`].
+pub const NAMES: [&str; 3] = [GRAPHITE.name, MIDNIGHT.name, DAYLIGHT.name];
+/// All variants.
+pub const ALL: [Theme; 3] = [GRAPHITE, MIDNIGHT, DAYLIGHT];
 
-/// "OSRS Classic": the brown stone panels, light parchment text and orange headings of the game
-/// interface, with square corners. Mapped onto the Catppuccin slots (`blue` is the selection
-/// accent, here the interface orange).
-pub const OSRS: Theme = Theme {
-    rosewater: Color32::from_rgb(226, 190, 150),
-    flamingo: Color32::from_rgb(214, 160, 120),
-    pink: Color32::from_rgb(220, 120, 110),
-    mauve: Color32::from_rgb(170, 120, 200),
-    red: Color32::from_rgb(220, 60, 40),
-    maroon: Color32::from_rgb(200, 70, 50),
-    peach: Color32::from_rgb(255, 152, 31),
-    yellow: Color32::from_rgb(255, 224, 70),
-    green: Color32::from_rgb(70, 190, 60),
-    teal: Color32::from_rgb(40, 170, 170),
-    sky: Color32::from_rgb(90, 190, 230),
-    sapphire: Color32::from_rgb(60, 150, 220),
-    blue: Color32::from_rgb(255, 152, 31),
-    lavender: Color32::from_rgb(190, 170, 230),
-    text: Color32::from_rgb(222, 213, 190),
-    subtext1: Color32::from_rgb(190, 180, 158),
-    subtext0: Color32::from_rgb(165, 155, 134),
-    overlay2: Color32::from_rgb(140, 128, 106),
-    overlay1: Color32::from_rgb(104, 93, 76),
-    overlay0: Color32::from_rgb(84, 75, 61),
-    surface2: Color32::from_rgb(98, 88, 72),
-    surface1: Color32::from_rgb(79, 70, 57),
-    surface0: Color32::from_rgb(66, 58, 47),
-    base: Color32::from_rgb(56, 49, 40),
-    mantle: Color32::from_rgb(44, 38, 31),
-    crust: Color32::from_rgb(30, 26, 21),
-};
-
-/// Apply the given theme to a [`Context`](egui::Context).
+/// Apply `theme` (visuals and the shared style) to the context.
 pub fn set_theme(ctx: &egui::Context, theme: Theme) {
-    let slot = if theme == LATTE {
-        egui::Theme::Light
-    } else {
+    let slot = if theme.dark {
         egui::Theme::Dark
+    } else {
+        egui::Theme::Light
     };
-    let old = ctx.style_of(slot).visuals.clone();
-    ctx.set_visuals_of(slot, theme.visuals(old));
-    ctx.set_theme(match slot {
-        egui::Theme::Light => egui::ThemePreference::Light,
-        egui::Theme::Dark => egui::ThemePreference::Dark,
+    ctx.set_theme(if theme.dark {
+        egui::ThemePreference::Dark
+    } else {
+        egui::ThemePreference::Light
+    });
+    ctx.style_mut_of(slot, |style| {
+        apply_layout(style);
+        style.visuals = theme.visuals();
     });
 }
 
-/// Apply the given theme to a [`Style`](egui::Style).
-///
-pub fn set_style_theme(style: &mut egui::Style, theme: Theme) {
-    let old = style.visuals.clone();
-    style.visuals = theme.visuals(old);
-}
-
-fn make_widget_visual(
-    old: style::WidgetVisuals,
-    theme: &Theme,
-    bg_fill: egui::Color32,
-) -> style::WidgetVisuals {
-    style::WidgetVisuals {
-        bg_fill,
-        weak_bg_fill: bg_fill,
-        bg_stroke: egui::Stroke {
-            color: theme.overlay1,
-            ..old.bg_stroke
-        },
-        fg_stroke: egui::Stroke {
-            color: theme.text,
-            ..old.fg_stroke
-        },
-        ..old
-    }
-}
-
-trait SquareCorners {
-    fn with_square_corners(self, square: bool) -> Self;
-}
-
-impl SquareCorners for egui::Visuals {
-    fn with_square_corners(mut self, square: bool) -> Self {
-        if square {
-            let none = egui::CornerRadius::ZERO;
-            self.window_corner_radius = none;
-            self.menu_corner_radius = none;
-            for widget in [
-                &mut self.widgets.noninteractive,
-                &mut self.widgets.inactive,
-                &mut self.widgets.hovered,
-                &mut self.widgets.active,
-                &mut self.widgets.open,
-            ] {
-                widget.corner_radius = none;
-            }
-        }
-        self
-    }
+/// Spacing, type scale and interaction sizes shared by every theme.
+fn apply_layout(style: &mut egui::Style) {
+    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+    style.spacing.button_padding = egui::vec2(10.0, 5.0);
+    style.spacing.window_margin = Margin::same(12);
+    style.spacing.menu_margin = Margin::same(6);
+    style.spacing.interact_size = egui::vec2(36.0, 26.0);
+    style.spacing.icon_width = 16.0;
+    style.spacing.icon_spacing = 6.0;
+    style.spacing.indent = 18.0;
+    style.spacing.slider_width = 150.0;
+    style.spacing.combo_width = 120.0;
+    style.spacing.scroll.bar_width = 8.0;
+    style.spacing.scroll.floating = true;
+    style.interaction.tooltip_delay = 0.35;
+    style.text_styles = [
+        (
+            TextStyle::Small,
+            FontId::new(11.5, FontFamily::Proportional),
+        ),
+        (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
+        (
+            TextStyle::Button,
+            FontId::new(14.0, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Heading,
+            FontId::new(18.0, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Monospace,
+            FontId::new(13.0, FontFamily::Monospace),
+        ),
+    ]
+    .into();
 }
 
 impl Theme {
-    fn visuals(&self, old: egui::Visuals) -> egui::Visuals {
-        let is_latte = *self == LATTE;
-        let shadow_color = if is_latte {
-            egui::Color32::from_black_alpha(25)
-        } else {
-            egui::Color32::from_black_alpha(96)
-        };
+    fn widget_visuals(
+        &self,
+        fill: Color32,
+        stroke: Stroke,
+        text: Color32,
+        radius: u8,
+    ) -> style::WidgetVisuals {
+        style::WidgetVisuals {
+            bg_fill: fill,
+            weak_bg_fill: fill,
+            bg_stroke: stroke,
+            corner_radius: CornerRadius::same(radius),
+            fg_stroke: Stroke::new(1.0, text),
+            expansion: 0.0,
+        }
+    }
 
+    fn visuals(&self) -> egui::Visuals {
+        let base = if self.dark {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        };
+        let shadow = Color32::from_black_alpha(if self.dark { 110 } else { 38 });
+        let hairline = Stroke::new(1.0, self.border);
         egui::Visuals {
-            hyperlink_color: self.rosewater,
-            faint_bg_color: self.surface0,
-            extreme_bg_color: self.crust,
-            code_bg_color: self.mantle,
-            warn_fg_color: self.peach,
-            error_fg_color: self.maroon,
-            window_fill: self.base,
-            panel_fill: self.base,
-            window_stroke: egui::Stroke {
-                color: self.overlay1,
-                ..old.window_stroke
+            dark_mode: self.dark,
+            override_text_color: None,
+            hyperlink_color: self.accent,
+            faint_bg_color: self.window,
+            extreme_bg_color: self.inset,
+            code_bg_color: self.inset,
+            warn_fg_color: self.warning,
+            error_fg_color: self.danger,
+            window_fill: self.window,
+            panel_fill: self.panel,
+            window_stroke: hairline,
+            window_corner_radius: CornerRadius::same(10),
+            menu_corner_radius: CornerRadius::same(8),
+            window_shadow: Shadow {
+                offset: [0, 8],
+                blur: 24,
+                spread: 0,
+                color: shadow,
+            },
+            popup_shadow: Shadow {
+                offset: [0, 6],
+                blur: 18,
+                spread: 0,
+                color: shadow,
             },
             widgets: style::Widgets {
-                noninteractive: make_widget_visual(old.widgets.noninteractive, self, self.base),
-                inactive: make_widget_visual(old.widgets.inactive, self, self.surface0),
-                hovered: make_widget_visual(old.widgets.hovered, self, self.surface2),
-                active: make_widget_visual(old.widgets.active, self, self.surface1),
-                open: make_widget_visual(old.widgets.open, self, self.surface0),
+                noninteractive: self.widget_visuals(self.panel, hairline, self.text_dim, 6),
+                inactive: self.widget_visuals(self.widget, Stroke::NONE, self.text, 6),
+                hovered: self.widget_visuals(
+                    self.widget_hover,
+                    Stroke::new(1.0, self.accent.gamma_multiply(0.45)),
+                    self.text,
+                    6,
+                ),
+                active: self.widget_visuals(
+                    self.widget_active,
+                    Stroke::new(1.0, self.accent),
+                    self.text,
+                    6,
+                ),
+                open: self.widget_visuals(self.widget_hover, Stroke::NONE, self.text, 6),
             },
             selection: style::Selection {
-                bg_fill: self.blue.linear_multiply(if is_latte { 0.4 } else { 0.2 }),
-                stroke: egui::Stroke {
-                    color: self.text,
-                    ..old.selection.stroke
-                },
+                bg_fill: self.accent.gamma_multiply(0.38),
+                stroke: Stroke::new(1.0, self.accent),
             },
-            window_shadow: epaint::Shadow {
-                color: shadow_color,
-                ..old.window_shadow
-            },
-            popup_shadow: epaint::Shadow {
-                color: shadow_color,
-                ..old.popup_shadow
-            },
-            dark_mode: !is_latte,
-            ..old
+            striped: false,
+            slider_trailing_fill: true,
+            interact_cursor: Some(egui::CursorIcon::PointingHand),
+            ..base
         }
-        .with_square_corners(*self == OSRS)
     }
 }
-
-/// Variant names, parallel to [`ALL`].
-pub const NAMES: [&str; 5] = ["Latte", "Frappé", "Macchiato", "Mocha", "OSRS Classic"];
-/// All variants, light to dark.
-pub const ALL: [Theme; 5] = [LATTE, FRAPPE, MACCHIATO, MOCHA, OSRS];

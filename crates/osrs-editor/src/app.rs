@@ -1,12 +1,12 @@
 //! The eframe application: scene loading, the wgpu viewport, and fly-camera input.
 
 mod menu;
+mod minimap;
 mod overlay;
 mod plugins;
 mod properties;
 mod status;
 mod toolbar;
-mod minimap;
 mod worldmap;
 
 use crate::animation_smoothing::AnimationSmoothingPlugin;
@@ -78,6 +78,7 @@ pub struct EditorApp {
     infos_version: u64,
     assets: Assets,
     world_map: worldmap::WorldMapView,
+    minimap_hud: minimap::MinimapHud,
     /// Every persisted value (see `settings.rs`); the UI edits it in place.
     prefs: Settings,
     presentation_generation: u32,
@@ -131,7 +132,7 @@ impl EditorApp {
         base_y: i32,
     ) -> Result<Self, String> {
         crate::fonts::install(&cc.egui_ctx);
-        crate::theme::set_theme(&cc.egui_ctx, crate::theme::MOCHA);
+        crate::theme::set_theme(&cc.egui_ctx, crate::theme::ALL[0]);
         let render_state = cc
             .wgpu_render_state
             .clone()
@@ -170,6 +171,7 @@ impl EditorApp {
             infos_version: 0,
             assets: Assets::new(asset_cache_dir),
             world_map: worldmap::WorldMapView::new(),
+            minimap_hud: minimap::MinimapHud::default(),
             prefs: Settings::default(),
             presentation_generation: 1,
             infos: Infos::new(),
@@ -256,7 +258,7 @@ impl EditorApp {
     /// Adopt loaded settings: store them and push them into the runtime state that mirrors them.
     fn apply_settings(&mut self, settings: Settings, ctx: &egui::Context) {
         let settings = settings.sanitized();
-        crate::theme::set_theme(ctx, crate::theme::ALL[settings.theme]);
+        crate::theme::set_theme(ctx, crate::theme::ALL[settings.appearance]);
         self.camera.fov_degrees = settings.fov_degrees;
         self.camera.speed = settings.fly_speed;
         self.camera.mode = if settings.orbit_camera {

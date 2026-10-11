@@ -4,6 +4,7 @@
 use eframe::egui;
 use osrs_world::{
     AssetEvent, AssetWorker, SpriteImage, WorldMapRegionImage,
+    minimap::MinimapRegion,
     worldmap::{Catalog, MapIcon},
 };
 use std::collections::{HashMap, HashSet};
@@ -19,6 +20,9 @@ pub mod sprite {
     pub const WIKI_ICON: u32 = 2420;
 }
 
+/// A minimap region cache key: region and plane.
+pub type MinimapKey = ((i32, i32), u8);
+
 /// A world-map region image: area index, region, pixels per tile.
 pub type RegionKey = (usize, i32, i32, i32);
 
@@ -28,6 +32,11 @@ const REGION_TEXTURE_BUDGET: usize = 700;
 pub struct Assets {
     worker: AssetWorker,
     sprites: HashMap<u32, egui::TextureHandle>,
+    /// CPU copies of sprites the minimap composites itself (masks, the compass).
+    sprite_pixels: HashMap<u32, Arc<SpriteImage>>,
+    /// Minimap regions: `None` = no data.
+    minimap: HashMap<MinimapKey, Option<Arc<MinimapRegion>>>,
+    minimap_requests: HashSet<MinimapKey>,
     missing: HashSet<u32>,
     requested: HashSet<u32>,
     pub catalog: Option<Arc<Catalog>>,
@@ -47,6 +56,9 @@ impl Assets {
         Self {
             worker: AssetWorker::spawn(cache_dir),
             sprites: HashMap::new(),
+            sprite_pixels: HashMap::new(),
+            minimap: HashMap::new(),
+            minimap_requests: HashSet::new(),
             missing: HashSet::new(),
             requested: HashSet::new(),
             catalog: None,
@@ -70,6 +82,25 @@ impl Assets {
             self.worker.request_sprite(id);
         }
         self.sprites.get(&id)
+    }
+
+    /// The decoded pixels of a sprite (requested like [`Self::sprite`]).
+    pub fn sprite_image(&mut self, id: u32) -> Option<Arc<SpriteImage>> {
+        self.sprite(id);
+        self.sprite_pixels.get(&id).cloned()
+    }
+
+    /// One minimap region, requesting it when unknown. `Some(None)` means "no data here".
+    pub fn minimap_region(
+        &mut self,
+        region: (i32, i32),
+        plane: u8,
+    ) -> Option<Option<Arc<MinimapRegion>>> {
+        let key = (region, plane);
+        if !self.minimap.contains_key(&key) && self.minimap_requests.insert(key) {
+            self.worker.request_minimap(region, plane);
+        }
+        self.minimap.get(&key).cloned()
     }
 
     /// Forget queued region work (the view changed area or zoom).
@@ -117,15 +148,13 @@ impl Assets {
             };
             changed = true;
             match event {
-                AssetEvent::Sprite(SpriteImage {
-                    id,
-                    width,
-                    height,
-                    rgba,
-                }) => {
+                AssetEvent::Sprite(sprite) => {
+                    let (id, width, height) = (sprite.id, sprite.width, sprite.height);
+                    let rgba = &sprite.rgba;
+                    self.sprite_pixels.insert(id, Arc::new(sprite.clone()));
                     let image = egui::ColorImage::from_rgba_unmultiplied(
                         [width as usize, height as usize],
-                        &rgba,
+                        rgba,
                     );
                     let handle = ctx.load_texture(
                         format!("sprite-{id}"),
@@ -184,6 +213,13 @@ impl Assets {
                         egui::TextureOptions::LINEAR,
                     );
                     self.overviews.insert(area, handle);
+                }
+                AssetEvent::MinimapRegion(region) => {
+                    self.minimap
+                        .insert((region.region, region.plane), Some(region));
+                }
+                AssetEvent::MinimapEmpty(region, plane) => {
+                    self.minimap.insert((region, plane), None);
                 }
                 AssetEvent::Failed(message) => self.status = Some(message),
             }

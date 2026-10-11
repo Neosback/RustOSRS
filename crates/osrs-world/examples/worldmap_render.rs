@@ -9,10 +9,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let a: Vec<String> = std::env::args().collect();
     let mut defs = WorldDefinitions::open(&a[1])?;
     let ppt: i32 = a[3].parse()?;
-    let (x0, y0, w, h): (i32, i32, i32, i32) = (a[4].parse()?, a[5].parse()?, a[6].parse()?, a[7].parse()?);
+    let (x0, y0, w, h): (i32, i32, i32, i32) =
+        (a[4].parse()?, a[5].parse()?, a[6].parse()?, a[7].parse()?);
     let catalog = Catalog::load(&defs)?;
     for (index, area) in catalog.areas.iter().enumerate() {
-        println!("{index}: {} / {} id {} main {} zoom {} regions x {}..{} y {}..{} origin {:?}", area.internal_name, area.external_name, area.id, area.is_main, area.zoom_percent, area.low_x, area.high_x, area.low_y, area.high_y, area.origin);
+        println!(
+            "{index}: {} / {} id {} main {} zoom {} regions x {}..{} y {}..{} origin {:?}",
+            area.internal_name,
+            area.external_name,
+            area.id,
+            area.is_main,
+            area.zoom_percent,
+            area.low_x,
+            area.high_x,
+            area.low_y,
+            area.high_y,
+            area.origin
+        );
     }
     println!("{} elements", catalog.elements.len());
     let area = a.get(8).map_or(Ok(catalog.main_area()), |s| s.parse())?;
@@ -22,7 +35,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut out = vec![0_u8; width * height * 3];
     for rx in 0..w {
         for ry in 0..h {
-            if let Some(image) = renderer.render(&mut defs, &catalog, area, (x0 + rx, y0 + ry), ppt) {
+            if let Some(image) = renderer.render(&mut defs, &catalog, area, (x0 + rx, y0 + ry), ppt)
+            {
                 let px = (rx * side) as usize;
                 let py = ((h - 1 - ry) * side) as usize;
                 for row in 0..side as usize {

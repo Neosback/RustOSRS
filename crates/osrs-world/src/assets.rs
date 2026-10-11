@@ -11,6 +11,7 @@
 
 use crate::{
     WorldDefinitions, WorldError,
+    minimap::{self, MinimapRegion},
     worldmap::{self, Catalog, MapIcon, RegionRenderer},
 };
 use osrs_cache::decode::decode_sprite_group;
@@ -68,6 +69,10 @@ pub enum AssetEvent {
         height: u32,
         rgba: Vec<u8>,
     },
+    /// A minimap region image (see [`crate::minimap`]).
+    MinimapRegion(Arc<MinimapRegion>),
+    /// The region has no map data (`region`, `plane`).
+    MinimapEmpty((i32, i32), u8),
     Failed(String),
 }
 
@@ -78,6 +83,10 @@ enum Request {
         region: (i32, i32),
         pixels_per_tile: i32,
         epoch: u64,
+    },
+    Minimap {
+        region: (i32, i32),
+        plane: u8,
     },
     Icons {
         area: usize,
@@ -145,14 +154,14 @@ impl AssetWorker {
                                         region,
                                         pixels_per_tile,
                                     ) {
-                                        Some(image) => {
-                                            AssetEvent::WorldMapRegion(Box::new(WorldMapRegionImage {
+                                        Some(image) => AssetEvent::WorldMapRegion(Box::new(
+                                            WorldMapRegionImage {
                                                 area,
                                                 region,
                                                 pixels_per_tile,
                                                 rgba: image.rgba,
-                                            }))
-                                        }
+                                            },
+                                        )),
                                         None => AssetEvent::WorldMapRegionEmpty {
                                             area,
                                             region,
@@ -162,9 +171,24 @@ impl AssetWorker {
                                 )
                             }
                         }
+                        Request::Minimap { region, plane } => Some(
+                            match minimap::render_region(&mut definitions, &catalog, region, plane)
+                            {
+                                Ok(Some(image)) => AssetEvent::MinimapRegion(Arc::new(image)),
+                                Ok(None) => AssetEvent::MinimapEmpty(region, plane),
+                                Err(error) => {
+                                    AssetEvent::Failed(format!("minimap {region:?}: {error}"))
+                                }
+                            },
+                        ),
                         Request::Icons { area } => Some(AssetEvent::WorldMapIcons {
                             area,
-                            icons: Arc::new(worldmap::area_icons(&mut definitions, &catalog, area, true)),
+                            icons: Arc::new(worldmap::area_icons(
+                                &mut definitions,
+                                &catalog,
+                                area,
+                                true,
+                            )),
                         }),
                         Request::Overview { area } => catalog
                             .areas
@@ -177,10 +201,10 @@ impl AssetWorker {
                                 rgba,
                             }),
                     };
-                    if let Some(event) = event {
-                        if event_tx.send(event).is_err() {
-                            break;
-                        }
+                    if let Some(event) = event
+                        && event_tx.send(event).is_err()
+                    {
+                        break;
                     }
                 }
             })
@@ -202,13 +226,23 @@ impl AssetWorker {
         self.epoch.fetch_add(1, Ordering::Relaxed) + 1
     }
 
-    pub fn request_region(&self, area: usize, region: (i32, i32), pixels_per_tile: i32, epoch: u64) {
+    pub fn request_region(
+        &self,
+        area: usize,
+        region: (i32, i32),
+        pixels_per_tile: i32,
+        epoch: u64,
+    ) {
         let _ = self.requests.send(Request::Region {
             area,
             region,
             pixels_per_tile,
             epoch,
         });
+    }
+
+    pub fn request_minimap(&self, region: (i32, i32), plane: u8) {
+        let _ = self.requests.send(Request::Minimap { region, plane });
     }
 
     pub fn request_icons(&self, area: usize) {
