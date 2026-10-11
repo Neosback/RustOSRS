@@ -7,7 +7,7 @@ use osrs_hd::environment::EnvironmentSet;
 use osrs_render::gpu::{
     SceneRenderer,
     hd::{
-        layout::GpuMaterial,
+        layout::{GpuMaterial, GpuWaterType, WaterLayers},
         materials::{
             DEFAULT_RESOLUTION, DecodedLayers, LayerPlan, MaterialArrayError, MaterialTextureArray,
             MipChain, vanilla_mip_chain,
@@ -24,6 +24,10 @@ pub struct HdGpuData {
     pub decoded: DecodedLayers,
     /// Vanilla texture layers: `(layer, pixels)` for materials without an image file.
     pub vanilla: Vec<(u32, MipChain)>,
+    /// The water type table: index `0` is `NONE`, then `water_types.json` in file order.
+    pub water_types: Vec<GpuWaterType>,
+    /// Layers of the water flow map, foam, caustics map and underwater flow map.
+    pub water_layers: WaterLayers,
     /// The per-area lighting environments, for the render thread's environment state.
     pub environments: Arc<EnvironmentSet>,
 }
@@ -78,11 +82,26 @@ impl HdContext {
                 vanilla_mip_chain(&image.rgba, TEXTURE_SIZE as u32, decoded.size),
             ));
         }
+        let mut water_types = vec![GpuWaterType::none(|name| plan.layer_of(name))];
+        water_types.extend(
+            self.data
+                .water_types
+                .iter()
+                .map(|water| GpuWaterType::from_hd(water, |name| plan.layer_of(name))),
+        );
+        let water_layers = WaterLayers {
+            flow_map: plan.layer_of("WATER_FLOW_MAP"),
+            foam: plan.layer_of("WATER_FOAM"),
+            caustics: plan.layer_of("CAUSTICS_MAP"),
+            underwater_flow_map: plan.layer_of("UNDERWATER_FLOW_MAP"),
+        };
         Ok(HdGpuData {
             materials: table,
             plan,
             decoded,
             vanilla,
+            water_types,
+            water_layers,
             environments: Arc::clone(&self.environments),
         })
     }
@@ -99,6 +118,7 @@ impl HdGpuData {
         for (layer, chain) in &self.vanilla {
             array.write_layer(renderer.queue(), *layer, chain);
         }
+        renderer.set_hd_water(&self.water_types, self.water_layers);
         renderer.set_hd_materials(&self.materials, array);
         Ok(())
     }

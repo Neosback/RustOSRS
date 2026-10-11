@@ -352,6 +352,7 @@ struct HdResources {
 /// Material table, texture array and lighting bound for the HD scene shader.
 struct HdBinding {
     bind_group: wgpu::BindGroup,
+    table: hd::layout::MaterialTable,
     textures: hd::materials::MaterialTextureArray,
 }
 
@@ -448,6 +449,9 @@ pub struct SceneRenderer {
     hd_layout: wgpu::BindGroupLayout,
     hd_env_buffer: wgpu::Buffer,
     hd_binding: Option<HdBinding>,
+    /// The water type table (storage buffer, `WaterType.NONE` first) and the special water layers.
+    hd_water_types: wgpu::Buffer,
+    hd_water_layers: hd::layout::WaterLayers,
     /// Shadow options and the shadow maps they ask for (rebuilt when the size changes).
     hd_shadows: ShadowSettings,
     hd_shadow_layout: wgpu::BindGroupLayout,
@@ -576,6 +580,8 @@ impl SceneRenderer {
             build_globals_bind_group(&device, &queue, &globals_layout, &globals_buffer, &[]);
         let hd_layout = hd::layout::scene_bind_group_layout(&device);
         let hd_shadow_layout = hd::shadow::maps_bind_group_layout(&device);
+        let hd_water_types =
+            hd::layout::water_types_buffer(&device, &[hd::layout::GpuWaterType::none(|_| -1)]);
         let hd_shadow_dummy = hd::shadow::ShadowMaps::new(&device, &hd_shadow_layout, 1);
         let hd_env_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("hd-environment"),
@@ -596,6 +602,8 @@ impl SceneRenderer {
             hd_layout,
             hd_env_buffer,
             hd_binding: None,
+            hd_water_types,
+            hd_water_layers: hd::layout::WaterLayers::default(),
             hd_shadows: ShadowSettings::default(),
             hd_shadow_dummy,
             hd_shadow_layout,
@@ -911,6 +919,7 @@ impl SceneRenderer {
         let hd = &self.hd_lighting;
         let lighting = &hd.lighting;
         let shadow_uniform = self.shadow_uniform(shadow_plan.as_ref(), shadow_maps);
+        let with4 = |v: [f32; 3]| [v[0], v[1], v[2], 0.0];
         let environment = hd::layout::HdEnvironmentUniform {
             light_proj: shadow_uniform.light_proj,
             shadow_right: shadow_uniform.right,
@@ -918,6 +927,27 @@ impl SceneRenderer {
             shadow_axis: shadow_uniform.axis,
             shadow_params: shadow_uniform.params,
             shadow_flags: shadow_uniform.flags,
+            water_light: with4(lighting.water_color_light),
+            water_mid: with4(lighting.water_color_mid),
+            water_dark: with4(lighting.water_color_dark),
+            caustics: [
+                lighting.caustics_color[0],
+                lighting.caustics_color[1],
+                lighting.caustics_color[2],
+                lighting.caustics_strength,
+            ],
+            scene_base: [
+                self.render_origin.0 as f32,
+                self.render_origin.1 as f32,
+                0.0,
+                0.0,
+            ],
+            water_layers: [
+                self.hd_water_layers.flow_map,
+                self.hd_water_layers.foam,
+                self.hd_water_layers.caustics,
+                self.hd_water_layers.underwater_flow_map,
+            ],
             camera: [
                 params.camera.x,
                 params.camera.y,
@@ -966,7 +996,12 @@ impl SceneRenderer {
                 lighting.water_color[2],
                 0.0,
             ],
-            misc: [lighting.lightning_brightness, 0.0, 0.0, 0.0],
+            misc: [
+                lighting.lightning_brightness,
+                f32::from(u8::from(hd.underwater_caustics)),
+                0.0,
+                0.0,
+            ],
             flags: [
                 u32::from(hd.normal_mapping),
                 hd.debug_view,
@@ -1378,17 +1413,44 @@ impl SceneRenderer {
         textures: hd::materials::MaterialTextureArray,
     ) {
         let table = hd::layout::MaterialTable::new(&self.device, materials);
-        let bind_group = hd::layout::scene_bind_group(
-            &self.device,
-            &self.hd_layout,
-            &table,
-            &textures,
-            &self.hd_env_buffer,
-        );
+        let bind_group = self.hd_scene_bind_group(&table, &textures);
         self.hd_binding = Some(HdBinding {
             bind_group,
+            table,
             textures,
         });
+    }
+
+    /// Bind the water type table (index `0` is `WaterType.NONE`) and the layers of the special
+    /// water materials. Rebinds the scene resources when materials are already set.
+    pub fn set_hd_water(
+        &mut self,
+        types: &[hd::layout::GpuWaterType],
+        layers: hd::layout::WaterLayers,
+    ) {
+        self.hd_water_types = hd::layout::water_types_buffer(&self.device, types);
+        self.hd_water_layers = layers;
+        if let Some(binding) = &self.hd_binding {
+            let bind_group = self.hd_scene_bind_group(&binding.table, &binding.textures);
+            if let Some(binding) = self.hd_binding.as_mut() {
+                binding.bind_group = bind_group;
+            }
+        }
+    }
+
+    fn hd_scene_bind_group(
+        &self,
+        table: &hd::layout::MaterialTable,
+        textures: &hd::materials::MaterialTextureArray,
+    ) -> wgpu::BindGroup {
+        hd::layout::scene_bind_group(
+            &self.device,
+            &self.hd_layout,
+            table,
+            textures,
+            &self.hd_env_buffer,
+            &self.hd_water_types,
+        )
     }
 
     /// The bound HD material texture array, to fill vanilla texture layers.

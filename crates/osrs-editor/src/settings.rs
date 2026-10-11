@@ -135,6 +135,8 @@ pub struct Settings {
     pub hd_vignette: f32,
     /// HD: normal mapping on materials that have a normal map.
     pub hd_normal_mapping: bool,
+    /// HD: caustics on the sea floor and under the surface.
+    pub hd_underwater_caustics: bool,
     /// HD: parallax occlusion mapping on materials that have displacement maps.
     pub hd_parallax_mapping: bool,
     /// HD: per-area environments (lighting, fog, sky and water colour; Properties > Shading).
@@ -178,6 +180,7 @@ impl Default for Settings {
             hd_exposure: HdParams::default().exposure,
             hd_vignette: HdParams::default().placeholder_vignette,
             hd_normal_mapping: true,
+            hd_underwater_caustics: true,
             hd_parallax_mapping: true,
             hd_environment: EnvironmentSettings::default(),
             hd_shadows: ShadowSettings::default(),

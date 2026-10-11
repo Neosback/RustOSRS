@@ -4,7 +4,8 @@
 // derivatives, underwater
 // tint, area environments (ambient/directional light, fog, ground fog, sky light, underglow,
 // lightning; phase 3). Shadows (phase 4), water surfaces (5), point lights (6) and tone mapping (8)
-// are not ported yet.
+// are not ported yet. Water (phase 5): water surfaces (`sampleWater`), the underwater tint and
+// caustics (`sampleUnderwater`), underwater flow distortion and the draw-distance depth clamp.
 //
 // Ported from the 117 HD plugin (https://github.com/117HD/RLHD). Copyright (c) 2018, Adam
 // <Adam@sigterm.info>; (c) 2021, 117 <https://twitter.com/117scape>; (c) 2022, Hooder
@@ -76,8 +77,20 @@ fn oct_decode(e: vec2<f32>) -> vec3<f32> {
 @vertex
 fn vs_main(input: VertexIn) -> VertexOut {
     var out: VertexOut;
-    let vert = vec4<f32>(vec3<f32>(input.position.xyz) + zone.base.xyz, 1.0);
+    var vert = vec4<f32>(vec3<f32>(input.position.xyz) + zone.base.xyz, 1.0);
     let bias = f32((input.abhsl >> 16u) & 0xffu);
+
+    // Clamp underwater vertices to the water surface along the draw distance border, excluding a
+    // water depth of 1, which marks geometry already flush with the surface.
+    let water_depth_here = input.depth[input.index % 3u];
+    if (water_depth_here > 1u) {
+        let chunk = TILE_SIZE * 8.0;
+        let cam = floor(env.camera.xz / chunk) * chunk + chunk / 2.0;
+        let d = floor(abs(vert.xz - cam) / TILE_SIZE);
+        if (max(d.x, d.y) > floor(env.fog_params.x / 8.0) * 8.0 + 3.0) {
+            vert.y = vert.y - f32(water_depth_here);
+        }
+    }
 
     var screen = globals.world_proj * vert;
     screen.z = screen.z + bias / 128.0;
@@ -178,6 +191,21 @@ fn calculate_fog_amount(position: vec3<f32>) -> f32 {
     let distance_fog2 = 1.0 - clamp(exp(-distance2 * density), 0.0, 1.0);
 
     return max(max(distance_fog1, distance_fog2), edge_fog);
+}
+
+// Distance fog and ground fog combined: the share of the sky colour at `position`.
+fn combined_fog_amount(position: vec3<f32>) -> f32 {
+    let eye_distance = length(position - env.camera.xyz);
+    let close_fade_distance = 1500.0;
+    var ground_fog = 1.0 - clamp(
+        (position.y - env.fog_params.y) / (env.fog_params.z - env.fog_params.y),
+        0.0,
+        1.0,
+    );
+    ground_fog = mix(0.0, env.fog_params.w, ground_fog);
+    ground_fog = ground_fog * clamp(eye_distance / close_fade_distance, 0.0, 1.0);
+    let fog_amount = calculate_fog_amount(position);
+    return 1.0 - (1.0 - fog_amount) * (1.0 - ground_fog);
 }
 
 // ---- fragment ---------------------------------------------------------------------------------
@@ -318,6 +346,204 @@ fn sample_displacement_map(
     return result;
 }
 
+// ---- water (`utils/water.glsl`, `utils/caustics.glsl`) --------------------------------------
+
+fn sample_caustics_channel(flow1: vec2<f32>, flow2: vec2<f32>, ddx: vec2<f32>, ddy: vec2<f32>) -> f32 {
+    let layer = max(env.water_layers.z, 0);
+    return min(
+        textureSampleGrad(material_textures, material_sampler, flow1, layer, ddx, ddy).r,
+        textureSampleGrad(material_textures, material_sampler, flow2, layer, ddx, ddy).r,
+    );
+}
+
+// Caustics with chromatic aberration.
+fn sample_caustics_aberrated(
+    flow1: vec2<f32>,
+    flow2: vec2<f32>,
+    aberration: f32,
+    ddx: vec2<f32>,
+    ddy: vec2<f32>,
+) -> vec3<f32> {
+    let r = sample_caustics_channel(flow1 + aberration * vec2<f32>(1.0, 1.0), flow2 + aberration * vec2<f32>(1.0, 1.0), ddx, ddy);
+    let g = sample_caustics_channel(flow1 + aberration * vec2<f32>(1.0, -1.0), flow2 + aberration * vec2<f32>(1.0, -1.0), ddx, ddy);
+    let b = sample_caustics_channel(flow1 + aberration * vec2<f32>(-1.0, -1.0), flow2 + aberration * vec2<f32>(-1.0, -1.0), ddx, ddy);
+    return vec3<f32>(r, g, b);
+}
+
+fn caustics_enabled() -> bool {
+    return env.misc.y != 0.0 && env.water_layers.z >= 0;
+}
+
+// `sampleUnderwater`: depth colour fade and caustics on submerged terrain. `rgb` is sRGB.
+fn sample_underwater(
+    rgb_in: vec3<f32>,
+    water_type: WaterType,
+    position: vec3<f32>,
+    depth: f32,
+    light_dot_normals: f32,
+) -> vec3<f32> {
+    var rgb = rgb_in;
+    let lowest_color_level = 500.0;
+    let mid_color_level = 150.0;
+    let surface_level = position.y - depth;
+    let depth_color = water_type.depth_color.rgb;
+    if (depth < mid_color_level) {
+        rgb = rgb * mix(vec3<f32>(1.0), depth_color, depth / mid_color_level);
+    } else if (depth < lowest_color_level) {
+        rgb = rgb * mix(depth_color, vec3<f32>(0.0), (depth - mid_color_level) / (lowest_color_level - mid_color_level));
+    } else {
+        rgb = vec3<f32>(0.0);
+    }
+
+    if (caustics_enabled()) {
+        let max_caustics_depth = 128.0 * 4.0;
+        var caustics_uv = world_uvs(position, 1.75);
+        var depth_multiplier = (position.y - surface_level - max_caustics_depth) / -max_caustics_depth;
+        depth_multiplier = depth_multiplier * depth_multiplier;
+        caustics_uv = caustics_uv * 0.75;
+        let direction = vec2<f32>(1.0, -2.0);
+        let flow1 = caustics_uv + water_animation(17.0) * direction;
+        let flow2 = caustics_uv * 1.5 + water_animation(23.0) * -direction;
+        let ddx = dpdx(caustics_uv);
+        let ddy = dpdy(caustics_uv);
+        let caustics = sample_caustics_aberrated(flow1, flow2, 0.005, ddx, ddy);
+        let caustics_color = env.caustics.rgb * env.caustics.w;
+        rgb = rgb * (1.0 + caustics * caustics_color * depth_multiplier * light_dot_normals * env.light_color.w);
+    }
+    return rgb;
+}
+
+fn specular_term(view_dir: vec3<f32>, reflect_dir: vec3<f32>, gloss: f32, strength: f32) -> f32 {
+    let v_dot_r = clamp(dot(view_dir, reflect_dir), 1e-10, 1.0);
+    return pow(v_dot_r, gloss) * strength;
+}
+
+// `sampleWater` (sky-less path): the surface colour in sRGB and its opacity. `shore` is the
+// per-corner lightness of the surface faces (`127` open water, `0` next to land), `blend` the
+// barycentric weights.
+fn sample_water(
+    water_type_index: u32,
+    view_dir: vec3<f32>,
+    position: vec3<f32>,
+    face_uv: vec2<f32>,
+    blend: vec3<f32>,
+    shore_corners: vec3<f32>,
+) -> vec4<f32> {
+    let water_type = water_types[water_type_index];
+    let duration = water_type.duration;
+
+    // Texture coordinates and their screen-space derivatives (the animation offsets are constant
+    // across a pixel quad).
+    let anchor1 = world_uvs(position, 3.0).yx;
+    let anchor2 = world_uvs(position, 5.0);
+    let anchor3 = world_uvs(position, 7.0);
+    let anchor_flow = world_uvs(position, 15.0);
+    let ddx1 = dpdx(anchor1);
+    let ddy1 = dpdy(anchor1);
+    let ddx2 = dpdx(anchor2);
+    let ddy2 = dpdy(anchor2);
+    let ddx3 = dpdx(anchor3);
+    let ddy3 = dpdy(anchor3);
+    let ddx_flow = dpdx(anchor_flow);
+    let ddy_flow = dpdy(anchor_flow);
+    let ddx_foam = dpdx(face_uv);
+    let ddy_foam = dpdy(face_uv);
+
+    var uv1 = anchor1 - water_animation(28.0 * duration);
+    var uv2 = anchor2 + water_animation(24.0 * duration);
+    var uv3 = anchor3 + water_animation(21.0 * duration);
+    var uv_foam = face_uv;
+
+    let flow_uv = anchor_flow + water_animation(50.0 * duration);
+    let flow_strength = 0.025;
+    var uv_flow = vec2<f32>(0.0);
+    if (env.water_layers.x >= 0) {
+        uv_flow = textureSampleGrad(material_textures, material_sampler, flow_uv, env.water_layers.x, ddx_flow, ddy_flow).xy;
+    }
+    uv1 = uv1 + uv_flow * flow_strength;
+    uv2 = uv2 + uv_flow * flow_strength;
+    uv3 = uv3 + uv_flow * flow_strength;
+    uv_foam = uv_foam + uv_flow * flow_strength;
+
+    // Normal maps (`vec3(x * s, z, y * s)` negated), summed from three scales.
+    let normal_layer = max(water_type.normal_map, 0);
+    var n1 = linear_to_srgb(textureSampleGrad(material_textures, material_sampler, uv1, normal_layer, ddx1, ddy1).xyz);
+    var n2 = linear_to_srgb(textureSampleGrad(material_textures, material_sampler, uv2, normal_layer, ddx2, ddy2).xyz);
+    var n3 = linear_to_srgb(textureSampleGrad(material_textures, material_sampler, uv3, normal_layer, ddx3, ddy3).xyz);
+    let strength = water_type.normal_strength;
+    n1 = -vec3<f32>((n1.x * 2.0 - 1.0) * strength, n1.z, (n1.y * 2.0 - 1.0) * strength);
+    n2 = -vec3<f32>((n2.x * 2.0 - 1.0) * strength, n2.z, (n2.y * 2.0 - 1.0) * strength);
+    n3 = -vec3<f32>((n3.x * 2.0 - 1.0) * strength, n3.z, (n3.y * 2.0 - 1.0) * strength);
+    let normals = normalize(n1 + n2 + n3);
+    var foam_mask = 0.0;
+    if (env.water_layers.y >= 0) {
+        foam_mask = textureSampleGrad(material_textures, material_sampler, uv_foam, env.water_layers.y, ddx_foam, ddy_foam).r;
+    }
+
+    let light_dir = env.light_dir.xyz;
+    let light_dot_normals = dot(normals, light_dir);
+    let down_dot_normals = -normals.y;
+    let view_dot_normals = dot(view_dir, normals);
+
+    let distortion = uv_flow * 0.00075;
+    let shadow = sample_shadow_map(position, distortion, vec3<f32>(0.0), false, false);
+    let inverse_shadow = 1.0 - shadow;
+
+    // Lighting.
+    let ambient_out = env.ambient_color.rgb * env.ambient_color.w;
+    let dir_light = env.light_color.rgb * env.light_color.w * inverse_shadow;
+    let light_out = max(light_dot_normals, 0.0) * dir_light;
+    let reflect_dir = reflect(-light_dir, normals);
+    let light_specular_out = dir_light * specular_term(view_dir, reflect_dir, water_type.specular_gloss, water_type.specular_strength);
+    let sky_out = max(down_dot_normals, 0.0) * env.fog_color.rgb * 0.5;
+    let lightning_out = max(down_dot_normals, 0.0) * vec3<f32>(1.0) * env.misc.x;
+    let underglow_out = env.underglow.rgb * max(normals.y, 0.0) * env.underglow.w;
+
+    // Fresnel reflection of the sky, approximated by three water colours.
+    let base_opacity = 0.4;
+    let fresnel = 1.0 - clamp(view_dot_normals, 0.0, 1.0);
+    var final_fresnel = clamp(mix(base_opacity, 1.0, fresnel * 1.2), 0.0, 1.0);
+    var surface_color: vec3<f32>;
+    if (final_fresnel < 0.5) {
+        surface_color = mix(env.water_dark.rgb, env.water_mid.rgb, final_fresnel * 2.0);
+    } else {
+        surface_color = mix(env.water_mid.rgb, env.water_light.rgb, (final_fresnel - 0.5) * 2.0);
+    }
+    let surface_color_out = surface_color * max(water_type.specular_strength, 0.2);
+
+    let composite_light = ambient_out + light_out + light_specular_out + sky_out + lightning_out
+        + underglow_out + surface_color_out;
+
+    var base_color = water_type.surface_color.rgb * composite_light;
+    base_color = mix(base_color, surface_color, water_type.fresnel_amount);
+    if (water_type.fresnel_amount == 0.85) {
+        // Sailing hack.
+        base_color = base_color * 0.75;
+    }
+
+    // Foam along the shoreline.
+    let shore_line_mask = 1.0 - dot(blend, shore_corners / 127.0);
+    let max_foam_amount = 0.8;
+    var foam_amount = min(shore_line_mask, max_foam_amount);
+    let foam_distance = 0.7;
+    var foam_color = water_type.foam_color.rgb * foam_mask * composite_light;
+    let foam_edge = 1.0 - (1.0 - foam_amount) / foam_distance;
+    foam_amount = clamp(foam_edge * foam_edge * foam_edge, 0.0, 1.0) * f32(water_type.has_foam);
+    foam_amount = foam_amount * foam_color.r;
+    base_color = mix(base_color, foam_color, foam_amount);
+    let specular_composite = mix(light_specular_out, vec3<f32>(0.0), foam_amount);
+    let flat_fresnel = 1.0 - dot(view_dir, vec3<f32>(0.0, -1.0, 0.0));
+    final_fresnel = max(final_fresnel, flat_fresnel);
+    base_color = base_color + light_specular_out / 3.0;
+
+    var alpha = max(water_type.base_opacity, max(foam_amount, max(final_fresnel, length(specular_composite / 3.0))));
+    if (water_type.is_flat != 0u) {
+        base_color = mix(water_type.depth_color.rgb, base_color, alpha);
+        alpha = 1.0;
+    }
+    return vec4<f32>(base_color, alpha);
+}
+
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     let flags = input.info.x;
@@ -334,6 +560,24 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
 
     let water_depth = f32(input.depths.x) * blend.x + f32(input.depths.y) * blend.y + f32(input.depths.z) * blend.z;
     let is_underwater = is_terrain && water_depth > 0.0;
+    let is_water = is_terrain && water_type > 0u && !is_underwater;
+    shadow_frag = input.clip.xy;
+
+    if (is_water) {
+        // The water surface: shaded by `sample_water`, fogged and blended over what is below.
+        let water_view = normalize(env.camera.xyz - input.position);
+        let shore = vec3<f32>(
+            f32(input.hsl.x & 127u),
+            f32(input.hsl.y & 127u),
+            f32(input.hsl.z & 127u),
+        );
+        let surface = sample_water(water_type, water_view, input.position, input.uv, blend, shore);
+        let fog = combined_fog_amount(input.position);
+        var water_rgb = mix(surface.rgb, linear_to_srgb(env.fog_color.rgb), fog);
+        let water_alpha = fog + surface.a * (1.0 - fog);
+        water_rgb = clamp(water_rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+        return vec4<f32>(water_rgb, water_alpha);
+    }
 
     let time = f32(globals.tick) * 0.02;
     var blended_uv = input.uv;
@@ -348,10 +592,17 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     // applies the same distortion to all three material UVs before any diffuse/normal/PBR sample.
     // Keep derivatives outside the conditional so WebGPU's uniformity rules are satisfied even
     // when the selected material index varies between primitives.
-    let flow_uv = uv1 - animation_frame(material1.flow_map_duration, time);
+    var flow_uv = uv1 - animation_frame(material1.flow_map_duration, time);
+    var flow_strength = material1.flow_map_strength;
+    if (is_underwater) {
+        // Distort underwater textures with a world-anchored flow.
+        flow_uv = world_uvs(input.position, 1.5)
+            + water_animation(10.0 * water_types[water_type].duration) * vec2<f32>(1.0, -1.0);
+        flow_strength = 0.075;
+    }
     let flow_ddx = dpdx(flow_uv);
     let flow_ddy = dpdy(flow_uv);
-    if (material1.flow_map >= 0 && material1.flow_map_strength != 0.0) {
+    if (material1.flow_map >= 0 && flow_strength != 0.0) {
         let flow = textureSampleGrad(
             material_textures,
             material_sampler,
@@ -360,7 +611,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
             flow_ddx,
             flow_ddy,
         ).xy;
-        let flow_offset = flow * material1.flow_map_strength;
+        let flow_offset = flow * flow_strength;
         uv1 = uv1 + flow_offset;
         uv2 = uv2 + flow_offset;
         uv3 = uv3 + flow_offset;
@@ -487,7 +738,6 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     let light_dot_normals = dot(normals, light_dir);
 
     // Directional shadow of the shadow map.
-    shadow_frag = input.clip.xy;
     var shadow = 0.0;
     if ((flags & FLAG_NO_SHADOW) == 0u) {
         shadow = sample_shadow_map(
@@ -526,7 +776,19 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     let ambient_out = env.ambient_color.rgb * env.ambient_color.w * ao;
 
     // Directional light and its specular highlight.
-    let dir_light = env.light_color.rgb * env.light_color.w * inverse_shadow;
+    var dir_light = env.light_color.rgb * env.light_color.w;
+    // Caustics in an underwater environment light everything with the directional light.
+    if (env.flags.z != 0u && caustics_enabled()) {
+        let caustics_uv = world_uvs(input.position, 12.8);
+        let direction = vec2<f32>(1.0, -1.0);
+        let drift = water_animation(231.0) * vec2<f32>(1.0, -2.0);
+        let flow1 = caustics_uv + water_animation(19.0) * direction + drift;
+        let flow2 = caustics_uv * 1.25 + water_animation(37.0) * -direction + drift;
+        let caustics = vec3<f32>(sample_caustics_channel(flow1, flow2, dpdx(caustics_uv), dpdy(caustics_uv))) * 2.0;
+        let caustics_color = env.caustics.rgb * env.caustics.w;
+        dir_light = dir_light + caustics * caustics_color * light_dot_normals * pow(env.light_color.w, 1.5);
+    }
+    dir_light = dir_light * inverse_shadow;
     let light_out = max(light_dot_normals, 0.0) * dir_light;
     let reflect_dir = reflect(-light_dir, normals);
     let v_dot_r = clamp(dot(view_dir, reflect_dir), 1e-10, 1.0);
@@ -556,26 +818,12 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     rgb = linear_to_srgb(rgb);
 
     if (is_underwater) {
-        // Tint with the water colour by depth (`sampleUnderwater`, simplified).
-        let depth = clamp(water_depth / 1200.0, 0.0, 1.0);
-        let tint = linear_to_srgb(env.water_color.rgb);
-        rgb = mix(rgb, tint * (0.35 + 0.65 * (1.0 - depth)), 0.35 + 0.55 * depth);
+        rgb = sample_underwater(rgb, water_types[water_type], input.position, water_depth, light_dot_normals);
     }
 
     // Fog: distance fog and the ground fog layer, fading into the sky colour.
     if (!is_underwater) {
-        let eye_distance = length(input.position - env.camera.xyz);
-        let close_fade_distance = 1500.0;
-        var ground_fog = 1.0 - clamp(
-            (input.position.y - env.fog_params.y) / (env.fog_params.z - env.fog_params.y),
-            0.0,
-            1.0,
-        );
-        ground_fog = mix(0.0, env.fog_params.w, ground_fog);
-        ground_fog = ground_fog * clamp(eye_distance / close_fade_distance, 0.0, 1.0);
-        let fog_amount = calculate_fog_amount(input.position);
-        let combined_fog = 1.0 - (1.0 - fog_amount) * (1.0 - ground_fog);
-        rgb = mix(rgb, linear_to_srgb(env.fog_color.rgb), combined_fog);
+        rgb = mix(rgb, linear_to_srgb(env.fog_color.rgb), combined_fog_amount(input.position));
     }
     // `applyColorAdjustments` clamps to the displayable range.
     rgb = clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0));

@@ -57,6 +57,8 @@ pub struct HdLighting {
     /// RLHD's independently toggleable parallax occlusion mapping for materials with displacement
     /// maps. This defaults on even though it is controlled separately from normal mapping.
     pub parallax_mapping: bool,
+    /// Caustics on the sea floor and under the surface (`underwaterCaustics`).
+    pub underwater_caustics: bool,
     /// Animation clock of the water, caustics and scrolling textures, in seconds.
     pub elapsed_seconds: f32,
     /// Debug output instead of the lit scene (`DISPLAY_*` of the plugin): 0 off, 1 base colour,
@@ -91,6 +93,7 @@ impl HdLighting {
             lighting: Lighting::from_values(&values, &settings, 50.0, false, true, 0.0),
             normal_mapping: true,
             parallax_mapping: true,
+            underwater_caustics: true,
             elapsed_seconds: 0.0,
             debug_view: 0,
         }

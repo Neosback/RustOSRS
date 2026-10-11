@@ -300,6 +300,14 @@ impl EditorApp {
                 }
             }
         });
+        section(ui, "Water", true, |ui| {
+            ui.checkbox(
+                &mut self.prefs.hd_underwater_caustics,
+                "Underwater caustics",
+            )
+            .on_hover_text("Moving light patterns on the sea floor and in underwater areas.");
+            ui.weak("Water types, flow and normal maps, fresnel and foam follow the area's tiles.");
+        });
         section(ui, "Environment", true, |ui| {
             let environment = &mut self.prefs.hd_environment;
             egui::Grid::new("hd_environment_grid")

@@ -81,7 +81,9 @@ pub(in crate::gpu) fn hd_vertex_buffers() -> [wgpu::VertexBufferLayout<'static>;
 /// WGSL of the shared declarations plus a stage file.
 pub(in crate::gpu) fn shader_source(stage: &str) -> String {
     format!(
-        "{}\n{}\n{}",
+        // The branches that skip derivative uses depend on per-face (flat) data: every pixel of a
+        // quad takes the same one.
+        "diagnostic(off, derivative_uniformity);\n{}\n{}\n{}",
         MATERIAL_WGSL,
         include_str!("common.wgsl"),
         stage

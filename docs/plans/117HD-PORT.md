@@ -170,7 +170,23 @@ tone map / colour filter / AA resolve -> overlays (egui).
   and `shadowNormalBias` are honoured. Editor: `Settings::hd_shadows`, Properties > Shading > Shadows. Differences: the
   map is centred on the camera (not the focal point), zones without HD streams (animated locs) cast no shadow, no
   conservative "remove pop-in" culling. Tests: `osrs-hd` unit tests, `osrs-world/tests/hd_shadow_pixels.rs` (all filters).
-* Next: phase 5 (water), then 6-8 as listed above.
+* Done (phase 5, 2026-10-11): water. Extraction: `TerrainEmitter::water_faces` ports the `onlyWaterSurface` pass of
+  `SceneUploader` (surface at the tile's own height, no material, up normals, shoreline lightness 0/127 per corner for the
+  foam mask, the "flush" depth bias), emitted as one transparent model per tile into the alpha stream; the underwater
+  ground (phase 2) keeps its per-vertex depth. Renderer: `GpuWaterType` (water type table, storage buffer at group 2
+  binding 4, index 0 = NONE, colours in sRGB like `UBOWaterTypes`) and `WaterLayers` (flow map, foam, caustics, underwater
+  flow map) bound with `set_hd_water` (installed by `HdGpuData`). `scene.wgsl`: `sample_water` (three world-anchored
+  normal-map scales, flow-map distortion, foam, fresnel against the water light/mid/dark colours, specular, shadowed
+  directional light, flat water types, fog on the alpha), `sample_underwater` (depth colour fade and caustics), flow-map
+  distortion of underwater textures, caustics lighting in underwater environments and the vertex clamp that sinks
+  underwater vertices to the surface along the draw-distance border. Shaders now start with
+  `diagnostic(off, derivative_uniformity)`: the water/non-water branches depend on flat per-face data, which every pixel of
+  a quad shares. Sky reflections of `sampleWater` (phase 7) and point-light terms (phase 6) are not ported. Editor:
+  Properties > Shading > Water (underwater caustics). Tests: unit test for the water struct, `hd_water_pixels.rs`
+  (surface/shoreline/underwater faces on the Lumbridge river, blue share of a top-down frame, the water clock animates).
+  Visual checks 2026-10-11: Lumbridge river (foam, ripples, shadows), Falador town, Lumbridge swamp caves (dark, fogged:
+  its environment is lit by placed point lights, phase 6). Reference profile unchanged (`reference_profile_pixels`).
+* Next: phases 6-8 as listed above.
 
 ## 6. First concrete steps
 

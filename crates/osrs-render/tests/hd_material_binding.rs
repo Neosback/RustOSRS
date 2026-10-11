@@ -9,8 +9,8 @@ use osrs_render::gpu::{
     SceneRenderer,
     hd::{
         layout::{
-            GpuMaterial, HdEnvironmentUniform, MATERIAL_WGSL, MaterialTable, scene_bind_group,
-            scene_bind_group_layout,
+            GpuMaterial, GpuWaterType, HdEnvironmentUniform, MATERIAL_WGSL, MaterialTable,
+            scene_bind_group, scene_bind_group_layout, water_types_buffer,
         },
         materials::{DecodedLayers, MaterialTextureArray, build_mips},
     },
@@ -71,7 +71,8 @@ fn scene_material_binding_samples_the_selected_texture_layer()
         usage: wgpu::BufferUsages::UNIFORM,
         mapped_at_creation: false,
     });
-    let bind_group = scene_bind_group(device, &layout, &table, &textures, &environment);
+    let water = water_types_buffer(device, &[GpuWaterType::none(|_| -1)]);
+    let bind_group = scene_bind_group(device, &layout, &table, &textures, &environment, &water);
 
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("hd-material-binding-test"),
@@ -207,7 +208,7 @@ fn scene_material_binding_samples_the_selected_texture_layer()
 #[test]
 fn hd_scene_shader_keeps_flow_map_stage_before_material_sampling() {
     let shader = include_str!("../src/gpu/hd/scene.wgsl");
-    let flow = shader.find("let flow_offset = flow * material1.flow_map_strength;");
+    let flow = shader.find("let flow_offset = flow * flow_strength;");
     let material_derivatives = shader.find("let ddx1 = dpdx(uv1);");
     let diffuse = shader.find("let tex1 = sample_color(material1, uv1, ddx1, ddy1);");
     let (Some(flow), Some(material_derivatives), Some(diffuse)) =

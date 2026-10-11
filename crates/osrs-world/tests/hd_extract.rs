@@ -50,6 +50,13 @@ fn material_counts(
                 .chain(group.geometry.hd_alpha.chunks(3))
             {
                 let vertex = &face[0];
+                // Water surfaces are shaded by the water shader and carry no material.
+                let is_water_surface = vertex.hsl_flags[3] & HD_FLAG_TERRAIN != 0
+                    && vertex.material_water[3] & 0xFF != 0
+                    && vertex.depth[..3] == [0, 0, 0];
+                if is_water_surface {
+                    continue;
+                }
                 let index = usize::from(vertex.material_water[0] & HD_MATERIAL_INDEX_MASK);
                 let name = hd.materials.get(index).map_or("NONE", |m| m.name.as_str());
                 let table = if vertex.hsl_flags[3] & HD_FLAG_TERRAIN != 0 {

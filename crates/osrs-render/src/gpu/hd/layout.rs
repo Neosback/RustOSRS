@@ -181,6 +181,104 @@ impl MaterialTable {
     }
 }
 
+/// One water type (`UBOWaterTypes.WaterTypeStruct`), uploaded as a storage buffer array; 96 bytes.
+/// Index `0` is `WaterType.NONE`, then the entries of `water_types.json` in file order.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
+pub struct GpuWaterType {
+    pub is_flat: u32,
+    pub specular_strength: f32,
+    pub specular_gloss: f32,
+    pub normal_strength: f32,
+    pub base_opacity: f32,
+    pub has_foam: u32,
+    pub duration: f32,
+    pub fresnel_amount: f32,
+    /// sRGB, like the plugin's struct (it converts with `linearToSrgb`).
+    pub surface_color: [f32; 4],
+    pub foam_color: [f32; 4],
+    pub depth_color: [f32; 4],
+    /// Texture layer of the normal map.
+    pub normal_map: i32,
+    pub pad: [i32; 3],
+}
+
+const _: () = assert!(std::mem::size_of::<GpuWaterType>() == 96);
+
+impl GpuWaterType {
+    /// `WaterType` with its defaults (the plugin's field initialisers).
+    pub fn from_hd(water: &osrs_hd::WaterType, layer_of: impl Fn(&str) -> i32) -> Self {
+        use osrs_hd::environment::{color_to_linear, linear_to_srgb3, srgb_to_linear3};
+        let colour = |value: &Option<osrs_hd::Color>, default: [f32; 3]| {
+            let linear = value.as_ref().and_then(color_to_linear).unwrap_or(default);
+            let srgb = linear_to_srgb3(linear);
+            [srgb[0], srgb[1], srgb[2], 0.0]
+        };
+        let fallback_normal = layer_of("WATER_NORMAL_MAP_1");
+        Self {
+            is_flat: u32::from(water.flat == Some(true)),
+            specular_strength: water.specular_strength.unwrap_or(0.5),
+            specular_gloss: water.specular_gloss.unwrap_or(500.0),
+            normal_strength: water.normal_strength.unwrap_or(0.09),
+            base_opacity: water.base_opacity.unwrap_or(0.5),
+            has_foam: u32::from(water.has_foam != Some(false)),
+            duration: water.duration.unwrap_or(1.0),
+            fresnel_amount: water.fresnel_amount.unwrap_or(1.0),
+            surface_color: colour(&water.surface_color, [1.0; 3]),
+            foam_color: colour(
+                &water.foam_color,
+                srgb_to_linear3([176.0 / 255.0, 164.0 / 255.0, 146.0 / 255.0]),
+            ),
+            depth_color: colour(
+                &water.depth_color,
+                srgb_to_linear3([0.0, 117.0 / 255.0, 142.0 / 255.0]),
+            ),
+            normal_map: water
+                .normal_map
+                .as_deref()
+                .map_or(fallback_normal, layer_of),
+            pad: [0; 3],
+        }
+    }
+
+    /// `WaterType.NONE`: the defaults.
+    pub fn none(layer_of: impl Fn(&str) -> i32) -> Self {
+        Self::from_hd(&osrs_hd::WaterType::default(), layer_of)
+    }
+}
+
+/// Storage buffer holding the water type table (at least one entry).
+pub fn water_types_buffer(device: &wgpu::Device, types: &[GpuWaterType]) -> wgpu::Buffer {
+    let none = [GpuWaterType::none(|_| -1)];
+    let types = if types.is_empty() { &none } else { types };
+    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("hd-water-types"),
+        contents: bytemuck::cast_slice(types),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    })
+}
+
+/// Texture layers of the special water materials (`MAT_WATER_FLOW_MAP`, `MAT_WATER_FOAM`,
+/// `MAT_CAUSTICS_MAP`, `UNDERWATER_FLOW_MAP`), `-1` when missing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WaterLayers {
+    pub flow_map: i32,
+    pub foam: i32,
+    pub caustics: i32,
+    pub underwater_flow_map: i32,
+}
+
+impl Default for WaterLayers {
+    fn default() -> Self {
+        Self {
+            flow_map: -1,
+            foam: -1,
+            caustics: -1,
+            underwater_flow_map: -1,
+        }
+    }
+}
+
 /// Bind group layout of the HD material resources (group 2 of the HD scene shader): the material
 /// table as a read-only storage buffer, the texture array and its sampler. Two sampled-texture
 /// slots in all, far below Metal's 16 per stage.
@@ -250,7 +348,7 @@ pub fn material_bind_group(
 }
 
 /// Lighting environment of the HD scene shader (`Environment` in `scene.wgsl`): the lighting,
-/// fog and water fields of the plugin's `UBOGlobal` and the shadow camera, 304 bytes.
+/// fog and water fields of the plugin's `UBOGlobal` the water colours and the shadow camera, 400 bytes.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct HdEnvironmentUniform {
@@ -286,12 +384,22 @@ pub struct HdEnvironmentUniform {
     /// `x`: shadows on, `y`: filter kind, `z`: kernel size, `w`: bit 0 transparency, bit 1
     /// detailed, bit 2 terrain shadows.
     pub shadow_flags: [u32; 4],
+    /// Water surface colours by brightness (sRGB), `w` unused.
+    pub water_light: [f32; 4],
+    pub water_mid: [f32; 4],
+    pub water_dark: [f32; 4],
+    /// Underwater caustics colour and strength.
+    pub caustics: [f32; 4],
+    /// World position of render-local `(0, 0)` (`x`, `z`) for world-anchored water UVs.
+    pub scene_base: [f32; 4],
+    /// Texture layers of the water flow map, foam, caustics map and underwater flow map.
+    pub water_layers: [i32; 4],
 }
 
-const _: () = assert!(std::mem::size_of::<HdEnvironmentUniform>() == 160 + 64 + 80);
+const _: () = assert!(std::mem::size_of::<HdEnvironmentUniform>() == 160 + 64 + 80 + 96);
 
 /// Bind group layout of the HD scene shader's group 2: the material table, texture array,
-/// sampler and the lighting environment.
+/// sampler, the lighting environment and the water types.
 pub fn scene_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     let mut entries = material_layout_entries();
     entries.push(wgpu::BindGroupLayoutEntry {
@@ -299,6 +407,16 @@ pub fn scene_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
         ty: wgpu::BindingType::Buffer {
             ty: wgpu::BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    });
+    entries.push(wgpu::BindGroupLayoutEntry {
+        binding: 4,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Storage { read_only: true },
             has_dynamic_offset: false,
             min_binding_size: None,
         },
@@ -317,6 +435,7 @@ pub fn scene_bind_group(
     table: &MaterialTable,
     textures: &super::materials::MaterialTextureArray,
     environment: &wgpu::Buffer,
+    water_types: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("hd-scene"),
@@ -338,6 +457,10 @@ pub fn scene_bind_group(
                 binding: 3,
                 resource: environment.as_entire_binding(),
             },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: water_types.as_entire_binding(),
+            },
         ],
     })
 }
@@ -355,6 +478,51 @@ mod tests {
         assert_eq!(offset_of!(GpuMaterial, flow_map_duration), 56);
         assert_eq!(offset_of!(GpuMaterial, scroll_duration), 64);
         assert_eq!(offset_of!(GpuMaterial, texture_scale), 80);
+    }
+
+    #[test]
+    fn water_types_use_the_plugins_defaults_and_srgb_colours() {
+        let layer = |name: &str| match name {
+            "WATER_NORMAL_MAP_1" => 7,
+            "WATER_NORMAL_MAP_2" => 8,
+            _ => -1,
+        };
+        let plain = GpuWaterType::from_hd(&osrs_hd::WaterType::default(), layer);
+        assert_eq!(plain.specular_strength, 0.5);
+        assert_eq!(plain.specular_gloss, 500.0);
+        assert_eq!(plain.normal_strength, 0.09);
+        assert_eq!(plain.base_opacity, 0.5);
+        assert_eq!(plain.fresnel_amount, 1.0);
+        assert_eq!(plain.has_foam, 1);
+        assert_eq!(plain.is_flat, 0);
+        // Without its own map a water type uses the first generic normal map.
+        assert_eq!(plain.normal_map, 7);
+        // The colours are stored in sRGB: the default depth colour is rgb(0, 117, 142).
+        assert!(
+            (plain.depth_color[1] - 117.0 / 255.0).abs() < 1e-3,
+            "{plain:?}"
+        );
+        assert!((plain.foam_color[0] - 176.0 / 255.0).abs() < 1e-3);
+        assert!(
+            plain.surface_color[..3]
+                .iter()
+                .all(|c| (c - 1.0).abs() < 1e-5)
+        );
+
+        let water = osrs_hd::WaterType {
+            name: "X".into(),
+            flat: Some(true),
+            has_foam: Some(false),
+            normal_map: Some("WATER_NORMAL_MAP_2".into()),
+            surface_color: Some(osrs_hd::Color::Hex("#69809C".into())),
+            ..osrs_hd::WaterType::default()
+        };
+        let packed = GpuWaterType::from_hd(&water, layer);
+        assert_eq!(
+            (packed.is_flat, packed.has_foam, packed.normal_map),
+            (1, 0, 8)
+        );
+        assert!((packed.surface_color[0] - 0x69 as f32 / 255.0).abs() < 1e-3);
     }
 
     #[test]

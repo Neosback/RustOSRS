@@ -130,13 +130,29 @@ pub fn extract_owned_geometry_hd(
                     zone_origin,
                 },
             );
-            if faces.is_empty() {
+            let tile_settings = TileSettings {
+                visible_below,
+                zone_origin,
+            };
+            let surface = emitter.water_faces(tile, tile_settings);
+            if faces.is_empty() && surface.is_empty() {
                 continue;
             }
             let builder = geometry
                 .zone_mut(zone_base_x + scene_zone_x, zone_base_z + scene_zone_z)
                 .group_mut(level, min_plane);
-            builder.push_hd_faces(&faces, [0, 0, 0]);
+            if !faces.is_empty() {
+                builder.push_hd_faces(&faces, [0, 0, 0]);
+            }
+            if !surface.is_empty() {
+                // One transparent model per tile, sorted by the tile centre.
+                let centre = [
+                    tile.x * 128 + 64 - zone_origin.0,
+                    surface[0].positions[0][1],
+                    tile.y * 128 + 64 - zone_origin.1,
+                ];
+                builder.push_hd_faces(&surface, centre);
+            }
         }
     }
 

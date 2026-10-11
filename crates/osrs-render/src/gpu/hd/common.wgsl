@@ -42,12 +42,39 @@ struct Environment {
     // x = shadows on, y = filter kind (0 PCF, 1 dither, 2 average, 3 PCSS), z = kernel size,
     // w = bit 0 transparency, bit 1 detailed (texture alpha), bit 2 terrain shadows.
     shadow_flags: vec4<u32>,
+    // Water surface colours by brightness (sRGB).
+    water_light: vec4<f32>,
+    water_mid: vec4<f32>,
+    water_dark: vec4<f32>,
+    // rgb = underwater caustics colour, w = strength.
+    caustics: vec4<f32>,
+    // xy = world position of render-local (0, 0).
+    scene_base: vec4<f32>,
+    // Texture layers of the water flow map, foam, caustics map and underwater flow map.
+    water_layers: vec4<i32>,
+};
+
+// One water type (`UBOWaterTypes`). Colours are sRGB, like the plugin's struct.
+struct WaterType {
+    is_flat: u32,
+    specular_strength: f32,
+    specular_gloss: f32,
+    normal_strength: f32,
+    base_opacity: f32,
+    has_foam: u32,
+    duration: f32,
+    fresnel_amount: f32,
+    surface_color: vec4<f32>,
+    foam_color: vec4<f32>,
+    depth_color: vec4<f32>,
+    normal_map: i32,
 };
 
 @group(2) @binding(0) var<storage, read> materials: array<Material>;
 @group(2) @binding(1) var material_textures: texture_2d_array<f32>;
 @group(2) @binding(2) var material_sampler: sampler;
 @group(2) @binding(3) var<uniform> env: Environment;
+@group(2) @binding(4) var<storage, read> water_types: array<WaterType>;
 
 // Per-face flags of the HD vertex stream (`HdVertex::hsl_flags.w`).
 const FLAG_UPWARDS_NORMALS: u32 = 1u;
@@ -60,6 +87,23 @@ const FLAG_SHADOW_NORMAL_BIAS: u32 = 64u;
 
 const MATERIAL_INDEX_MASK: u32 = 0x0FFFu;
 const MATERIAL_OVERLAY: u32 = 0x1000u;
+
+// World-anchored texture coordinates (`worldUvs`): one repeat every `128 * scale` units.
+fn world_uvs(position: vec3<f32>, scale: f32) -> vec2<f32> {
+    return -(env.scene_base.xy + position.xz) / (128.0 * scale);
+}
+
+// A value in `0..1` cycling every `duration` seconds (`animationFrame`).
+fn water_animation(duration: f32) -> f32 {
+    if (duration == 0.0) {
+        return 0.0;
+    }
+    return (env.camera.w % duration) / duration;
+}
+
+fn water_animation2(duration: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(water_animation(duration.x), water_animation(duration.y));
+}
 
 // ---- colour helpers (`utils/color_utils.glsl`) ----------------------------------------------
 

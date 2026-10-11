@@ -2,8 +2,8 @@
 //! `uploadTileModel` that turns one terrain tile into [`HdFace`]s with blended colours, ground
 //! materials, normals and water depth.
 //!
-//! Water surfaces are not emitted yet (phase 5): water tiles produce their underwater ground, with
-//! the water depth of every vertex in the HD vertex data.
+//! Water tiles produce their underwater ground, with the water depth of every vertex in the HD
+//! vertex data ([`TerrainEmitter::tile_faces`]), and the water surface ([`TerrainEmitter::water_faces`]).
 //!
 //! Adapted from `rs117.hd.renderer.zone.SceneUploader`. Copyright (c) 2018, Adam
 //! <Adam@sigterm.info>; (c) 2021, 117 and Hooder (BSD 2-Clause, see `THIRD_PARTY.md`).
@@ -11,8 +11,9 @@
 use super::{
     HdContext,
     procedural::{
-        HIDDEN_HSL, OverrideSlot, ProceduralData, TileFace, TileInput, UNDERWATER_HSL,
-        VERTEX_OVERLAY, VERTEX_UNDERLAY, VertexKey, has_vanilla_texture, tile_geometry,
+        HIDDEN_HSL, OverrideSlot, ProceduralData, TileFace, TileInput, UNDERWATER_HSL, VERTEX_LAND,
+        VERTEX_OVERLAY, VERTEX_UNDERLAY, VERTEX_WATER, VertexKey, has_vanilla_texture,
+        tile_geometry,
     },
 };
 use osrs_hd::tiles::{GroundMaterials, TileOverrides, WaterTypes};
@@ -223,6 +224,97 @@ impl TerrainEmitter<'_> {
                 bias: 0,
                 double_sided: (!settings.visible_below && tile.level != 0)
                     || override_data.double_sided_faces,
+            });
+        }
+        faces
+    }
+
+    /// The water surface faces of one tile (`SceneUploader` with `onlyWaterSurface`): flat at the
+    /// tile's own height, no material, shoreline vertices marked through the colour (lightness `0`
+    /// next to land, `127` elsewhere) for the foam, drawn in the alpha pass.
+    pub fn water_faces(&self, tile: TileInput<'_>, settings: TileSettings) -> Vec<HdFace> {
+        let geometry = tile_geometry(tile.surface, tile.x, tile.y);
+        if geometry.corners.is_some() && geometry.corner_colors[3] == HIDDEN_HSL {
+            return Vec::new();
+        }
+        let ctx = self.ctx;
+        let world = (
+            self.base.0 + tile.x,
+            self.base.1 + tile.y,
+            i32::from(tile.level),
+        );
+        let is_paint = geometry.corners.is_some();
+        let [main, overlay, underlay] = [
+            OverrideSlot::Main,
+            OverrideSlot::Overlay,
+            OverrideSlot::Underlay,
+        ]
+        .map(|slot| self.data.tile_override(tile.level, tile.x, tile.y, slot));
+        let shore = |key: VertexKey| {
+            if self.data.has(key, VERTEX_WATER) && self.data.has(key, VERTEX_LAND) {
+                0
+            } else {
+                127
+            }
+        };
+        // Paint tiles share the four corner colours between both triangles, so the "flush" rule
+        // looks at all of them.
+        let paint_flush = geometry.corners.is_some_and(|[sw, se, nw, ne]| {
+            let (sw, se, nw, ne) = (shore(sw), shore(se), shore(nw), shore(ne));
+            se == 0 && nw == 0 && (ne == 0 || sw == 0)
+        });
+
+        let mut faces = Vec::new();
+        for face in &geometry.faces {
+            if !is_paint && face.colors[0] == HIDDEN_HSL {
+                continue;
+            }
+            let found = if is_paint {
+                main
+            } else if face.overlay {
+                overlay
+            } else {
+                underlay
+            };
+            let override_data = ctx.tile_overrides.get(found.index);
+            let water = ctx.water.seasonal(override_data.water_type, face.texture);
+            if water == WaterTypes::NONE {
+                continue;
+            }
+            let mut colors = face.keys.map(shore);
+            let flush = if is_paint {
+                paint_flush
+            } else {
+                colors.iter().all(|color| *color == 0)
+            };
+            let mut bias = 0;
+            if flush {
+                // Bias the depth a bit: the surface is flush with the underwater geometry.
+                colors = [0; 3];
+                bias = 1;
+            }
+            let positions = face.keys.map(|key| {
+                [
+                    key.0 - settings.zone_origin.0,
+                    key.1 - override_data.height_offset,
+                    key.2 - settings.zone_origin.1,
+                ]
+            });
+            faces.push(HdFace {
+                positions,
+                // Geometry UVs: orientation and scale of the override only apply to land.
+                uvs: self.face_uvs(face, tile, world, 0, 1.0, is_paint),
+                normals: [[0.0, -1.0, 0.0]; 3],
+                hsl: colors.map(|color| color as u16),
+                material: [0; 3],
+                water_depth: [0; 3],
+                water_type: water,
+                plane: tile.level,
+                flags: HD_FLAG_TERRAIN,
+                alpha: 0,
+                alpha_pass: true,
+                bias,
+                double_sided: false,
             });
         }
         faces

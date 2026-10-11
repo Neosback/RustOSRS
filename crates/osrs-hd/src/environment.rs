@@ -120,7 +120,7 @@ fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
 
 /// A colour as the plugin reads it (`SrgbToLinearAdapter`): hex or 0-255 channels, converted to
 /// linear sRGB.
-fn linear_color(color: &Color) -> Option<[f32; 3]> {
+pub fn color_to_linear(color: &Color) -> Option<[f32; 3]> {
     let srgb = match color {
         Color::Hex(_) => color.rgb()?,
         Color::Rgb(parts) if parts.len() >= 3 => {
@@ -480,7 +480,7 @@ fn normalize(
     default: &Environment,
 ) -> Environment {
     let area = json.area.clone().unwrap_or_else(|| "NONE".to_owned());
-    let color = |value: &Option<Color>| value.as_ref().and_then(linear_color);
+    let color = |value: &Option<Color>| value.as_ref().and_then(color_to_linear);
     let angle = |value: Option<f32>| value.map(f32::to_radians);
 
     let directional_color = color(&json.directional_color).unwrap_or([1.0; 3]);
