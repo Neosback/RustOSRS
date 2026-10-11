@@ -223,7 +223,7 @@ pub const CORE_ACTIONS: &[ActionDef] = &[
     ActionDef::new("tool.select", "Select tool", "Tools", Binding::key(Key::V)),
     ActionDef::new("tool.paint", "Paint tool", "Tools", Binding::key(Key::B)),
     ActionDef::new("tool.height", "Height tool", "Tools", Binding::key(Key::H)),
-    ActionDef::new("tool.flags", "Flags tool", "Tools", Binding::key(Key::X)),
+    ActionDef::new("tool.spline", "Spline tool", "Tools", Binding::key(Key::P)),
     ActionDef::new(
         "tool.eyedrop",
         "Eyedropper: take the tile under the cursor",

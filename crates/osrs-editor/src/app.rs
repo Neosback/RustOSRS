@@ -1,16 +1,21 @@
 //! The eframe application: scene loading, the wgpu viewport, and fly-camera input.
 
 mod context_menu;
+mod drawer;
 mod editing;
+mod floating;
 mod hd;
 mod menu;
 mod minimap;
 mod overlay;
 mod plugins;
 mod properties;
+mod selection;
 mod settings_window;
+mod spline_tool;
 mod status;
 mod toolbar;
+mod widgets;
 mod workspace;
 mod worldmap;
 
@@ -98,6 +103,22 @@ pub struct EditorApp {
     infos: Infos,
     hover: Pick,
     selected: Option<ObjectPick>,
+    /// Every selected object (the last added is `selected`) and every selected tile.
+    selection_objects: Vec<ObjectPick>,
+    selection_tiles: HashSet<(i32, i32)>,
+    /// The box being dragged with the Select tool.
+    marquee: Option<selection::Marquee>,
+    /// The spline tool's control points and preview.
+    spline: spline_tool::SplineState,
+    /// A held tool key: the tool to return to on release, the key and when it went down.
+    peek: Option<(crate::paint::Tool, egui::Key, Instant)>,
+    /// Floor textures from the world worker, and their egui copies for the palettes.
+    floor_textures: Option<Vec<Option<osrs_render::gpu::TextureLayer>>>,
+    texture_handles: HashMap<u32, (egui::TextureHandle, osrs_render::TextureAnimationVector)>,
+    palette_search: String,
+    /// Tiles whose height the editor has edited (their stored height byte is sent with edits).
+    height_edited: HashSet<editing::TileKey>,
+    stroke_counter: u64,
     /// Model triangles of picked objects, keyed by (region, loc index).
     outlines: HashMap<OutlineKey, Arc<Vec<[[i32; 3]; 3]>>>,
     outline_requested: HashSet<OutlineKey>,
@@ -150,6 +171,12 @@ pub struct EditorApp {
     pending_teleport: Option<Destination>,
     /// Smoke-test hook: undo the last stroke once this frame is reached (`RUSTOSRS_UNDO_AT`).
     smoke_undo_at: Option<u64>,
+    /// Smoke-test hooks: control points of a spline (`RUSTOSRS_SPLINE="x,y;x,y;..."`) and a box of
+    /// selected tiles (`RUSTOSRS_SELECT_TILES="x0,y0,x1,y1"`).
+    smoke_spline: Option<Vec<(f32, f32)>>,
+    /// Smoke-test hook: lay the spline once this frame is reached (`RUSTOSRS_LAY_AT`).
+    smoke_lay_at: Option<u64>,
+    smoke_tiles: Option<(i32, i32, i32, i32)>,
     /// Smoke-test hook: paint the brush here once the region is loaded (`RUSTOSRS_PAINT="x,y"`).
     smoke_paint: Option<(i32, i32)>,
     /// Smoke-test hook: select the object anchored on this tile (`RUSTOSRS_SELECT="x,y"`).
@@ -221,6 +248,16 @@ impl EditorApp {
             infos: Infos::new(),
             hover: Pick::default(),
             selected: None,
+            selection_objects: Vec::new(),
+            selection_tiles: HashSet::new(),
+            marquee: None,
+            spline: spline_tool::SplineState::default(),
+            peek: None,
+            floor_textures: None,
+            texture_handles: HashMap::new(),
+            palette_search: String::new(),
+            height_edited: HashSet::new(),
+            stroke_counter: 0,
             outlines: HashMap::new(),
             outline_requested: HashSet::new(),
             context_pick: Pick::default(),
@@ -262,6 +299,32 @@ impl EditorApp {
             dirty_regions: HashSet::new(),
             quick_open: std::env::var_os("RUSTOSRS_QUICK").map(|_| egui::pos2(520.0, 300.0)),
             last_hover_tile: None,
+            smoke_lay_at: std::env::var("RUSTOSRS_LAY_AT")
+                .ok()
+                .and_then(|value| value.parse().ok()),
+            smoke_spline: std::env::var("RUSTOSRS_SPLINE").ok().map(|value| {
+                value
+                    .split(';')
+                    .filter_map(|pair| {
+                        let (x, y) = pair.split_once(',')?;
+                        Some((
+                            x.trim().parse::<f32>().ok()? + 0.5,
+                            y.trim().parse::<f32>().ok()? + 0.5,
+                        ))
+                    })
+                    .collect()
+            }),
+            smoke_tiles: std::env::var("RUSTOSRS_SELECT_TILES")
+                .ok()
+                .and_then(|value| {
+                    let mut parts = value.split(',').map(|p| p.trim().parse::<i32>().ok());
+                    Some((
+                        parts.next()??,
+                        parts.next()??,
+                        parts.next()??,
+                        parts.next()??,
+                    ))
+                }),
             smoke_undo_at: std::env::var("RUSTOSRS_UNDO_AT")
                 .ok()
                 .and_then(|value| value.parse().ok()),
@@ -405,7 +468,7 @@ impl EditorApp {
         self.loaded.clear();
         self.outlines.clear();
         self.outline_requested.clear();
-        self.selected = None;
+        self.clear_selection();
         self.in_flight.clear();
         self.animation_dirty = true;
     }
@@ -529,6 +592,7 @@ impl EditorApp {
                 }
                 StreamEvent::Ready { textures } => {
                     self.renderer.set_textures(&textures);
+                    self.floor_textures = Some(textures);
                     self.ready = true;
                 }
                 StreamEvent::Region(region) => {
@@ -670,11 +734,17 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
-        if response.dragged() {
+        // Camera drags (right and middle button) freeze picking; a left drag paints or selects.
+        if response.dragged() && !response.dragged_by(egui::PointerButton::Primary) {
             return;
         }
         let Some(position) = response.hover_pos() else {
             self.hover = Pick::default();
+            // The pointer left the viewport: a stroke or box in progress ends here.
+            if !response.ctx.input(|i| i.pointer.primary_down()) {
+                self.end_stroke();
+                self.marquee = None;
+            }
             return;
         };
         let ray = pick::ray_through_pixel(
@@ -689,11 +759,17 @@ impl EditorApp {
         if let Some(pick) = self.hover.tile {
             self.last_hover_tile = Some(pick.tile);
         }
+        // The brush tools keep the left button for painting; Select clicks and boxes.
         self.brush_input(&response.ctx, response);
-        // Left click selects with the Select tool; the brush tools keep the click for painting.
-        if response.clicked() && self.prefs.tool == crate::paint::Tool::Select {
-            self.selected = self.hover.object.clone();
-        }
+        self.spline_input(&response.ctx, response);
+        self.selection_input(
+            &response.ctx,
+            response,
+            rect,
+            pixels_per_point,
+            width,
+            height,
+        );
         if response.secondary_clicked() && response.ctx.input(|i| i.modifiers.shift) {
             self.context_pick = self.hover.clone();
             self.context_menu = response.interact_pointer_pos();
@@ -965,6 +1041,7 @@ impl EditorApp {
     /// Fire the editor's own bound actions (none while a text field has keyboard focus, and none
     /// while a binding is being captured in the Keyboard Shortcuts window).
     fn editor_actions(&mut self, ctx: &egui::Context) {
+        self.tool_release(ctx);
         if ctx.egui_wants_keyboard_input() || self.capturing_binding.is_some() {
             return;
         }
@@ -1039,7 +1116,7 @@ impl EditorApp {
             self.focus_selection();
         }
         if clear {
-            self.selected = None;
+            self.escape_action();
         }
         if let Some(plane) = plane {
             self.view_plane = plane;
@@ -1150,13 +1227,18 @@ impl eframe::App for EditorApp {
         {
             // `RUSTOSRS_CONTEXT=1` also opens the context menu on it, to look at the menus.
             if std::env::var_os("RUSTOSRS_CONTEXT").is_some() {
+                let anchor = self
+                    .infos
+                    .get(&pick.region)
+                    .and_then(|info| info.locs.get(pick.index))
+                    .map(|loc| pick::TilePick { tile: loc.tile });
                 self.context_pick = Pick {
                     object: Some(pick.clone()),
-                    ..Pick::default()
+                    tile: anchor,
                 };
                 self.context_menu = Some(egui::pos2(400.0, 300.0));
             }
-            self.selected = Some(pick);
+            self.select_only(pick);
             self.smoke_select = None;
         }
         if let Some(tile) = self.smoke_paint
@@ -1164,6 +1246,26 @@ impl eframe::App for EditorApp {
         {
             self.apply_brush_at(tile);
             self.smoke_paint = None;
+        }
+        if let Some(points) = self.smoke_spline.take() {
+            self.spline.points = points;
+        }
+        if self.prefs.tool == crate::paint::Tool::Spline {
+            self.spline_update();
+        }
+        if let Some(at) = self.smoke_lay_at
+            && self.frames >= at
+            && !self.spline.points.is_empty()
+        {
+            self.commit_spline();
+            self.smoke_lay_at = None;
+        }
+        if let Some((x0, y0, x1, y1)) = self.smoke_tiles.take() {
+            for x in x0..=x1 {
+                for y in y0..=y1 {
+                    self.selection_tiles.insert((x, y));
+                }
+            }
         }
         // Smoke-test hook: undo the last stroke on this frame (`RUSTOSRS_UNDO_AT=frame`).
         if let Some(at) = self.smoke_undo_at
@@ -1198,7 +1300,7 @@ impl eframe::App for EditorApp {
         self.menu_bar(ui);
         self.toolbar(ui);
         self.status_bar(ui);
-        self.tool_bars(ui);
+        self.tool_drawer(ui);
         self.dock(ui);
 
         egui::CentralPanel::default()
@@ -1266,7 +1368,22 @@ impl eframe::App for EditorApp {
                     }
                 }
                 self.draw_selection(ui, rect, pixels_per_point, width, height);
+                self.draw_selection_extras(
+                    &ui.painter().with_clip_rect(rect),
+                    rect,
+                    pixels_per_point,
+                    width,
+                    height,
+                );
+                self.draw_spline(
+                    &ui.painter().with_clip_rect(rect),
+                    rect,
+                    pixels_per_point,
+                    width,
+                    height,
+                );
                 self.viewport_overlays(ui, rect);
+                self.floating_toolbar(&ctx, rect);
                 self.context_menu(&ctx);
             });
         self.quick_tools_hud(&ctx);

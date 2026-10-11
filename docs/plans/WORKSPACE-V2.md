@@ -26,6 +26,30 @@ Cmd+Shift+Z). Not yet: height edits, flags in the minimap and world map (they re
 exporting. `osrs-edit` (the pure document crate of section 6) is still to be extracted from `paint.rs`,
 `app/editing.rs` and `terrain_edits.rs`.
 
+## Status: second workspace pass (built)
+
+* **Always in Select.** The bottom tool strip is gone. A **floating toolbar** on the viewport's left edge shows the
+  current tool and switches it (Select, Paint, Spline, Height); in Select it also sets what a click or box
+  selects (objects, tiles, or both). Switching is friction-free: tap a tool key (V B P H) to switch, tap it again
+  or press `Esc` to return to Select, **hold** a key to peek at a tool and return on release; the quick HUD
+  (Space), the context menu's tool row and the toolbar buttons do the same. Brush size lives in the drawer header.
+* **Multi-select.** Click, Shift adds, Cmd toggles, drag a box. Tiles and objects have their own sets; the
+  Selection tab summarises them; Paint can "Fill N selected", Height can level or smooth them.
+* **Tile painter.** Channels are plain values now: overlay, underlay, shape + rotation, **one height** (a slider and
+  a field, up is positive) and **one set of flags** (checkboxes). Unticked = the tile keeps its own. The palettes
+  list the floors the real map uses (a one-second census at start: 476 of ~650 overlays, 221 underlays are used),
+  Common / All used / Textured, bigger swatches, **textures drawn from the cache with their scroll animation**.
+  Placeholder (magenta) overlays are listed only under All used. The eyedropper has no button; `I`, Alt + click
+  and the context menu's "Copy tile to brush" remain.
+* **Spline tool** (replaces Flags). Click control points on the terrain (drag to move, Cmd + click removes,
+  Backspace removes the last), set the width and edge style, Enter lays it as one undo step. The path is a
+  Catmull-Rom spline; `autotile.rs` rasterises the band per tile at 8 x 8 and picks the (shape, rotation) whose
+  overlay from the real face tables has the smallest Hamming error, then runs portal passes so neighbouring
+  edges agree. Preview shows the exact shapes before committing.
+* **Height tool** (dedicated): Raise, Lower, Smooth, Flatten (to the height under the cursor or a set height),
+  Roughen; strength, falloff, brush size; applies to the selection too. Heights are stored as the map file does
+  (a byte, relative to the plane below, a stored 1 reads as 0) through the edit layer, and the regions rebuild.
+
 Reference: OpenRune Studio / RSPSi (`~/Documents/ChatGPT/RSPSi-master`), whose `MapEditorView` is "faithful to
 Displee's Map Editor UI layout". We keep what makes that layout fast to learn and drop what costs space or
 duplicates state.

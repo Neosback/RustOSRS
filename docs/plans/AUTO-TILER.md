@@ -118,3 +118,10 @@ above and handles painting finer than one tile.
   and a radial brush menu for quick brush switching.
 * Our choice: one `osrs-edit::autotile` service (pure, tested against `FACE_CODES` and the real map census),
   used by the tile painter, road tool, fill and "retile selection".
+
+## 7. Status (2026-10-11)
+
+Built in `crates/osrs-editor/src/autotile.rs` (to move into `osrs-edit`): sub-tile mask rasterisation from the
+real `FACE_CODES` tables (file shape + 1 indexes the builder's rows), Hamming-error choice, edge-portal passes,
+and the spline band. Used by the Spline tool. Not yet: the real-map frequency table for tie-breaking, multiple
+overlays with priorities, retile-selection, and flood fill.

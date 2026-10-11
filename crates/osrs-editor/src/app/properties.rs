@@ -6,20 +6,92 @@ use crate::pick::{self, Pick};
 use eframe::egui;
 
 impl EditorApp {
+    /// The Selection tab: counts, the selected tiles, the objects, and the primary object's card.
     pub(super) fn selection_section(&mut self, ui: &mut egui::Ui) {
-        let Some(object) = self.selected.clone() else {
-            ui.add_space(24.0);
-            ui.vertical_centered(|ui| {
-                ui.label(
-                    egui::RichText::new(crate::icons::SELECT)
-                        .size(28.0)
-                        .color(ui.visuals().widgets.noninteractive.fg_stroke.color),
-                );
-                ui.label(egui::RichText::new("Nothing selected").strong());
-                ui.weak("Click an object in the viewport to inspect it.");
+        let (objects, tiles) = (self.selection_objects.len(), self.selection_tiles.len());
+        if objects == 0 && tiles == 0 && self.selected.is_none() {
+            super::widgets::empty_state(
+                ui,
+                crate::icons::SELECT,
+                "Nothing selected",
+                "Click, or drag a box, in the viewport.",
+            );
+            return;
+        }
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(format!(
+                    "{objects} object{} \u{b7} {tiles} tile{}",
+                    if objects == 1 { "" } else { "s" },
+                    if tiles == 1 { "" } else { "s" },
+                ))
+                .strong(),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.small_button("Clear").on_hover_text("Esc").clicked() {
+                    self.clear_selection();
+                }
             });
+        });
+        if tiles > 0 {
+            crate::theme::section_heading(ui, "Tiles");
+            let (mut min, mut max) = ((i32::MAX, i32::MAX), (i32::MIN, i32::MIN));
+            for (x, y) in &self.selection_tiles {
+                min = (min.0.min(*x), min.1.min(*y));
+                max = (max.0.max(*x), max.1.max(*y));
+            }
+            ui.weak(format!(
+                "{} \u{d7} {} tiles wide, from {}, {} to {}, {}",
+                max.0 - min.0 + 1,
+                max.1 - min.1 + 1,
+                min.0,
+                min.1,
+                max.0,
+                max.1
+            ));
+            ui.weak("Pick a tool to act on them: Paint fills them, Height levels or smooths them.");
+        }
+        if objects > 1 {
+            crate::theme::section_heading(ui, "Objects");
+            let names: Vec<(usize, String)> = self
+                .selection_objects
+                .iter()
+                .enumerate()
+                .take(40)
+                .map(|(i, o)| {
+                    let name = self
+                        .infos
+                        .get(&o.region)
+                        .and_then(|info| info.locs.get(o.index))
+                        .map(|loc| {
+                            format!(
+                                "{}  \u{b7}  {}, {}",
+                                loc.definition
+                                    .name
+                                    .as_deref()
+                                    .filter(|n| !n.is_empty())
+                                    .unwrap_or("Unnamed"),
+                                loc.tile.0,
+                                loc.tile.1
+                            )
+                        })
+                        .unwrap_or_default();
+                    (i, name)
+                })
+                .collect();
+            for (index, name) in names {
+                if ui.selectable_label(false, name).clicked() {
+                    self.selected = self.selection_objects.get(index).cloned();
+                }
+            }
+            if objects > 40 {
+                ui.weak(format!("and {} more", objects - 40));
+            }
+        }
+        let Some(object) = self.selected.clone() else {
             return;
         };
+        crate::theme::section_heading(ui, "Object");
         if let Some(loc) = self
             .infos
             .get(&object.region)

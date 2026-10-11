@@ -239,6 +239,10 @@ pub struct Settings {
     pub drawer_open: bool,
     pub drawer_tab: crate::paint::DrawerTab,
     pub brush: crate::paint::Brush,
+    pub select_mode: crate::paint::SelectMode,
+    pub spline: crate::paint::SplineSettings,
+    pub height_tool: crate::heights::HeightTool,
+    pub palette_filter: crate::paint::PaletteFilter,
     /// The settings window's current page.
     pub settings_page: SettingsPage,
     /// Shift + right click: the editor's menu or the game's.
@@ -291,6 +295,10 @@ impl Default for Settings {
             drawer_open: true,
             drawer_tab: crate::paint::DrawerTab::Overlay,
             brush: crate::paint::Brush::default(),
+            select_mode: crate::paint::SelectMode::default(),
+            spline: crate::paint::SplineSettings::default(),
+            height_tool: crate::heights::HeightTool::default(),
+            palette_filter: crate::paint::PaletteFilter::default(),
             settings_page: SettingsPage::Interface,
             context_menu: ContextMenuStyle::Editor,
             keymap: BTreeMap::new(),

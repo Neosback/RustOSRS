@@ -7,13 +7,15 @@
 use crate::WorldError;
 use osrs_cache::{
     decode::{
-        DecoderContext, decode_floor_overlay, decode_floor_underlay, decode_texture_definition,
+        DecoderContext, decode_floor_overlay, decode_floor_underlay, decode_terrain,
+        decode_texture_definition,
     },
     profile::TargetProfile,
     transport::CacheRepository,
 };
 use osrs_core::{
     color_palette::build_color_palette,
+    coords::RegionCoord,
     ids::{FloorOverlayId, FloorUnderlayId, TextureId},
 };
 use std::path::Path;
@@ -31,6 +33,8 @@ pub struct UnderlaySwatch {
     /// Value stored in the map file.
     pub id: u16,
     pub rgb: [u8; 3],
+    /// Tiles of the whole map (all planes) that use it.
+    pub uses: u64,
 }
 
 /// One overlay as a palette entry.
@@ -43,6 +47,8 @@ pub struct OverlaySwatch {
     pub texture: Option<u32>,
     /// The overlay hides the underlay beneath it.
     pub hide_underlay: bool,
+    /// Tiles of the whole map (all planes) that use it.
+    pub uses: u64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -74,6 +80,7 @@ pub fn load_floor_palette(cache_dir: impl AsRef<Path>) -> Result<FloorPalette, W
         palette.underlays.push(UnderlaySwatch {
             id: (id + 1) as u16,
             rgb: split_rgb(definition.rgb.get() as i32),
+            uses: 0,
         });
     }
     let mut texture_colors = std::collections::HashMap::new();
@@ -104,7 +111,41 @@ pub fn load_floor_palette(cache_dir: impl AsRef<Path>) -> Result<FloorPalette, W
             rgb,
             texture,
             hide_underlay: definition.hide_underlay,
+            uses: 0,
         });
+    }
+    // How many tiles of the real map use each floor (a second or so for the whole cache).
+    let mut overlay_uses: std::collections::HashMap<u16, u64> = std::collections::HashMap::new();
+    let mut underlay_uses: std::collections::HashMap<u16, u64> = std::collections::HashMap::new();
+    for x in 0..=120 {
+        for y in 0..=220 {
+            let region = RegionCoord::new(x, y);
+            let Ok(square) = cache.read_map_square(region) else {
+                continue;
+            };
+            let Ok(terrain) = decode_terrain(
+                &square.terrain.bytes,
+                &context,
+                &square.terrain.provenance,
+                region,
+            ) else {
+                continue;
+            };
+            for tile in terrain.tiles() {
+                if let Some(overlay) = tile.overlay {
+                    *overlay_uses.entry(overlay.encoded_id & 0x7fff).or_default() += 1;
+                }
+                if tile.underlay_id != 0 {
+                    *underlay_uses.entry(tile.underlay_id).or_default() += 1;
+                }
+            }
+        }
+    }
+    for swatch in &mut palette.overlays {
+        swatch.uses = overlay_uses.get(&swatch.id).copied().unwrap_or(0);
+    }
+    for swatch in &mut palette.underlays {
+        swatch.uses = underlay_uses.get(&swatch.id).copied().unwrap_or(0);
     }
     palette.underlays.sort_by_key(|swatch| swatch.id);
     palette.overlays.sort_by_key(|swatch| swatch.id);

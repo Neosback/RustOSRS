@@ -1,36 +1,38 @@
-//! The brush: which channels of a tile it paints, and what it does to the rest.
+//! Tools and the brush: which channels of a tile the brush paints, and what it leaves alone.
 //!
-//! A tile has an underlay, an overlay (with a shape and a rotation), four corner heights and a flag
-//! byte. The brush never paints "a tile": every channel is armed or not. An unarmed channel is left
-//! exactly as the tile already has it, so "keep the tile's values except the overlay I picked" is the
-//! default, not a mode. This module is pure state and arithmetic (no egui, no GPU) so the same
-//! rules can move into the edit crate unchanged.
+//! A tile has an underlay, an overlay (with a shape and a rotation), a height and a flag byte. The
+//! brush never paints "a tile": every channel is armed or not. An unarmed channel keeps exactly what the
+//! tile already has, so "the tile as it is, except the overlay I picked" is the default, not a mode.
+//! This module is pure state and arithmetic (no egui, no GPU) so the same rules can move into the
+//! edit crate unchanged.
 
 use serde::{Deserialize, Serialize};
 
-/// The editing tools, one active at a time.
+/// The tools. The editor rests in `Select`; the others are picked from the floating toolbar, the
+/// quick HUD, the context menu or a key, and `Esc` returns to `Select`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Tool {
-    /// Click selects objects; no drawer.
+    /// Click and box-select objects and tiles.
     #[default]
     Select,
-    /// Paint channels (overlay, underlay, shape) onto tiles.
+    /// Paint channels (overlay, underlay, shape, height, flags) onto tiles.
     Paint,
-    /// Sculpt tile heights.
+    /// Lay a path along a spline and let the auto-tiler pick every tile's shape.
+    #[serde(alias = "Flags")]
+    Spline,
+    /// Sculpt tile heights; paints nothing else.
     Height,
-    /// Set tile flags (blocked, bridge, ...).
-    Flags,
 }
 
 impl Tool {
-    pub const ALL: [Self; 4] = [Self::Select, Self::Paint, Self::Height, Self::Flags];
+    pub const ALL: [Self; 4] = [Self::Select, Self::Paint, Self::Spline, Self::Height];
 
     pub const fn label(self) -> &'static str {
         match self {
             Self::Select => "Select",
             Self::Paint => "Paint",
+            Self::Spline => "Spline",
             Self::Height => "Height",
-            Self::Flags => "Flags",
         }
     }
 
@@ -39,28 +41,38 @@ impl Tool {
         match self {
             Self::Select => "tool.select",
             Self::Paint => "tool.paint",
+            Self::Spline => "tool.spline",
             Self::Height => "tool.height",
-            Self::Flags => "tool.flags",
         }
     }
 
-    /// Which drawer tab the tool starts on.
-    pub const fn drawer_tab(self) -> Option<DrawerTab> {
+    /// The tabs the tool's drawer shows (none: no drawer).
+    pub fn tabs(self) -> &'static [DrawerTab] {
         match self {
-            Self::Select => None,
-            Self::Paint => Some(DrawerTab::Overlay),
-            Self::Height => Some(DrawerTab::Height),
-            Self::Flags => Some(DrawerTab::Mask),
+            Self::Select => &[],
+            Self::Paint => &[
+                DrawerTab::Overlay,
+                DrawerTab::Underlay,
+                DrawerTab::Shape,
+                DrawerTab::Height,
+                DrawerTab::Mask,
+            ],
+            Self::Spline => &[DrawerTab::Path, DrawerTab::Overlay, DrawerTab::Underlay],
+            Self::Height => &[DrawerTab::Height],
         }
     }
 
-    /// Whether the tool has a palette, so the drawer is worth showing.
-    pub const fn has_drawer(self) -> bool {
-        !matches!(self, Self::Select)
+    pub fn has_drawer(self) -> bool {
+        !self.tabs().is_empty()
+    }
+
+    /// Whether the tool paints with the brush footprint.
+    pub const fn uses_brush(self) -> bool {
+        matches!(self, Self::Paint | Self::Height)
     }
 }
 
-/// Channel tabs of the drawer.
+/// Tabs of the drawer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum DrawerTab {
     #[default]
@@ -69,17 +81,11 @@ pub enum DrawerTab {
     Shape,
     Height,
     Mask,
+    /// The spline tool's own options.
+    Path,
 }
 
 impl DrawerTab {
-    pub const ALL: [Self; 5] = [
-        Self::Overlay,
-        Self::Underlay,
-        Self::Shape,
-        Self::Height,
-        Self::Mask,
-    ];
-
     pub const fn label(self) -> &'static str {
         match self {
             Self::Overlay => "Overlay",
@@ -87,22 +93,95 @@ impl DrawerTab {
             Self::Shape => "Shape",
             Self::Height => "Height",
             Self::Mask => "Mask",
+            Self::Path => "Path",
         }
     }
 
-    /// Tabs the tool shows: Paint has the colour channels, Height and Flags only their own.
-    pub fn for_tool(tool: Tool) -> &'static [Self] {
-        match tool {
-            Tool::Select => &[],
-            Tool::Paint => &[
-                Self::Overlay,
-                Self::Underlay,
-                Self::Shape,
-                Self::Height,
-                Self::Mask,
-            ],
-            Tool::Height => &[Self::Height],
-            Tool::Flags => &[Self::Mask],
+    /// Whether the tab has an arm checkbox (the brush channels do; the path tab does not).
+    pub const fn is_channel(self) -> bool {
+        !matches!(self, Self::Path)
+    }
+}
+
+/// What a click or drag in the viewport selects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum SelectMode {
+    #[default]
+    Objects,
+    Tiles,
+    Both,
+}
+
+impl SelectMode {
+    pub const ALL: [Self; 3] = [Self::Objects, Self::Tiles, Self::Both];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Objects => "Objects",
+            Self::Tiles => "Tiles",
+            Self::Both => "Objects and tiles",
+        }
+    }
+
+    pub const fn objects(self) -> bool {
+        matches!(self, Self::Objects | Self::Both)
+    }
+
+    pub const fn tiles(self) -> bool {
+        matches!(self, Self::Tiles | Self::Both)
+    }
+}
+
+/// How the spline tool lays a path.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SplineSettings {
+    /// Path width in tiles.
+    pub width: f32,
+    /// Whole tiles only, no shaped edges.
+    pub hard_edges: bool,
+}
+
+impl Default for SplineSettings {
+    fn default() -> Self {
+        Self {
+            width: 3.0,
+            hard_edges: false,
+        }
+    }
+}
+
+/// Which floors the palettes list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PaletteFilter {
+    /// Floors that many tiles of the real map use.
+    #[default]
+    Common,
+    /// Every floor any tile of the map uses.
+    AllUsed,
+    /// Overlays with a texture.
+    Textured,
+}
+
+impl PaletteFilter {
+    pub const ALL: [Self; 3] = [Self::Common, Self::AllUsed, Self::Textured];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Common => "Common",
+            Self::AllUsed => "All used",
+            Self::Textured => "Textured",
+        }
+    }
+
+    /// Tiles of the whole map a floor needs to count as common.
+    pub const COMMON_USES: u64 = 5_000;
+
+    pub fn keeps(self, uses: u64, textured: bool) -> bool {
+        match self {
+            Self::Common => uses >= Self::COMMON_USES,
+            Self::AllUsed => uses > 0,
+            Self::Textured => textured,
         }
     }
 }
@@ -119,12 +198,12 @@ pub struct TileValues {
     pub overlay: u16,
     pub shape: u8,
     pub rotation: u8,
-    /// Height of the tile's reference corner, in client units.
+    /// Height of the tile's reference corner in client units (up is negative, a multiple of 8).
     pub height: i32,
     pub flags: u8,
 }
 
-/// What an armed channel does with its value: set it, or clear the channel.
+/// What an armed id channel does: set the id, or clear the channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Fill {
     Set(u16),
@@ -144,70 +223,18 @@ pub struct ShapeChannel {
     pub rotation: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum HeightMode {
-    #[default]
-    Set,
-    Raise,
-    Lower,
-    Flatten,
-    Smooth,
-}
-
-impl HeightMode {
-    pub const ALL: [Self; 5] = [
-        Self::Set,
-        Self::Raise,
-        Self::Lower,
-        Self::Flatten,
-        Self::Smooth,
-    ];
-
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Set => "Set",
-            Self::Raise => "Raise",
-            Self::Lower => "Lower",
-            Self::Flatten => "Flatten",
-            Self::Smooth => "Smooth",
-        }
-    }
-}
-
+/// The height the brush gives every tile it paints (no modes: the Height tool does the sculpting).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeightChannel {
     pub armed: bool,
-    pub mode: HeightMode,
-    /// Client units (a tile is 128 wide; the client's height step is 8).
-    pub amount: i32,
+    /// Client units, up is negative.
+    pub value: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum FlagMode {
-    #[default]
-    Set,
-    Add,
-    Remove,
-    Toggle,
-}
-
-impl FlagMode {
-    pub const ALL: [Self; 4] = [Self::Set, Self::Add, Self::Remove, Self::Toggle];
-
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Set => "Set",
-            Self::Add => "Add",
-            Self::Remove => "Remove",
-            Self::Toggle => "Toggle",
-        }
-    }
-}
-
+/// The flags the brush gives every tile it paints: a set, not an edit of the tile's own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlagChannel {
     pub armed: bool,
-    pub mode: FlagMode,
     pub bits: u8,
 }
 
@@ -222,6 +249,9 @@ pub const FLAG_BITS: [(u8, &str, &str); 4] = [
     ),
     (0x08, "Lowest plane", "Draw this tile on plane 0"),
 ];
+
+/// Highest elevation the map can store (a byte of 8-unit steps).
+pub const MAX_ELEVATION: i32 = 255 * 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum BrushShape {
@@ -262,12 +292,10 @@ impl Default for Brush {
             },
             height: HeightChannel {
                 armed: false,
-                mode: HeightMode::Set,
-                amount: 0,
+                value: 0,
             },
             flags: FlagChannel {
                 armed: false,
-                mode: FlagMode::Set,
                 bits: 0,
             },
             radius: 0,
@@ -277,27 +305,6 @@ impl Default for Brush {
 }
 
 impl Brush {
-    /// The channels that will change a tile, by name (for the drawer header and the quick menu).
-    pub fn armed_channels(&self) -> Vec<&'static str> {
-        let mut channels = Vec::new();
-        if self.overlay.armed {
-            channels.push("Overlay");
-        }
-        if self.underlay.armed {
-            channels.push("Underlay");
-        }
-        if self.shape.armed {
-            channels.push("Shape");
-        }
-        if self.height.armed {
-            channels.push("Height");
-        }
-        if self.flags.armed {
-            channels.push("Mask");
-        }
-        channels
-    }
-
     /// Arm or disarm one channel.
     pub fn set_armed(&mut self, tab: DrawerTab, armed: bool) {
         match tab {
@@ -306,6 +313,7 @@ impl Brush {
             DrawerTab::Shape => self.shape.armed = armed,
             DrawerTab::Height => self.height.armed = armed,
             DrawerTab::Mask => self.flags.armed = armed,
+            DrawerTab::Path => {}
         }
     }
 
@@ -316,19 +324,23 @@ impl Brush {
             DrawerTab::Shape => self.shape.armed,
             DrawerTab::Height => self.height.armed,
             DrawerTab::Mask => self.flags.armed,
+            DrawerTab::Path => false,
         }
     }
 
     /// `true` when the brush would change nothing.
     pub fn is_empty(&self) -> bool {
-        self.armed_channels().is_empty()
+        !(self.overlay.armed
+            || self.underlay.armed
+            || self.shape.armed
+            || self.height.armed
+            || self.flags.armed)
     }
 
     /// The tile after the brush: armed channels take the brush value, every other value stays.
     ///
     /// Clearing the overlay also resets its shape and rotation (the client ignores them without an
-    /// overlay). Height modes other than `Set` need neighbours and are handled by the caller; here they
-    /// move the reference corner only.
+    /// overlay).
     pub fn apply(&self, tile: TileValues) -> TileValues {
         let mut out = tile;
         if self.underlay.armed {
@@ -352,25 +364,15 @@ impl Brush {
             out.rotation = self.shape.rotation & 3;
         }
         if self.height.armed {
-            out.height = match self.height.mode {
-                HeightMode::Set | HeightMode::Flatten => self.height.amount,
-                HeightMode::Raise => out.height - self.height.amount.abs(),
-                HeightMode::Lower => out.height + self.height.amount.abs(),
-                HeightMode::Smooth => out.height,
-            };
+            out.height = self.height.value;
         }
         if self.flags.armed {
-            out.flags = match self.flags.mode {
-                FlagMode::Set => self.flags.bits,
-                FlagMode::Add => out.flags | self.flags.bits,
-                FlagMode::Remove => out.flags & !self.flags.bits,
-                FlagMode::Toggle => out.flags ^ self.flags.bits,
-            };
+            out.flags = self.flags.bits;
         }
         out
     }
 
-    /// Arm exactly the channels that describe `tile` and copy its values into them (the eyedropper).
+    /// Copy a tile's values into the brush and arm what the tile has (the eyedropper).
     pub fn sample(&mut self, tile: TileValues) {
         self.underlay.fill = if tile.underlay == 0 {
             Fill::Clear
@@ -384,7 +386,7 @@ impl Brush {
         };
         self.shape.shape = tile.shape.min(MAX_SHAPE);
         self.shape.rotation = tile.rotation & 3;
-        self.height.amount = tile.height;
+        self.height.value = tile.height;
         self.flags.bits = tile.flags;
         self.underlay.armed = true;
         self.overlay.armed = true;
@@ -393,22 +395,45 @@ impl Brush {
 
     /// Tiles covered by the brush around `center`, nearest first.
     pub fn footprint_tiles(&self, center: (i32, i32)) -> Vec<(i32, i32)> {
-        let radius = i32::from(self.radius);
-        let mut tiles = Vec::new();
-        for dy in -radius..=radius {
-            for dx in -radius..=radius {
-                let inside = match self.footprint {
-                    BrushShape::Square => true,
-                    BrushShape::Circle => dx * dx + dy * dy <= radius * radius + radius / 2,
-                };
-                if inside {
-                    tiles.push((center.0 + dx, center.1 + dy));
-                }
+        footprint(self.radius, self.footprint, center)
+    }
+}
+
+/// The tiles of a square or round footprint, nearest to `center` first.
+pub fn footprint(radius: u8, shape: BrushShape, center: (i32, i32)) -> Vec<(i32, i32)> {
+    let radius = i32::from(radius);
+    let mut tiles = Vec::new();
+    for dy in -radius..=radius {
+        for dx in -radius..=radius {
+            let inside = match shape {
+                BrushShape::Square => true,
+                BrushShape::Circle => dx * dx + dy * dy <= radius * radius + radius / 2,
+            };
+            if inside {
+                tiles.push((center.0 + dx, center.1 + dy));
             }
         }
-        tiles.sort_by_key(|(x, y)| (x - center.0).pow(2) + (y - center.1).pow(2));
-        tiles
     }
+    tiles.sort_by_key(|(x, y)| (x - center.0).pow(2) + (y - center.1).pow(2));
+    tiles
+}
+
+/// Client height (up is negative) to the elevation people think in (up is positive).
+pub const fn elevation(height: i32) -> i32 {
+    -height
+}
+
+/// The nearest storable client height for an elevation: a multiple of 8, between sea level and the
+/// highest the map can hold.
+pub const fn height_for_elevation(elevation: i32) -> i32 {
+    let clamped = if elevation < 0 {
+        0
+    } else if elevation > MAX_ELEVATION {
+        MAX_ELEVATION
+    } else {
+        elevation
+    };
+    -((clamped + 4) / 8) * 8
 }
 
 #[cfg(test)]
@@ -441,8 +466,7 @@ mod tests {
 
     #[test]
     fn an_armed_overlay_changes_only_the_overlay() {
-        let brush = Brush::default();
-        let out = brush.apply(tile());
+        let out = Brush::default().apply(tile());
         assert_eq!(out.overlay, 1);
         assert_eq!((out.underlay, out.shape, out.rotation), (49, 4, 2));
         assert_eq!((out.height, out.flags), (-40, 0x01));
@@ -476,23 +500,20 @@ mod tests {
     }
 
     #[test]
-    fn flag_modes() {
+    fn height_and_flags_are_plain_values_when_armed() {
         let mut brush = Brush::default();
         brush.overlay.armed = false;
+        brush.height = HeightChannel {
+            armed: true,
+            value: -96,
+        };
         brush.flags = FlagChannel {
             armed: true,
-            mode: FlagMode::Add,
-            bits: 0x02,
+            bits: 0x0a,
         };
-        assert_eq!(brush.apply(tile()).flags, 0x03);
-        brush.flags.mode = FlagMode::Remove;
-        brush.flags.bits = 0x01;
-        assert_eq!(brush.apply(tile()).flags, 0);
-        brush.flags.mode = FlagMode::Toggle;
-        assert_eq!(brush.apply(tile()).flags, 0);
-        brush.flags.mode = FlagMode::Set;
-        brush.flags.bits = 0x08;
-        assert_eq!(brush.apply(tile()).flags, 0x08);
+        let out = brush.apply(tile());
+        assert_eq!((out.height, out.flags), (-96, 0x0a));
+        assert_eq!(out.overlay, 111);
     }
 
     #[test]
@@ -520,5 +541,22 @@ mod tests {
             ..Brush::default()
         };
         assert!(circle.footprint_tiles((0, 0)).len() < 49);
+    }
+
+    #[test]
+    fn elevations_round_to_storable_heights() {
+        assert_eq!(height_for_elevation(0), 0);
+        assert_eq!(height_for_elevation(11), -8);
+        assert_eq!(height_for_elevation(12), -16);
+        assert_eq!(height_for_elevation(-50), 0);
+        assert_eq!(height_for_elevation(99_999), -MAX_ELEVATION);
+        assert_eq!(elevation(-96), 96);
+    }
+
+    #[test]
+    fn the_retired_flags_tool_loads_as_the_spline_tool() -> Result<(), serde_json::Error> {
+        let tool: Tool = serde_json::from_str("\"Flags\"")?;
+        assert_eq!(tool, Tool::Spline);
+        Ok(())
     }
 }

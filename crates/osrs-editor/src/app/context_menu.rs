@@ -27,6 +27,13 @@ enum MenuAction {
     SetTool(crate::paint::Tool),
     Eyedrop((i32, i32)),
     ApplyBrush((i32, i32)),
+    SelectTile((i32, i32)),
+    FillSelection,
+    HeightSelection,
+    AddPathPoint((i32, i32)),
+    LayPath,
+    ClearPath,
+    ClearSelection,
 }
 
 impl EditorApp {
@@ -53,9 +60,9 @@ impl EditorApp {
 
     fn apply_menu_action(&mut self, action: MenuAction) {
         match action {
-            MenuAction::Select(object) => self.selected = Some(object),
+            MenuAction::Select(object) => self.select_only(object),
             MenuAction::Focus(object) => {
-                self.selected = Some(object);
+                self.select_only(object);
                 self.focus_selection();
             }
             MenuAction::SetTool(tool) => self.set_tool(tool),
@@ -65,6 +72,19 @@ impl EditorApp {
                 }
             }
             MenuAction::ApplyBrush(tile) => self.apply_brush_at(tile),
+            MenuAction::SelectTile(tile) => {
+                self.selection_tiles.insert(tile);
+            }
+            MenuAction::FillSelection => self.fill_selection(),
+            MenuAction::HeightSelection => self.height_on_selection(),
+            MenuAction::AddPathPoint(tile) => {
+                self.spline
+                    .points
+                    .push((tile.0 as f32 + 0.5, tile.1 as f32 + 0.5));
+            }
+            MenuAction::LayPath => self.commit_spline(),
+            MenuAction::ClearPath => self.spline.points.clear(),
+            MenuAction::ClearSelection => self.clear_selection(),
             MenuAction::TeleportHere((x, y)) => {
                 let plane = self.view_plane;
                 self.teleport_to(Destination::Tile { x, y, plane });
@@ -219,38 +239,135 @@ impl EditorApp {
                             ui.weak(format!("plane {}", self.view_plane));
                             ui.separator();
                         }
-                        if let Some(tile) = &pick.tile
-                            && self.prefs.tool != crate::paint::Tool::Select
-                        {
-                            let verb = match self.prefs.tool {
-                                crate::paint::Tool::Paint => "Paint",
-                                crate::paint::Tool::Height => "Sculpt",
-                                _ => "Set flags",
+                        let tool = self.prefs.tool;
+                        if let Some(tile) = pick.tile.map(|p| p.tile) {
+                            let item = |ui: &mut egui::Ui, text: String, tip: &str| {
+                                ui.button(text).on_hover_text(tip).clicked()
                             };
-                            let armed = self.prefs.brush.armed_channels().join(", ");
-                            if ui
-                                .button(format!(
-                                    "{}  {verb} here",
-                                    super::workspace::tool_icon(self.prefs.tool)
-                                ))
-                                .on_hover_text(if armed.is_empty() {
-                                    "Nothing armed: arm a channel in the drawer".to_owned()
-                                } else {
-                                    format!("Applies: {armed}")
-                                })
-                                .clicked()
+                            match tool {
+                                crate::paint::Tool::Select => {
+                                    if item(
+                                        ui,
+                                        format!("{}  Select tile", icons::SELECT_TILES),
+                                        "Add this tile to the selection",
+                                    ) {
+                                        outcome.action = Some(MenuAction::SelectTile(tile));
+                                        outcome.close = true;
+                                    }
+                                }
+                                crate::paint::Tool::Paint => {
+                                    let empty = self.prefs.brush.is_empty();
+                                    if ui
+                                        .add_enabled(
+                                            !empty,
+                                            egui::Button::new(format!(
+                                                "{}  Paint here",
+                                                super::workspace::tool_icon(tool)
+                                            )),
+                                        )
+                                        .on_hover_text(
+                                            "Apply the brush to the tile under the cursor",
+                                        )
+                                        .clicked()
+                                    {
+                                        outcome.action = Some(MenuAction::ApplyBrush(tile));
+                                        outcome.close = true;
+                                    }
+                                    let selected = self.selection_tiles.len();
+                                    if selected > 0
+                                        && !empty
+                                        && item(
+                                            ui,
+                                            format!(
+                                                "{}  Fill {selected} selected tiles",
+                                                icons::SELECT_TILES
+                                            ),
+                                            "Apply the brush to every selected tile",
+                                        )
+                                    {
+                                        outcome.action = Some(MenuAction::FillSelection);
+                                        outcome.close = true;
+                                    }
+                                }
+                                crate::paint::Tool::Spline => {
+                                    if item(
+                                        ui,
+                                        format!(
+                                            "{}  Add path point here",
+                                            super::workspace::tool_icon(tool)
+                                        ),
+                                        "Add a control point to the path",
+                                    ) {
+                                        outcome.action = Some(MenuAction::AddPathPoint(tile));
+                                        outcome.close = true;
+                                    }
+                                    if !self.spline.points.is_empty() {
+                                        if item(
+                                            ui,
+                                            "Lay path (Enter)".to_owned(),
+                                            "Lay the previewed path",
+                                        ) {
+                                            outcome.action = Some(MenuAction::LayPath);
+                                            outcome.close = true;
+                                        }
+                                        if item(
+                                            ui,
+                                            "Clear path (Esc)".to_owned(),
+                                            "Remove all control points",
+                                        ) {
+                                            outcome.action = Some(MenuAction::ClearPath);
+                                            outcome.close = true;
+                                        }
+                                    }
+                                }
+                                crate::paint::Tool::Height => {
+                                    if item(
+                                        ui,
+                                        format!(
+                                            "{}  {} here",
+                                            super::workspace::tool_icon(tool),
+                                            self.prefs.height_tool.op.label()
+                                        ),
+                                        "Apply the height brush once at the tile under the cursor",
+                                    ) {
+                                        outcome.action = Some(MenuAction::ApplyBrush(tile));
+                                        outcome.close = true;
+                                    }
+                                    let selected = self.selection_tiles.len();
+                                    if selected > 0
+                                        && item(
+                                            ui,
+                                            format!(
+                                                "{}  {} {selected} selected tiles",
+                                                icons::SELECT_TILES,
+                                                self.prefs.height_tool.op.label()
+                                            ),
+                                            "Apply the height tool to every selected tile",
+                                        )
+                                    {
+                                        outcome.action = Some(MenuAction::HeightSelection);
+                                        outcome.close = true;
+                                    }
+                                }
+                            }
+                            if tool != crate::paint::Tool::Select
+                                && item(
+                                    ui,
+                                    format!("{}  Copy tile to brush", icons::EYEDROPPER),
+                                    "Take this tile's floor, shape and height into the brush (I)",
+                                )
                             {
-                                outcome.action = Some(MenuAction::ApplyBrush(tile.tile));
+                                outcome.action = Some(MenuAction::Eyedrop(tile));
                                 outcome.close = true;
                             }
-                            if ui
-                                .button(format!("{}  Eyedrop tile", icons::EYEDROPPER))
-                                .on_hover_text("Copy this tile's values into the brush (I)")
-                                .clicked()
-                            {
-                                outcome.action = Some(MenuAction::Eyedrop(tile.tile));
-                                outcome.close = true;
-                            }
+                        }
+                        if tool == crate::paint::Tool::Select
+                            && (!self.selection_objects.is_empty()
+                                || !self.selection_tiles.is_empty())
+                            && ui.button("Clear selection").clicked()
+                        {
+                            outcome.action = Some(MenuAction::ClearSelection);
+                            outcome.close = true;
                         }
                         if let Some(tile) = &pick.tile
                             && ui

@@ -5,6 +5,8 @@ use crate::hud;
 use eframe::egui;
 
 const OVERLAY_MARGIN: f32 = 10.0;
+/// The statistics and tile HUDs start right of the floating toolbar.
+const HUD_LEFT: f32 = 62.0;
 
 fn overlay_frame() -> egui::Frame {
     egui::Frame::new()
@@ -30,7 +32,7 @@ impl EditorApp {
             let stats = self.prefs.stats_overlay;
             egui::Area::new(egui::Id::new("stats_overlay"))
                 .order(egui::Order::Background)
-                .fixed_pos(rect.min + egui::vec2(OVERLAY_MARGIN, OVERLAY_MARGIN))
+                .fixed_pos(rect.min + egui::vec2(HUD_LEFT, OVERLAY_MARGIN))
                 .interactable(false)
                 .show(&ctx, |ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);

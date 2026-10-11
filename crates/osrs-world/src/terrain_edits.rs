@@ -4,7 +4,7 @@
 //! has set on a tile; [`crate::WorldDefinitions::region`] applies them right after decoding, so the
 //! scene builder, the picker data and the HD stream all see the edited map.
 
-use osrs_scene::terrain_load::{RegionTerrainTile, RegionTileOverlay};
+use osrs_scene::terrain_load::{RegionTerrainTile, RegionTileHeight, RegionTileOverlay};
 use std::collections::HashMap;
 
 const REGION_TILES: i32 = 64;
@@ -24,6 +24,9 @@ pub struct TileEdit {
     pub rotation: u8,
     /// Tile-settings byte.
     pub flags: u8,
+    /// The stored height byte (`None` keeps the height as decoded). On plane 0 the height is
+    /// `-8 * byte`; above it, the height of the plane below minus `8 * byte`; a stored 1 reads as 0.
+    pub height: Option<u8>,
 }
 
 impl TileEdit {
@@ -50,6 +53,9 @@ impl TileEdit {
             rotation: self.rotation & 3,
         });
         tile.settings = (self.flags != 0).then_some(self.flags);
+        if let Some(byte) = self.height {
+            tile.height = RegionTileHeight::Explicit(byte);
+        }
     }
 }
 
@@ -93,7 +99,6 @@ impl TerrainEdits {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use osrs_scene::terrain_load::RegionTileHeight;
 
     fn tile() -> RegionTerrainTile {
         RegionTerrainTile {
@@ -117,6 +122,7 @@ mod tests {
             shape: 4,
             rotation: 2,
             flags: 0,
+            height: None,
         }
     }
 
@@ -135,6 +141,17 @@ mod tests {
             })
         );
         assert_eq!(tile.settings, None);
+    }
+
+    #[test]
+    fn a_stored_height_replaces_the_decoded_one() {
+        let mut tile = tile();
+        TileEdit {
+            height: Some(30),
+            ..edit()
+        }
+        .apply_to(&mut tile);
+        assert_eq!(tile.height, RegionTileHeight::Explicit(30));
     }
 
     #[test]

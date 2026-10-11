@@ -9,9 +9,11 @@
 mod animation_smoothing;
 mod app;
 mod assets;
+mod autotile;
 mod camera;
 mod fonts;
 mod grid;
+mod heights;
 mod hud;
 mod icons;
 mod interact;
