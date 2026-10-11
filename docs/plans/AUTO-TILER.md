@@ -89,6 +89,13 @@ client oracle (`terrain_oracle_diff`) to prove that automatically produced tiles
 Reverse direction for learning: statistics of (neighbour mask -> shape, rotation) over the whole real map
 (4.9 M locs, ~170 k zones) give the true tileset usage; use it to rank ambiguous cases.
 
+**Refinement from Terraini (see `TERRAINI-IDEAS.md`):** instead of a 4-bit corner index, rasterise all
+12 shapes x 4 rotations into N x N sub-tile masks (N = 8 is plenty) from the real `FACE_CODES`, paint at
+that resolution, and choose the (shape, rotation) with the smallest Hamming error; edge masks of each
+candidate give "portals" so neighbouring tiles connect, and a frequency table harvested from the real map
+(8-neighbour pattern -> shape/rotation) breaks ties. This replaces the hand-written case table in step 2
+above and handles painting finer than one tile.
+
 ## 5. Plan
 1. `osrs-scene::tile_rules`: pure functions `corner_mask -> Option<(shape, rotation)>` plus the inverse
    `(shape, rotation) -> covered corners`, with exhaustive tests over all 12 shapes x 4 rotations.
