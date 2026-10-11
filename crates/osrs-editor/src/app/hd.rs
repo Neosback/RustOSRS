@@ -82,6 +82,7 @@ impl EditorApp {
                 self.prefs.draw_distance_tiles as f32,
             ),
             normal_mapping: self.prefs.hd_normal_mapping,
+            parallax_mapping: self.prefs.hd_parallax_mapping,
             elapsed_seconds: (elapsed % 4096.0) as f32,
             debug_view: 0,
         });

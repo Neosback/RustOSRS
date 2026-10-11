@@ -270,7 +270,8 @@ pub struct HdEnvironmentUniform {
     pub water_color: [f32; 4],
     /// Lightning brightness; the rest is reserved.
     pub misc: [f32; 4],
-    /// `x`: normal mapping enabled, `y`: debug view, `z`: underwater environment.
+    /// `x`: normal mapping enabled, `y`: debug view, `z`: underwater environment,
+    /// `w`: parallax occlusion mapping enabled.
     pub flags: [u32; 4],
     /// Render-local position to the light's clip space (column-major).
     pub light_proj: [[f32; 4]; 4],

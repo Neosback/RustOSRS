@@ -115,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     renderer.upload_scene(&geometry);
     let mut animations = AnimationSystem::new();
-    animations.insert_region((0, 0), extract_animated_instances(&world, None));
+    animations.insert_region((0, 0), extract_animated_instances(&world, None, None));
     let cycles: i32 = env::var("RENDER_ANIM_CYCLES")
         .ok()
         .and_then(|v| v.parse().ok())

@@ -8,6 +8,7 @@
 //! Skeletal sequences (a small minority of animated objects) are not posed; those locs render
 //! their static base model instead.
 
+use crate::hd::model::{ModelSite, ResolvedModelOverride, model_faces_resolved};
 use osrs_core::{
     animation::{SequencePlaybackState, advance_dynamic_sequence},
     animation_pose::{LegacyAnimationFrame, interpolate_legacy_frames, pose_legacy_object_model},
@@ -15,6 +16,7 @@ use osrs_core::{
     definitions::SequenceDefinition,
     lighting::ReferenceLitModel,
 };
+use osrs_hd::materials::MaterialSet;
 use osrs_render::{ModelPlacement, SceneGeometry};
 use std::{
     collections::{HashMap, hash_map::DefaultHasher},
@@ -47,10 +49,24 @@ pub struct AnimatedModel {
     pub random_start: bool,
 }
 
+/// Resolved 117HD state for one animated loc. This is captured while region extraction still
+/// owns the HdContext, then reused after each animation pose.
+#[derive(Debug, Clone)]
+pub struct AnimatedHdState {
+    pub materials: Arc<MaterialSet>,
+    pub override_: Arc<ResolvedModelOverride>,
+    pub hide_fake_shadows: bool,
+    pub object_id: u32,
+    pub world: (i32, i32, i32),
+    pub zone_origin_world: (i32, i32),
+}
+
 /// One placed animated model slot.
 #[derive(Debug, Clone)]
 pub struct AnimatedInstance {
     pub model: Arc<AnimatedModel>,
+    /// `Some` only when this region was extracted through the 117HD profile.
+    pub hd: Option<AnimatedHdState>,
     /// World zone coordinates of the owning zone.
     pub zone: (i32, i32),
     pub level: u8,
@@ -277,17 +293,35 @@ impl AnimationSystem {
                     },
                 );
             }
-            let zone = geometry.zone_mut(instance.zone.0, instance.zone.1);
-            zone.group_mut(instance.level, instance.min_plane)
-                .push_model(
-                    &posed,
-                    ModelPlacement {
-                        x: instance.local.0,
-                        y: instance.local.1,
-                        z: instance.local.2,
-                        orientation: instance.rotation,
+            let placement = ModelPlacement {
+                x: instance.local.0,
+                y: instance.local.1,
+                z: instance.local.2,
+                orientation: instance.rotation,
+            };
+            let builder = geometry
+                .zone_mut(instance.zone.0, instance.zone.1)
+                .group_mut(instance.level, instance.min_plane);
+            if let Some(hd) = &instance.hd {
+                let faces = model_faces_resolved(
+                    &hd.materials,
+                    hd.hide_fake_shadows,
+                    &hd.override_,
+                    posed.as_ref(),
+                    ModelSite {
+                        object_id: hd.object_id,
+                        world: hd.world,
+                        placement,
+                        zone_origin_world: hd.zone_origin_world,
                     },
                 );
+                builder.push_hd_faces(
+                    &faces,
+                    [instance.local.0, instance.local.1, instance.local.2],
+                );
+            } else {
+                builder.push_model(posed.as_ref(), placement);
+            }
         }
         geometry
     }

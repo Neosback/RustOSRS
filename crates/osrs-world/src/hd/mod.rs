@@ -34,7 +34,7 @@ pub fn default_assets_dir() -> PathBuf {
 pub struct HdContext {
     pub settings: HdSettings,
     pub data: HdData,
-    pub materials: MaterialSet,
+    pub materials: Arc<MaterialSet>,
     pub grounds: GroundMaterials,
     pub water: WaterTypes,
     pub areas: Areas,
@@ -60,7 +60,7 @@ impl HdContext {
         settings: HdSettings,
         vanilla_textures: impl IntoIterator<Item = i32>,
     ) -> Self {
-        let materials = MaterialSet::build(&data, &settings, vanilla_textures);
+        let materials = Arc::new(MaterialSet::build(&data, &settings, vanilla_textures));
         let grounds = GroundMaterials::new(&data, &materials);
         let water = WaterTypes::new(&data);
         let areas = Areas::new(&data);

@@ -103,3 +103,80 @@ impl HdGpuData {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use osrs_hd::settings::HdSettings;
+
+    #[test]
+    fn brick_replacement_reaches_gpu_table_and_texture_layers() {
+        let assets = crate::hd::default_assets_dir();
+        let context = HdContext::load(&assets, HdSettings::default(), [2])
+            .expect("checked-in 117 HD data must load");
+
+        let material_index = context.materials.from_vanilla_texture(2);
+        assert_ne!(
+            material_index, 0,
+            "vanilla brick must resolve to a material"
+        );
+        let material = context
+            .materials
+            .get(material_index)
+            .expect("resolved brick material must exist");
+        assert_eq!(material.name, "HD_BRICK");
+
+        let plan =
+            LayerPlan::from_table(&context.materials.materials, &context.materials.definitions);
+        let color_layer = plan.layer_of(&material.name);
+        assert!(color_layer >= 0, "HD_BRICK must own a color texture layer");
+        assert_eq!(
+            plan.layers[color_layer as usize].material, "HD_BRICK",
+            "CPU material index must resolve to the HD brick color owner"
+        );
+        assert!(
+            assets.join("scene/textures/hd_brick.jpg").is_file(),
+            "the selected HD_BRICK color layer must exist on disk"
+        );
+
+        let packed = GpuMaterial::from_hd(material, |name| plan.layer_of(name));
+        assert_eq!(packed.color_map, color_layer);
+        assert!(
+            packed.normal_map >= 0,
+            "HD_BRICK normal map must have a layer"
+        );
+        assert!(
+            packed.displacement_map >= 0,
+            "HD_BRICK displacement map must have a layer"
+        );
+        assert_eq!(
+            plan.layers[packed.normal_map as usize].material,
+            "HD_BRICK_N"
+        );
+        assert_eq!(
+            plan.layers[packed.displacement_map as usize].material,
+            "HD_BRICK_D"
+        );
+        assert!(
+            assets.join("scene/textures/hd_brick_n.png").is_file(),
+            "the selected normal-map layer must exist on disk"
+        );
+        assert!(
+            assets.join("scene/textures/hd_brick_d.png").is_file(),
+            "the selected displacement-map layer must exist on disk"
+        );
+
+        // The GPU table inserts exactly one NONE entry before the MaterialSet table. Therefore a
+        // per-vertex MaterialSet index must address the same definition after upload.
+        let mut gpu_table = vec![GpuMaterial::NONE];
+        gpu_table.extend(
+            context
+                .materials
+                .materials
+                .iter()
+                .map(|entry| GpuMaterial::from_hd(entry, |name| plan.layer_of(name))),
+        );
+        assert_eq!(gpu_table[material_index], packed);
+    }
+}

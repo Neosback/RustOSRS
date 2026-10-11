@@ -135,6 +135,8 @@ pub struct Settings {
     pub hd_vignette: f32,
     /// HD: normal mapping on materials that have a normal map.
     pub hd_normal_mapping: bool,
+    /// HD: parallax occlusion mapping on materials that have displacement maps.
+    pub hd_parallax_mapping: bool,
     /// HD: per-area environments (lighting, fog, sky and water colour; Properties > Shading).
     pub hd_environment: EnvironmentSettings,
     /// HD: the shadow map (Properties > Shading > Shadows).
@@ -176,6 +178,7 @@ impl Default for Settings {
             hd_exposure: HdParams::default().exposure,
             hd_vignette: HdParams::default().placeholder_vignette,
             hd_normal_mapping: true,
+            hd_parallax_mapping: true,
             hd_environment: EnvironmentSettings::default(),
             hd_shadows: ShadowSettings::default(),
             brightness: 0.8,
@@ -291,6 +294,7 @@ mod tests {
         assert_eq!(settings.brightness, 0.6);
         assert_eq!(settings.draw_distance_tiles, 50);
         assert!(settings.properties_panel);
+        assert!(settings.hd_parallax_mapping);
         Ok(())
     }
 

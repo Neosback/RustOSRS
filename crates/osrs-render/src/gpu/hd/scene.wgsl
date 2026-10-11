@@ -1,6 +1,7 @@
 // HD-profile scene shader: a WGSL port of the 117 HD plugin's `scene_vert.glsl` / `scene_frag.glsl`
 // (zone renderer), phase 2 subset: per-corner materials with ground blending, diffuse + normal map +
-// specular, vertex-colour and underlay/overlay blending, tangent frame from derivatives, underwater
+// parallax displacement + specular, vertex-colour and underlay/overlay blending, tangent frame from
+// derivatives, underwater
 // tint, area environments (ambient/directional light, fog, ground fog, sky light, underglow,
 // lightning; phase 3). Shadows (phase 4), water surfaces (5), point lights (6) and tone mapping (8)
 // are not ported yet.
@@ -236,6 +237,87 @@ fn corner_uv(material: Material, base: vec2<f32>, time: f32) -> vec2<f32> {
     return uv;
 }
 
+// `animationFrame(vec2)` from RLHD's misc.glsl. Durations are independent per axis; zero keeps
+// that axis stationary instead of dividing by zero.
+fn animation_frame(duration: vec2<f32>, time: f32) -> vec2<f32> {
+    var frame = vec2<f32>(0.0);
+    if (duration.x != 0.0) {
+        frame.x = fract(time / duration.x);
+    }
+    if (duration.y != 0.0) {
+        frame.y = fract(time / duration.y);
+    }
+    return frame;
+}
+
+struct DisplacementSample {
+    uv: vec2<f32>,
+    delta: vec3<f32>,
+};
+
+// `sampleDisplacementMap` from RLHD's displacement.glsl, without its optional self-shadowing
+// compile mode (the normal plugin toggle enables POM at level 1). Height maps live in the sRGB
+// texture array, so convert the sampled linear value back to the authored code value just like
+// upstream's `linearToSrgb` call.
+fn sample_displacement_map(
+    material: Material,
+    ts_view_dir: vec3<f32>,
+    uv: vec2<f32>,
+    uv_ddx: vec2<f32>,
+    uv_ddy: vec2<f32>,
+) -> DisplacementSample {
+    var result = DisplacementSample(uv, vec3<f32>(0.0));
+    if (material.displacement_map < 0 || material.displacement_scale == 0.0) {
+        return result;
+    }
+
+    let scale = material.displacement_scale;
+    let cos_view = normalize(ts_view_dir).z;
+    let num_layers = mix(1.0, 16.0, 1.0 - clamp(cos_view * cos_view, 0.0, 1.0));
+    let height_per_layer = 1.0 / num_layers;
+
+    var view_z = ts_view_dir.z;
+    if (abs(view_z) < 0.0001) {
+        view_z = select(-0.0001, 0.0001, view_z >= 0.0);
+    }
+    let delta_xy_per_z = ts_view_dir.xy / view_z * scale;
+
+    // Keep half displacement centered on the original surface, matching RLHD.
+    result.uv = result.uv + delta_xy_per_z * 0.5;
+    result.delta = result.delta - vec3<f32>(delta_xy_per_z, scale) * 0.5;
+
+    var height = 0.0;
+    var previous_height = 0.0;
+    var layer = 1.0;
+    for (var step = 0u; step < 16u; step = step + 1u) {
+        if (layer < 0.0 || height > layer) {
+            break;
+        }
+        previous_height = height;
+        let sampled = textureSampleGrad(
+            material_textures,
+            material_sampler,
+            result.uv - delta_xy_per_z * layer,
+            material.displacement_map,
+            uv_ddx,
+            uv_ddy,
+        ).r;
+        height = linear_to_srgb(vec3<f32>(sampled)).r;
+        layer = layer - height_per_layer;
+    }
+
+    let overshoot = height - layer;
+    let undershoot = (layer + height_per_layer) - previous_height;
+    let denominator = overshoot + undershoot;
+    let correction = select(0.0, overshoot / denominator, abs(denominator) > 0.000001);
+    height = mix(height, previous_height, correction);
+
+    let ts_delta = vec3<f32>(delta_xy_per_z, scale) * height;
+    result.uv = result.uv - ts_delta.xy;
+    result.delta = result.delta + ts_delta;
+    return result;
+}
+
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     let flags = input.info.x;
@@ -258,16 +340,31 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     if ((flags & FLAG_VANILLA_UVS) != 0u && has_flag(material1, 1u)) {
         blended_uv.x = clamp(blended_uv.x, 0.0, 0.984375);
     }
-    let uv1 = corner_uv(material1, blended_uv, time);
-    let uv2 = corner_uv(material2, blended_uv, time);
-    let uv3 = corner_uv(material3, blended_uv, time);
-    // Derivatives up front: the texture reads below sit in non-uniform control flow.
-    let ddx1 = dpdx(uv1);
-    let ddy1 = dpdy(uv1);
-    let ddx2 = dpdx(uv2);
-    let ddy2 = dpdy(uv2);
-    let ddx3 = dpdx(uv3);
-    let ddy3 = dpdy(uv3);
+    var uv1 = corner_uv(material1, blended_uv, time);
+    var uv2 = corner_uv(material2, blended_uv, time);
+    var uv3 = corner_uv(material3, blended_uv, time);
+
+    // RLHD uses the first corner material as the single flow map for the whole fragment, then
+    // applies the same distortion to all three material UVs before any diffuse/normal/PBR sample.
+    // Keep derivatives outside the conditional so WebGPU's uniformity rules are satisfied even
+    // when the selected material index varies between primitives.
+    let flow_uv = uv1 - animation_frame(material1.flow_map_duration, time);
+    let flow_ddx = dpdx(flow_uv);
+    let flow_ddy = dpdy(flow_uv);
+    if (material1.flow_map >= 0 && material1.flow_map_strength != 0.0) {
+        let flow = textureSampleGrad(
+            material_textures,
+            material_sampler,
+            flow_uv,
+            material1.flow_map,
+            flow_ddx,
+            flow_ddy,
+        ).xy;
+        let flow_offset = flow * material1.flow_map_strength;
+        uv1 = uv1 + flow_offset;
+        uv2 = uv2 + flow_offset;
+        uv3 = uv3 + flow_offset;
+    }
 
     let view_dir = normalize(env.camera.xyz - input.position);
     // WebGPU window y points down (OpenGL's points up), so the cross product is reversed.
@@ -277,6 +374,38 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
         n = flat_normal;
     }
     let tbn = cotangent_frame(n, input.position, input.uv * -1.0);
+
+    // RLHD parallax occlusion mapping: walk each corner material's height map in tangent space,
+    // then average the three tangent-space fragment offsets. The unmodified derivatives are passed
+    // explicitly to the height samples; final derivatives are taken after POM for all later maps.
+    let pom_ddx1 = dpdx(uv1);
+    let pom_ddy1 = dpdy(uv1);
+    let pom_ddx2 = dpdx(uv2);
+    let pom_ddy2 = dpdy(uv2);
+    let pom_ddx3 = dpdx(uv3);
+    let pom_ddy3 = dpdy(uv3);
+    var frag_position = input.position;
+    if (env.flags.w != 0u) {
+        let ts_view_dir = transpose(tbn) * view_dir;
+        let pom1 = sample_displacement_map(material1, ts_view_dir, uv1, pom_ddx1, pom_ddy1);
+        let pom2 = sample_displacement_map(material2, ts_view_dir, uv2, pom_ddx2, pom_ddy2);
+        let pom3 = sample_displacement_map(material3, ts_view_dir, uv3, pom_ddx3, pom_ddy3);
+        uv1 = pom1.uv;
+        uv2 = pom2.uv;
+        uv3 = pom3.uv;
+        var frag_delta = (pom1.delta + pom2.delta + pom3.delta) / 3.0;
+        // Prevent the displaced surface from casting the original flat surface onto itself.
+        frag_delta.z = max(0.0, frag_delta.z);
+        frag_position = frag_position + tbn * frag_delta;
+    }
+
+    // Derivatives up front: the texture reads below sit in non-uniform control flow.
+    let ddx1 = dpdx(uv1);
+    let ddy1 = dpdy(uv1);
+    let ddx2 = dpdx(uv2);
+    let ddy2 = dpdy(uv2);
+    let ddx3 = dpdx(uv3);
+    let ddy3 = dpdy(uv3);
 
     // Vertex colours and per-corner transparency.
     let alpha = 1.0 - f32(input.info.w) / 255.0;
@@ -362,7 +491,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     var shadow = 0.0;
     if ((flags & FLAG_NO_SHADOW) == 0u) {
         shadow = sample_shadow_map(
-            input.position,
+            frag_position,
             vec2<f32>(0.0),
             flat_normal,
             true,
