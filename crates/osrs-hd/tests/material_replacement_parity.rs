@@ -43,6 +43,7 @@ fn default_settings_replace_vanilla_brick_with_hd_brick() {
 #[test]
 fn disabling_model_textures_restores_vanilla_brick_resolution() {
     let data = load_data();
+    // HD_BRICK is guarded by RLHD's modelTextures replacement condition.
     let settings = HdSettings {
         model_textures: false,
         ..HdSettings::default()
