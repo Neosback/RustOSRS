@@ -43,8 +43,10 @@ fn default_settings_replace_vanilla_brick_with_hd_brick() {
 #[test]
 fn disabling_model_textures_restores_vanilla_brick_resolution() {
     let data = load_data();
-    let mut settings = HdSettings::default();
-    settings.model_textures = false;
+    let settings = HdSettings {
+        model_textures: false,
+        ..HdSettings::default()
+    };
     let set = MaterialSet::build(&data, &settings, vanilla_texture_ids(&data));
 
     let index = set.from_vanilla_texture(2);
