@@ -267,6 +267,8 @@ pub struct Settings {
     pub map_icons_3d: bool,
     /// The Objects tool's transform gizmo (arrows and a turn ring on the selection).
     pub object_gizmo: bool,
+    /// The Inspector's tile follows the cursor (off: it shows the selected tile).
+    pub inspector_follow: bool,
     /// Viewport resolution relative to the window's pixels (0.5 to 2.0: below saves GPU time, above
     /// smooths edges by supersampling).
     pub render_scale: f32,
@@ -349,6 +351,7 @@ impl Default for Settings {
             tile_info_hud: true,
             map_icons_3d: false,
             object_gizmo: true,
+            inspector_follow: false,
             render_scale: 1.0,
             colors: crate::style::Colors::default(),
             user_tools: Vec::new(),

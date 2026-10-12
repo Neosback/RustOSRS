@@ -41,10 +41,12 @@ impl EditorApp {
         self.selected = None;
         self.selection_objects.clear();
         self.selection_tiles.clear();
+        self.inspect_tile = None;
     }
 
     /// Select exactly one object (the context menu's Select, focus, the smoke hook).
     pub(super) fn select_only(&mut self, object: ObjectPick) {
+        self.inspect_object_tile(&object);
         self.selection_objects = vec![object.clone()];
         self.selected = Some(object);
     }
@@ -79,12 +81,14 @@ impl EditorApp {
             self.selection_objects.remove(index);
             self.selected = self.selection_objects.last().cloned();
         } else {
+            self.inspect_object_tile(&object);
             self.selection_objects.push(object.clone());
             self.selected = Some(object);
         }
     }
 
     fn add_object(&mut self, object: ObjectPick) {
+        self.inspect_object_tile(&object);
         if !self.selection_objects.iter().any(|o| same(o, &object)) {
             self.selection_objects.push(object.clone());
         }
@@ -94,6 +98,18 @@ impl EditorApp {
     fn toggle_tile(&mut self, tile: (i32, i32)) {
         if !self.selection_tiles.remove(&tile) {
             self.selection_tiles.insert(tile);
+            self.inspect_tile = Some(tile);
+        }
+    }
+
+    /// The Inspector's tile: the tile of an object just selected (its anchor).
+    fn inspect_object_tile(&mut self, object: &ObjectPick) {
+        if let Some(loc) = self
+            .infos
+            .get(&object.region)
+            .and_then(|info| info.locs.get(object.index))
+        {
+            self.inspect_tile = Some(loc.tile);
         }
     }
 
@@ -191,6 +207,7 @@ impl EditorApp {
                 self.toggle_tile(tile);
             } else {
                 self.selection_tiles.insert(tile);
+                self.inspect_tile = Some(tile);
             }
         }
     }

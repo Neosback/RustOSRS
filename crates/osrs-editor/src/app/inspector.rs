@@ -19,9 +19,11 @@ impl EditorApp {
     pub(super) fn inspector(&mut self, ui: &mut egui::Ui) {
         let width = ui.available_width();
         // The half with something to show gets the room; an empty one shrinks.
-        let has_tile = self.selection_tiles.len() == 1
-            || self.hover.tile.is_some()
-            || self.last_hover_tile.is_some();
+        let has_tile = if self.prefs.inspector_follow {
+            self.hover.tile.is_some() || self.last_hover_tile.is_some()
+        } else {
+            self.inspect_tile.is_some()
+        };
         let has_object = self.selected.is_some() || !self.selection_objects.is_empty();
         let (tile_weight, object_weight) = (
             if has_tile { 1.0 } else { 0.55 },
@@ -32,7 +34,21 @@ impl EditorApp {
         let object_height = (room - tile_height).max(150.0);
         ui.allocate_ui(Vec2::new(width, tile_height), |ui| {
             ui.set_min_size(Vec2::new(width, tile_height));
-            card_header(ui, icons::SELECT_TILES, "Tile");
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(icons::SELECT_TILES)
+                        .size(15.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
+                ui.label(egui::RichText::new("Tile").strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    crate::theme::toggle(ui, &mut self.prefs.inspector_follow, "Follow cursor")
+                        .on_hover_text(
+                            "On: the Inspector shows the tile under the cursor. Off: the tile you selected",
+                        );
+                });
+            });
+            ui.add_space(2.0);
             egui::ScrollArea::vertical()
                 .id_salt("inspect_tile")
                 .auto_shrink([false, false])
@@ -70,29 +86,35 @@ impl EditorApp {
     /// The tile card: the tile and its neighbours, then its fields.
     fn tile_card(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        // A single selected tile wins, else the one under the cursor (or the last one hovered).
-        let picked = (self.selection_tiles.len() == 1)
-            .then(|| self.selection_tiles.iter().next().copied())
-            .flatten();
-        let (tile, source) = match picked {
-            Some(tile) => (tile, "selected"),
-            None => match self
-                .hover
-                .tile
-                .map(|pick| pick.tile)
-                .or(self.last_hover_tile)
-            {
-                Some(tile) => (tile, "under the cursor"),
-                None => {
-                    empty_state(
-                        ui,
-                        icons::SELECT_TILES,
-                        "No tile",
-                        "Move the cursor over the terrain.",
-                    );
-                    return;
-                }
-            },
+        // Following the cursor: the tile under it (the last one when it is over nothing). Otherwise
+        // the tile that was selected.
+        let hovered = self
+            .hover
+            .tile
+            .map(|pick| pick.tile)
+            .or(self.last_hover_tile);
+        let (tile, source) = if self.prefs.inspector_follow {
+            (hovered, "under the cursor")
+        } else {
+            (self.inspect_tile, "selected")
+        };
+        let Some(tile) = tile else {
+            if self.prefs.inspector_follow {
+                empty_state(
+                    ui,
+                    icons::SELECT_TILES,
+                    "No tile",
+                    "Move the cursor over the terrain.",
+                );
+            } else {
+                empty_state(
+                    ui,
+                    icons::SELECT_TILES,
+                    "No tile selected",
+                    "Click a tile or an object, or turn on Follow cursor.",
+                );
+            }
+            return;
         };
         let Some(values) = self.tile_now(tile) else {
             empty_state(

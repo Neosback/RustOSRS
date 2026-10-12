@@ -335,6 +335,10 @@ impl EditorApp {
         self.stroke = None;
         self.marquee = None;
         self.prefs.tool = tool;
+        if tool == Tool::Objects {
+            // The Objects tool works on objects: its picker is the object picker.
+            self.prefs.select_mode = crate::paint::SelectMode::Objects;
+        }
         let tabs = tool.tabs();
         if let Some(first) = tabs.first() {
             if !tabs.contains(&self.prefs.drawer_tab) {
@@ -455,7 +459,7 @@ impl EditorApp {
                     ui.weak("Width");
                     ui.add(
                         egui::DragValue::new(&mut self.prefs.spline.width)
-                            .range(1.0..=12.0)
+                            .range(1.0..=32.0)
                             .speed(0.1)
                             .suffix(" tiles"),
                     );
@@ -490,7 +494,12 @@ impl EditorApp {
 
     /// The tile under the cursor, only while the cursor is over terrain.
     pub(super) fn tile_info_lines(&self) -> Option<Vec<(String, String)>> {
-        let tile = self.hover.tile.map(|pick| pick.tile)?;
+        // With nothing under the cursor the last tile stays, so the HUD does not blink out.
+        let tile = self
+            .hover
+            .tile
+            .map(|pick| pick.tile)
+            .or(self.last_hover_tile)?;
         let values = self.tile_now(tile)?;
         let mut lines = vec![
             (

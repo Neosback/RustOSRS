@@ -94,10 +94,12 @@ impl EditorApp {
             MenuAction::FillSelection => self.fill_selection(),
             MenuAction::HeightSelection => self.height_on_selection(),
             MenuAction::AddPathPoint(tile) => {
-                self.spline.points.push(tile);
+                self.spline
+                    .points
+                    .push((tile.0 as f32 + 0.5, tile.1 as f32 + 0.5));
             }
             MenuAction::LayPath => self.commit_spline(),
-            MenuAction::ClearPath => self.spline.clear(),
+            MenuAction::ClearPath => self.spline.points.clear(),
             MenuAction::ClearSelection => self.clear_selection(),
             MenuAction::ObjectOp(object, op) => {
                 self.select_only(object);

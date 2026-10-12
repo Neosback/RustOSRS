@@ -42,6 +42,21 @@ impl EditorApp {
             (position.y - rect.min.y) * pixels_per_point,
         );
         self.hover = pick::pick(&self.infos, &ray, self.view_plane);
+        // Selecting tools read the tile an object stands on, not the ground the ray reaches behind it.
+        if matches!(
+            self.prefs.tool,
+            crate::paint::Tool::Select | crate::paint::Tool::Objects
+        ) && let Some(object) = &self.hover.object
+            && let Some(loc) = self
+                .infos
+                .get(&object.region)
+                .and_then(|info| info.locs.get(object.index))
+        {
+            self.hover.tile = Some(pick::TilePick {
+                tile: loc.tile,
+                at: (loc.tile.0 as f32 + 0.5, loc.tile.1 as f32 + 0.5),
+            });
+        }
         if let Some(pick) = self.hover.tile {
             self.last_hover_tile = Some(pick.tile);
         }

@@ -115,6 +115,8 @@ impl EditorApp {
             return;
         }
         let Some(origin) = self.gizmo_origin(&specs) else {
+            self.gizmo_drag = None;
+            self.gizmo_busy = false;
             return;
         };
         let (view_matrix, projection_matrix) = gizmo_matrices(&self.camera, viewport);

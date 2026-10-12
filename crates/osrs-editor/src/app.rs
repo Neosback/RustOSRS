@@ -214,6 +214,9 @@ pub struct EditorApp {
     quick_open: Option<egui::Pos2>,
     /// The last tile the cursor was over (the Tile tab keeps showing it after the cursor leaves).
     last_hover_tile: Option<(i32, i32)>,
+    /// The tile the Inspector shows when it is not following the cursor: the last one selected
+    /// (or the tile under the last object selected).
+    inspect_tile: Option<(i32, i32)>,
     /// Smoke-test hook: exit after this many seconds (`RUSTOSRS_EXIT_AFTER_SECONDS`).
     exit_after_seconds: Option<f32>,
     screenshot: Option<crate::screenshot::ScreenshotHook>,
@@ -352,6 +355,7 @@ impl EditorApp {
             rail_rect: None,
             quick_open: std::env::var_os("RUSTOSRS_QUICK").map(|_| egui::pos2(520.0, 300.0)),
             last_hover_tile: None,
+            inspect_tile: None,
             screenshot: crate::screenshot::ScreenshotHook::from_env(),
             exit_after_seconds: std::env::var("RUSTOSRS_EXIT_AFTER_SECONDS")
                 .ok()

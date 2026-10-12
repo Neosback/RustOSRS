@@ -77,6 +77,10 @@ impl EditorApp {
                         continue;
                     }
                     self.in_flight.remove(&key);
+                    // Object indices in a rebuilt region are new (an edit shifts them), so what was
+                    // outlined for the old ones is gone: the selection's highlight is made afresh.
+                    self.outlines.retain(|(r, _), _| *r != key);
+                    self.outline_requested.retain(|(r, _)| *r != key);
                     self.renderer.upload_region(key, &region.geometry);
                     self.animations.insert_region(key, region.animations);
                     self.infos.insert(key, region.info);
