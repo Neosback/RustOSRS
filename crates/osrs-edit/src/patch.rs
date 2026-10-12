@@ -194,7 +194,7 @@ mod tests {
     use osrs_core::ids::{FloorUnderlayId, ObjectId};
 
     fn map_position(x: i32, y: i32) -> MapPosition {
-        let plane = SourcePlane::new(0).expect("plane zero is valid");
+        let plane = SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"));
         MapPosition::new(MapTile::new(x, y), plane)
     }
 
@@ -202,8 +202,9 @@ mod tests {
         ObjectPlacement {
             object_id: ObjectId::new(100),
             position: map_position(3200, 3200),
-            kind: LocKind::new(10).expect("loc kind is valid"),
-            orientation: ObjectOrientation::new(2).expect("orientation is valid"),
+            kind: LocKind::new(10).unwrap_or_else(|| unreachable!("loc kind is valid")),
+            orientation: ObjectOrientation::new(2)
+                .unwrap_or_else(|| unreachable!("orientation is valid")),
         }
     }
 
