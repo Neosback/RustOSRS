@@ -24,12 +24,25 @@ The user's list, grouped into the order it is built in (each group is one commit
 ## 4. Editing tools
 - [x] Object edit layer in the world worker (remove / add loc), rebuilding the region.
 - [x] Object tool: move, rotate, delete; Tile tool: select + act (copy, flatten, clear).
-- [ ] Map icons drawn as billboards in the 3D view (setting).
+- [x] Map icons drawn as billboards in the 3D view (setting).
 
 ## 5. Extensibility and docking
-- [ ] Tool rail entries the user adds in-app (presets, links, macros); plugin API gets rail / menu hooks.
-- [ ] Dockable panels: move a panel to the other edge or pop it out into a window; saved in settings.
+- [x] Tool rail entries the user adds in-app (presets, links, macros); plugin API gets rail / menu hooks.
+- [x] Dockable panels: move a panel to the other edge or pop it out into a window; saved in settings.
 
 ## 6. Rendering settings and cleanup
-- [ ] A short list of more rendering options for the different needs (not dozens).
-- [ ] Code cleanup: dead code, long files (`app.rs`, `settings_window.rs`), module docs.
+- [x] A short list of more rendering options for the different needs (not dozens).
+- [x] Code cleanup: dead code, long files (`app.rs`, `settings_window.rs`), module docs.
+
+## Built (2026-10-11)
+
+* Everything above is in. Notes on what "done" means for the looser items:
+  * **Rendering options**: one new one, **Resolution scale** (50 to 200%: supersampling or a cheaper frame);
+    the renderer has no other cheap switches, and more need renderer work (texture filtering, objects off).
+  * **Docking**: the panel can move to the other edge or pop out into a window you can place and resize (both
+    saved); the rail stays on the edge. Splitting the panel into several docked panels is not built.
+  * **Tile editing**: the Inspector shows tiles (inspection only); acting on tiles stays with the Paint and
+    Height tools and the context menu (use as brush, clear overlay). A dedicated tile tool is the next step.
+  * **Cleanup**: `app.rs` is 900 lines (from 1580): settings I/O, camera moves, streaming and viewport work
+    live in their own modules; the env-variable hooks became script commands; dead code and the `.bak` file
+    are gone.

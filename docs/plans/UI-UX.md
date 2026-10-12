@@ -96,3 +96,15 @@ never hang. Polish work is checked against these captures, not guessed.
 
 Shared UI pieces: `theme::section_heading` (the one heading style), `theme::key_hint` (keycap + action),
 `settings_window::nav_item` (page list), the Object tab's placement card (`app/properties.rs`).
+
+
+## Scripting (2026-10-11)
+
+The editor has a small script language (`app/script.rs`): one command per line (or separated by `;`), run from
+the Script window (View menu), from a user tool's button on the picker rail, or at start-up. Every command is
+something the UI does (tool, plane, teleport, overlay / underlay / shape / radius, arm, paint, spline, lay,
+select object / tiles, menu, move / turn / copy / delete, hud, grid, camera, undo / redo, wait, at, status,
+count). Commands that need the world loaded (select an object, paint a tile) wait for it. The old smoke-test
+variables are translated into a script at start-up, so `RUSTOSRS_TELEPORT`, `_SPLINE`, `_LAY_AT`, `_SELECT`,
+`_SELECT_TILES`, `_PAINT`, `_UNDO_AT`, `_OBJECT_OP` and `_CONTEXT` still work; `RUSTOSRS_SCRIPT="..."` adds
+a script of its own, and `_SCREENSHOT`, `_EXIT_AFTER_SECONDS` and `_AUTOFLY` stay as they were.

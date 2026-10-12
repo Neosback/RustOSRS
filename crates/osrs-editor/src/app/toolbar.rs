@@ -85,6 +85,7 @@ impl EditorApp {
                         ui.checkbox(&mut self.prefs.stats_overlay, "Statistics")
                             .on_hover_text("Frame rate, timings and the camera tile");
                         ui.checkbox(&mut self.prefs.show_minimap, "Minimap");
+                        ui.checkbox(&mut self.prefs.map_icons_3d, "Map icons in the world");
                         ui.checkbox(&mut self.prefs.mouse_tooltips, "Action tooltip")
                             .on_hover_text("The game's action text next to the cursor");
                         ui.separator();

@@ -19,12 +19,19 @@ plane 0..3
 teleport X Y [plane]
 overlay ID|none        underlay ID|none        shape S [R]
 radius N               arm overlay|underlay|shape|height|mask on|off
-paint X Y              apply the brush at a tile
+paint X Y              apply the brush at a tile (waits until it is loaded)
+spline X,Y X,Y ...     set the path's control points (tile coordinates)
+lay                    lay the path
+select object X Y      the nearest named object within 4 tiles (waits for it)
+select tiles X0 Y0 X1 Y1
+menu                   open the context menu on the selected object
+move DX DY             move the selected objects
+count                  log how many objects the camera's region has
 hud tile|stats|minimap|outline on|off|toggle
 grid                   toggle the tile grid
 camera fly|orbit
 undo | redo | delete | turn | copy
-wait N                 pause N frames
+wait N                 pause N frames; at N waits until frame N
 status TEXT
 # a comment";
 
@@ -33,6 +40,8 @@ status TEXT
 pub struct ScriptRunner {
     queue: VecDeque<String>,
     wait_until: u64,
+    /// Frames the current line has been waiting for what it needs (a loading region ...).
+    retries: u32,
     /// What the last runs said (errors are one line each, with the line text).
     pub log: Vec<String>,
 }
@@ -42,6 +51,15 @@ impl ScriptRunner {
         !self.queue.is_empty()
     }
 }
+
+/// What one command did: finished, or needs another frame (something is still loading).
+enum Step {
+    Done,
+    Retry,
+}
+
+/// Frames a command waits for what it needs before giving up.
+const RETRY_LIMIT: u32 = 900;
 
 fn on_off(word: Option<&str>, current: bool) -> Result<bool, String> {
     match word {
@@ -76,14 +94,30 @@ impl EditorApp {
             let Some(line) = self.script.queue.pop_front() else {
                 return;
             };
-            if let Err(error) = self.script_command(&line, ctx) {
-                self.script.log.push(format!("{line}: {error}"));
-                self.status = Some(format!("script: {line}: {error}"));
+            match self.script_command(&line, ctx) {
+                Ok(Step::Done) => self.script.retries = 0,
+                Ok(Step::Retry) => {
+                    self.script.retries += 1;
+                    if self.script.retries > RETRY_LIMIT {
+                        self.script.retries = 0;
+                        let message = format!("{line}: still waiting after {RETRY_LIMIT} frames");
+                        self.script.log.push(message.clone());
+                        self.status = Some(format!("script: {message}"));
+                    } else {
+                        self.script.queue.push_front(line);
+                        return;
+                    }
+                }
+                Err(error) => {
+                    self.script.retries = 0;
+                    self.script.log.push(format!("{line}: {error}"));
+                    self.status = Some(format!("script: {line}: {error}"));
+                }
             }
         }
     }
 
-    fn script_command(&mut self, line: &str, ctx: &egui::Context) -> Result<(), String> {
+    fn script_command(&mut self, line: &str, ctx: &egui::Context) -> Result<Step, String> {
         let mut words = line.split_whitespace();
         let command = words.next().unwrap_or("").to_ascii_lowercase();
         match command.as_str() {
@@ -150,6 +184,9 @@ impl EditorApp {
             "paint" => {
                 let x = number(words.next(), "x")?;
                 let y = number(words.next(), "y")?;
+                if crate::pick::tile_values(&self.infos, (x, y), self.view_plane).is_none() {
+                    return Ok(Step::Retry);
+                }
                 self.apply_brush_at((x, y));
             }
             "hud" => {
@@ -172,13 +209,95 @@ impl EditorApp {
                     other => return Err(format!("unknown camera {other:?}")),
                 };
             }
-            "undo" => self.undo(),
+            "spline" => {
+                let mut points = Vec::new();
+                for pair in words {
+                    let (x, y) = pair.split_once(',').ok_or("points are X,Y")?;
+                    points.push((
+                        number::<f32>(Some(x), "x")? + 0.5,
+                        number::<f32>(Some(y), "y")? + 0.5,
+                    ));
+                }
+                self.spline.points = points;
+            }
+            "lay" => {
+                if self.spline.points.is_empty() {
+                    return Err("no path points".to_owned());
+                }
+                self.commit_spline();
+            }
+            "select" => match words.next() {
+                Some("object") => {
+                    let x: i32 = number(words.next(), "x")?;
+                    let y: i32 = number(words.next(), "y")?;
+                    return Ok(if self.select_nearest_object((x, y)) {
+                        Step::Done
+                    } else {
+                        Step::Retry
+                    });
+                }
+                Some("tiles") => {
+                    let x0: i32 = number(words.next(), "x0")?;
+                    let y0: i32 = number(words.next(), "y0")?;
+                    let x1: i32 = number(words.next(), "x1")?;
+                    let y1: i32 = number(words.next(), "y1")?;
+                    for x in x0.min(x1)..=x0.max(x1) {
+                        for y in y0.min(y1)..=y0.max(y1) {
+                            self.selection_tiles.insert((x, y));
+                        }
+                    }
+                }
+                other => return Err(format!("select object or tiles, not {other:?}")),
+            },
+            "menu" => {
+                let Some(object) = self.selected.clone() else {
+                    return Ok(Step::Retry);
+                };
+                let anchor = self
+                    .infos
+                    .get(&object.region)
+                    .and_then(|info| info.locs.get(object.index))
+                    .map(|loc| crate::pick::TilePick {
+                        tile: loc.tile,
+                        at: (loc.tile.0 as f32 + 0.5, loc.tile.1 as f32 + 0.5),
+                    });
+                self.context_pick = crate::pick::Pick {
+                    object: Some(object),
+                    tile: anchor,
+                };
+                self.context_menu = Some(egui::pos2(400.0, 300.0));
+            }
+            "move" => {
+                let dx: i32 = number(words.next(), "dx")?;
+                let dy: i32 = number(words.next(), "dy")?;
+                if self.selected.is_none() {
+                    return Ok(Step::Retry);
+                }
+                let specs = self.selected_specs();
+                self.move_objects(specs, (dx, dy));
+            }
+            "count" => {
+                let region = self.camera_region();
+                let n = self.infos.get(&region).map_or(0, |info| info.locs.len());
+                eprintln!("smoke: region {region:?} has {n} objects");
+                self.notice = Some((format!("region {region:?}: {n} objects"), Instant::now()));
+            }
+            "undo" => {
+                if !self.can_undo() {
+                    return Ok(Step::Retry);
+                }
+                self.undo();
+            }
             "redo" => self.redo(),
+            "delete" | "turn" | "copy" if self.selected.is_none() => return Ok(Step::Retry),
             "delete" => self.delete_selected_objects(),
             "turn" => self.rotate_selected_objects(1),
             "copy" => self.duplicate_selected_objects(),
             "wait" => {
                 self.script.wait_until = self.frames + number::<u64>(words.next(), "frames")?;
+            }
+            "at" => {
+                self.script.wait_until = number::<u64>(words.next(), "frame")?;
             }
             "status" => {
                 let text: Vec<&str> = words.collect();
@@ -187,7 +306,87 @@ impl EditorApp {
             other => return Err(format!("unknown command '{other}'")),
         }
         ctx.request_repaint();
-        Ok(())
+        Ok(Step::Done)
+    }
+
+    /// Select the named object nearest `tile` (within 4 tiles); `false` while none is loaded yet.
+    fn select_nearest_object(&mut self, tile: (i32, i32)) -> bool {
+        let found = self
+            .infos
+            .iter()
+            .flat_map(|(region, info)| {
+                info.locs
+                    .iter()
+                    .enumerate()
+                    .filter_map(move |(index, loc)| {
+                        let named = loc
+                            .definition
+                            .name
+                            .as_deref()
+                            .is_some_and(|n| !n.is_empty());
+                        let distance = (loc.tile.0 - tile.0).abs().max((loc.tile.1 - tile.1).abs());
+                        (named && distance <= 4).then_some((
+                            distance,
+                            crate::pick::ObjectPick {
+                                region: *region,
+                                index,
+                            },
+                        ))
+                    })
+            })
+            .min_by_key(|(distance, _)| *distance)
+            .map(|(_, pick)| pick);
+        match found {
+            Some(pick) => {
+                self.select_only(pick);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The script the old `RUSTOSRS_*` smoke-test variables describe, so they keep working.
+    pub(super) fn env_script() -> String {
+        let var = |name: &str| std::env::var(name).ok();
+        let mut lines: Vec<String> = Vec::new();
+        if let Some(value) = var("RUSTOSRS_TELEPORT") {
+            lines.push(format!("teleport {}", value.replace(',', " ")));
+        }
+        if let Some(value) = var("RUSTOSRS_SPLINE") {
+            lines.push(format!("spline {}", value.replace(';', " ")));
+        }
+        if let Some(value) = var("RUSTOSRS_PAINT") {
+            lines.push(format!("paint {}", value.replace(',', " ")));
+        }
+        if let Some(value) = var("RUSTOSRS_SELECT") {
+            lines.push(format!("select object {}", value.replace(',', " ")));
+            if std::env::var_os("RUSTOSRS_CONTEXT").is_some() {
+                lines.push("menu".to_owned());
+            }
+        }
+        if let Some(value) = var("RUSTOSRS_SELECT_TILES") {
+            lines.push(format!("select tiles {}", value.replace(',', " ")));
+        }
+        if let Some(frame) = var("RUSTOSRS_LAY_AT") {
+            lines.push(format!("at {frame}"));
+            lines.push("lay".to_owned());
+        }
+        if let Some(value) = var("RUSTOSRS_OBJECT_OP")
+            && let Some((frame, op)) = value.split_once(':')
+        {
+            lines.push(format!("at {}", frame.trim()));
+            lines.push(op.trim().to_owned());
+            lines.push("wait 80".to_owned());
+            lines.push("count".to_owned());
+        }
+        if let Some(frame) = var("RUSTOSRS_UNDO_AT") {
+            lines.push(format!("at {frame}"));
+            lines.push("undo".to_owned());
+        }
+        if let Some(text) = var("RUSTOSRS_SCRIPT") {
+            lines.push(text);
+        }
+        lines.join("\n")
     }
 
     /// The Script window: a text box, Run, the log and the command reference.

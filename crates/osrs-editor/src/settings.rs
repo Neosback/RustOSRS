@@ -59,14 +59,6 @@ impl ViewTab {
     }
 }
 
-/// Tabs inside the Inspector category.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum InspectTab {
-    #[default]
-    Object,
-    Tile,
-}
-
 /// Pages of the settings window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SettingsPage {
@@ -256,12 +248,20 @@ pub struct Settings {
     pub orbit_camera: bool,
     /// Side panel on the right (otherwise left).
     pub dock_right: bool,
+    /// The panel as a window instead of docked, with its position and size.
+    pub dock_floating: bool,
+    pub dock_float_pos: [f32; 2],
+    pub dock_float_size: [f32; 2],
     /// Dock category and, inside the Inspector, its tab.
     pub rail_tab: RailTab,
     pub view_tab: ViewTab,
-    pub inspect_tab: InspectTab,
     /// The tile-information HUD next to the cursor.
     pub tile_info_hud: bool,
+    /// Map icons (banks, shops, altars ...) drawn as billboards in the 3D world.
+    pub map_icons_3d: bool,
+    /// Viewport resolution relative to the window's pixels (0.5 to 2.0: below saves GPU time, above
+    /// smooths edges by supersampling).
+    pub render_scale: f32,
     /// Colours of the viewport indicators, grid and HUD (see `style.rs`).
     pub colors: crate::style::Colors,
     /// Tools the user added (buttons on the floating rail).
@@ -329,10 +329,14 @@ impl Default for Settings {
             fly_speed: 900.0,
             orbit_camera: false,
             dock_right: true,
+            dock_floating: false,
+            dock_float_pos: [900.0, 140.0],
+            dock_float_size: [330.0, 560.0],
             rail_tab: RailTab::Inspect,
             view_tab: ViewTab::default(),
-            inspect_tab: InspectTab::Object,
             tile_info_hud: true,
+            map_icons_3d: false,
+            render_scale: 1.0,
             colors: crate::style::Colors::default(),
             user_tools: Vec::new(),
             tool: crate::paint::Tool::Select,
@@ -425,6 +429,7 @@ impl Settings {
         self.colorblind_intensity = self.colorblind_intensity.clamp(0.0, 100.0);
         self.load_radius = self.load_radius.clamp(0, 4);
         self.fov_degrees = self.fov_degrees.clamp(30.0, 100.0);
+        self.render_scale = self.render_scale.clamp(0.5, 2.0);
         self.fly_speed = self.fly_speed.clamp(50.0, 20_000.0);
         self
     }

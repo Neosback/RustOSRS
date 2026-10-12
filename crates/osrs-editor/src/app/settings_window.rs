@@ -38,6 +38,9 @@ enum Row {
     ContextMenu,
     MouseTooltips,
     HoverTile,
+    TileInfoHud,
+    MapIcons3d,
+    RenderScale,
     CameraMode,
     FieldOfView,
     FlySpeed,
@@ -189,6 +192,22 @@ const ROWS: &[RowDef] = &[
         Any,
     ),
     def(
+        Row::TileInfoHud,
+        Interface,
+        "Menus and hints",
+        "Tile info",
+        "hud corner cursor overlay",
+        Any,
+    ),
+    def(
+        Row::MapIcons3d,
+        Interface,
+        "Menus and hints",
+        "Map icons in the world",
+        "billboards bank shop altar icons 3d",
+        Any,
+    ),
+    def(
         Row::CameraMode,
         CameraWorld,
         "Camera",
@@ -258,6 +277,14 @@ const ROWS: &[RowDef] = &[
         "Renderer",
         "Render profile",
         "reference runelite hd 117 hd",
+        Any,
+    ),
+    def(
+        Row::RenderScale,
+        Graphics,
+        "Renderer",
+        "Resolution scale",
+        "supersampling resolution pixels quality performance anti aliasing",
         Any,
     ),
     def(
@@ -533,6 +560,7 @@ const QUICK: &[(&str, &[Row])] = &[
         "Graphics",
         &[
             Row::Profile,
+            Row::RenderScale,
             Row::ReferenceBrightness,
             Row::HdBrightness,
             Row::ReferenceFog,
@@ -971,6 +999,23 @@ impl EditorApp {
             Row::HoverTile => {
                 ui.checkbox(&mut prefs.hover_tile, "Outline the tile under the cursor");
             }
+            Row::TileInfoHud => {
+                ui.checkbox(&mut prefs.tile_info_hud, "Show the tile under the cursor");
+            }
+            Row::MapIcons3d => {
+                ui.checkbox(&mut prefs.map_icons_3d, "Draw map icons over their tiles");
+            }
+            Row::RenderScale => {
+                ui.add(
+                    egui::Slider::new(&mut prefs.render_scale, 0.5..=2.0)
+                        .step_by(0.25)
+                        .custom_formatter(|v, _| format!("{:.0}%", v * 100.0))
+                        .custom_parser(|text| {
+                            text.trim_end_matches('%').trim().parse::<f64>().ok().map(|v| v / 100.0)
+                        }),
+                )
+                .on_hover_text("Above 100% renders more pixels than the window has and smooths edges; below saves GPU time");
+            }
             Row::CameraMode => {
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.camera.mode, CameraMode::Fly, "Fly");
@@ -1319,7 +1364,6 @@ impl EditorApp {
                 self.prefs.show_minimap = defaults.show_minimap;
                 self.prefs.minimap_size = defaults.minimap_size;
                 self.prefs.rail_tab = defaults.rail_tab;
-                self.prefs.inspect_tab = defaults.inspect_tab;
             }
             if ui
                 .button("Reset the HD options")

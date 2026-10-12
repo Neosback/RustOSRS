@@ -115,6 +115,10 @@ impl EditorApp {
         if !self.prefs.properties_panel {
             return;
         }
+        if self.prefs.dock_floating {
+            self.floating_dock(ui.ctx());
+            return;
+        }
         let panel = if self.prefs.dock_right {
             egui::Panel::right("dock")
         } else {
@@ -125,49 +129,96 @@ impl EditorApp {
             .resizable(true)
             .default_size(width)
             .size_range(220.0..=(screen * 0.45).max(260.0))
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(self.prefs.rail_tab.label())
-                            .strong()
-                            .size(15.0),
-                    );
-                    if self.prefs.rail_tab == RailTab::View {
-                        ui.add_space(8.0);
-                        for tab in ViewTab::ALL {
-                            if tab_label(ui, self.prefs.view_tab == tab, tab.label()).clicked() {
-                                self.prefs.view_tab = tab;
-                            }
-                        }
-                    }
-                });
-                ui.add_space(2.0);
-                ui.separator();
-                match self.prefs.rail_tab {
-                    // The inspector splits the panel itself (tile above, object below).
-                    RailTab::Inspect => self.inspector(ui),
-                    _ => {
-                        egui::ScrollArea::vertical()
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| match self.prefs.rail_tab {
-                                RailTab::View | RailTab::Graphics => match self.prefs.view_tab {
-                                    ViewTab::Scene => {
-                                        self.quick_settings_ui(
-                                            ui,
-                                            &["Camera", "World", "Interface"],
-                                        );
-                                    }
-                                    ViewTab::Graphics => {
-                                        self.quick_settings_ui(ui, &["Graphics"]);
-                                    }
-                                    ViewTab::Overlays => self.overlays_tab(ui),
-                                },
-                                RailTab::Plugins => self.plugin_sections(ui),
-                                RailTab::Inspect => {}
-                            });
+            .show(ui, |ui| self.dock_contents(ui));
+    }
+
+    /// The panel as a window you can drag anywhere and resize (the rail stays on the edge).
+    fn floating_dock(&mut self, ctx: &egui::Context) {
+        let [x, y] = self.prefs.dock_float_pos;
+        let [w, h] = self.prefs.dock_float_size;
+        let mut open = true;
+        let response = egui::Window::new(self.prefs.rail_tab.label())
+            .id(egui::Id::new("dock_window"))
+            .open(&mut open)
+            .default_pos(egui::pos2(x, y))
+            .default_size([w, h])
+            .min_size([260.0, 240.0])
+            .collapsible(false)
+            .show(ctx, |ui| self.dock_contents(ui));
+        if let Some(response) = response {
+            let rect = response.response.rect;
+            self.prefs.dock_float_pos = [rect.min.x, rect.min.y];
+            self.prefs.dock_float_size = [rect.width(), rect.height()];
+        }
+        if !open {
+            self.prefs.properties_panel = false;
+        }
+    }
+
+    /// The panel's header (title, tabs, side and pop-out buttons) and body.
+    fn dock_contents(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if !self.prefs.dock_floating {
+                ui.label(
+                    egui::RichText::new(self.prefs.rail_tab.label())
+                        .strong()
+                        .size(15.0),
+                );
+            }
+            if self.prefs.rail_tab == RailTab::View {
+                ui.add_space(8.0);
+                for tab in ViewTab::ALL {
+                    if tab_label(ui, self.prefs.view_tab == tab, tab.label()).clicked() {
+                        self.prefs.view_tab = tab;
                     }
                 }
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let (icon, tip) = if self.prefs.dock_floating {
+                    (icons::DOCK_IN, "Dock the panel back to the edge")
+                } else {
+                    (icons::POP_OUT, "Pop the panel out into a window")
+                };
+                if ui
+                    .add(egui::Button::new(icon).small().frame(false))
+                    .on_hover_text(tip)
+                    .clicked()
+                {
+                    self.prefs.dock_floating = !self.prefs.dock_floating;
+                }
+                if !self.prefs.dock_floating
+                    && ui
+                        .add(egui::Button::new(icons::SWAP_SIDE).small().frame(false))
+                        .on_hover_text("Move the panel to the other side")
+                        .clicked()
+                {
+                    self.prefs.dock_right = !self.prefs.dock_right;
+                }
             });
+        });
+        ui.add_space(2.0);
+        ui.separator();
+        match self.prefs.rail_tab {
+            // The inspector splits the panel itself (tile above, object below).
+            RailTab::Inspect => self.inspector(ui),
+            _ => {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| match self.prefs.rail_tab {
+                        RailTab::View | RailTab::Graphics => match self.prefs.view_tab {
+                            ViewTab::Scene => {
+                                self.quick_settings_ui(ui, &["Camera", "World", "Interface"]);
+                            }
+                            ViewTab::Graphics => {
+                                self.quick_settings_ui(ui, &["Graphics"]);
+                            }
+                            ViewTab::Overlays => self.overlays_tab(ui),
+                        },
+                        RailTab::Plugins => self.plugin_sections(ui),
+                        RailTab::Inspect => {}
+                    });
+            }
+        }
     }
 
     fn rail_button(
@@ -246,6 +297,8 @@ impl EditorApp {
         ui.checkbox(&mut self.prefs.stats_overlay, "Statistics")
             .on_hover_text("Frame rate, timings and the camera tile");
         ui.checkbox(&mut self.prefs.show_minimap, "Minimap, compass and globe");
+        ui.checkbox(&mut self.prefs.map_icons_3d, "Map icons in the world")
+            .on_hover_text("Bank, shop and altar icons floating over their tiles");
         ui.checkbox(&mut self.prefs.mouse_tooltips, "Action tooltip")
             .on_hover_text("The game's action text next to the cursor");
         crate::theme::section_heading(ui, "Indicators");
