@@ -711,7 +711,7 @@ impl PathPlanner {
                     profile,
                     settings,
                     env,
-                    edge_seed ^ 0x4E45_5457_4F52_4B_i64,
+                    edge_seed ^ 0x004E_4554_574F_524B_i64,
                     base_width,
                     base_width,
                     mask_blocked,
@@ -1368,7 +1368,11 @@ mod tests {
                 }
             }
         }
-        let (a_shape, a_orientation, b_shape, b_orientation) = pair.expect("shape pair");
+        assert!(
+            pair.is_some(),
+            "the atlas should contain a disconnected east/west shape pair"
+        );
+        let (a_shape, a_orientation, b_shape, b_orientation) = pair.unwrap_or_default();
         let chosen = |x: i32| Chosen {
             key: (x, 0, 0, "p".to_owned()),
             cell_index: 0,

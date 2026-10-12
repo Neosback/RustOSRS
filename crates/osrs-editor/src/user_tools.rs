@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 
 /// What a user tool does when its button is pressed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Preset intentionally stores brush and spline settings inline to preserve the persisted user-tool data model"
+)]
 pub enum UserToolKind {
     /// Switch to a tool with a saved brush and path settings ("dirt path, 3 wide").
     Preset {
