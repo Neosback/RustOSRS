@@ -12,6 +12,8 @@ CRATES = ROOT / "crates"
 
 ALLOWED_INTERNAL: dict[str, set[str]] = {
     "osrs-core": set(),
+    # Headless editable-map semantics may reuse only the canonical value vocabulary.
+    "osrs-edit": {"osrs-core"},
     "osrs-cache": {"osrs-core"},
     "osrs-scene": {"osrs-core"},
     # 117HD data/settings are reusable renderer inputs and do not depend on renderer/world/editor.
@@ -25,6 +27,7 @@ ALLOWED_INTERNAL: dict[str, set[str]] = {
     # The editor is the product composition root and may consume world orchestration directly.
     "osrs-editor": {
         "osrs-core",
+        "osrs-edit",
         "osrs-cache",
         "osrs-scene",
         "osrs-render",
@@ -35,6 +38,7 @@ ALLOWED_INTERNAL: dict[str, set[str]] = {
 
 DEPENDENCY_SECTIONS = {"dependencies", "dev-dependencies", "build-dependencies"}
 CORE_FORBIDDEN = {
+    "osrs-edit",
     "osrs-cache",
     "osrs-scene",
     "osrs-hd",
