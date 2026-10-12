@@ -78,6 +78,14 @@ impl EditorApp {
                     }
                     ui.separator();
                     if ui
+                        .button(format!("{} Script...", icons::SCRIPT))
+                        .on_hover_text("Run editor commands from text")
+                        .clicked()
+                    {
+                        self.script_open = true;
+                        ui.close();
+                    }
+                    if ui
                         .button(format!("{} Settings...", icons::SETTINGS))
                         .clicked()
                     {

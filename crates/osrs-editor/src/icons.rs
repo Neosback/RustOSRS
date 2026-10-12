@@ -62,3 +62,6 @@ pub const TOOL_OBJECTS: &str = ph::CUBE_FOCUS;
 pub const ROTATE: &str = ph::ARROW_CLOCKWISE;
 pub const DELETE: &str = ph::TRASH;
 pub const DUPLICATE: &str = ph::COPY;
+pub const SCRIPT: &str = ph::CODE;
+pub const PLAY: &str = ph::PLAY;
+pub const ADD: &str = ph::PLUS;

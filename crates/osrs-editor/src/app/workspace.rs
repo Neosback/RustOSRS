@@ -223,6 +223,7 @@ impl EditorApp {
     }
 
     fn plugin_sections(&mut self, ui: &mut egui::Ui) {
+        self.user_tool_list(ui);
         let mut any = false;
         self.run_plugins(|plugin, cx| {
             if plugin.has_properties() {
@@ -232,6 +233,7 @@ impl EditorApp {
             }
         });
         if !any {
+            ui.add_space(6.0);
             ui.weak("No plugin has options to show.");
         }
     }

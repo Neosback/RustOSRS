@@ -143,7 +143,8 @@ mod tests {
     }
 
     fn at(spec: LocSpec) -> DecodedLocation {
-        spec.to_location().unwrap_or_else(|| panic!("{spec:?} is not a valid placement"))
+        spec.to_location()
+            .unwrap_or_else(|| panic!("{spec:?} is not a valid placement"))
     }
 
     #[test]

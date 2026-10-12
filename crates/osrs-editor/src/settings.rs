@@ -264,6 +264,8 @@ pub struct Settings {
     pub tile_info_hud: bool,
     /// Colours of the viewport indicators, grid and HUD (see `style.rs`).
     pub colors: crate::style::Colors,
+    /// Tools the user added (buttons on the floating rail).
+    pub user_tools: Vec<crate::user_tools::UserTool>,
     /// The active editing tool and its drawer.
     pub tool: crate::paint::Tool,
     pub drawer_open: bool,
@@ -332,6 +334,7 @@ impl Default for Settings {
             inspect_tab: InspectTab::Object,
             tile_info_hud: true,
             colors: crate::style::Colors::default(),
+            user_tools: Vec::new(),
             tool: crate::paint::Tool::Select,
             drawer_open: true,
             drawer_tab: crate::paint::DrawerTab::Overlay,

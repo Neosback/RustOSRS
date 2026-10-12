@@ -12,6 +12,7 @@ mod minimap;
 mod object_tool;
 mod overlay;
 mod plugins;
+mod script;
 mod selection;
 mod settings_window;
 mod shelf;
@@ -19,6 +20,7 @@ mod spline_tool;
 mod status;
 mod tool_strip;
 mod toolbar;
+mod user_tools;
 mod widgets;
 mod workspace;
 mod worldmap;
@@ -185,6 +187,12 @@ pub struct EditorApp {
     object_drag: Option<object_tool::ObjectDrag>,
     /// Placements to select once their rebuilt region arrives (after an object edit).
     pending_reselect: Vec<osrs_world::LocSpec>,
+    /// The script language's queue, its window and text.
+    script: script::ScriptRunner,
+    script_open: bool,
+    script_text: String,
+    /// A user tool being made or edited.
+    tool_draft: Option<crate::user_tools::ToolDraft>,
     /// Where the floating picker rail is (the HUDs keep clear of it).
     rail_rect: Option<egui::Rect>,
     /// Where the quick tools HUD (Space) is open.
@@ -335,6 +343,10 @@ impl EditorApp {
             cache_build: None,
             object_drag: None,
             pending_reselect: Vec::new(),
+            script: script::ScriptRunner::default(),
+            script_open: false,
+            script_text: String::new(),
+            tool_draft: None,
             rail_rect: None,
             quick_open: std::env::var_os("RUSTOSRS_QUICK").map(|_| egui::pos2(520.0, 300.0)),
             last_hover_tile: None,
@@ -404,6 +416,10 @@ impl EditorApp {
             app.keymap.register(plugin.actions());
         }
         app.init_settings(&cc.egui_ctx);
+        // Start-up script (`RUSTOSRS_SCRIPT="wait 120; tool paint; radius 2"`), for smoke tests.
+        if let Ok(text) = std::env::var("RUSTOSRS_SCRIPT") {
+            app.run_script(&text);
+        }
         #[cfg(not(target_arch = "wasm32"))]
         app.start_palette_loader(initial_source);
         #[cfg(target_arch = "wasm32")]
@@ -1192,6 +1208,7 @@ impl EditorApp {
         }
         self.tool_actions(ctx);
         self.edit_actions(ctx);
+        self.script_frame(ctx);
         self.object_actions(ctx);
         self.resolve_reselect();
     }
@@ -1504,6 +1521,8 @@ impl eframe::App for EditorApp {
         self.quick_tools_hud(&ctx);
         self.cache_welcome(&ctx);
 
+        self.script_window(&ctx);
+        self.tool_draft_window(&ctx);
         self.settings_window(&ctx);
         self.assets.poll(&ctx);
         self.world_map_window(&ctx);

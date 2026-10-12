@@ -26,6 +26,7 @@ mod screenshot;
 mod settings;
 mod style;
 mod theme;
+mod user_tools;
 mod wiki;
 
 #[cfg(not(target_arch = "wasm32"))]

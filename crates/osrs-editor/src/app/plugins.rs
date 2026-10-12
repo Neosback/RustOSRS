@@ -33,6 +33,15 @@ impl EditorApp {
         self.apply_commands(commands);
     }
 
+    /// Fire one plugin action by id (a script or a button, rather than a key press).
+    pub(super) fn plugin_action(&mut self, id: &'static str) {
+        self.run_plugins(|plugin, cx| {
+            if plugin.actions().iter().any(|action| action.id == id) {
+                plugin.on_action(id, cx);
+            }
+        });
+    }
+
     /// Fire the plugin actions whose bindings were pressed (no text field has focus).
     pub(super) fn plugin_actions(&mut self, ctx: &egui::Context) {
         if ctx.egui_wants_keyboard_input() {

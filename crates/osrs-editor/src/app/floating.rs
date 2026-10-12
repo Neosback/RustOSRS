@@ -104,6 +104,9 @@ impl EditorApp {
                             }
                         }
                     }
+                    if !self.prefs.picker_collapsed {
+                        self.user_tool_buttons(ui);
+                    }
                 });
             });
         self.rail_rect = Some(area.response.rect);
@@ -116,7 +119,12 @@ impl EditorApp {
     }
 }
 
-fn picker_button(ui: &mut egui::Ui, icon: &str, active: bool, tooltip: &str) -> egui::Response {
+pub(super) fn picker_button(
+    ui: &mut egui::Ui,
+    icon: &str,
+    active: bool,
+    tooltip: &str,
+) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(BUTTON), Sense::click());
     let visuals = ui.visuals();
     let accent = visuals.selection.stroke.color;
