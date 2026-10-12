@@ -134,13 +134,18 @@ No-op terrain/height value changes produce no impact. Terrain flag changes inclu
 
 Async scene/mesh rebuilds should eventually carry document/chunk revisions. Results built from stale revisions must be discarded so old background work cannot replace newer editor state.
 
-## Current branch
+## Current integration state
 
-`refactor/editor-edit-domain-foundation`
+The edit-domain foundation is merged to `main`.
 
-Purpose: establish the first additive, headless edit-domain boundary without changing editor behavior.
+- Foundation branch: `refactor/editor-edit-domain-foundation`
+- Pull request: `#33` (`refactor(editor): establish authoritative edit-domain foundation`)
+- Final pre-merge branch head: `ded9c670dd2c3658785ea462cded34dcd010bd7c`
+- Squash merge commit on `main`: `5c5eef3bde696b20ae0319867e6e84567701ebf6`
 
-### Implemented on this branch
+No follow-on development branch has been created yet. The next branch must start from current `main` only after explicit direction to continue.
+
+### Foundation delivered
 
 - Added `crates/osrs-edit` to the Cargo workspace.
 - `osrs-edit` depends only on `osrs-core`.
@@ -167,8 +172,6 @@ Purpose: establish the first additive, headless edit-domain boundary without cha
 - Added tests for missing heights and duplicate object adds.
 - Added focused unit tests for impact union, no-op impact, flag collision impact, and exact inverse round trips.
 - Added focused unit tests around semantic validation and tile-vs-height-vertex separation.
-- Regenerated the workspace lockfile after introducing `osrs-edit`.
-- Removed the temporary lockfile-regeneration workflow after use.
 - Added and maintained this living `DEV_HANDOFF.md`.
 
 ### Current files in `osrs-edit`
@@ -197,7 +200,7 @@ Checkpoint 4 patch-primitives final head:
 - Tier B workspace tests: PASS
 - Tier C M3-M9 semantic/reference suites: PASS
 
-Checkpoint 5 `MapDocument` implementation head before this handoff update:
+Checkpoint 5 `MapDocument` implementation head:
 
 - Commit `c94e9a71c02b62b84a74651827b3f02d10ddf96c`
 - CI run `38233801420`: PASS
@@ -205,7 +208,22 @@ Checkpoint 5 `MapDocument` implementation head before this handoff update:
 - Tier B workspace tests: PASS
 - Tier C M3-M9 semantic/reference suites: PASS
 
-The final handoff-update head must also pass CI before this checkpoint is considered closed.
+Final foundation branch before merge:
+
+- Head `ded9c670dd2c3658785ea462cded34dcd010bd7c`
+- CI run `38238688037`: PASS
+- Tier A architecture/format/workspace/strict Clippy: PASS
+- Tier B workspace tests: PASS
+- Tier C M3-M9 semantic/reference suites: PASS
+- Compared against `main`: 0 commits behind.
+- Final diff limited to workspace registration, the new `osrs-edit` crate, architecture guard/tests, `DEV_HANDOFF.md`, and the required local workspace package entry in `Cargo.lock`.
+- During merge-readiness review, unrelated dependency-version churn from the earlier full lockfile regeneration was identified and removed. Final `Cargo.lock` diff is only the 7-line `osrs-edit -> osrs-core` package entry.
+
+Merge:
+
+- PR `#33`: MERGED
+- Method: squash
+- Main commit: `5c5eef3bde696b20ae0319867e6e84567701ebf6`
 
 ## Checkpoint history
 
@@ -231,19 +249,24 @@ Added sparse semantic terrain storage, explicit height storage, exact object-pla
 
 No editor tools, renderer state, current undo/redo stack, spline planner, or existing edit commit path has been wired to `MapDocument` yet.
 
+### Checkpoint 6: branch readiness and merge
+
+Audited the complete branch against `main`, confirmed it was 0 commits behind, and found one scope-cleanliness issue in `Cargo.lock`: the earlier full regeneration had changed unrelated dependency versions. Restored the `main` lockfile baseline, let Cargo minimally add only the new local `osrs-edit` package, removed the temporary cleanup workflow, and re-ran the complete Tier A/B/C pipeline successfully.
+
+Opened PR `#33`, verified it was mergeable at exact head `ded9c670dd2c3658785ea462cded34dcd010bd7c`, and squash-merged it to `main` as `5c5eef3bde696b20ae0319867e6e84567701ebf6`.
+
 ## Next checkpoint
 
 **Do not redesign the path generator yet.**
 
-The next checkpoint should be a branch-readiness checkpoint, not another feature expansion:
+When explicitly directed to continue:
 
-1. Verify full CI on the final handoff-update head.
-2. Compare `refactor/editor-edit-domain-foundation` against `main` and review the complete branch diff for accidental scope leakage.
-3. If clean, open/update the PR and merge this foundation branch.
-4. Do not add history/UI/editor integration to this branch merely to keep it open.
-5. Stop and report after the merge before creating the next branch.
-
-The next branch should begin the basic edit-history/query contract work on top of the merged `osrs-edit` foundation. Editor tool migration remains later.
+1. Start a new branch from the then-current `main`.
+2. Keep the branch focused on basic edit-history/query contracts around `MapDocument` and `MapPatch`.
+3. Preserve one user gesture = one logical patch/history entry.
+4. Add undo/redo history semantics and tests at the headless domain level before any existing editor UI/tool migration.
+5. Do not migrate spline planning/preview, brush tools, object tools, rendering, or 117HD in that first history checkpoint.
+6. Stop and report after the first small history checkpoint.
 
 ## Later branches, tentative order
 
