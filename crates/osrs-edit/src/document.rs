@@ -1,4 +1,6 @@
-use crate::{ChangeImpact, HeightVertexCoord, MapOp, MapPatch, MapPosition, ObjectPlacement, TerrainTile};
+use crate::{
+    ChangeImpact, HeightVertexCoord, MapOp, MapPatch, MapPosition, ObjectPlacement, TerrainTile,
+};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Authoritative, headless editable map state.
