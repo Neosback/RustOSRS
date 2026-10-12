@@ -244,10 +244,14 @@ impl CostGrid for SceneGrid {
         if ax > 1 || ay > 1 {
             true
         } else if ax == 1 && ay == 1 {
+            let via_x = (from_x + dx, from_y);
+            let via_y = (from_x, from_y + dy);
             self.diagonal_blocks(from_x, from_y, dx, dy, plane)
                 || self.diagonal_blocks(to_x, to_y, -dx, -dy, plane)
-                || self.edge_blocked(from_x, from_y, from_x + dx, from_y, plane)
-                || self.edge_blocked(from_x, from_y, from_x, from_y + dy, plane)
+                || self.edge_blocked(from_x, from_y, via_x.0, via_x.1, plane)
+                || self.edge_blocked(from_x, from_y, via_y.0, via_y.1, plane)
+                || self.edge_blocked(to_x, to_y, via_x.0, via_x.1, plane)
+                || self.edge_blocked(to_x, to_y, via_y.0, via_y.1, plane)
         } else if ax + ay != 1 {
             false
         } else {
