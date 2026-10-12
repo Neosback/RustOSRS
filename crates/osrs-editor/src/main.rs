@@ -24,6 +24,7 @@ mod platform;
 mod plugin;
 mod screenshot;
 mod settings;
+mod style;
 mod theme;
 mod wiki;
 

@@ -8,7 +8,8 @@ use super::EditorApp;
 use crate::interact;
 use crate::paint::SelectMode;
 use crate::pick::{self, ObjectPick};
-use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
+use crate::style::ColorKey;
+use eframe::egui::{self, Pos2, Rect, Stroke};
 use std::collections::HashSet;
 
 /// A box being dragged out with the left button.
@@ -312,8 +313,8 @@ impl EditorApp {
             {
                 painter.add(egui::Shape::convex_polygon(
                     points,
-                    Color32::from_rgba_unmultiplied(80, 170, 255, 70),
-                    Stroke::new(1.0, Color32::from_rgba_unmultiplied(120, 200, 255, 200)),
+                    self.prefs.colors.get(ColorKey::TileSelectionFill),
+                    Stroke::new(1.0, self.prefs.colors.get(ColorKey::TileSelectionOutline)),
                 ));
             }
         }
@@ -344,13 +345,13 @@ impl EditorApp {
             if let Some(points) = quad([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]]) {
                 painter.add(egui::Shape::convex_polygon(
                     points,
-                    Color32::from_rgba_unmultiplied(255, 190, 0, 50),
-                    Stroke::new(1.5, Color32::from_rgb(255, 200, 0)),
+                    self.prefs.colors.get(ColorKey::SelectionFill),
+                    Stroke::new(1.5, self.prefs.colors.get(ColorKey::SelectionOutline)),
                 ));
             }
         }
         if let Some(marquee) = &self.marquee {
-            let accent = Color32::from_rgb(110, 170, 255);
+            let accent = self.prefs.colors.get(ColorKey::TileSelectionOutline);
             painter.rect(
                 marquee.rect(),
                 2.0,

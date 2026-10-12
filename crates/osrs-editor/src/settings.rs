@@ -14,16 +14,16 @@ pub enum RailTab {
     /// The selected object and the hovered tile.
     #[default]
     Inspect,
-    /// Camera, world and interface options used while working.
+    /// Camera, world, interface and graphics options used while working (tabs inside).
     View,
-    /// Render profile, lighting, fog and shadows.
+    /// Retired as a button (it is a tab of View); old settings files may still name it.
     Graphics,
     /// Plugin sections.
     Plugins,
 }
 
 impl RailTab {
-    pub const ALL: [Self; 4] = [Self::Inspect, Self::View, Self::Graphics, Self::Plugins];
+    pub const ALL: [Self; 3] = [Self::Inspect, Self::View, Self::Plugins];
 
     pub const fn label(self) -> &'static str {
         match self {
@@ -31,6 +31,30 @@ impl RailTab {
             Self::View => "View",
             Self::Graphics => "Graphics",
             Self::Plugins => "Plugins",
+        }
+    }
+}
+
+/// Tabs inside the View category.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ViewTab {
+    /// Camera, world and interface.
+    #[default]
+    Scene,
+    /// Render profile, lighting, fog and shadows.
+    Graphics,
+    /// What the viewport shows: HUDs, indicators, the grid, map icons.
+    Overlays,
+}
+
+impl ViewTab {
+    pub const ALL: [Self; 3] = [Self::Scene, Self::Graphics, Self::Overlays];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Scene => "Scene",
+            Self::Graphics => "Graphics",
+            Self::Overlays => "Overlays",
         }
     }
 }
@@ -53,6 +77,7 @@ pub enum SettingsPage {
     HdLighting,
     HdShadowsWater,
     Controls,
+    Colors,
     Advanced,
 }
 
@@ -233,7 +258,12 @@ pub struct Settings {
     pub dock_right: bool,
     /// Dock category and, inside the Inspector, its tab.
     pub rail_tab: RailTab,
+    pub view_tab: ViewTab,
     pub inspect_tab: InspectTab,
+    /// The tile-information HUD next to the cursor.
+    pub tile_info_hud: bool,
+    /// Colours of the viewport indicators, grid and HUD (see `style.rs`).
+    pub colors: crate::style::Colors,
     /// The active editing tool and its drawer.
     pub tool: crate::paint::Tool,
     pub drawer_open: bool,
@@ -249,6 +279,8 @@ pub struct Settings {
     pub spline: crate::paint::SplineSettings,
     pub height_tool: crate::heights::HeightTool,
     pub palette_filter: crate::paint::PaletteFilter,
+    /// Palette swatch size: 0 small, 1 medium, 2 large.
+    pub swatch_size: u8,
     /// The settings window's current page.
     pub settings_page: SettingsPage,
     /// Shift + right click: the editor's menu or the game's.
@@ -296,7 +328,10 @@ impl Default for Settings {
             orbit_camera: false,
             dock_right: true,
             rail_tab: RailTab::Inspect,
+            view_tab: ViewTab::default(),
             inspect_tab: InspectTab::Object,
+            tile_info_hud: true,
+            colors: crate::style::Colors::default(),
             tool: crate::paint::Tool::Select,
             drawer_open: true,
             drawer_tab: crate::paint::DrawerTab::Overlay,
@@ -309,6 +344,7 @@ impl Default for Settings {
             spline: crate::paint::SplineSettings::default(),
             height_tool: crate::heights::HeightTool::default(),
             palette_filter: crate::paint::PaletteFilter::default(),
+            swatch_size: 1,
             settings_page: SettingsPage::Interface,
             context_menu: ContextMenuStyle::Editor,
             keymap: BTreeMap::new(),
@@ -367,6 +403,11 @@ impl Settings {
         if self.hd_lighting_revision < HD_LIGHTING_REVISION {
             self.hd_exposure = HdParams::default().exposure;
             self.hd_lighting_revision = HD_LIGHTING_REVISION;
+        }
+        // Graphics used to be its own rail button; it is a tab of View now.
+        if self.rail_tab == RailTab::Graphics {
+            self.rail_tab = RailTab::View;
+            self.view_tab = ViewTab::Graphics;
         }
         self.brush.radius = self.brush.radius.min(16);
         self.hd_exposure = self.hd_exposure.clamp(0.25, 4.0);
@@ -487,7 +528,10 @@ mod tests {
         )?;
         assert_eq!(settings.context_menu, ContextMenuStyle::Game);
         assert_eq!(settings.settings_page, SettingsPage::Controls);
-        assert_eq!(settings.rail_tab, RailTab::Graphics);
+        // `sanitized` folds the retired Graphics button into View's Graphics tab.
+        let settings = settings.sanitized();
+        assert_eq!(settings.rail_tab, RailTab::View);
+        assert_eq!(settings.view_tab, ViewTab::Graphics);
         assert_eq!(settings.tool, crate::paint::Tool::Paint);
         Ok(())
     }

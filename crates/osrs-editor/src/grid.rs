@@ -8,6 +8,7 @@
 use crate::keymap::{ActionDef, Binding};
 use crate::pick::Infos;
 use crate::plugin::{EditorCommand, EditorPlugin, PluginContext};
+use crate::style::{ColorKey, Colors};
 use eframe::egui;
 use osrs_render::gpu::LineVertex;
 
@@ -47,19 +48,12 @@ impl Level {
         }
     }
 
-    fn color(self) -> [f32; 3] {
+    /// The colour setting that styles this level (its alpha is the line opacity).
+    fn key(self) -> ColorKey {
         match self {
-            Self::Tile => [1.0, 1.0, 1.0],
-            Self::Zone => [0.3, 0.9, 1.0],
-            Self::Region => [1.0, 0.6, 0.1],
-        }
-    }
-
-    fn base_alpha(self) -> f32 {
-        match self {
-            Self::Tile => 0.3,
-            Self::Zone => 0.6,
-            Self::Region => 0.95,
+            Self::Tile => ColorKey::GridTile,
+            Self::Zone => ColorKey::GridZone,
+            Self::Region => ColorKey::GridRegion,
         }
     }
 
@@ -93,6 +87,7 @@ fn corner_height(infos: &Infos, x: i32, y: i32, plane: usize) -> Option<f32> {
 
 struct Builder<'a> {
     infos: &'a Infos,
+    colors: &'a Colors,
     plane: usize,
     center: (i32, i32),
     origin: (i32, i32),
@@ -128,8 +123,8 @@ impl Builder<'_> {
             return;
         };
         let fade = (1.0 - distance / radius).clamp(0.0, 1.0).powf(0.7);
-        let [r, g, bl] = level.color();
-        let color = [r, g, bl, level.base_alpha() * fade];
+        let [r, g, bl, alpha] = self.colors.linear(level.key());
+        let color = [r, g, bl, alpha * fade];
         let va = self.vertex(a.0, a.1, ha, color);
         let vb = self.vertex(b.0, b.1, hb, color);
         self.lines.push(va);
@@ -141,6 +136,7 @@ impl Builder<'_> {
 /// renderer's `origin` (world units).
 pub fn build(
     settings: GridSettings,
+    colors: &Colors,
     infos: &Infos,
     center: (i32, i32),
     plane: usize,
@@ -148,6 +144,7 @@ pub fn build(
 ) -> Vec<LineVertex> {
     let mut builder = Builder {
         infos,
+        colors,
         plane,
         center,
         origin,
@@ -197,6 +194,7 @@ struct BuiltFor {
     plane: u8,
     origin: (i32, i32),
     infos_version: u64,
+    colors: u64,
 }
 
 /// The grid overlay as an editor plugin.
@@ -249,6 +247,7 @@ impl EditorPlugin for GridPlugin {
             plane: cx.view.view_plane,
             origin: cx.view.render_origin,
             infos_version: cx.view.infos_version,
+            colors: cx.view.colors.stamp(),
         };
         if self.built_for == Some(key) {
             return;
@@ -257,6 +256,7 @@ impl EditorPlugin for GridPlugin {
         let lines = if self.settings.any() {
             build(
                 self.settings,
+                cx.view.colors,
                 cx.view.infos,
                 key.center,
                 usize::from(key.plane),

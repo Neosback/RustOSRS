@@ -6,11 +6,11 @@ mod drawer;
 mod editing;
 mod floating;
 mod hd;
+mod inspector;
 mod menu;
 mod minimap;
 mod overlay;
 mod plugins;
-mod properties;
 mod selection;
 mod settings_window;
 mod shelf;
@@ -33,6 +33,7 @@ use crate::pick::{self, Infos, ObjectPick, Pick};
 use crate::plugin::EditorPlugin;
 use crate::settings::ProfileChoice;
 use crate::settings::{self, Settings};
+use crate::style::ColorKey;
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_core::coords::RegionCoord;
 use osrs_render::gpu::{COLOR_FORMAT, DEPTH_FORMAT, FrameParams, SceneRenderer};
@@ -179,6 +180,8 @@ pub struct EditorApp {
     cache_dir: PathBuf,
     cache_build: Option<(u32, String)>,
     cache_error: Option<String>,
+    /// Where the floating picker rail is (the HUDs keep clear of it).
+    rail_rect: Option<egui::Rect>,
     /// Where the quick tools HUD (Space) is open.
     quick_open: Option<egui::Pos2>,
     /// The last tile the cursor was over (the Tile tab keeps showing it after the cursor leaves).
@@ -321,6 +324,7 @@ impl EditorApp {
             }),
             cache_dir: initial_dir,
             cache_build: None,
+            rail_rect: None,
             quick_open: std::env::var_os("RUSTOSRS_QUICK").map(|_| egui::pos2(520.0, 300.0)),
             last_hover_tile: None,
             smoke_lay_at: std::env::var("RUSTOSRS_LAY_AT")
@@ -902,18 +906,19 @@ impl EditorApp {
             }
             painter.add(egui::Shape::mesh(mesh));
         };
+        let colors = &self.prefs.colors;
         if let Some(object) = &self.hover.object {
             outline(
                 object,
-                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 40),
-                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 90),
+                colors.get(ColorKey::ObjectHoverFill),
+                colors.get(ColorKey::ObjectHoverOutline),
             );
         }
         if let Some(object) = &self.selected {
             outline(
                 object,
-                egui::Color32::from_rgba_unmultiplied(255, 190, 0, 60),
-                egui::Color32::from_rgb(255, 200, 0),
+                colors.get(ColorKey::SelectionFill),
+                colors.get(ColorKey::SelectionOutline),
             );
         }
         // The hovered tile, outlined like RuneLite's tile indicator; with a brush tool, the tiles
@@ -929,18 +934,18 @@ impl EditorApp {
             };
             let (fill, edge) = if !brushing {
                 (
-                    egui::Color32::from_rgba_unmultiplied(0, 255, 255, 28),
-                    egui::Color32::from_rgb(0, 255, 255),
+                    colors.get(ColorKey::HoverTileFill),
+                    colors.get(ColorKey::HoverTileOutline),
                 )
             } else if self.prefs.brush.is_empty() {
                 (
-                    egui::Color32::from_rgba_unmultiplied(200, 200, 200, 22),
-                    egui::Color32::from_gray(190),
+                    colors.get(ColorKey::BrushEmptyFill),
+                    colors.get(ColorKey::BrushEmptyOutline),
                 )
             } else {
                 (
-                    egui::Color32::from_rgba_unmultiplied(255, 170, 40, 40),
-                    egui::Color32::from_rgb(255, 170, 40),
+                    colors.get(ColorKey::BrushFill),
+                    colors.get(ColorKey::BrushOutline),
                 )
             };
             for tile in tiles {

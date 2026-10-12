@@ -1,7 +1,7 @@
 //! Toolbar under the menu bar: the controls used all the time, as buttons.
 //!
-//! Left to right: plane, camera mode, plugin controls (grid, ...), then teleport and the side
-//! panel toggle on the right. Each control also lives in a menu or panel; the toolbar is only a
+//! Left to right: plane, camera mode, undo and redo, plugin controls (grid, ...), then the overlays
+//! menu and the world map on the right. Each control also lives in a menu or panel; the toolbar is only a
 //! shortcut.
 
 use super::EditorApp;
@@ -71,22 +71,32 @@ impl EditorApp {
                 }
                 self.run_plugins(|plugin, cx| plugin.toolbar(ui, cx));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.toggle_value(&mut self.prefs.stats_overlay, icons::STATS)
-                        .on_hover_text("Statistics overlay");
                     ui.toggle_value(&mut self.world_map.open, icons::WORLD_MAP)
                         .on_hover_text("World map (M): double-click a tile to go there");
-                    let label = if compact {
-                        icons::TELEPORT.to_owned()
-                    } else {
-                        format!("{} Teleport", icons::TELEPORT)
-                    };
-                    if ui
-                        .button(label)
-                        .on_hover_text("Go to a tile or region (T)")
-                        .clicked()
-                    {
-                        self.open_teleport();
-                    }
+                    // What the viewport shows on top of the world, in one menu.
+                    ui.menu_button(icons::OVERLAYS, |ui| {
+                        ui.set_min_width(190.0);
+                        ui.checkbox(&mut self.prefs.tile_info_hud, "Tile info")
+                            .on_hover_text("The tile under the cursor, in the corner");
+                        ui.checkbox(&mut self.prefs.hover_tile, "Tile outline")
+                            .on_hover_text(
+                                "Outline the tile (or the brush footprint) under the cursor",
+                            );
+                        ui.checkbox(&mut self.prefs.stats_overlay, "Statistics")
+                            .on_hover_text("Frame rate, timings and the camera tile");
+                        ui.checkbox(&mut self.prefs.show_minimap, "Minimap");
+                        ui.checkbox(&mut self.prefs.mouse_tooltips, "Action tooltip")
+                            .on_hover_text("The game's action text next to the cursor");
+                        ui.separator();
+                        if ui.button("More in the View panel...").clicked() {
+                            self.prefs.rail_tab = crate::settings::RailTab::View;
+                            self.prefs.view_tab = crate::settings::ViewTab::Overlays;
+                            self.prefs.properties_panel = true;
+                            ui.close();
+                        }
+                    })
+                    .response
+                    .on_hover_text("What the viewport shows");
                 });
             });
         });

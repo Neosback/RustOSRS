@@ -10,10 +10,10 @@
 //! quick HUD offers what the active tool can use.
 
 use super::EditorApp;
-use super::widgets::{empty_state, tab_label};
+use super::widgets::tab_label;
 use crate::icons;
 use crate::paint::{SelectMode, TileValues, Tool};
-use crate::settings::{InspectTab, RailTab};
+use crate::settings::{RailTab, ViewTab};
 use eframe::egui::{self, Pos2, Rect, Sense, Stroke, Vec2};
 use std::time::Duration;
 use web_time::Instant;
@@ -131,33 +131,41 @@ impl EditorApp {
                             .strong()
                             .size(15.0),
                     );
-                    if self.prefs.rail_tab == RailTab::Inspect {
+                    if self.prefs.rail_tab == RailTab::View {
                         ui.add_space(8.0);
-                        for (tab, label) in [
-                            (InspectTab::Object, "Selection"),
-                            (InspectTab::Tile, "Tile"),
-                        ] {
-                            if tab_label(ui, self.prefs.inspect_tab == tab, label).clicked() {
-                                self.prefs.inspect_tab = tab;
+                        for tab in ViewTab::ALL {
+                            if tab_label(ui, self.prefs.view_tab == tab, tab.label()).clicked() {
+                                self.prefs.view_tab = tab;
                             }
                         }
                     }
                 });
                 ui.add_space(2.0);
                 ui.separator();
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| match self.prefs.rail_tab {
-                        RailTab::Inspect => match self.prefs.inspect_tab {
-                            InspectTab::Object => self.selection_section(ui),
-                            InspectTab::Tile => self.tile_section(ui),
-                        },
-                        RailTab::View => {
-                            self.quick_settings_ui(ui, &["Camera", "World", "Interface"]);
-                        }
-                        RailTab::Graphics => self.quick_settings_ui(ui, &["Graphics"]),
-                        RailTab::Plugins => self.plugin_sections(ui),
-                    });
+                match self.prefs.rail_tab {
+                    // The inspector splits the panel itself (tile above, object below).
+                    RailTab::Inspect => self.inspector(ui),
+                    _ => {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| match self.prefs.rail_tab {
+                                RailTab::View | RailTab::Graphics => match self.prefs.view_tab {
+                                    ViewTab::Scene => {
+                                        self.quick_settings_ui(
+                                            ui,
+                                            &["Camera", "World", "Interface"],
+                                        );
+                                    }
+                                    ViewTab::Graphics => {
+                                        self.quick_settings_ui(ui, &["Graphics"]);
+                                    }
+                                    ViewTab::Overlays => self.overlays_tab(ui),
+                                },
+                                RailTab::Plugins => self.plugin_sections(ui),
+                                RailTab::Inspect => {}
+                            });
+                    }
+                }
             });
     }
 
@@ -227,77 +235,37 @@ impl EditorApp {
         }
     }
 
-    /// The hovered tile (or the last one hovered) as a card.
-    fn tile_section(&mut self, ui: &mut egui::Ui) {
-        let Some(tile) = self
-            .hover
-            .tile
-            .map(|pick| pick.tile)
-            .or(self.last_hover_tile)
-        else {
-            empty_state(
-                ui,
-                icons::TOOL_PAINT,
-                "No tile",
-                "Move the cursor over the terrain.",
-            );
-            return;
-        };
-        let Some(values) = self.tile_now(tile) else {
-            empty_state(
-                ui,
-                icons::TOOL_PAINT,
-                "No tile data",
-                "That area is not loaded.",
-            );
-            return;
-        };
-        ui.label(egui::RichText::new(format!("Tile {}, {}", tile.0, tile.1)).heading());
-        ui.weak(format!(
-            "plane {}  \u{b7}  region {}",
-            self.view_plane,
-            crate::hud::region_id(tile.0 >> 6, tile.1 >> 6)
-        ));
-        crate::theme::section_heading(ui, "Terrain");
-        egui::Grid::new("tile_fields")
-            .num_columns(2)
-            .spacing([14.0, 5.0])
-            .show(ui, |ui| {
-                let row = |ui: &mut egui::Ui, label: &str, value: String| {
-                    ui.weak(label);
-                    ui.label(value);
-                    ui.end_row();
-                };
-                row(
-                    ui,
-                    "Overlay",
-                    if values.overlay == 0 {
-                        "none".into()
-                    } else {
-                        values.overlay.to_string()
-                    },
-                );
-                row(
-                    ui,
-                    "Underlay",
-                    if values.underlay == 0 {
-                        "none".into()
-                    } else {
-                        values.underlay.to_string()
-                    },
-                );
-                row(
-                    ui,
-                    "Shape",
-                    format!("{} \u{b7} rotation {}", values.shape, values.rotation),
-                );
-                row(
-                    ui,
-                    "Height",
-                    format!("{}", crate::paint::elevation(values.height)),
-                );
-                row(ui, "Flags", format!("{:#04x}", values.flags));
-            });
+    /// The View panel's Overlays tab: what the viewport shows on top of the world.
+    fn overlays_tab(&mut self, ui: &mut egui::Ui) {
+        crate::theme::section_heading(ui, "Heads-up");
+        ui.checkbox(&mut self.prefs.tile_info_hud, "Tile info")
+            .on_hover_text("The tile under the cursor, in the corner of the viewport");
+        ui.checkbox(&mut self.prefs.stats_overlay, "Statistics")
+            .on_hover_text("Frame rate, timings and the camera tile");
+        ui.checkbox(&mut self.prefs.show_minimap, "Minimap, compass and globe");
+        ui.checkbox(&mut self.prefs.mouse_tooltips, "Action tooltip")
+            .on_hover_text("The game's action text next to the cursor");
+        crate::theme::section_heading(ui, "Indicators");
+        ui.checkbox(
+            &mut self.prefs.hover_tile,
+            "Tile outline and brush footprint",
+        )
+        .on_hover_text("Outline the tile (or the tiles the brush would paint) under the cursor");
+        crate::theme::section_heading(ui, "Grid");
+        self.run_plugins(|plugin, cx| {
+            if plugin.name() == "grid" {
+                plugin.properties(ui, cx);
+            }
+        });
+        ui.add_space(8.0);
+        ui.separator();
+        if ui
+            .button(format!("{}  Colours...", icons::THEME))
+            .on_hover_text("Colour and opacity of the outlines, grid and HUD")
+            .clicked()
+        {
+            self.open_settings(Some(crate::settings::SettingsPage::Colors));
+        }
     }
 
     /// Fill the brush from a tile (`I`, Alt + click, or the tile's context menu).

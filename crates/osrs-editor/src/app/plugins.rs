@@ -13,6 +13,7 @@ impl EditorApp {
             render_origin: self.renderer.render_origin(),
             infos: &self.infos,
             infos_version: self.infos_version,
+            colors: &self.prefs.colors,
             selected: self.selected.as_ref(),
         }
     }

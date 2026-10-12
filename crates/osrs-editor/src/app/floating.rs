@@ -37,7 +37,7 @@ impl EditorApp {
             .inner_margin(egui::Margin::same(5))
             .shadow(ctx.global_style().visuals.popup_shadow);
         let area = egui::Area::new(egui::Id::new("picker_rail"))
-            .order(egui::Order::Background)
+            .order(egui::Order::Middle)
             .movable(true)
             .default_pos(default_pos)
             .constrain_to(viewport)
@@ -106,6 +106,7 @@ impl EditorApp {
                     }
                 });
             });
+        self.rail_rect = Some(area.response.rect);
         let offset = area.response.rect.min - viewport.min;
         if (offset.x - self.prefs.picker_pos[0]).abs() > 0.5
             || (offset.y - self.prefs.picker_pos[1]).abs() > 0.5

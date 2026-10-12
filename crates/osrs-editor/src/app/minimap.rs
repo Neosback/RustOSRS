@@ -165,7 +165,7 @@ impl EditorApp {
             self.toggle_world_map();
         }
 
-        // Compass click faces north; double-clicking the map flies there.
+        // Compass click faces north; clicking the map goes there (as the world map does).
         let compass_response = ui.interact(
             compass_rect,
             egui::Id::new("minimap_compass"),
@@ -185,11 +185,11 @@ impl EditorApp {
             if dx * dx + dy * dy <= 75.0 * 75.0 {
                 let (tx, ty) = screen_to_tile(dx, dy, (tile_x, tile_y), yaw);
                 map_response.clone().on_hover_text(format!(
-                    "{}, {}   double-click to fly there",
+                    "{}, {}   click to go there",
                     tx.floor() as i32,
                     ty.floor() as i32
                 ));
-                if map_response.double_clicked() {
+                if map_response.clicked() {
                     self.teleport_to(Destination::Tile {
                         x: tx.floor() as i32,
                         y: ty.floor() as i32,

@@ -49,3 +49,12 @@ pub const EYEDROPPER: &str = ph::EYEDROPPER;
 pub const DRAWER: &str = ph::CARET_DOWN;
 pub const BRUSH_SQUARE: &str = ph::SQUARE;
 pub const BRUSH_CIRCLE: &str = ph::CIRCLE;
+
+// Painter channels (the tabs of the tile painter's drawer).
+pub const CH_OVERLAY: &str = ph::SQUARE_HALF;
+pub const CH_UNDERLAY: &str = ph::STACK;
+pub const CH_SHAPE: &str = ph::SHAPES;
+pub const CH_HEIGHT: &str = ph::MOUNTAINS;
+pub const CH_MASK: &str = ph::FLAG;
+pub const HIDE: &str = ph::EYE_SLASH;
+pub const OVERLAYS: &str = ph::STACK_SIMPLE;

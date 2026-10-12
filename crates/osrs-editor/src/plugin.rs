@@ -32,6 +32,8 @@ pub struct EditorView<'a> {
     pub infos: &'a Infos,
     /// Bumped whenever `infos` gains or loses a region.
     pub infos_version: u64,
+    /// The editor's colours (see `style.rs`): plugins draw with these, never their own.
+    pub colors: &'a crate::style::Colors,
     pub selected: Option<&'a ObjectPick>,
 }
 

@@ -12,6 +12,35 @@ pub enum OverlayFill {
         id: egui::TextureId,
         offset: (f32, f32),
     },
+    /// An overlay that draws nothing (the map's placeholder): shown as a checkerboard, the usual
+    /// sign for "transparent", with the two square colours from the colour settings.
+    Transparent {
+        light: Color32,
+        dark: Color32,
+    },
+}
+
+/// A checkerboard of `cells` x `cells` squares filling `rect`.
+pub fn paint_checker(
+    painter: &egui::Painter,
+    rect: Rect,
+    light: Color32,
+    dark: Color32,
+    cells: u32,
+) {
+    painter.rect_filled(rect, 3.0, dark);
+    let size = rect.width() / cells as f32;
+    for y in 0..cells {
+        for x in 0..cells {
+            if (x + y) % 2 == 0 {
+                let square = Rect::from_min_size(
+                    Pos2::new(rect.left() + x as f32 * size, rect.top() + y as f32 * size),
+                    Vec2::splat(size),
+                );
+                painter.rect_filled(square, 0.0, light);
+            }
+        }
+    }
 }
 
 /// Draw one tile: the underlay everywhere, the overlay in the shape's overlay faces.
@@ -51,6 +80,9 @@ pub fn paint_tile(
                     Color32::WHITE,
                 );
             }
+            OverlayFill::Transparent { light, dark } => {
+                paint_checker(painter, rect, light, dark, 4)
+            }
         }
         return;
     }
@@ -63,6 +95,14 @@ pub fn paint_tile(
                 painter.add(egui::Shape::convex_polygon(
                     triangle.iter().map(|p| at(*p)).collect(),
                     color,
+                    Stroke::NONE,
+                ));
+            }
+            OverlayFill::Transparent { light, .. } => {
+                // A shaped piece of "nothing": the light square colour, translucent.
+                painter.add(egui::Shape::convex_polygon(
+                    triangle.iter().map(|p| at(*p)).collect(),
+                    light.gamma_multiply(0.7),
                     Stroke::NONE,
                 ));
             }

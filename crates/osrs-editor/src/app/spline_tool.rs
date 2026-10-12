@@ -10,6 +10,7 @@ use super::EditorApp;
 use crate::autotile::{self, PathParams, TileChoice, shape_triangles};
 use crate::interact;
 use crate::paint::Tool;
+use crate::style::ColorKey;
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
 
 /// A click this close (in tiles) to a control point grabs it instead of adding a new one.
@@ -488,8 +489,8 @@ impl EditorApp {
             project([f64::from(p.0) * 128.0, y - lift, f64::from(p.1) * 128.0])
         };
         let cursor = self.hover.tile.map(|pick| pick.at);
-        let outline = Color32::from_rgba_unmultiplied(255, 200, 80, 230);
-        let ghost = Color32::from_rgba_unmultiplied(120, 200, 255, 200);
+        let outline = self.prefs.colors.get(ColorKey::PathLine);
+        let ghost = self.prefs.colors.get(ColorKey::PathGhost);
 
         if self.spline.points.is_empty() {
             if let Some(at) = cursor
@@ -508,8 +509,8 @@ impl EditorApp {
         }
 
         // The shaped tiles.
-        let overlay_color = Color32::from_rgba_unmultiplied(255, 176, 56, 120);
-        let edge = Stroke::new(0.75, Color32::from_rgba_unmultiplied(255, 236, 190, 150));
+        let overlay_color = self.prefs.colors.get(ColorKey::PathFill);
+        let edge = Stroke::new(0.75, self.prefs.colors.get(ColorKey::PathEdge));
         if let Some(preview) = &self.spline.preview {
             for (tile, choice) in &preview.tiles {
                 let Some(corners) = interact::tile_corners(&self.infos, *tile, plane) else {

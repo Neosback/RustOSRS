@@ -111,7 +111,7 @@ const fn def(
 
 use Applies::{Any, Hd, Reference};
 use SettingsPage::{
-    Advanced, CameraWorld, Controls, Graphics, HdLighting, HdShadowsWater, Interface,
+    Advanced, CameraWorld, Colors, Controls, Graphics, HdLighting, HdShadowsWater, Interface,
 };
 
 /// Every setting, in the order a page shows them.
@@ -554,6 +554,7 @@ const PAGES: &[(SettingsPage, &str, &str)] = &[
     (HdLighting, ph::SUN, "Sky and lighting"),
     (HdShadowsWater, ph::DROP, "Shadows and water"),
     (Controls, ph::KEYBOARD, "Controls"),
+    (Colors, ph::PALETTE, "Colours"),
     (Advanced, ph::WRENCH, "Advanced"),
 ];
 
@@ -767,6 +768,47 @@ impl EditorApp {
         self.settings_open = open;
     }
 
+    /// The colours the viewport draws its indicators, the grid and the HUD with.
+    fn colors_page(&mut self, ui: &mut egui::Ui) {
+        use crate::style::{ColorGroup, ColorKey};
+        ui.weak(
+            "Every outline, the grid and the HUD read these. The alpha is the opacity. \
+             The UI theme (panels, text) is on the Interface page.",
+        );
+        ui.add_space(4.0);
+        if ui.button("Reset all colours").clicked() {
+            self.prefs.colors.reset_all();
+        }
+        for group in ColorGroup::ALL {
+            crate::theme::section_heading(ui, group.label());
+            egui::Grid::new(("colors", group.label()))
+                .num_columns(3)
+                .spacing([14.0, 6.0])
+                .show(ui, |ui| {
+                    for key in ColorKey::ALL.iter().filter(|k| k.group() == group) {
+                        ui.label(key.label());
+                        let [r, g, b, a] = self.prefs.colors.rgba(*key);
+                        let mut color = egui::Color32::from_rgba_unmultiplied(r, g, b, a);
+                        if ui.color_edit_button_srgba(&mut color).changed() {
+                            let [r, g, b, a] = color.to_srgba_unmultiplied();
+                            self.prefs.colors.set(*key, [r, g, b, a]);
+                        }
+                        if ui
+                            .add_enabled(
+                                !self.prefs.colors.is_default(*key),
+                                egui::Button::new(ph::ARROW_COUNTER_CLOCKWISE).small(),
+                            )
+                            .on_hover_text("Back to the default")
+                            .clicked()
+                        {
+                            self.prefs.colors.reset(*key);
+                        }
+                        ui.end_row();
+                    }
+                });
+        }
+    }
+
     /// One page.
     fn page_ui(&mut self, ui: &mut egui::Ui, page: SettingsPage) {
         let title = PAGES
@@ -777,6 +819,7 @@ impl EditorApp {
         ui.add_space(4.0);
         match page {
             Controls => self.controls_page(ui),
+            Colors => self.colors_page(ui),
             Advanced => {
                 self.rows_ui_for_page(ui, page, "");
                 self.advanced_page(ui);
@@ -1355,9 +1398,9 @@ mod tests {
     fn every_page_with_settings_has_rows() {
         for (page, _, title) in PAGES {
             let has_rows = ROWS.iter().any(|def| def.page == *page);
-            // Controls (shortcuts) and Advanced (reset buttons) are drawn by their own code.
+            // Controls (shortcuts), Colours and Advanced (reset buttons) are drawn by their own code.
             assert!(
-                has_rows || matches!(page, Controls | Advanced),
+                has_rows || matches!(page, Controls | Colors | Advanced),
                 "{title} has no settings"
             );
         }
