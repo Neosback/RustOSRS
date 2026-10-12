@@ -40,6 +40,7 @@ enum Row {
     HoverTile,
     TileInfoHud,
     MapIcons3d,
+    ObjectGizmo,
     RenderScale,
     CameraMode,
     FieldOfView,
@@ -205,6 +206,14 @@ const ROWS: &[RowDef] = &[
         "Menus and hints",
         "Map icons in the world",
         "billboards bank shop altar icons 3d",
+        Any,
+    ),
+    def(
+        Row::ObjectGizmo,
+        Interface,
+        "Menus and hints",
+        "Transform gizmo",
+        "arrows move turn objects tool handles",
         Any,
     ),
     def(
@@ -1017,6 +1026,13 @@ impl EditorApp {
                     ui,
                     &mut prefs.map_icons_3d,
                     "Draw map icons over their tiles",
+                );
+            }
+            Row::ObjectGizmo => {
+                crate::theme::toggle(
+                    ui,
+                    &mut prefs.object_gizmo,
+                    "Arrows and a turn ring on selected objects",
                 );
             }
             Row::RenderScale => {

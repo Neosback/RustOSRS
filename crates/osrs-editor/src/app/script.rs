@@ -31,6 +31,7 @@ hud tile|stats|minimap|outline on|off|toggle
 window settings|plugins|script|map|teleport|none   open a window (or close all)
 grid                   toggle the tile grid
 camera fly|orbit
+focus                  move the camera to the selection
 undo | redo | delete | turn | copy
 wait N                 pause N frames; at N waits until frame N
 status TEXT
@@ -203,6 +204,7 @@ impl EditorApp {
                 *slot = on_off(words.next(), *slot)?;
             }
             "grid" => self.plugin_action("grid.toggle"),
+            "focus" => self.focus_selection(),
             "window" => {
                 let which = words.next();
                 self.settings_open = which == Some("settings");

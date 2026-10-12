@@ -59,3 +59,24 @@ The user's list, grouped into the order it is built in (each group is one commit
   cache). Windows opened from a window (Add a tool or Script from Plugins) stack on top.
 * `EditorApp::modal_open` / `keys_blocked` are the one place that decides the editor's key bindings stay quiet.
 * Script: `window settings|plugins|script|map|teleport|none` opens a window (used for screenshots).
+
+## egui-elegance, transform gizmo, floating shelf (2026-10-11)
+
+* **egui-elegance** (`elegance` crate): `theme::set_theme` installs an Elegance theme built from the active
+  editor theme, so its widgets match every theme. Used for the boolean switches (`theme::toggle`, replacing
+  checkboxes in Settings, the View panel and plugin options), segmented controls for few-way choices
+  (`theme::segmented`: camera mode, minimap size, context menu) and filled / outline buttons
+  (`theme::primary_button` / `outline_button`: Add a tool, Save, Cancel, Run, Go, Choose cache folder). Four themes
+  from the crate's palettes join the list: Slate, Charcoal, Frost, Paper. Menu items, tool arms and the viewport
+  chrome keep the editor's own widgets.
+* **transform-gizmo-egui** (`app/gizmo.rs`): with the Objects tool and a selection, a gizmo sits on the
+  selection: arrows (east, north), a ground-plane handle and a turn ring, snapped to whole tiles and quarter turns.
+  Dragging shows the footprints (the same ghost as drag-to-move); release commits one undo step (move, or turn).
+  The gizmo's matrices are the viewport's projection re-expressed right-handed (a unit test checks they put a
+  point where `pick::project` does). It has the pointer while hovered, so box select and drag-to-move stay out of
+  its way. Setting: Interface > "Transform gizmo". The web build needs `getrandom`'s `wasm_js` backend
+  (`.cargo/config.toml`), which `transform-gizmo` pulls in through `ahash`.
+* **Floating brush shelf**: the shelf (brush, strength, path) has the same pop-out as the side panel: undock
+  it into a window you can drag anywhere over the viewport (position kept), dock it back, or swap it to the
+  right edge.
+* Script: `focus` moves the camera to the selection.

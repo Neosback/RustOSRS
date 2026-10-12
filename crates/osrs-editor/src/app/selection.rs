@@ -111,6 +111,7 @@ impl EditorApp {
         if !(self.prefs.tool == crate::paint::Tool::Select || objects_tool)
             || self.quick_open.is_some()
             || self.context_menu.is_some()
+            || self.gizmo_busy
         {
             self.marquee = None;
             return;

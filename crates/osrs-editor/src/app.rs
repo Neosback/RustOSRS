@@ -6,6 +6,7 @@ mod context_menu;
 mod drawer;
 mod editing;
 mod floating;
+mod gizmo;
 mod hd;
 mod inspector;
 mod map_icons;
@@ -191,6 +192,10 @@ pub struct EditorApp {
     cache_error: Option<String>,
     /// The selected objects being dragged by the Objects tool.
     object_drag: Option<object_tool::ObjectDrag>,
+    /// The Objects tool's transform gizmo, its drag in progress, and whether it has the pointer.
+    gizmo: transform_gizmo_egui::Gizmo,
+    gizmo_drag: Option<gizmo::GizmoDrag>,
+    gizmo_busy: bool,
     /// Placements to select once their rebuilt region arrives (after an object edit).
     pending_reselect: Vec<osrs_world::LocSpec>,
     /// The script language's queue, its window and text.
@@ -332,6 +337,9 @@ impl EditorApp {
             cache_dir: initial_dir,
             cache_build: None,
             object_drag: None,
+            gizmo: Self::new_gizmo(),
+            gizmo_drag: None,
+            gizmo_busy: false,
             pending_reselect: Vec::new(),
             script: script::ScriptRunner::default(),
             script_open: false,
@@ -658,6 +666,7 @@ impl eframe::App for EditorApp {
                     width,
                     height,
                 );
+                self.object_gizmo(ui, rect);
                 self.viewport_overlays(ui, rect);
                 self.floating_toolbar(&ctx, rect);
                 self.context_menu(&ctx);

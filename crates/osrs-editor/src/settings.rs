@@ -250,6 +250,10 @@ pub struct Settings {
     /// The panel as a window instead of docked, with its position and size.
     pub dock_floating: bool,
     pub dock_float_pos: [f32; 2],
+    /// The brush shelf: docked on the right instead of the left, or floating at `shelf_pos`.
+    pub shelf_right: bool,
+    pub shelf_floating: bool,
+    pub shelf_pos: [f32; 2],
     pub dock_float_size: [f32; 2],
     /// Dock category and, inside the Inspector, its tab.
     pub rail_tab: RailTab,
@@ -258,6 +262,8 @@ pub struct Settings {
     pub tile_info_hud: bool,
     /// Map icons (banks, shops, altars ...) drawn as billboards in the 3D world.
     pub map_icons_3d: bool,
+    /// The Objects tool's transform gizmo (arrows and a turn ring on the selection).
+    pub object_gizmo: bool,
     /// Viewport resolution relative to the window's pixels (0.5 to 2.0: below saves GPU time, above
     /// smooths edges by supersampling).
     pub render_scale: f32,
@@ -330,11 +336,15 @@ impl Default for Settings {
             dock_right: true,
             dock_floating: false,
             dock_float_pos: [900.0, 140.0],
+            shelf_right: false,
+            shelf_floating: false,
+            shelf_pos: [120.0, 140.0],
             dock_float_size: [330.0, 560.0],
             rail_tab: RailTab::Inspect,
             view_tab: ViewTab::default(),
             tile_info_hud: true,
             map_icons_3d: false,
+            object_gizmo: true,
             render_scale: 1.0,
             colors: crate::style::Colors::default(),
             user_tools: Vec::new(),

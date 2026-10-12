@@ -2413,6 +2413,7 @@ dependencies = [
  "image",
  "js-sys",
  "memory-stats",
+ "mint",
  "open",
  "osrs-cache",
  "osrs-core",

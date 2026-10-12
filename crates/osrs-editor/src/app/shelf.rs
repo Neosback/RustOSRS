@@ -1,4 +1,4 @@
-//! The left shelf: how the active tool acts (shape, size, falloff, strength; path width and style).
+//! The tool shelf (docked left or right, or floating over the viewport): how the active tool acts (shape, size, falloff, strength; path width and style).
 //!
 //! It exists only while a tool other than Select is active, so the viewport has its full width when
 //! just looking and selecting. What a tool paints *with* (floors, shapes, flags) is in the drawer.
@@ -20,8 +20,17 @@ impl EditorApp {
         if !tool.has_shelf() {
             return;
         }
+        if self.prefs.shelf_floating {
+            self.floating_shelf(ui.ctx(), tool);
+            return;
+        }
         let line = ui.visuals().widgets.noninteractive.bg_stroke.color;
-        egui::Panel::left("tool_shelf")
+        let panel = if self.prefs.shelf_right {
+            egui::Panel::right("tool_shelf")
+        } else {
+            egui::Panel::left("tool_shelf")
+        };
+        panel
             .resizable(false)
             .exact_size(SHELF_WIDTH)
             .frame(
@@ -30,27 +39,74 @@ impl EditorApp {
                     .stroke(Stroke::new(1.0, line))
                     .inner_margin(egui::Margin::symmetric(12, 10)),
             )
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(tool_icon(tool))
-                            .size(18.0)
-                            .color(ui.visuals().selection.stroke.color),
-                    );
-                    ui.label(egui::RichText::new(tool.label()).strong().size(15.0));
-                });
-                ui.add_space(2.0);
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| match tool {
-                        Tool::Paint => self.brush_section(ui),
-                        Tool::Height => {
-                            self.brush_section(ui);
-                            self.sculpt_section(ui);
-                        }
-                        Tool::Spline => self.path_section(ui),
-                        Tool::Select | Tool::Objects => {}
-                    });
+            .show(ui, |ui| self.shelf_contents(ui, tool));
+    }
+
+    /// The shelf as a window you can drag anywhere over the viewport (its position is kept).
+    fn floating_shelf(&mut self, ctx: &egui::Context, tool: Tool) {
+        let [x, y] = self.prefs.shelf_pos;
+        let response = egui::Window::new(tool.label())
+            .id(egui::Id::new("shelf_window"))
+            .title_bar(false)
+            .default_pos(egui::pos2(x, y))
+            .default_width(SHELF_WIDTH)
+            .min_width(SHELF_WIDTH)
+            .max_height(560.0)
+            .resizable([false, true])
+            .constrain_to(ctx.content_rect())
+            .show(ctx, |ui| self.shelf_contents(ui, tool));
+        if let Some(response) = response {
+            let min = response.response.rect.min;
+            self.prefs.shelf_pos = [min.x, min.y];
+        }
+    }
+
+    /// Header (tool, pop-out and side buttons) and the tool's sections.
+    fn shelf_contents(&mut self, ui: &mut egui::Ui, tool: Tool) {
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(tool_icon(tool))
+                    .size(18.0)
+                    .color(ui.visuals().selection.stroke.color),
+            );
+            ui.label(egui::RichText::new(tool.label()).strong().size(15.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let (icon, tip) = if self.prefs.shelf_floating {
+                    (icons::DOCK_IN, "Dock the shelf back to the edge")
+                } else {
+                    (
+                        icons::POP_OUT,
+                        "Undock the shelf into a window you can move",
+                    )
+                };
+                if ui
+                    .add(egui::Button::new(icon).small().frame(false))
+                    .on_hover_text(tip)
+                    .clicked()
+                {
+                    self.prefs.shelf_floating = !self.prefs.shelf_floating;
+                }
+                if !self.prefs.shelf_floating
+                    && ui
+                        .add(egui::Button::new(icons::SWAP_SIDE).small().frame(false))
+                        .on_hover_text("Move the shelf to the other side")
+                        .clicked()
+                {
+                    self.prefs.shelf_right = !self.prefs.shelf_right;
+                }
+            });
+        });
+        ui.add_space(2.0);
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, self.prefs.shelf_floating])
+            .show(ui, |ui| match tool {
+                Tool::Paint => self.brush_section(ui),
+                Tool::Height => {
+                    self.brush_section(ui);
+                    self.sculpt_section(ui);
+                }
+                Tool::Spline => self.path_section(ui),
+                Tool::Select | Tool::Objects => {}
             });
     }
 
