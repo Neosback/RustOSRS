@@ -214,7 +214,7 @@ mod tests {
             viewport.height(),
             [900.0, -200.0, 400.0],
         )
-        .expect("in front of the camera");
+        .unwrap_or([f32::NAN; 2]);
         assert!((screen.0 - (viewport.min.x + projected[0])).abs() < 0.05);
         assert!((screen.1 - (viewport.min.y + projected[1])).abs() < 0.05);
     }
