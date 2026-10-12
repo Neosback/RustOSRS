@@ -21,42 +21,26 @@ jobs:
           from pathlib import Path
           p = Path('crates/osrs-editor/src/app/spline_tool.rs')
           s = p.read_text()
-          old = '''    fn request(&mut self, input: PlanInput) -> Result<(), PlanInput> {
-              if input.key == self.requested_key {
-                  return Ok(());
-              }
-              let key = input.key;
-              match self.request.send(input) {
-                  Ok(()) => {
-                      self.requested_key = key;
-                      Ok(())
-                  }
-                  Err(error) => Err(error.0),
-              }
-          }
-          '''.replace('              ', '        ')
-          new = '''    fn request(&mut self, input: PlanInput) -> Option<PlanInput> {
-              if input.key == self.requested_key {
-                  return None;
-              }
-              let key = input.key;
-              match self.request.send(input) {
-                  Ok(()) => {
-                      self.requested_key = key;
-                      None
-                  }
-                  Err(error) => Some(error.0),
-              }
-          }
-          '''.replace('              ', '        ')
-          if old not in s:
-              raise SystemExit('request method block not found')
-          s = s.replace(old, new, 1)
-          s = s.replace(
-              '.and_then(|worker| worker.request(input).err())',
-              '.and_then(|worker| worker.request(input))',
-              1,
-          )
+          replacements = [
+              (
+                  '    fn request(&mut self, input: PlanInput) -> Result<(), PlanInput> {\n',
+                  '    fn request(&mut self, input: PlanInput) -> Option<PlanInput> {\n',
+              ),
+              ('            return Ok(());\n', '            return None;\n'),
+              (
+                  '                self.requested_key = key;\n                Ok(())\n',
+                  '                self.requested_key = key;\n                None\n',
+              ),
+              ('            Err(error) => Err(error.0),\n', '            Err(error) => Some(error.0),\n'),
+              (
+                  '.and_then(|worker| worker.request(input).err())',
+                  '.and_then(|worker| worker.request(input))',
+              ),
+          ]
+          for old, new in replacements:
+              if old not in s:
+                  raise SystemExit(f'missing expected source fragment: {old!r}')
+              s = s.replace(old, new, 1)
           p.write_text(s)
           PY
       - run: cargo fmt --all
