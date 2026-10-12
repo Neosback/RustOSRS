@@ -47,4 +47,17 @@ replacement = '''            Tool::Spline => {
 '''
 workspace.write_text(text[:start] + replacement + text[end:])
 
+editing = Path('crates/osrs-editor/src/app/editing.rs')
+text = editing.read_text()
+text = text.replace(
+    '''    pub(super) fn current_tile_values(&self, key: TileKey) -> Option<TileValues> {
+        self.current_tile(key)
+    }
+
+''',
+    '',
+    1,
+)
+editing.write_text(text)
+
 Path('scripts/fix_simple_path_followups.py').unlink(missing_ok=True)
