@@ -1,31 +1,19 @@
-//! The path tool: click points on the terrain, see the path the planner would lay, press Enter.
+//! The Spline tool: click control points, preview a fitted OSRS overlay band, press Enter.
 //!
-//! The points become a one-edge network that the terrain path planner (`terrain_path`, a port of
-//! Terraini's) turns into overlay tiles: the line is smoothed, routed round obstacles, made to
-//! wander, given a width that varies along it and a rough edge, and every tile gets the overlay
-//! shape that real maps use for its neighbourhood. The result is drawn as a preview and laid as one
-//! undo step. In Walls mode the same line becomes a band of tiles with wall objects on its edges.
-//!
-//! Dragging a point re-plans live (off the UI thread where there are threads); Shift + click
-//! inserts a point on the nearest stretch; Cmd + click or Delete removes the point under the
-//! cursor; Backspace removes the last.
+//! There is deliberately no obstacle routing or wall mode here. The control line is smoothed with
+//! deterministic Catmull-Rom sampling and the resulting band is fitted against the exact OSRS
+//! shaped-terrain geometry. The fitted tiles are committed as one semantic patch / one undo step.
 
 use super::EditorApp;
 use super::editing::PathTile;
 use crate::interact;
-use crate::paint::{PathMode, Tool};
+use crate::paint::Tool;
 use crate::style::ColorKey;
-use crate::terrain_path::{
-    self, PathEnvironment, PathPlanner, PathPoint, PathWarning, SceneGrid, Severity, TilePaint,
-    walls::{WallKit, WallPlan, emit_walls, generate_walls},
-};
+use crate::terrain_path::{self, FittedTile};
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
-use std::collections::{HashMap, HashSet};
 
 /// A click this close (in tiles) to a control point grabs it instead of adding a new one.
 const GRAB_DISTANCE: f32 = 0.9;
-/// Spacing of the polyline used for drawing and for walls.
-const STEP: f64 = 0.25;
 const FNV_OFFSET: u64 = 0xCBF2_9CE4_8422_2325;
 const FNV_PRIME: u64 = 0x0100_0000_01B3;
 
@@ -46,13 +34,10 @@ pub struct SplineState {
 #[derive(Debug, Default, Clone)]
 struct Preview {
     key: u64,
-    paints: Vec<TilePaint>,
-    warnings: Vec<PathWarning>,
-    /// The centre line as planned (or the smoothed drawn line when there is no plan).
+    overlay_id: u16,
+    paints: Vec<FittedTile>,
+    /// The exact smoothed centre line used by the fitter.
     lines: Vec<Vec<(f32, f32)>>,
-    /// Walls mode: the band's tiles and their tangents.
-    wall_tiles: Vec<(i32, i32)>,
-    tangents: HashMap<(i32, i32), (f32, f32)>,
 }
 
 impl SplineState {
@@ -72,35 +57,12 @@ struct PlanWorker {
 }
 
 fn fnv(text: &str) -> u64 {
-    terrain_path::fnv(text)
-}
-
-fn mix_u64(mut hash: u64, value: u64) -> u64 {
-    for byte in value.to_le_bytes() {
-        hash ^= u64::from(byte);
+    let mut hash = FNV_OFFSET;
+    for byte in text.as_bytes() {
+        hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(FNV_PRIME);
     }
     hash
-}
-
-/// A stable signature of the nearby overlays that affect preservation, joining and topology.
-fn paint_signature(paints: &[TilePaint]) -> u64 {
-    let mut hash = mix_u64(FNV_OFFSET, paints.len() as u64);
-    for paint in paints {
-        hash = mix_u64(hash, paint.tile_x as i64 as u64);
-        hash = mix_u64(hash, paint.tile_y as i64 as u64);
-        hash = mix_u64(hash, u64::from(paint.plane));
-        hash = mix_u64(hash, u64::from(paint.overlay_id));
-        hash = mix_u64(hash, u64::from(paint.shape));
-        hash = mix_u64(hash, u64::from(paint.orientation));
-    }
-    hash
-}
-
-fn commit_blocker(warnings: &[PathWarning]) -> Option<&PathWarning> {
-    warnings.iter().find(|warning| {
-        matches!(warning.severity, Severity::Error) || warning.code == "ROUTE_BLOCKED"
-    })
 }
 
 fn distance(a: (f32, f32), b: (f32, f32)) -> f32 {
@@ -119,63 +81,24 @@ fn segment_distance(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
     distance(p, (a.0 + dx * t, a.1 + dy * t))
 }
 
-fn to_points(points: &[(f32, f32)]) -> Vec<PathPoint> {
-    points
-        .iter()
-        .map(|p| PathPoint::new(f64::from(p.0), f64::from(p.1)))
-        .collect()
-}
-
-fn to_line(points: &[PathPoint]) -> Vec<(f32, f32)> {
-    points.iter().map(|p| (p.x as f32, p.y as f32)).collect()
-}
-
-/// Everything a plan is made from, copied off the editor so another thread can make it.
+/// Everything a fit is made from, copied off the editor so another thread can make it.
 struct PlanInput {
     key: u64,
-    mode: PathMode,
-    plane: u8,
     points: Vec<(f32, f32)>,
-    settings: terrain_path::PathSettings,
-    profile: terrain_path::PathProfile,
-    env: PathEnvironment,
-    wall_thickness: f32,
-    tower_size: f32,
+    width: f32,
+    edge_weight: f32,
+    overlay_id: u16,
 }
 
 impl PlanInput {
     fn make(self) -> Preview {
-        let points = to_points(&self.points);
-        match self.mode {
-            PathMode::Terrain => {
-                let plan = PathPlanner.plan_stroke(
-                    &points,
-                    self.plane,
-                    &self.profile,
-                    &self.settings,
-                    &self.env,
-                );
-                Preview {
-                    key: self.key,
-                    paints: plan.paints,
-                    warnings: plan.warnings,
-                    lines: plan.lines.iter().map(|l| to_line(l)).collect(),
-                    ..Preview::default()
-                }
-            }
-            PathMode::Walls => {
-                let line = terrain_path::smooth_line(&points, self.settings.smoothness, STEP);
-                let line = to_line(&line);
-                let WallPlan { tiles, tangents } =
-                    generate_walls(&line, &self.points, self.wall_thickness, self.tower_size);
-                Preview {
-                    key: self.key,
-                    lines: vec![line],
-                    wall_tiles: tiles,
-                    tangents,
-                    ..Preview::default()
-                }
-            }
+        let line = terrain_path::smooth_catmull_rom(&self.points);
+        let paints = terrain_path::fit_path_overlay(&line, self.width, self.edge_weight);
+        Preview {
+            key: self.key,
+            overlay_id: self.overlay_id,
+            paints,
+            lines: vec![line],
         }
     }
 }
@@ -237,42 +160,7 @@ impl EditorApp {
     pub(super) fn spline_tile_count(&self) -> usize {
         self.spline
             .current_preview()
-            .map_or(0, |p| p.paints.len().max(p.wall_tiles.len()))
-    }
-
-    /// What the planner has to say about the previewed path (reroutes, blocked tiles ...), one
-    /// line per kind of note.
-    pub(super) fn spline_notes(&self) -> Vec<(Severity, String)> {
-        let Some(preview) = self.spline.current_preview() else {
-            return Vec::new();
-        };
-        let mut seen: Vec<(Severity, &'static str, String, usize)> = Vec::new();
-        for warning in &preview.warnings {
-            match seen.iter_mut().find(|n| n.1 == warning.code) {
-                Some(note) => note.3 += 1,
-                None => seen.push((warning.severity, warning.code, warning.message.clone(), 1)),
-            }
-        }
-        seen.into_iter()
-            .map(|(severity, code, message, count)| {
-                let text = match code {
-                    "REROUTED" => "Went round obstacles".to_owned(),
-                    "ROUTE_BLOCKED" => {
-                        "Could not route round the obstacles; it follows the line you drew"
-                            .to_owned()
-                    }
-                    "OUT_OF_BOUNDS" => "Part of the path is off the loaded map".to_owned(),
-                    "OBSTACLE_CONFLICT" => "Crosses a solid object or a steep slope".to_owned(),
-                    "EXISTING_OVERLAY" => {
-                        format!("Kept {count} tile(s) that already have a different overlay")
-                    }
-                    "TOPOLOGY_SEAM" => format!("{count} seam(s) between shapes do not meet"),
-                    "TOPOLOGY_COMPONENT" => "The path is in separate pieces".to_owned(),
-                    _ => message,
-                };
-                (severity, text)
-            })
-            .collect()
+            .map_or(0, |preview| preview.paints.len())
     }
 
     /// The overlay id the path lays, when the brush sets one.
@@ -284,106 +172,30 @@ impl EditorApp {
         }
     }
 
-    /// A profile for the planner: the tool's profile laying the brush's overlay.
-    fn path_profile(&self, overlay: u16) -> terrain_path::PathProfile {
-        let mut profile = self.prefs.spline.profile.clone();
-        profile.primary_overlay_id = overlay.max(1);
-        profile.sanitized()
-    }
-
-    /// The tiles round the path that already carry an overlay (a path keeps them and joins onto
-    /// them).
-    fn existing_paints(&self, points: &[(f32, f32)], reach: f32) -> Vec<TilePaint> {
-        let plane = self.view_plane;
-        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-        for p in points {
-            x0 = x0.min(p.0);
-            y0 = y0.min(p.1);
-            x1 = x1.max(p.0);
-            y1 = y1.max(p.1);
-        }
-        let mut paints = Vec::new();
-        for x in (x0 - reach).floor() as i32..=(x1 + reach).ceil() as i32 {
-            for y in (y0 - reach).floor() as i32..=(y1 + reach).ceil() as i32 {
-                if let Some(values) = self.current_tile_values((plane, x, y))
-                    && values.overlay != 0
-                    && values.shape <= 11
-                    && values.rotation <= 3
-                {
-                    paints.push(TilePaint {
-                        tile_x: x,
-                        tile_y: y,
-                        plane,
-                        overlay_id: values.overlay,
-                        shape: values.shape,
-                        orientation: values.rotation,
-                        coverage: 1.0,
-                        profile_id: "existing".to_owned(),
-                    });
-                }
-            }
-        }
-        paints
-    }
-
     /// Everything the current path is planned from, or `None` when there is nothing to plan.
     fn plan_input(&self) -> Option<PlanInput> {
-        let spline = &self.prefs.spline;
         if self.spline.points.len() < 2 {
             return None;
         }
-        let overlay = self.laying_overlay();
-        if spline.mode == PathMode::Terrain && overlay.is_none() {
-            return None;
-        }
-        let settings = spline.planner.sanitized();
-        let profile = self.path_profile(overlay.unwrap_or(1));
-        let reach = (profile.base_width * settings.width_scale) as f32
-            + settings.route_corridor as f32
-            + settings.snap_radius as f32
-            + 6.0;
-        let existing = if spline.mode == PathMode::Terrain {
-            self.existing_paints(&self.spline.points, reach)
-        } else {
-            Vec::new()
-        };
-        let existing_key = paint_signature(&existing);
+        let overlay_id = self.laying_overlay()?;
+        let spline = &self.prefs.spline;
+        let width = spline.width.clamp(0.5, 24.0);
+        let edge_weight = spline.edge_weight.clamp(0.0, 2.0);
         let key = fnv(&format!(
-            "{:?}|{:?}|{:?}|{:?}|{}|{}|{}|{}|{}|{}|{}|{}|{:?}",
+            "{:?}|{}|{}|{}|{}|{}",
             self.spline.points,
-            settings,
-            profile,
-            spline.mode,
+            width.to_bits(),
+            edge_weight.to_bits(),
+            overlay_id,
             self.view_plane,
-            self.infos_version,
-            self.stroke_counter,
-            self.history.len(),
-            self.redo_stack.len(),
-            existing_key,
-            spline.wall_thickness.to_bits(),
-            spline.tower_size.to_bits(),
-            (spline.wall_towers, spline.snap_points),
+            spline.snap_points,
         ));
-        let grid = SceneGrid::new(self.infos.clone());
-        let env = PathEnvironment {
-            bounds: grid.bounds(),
-            cost_grid: std::sync::Arc::new(grid),
-            existing_paints: existing,
-        };
         Some(PlanInput {
             key,
-            mode: spline.mode,
-            plane: self.view_plane,
             points: self.spline.points.clone(),
-            settings,
-            profile,
-            env,
-            wall_thickness: spline.wall_thickness,
-            tower_size: if spline.wall_towers {
-                spline.tower_size
-            } else {
-                1.0
-            },
+            width,
+            edge_weight,
+            overlay_id,
         })
     }
 
@@ -471,8 +283,7 @@ impl EditorApp {
         }
     }
 
-    /// Everything about the path in one block of text, to paste into a chat: the points, the
-    /// options and what the planner made of them.
+    /// Everything about the current fitted path in one copyable block.
     pub(super) fn spline_report(&self) -> String {
         let spline = &self.prefs.spline;
         let raw: Vec<String> = self
@@ -482,34 +293,15 @@ impl EditorApp {
             .map(|p| format!("{:.3},{:.3}", p.0, p.1))
             .collect();
         let mut text = format!(
-            "PATH mode={:?} plane={} points={}\n",
-            spline.mode,
+            "PATH plane={} points={}\nwidth={:.2} edge_weight={:.2} overlay={:?}\n",
             self.view_plane,
-            raw.join(";")
-        );
-        text.push_str(&format!(
-            "overlay={:?} build={}\n",
+            raw.join(";"),
+            spline.width,
+            spline.edge_weight,
             self.prefs.brush.overlay.fill,
-            self.cache_build
-                .as_ref()
-                .map_or("?".to_owned(), |(b, _)| b.to_string())
-        ));
-        text.push_str(&format!(
-            "settings={:?}\nprofile={:?}\n",
-            spline.planner, spline.profile
-        ));
+        );
         if let Some(preview) = &self.spline.preview {
-            text.push_str(&format!(
-                "planned {} tiles, {} walls band tiles\n",
-                preview.paints.len(),
-                preview.wall_tiles.len()
-            ));
-            for warning in &preview.warnings {
-                text.push_str(&format!(
-                    "{:?} {} {}\n",
-                    warning.severity, warning.code, warning.message
-                ));
-            }
+            text.push_str(&format!("fitted {} tiles\n", preview.paints.len()));
         }
         text
     }
@@ -603,12 +395,8 @@ impl EditorApp {
         }
     }
 
-    /// Lay the previewed path as one undo step.
+    /// Lay the previewed fitted path as one semantic patch / one undo step.
     pub(super) fn commit_spline(&mut self) {
-        if self.prefs.spline.mode == PathMode::Walls {
-            self.commit_walls();
-            return;
-        }
         if self.laying_overlay().is_none() {
             self.notice = Some((
                 "Choose an overlay to lay the path with".to_owned(),
@@ -620,21 +408,10 @@ impl EditorApp {
         let Some(preview) = self.spline.preview.take() else {
             return;
         };
-        let blocked_message = commit_blocker(&preview.warnings).map(|warning| match warning.code {
-            "ROUTE_BLOCKED" => {
-                "The path could not route around an obstacle. Move the path or increase the route corridor before laying it.".to_owned()
-            }
-            _ => format!("The path was not laid: {}", warning.message),
-        });
-        if let Some(message) = blocked_message {
-            self.spline.preview = Some(preview);
-            self.notice = Some((message, web_time::Instant::now()));
-            return;
-        }
         if preview.paints.is_empty() {
             self.spline.preview = Some(preview);
             self.notice = Some((
-                "The path has no tiles to lay (it may be blocked or already covered)".to_owned(),
+                "The fitted path has no overlay tiles".to_owned(),
                 web_time::Instant::now(),
             ));
             return;
@@ -642,63 +419,19 @@ impl EditorApp {
         let tiles: Vec<PathTile> = preview
             .paints
             .iter()
-            .map(|p| PathTile {
-                tile: (p.tile_x, p.tile_y),
-                overlay: Some(p.overlay_id),
-                shape: p.shape,
-                rotation: p.orientation,
+            .map(|paint| PathTile {
+                tile: (paint.tile_x, paint.tile_y),
+                overlay: Some(preview.overlay_id),
+                shape: paint.shape,
+                rotation: paint.orientation,
             })
             .collect();
         let changed = self.apply_terrain_path(&tiles);
         self.spline.points.clear();
         self.notice = Some((
-            format!("Laid a path over {changed} tiles"),
+            format!("Laid a fitted path over {changed} tiles"),
             web_time::Instant::now(),
         ));
-    }
-
-    /// Lay a castle wall: band overlay paint plus spawned wall objects, one undo step. The overlay
-    /// is optional (walls still spawn).
-    fn commit_walls(&mut self) {
-        self.spline_plan_now();
-        let Some(preview) = self.spline.preview.take() else {
-            return;
-        };
-        let spline = &self.prefs.spline;
-        let kit = WallKit {
-            side: spline.wall_side,
-            top: spline.wall_top,
-            door: spline.wall_door,
-            diagonal: spline.wall_diagonal,
-        };
-        let height = spline.wall_height.max(1.0).round() as u32;
-        let overlay = self.laying_overlay();
-        let band: HashSet<(i32, i32)> = preview.wall_tiles.iter().copied().collect();
-        let walls = emit_walls(&band, &preview.tangents, &kit, height, self.view_plane);
-        if band.is_empty() && walls.is_empty() {
-            return;
-        }
-        let tiles: Vec<PathTile> = preview
-            .wall_tiles
-            .iter()
-            .map(|tile| PathTile {
-                tile: *tile,
-                overlay,
-                shape: 0,
-                rotation: 0,
-            })
-            .collect();
-        let wall_count = walls.len();
-        let changed = self.apply_path(&tiles, walls);
-        self.spline.points.clear();
-        let summary = if kit.side == 0 {
-            format!("Laid a band over {changed} tiles (set a wall Side ID to spawn walls)")
-        } else if changed == 0 {
-            format!("Spawned {wall_count} walls")
-        } else {
-            format!("Laid a band over {changed} tiles and spawned {wall_count} walls")
-        };
-        self.notice = Some((summary, web_time::Instant::now()));
     }
 
     /// The path preview: the planned tiles, the centre line, a ghost segment to the cursor, the
@@ -798,9 +531,6 @@ impl EditorApp {
             for paint in &preview.paints {
                 tile_polygon((paint.tile_x, paint.tile_y), paint.shape, paint.orientation);
             }
-            for tile in &preview.wall_tiles {
-                tile_polygon(*tile, 0, 0);
-            }
         }
 
         // The centre line.
@@ -808,11 +538,7 @@ impl EditorApp {
             Some(preview) if !preview.lines.is_empty() => {
                 preview.lines.iter().flatten().copied().collect()
             }
-            _ => to_line(&terrain_path::smooth_line(
-                &to_points(&self.spline.points),
-                self.prefs.spline.planner.smoothness,
-                STEP,
-            )),
+            _ => terrain_path::smooth_catmull_rom(&self.spline.points),
         };
         let screen: Vec<Pos2> = drawn.iter().filter_map(|p| ground(*p, 10.0)).collect();
         if screen.len() >= 2 {
@@ -850,51 +576,5 @@ impl EditorApp {
                 );
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn failed_main_route_blocks_path_commit() {
-        let warnings = [PathWarning::general(
-            Severity::Warning,
-            "ROUTE_BLOCKED",
-            "No route exists inside the configured corridor",
-        )];
-        assert_eq!(
-            commit_blocker(&warnings).map(|warning| warning.code),
-            Some("ROUTE_BLOCKED")
-        );
-    }
-
-    #[test]
-    fn planner_errors_block_path_commit() {
-        let warnings = [PathWarning::general(
-            Severity::Error,
-            "INVALID_EDGE",
-            "Missing path data",
-        )];
-        assert!(commit_blocker(&warnings).is_some());
-    }
-
-    #[test]
-    fn diagnostic_warnings_do_not_block_path_commit() {
-        let warnings = [
-            PathWarning::general(Severity::Info, "REROUTED", "Went round obstacles"),
-            PathWarning::general(
-                Severity::Warning,
-                "EXISTING_OVERLAY",
-                "Existing overlay was preserved",
-            ),
-            PathWarning::general(
-                Severity::Warning,
-                "NETWORK_CONNECT_BLOCKED",
-                "An optional network branch could not connect",
-            ),
-        ];
-        assert!(commit_blocker(&warnings).is_none());
     }
 }

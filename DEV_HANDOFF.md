@@ -8,7 +8,7 @@ This is the living development handoff for the RustOSRS map-editor architecture 
 
 Build a production-grade OSRS editor architecture where semantic map state is authoritative, deterministic, headless-testable, and independent from UI, rendering, ECS/runtime state, and cache codecs.
 
-The current spline/path generator is intentionally **not** being redesigned yet. Its replacement comes later, after the edit-domain, history/query, view-synchronization, and persistence boundaries are stable.
+The spline/path direction changed on 2026-10-12: wall generation and obstacle/network pathfinding are disabled for now. The active tool is a deliberately small deterministic pipeline: clamped Catmull-Rom smoothing -> ideal band sampling -> exact OSRS overlay-shape fitting -> bounded shared-edge relaxation -> one semantic `MapPatch` commit.
 
 ## Working rules
 
@@ -419,42 +419,39 @@ Normal terrain-path commits now cross `MapQuery`/`MapPatch`; wall-mode commits r
 
 ## Current branch status / next checkpoint
 
-The active branch is `refactor/editor-path-commit-domain`.
+Active branch: `refactor/editor-path-commit-domain`.
 
-Do **not** redesign the path planner or preview worker on this branch.
+### Simplified path-generator direction
 
-After Checkpoint 10 is fully green, the next small checkpoint should remain on this branch and address wall-mode commit semantics only:
+The previous terrain planner is no longer part of the active Spline-tool runtime. The current branch intentionally disables:
 
-1. Inspect exact object-placement state available to the editor at wall commit time.
-2. Define the narrow `LocSpec` ↔ `ObjectPlacement` adapter needed for wall additions.
-3. Use semantic object membership/validation without introducing speculative spatial-query APIs.
-4. Keep wall generation, tangents, tower logic, planner/preview behavior, and renderer rebuild scheduling unchanged.
-5. Preserve one laid wall path as one undo step.
-6. Add focused headless regression coverage.
-7. Stop and report before any brush/height/object-tool migration.
+- Walls mode and wall/tower object emission
+- obstacle avoidance and rerouting
+- A*/cost-grid pathfinding
+- path-network auto-connect behavior
+- wander/noise/width-variation generation
+- preserve-existing-overlay topology logic
 
-Do not merge this branch until the intended spline/path commit migration scope is complete and audited against `main`.
+The active path algorithm is intentionally small:
 
-## Later branches, tentative order
+1. Control points are smoothed with clamped uniform Catmull-Rom, 12 samples per segment.
+2. Candidate tiles are collected from segment-local boxes expanded by half the requested width. This is equivalent to considering every tile that may touch the band without scanning a huge global bounding rectangle.
+3. Each candidate tile samples an 8x8 ideal coverage mask against exact point-to-polyline distance.
+4. Shape candidates are sampled from `terrain_path::shape_triangles`, which itself uses audited `osrs_scene::ShapedTerrainSurface` geometry. Stored map shapes remain `0..=11`.
+5. EMPTY wins exact ties; the first pass maximizes 8x8 area agreement independently.
+6. Up to six deterministic coordinate-descent passes add shared-edge mismatch cost controlled by `edge_weight`.
+7. Empty fits are omitted.
+8. The result still commits through the semantic `MapPatch` boundary and remains one undo step.
 
-Directional only. Do not start automatically.
+Safe simplifications/improvements over the supplied `PathOverlayFitter` idea:
 
-1. Complete spline/path commit migration, including wall/object commit semantics.
-2. Migrate brush/terrain/height editing.
-3. Migrate object editing.
-4. Add revision-based async synchronization and stale-result rejection.
-5. Refine semantic change-impact/invalidation mapping.
-6. Harden persistence/export and round-trip fixtures.
-7. Replace/redesign the spline/path/auto-tile generator on top of the stable semantic query/patch architecture.
-8. Plugin contracts only after the editor boundaries have proven stable.
+- signed world coordinates are supported directly; there is no `mapWidth/mapLength` clamp assumption
+- exact renderer-derived shape triangles are reused rather than duplicating the shape tables or rotation formulas
+- segment-local candidate boxes avoid pathological global-bounding-box work on long diagonals
+- width and edge weight are finite/clamped at the editor boundary
+- no randomness, annealing, topology repair, or additional heuristics were added
 
-## Path-generator rewrite remains deferred
+The old planner/router/wall source files remain in the repository temporarily as uncompiled historical code while this replacement proves itself. They are not wired into the active `terrain_path` module and should not be revived implicitly.
 
-The existing spline/path generator has grown too large and should eventually be replaced, but not during the current architecture checkpoints.
+Next checkpoint after this fitter is validated should be a focused quality pass on its visual output and fixtures only. Do not reintroduce obstacle routing or walls without an explicit decision.
 
-When that rewrite starts:
-
-- build against `MapQuery` for reads
-- emit `MapPatch` for authoritative commits
-- do not mutate `EditorApp` or renderer state directly
-- preserve useful existing golden/topology/geometry/seam/network/routing/determinism fixtures as successor acceptance tests where they describe desired behavior

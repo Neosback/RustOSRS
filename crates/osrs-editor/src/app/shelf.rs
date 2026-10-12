@@ -8,8 +8,7 @@ use super::widgets::chips;
 use super::workspace::tool_icon;
 use crate::heights::Falloff;
 use crate::icons;
-use crate::paint::{BrushShape, PathMode, Tool};
-use crate::terrain_path::{AutoConnectPolicy, ObstaclePolicy};
+use crate::paint::{BrushShape, Tool};
 use eframe::egui::{self, Stroke};
 
 const SHELF_WIDTH: f32 = 196.0;
@@ -162,174 +161,28 @@ impl EditorApp {
         }
     }
 
-    /// The terrain-path planner and wall-band controls used by the Spline tool.
+    /// Deterministic width/shape fitting controls used by the Spline tool.
     fn path_section(&mut self, ui: &mut egui::Ui) {
         crate::theme::section_heading(ui, "Path");
-        let mode_options: Vec<_> = PathMode::ALL
-            .iter()
-            .map(|mode| (*mode, mode.label()))
-            .collect();
-        if let Some(mode) = chips(ui, self.prefs.spline.mode, &mode_options) {
-            self.prefs.spline.mode = mode;
-        }
-        ui.checkbox(
-            &mut self.prefs.spline.snap_points,
-            "Snap points to tile centres",
-        )
-        .on_hover_text("Place control points at tile centres instead of the exact cursor position");
-
-        if self.prefs.spline.mode == PathMode::Walls {
-            self.wall_path_section(ui);
-            return;
-        }
-
         let spline = &mut self.prefs.spline;
-        let planner = &mut spline.planner;
-        let profile = &mut spline.profile;
+        ui.checkbox(&mut spline.snap_points, "Snap points to tile centres")
+            .on_hover_text(
+                "Place control points at tile centres instead of the exact cursor position",
+            );
 
         ui.add_space(4.0);
         ui.label(egui::RichText::new("Width").weak());
         ui.add(
-            egui::Slider::new(&mut profile.base_width, 0.5..=24.0)
+            egui::Slider::new(&mut spline.width, 0.5..=24.0)
                 .max_decimals(1)
                 .suffix(" tiles"),
         );
-        ui.label(egui::RichText::new("Smoothness").weak());
-        ui.add(egui::Slider::new(&mut planner.smoothness, 0.0..=1.0).max_decimals(2));
-        ui.label(egui::RichText::new("Edge falloff").weak());
-        ui.add(egui::Slider::new(&mut profile.edge_falloff, 0.0..=1.0).max_decimals(2));
-
-        crate::theme::section_heading(ui, "Natural shape");
-        ui.label(egui::RichText::new("Wander").weak());
-        ui.add(
-            egui::Slider::new(&mut profile.centerline_wander, 0.0..=1.5)
-                .max_decimals(2)
-                .suffix(" tiles"),
+        ui.label(egui::RichText::new("Edge continuity").weak());
+        ui.add(egui::Slider::new(&mut spline.edge_weight, 0.0..=2.0).max_decimals(2))
+            .on_hover_text("0 fits every tile independently; higher values prefer neighbouring shapes whose shared edges agree");
+        ui.add_space(6.0);
+        ui.weak(
+            "The path follows the line you draw. Obstacle routing and walls are disabled for now.",
         );
-        ui.label(egui::RichText::new("Width variation").weak());
-        ui.add(egui::Slider::new(&mut profile.width_variation, 0.0..=0.95).max_decimals(2));
-        ui.label(egui::RichText::new("Edge noise").weak());
-        ui.add(
-            egui::Slider::new(&mut profile.edge_noise, 0.0..=1.5)
-                .max_decimals(2)
-                .suffix(" tiles"),
-        );
-
-        crate::theme::section_heading(ui, "Obstacles");
-        egui::ComboBox::from_id_salt("path_obstacles")
-            .selected_text(planner.obstacle_policy.label())
-            .width(ui.available_width())
-            .show_ui(ui, |ui| {
-                for policy in ObstaclePolicy::ALL {
-                    ui.selectable_value(&mut planner.obstacle_policy, policy, policy.label());
-                }
-            });
-        ui.checkbox(&mut profile.reroute, "Allow rerouting");
-        ui.label(egui::RichText::new("Clearance").weak());
-        ui.add(
-            egui::Slider::new(&mut profile.obstacle_clearance, 0.0..=4.0)
-                .max_decimals(2)
-                .suffix(" tiles"),
-        );
-        ui.label(egui::RichText::new("Route corridor").weak());
-        ui.add(
-            egui::Slider::new(&mut planner.route_corridor, 1.0..=64.0)
-                .max_decimals(1)
-                .suffix(" tiles"),
-        );
-
-        crate::theme::section_heading(ui, "Connections");
-        ui.checkbox(&mut profile.auto_connect, "Join nearby paths");
-        if profile.auto_connect {
-            egui::ComboBox::from_id_salt("path_auto_connect")
-                .selected_text(planner.auto_connect_policy.label())
-                .width(ui.available_width())
-                .show_ui(ui, |ui| {
-                    for policy in AutoConnectPolicy::ALL {
-                        ui.selectable_value(
-                            &mut planner.auto_connect_policy,
-                            policy,
-                            policy.label(),
-                        );
-                    }
-                });
-            ui.label(egui::RichText::new("Join radius").weak());
-            ui.add(
-                egui::Slider::new(&mut planner.snap_radius, 0.0..=12.0)
-                    .max_decimals(1)
-                    .suffix(" tiles"),
-            );
-        }
-        ui.checkbox(&mut planner.preserve_existing, "Preserve existing overlays");
-        ui.checkbox(&mut planner.repair_continuity, "Repair path continuity")
-            .on_hover_text("Restore tiny raster gaps and repair side-adjacent shape disconnects");
-
-        egui::CollapsingHeader::new("Advanced")
-            .default_open(false)
-            .show(ui, |ui| {
-                ui.label(egui::RichText::new("Sample spacing").weak());
-                ui.add(
-                    egui::Slider::new(&mut planner.sample_spacing, 0.05..=1.0)
-                        .max_decimals(2)
-                        .suffix(" tiles"),
-                );
-                ui.label(egui::RichText::new("Supersampling").weak());
-                ui.add(egui::Slider::new(&mut planner.supersample, 2..=16));
-                ui.label(egui::RichText::new("Noise strength").weak());
-                ui.add(egui::Slider::new(&mut planner.noise_strength, 0.0..=3.0).max_decimals(2));
-                ui.horizontal(|ui| {
-                    ui.label("Seed");
-                    ui.add(egui::DragValue::new(&mut planner.seed).speed(1));
-                });
-            });
-
-        let notes = self.spline_notes();
-        if !notes.is_empty() {
-            crate::theme::section_heading(ui, "Preview");
-            for (_, note) in notes {
-                ui.label(note);
-            }
-        }
-    }
-
-    fn wall_path_section(&mut self, ui: &mut egui::Ui) {
-        let spline = &mut self.prefs.spline;
-        crate::theme::section_heading(ui, "Wall kit");
-        ui.horizontal(|ui| {
-            ui.label("Side");
-            ui.add(egui::DragValue::new(&mut spline.wall_side).speed(1));
-        });
-        ui.horizontal(|ui| {
-            ui.label("Top");
-            ui.add(egui::DragValue::new(&mut spline.wall_top).speed(1));
-        });
-        ui.horizontal(|ui| {
-            ui.label("Door");
-            ui.add(egui::DragValue::new(&mut spline.wall_door).speed(1));
-        });
-        ui.horizontal(|ui| {
-            ui.label("Diagonal");
-            ui.add(egui::DragValue::new(&mut spline.wall_diagonal).speed(1));
-        });
-        ui.label(egui::RichText::new("Thickness").weak());
-        ui.add(
-            egui::Slider::new(&mut spline.wall_thickness, 1.0..=12.0)
-                .max_decimals(0)
-                .suffix(" tiles"),
-        );
-        ui.label(egui::RichText::new("Height").weak());
-        ui.add(
-            egui::Slider::new(&mut spline.wall_height, 1.0..=3.0)
-                .max_decimals(0)
-                .suffix(" planes"),
-        );
-        ui.checkbox(&mut spline.wall_towers, "Towers at control points");
-        if spline.wall_towers {
-            ui.add(
-                egui::Slider::new(&mut spline.tower_size, 1.0..=4.0)
-                    .max_decimals(0)
-                    .suffix(" tiles"),
-            );
-        }
     }
 }

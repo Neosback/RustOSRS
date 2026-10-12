@@ -139,10 +139,6 @@ impl EditorApp {
         self.current_tile((self.view_plane, tile.0, tile.1))
     }
 
-    pub(super) fn current_tile_values(&self, key: TileKey) -> Option<TileValues> {
-        self.current_tile(key)
-    }
-
     fn current_tile(&self, key: TileKey) -> Option<TileValues> {
         self.edited
             .get(&key)
@@ -505,50 +501,6 @@ impl EditorApp {
         }
         let count = edits.len();
         self.send_edits(edits);
-        self.stroke = Some(stroke);
-        self.end_stroke();
-        count
-    }
-
-    /// Lay a path: each tile's overlay with its shape and rotation, the other armed channels of the
-    /// brush, and spawned `added` objects (one undo step). Returns how many tiles changed.
-    pub(super) fn apply_path(&mut self, tiles: &[PathTile], added: Vec<LocSpec>) -> usize {
-        let brush = self.prefs.brush.clone();
-        let loc_edits: Vec<LocEdit> = added.iter().map(|s| LocEdit::Add(*s)).collect();
-        if tiles.is_empty() && loc_edits.is_empty() {
-            return 0;
-        }
-        self.begin_stroke();
-        let Some(mut stroke) = self.stroke.take() else {
-            return 0;
-        };
-        let plane = self.view_plane;
-        let mut edits = Vec::new();
-        for path_tile in tiles {
-            let key = (plane, path_tile.tile.0, path_tile.tile.1);
-            let Some(before) = self.current_tile(key) else {
-                continue;
-            };
-            let mut after = before;
-            if let Some(id) = path_tile.overlay {
-                after.overlay = id;
-                after.shape = path_tile.shape;
-                after.rotation = path_tile.rotation;
-            }
-            if brush.height.armed {
-                after.height = brush.height.value;
-            }
-            if brush.flags.armed {
-                after.flags = brush.flags.bits;
-            }
-            self.record(&mut stroke, key, after, &mut edits);
-        }
-        let count = edits.len();
-        if !added.is_empty() {
-            stroke.step.added = added;
-        }
-        self.send_edits(edits);
-        self.send_loc_edits(loc_edits);
         self.stroke = Some(stroke);
         self.end_stroke();
         count

@@ -152,71 +152,24 @@ impl SelectMode {
     }
 }
 
-/// What the path tool lays along the line.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum PathMode {
-    /// A natural path of overlay tiles (the terrain path planner).
-    #[default]
-    Terrain,
-    /// A castle wall: a band of tiles with wall objects on its edges.
-    Walls,
-}
-
-impl PathMode {
-    pub const ALL: [Self; 2] = [Self::Terrain, Self::Walls];
-
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Terrain => "Path",
-            Self::Walls => "Walls",
-        }
-    }
-}
-
-/// How the path tool lays a path.
+/// How the simplified Spline tool fits an overlay band to the user's control line.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SplineSettings {
-    pub mode: PathMode,
-    /// The planner's settings (smoothness, obstacles, noise, seed ...).
-    pub planner: crate::terrain_path::PathSettings,
-    /// What the path is made of (width, falloff, wander ...). Its overlay is the brush's overlay.
-    pub profile: crate::terrain_path::PathProfile,
+    /// Total path-band width in tiles.
+    pub width: f32,
+    /// Shared-edge agreement weight. Zero fits each tile independently.
+    pub edge_weight: f32,
     /// Control points land on tile centres (off: where you click).
     pub snap_points: bool,
-    /// Walls mode: castle-wall kit object ids (0 = unset; top falls back to side).
-    pub wall_side: u32,
-    pub wall_top: u32,
-    pub wall_door: u32,
-    pub wall_diagonal: u32,
-    /// Walls mode: band thickness in tiles.
-    pub wall_thickness: f32,
-    /// Walls mode: wall height in planes (plus a cap row on top).
-    pub wall_height: f32,
-    /// Walls mode: lay tower squares around each control point.
-    pub wall_towers: bool,
-    /// Walls mode: tower square size in tiles.
-    pub tower_size: f32,
 }
 
 impl Default for SplineSettings {
     fn default() -> Self {
         Self {
-            mode: PathMode::Terrain,
-            planner: crate::terrain_path::PathSettings {
-                repair_continuity: true,
-                ..crate::terrain_path::PathSettings::default()
-            },
-            profile: crate::terrain_path::PathProfile::default(),
+            width: 3.0,
+            edge_weight: 0.75,
             snap_points: false,
-            wall_side: 0,
-            wall_top: 0,
-            wall_door: 0,
-            wall_diagonal: 0,
-            wall_thickness: 3.0,
-            wall_height: 2.0,
-            wall_towers: true,
-            tower_size: 2.0,
         }
     }
 }
