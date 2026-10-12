@@ -39,7 +39,7 @@ mod tests {
 
     #[test]
     fn tile_and_height_vertex_coordinates_remain_distinct_types() {
-        let plane = SourcePlane::new(2).expect("test plane is valid");
+        let plane = SourcePlane::new(2).unwrap_or_else(|| unreachable!("test plane is valid"));
         let tile = MapTile::new(3200, 3200);
 
         assert_eq!(MapPosition::new(tile, plane).tile, tile);
