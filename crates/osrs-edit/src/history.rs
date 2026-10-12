@@ -1,0 +1,309 @@
+use crate::{ChangeImpact, MapDocument, MapPatch, PatchApplyError};
+
+/// Headless undo/redo history for authoritative semantic map edits.
+///
+/// Each successfully committed non-empty [`MapPatch`] becomes exactly one undo
+/// entry, preserving the intended "one user gesture = one history step" rule.
+/// Undo applies the patch's exact inverse; redo reapplies the original patch.
+///
+/// History mutations are failure-safe: if the document rejects an undo or redo
+/// because authoritative state no longer matches the recorded patch, the history
+/// stacks are restored to their prior state.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct EditHistory {
+    undo: Vec<MapPatch>,
+    redo: Vec<MapPatch>,
+}
+
+impl EditHistory {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Apply a new logical edit and record it as one undo step.
+    ///
+    /// The redo stack is cleared only after a non-empty patch applies
+    /// successfully. Empty patches are accepted as no-ops and do not disturb
+    /// existing history.
+    pub fn commit(
+        &mut self,
+        document: &mut MapDocument,
+        patch: MapPatch,
+    ) -> Result<ChangeImpact, PatchApplyError> {
+        let impact = document.apply_patch(&patch)?;
+
+        if !patch.is_empty() {
+            self.undo.push(patch);
+            self.redo.clear();
+        }
+
+        Ok(impact)
+    }
+
+    /// Undo the most recent logical edit.
+    ///
+    /// Returns `Ok(None)` when there is nothing to undo.
+    pub fn undo(
+        &mut self,
+        document: &mut MapDocument,
+    ) -> Result<Option<ChangeImpact>, PatchApplyError> {
+        let Some(patch) = self.undo.pop() else {
+            return Ok(None);
+        };
+
+        let inverse = patch.inverse();
+        match document.apply_patch(&inverse) {
+            Ok(impact) => {
+                self.redo.push(patch);
+                Ok(Some(impact))
+            }
+            Err(error) => {
+                self.undo.push(patch);
+                Err(error)
+            }
+        }
+    }
+
+    /// Redo the most recently undone logical edit.
+    ///
+    /// Returns `Ok(None)` when there is nothing to redo.
+    pub fn redo(
+        &mut self,
+        document: &mut MapDocument,
+    ) -> Result<Option<ChangeImpact>, PatchApplyError> {
+        let Some(patch) = self.redo.pop() else {
+            return Ok(None);
+        };
+
+        match document.apply_patch(&patch) {
+            Ok(impact) => {
+                self.undo.push(patch);
+                Ok(Some(impact))
+            }
+            Err(error) => {
+                self.redo.push(patch);
+                Err(error)
+            }
+        }
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    pub fn undo_len(&self) -> usize {
+        self.undo.len()
+    }
+
+    pub fn redo_len(&self) -> usize {
+        self.redo.len()
+    }
+
+    pub fn clear(&mut self) {
+        self.undo.clear();
+        self.redo.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        HeightVertexCoord, LocKind, MapOp, MapPosition, ObjectOrientation, ObjectPlacement,
+        TerrainTile,
+    };
+    use osrs_core::coords::{MapTile, SourcePlane};
+    use osrs_core::ids::{FloorUnderlayId, ObjectId};
+
+    fn plane() -> SourcePlane {
+        SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))
+    }
+
+    fn position(x: i32, y: i32) -> MapPosition {
+        MapPosition::new(MapTile::new(x, y), plane())
+    }
+
+    fn height(x: i32, y: i32) -> HeightVertexCoord {
+        HeightVertexCoord::new(MapTile::new(x, y), plane())
+    }
+
+    fn object() -> ObjectPlacement {
+        ObjectPlacement {
+            object_id: ObjectId::new(100),
+            position: position(3200, 3200),
+            kind: LocKind::new(10).unwrap_or_else(|| unreachable!("loc kind is valid")),
+            orientation: ObjectOrientation::new(2)
+                .unwrap_or_else(|| unreachable!("orientation is valid")),
+        }
+    }
+
+    fn composite_patch(vertex: HeightVertexCoord) -> MapPatch {
+        MapPatch::new([
+            MapOp::SetTerrain {
+                coord: position(3200, 3200),
+                before: TerrainTile::default(),
+                after: TerrainTile {
+                    underlay: Some(FloorUnderlayId::new(7)),
+                    ..TerrainTile::default()
+                },
+            },
+            MapOp::SetHeight {
+                coord: vertex,
+                before: 32,
+                after: 64,
+            },
+            MapOp::AddObject {
+                placement: object(),
+            },
+        ])
+    }
+
+    #[test]
+    fn one_patch_is_one_history_entry() {
+        let vertex = height(3200, 3200);
+        let mut document = MapDocument::from_parts([], [(vertex, 32)], []);
+        let mut history = EditHistory::new();
+        let patch = composite_patch(vertex);
+
+        assert_eq!(history.commit(&mut document, patch), Ok(patch_impact()));
+        assert_eq!(history.undo_len(), 1);
+        assert_eq!(history.redo_len(), 0);
+
+        assert_eq!(history.undo(&mut document), Ok(Some(patch_impact())));
+        assert_eq!(document.terrain_at(position(3200, 3200)), TerrainTile::default());
+        assert_eq!(document.height_at(vertex), Some(32));
+        assert!(!document.contains_object(object()));
+        assert_eq!(history.undo_len(), 0);
+        assert_eq!(history.redo_len(), 1);
+    }
+
+    #[test]
+    fn undo_and_redo_restore_exact_document_states() {
+        let vertex = height(3200, 3200);
+        let mut document = MapDocument::from_parts([], [(vertex, 32)], []);
+        let original = document.clone();
+        let mut history = EditHistory::new();
+        let patch = composite_patch(vertex);
+
+        assert_eq!(history.commit(&mut document, patch), Ok(patch_impact()));
+        let edited = document.clone();
+
+        assert_eq!(history.undo(&mut document), Ok(Some(patch_impact())));
+        assert_eq!(document, original);
+        assert!(history.can_redo());
+
+        assert_eq!(history.redo(&mut document), Ok(Some(patch_impact())));
+        assert_eq!(document, edited);
+        assert!(history.can_undo());
+        assert!(!history.can_redo());
+    }
+
+    #[test]
+    fn successful_new_commit_clears_redo_history() {
+        let vertex = height(3200, 3200);
+        let mut document = MapDocument::from_parts([], [(vertex, 0)], []);
+        let mut history = EditHistory::new();
+        let first = MapPatch::new([MapOp::SetHeight {
+            coord: vertex,
+            before: 0,
+            after: 64,
+        }]);
+
+        assert!(history.commit(&mut document, first).is_ok());
+        assert!(history.undo(&mut document).is_ok());
+        assert_eq!(history.redo_len(), 1);
+
+        let alternate = MapPatch::new([MapOp::SetHeight {
+            coord: vertex,
+            before: 0,
+            after: 32,
+        }]);
+        assert!(history.commit(&mut document, alternate).is_ok());
+
+        assert_eq!(document.height_at(vertex), Some(32));
+        assert_eq!(history.undo_len(), 1);
+        assert_eq!(history.redo_len(), 0);
+        assert!(!history.can_redo());
+    }
+
+    #[test]
+    fn failed_commit_changes_neither_document_nor_history() {
+        let vertex = height(3200, 3200);
+        let mut document = MapDocument::from_parts([], [(vertex, 32)], []);
+        let original = document.clone();
+        let mut history = EditHistory::new();
+        let invalid = MapPatch::new([MapOp::SetHeight {
+            coord: vertex,
+            before: 999,
+            after: 64,
+        }]);
+
+        assert!(history.commit(&mut document, invalid).is_err());
+        assert_eq!(document, original);
+        assert_eq!(history.undo_len(), 0);
+        assert_eq!(history.redo_len(), 0);
+    }
+
+    #[test]
+    fn failed_undo_restores_history_stack() {
+        let vertex = height(3200, 3200);
+        let mut document = MapDocument::from_parts([], [(vertex, 0)], []);
+        let mut history = EditHistory::new();
+        let recorded = MapPatch::new([MapOp::SetHeight {
+            coord: vertex,
+            before: 0,
+            after: 64,
+        }]);
+
+        assert!(history.commit(&mut document, recorded).is_ok());
+
+        let out_of_band = MapPatch::new([MapOp::SetHeight {
+            coord: vertex,
+            before: 64,
+            after: 128,
+        }]);
+        assert!(document.apply_patch(&out_of_band).is_ok());
+
+        assert!(history.undo(&mut document).is_err());
+        assert_eq!(document.height_at(vertex), Some(128));
+        assert_eq!(history.undo_len(), 1);
+        assert_eq!(history.redo_len(), 0);
+    }
+
+    #[test]
+    fn empty_commit_does_not_create_or_destroy_history() {
+        let vertex = height(3200, 3200);
+        let mut document = MapDocument::from_parts([], [(vertex, 0)], []);
+        let mut history = EditHistory::new();
+        let patch = MapPatch::new([MapOp::SetHeight {
+            coord: vertex,
+            before: 0,
+            after: 64,
+        }]);
+
+        assert!(history.commit(&mut document, patch).is_ok());
+        assert!(history.undo(&mut document).is_ok());
+        assert_eq!(history.redo_len(), 1);
+
+        assert_eq!(
+            history.commit(&mut document, MapPatch::default()),
+            Ok(ChangeImpact::NONE)
+        );
+        assert_eq!(history.undo_len(), 0);
+        assert_eq!(history.redo_len(), 1);
+    }
+
+    fn patch_impact() -> ChangeImpact {
+        ChangeImpact::TERRAIN_GEOMETRY
+            | ChangeImpact::TERRAIN_MATERIAL
+            | ChangeImpact::NORMALS
+            | ChangeImpact::LIGHTING
+            | ChangeImpact::LOCATIONS
+            | ChangeImpact::COLLISION
+            | ChangeImpact::BOUNDS
+    }
+}
