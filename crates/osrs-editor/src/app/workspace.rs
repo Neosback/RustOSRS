@@ -458,13 +458,13 @@ impl EditorApp {
                 ui.horizontal(|ui| {
                     ui.weak("Width");
                     ui.add(
-                        egui::DragValue::new(&mut self.prefs.spline.width)
-                            .range(1.0..=32.0)
+                        egui::DragValue::new(&mut self.prefs.spline.profile.base_width)
+                            .range(0.5..=24.0)
                             .speed(0.1)
                             .suffix(" tiles"),
                     );
-                    for style in crate::autotile::EdgeStyle::ALL {
-                        ui.selectable_value(&mut self.prefs.spline.style, style, style.label());
+                    for mode in crate::paint::PathMode::ALL {
+                        ui.selectable_value(&mut self.prefs.spline.mode, mode, mode.label());
                     }
                 });
             }

@@ -15,14 +15,11 @@ mod settings;
 mod shapes;
 pub mod walls;
 
-pub use model::{
-    CostGrid, Occupancy, PathEdge, PathEnvironment, PathNetwork, PathNode, PathPlan, PathPoint,
-    PathWarning, Severity, TileBounds, TilePaint,
-};
+pub use model::{PathEnvironment, PathPoint, PathWarning, Severity, TilePaint};
 pub use planner::{PathPlanner, fnv};
 pub use resample::smooth_and_resample as smooth_line;
 pub use scene::SceneGrid;
-pub use settings::{AutoConnectPolicy, MaterialVariant, ObstaclePolicy, PathProfile, PathSettings};
+pub use settings::{AutoConnectPolicy, ObstaclePolicy, PathProfile, PathSettings};
 pub use shapes::{overlay_triangles, shape_triangles};
 
 #[cfg(test)]

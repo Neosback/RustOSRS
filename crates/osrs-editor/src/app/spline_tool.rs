@@ -671,7 +671,7 @@ impl EditorApp {
         let overlay_color = self.prefs.colors.get(ColorKey::PathFill);
         let edge = Stroke::new(0.75, self.prefs.colors.get(ColorKey::PathEdge));
         if let Some(preview) = &self.spline.preview {
-            let mut tile_polygon = |tile: (i32, i32), shape: u8, rotation: u8| {
+            let tile_polygon = |tile: (i32, i32), shape: u8, rotation: u8| {
                 let Some(corners) = interact::tile_corners(&self.infos, tile, plane) else {
                     return;
                 };
