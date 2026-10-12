@@ -1,5 +1,8 @@
 use super::model::{OpenGround, TileBounds};
-use super::{AutoConnectPolicy, PathEnvironment, PathPlanner, PathPoint, PathProfile, PathSettings, TilePaint};
+use super::{
+    AutoConnectPolicy, PathEnvironment, PathPlanner, PathPoint, PathProfile, PathSettings,
+    TilePaint,
+};
 use std::sync::Arc;
 
 fn network_settings() -> PathSettings {
@@ -65,9 +68,7 @@ fn incompatible_overlay_and_other_plane_do_not_create_network_branches() {
 #[test]
 fn existing_path_already_touching_authored_line_gets_no_redundant_branch() {
     let profile = PathProfile::new("default", "Default path", 5).sanitized();
-    let existing = (4..=8)
-        .map(|y| TilePaint::new(10, y, 0, 5, 0, 0))
-        .collect();
+    let existing = (4..=8).map(|y| TilePaint::new(10, y, 0, 5, 0, 0)).collect();
     let env = environment(existing);
     let points = [PathPoint::new(2.5, 5.5), PathPoint::new(18.5, 5.5)];
 
@@ -89,20 +90,8 @@ fn existing_paint_order_does_not_change_network_junctions() {
     let points = [PathPoint::new(0.5, 5.5), PathPoint::new(20.5, 5.5)];
     let settings = network_settings();
 
-    let forward = PathPlanner.plan_stroke(
-        &points,
-        0,
-        &profile,
-        &settings,
-        &environment(existing),
-    );
-    let backward = PathPlanner.plan_stroke(
-        &points,
-        0,
-        &profile,
-        &settings,
-        &environment(reversed),
-    );
+    let forward = PathPlanner.plan_stroke(&points, 0, &profile, &settings, &environment(existing));
+    let backward = PathPlanner.plan_stroke(&points, 0, &profile, &settings, &environment(reversed));
 
     assert_eq!(forward.lines, backward.lines);
     assert_eq!(forward.paints, backward.paints);
