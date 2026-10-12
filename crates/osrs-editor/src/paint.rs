@@ -153,22 +153,22 @@ pub struct SplineSettings {
     pub closed: bool,
     /// Grade the terrain along the path from the first point's height to the last's.
     pub ramp: bool,
-    /// Tiles of underlay halo beyond the path's edge (needs the underlay channel armed).
-    pub soften: f32,
     /// How far (tiles) control points may be nudged so runs take a clean slope.
     pub snap: f32,
+    /// Straight runs style: how far (tiles) the outline may stray to keep a run straight.
+    pub straighten: f32,
 }
 
 impl Default for SplineSettings {
     fn default() -> Self {
         Self {
             width: 3.0,
-            style: crate::autotile::EdgeStyle::Smooth,
+            style: crate::autotile::EdgeStyle::Runs,
             curve: crate::autotile::CurveKind::Curve,
             closed: false,
             ramp: false,
-            soften: 0.0,
             snap: 1.0,
+            straighten: 0.45,
         }
     }
 }

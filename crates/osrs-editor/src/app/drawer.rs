@@ -266,26 +266,6 @@ impl EditorApp {
                 ui.weak(format!("#{id}"));
             }
             ui.separator();
-            // Underlay: optional.
-            let mut armed = self.prefs.brush.underlay.armed;
-            if ui.checkbox(&mut armed, "Underlay").changed() {
-                self.prefs.brush.underlay.armed = armed;
-            }
-            let under = match self.prefs.brush.underlay.fill {
-                Fill::Set(id) => self.underlay_color(id),
-                Fill::Clear => None,
-            };
-            let response = swatch(ui, 40.0, false, |painter, rect| {
-                painter.rect_filled(rect, 3.0, under.unwrap_or(Color32::from_gray(48)));
-            })
-            .on_hover_text("Choose an underlay to paint under the path");
-            egui::Popup::from_toggle_button_response(&response)
-                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                .show(|ui| {
-                    ui.set_min_width(560.0);
-                    self.underlay_palette(ui, true);
-                });
-            ui.separator();
             let points = self.spline.points.len();
             ui.weak(format!(
                 "{points} point{}  \u{b7}  {} tiles",

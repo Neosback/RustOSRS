@@ -136,6 +136,19 @@ impl EditorApp {
                 self.prefs.spline.style = style;
             }
         }
+        if self.prefs.spline.style == EdgeStyle::Runs {
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new("Straighten").weak());
+            ui.add(
+                egui::Slider::new(&mut self.prefs.spline.straighten, 0.25..=0.8)
+                    .max_decimals(2)
+                    .suffix(" tiles"),
+            )
+            .on_hover_text(
+                "How far an edge may stray from the drawn curve to stay one straight run. \
+                 More: longer runs and fewer turns; less: closer to the curve, more turns",
+            );
+        }
         ui.add_space(4.0);
         ui.label(egui::RichText::new("Clean angles").weak());
         ui.add(
@@ -146,17 +159,6 @@ impl EditorApp {
         .on_hover_text(
             "Nudge control points up to this far so each run takes a slope the shapes draw \
              perfectly straight (flat, 45 degrees, 2:1, upright). 0 keeps the points exactly",
-        );
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new("Soften edge").weak());
-        ui.add(
-            egui::Slider::new(&mut self.prefs.spline.soften, 0.0..=6.0)
-                .max_decimals(1)
-                .suffix(" tiles"),
-        )
-        .on_hover_text(
-            "Spread the underlay colour this far beyond the path so it blends into the ground \
-             (needs the Underlay channel armed)",
         );
         crate::theme::section_heading(ui, "Shape");
         ui.checkbox(&mut self.prefs.spline.closed, "Close the loop")

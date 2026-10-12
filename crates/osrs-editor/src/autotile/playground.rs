@@ -19,7 +19,9 @@
 //! * `max` / `mean`: how far (tiles) an error cell lies from the ideal outline.
 
 use super::*;
-use std::collections::{HashSet, VecDeque};
+
+/// What a path became.
+type Tiles = Vec<((i32, i32), TileChoice)>;
 
 const AREA_TILES: i32 = 56;
 const SHEET_PX: i32 = 10;
@@ -106,6 +108,8 @@ pub struct Score {
     pub wobble: f32,
     pub max: f32,
     pub mean: f32,
+    pub kinks: f32,
+    pub zigzags: f32,
     /// Furthest a control point was nudged (tiles).
     pub shift: f32,
     pub tiles: usize,
@@ -134,11 +138,7 @@ fn result_masks(result: &[((i32, i32), TileChoice)]) -> HashMap<(i32, i32), Mask
         .collect()
 }
 
-pub fn evaluate(
-    case: &Case,
-    tuning: &Tuning,
-    refined: bool,
-) -> (Score, Vec<((i32, i32), TileChoice)>) {
+pub fn evaluate(case: &Case, tuning: &Tuning, refined: bool) -> (Score, Tiles) {
     let none = |_: (i32, i32)| None;
     let started = std::time::Instant::now();
     let (points, params, result) = if refined {
@@ -154,14 +154,14 @@ pub fn evaluate(
     // Quality is judged against the path that was actually tiled (after sliding and nudging); how
     // far the points moved is reported separately.
     let quality = measure(&points, params, &result);
+    let (kinks, zigzags) = super::outline::outline_stats(&super::refine::result_masks(&result));
     let shift = {
         let tiled = path_points(&points, params);
-        let points_moved = tiled
+        tiled
             .iter()
             .zip(&case.points)
             .map(|(a, b)| dist(*a, *b))
-            .fold(0.0_f32, f32::max);
-        points_moved
+            .fold(0.0_f32, f32::max)
     };
     (
         Score {
@@ -169,6 +169,8 @@ pub fn evaluate(
             wobble: quality.wobble,
             max: quality.max,
             mean: quality.mean,
+            kinks,
+            zigzags,
             shift,
             tiles: result.len(),
             millis,
@@ -194,6 +196,8 @@ pub fn mean(scores: &[Score]) -> Score {
         wobble: sum(|s| s.wobble),
         max: sum(|s| s.max),
         mean: sum(|s| s.mean),
+        kinks: sum(|s| s.kinks),
+        zigzags: sum(|s| s.zigzags),
         shift: sum(|s| s.shift),
         tiles: (scores.iter().map(|s| s.tiles).sum::<usize>() as f32 / n) as usize,
         millis: sum(|s| s.millis),
@@ -201,11 +205,7 @@ pub fn mean(scores: &[Score]) -> Score {
 }
 
 /// Draw every case's result into a contact sheet.
-pub fn sheet(
-    cases: &[Case],
-    results: &[Vec<((i32, i32), TileChoice)>],
-    columns: usize,
-) -> image::RgbaImage {
+pub fn sheet(cases: &[Case], results: &[Tiles], columns: usize) -> image::RgbaImage {
     let cell = AREA_TILES * SHEET_PX;
     let rows = cases.len().div_ceil(columns) as i32;
     let mut img = image::RgbaImage::from_pixel(
@@ -232,7 +232,13 @@ pub fn sheet(
                         ((fy * GRID as f32) as usize).min(GRID - 1),
                     )
                 });
-                let colour = if inside {
+                let d_here = index.distance(tile, (wx, wy));
+                let ideal_inside = d_here <= half;
+                let miss = (d_here - half).abs();
+                let colour = if inside != ideal_inside && miss > 0.15 {
+                    // Visibly wrong: more than 0.15 tiles from the ideal outline.
+                    image::Rgba([255, 0, 200, 255])
+                } else if inside {
                     image::Rgba([196, 166, 96, 255])
                 } else {
                     image::Rgba([70, 110, 50, 255])
@@ -259,15 +265,11 @@ pub fn sheet(
     img
 }
 
-fn run_all(cases: &[Case], tuning: &Tuning) -> (Vec<Score>, Vec<Vec<((i32, i32), TileChoice)>>) {
+fn run_all(cases: &[Case], tuning: &Tuning) -> (Vec<Score>, Vec<Tiles>) {
     run_all_with(cases, tuning, false)
 }
 
-fn run_all_with(
-    cases: &[Case],
-    tuning: &Tuning,
-    refined: bool,
-) -> (Vec<Score>, Vec<Vec<((i32, i32), TileChoice)>>) {
+fn run_all_with(cases: &[Case], tuning: &Tuning, refined: bool) -> (Vec<Score>, Vec<Tiles>) {
     let mut scores = Vec::new();
     let mut results = Vec::new();
     for case in cases {
@@ -280,12 +282,14 @@ fn run_all_with(
 
 fn print_row(label: &str, s: &Score) {
     println!(
-        "{label:<46} total {:6.3}  area {:5.3}  wobble {:5.3}  max {:5.3}  mean {:5.3}  moved {:4.2}  {:5.0} tiles  {:6.1} ms",
+        "{label:<46} total {:6.3}  area {:5.3}  wobble {:5.3}  max {:5.3}  mean {:5.3}  kinks {:5.2}  zigzag {:5.2}  moved {:4.2}  {:5.0} tiles  {:6.1} ms",
         s.total(),
         s.area,
         s.wobble,
         s.max,
         s.mean,
+        s.kinks,
+        s.zigzags,
         s.shift,
         s.tiles,
         s.millis
@@ -546,11 +550,12 @@ fn user_cases() -> Vec<Case> {
                         }
                     }
                     "snap" => params.snap = value.parse().ok()?,
-                    "soften" => params.soften = value.parse().ok()?,
+                    "straighten" => params.straighten = value.parse().ok()?,
                     "style" => {
                         params.style = match value {
                             "Chiselled" => EdgeStyle::Chiselled,
                             "Whole" => EdgeStyle::Whole,
+                            "Runs" => EdgeStyle::Runs,
                             _ => EdgeStyle::Smooth,
                         }
                     }
@@ -609,6 +614,24 @@ fn playground_bakeoff() {
         ("snap 1.0", 1.0, false, base),
         ("refine + snap 0.45", 0.45, true, base),
         ("refine + snap 1.0", 1.0, true, base),
+        (
+            "outline",
+            0.0,
+            false,
+            Tuning {
+                outline: Some(super::outline::OutlineTuning::default()),
+                ..base
+            },
+        ),
+        (
+            "outline + snap 1.0",
+            1.0,
+            false,
+            Tuning {
+                outline: Some(super::outline::OutlineTuning::default()),
+                ..base
+            },
+        ),
     ];
     for (name, cases) in &sets {
         println!("--- {name} ({} paths)", cases.len());
@@ -629,6 +652,46 @@ fn playground_bakeoff() {
                 let tag = label.replace([' ', '+', ',', '(', ')'], "_");
                 let _ = sheet(&with, &results, 4).save(format!("/tmp/playground-pasted-{tag}.png"));
             }
+        }
+    }
+}
+
+#[test]
+#[ignore = "sweeps the outline fitter's weights"]
+fn playground_outline_sweep() {
+    let sets: Vec<(&str, Vec<Case>)> = vec![
+        ("mixed", cases(48, 41)),
+        ("straight", straight_cases()),
+        ("pasted", user_cases()),
+    ];
+    let mut configs = Vec::new();
+    for max_miss in [0.25_f32, 0.3, 0.35, 0.45] {
+        for deviation in [4.0_f32, 8.0, 16.0] {
+            for (kink, kink_angle) in [(0.5_f32, 1.0_f32), (0.8, 1.5), (1.5, 1.5)] {
+                configs.push(super::outline::OutlineTuning {
+                    deviation,
+                    kink,
+                    kink_angle,
+                    max_miss,
+                });
+            }
+        }
+    }
+    for (name, cases) in &sets {
+        println!("--- {name}");
+        for outline in &configs {
+            let tuning = Tuning {
+                outline: Some(*outline),
+                ..Tuning::default()
+            };
+            let (scores, _) = run_all_with(cases, &tuning, false);
+            print_row(
+                &format!(
+                    "miss {:4.2} dev {:4.0} kink {:3.1} angle {:3.1}",
+                    outline.max_miss, outline.deviation, outline.kink, outline.kink_angle
+                ),
+                &mean(&scores),
+            );
         }
     }
 }

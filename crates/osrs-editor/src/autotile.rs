@@ -199,16 +199,20 @@ pub enum EdgeStyle {
     Chiselled,
     /// Whole tiles only.
     Whole,
+    /// The outline is fitted first with the fewest straight runs the shapes can draw: no zigzag,
+    /// at the price of straying a little further (up to about 0.45 tiles) from the drawn curve.
+    Runs,
 }
 
 impl EdgeStyle {
-    pub const ALL: [Self; 3] = [Self::Smooth, Self::Chiselled, Self::Whole];
+    pub const ALL: [Self; 4] = [Self::Smooth, Self::Runs, Self::Chiselled, Self::Whole];
 
     pub const fn label(self) -> &'static str {
         match self {
             Self::Smooth => "Smooth",
             Self::Chiselled => "Chiselled",
             Self::Whole => "Whole tiles",
+            Self::Runs => "Straight runs",
         }
     }
 
@@ -217,13 +221,14 @@ impl EdgeStyle {
             Self::Smooth => "Rounded edge pieces: organic paths and rivers",
             Self::Chiselled => "Straight and diagonal cuts only: roads and courtyards",
             Self::Whole => "Full tiles, no shaped edges",
+            Self::Runs => "Long straight edges with few turns: no zigzag, strays a little more",
         }
     }
 
     /// Whether a shape (file value `1..=11`) may be used.
     fn allows(self, shape: u8) -> bool {
         match self {
-            Self::Smooth => true,
+            Self::Smooth | Self::Runs => true,
             Self::Chiselled => !matches!(shape, 9..=11),
             Self::Whole => false,
         }
@@ -391,12 +396,12 @@ pub struct PathParams {
     pub curve: CurveKind,
     /// Join the last point back to the first.
     pub closed: bool,
-    /// Tiles beyond the path's edge that take its underlay colour too (a soft halo that blends the
-    /// path into the ground), `0` for none.
-    pub soften: f32,
     /// How far (tiles) a control point may be nudged so the runs between points take one of the
     /// slopes the shapes draw exactly straight (`0`: leave the points where they are).
     pub snap: f32,
+    /// Straight runs style: how far (tiles) the outline may stray from the drawn curve to keep a
+    /// run straight.
+    pub straighten: f32,
 }
 
 impl Default for PathParams {
@@ -406,8 +411,8 @@ impl Default for PathParams {
             style: EdgeStyle::Smooth,
             curve: CurveKind::Curve,
             closed: false,
-            soften: 0.0,
             snap: 0.0,
+            straighten: 0.45,
         }
     }
 }
@@ -807,6 +812,8 @@ pub struct Tuning {
     pub tolerance: f32,
     /// Inside the free zone, how strongly the fit still prefers the ideal outline.
     pub pull: f32,
+    /// Fit the outline first (long straight runs) instead of choosing every tile's piece alone.
+    pub outline: Option<outline::OutlineTuning>,
 }
 
 impl Default for Tuning {
@@ -823,6 +830,7 @@ impl Default for Tuning {
             smooth: 0.0,
             tolerance: 0.2,
             pull: 0.04,
+            outline: None,
         }
     }
 }
@@ -901,6 +909,23 @@ pub fn generate_with(
             .filter(|tile| existing(**tile).is_none_or(|(shape, _)| shape != 0))
             .map(|tile| (*tile, TileChoice::Full))
             .collect();
+    }
+
+    // Outline first, when the path is wide enough for its two sides to be fitted apart and there is
+    // nothing already laid to join.
+    let outline_tuning =
+        tuning.outline.or(
+            (params.style == EdgeStyle::Runs).then(|| outline::OutlineTuning {
+                max_miss: params.straighten.clamp(0.25, 0.8),
+                ..outline::OutlineTuning::default()
+            }),
+        );
+    if let Some(outline_tuning) = &outline_tuning
+        && params.width >= 1.9
+        && !targets.keys().any(|tile| existing(*tile).is_some())
+        && let Some(result) = outline::generate_outline(&line, half, params.style, outline_tuning)
+    {
+        return result;
     }
 
     // Step 2: a piece for every tile the band touches (a small corner shape can sit on a tile the
@@ -1091,31 +1116,6 @@ pub fn generate_with(
     out
 }
 
-/// The tiles of the halo [`PathParams::soften`] asks for: tiles whose centre is within the band's
-/// half width plus `soften` of the path's centre line, except the tiles the path itself covers.
-pub fn soft_tiles(
-    points: &[(f32, f32)],
-    params: PathParams,
-    path: &[((i32, i32), TileChoice)],
-) -> Vec<(i32, i32)> {
-    if points.is_empty() || params.soften <= 0.0 {
-        return Vec::new();
-    }
-    let reach = (params.width / 2.0).max(0.5) + params.soften;
-    let line = path_polyline(points, params, 0.25);
-    let index = SegmentIndex::new(&line, reach + 1.0);
-    let covered: std::collections::HashSet<(i32, i32)> = path.iter().map(|(t, _)| *t).collect();
-    let mut tiles: Vec<(i32, i32)> = index
-        .cells
-        .keys()
-        .copied()
-        .filter(|tile| !covered.contains(tile))
-        .filter(|tile| index.distance(*tile, (tile.0 as f32 + 0.5, tile.1 as f32 + 0.5)) <= reach)
-        .collect();
-    tiles.sort();
-    tiles
-}
-
 /// Total mismatch of a result against the ideal band: every tile the band touches counts, whether or
 /// not the result changed it (for tests and diagnostics).
 #[cfg(test)]
@@ -1254,26 +1254,26 @@ mod tests {
     }
 
     #[test]
-    fn the_halo_surrounds_the_path_and_never_overlaps_it() {
-        let points = [(5.5, 10.5), (25.5, 10.5)];
-        let soft_params = PathParams {
-            soften: 2.0,
-            ..params(3.0)
-        };
-        let path = generate(&points, soft_params, &none);
-        let halo = soft_tiles(&points, soft_params, &path);
-        assert!(!halo.is_empty());
-        let covered: std::collections::HashSet<_> = path.iter().map(|(t, _)| *t).collect();
-        assert!(halo.iter().all(|t| !covered.contains(t)));
-        // Rows 7, 8 and 12, 13 are the two tiles beyond a 3 wide band centred on row 10.
-        for y in [7, 8, 12, 13] {
-            assert!(
-                halo.contains(&(15, y)),
-                "tile 15, {y} missing from the halo"
+    fn straight_runs_do_not_zigzag_where_the_close_fit_does() {
+        // A shallow slope (about 15 degrees) is where a tile-by-tile fit alternates flat and 2:1.
+        let points = [(3.5, 3.5), (33.5, 11.5)];
+        let zigzags = |style: EdgeStyle| {
+            let result = generate(
+                &points,
+                PathParams {
+                    style,
+                    ..params(3.0)
+                },
+                &none,
             );
-        }
-        assert!(!halo.contains(&(15, 5)) && !halo.contains(&(15, 15)));
-        assert!(soft_tiles(&points, params(3.0), &path).is_empty());
+            outline::outline_stats(&refine::result_masks(&result)).1
+        };
+        let (smooth, runs) = (zigzags(EdgeStyle::Smooth), zigzags(EdgeStyle::Runs));
+        assert!(
+            runs < smooth,
+            "runs {runs} vs smooth {smooth} zigzags per ten tiles"
+        );
+        assert!(runs <= 1.0, "runs {runs} zigzags per ten tiles");
     }
 
     #[test]
@@ -1499,6 +1499,7 @@ mod tests {
     }
 }
 
+mod outline;
 mod refine;
 #[cfg(test)]
 use refine::measure;

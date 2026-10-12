@@ -236,3 +236,25 @@ always): on the scribble it would otherwise reshape the bends and score worse. E
 worse and was removed. The refine search scores its candidates on all cores and takes about 0.1 s (0.7 s for the
 720-tile scribble) off the UI thread. Edge pieces no longer take the brush's underlay (only whole tiles do), so
 no tile-shaped fringe of the path's underlay shows beyond the overlay outline.
+
+### Straight runs: the outline first (2026-10-11)
+
+The playground's new `kinks` and `zigzag` counts (from the made outline, traced and straightened within 0.07
+tiles; a zigzag is a turn undone within two tiles) showed what the in-game screenshots did: choosing every tile's
+piece on its own, however well, alternates `1:1, 2:1, 1:1` along a slope (2.7 to 3.6 zigzags per ten tiles of
+outline). `autotile/outline.rs` fits the outline as one object instead: the ideal outline loops are traced from the
+band's cells, and a shortest path over (lattice point, heading) picks runs between tile corners and edge
+midpoints in the exact directions only, paying for the squared distance from the ideal outline (weight 8) and for
+every turn (0.8 plus 1.5 per radian), with no run allowed to stray more than `straighten` tiles. The tiles are
+then cut from the outlined area (scanline, even-odd) and each takes the candidate with that mask.
+
+| | zigzags / 10 tiles | kinks / 10 tiles | worst miss | mean miss |
+|---|---|---|---|---|
+| close fit (mixed / pasted) | 2.70 / 3.60 | 5.99 / 6.78 | 0.24 / 0.25 | 0.064 / 0.062 |
+| straight runs, straighten 0.45 | 0.78 / 0.07 | 3.54 / 2.89 | 0.35 / 0.40 | 0.093 / 0.099 |
+
+Removing the zigzag costs distance: the runs stray up to the `straighten` setting. Capping it at 0.25 tiles leaves
+no feasible outline (the fitter falls back to the close fit). In the editor the difference is plain (the close fit's
+edges saw; straight runs read as edges), so **Straight runs is now the default edge style**, with a Straighten
+slider (0.25 to 0.8 tiles). Paths narrower than 1.9 tiles, and paths that touch tiles already carrying the overlay,
+still use the close fit. The path tool no longer paints underlay at all.

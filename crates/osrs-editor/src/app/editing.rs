@@ -339,11 +339,10 @@ impl EditorApp {
     pub(super) fn apply_path(
         &mut self,
         tiles: &[((i32, i32), TileChoice)],
-        soft: &[(i32, i32)],
         grade: Option<PathGrade>,
     ) -> usize {
         let brush = self.prefs.brush.clone();
-        if !(brush.overlay.armed || brush.underlay.armed) || tiles.is_empty() {
+        if !brush.overlay.armed || tiles.is_empty() {
             return 0;
         }
         self.begin_stroke();
@@ -374,15 +373,6 @@ impl EditorApp {
                     }
                 }
             }
-            // The underlay goes under whole tiles only: an edge piece shows its tile's underlay
-            // wherever the overlay stops, and painting it there would put a tile-shaped fringe of
-            // the path's colour around the neat overlay outline.
-            if brush.underlay.armed && !matches!(choice, TileChoice::Shape { .. }) {
-                after.underlay = match brush.underlay.fill {
-                    Fill::Set(id) => id,
-                    Fill::Clear => 0,
-                };
-            }
             if brush.height.armed {
                 after.height = brush.height.value;
             }
@@ -398,21 +388,6 @@ impl EditorApp {
                 after.flags = brush.flags.bits;
             }
             self.record(&mut stroke, key, after, &mut edits);
-        }
-        // The halo: the underlay only, so the path blends into the ground.
-        if brush.underlay.armed {
-            for tile in soft {
-                let key = (plane, tile.0, tile.1);
-                let Some(before) = self.current_tile(key) else {
-                    continue;
-                };
-                let mut after = before;
-                after.underlay = match brush.underlay.fill {
-                    Fill::Set(id) => id,
-                    Fill::Clear => 0,
-                };
-                self.record(&mut stroke, key, after, &mut edits);
-            }
         }
         let count = edits.len();
         self.send_edits(edits);
