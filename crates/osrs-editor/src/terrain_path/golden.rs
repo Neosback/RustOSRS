@@ -309,12 +309,6 @@ impl CostGrid for Slopes {
     }
 }
 
-fn numbers(line: &str) -> Vec<f64> {
-    line.split_whitespace()
-        .filter_map(|t| t.parse().ok())
-        .collect()
-}
-
 fn fnv_lines(plan: &PathPlan) -> u64 {
     let mut hash = 0xCBF2_9CE4_8422_2325_u64;
     for p in &plan.paints {

@@ -40,17 +40,9 @@ impl BitMask {
         self.words.iter().all(|w| *w == 0)
     }
 
-    pub fn len(&self) -> usize {
-        self.bits
-    }
-
     /// The set bits, lowest first.
     pub fn iter(&self) -> impl Iterator<Item = usize> + '_ {
         (0..self.bits).filter(|i| self.get(*i))
-    }
-
-    pub fn words(&self) -> &[u64] {
-        &self.words
     }
 }
 

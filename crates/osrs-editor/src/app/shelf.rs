@@ -280,6 +280,14 @@ impl EditorApp {
                     ui.add(egui::DragValue::new(&mut planner.seed).speed(1));
                 });
             });
+
+        let notes = self.spline_notes();
+        if !notes.is_empty() {
+            crate::theme::section_heading(ui, "Preview");
+            for (_, note) in notes {
+                ui.label(note);
+            }
+        }
     }
 
     fn wall_path_section(&mut self, ui: &mut egui::Ui) {

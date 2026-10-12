@@ -83,7 +83,9 @@ impl PathEdge {
 /// Nodes, the edges between them, and the profiles the edges use.
 #[derive(Debug, Clone)]
 pub struct PathNetwork {
+    #[allow(dead_code, reason = "stable identity carried by the network model")]
     pub id: u64,
+    #[allow(dead_code, reason = "human-readable network metadata")]
     pub name: String,
     pub seed: i64,
     pub nodes: Vec<PathNode>,
@@ -106,6 +108,7 @@ pub struct TilePaint {
 }
 
 impl TilePaint {
+    #[cfg(test)]
     pub fn new(
         tile_x: i32,
         tile_y: i32,
@@ -227,6 +230,10 @@ impl PathWarning {
 pub struct PathPlan {
     pub paints: Vec<TilePaint>,
     pub warnings: Vec<PathWarning>,
+    #[allow(
+        dead_code,
+        reason = "part of the plan API for incremental rebuild consumers"
+    )]
     pub affected: TileBounds,
     /// The centre line of each edge as it was stamped (after routing and wander), for drawing.
     pub lines: Vec<Vec<PathPoint>>,
@@ -275,9 +282,11 @@ pub trait CostGrid: Send + Sync {
     }
 }
 
-/// A grid with nothing on it.
+/// A grid with nothing on it, used by planner tests.
+#[cfg(test)]
 pub struct OpenGround;
 
+#[cfg(test)]
 impl CostGrid for OpenGround {}
 
 /// The ground a plan is made on.
@@ -290,6 +299,7 @@ pub struct PathEnvironment {
 }
 
 impl PathEnvironment {
+    #[cfg(test)]
     pub fn empty(bounds: TileBounds) -> Self {
         Self {
             bounds,
