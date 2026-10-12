@@ -6,13 +6,17 @@
 //! types defined here.
 
 mod document;
+mod history;
 mod object;
 mod patch;
 mod position;
+mod query;
 mod terrain;
 
 pub use document::{MapDocument, PatchApplyError};
+pub use history::EditHistory;
 pub use object::{LocKind, ObjectOrientation, ObjectPlacement};
 pub use patch::{ChangeImpact, MapOp, MapPatch};
 pub use position::{HeightVertexCoord, MapPosition};
+pub use query::MapQuery;
 pub use terrain::{OverlayRotation, OverlayShape, TerrainOverlay, TerrainTile};
