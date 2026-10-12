@@ -142,20 +142,43 @@ impl SceneGrid {
 
     fn region(&self, x: i32, y: i32, plane: u8) -> Option<(Arc<RegionGrid>, usize, usize)> {
         let key = (x.div_euclid(64), y.div_euclid(64));
+        let cache_key = (key.0, key.1, plane);
+        #[cfg(test)]
+        if let Some(grid) = self
+            .cache
+            .lock()
+            .ok()
+            .and_then(|cache| cache.get(&cache_key).cloned())
+        {
+            return Some((grid, x.rem_euclid(64) as usize, y.rem_euclid(64) as usize));
+        }
         let info = self.infos.get(&key)?;
         let mut cache = self.cache.lock().ok()?;
         let grid = cache
-            .entry((key.0, key.1, plane))
+            .entry(cache_key)
             .or_insert_with(|| Arc::new(RegionGrid::build(info, plane)))
             .clone();
         Some((grid, x.rem_euclid(64) as usize, y.rem_euclid(64) as usize))
     }
 
     fn exists(&self, x: i32, y: i32, plane: u8) -> bool {
-        plane < 4
-            && self
-                .infos
-                .contains_key(&(x.div_euclid(64), y.div_euclid(64)))
+        if plane >= 4 {
+            return false;
+        }
+        let key = (x.div_euclid(64), y.div_euclid(64));
+        if self.infos.contains_key(&key) {
+            return true;
+        }
+        #[cfg(test)]
+        {
+            self.cache
+                .lock()
+                .is_ok_and(|cache| cache.contains_key(&(key.0, key.1, plane)))
+        }
+        #[cfg(not(test))]
+        {
+            false
+        }
     }
 
     fn wall_blocks(&self, x: i32, y: i32, dx: i32, dy: i32, plane: u8) -> bool {
@@ -221,15 +244,158 @@ impl CostGrid for SceneGrid {
         if ax > 1 || ay > 1 {
             true
         } else if ax == 1 && ay == 1 {
+            let via_x = (from_x + dx, from_y);
+            let via_y = (from_x, from_y + dy);
             self.diagonal_blocks(from_x, from_y, dx, dy, plane)
                 || self.diagonal_blocks(to_x, to_y, -dx, -dy, plane)
-                || self.edge_blocked(from_x, from_y, from_x + dx, from_y, plane)
-                || self.edge_blocked(from_x, from_y, from_x, from_y + dy, plane)
+                || self.edge_blocked(from_x, from_y, via_x.0, via_x.1, plane)
+                || self.edge_blocked(from_x, from_y, via_y.0, via_y.1, plane)
+                || self.edge_blocked(to_x, to_y, via_x.0, via_x.1, plane)
+                || self.edge_blocked(to_x, to_y, via_y.0, via_y.1, plane)
         } else if ax + ay != 1 {
             false
         } else {
             self.wall_blocks(from_x, from_y, dx, dy, plane)
                 || self.wall_blocks(to_x, to_y, -dx, -dy, plane)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_region() -> RegionGrid {
+        RegionGrid {
+            occupancy: vec![Occupancy::Clear; SIZE * SIZE],
+            slope: vec![0.0; SIZE * SIZE],
+            walls: vec![0; SIZE * SIZE],
+            diagonals: vec![0; SIZE * SIZE],
+        }
+    }
+
+    fn scene_with_regions(regions: Vec<(i32, i32, u8, RegionGrid)>) -> SceneGrid {
+        let cache = regions
+            .into_iter()
+            .map(|(region_x, region_y, plane, grid)| ((region_x, region_y, plane), Arc::new(grid)))
+            .collect();
+        SceneGrid {
+            infos: HashMap::new(),
+            cache: Mutex::new(cache),
+        }
+    }
+
+    fn scene_with_region(region_x: i32, region_y: i32, plane: u8, grid: RegionGrid) -> SceneGrid {
+        scene_with_regions(vec![(region_x, region_y, plane, grid)])
+    }
+
+    #[test]
+    fn unloaded_region_is_solid_and_blocks_boundary_crossings() {
+        let scene = scene_with_region(0, 0, 0, empty_region());
+
+        assert_eq!(scene.occupancy(63, 10, 0), Occupancy::Clear);
+        assert_eq!(scene.occupancy(64, 10, 0), Occupancy::Solid);
+        assert!(scene.traversal_cost(64, 10, 0).is_infinite());
+        assert!(scene.edge_blocked(63, 10, 64, 10, 0));
+        assert!(scene.edge_blocked(0, 10, -1, 10, 0));
+        assert!(scene.edge_blocked(10, 10, 10, 10, 4));
+    }
+
+    #[test]
+    fn cardinal_wall_blocks_crossing_in_both_directions() {
+        let mut grid = empty_region();
+        grid.walls[index(10, 10)] |= 1 << 2;
+        let scene = scene_with_region(0, 0, 0, grid);
+
+        assert!(scene.edge_blocked(10, 10, 11, 10, 0));
+        assert!(scene.edge_blocked(11, 10, 10, 10, 0));
+        assert!(!scene.edge_blocked(10, 10, 10, 11, 0));
+    }
+
+    #[test]
+    fn diagonal_wall_blocks_matching_diagonal_in_both_directions() {
+        let mut grid = empty_region();
+        grid.diagonals[index(10, 10)] |= 1 << 1;
+        let scene = scene_with_region(0, 0, 0, grid);
+
+        assert!(scene.edge_blocked(10, 10, 11, 11, 0));
+        assert!(scene.edge_blocked(11, 11, 10, 10, 0));
+        assert!(!scene.edge_blocked(10, 10, 11, 9, 0));
+    }
+
+    #[test]
+    fn diagonal_step_cannot_cut_across_cardinal_wall() {
+        let mut grid = empty_region();
+        grid.walls[index(10, 10)] |= 1 << 2;
+        let scene = scene_with_region(0, 0, 0, grid);
+
+        assert!(scene.edge_blocked(10, 10, 11, 11, 0));
+        assert!(scene.edge_blocked(11, 11, 10, 10, 0));
+    }
+
+    #[test]
+    fn cached_occupancy_and_slope_drive_cost_grid_queries() {
+        let mut grid = empty_region();
+        grid.occupancy[index(12, 13)] = Occupancy::Decoration;
+        grid.occupancy[index(14, 15)] = Occupancy::Solid;
+        grid.slope[index(16, 17)] = 1.25;
+        let scene = scene_with_region(0, 0, 0, grid);
+
+        assert_eq!(scene.occupancy(12, 13, 0), Occupancy::Decoration);
+        assert_eq!(scene.occupancy(14, 15, 0), Occupancy::Solid);
+        assert_eq!(scene.slope(16, 17, 0), 1.25);
+        assert_eq!(scene.traversal_cost(12, 13, 0), 1.0);
+    }
+
+    #[test]
+    fn adjacent_loaded_regions_allow_cardinal_seam_crossing() {
+        let scene = scene_with_regions(vec![(0, 0, 0, empty_region()), (1, 0, 0, empty_region())]);
+
+        assert!(!scene.edge_blocked(63, 10, 64, 10, 0));
+        assert!(!scene.edge_blocked(64, 10, 63, 10, 0));
+        assert_eq!(scene.traversal_cost(63, 10, 0), 1.0);
+        assert_eq!(scene.traversal_cost(64, 10, 0), 1.0);
+    }
+
+    #[test]
+    fn wall_on_either_region_blocks_cardinal_seam_in_both_directions() {
+        let mut left = empty_region();
+        left.walls[index(63, 10)] |= 1 << 2;
+        let scene = scene_with_regions(vec![(0, 0, 0, left), (1, 0, 0, empty_region())]);
+
+        assert!(scene.edge_blocked(63, 10, 64, 10, 0));
+        assert!(scene.edge_blocked(64, 10, 63, 10, 0));
+
+        let mut right = empty_region();
+        right.walls[index(0, 10)] |= 1 << 0;
+        let scene = scene_with_regions(vec![(0, 0, 0, empty_region()), (1, 0, 0, right)]);
+
+        assert!(scene.edge_blocked(63, 10, 64, 10, 0));
+        assert!(scene.edge_blocked(64, 10, 63, 10, 0));
+    }
+
+    #[test]
+    fn diagonal_step_at_loaded_region_seam_cannot_cut_across_wall() {
+        let mut right = empty_region();
+        right.walls[index(0, 10)] |= 1 << 0;
+        let scene = scene_with_regions(vec![(0, 0, 0, empty_region()), (1, 0, 0, right)]);
+
+        assert!(scene.edge_blocked(63, 10, 64, 11, 0));
+        assert!(scene.edge_blocked(64, 11, 63, 10, 0));
+    }
+
+    #[test]
+    fn negative_coordinate_region_seam_uses_euclidean_local_coordinates() {
+        let scene = scene_with_regions(vec![(-1, 0, 0, empty_region()), (0, 0, 0, empty_region())]);
+
+        assert!(!scene.edge_blocked(-1, 12, 0, 12, 0));
+        assert!(!scene.edge_blocked(0, 12, -1, 12, 0));
+
+        let mut negative = empty_region();
+        negative.walls[index(63, 12)] |= 1 << 2;
+        let scene = scene_with_regions(vec![(-1, 0, 0, negative), (0, 0, 0, empty_region())]);
+
+        assert!(scene.edge_blocked(-1, 12, 0, 12, 0));
+        assert!(scene.edge_blocked(0, 12, -1, 12, 0));
     }
 }

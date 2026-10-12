@@ -472,6 +472,21 @@ fn network_branches(
     let components = compatible_path_components(plane, profile, existing);
     let mut candidates: Vec<(f64, usize, PathPoint, usize)> = Vec::new();
     for (component_id, component) in components.iter().enumerate() {
+        let already_connected = line.iter().copied().any(|point| {
+            snap_target_from(
+                point,
+                plane,
+                profile,
+                0.35,
+                component.iter().map(|&paint_index| &existing[paint_index]),
+                atlas,
+            )
+            .is_some()
+        });
+        if already_connected {
+            continue;
+        }
+
         let mut best: Option<(f64, usize, PathPoint)> = None;
         for (index, point) in line
             .iter()
@@ -496,10 +511,6 @@ fn network_branches(
                 continue;
             };
             let distance = point.distance_to(target);
-            // If the authored line already touches this existing component, no branch is useful.
-            if distance <= 0.35 {
-                continue;
-            }
             let replace = best.is_none_or(|(best_distance, best_index, _)| {
                 distance < best_distance - 1.0e-9
                     || ((distance - best_distance).abs() <= 1.0e-9 && index < best_index)
