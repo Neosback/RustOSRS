@@ -1,0 +1,28 @@
+name: Temporary spline preview coalescing gate
+on:
+  push:
+    branches:
+      - fix/spline-preview-coalescing
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/spline-preview-coalescing
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+      - run: python3 scripts/fix_spline_preview_coalescing.py
+      - run: sed -i 's/color\.a()\.saturating_div(3)/color.a() \/ 3/' crates/osrs-editor/src/app/spline_tool.rs
+      - run: cargo fmt --all
+      - run: cargo check --locked -p osrs-editor --all-targets --all-features
+      - run: cargo clippy --locked -p osrs-editor --all-targets --all-features -- -D warnings
+      - run: cargo test --locked -p osrs-editor terrain_path
+      - run: rm scripts/fix_spline_preview_coalescing.py .github/workflows/branch-spline-preview.yml
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(editor): coalesce spline preview planning"
+          git push origin HEAD:fix/spline-preview-coalescing
