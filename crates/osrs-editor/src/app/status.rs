@@ -35,7 +35,13 @@ impl EditorApp {
                         .request_repaint_after(std::time::Duration::from_millis(500));
                 }
                 ui.spacing_mut().item_spacing.x = 4.0;
-                let wide = ui.ctx().content_rect().width() >= 1000.0;
+                // The hints (left) and the figures (right) share one line; each gives way before they meet.
+                let width = ui.ctx().content_rect().width();
+                let notice_up = self
+                    .notice
+                    .as_ref()
+                    .is_some_and(|(_, shown)| shown.elapsed().as_secs_f32() < 6.0);
+                let wide = width >= if notice_up { 1900.0 } else { 1500.0 };
                 for (key, action) in match self.camera.mode {
                     crate::camera::CameraMode::Fly => FLY_HINTS,
                     crate::camera::CameraMode::Orbit => ORBIT_HINTS,
@@ -68,11 +74,13 @@ impl EditorApp {
                         resident as f32 / 1.0e6,
                         self.renderer.resident_zone_count()
                     ));
-                    ui.separator();
-                    ui.weak(
-                        self.stats
-                            .memory_text(self.renderer.resident_vertex_bytes()),
-                    );
+                    if width >= 1300.0 {
+                        ui.separator();
+                        ui.weak(
+                            self.stats
+                                .memory_text(self.renderer.resident_vertex_bytes()),
+                        );
+                    }
                     if let Some((build, _)) = &self.cache_build {
                         ui.separator();
                         ui.label(egui::RichText::new(format!("build {build}")).strong());
