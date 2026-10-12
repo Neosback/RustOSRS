@@ -27,3 +27,5 @@ pub use shapes::{overlay_triangles, shape_triangles};
 mod geometry_regression;
 #[cfg(test)]
 mod golden;
+#[cfg(test)]
+mod network_regression;
