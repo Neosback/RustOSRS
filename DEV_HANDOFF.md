@@ -215,29 +215,30 @@ The foundation delivered:
 - exact inverse round trips
 - semantic validation tests
 
-## Current active branch
+## History/query merge
 
-`refactor/editor-edit-history-foundation`
+The headless history/query foundation is merged to `main`.
 
-Created directly from validated base:
-
-`31da7b55e45557cd9f4e581b3798310ff26b53d3`
+- Branch: `refactor/editor-edit-history-foundation`
+- Base: `31da7b55e45557cd9f4e581b3798310ff26b53d3`
+- PR: `#34` (`refactor(editor): add headless edit history and query contracts`)
+- Final pre-merge branch head: `4847c1edf45d969223d6b9ad32be48b60f01bbf8`
+- Squash merge commit: `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`
+- Branch comparison before PR: 7 commits ahead, 0 behind `main`
+- Canonical PR diff: 4 files only (`history.rs`, `query.rs`, `lib.rs`, `DEV_HANDOFF.md`)
+- No renderer, 117HD, spline/path planner, preview worker, brush/object tool, or existing editor-runtime files changed
 
 ### History work delivered
 
 - `crates/osrs-edit/src/history.rs`
 - exported `EditHistory`
 - commit / undo / redo
-- redo invalidation after a new edit
+- one non-empty `MapPatch` = one logical history entry
+- redo invalidation after a successful new edit
 - failure-safe stack restoration
 - empty-patch behavior
 - exact document-state undo/redo tests
 - composite terrain + height + object patch as one history step
-
-Checkpoint 7 final handoff head:
-
-- `a24258054497fda6b0655f6098bbd009b7bf6815`
-- CI run `38249383659`: Tier A/B/C PASS
 
 ### Query work delivered
 
@@ -251,11 +252,6 @@ Checkpoint 7 final handoff head:
 - tests proving missing height remains `None`
 - tests proving object identity includes orientation
 - no duplicate query state or mutable internals exposed
-
-Query implementation head before this handoff update:
-
-- `4c5dd4c5bad2f3bde6f7016ef8413a8f7e93a328`
-- CI run `38251735284`: Tier A/B/C PASS
 
 ## Current `osrs-edit` files
 
@@ -275,19 +271,6 @@ crates/osrs-edit/
 
 No renderer, egui, cache-codec, scene-worker, ECS, or runtime dependency belongs in this crate.
 
-## Scope explicitly NOT touched on the active branch
-
-- existing editor UI/tool wiring
-- current editor runtime undo stack
-- spline/path planner
-- spline/path preview worker
-- brush editing
-- height-tool migration
-- object-tool migration
-- renderer invalidation
-- 117HD
-- persistence/export
-
 ## Validation record
 
 ### Foundation branch
@@ -300,7 +283,7 @@ No renderer, egui, cache-codec, scene-worker, ECS, or runtime dependency belongs
 - CI `38238688037`: PASS
 - merged PR `#33`
 
-### History branch
+### History/query branch
 
 Checkpoint 7 implementation head:
 
@@ -323,7 +306,16 @@ Checkpoint 8 query implementation head:
 - Tier B workspace tests including `MapQuery`: PASS
 - Tier C M3-M9 semantic/reference parity: PASS
 
-The final handoff-update head for Checkpoint 8 must also pass full CI before the checkpoint is considered closed.
+Checkpoint 8 final handoff head:
+
+- `4847c1edf45d969223d6b9ad32be48b60f01bbf8`
+- push CI `38252254353`: PASS
+- PR-triggered CI `38259341642`: PASS
+- Tier A architecture/format/workspace/strict Clippy: PASS
+- Tier B full workspace tests: PASS
+- Tier C M3-M9 semantic/reference parity: PASS
+
+PR `#34` was then squash-merged to `main` as `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`.
 
 ## Checkpoint history
 
@@ -359,29 +351,32 @@ Added failure-safe `EditHistory` with one patch = one history step and exact und
 
 Added `MapQuery` as a small tool/planner-facing read-only boundary implemented directly by `MapDocument`. It currently exposes terrain lookup, explicit height lookup, and exact object-placement membership only. No planner, editor tool, UI, renderer, or 117HD integration was added.
 
-## Branch status / next checkpoint
+### Checkpoint 9: history/query branch readiness and merge
 
-The intended **history + basic query-contract scope is now feature-complete** on `refactor/editor-edit-history-foundation`.
+Compared the complete branch against `main`, confirmed it was 7 commits ahead and 0 behind, audited the four-file diff, opened PR `#34`, verified GitHub mergeability, required the PR-triggered exact-head CI to pass Tier A/B/C, and squash-merged the branch as `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`.
 
-Do **not** add editor integration or planner migration to this branch.
+## Current branch status / next checkpoint
 
-When explicitly directed to continue, the next checkpoint should be branch readiness only:
+There is **no active development branch** after the history/query merge. Do not create one until explicitly directed to continue.
 
-1. Verify the final handoff-update head passes full Tier A/B/C CI.
-2. Compare the complete branch against current `main`.
-3. Audit the full diff for scope leakage.
-4. Confirm no accidental changes to renderer, 117HD, path planning, or existing editor runtime behavior.
-5. Open/update the PR.
-6. Verify mergeability and exact-head CI.
-7. Merge the branch once clean.
-8. Record the merge in this handoff on `main`.
-9. Stop before creating the next development branch.
+The next branch should start from the fully validated current `main` head and take one existing editor edit path through the semantic domain boundary. Preferred first migration remains the spline/path **commit path only**, while deliberately leaving its planner, preview worker, topology/routing logic, and eventual generator redesign untouched.
+
+The next small checkpoint should:
+
+1. Create a new branch from current validated `main`.
+2. Inspect the existing spline/path commit boundary and current editor mutation/history flow.
+3. Define the narrow adapter needed to translate an already-produced path plan into semantic reads/`MapPatch` commits.
+4. Do not redesign path planning, auto-tiling, routing, geometry, or preview behavior.
+5. Preserve one laid path as one undo/history step.
+6. Keep renderer rebuild behavior functionally unchanged for the first migration.
+7. Add regression coverage around the migrated commit boundary.
+8. Stop and report before broadening the migration.
 
 ## Later branches, tentative order
 
 Directional only. Do not start automatically.
 
-1. Migrate one existing edit path through the semantic domain boundary, likely spline/path **commit only**, while leaving planner/preview behavior untouched.
+1. Migrate spline/path **commit only** through the semantic domain boundary.
 2. Migrate brush/terrain/height editing.
 3. Migrate object editing.
 4. Add revision-based async synchronization and stale-result rejection.
