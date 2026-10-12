@@ -44,6 +44,7 @@ pub enum AutoConnectPolicy {
     /// Join the two ends onto a nearby path of the same overlay.
     #[default]
     Endpoints,
+    /// Keep endpoint joining and also add a short interior branch to a nearby compatible path.
     Network,
 }
 
@@ -82,8 +83,8 @@ pub struct PathSettings {
     /// Extra distance kept from obstacles, in tiles.
     pub clearance: f64,
     pub maximum_slope: f64,
-    /// Repair small raster/shape disconnects after normal Terraini planning. Disabled in the
-    /// reference-compatible planner defaults; the interactive editor enables it by default.
+    /// Repair small raster/shape disconnects after normal reference-compatible planning. Disabled
+    /// in planner defaults; the interactive editor enables it by default.
     pub repair_continuity: bool,
     /// Keep tiles that already carry an overlay.
     pub preserve_existing: bool,
