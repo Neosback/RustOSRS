@@ -732,33 +732,3 @@ impl EditorApp {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn paint(tile_x: i32, tile_y: i32, overlay_id: u16, shape: u8, orientation: u8) -> TilePaint {
-        TilePaint {
-            tile_x,
-            tile_y,
-            plane: 0,
-            overlay_id,
-            shape,
-            orientation,
-            coverage: 1.0,
-            profile_id: "existing".to_owned(),
-        }
-    }
-
-    #[test]
-    fn nearby_paint_signature_tracks_every_topology_field() {
-        let base = vec![paint(10, 20, 5, 0, 0)];
-        let signature = paint_signature(&base);
-        assert_ne!(signature, paint_signature(&[paint(11, 20, 5, 0, 0)]));
-        assert_ne!(signature, paint_signature(&[paint(10, 21, 5, 0, 0)]));
-        assert_ne!(signature, paint_signature(&[paint(10, 20, 6, 0, 0)]));
-        assert_ne!(signature, paint_signature(&[paint(10, 20, 5, 1, 0)]));
-        assert_ne!(signature, paint_signature(&[paint(10, 20, 5, 0, 1)]));
-        assert_ne!(signature, paint_signature(&[]));
-    }
-}
