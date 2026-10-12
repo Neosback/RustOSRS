@@ -59,6 +59,46 @@ reference-tool = { package = "osrs-reference", path = "../osrs-reference" }
             errors = check_architecture.check_workspace(root)
             self.assertTrue(any("production crates must never depend" in error for error in errors))
 
+    def test_edit_domain_may_depend_on_core(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_manifest(
+                root,
+                "osrs-edit",
+                """
+[package]
+name = "osrs-edit"
+version = "0.0.0"
+
+[dependencies]
+osrs-core = { path = "../osrs-core" }
+""",
+            )
+
+            errors = check_architecture.check_workspace(root)
+            self.assertEqual(errors, [])
+
+    def test_edit_domain_cannot_depend_on_world_or_ui_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_manifest(
+                root,
+                "osrs-edit",
+                """
+[package]
+name = "osrs-edit"
+version = "0.0.0"
+
+[dependencies]
+osrs-core = { path = "../osrs-core" }
+osrs-world = { path = "../osrs-world" }
+eframe = "0.33"
+""",
+            )
+
+            errors = check_architecture.check_workspace(root)
+            self.assertTrue(any("illegal internal dependencies: osrs-world" in error for error in errors))
+
     def test_scene_cannot_depend_on_cache(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -158,6 +198,27 @@ osrs-editor = { path = "../osrs-editor" }
 
             errors = check_architecture.check_workspace(root)
             self.assertTrue(any("illegal internal dependencies: osrs-editor" in error for error in errors))
+
+    def test_editor_may_depend_on_edit_domain(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_manifest(
+                root,
+                "osrs-editor",
+                """
+[package]
+name = "osrs-editor"
+version = "0.0.0"
+
+[dependencies]
+osrs-core = { path = "../osrs-core" }
+osrs-edit = { path = "../osrs-edit" }
+osrs-world = { path = "../osrs-world" }
+""",
+            )
+
+            errors = check_architecture.check_workspace(root)
+            self.assertEqual(errors, [])
 
     def test_reference_may_depend_on_semantic_cache_and_world_crates(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
