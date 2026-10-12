@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/osrs-core",
+    "crates/osrs-edit",
     "crates/osrs-cache",
     "crates/osrs-scene",
     "crates/osrs-render",
@@ -12,6 +13,7 @@ members = [
 ]
 default-members = [
     "crates/osrs-core",
+    "crates/osrs-edit",
     "crates/osrs-cache",
     "crates/osrs-scene",
     "crates/osrs-render",
