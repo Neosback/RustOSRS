@@ -95,3 +95,18 @@ The user's list, grouped into the order it is built in (each group is one commit
 * **Tile HUD flicker**: the HUD in the viewport's corner covered the pointer, the viewport stopped being hovered,
   the pick went empty, the HUD hid, the pointer was uncovered, repeat. The world under the HUD keeps being picked
   while the pointer is over it (`hud_rect`).
+
+## Objects drawer, valid moves, camera with the gizmo, contrast (2026-10-11)
+
+* **Objects drawer** in groups: Move one tile (west, north, south, east), Floor (up, down: `z` +/- 1, the view
+  follows), Turn (both ways), Edit (copy, delete). Objects have no height setting in the map format (they sit on
+  the terrain), so "up and down" is the floor. The gizmo's green square is the free-move handle across the ground.
+* **Valid moves only**: a move (drag, gizmo, arrows, copy) is refused when it would leave the map, land on a floor
+  that does not exist, or land in a square the cache has no map for (`move_blocked`); the footprints turn red while
+  dragging and a notice says why.
+* **Camera with the gizmo**: `GizmoExt::interact` lays a widget over the cursor, which took the pointer from the
+  viewport, so right-drag orbit, pan and scroll zoom stopped while an object was selected in the Objects tool. The
+  gizmo is now driven directly (`interact_gizmo`) and only the primary button reaches it.
+* **Contrast**: the channel ticks draw a bold check in black or white, whichever the accent calls for
+  (`theme::contrast_on`); tabs sit between the inset and the widget fill instead of black, armed tab labels are
+  full strength; the picker rail is more opaque and its icons use the text colours.

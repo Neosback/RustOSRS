@@ -159,15 +159,6 @@ pub struct SplineSettings {
     /// Path width in tiles.
     pub width: f32,
     pub style: crate::autotile::EdgeStyle,
-    pub curve: crate::autotile::CurveKind,
-    /// Join the last point back to the first.
-    pub closed: bool,
-    /// Grade the terrain along the path from the first point's height to the last's.
-    pub ramp: bool,
-    /// How far (tiles) control points may be nudged so runs take a clean slope.
-    pub snap: f32,
-    /// Straight runs style: how far (tiles) the outline may stray to keep a run straight.
-    pub straighten: f32,
     /// Walls style: castle-wall kit object ids (0 = unset; top falls back to side).
     pub wall_side: u32,
     pub wall_top: u32,
@@ -187,12 +178,7 @@ impl Default for SplineSettings {
     fn default() -> Self {
         Self {
             width: 3.0,
-            style: crate::autotile::EdgeStyle::Runs,
-            curve: crate::autotile::CurveKind::Curve,
-            closed: false,
-            ramp: false,
-            snap: 1.0,
-            straighten: 0.45,
+            style: crate::autotile::EdgeStyle::Solid,
             wall_side: 0,
             wall_top: 0,
             wall_door: 0,

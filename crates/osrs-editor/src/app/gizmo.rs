@@ -9,7 +9,9 @@ use crate::paint::Tool;
 use eframe::egui::{self, Rect};
 use osrs_world::LocSpec;
 use transform_gizmo_egui::math::{DQuat, DVec3, Transform};
-use transform_gizmo_egui::{Gizmo, GizmoConfig, GizmoExt, GizmoMode, GizmoOrientation};
+use transform_gizmo_egui::{
+    Gizmo, GizmoConfig, GizmoInteraction, GizmoMode, GizmoOrientation, GizmoResult,
+};
 
 /// A gizmo drag in progress.
 pub struct GizmoDrag {
@@ -95,7 +97,12 @@ impl EditorApp {
 
     /// Draw the gizmo over the viewport and act on it. Called once per frame inside the central
     /// panel, after the viewport image.
-    pub(super) fn object_gizmo(&mut self, ui: &mut egui::Ui, viewport: Rect) {
+    pub(super) fn object_gizmo(
+        &mut self,
+        ui: &mut egui::Ui,
+        viewport: Rect,
+        response: &egui::Response,
+    ) {
         let specs = self.selected_specs();
         if self.prefs.tool != Tool::Objects
             || !self.prefs.object_gizmo
@@ -129,7 +136,7 @@ impl EditorApp {
             || Transform::from_scale_rotation_translation(DVec3::ONE, DQuat::IDENTITY, origin),
             |drag| drag.current,
         );
-        let result = self.gizmo.interact(ui, &[target]);
+        let result = self.interact_gizmo(ui, viewport, response, &[target]);
         if let Some((_, transforms)) = result
             && let Some(moved) = transforms.first()
         {
@@ -156,6 +163,56 @@ impl EditorApp {
         if self.gizmo_drag.is_some() && !ui.input(|i| i.pointer.primary_down()) {
             self.finish_gizmo_drag();
         }
+    }
+
+    /// What `GizmoExt::interact` does, minus the widget it lays over the cursor: that widget would
+    /// take the pointer from the viewport, and with it the camera's drags and scrolling.
+    fn interact_gizmo(
+        &mut self,
+        ui: &egui::Ui,
+        viewport: Rect,
+        response: &egui::Response,
+        targets: &[Transform],
+    ) -> Option<(GizmoResult, Vec<Transform>)> {
+        let ctx = ui.ctx();
+        self.gizmo.update_config(GizmoConfig {
+            viewport,
+            pixels_per_point: ctx.pixels_per_point(),
+            ..*self.gizmo.config()
+        });
+        let cursor = ctx.input(|i| i.pointer.hover_pos()).unwrap_or_default();
+        // Only the primary button works the gizmo; the camera's buttons pass through it.
+        let (pressed, down) = ctx.input(|i| {
+            (
+                i.pointer.button_pressed(egui::PointerButton::Primary),
+                i.pointer.button_down(egui::PointerButton::Primary),
+            )
+        });
+        let result = self.gizmo.update(
+            GizmoInteraction {
+                cursor_pos: (cursor.x, cursor.y),
+                hovered: response.hovered() || response.dragged(),
+                drag_started: pressed,
+                dragging: down,
+            },
+            targets,
+        );
+        let draw = self.gizmo.draw();
+        egui::Painter::new(ctx.clone(), ui.layer_id(), viewport).add(egui::Mesh {
+            indices: draw.indices,
+            vertices: draw
+                .vertices
+                .into_iter()
+                .zip(draw.colors)
+                .map(|(pos, [r, g, b, a])| egui::epaint::Vertex {
+                    pos: pos.into(),
+                    uv: egui::Pos2::default(),
+                    color: egui::Rgba::from_rgba_premultiplied(r, g, b, a).into(),
+                })
+                .collect(),
+            ..Default::default()
+        });
+        result
     }
 
     /// The button went up: commit the move, or the turn, as one undo step.

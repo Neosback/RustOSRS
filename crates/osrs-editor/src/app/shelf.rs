@@ -6,7 +6,7 @@
 use super::EditorApp;
 use super::widgets::chips;
 use super::workspace::tool_icon;
-use crate::autotile::{CurveKind, EdgeStyle};
+use crate::autotile::EdgeStyle;
 use crate::heights::Falloff;
 use crate::icons;
 use crate::paint::{BrushShape, Tool};
@@ -162,25 +162,17 @@ impl EditorApp {
         }
     }
 
-    /// The spline tool's path: width, curve, edge style, loop and ramp.
+    /// The spline tool's path: width, edge style, wall kit.
     fn path_section(&mut self, ui: &mut egui::Ui) {
         crate::theme::section_heading(ui, "Path");
         ui.label(egui::RichText::new("Width").weak());
         ui.spacing_mut().slider_width = ui.available_width() - 76.0;
         ui.add(
-            egui::Slider::new(&mut self.prefs.spline.width, 1.0..=24.0)
-                .max_decimals(1)
+            egui::Slider::new(&mut self.prefs.spline.width, 1.0..=12.0)
+                .step_by(1.0)
+                .max_decimals(0)
                 .suffix(" tiles"),
         );
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new("Line").weak());
-        if let Some(curve) = chips(
-            ui,
-            self.prefs.spline.curve,
-            &[(CurveKind::Curve, "Curve"), (CurveKind::Lines, "Lines")],
-        ) {
-            self.prefs.spline.curve = curve;
-        }
         ui.add_space(4.0);
         ui.label(egui::RichText::new("Edges").weak());
         for style in EdgeStyle::ALL {
@@ -233,36 +225,5 @@ impl EditorApp {
                 );
             }
         }
-        if self.prefs.spline.style == EdgeStyle::Runs {
-            ui.add_space(4.0);
-            ui.label(egui::RichText::new("Straighten").weak());
-            ui.add(
-                egui::Slider::new(&mut self.prefs.spline.straighten, 0.25..=0.8)
-                    .max_decimals(2)
-                    .suffix(" tiles"),
-            )
-            .on_hover_text(
-                "How far an edge may stray from the drawn curve to stay one straight run. \
-                 More: longer runs and fewer turns; less: closer to the curve, more turns",
-            );
-        }
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new("Clean angles").weak());
-        ui.add(
-            egui::Slider::new(&mut self.prefs.spline.snap, 0.0..=1.5)
-                .max_decimals(2)
-                .suffix(" tiles"),
-        )
-        .on_hover_text(
-            "Nudge control points up to this far so each run takes a slope the shapes draw \
-             perfectly straight (flat, 45 degrees, 2:1, upright). 0 keeps the points exactly",
-        );
-        crate::theme::section_heading(ui, "Shape");
-        ui.checkbox(&mut self.prefs.spline.closed, "Close the loop")
-            .on_hover_text("Join the last point back to the first");
-        ui.checkbox(&mut self.prefs.spline.ramp, "Grade the terrain")
-            .on_hover_text(
-                "Slope the ground along the path, from the first point's height to the last's",
-            );
     }
 }

@@ -455,7 +455,7 @@ impl EditorApp {
                     ui.weak("Width");
                     ui.add(
                         egui::DragValue::new(&mut self.prefs.spline.width)
-                            .range(1.0..=32.0)
+                            .range(1.0..=12.0)
                             .speed(0.1)
                             .suffix(" tiles"),
                     );

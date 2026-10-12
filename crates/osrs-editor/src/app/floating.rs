@@ -22,7 +22,7 @@ impl EditorApp {
                 ctx.global_style()
                     .visuals
                     .window_fill
-                    .gamma_multiply(if selecting { 0.94 } else { 0.7 }),
+                    .gamma_multiply(if selecting { 0.97 } else { 0.92 }),
             )
             .stroke(Stroke::new(
                 1.0,
@@ -133,9 +133,9 @@ pub(super) fn picker_button(
     let tint = if active {
         accent
     } else if response.hovered() {
-        visuals.text_color()
+        visuals.strong_text_color()
     } else {
-        visuals.weak_text_color()
+        visuals.text_color()
     };
     ui.painter().text(
         rect.center(),

@@ -231,8 +231,8 @@ impl EditorApp {
                 for pair in words {
                     let (x, y) = pair.split_once(',').ok_or("points are X,Y")?;
                     points.push((
-                        number::<f32>(Some(x), "x")? + 0.5,
-                        number::<f32>(Some(y), "y")? + 0.5,
+                        number::<f32>(Some(x), "x")?.floor() as i32,
+                        number::<f32>(Some(y), "y")?.floor() as i32,
                     ));
                 }
                 self.spline.points = points;
@@ -274,10 +274,7 @@ impl EditorApp {
                     .infos
                     .get(&object.region)
                     .and_then(|info| info.locs.get(object.index))
-                    .map(|loc| crate::pick::TilePick {
-                        tile: loc.tile,
-                        at: (loc.tile.0 as f32 + 0.5, loc.tile.1 as f32 + 0.5),
-                    });
+                    .map(|loc| crate::pick::TilePick { tile: loc.tile });
                 self.context_pick = crate::pick::Pick {
                     object: Some(object),
                     tile: anchor,

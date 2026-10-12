@@ -803,7 +803,10 @@ fn channel_tab(
     } else if on_tab {
         visuals.widgets.hovered.weak_bg_fill
     } else {
-        visuals.extreme_bg_color
+        // Between the inset and the widget fill: tabs read as tabs without going black.
+        visuals
+            .extreme_bg_color
+            .lerp_to_gamma(visuals.widgets.inactive.bg_fill, 0.45)
     };
     let painter = ui.painter();
     let shape = CornerRadius {
@@ -832,14 +835,16 @@ fn channel_tab(
     // The tick.
     let centre = tick_rect.center();
     if armed {
-        painter.circle_filled(centre, 8.5, accent);
-        painter.text(
-            centre,
-            egui::Align2::CENTER_CENTER,
-            egui_phosphor::regular::CHECK,
-            egui::FontId::proportional(11.0),
-            visuals.extreme_bg_color,
-        );
+        painter.circle_filled(centre, 9.0, accent);
+        // The check is drawn as a bold stroke in black or white, whichever the accent calls for.
+        painter.add(egui::Shape::line(
+            vec![
+                centre + Vec2::new(-4.0, 0.5),
+                centre + Vec2::new(-1.2, 3.4),
+                centre + Vec2::new(4.2, -3.0),
+            ],
+            Stroke::new(2.3, crate::theme::contrast_on(accent)),
+        ));
     } else {
         painter.circle_stroke(
             centre,
@@ -854,16 +859,12 @@ fn channel_tab(
             ),
         );
     }
-    let tint = if selected {
-        visuals.text_color()
-    } else {
-        visuals.weak_text_color()
-    };
-    // Disarmed channels read as dimmer: nothing will be painted there.
-    let tint = if armed {
-        tint
-    } else {
-        tint.gamma_multiply(0.75)
+    // Armed channels read at full strength (a tab you are not on only a little less); disarmed ones
+    // dim, since nothing will be painted there.
+    let tint = match (armed, selected) {
+        (true, true) => visuals.text_color(),
+        (true, false) => visuals.text_color().gamma_multiply(0.85),
+        (false, _) => visuals.weak_text_color(),
     };
     painter.text(
         egui::pos2(rect.left() + 38.0, rect.center().y + 1.0),

@@ -669,7 +669,7 @@ impl eframe::App for EditorApp {
                     width,
                     height,
                 );
-                self.object_gizmo(ui, rect);
+                self.object_gizmo(ui, rect, &response);
                 self.viewport_overlays(ui, rect);
                 self.floating_toolbar(&ctx, rect);
                 self.context_menu(&ctx);

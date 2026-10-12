@@ -257,6 +257,25 @@ pub fn outline_button(text: impl Into<egui::WidgetText>) -> elegance::Button {
     elegance::Button::new(text).outline()
 }
 
+/// Black or white, whichever reads better on `fill` (checkmarks and labels on the accent).
+pub fn contrast_on(fill: Color32) -> Color32 {
+    let channel = |c: u8| {
+        let c = f32::from(c) / 255.0;
+        if c <= 0.039_28 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let luminance =
+        0.2126 * channel(fill.r()) + 0.7152 * channel(fill.g()) + 0.0722 * channel(fill.b());
+    if luminance > 0.35 {
+        Color32::from_rgb(14, 17, 22)
+    } else {
+        Color32::WHITE
+    }
+}
+
 /// A section heading: small, upper case, in the accent colour, with a hairline under it. The one
 /// heading style for the side panel and the settings window, so groups read the same everywhere.
 pub fn section_heading(ui: &mut egui::Ui, text: &str) {
