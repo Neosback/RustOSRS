@@ -20,7 +20,42 @@ fn sanitize_loaded_settings(settings: Settings) -> Settings {
 }
 
 '''
-settings.write_text(text[:start] + replacement + text[end:])
+text = text[:start] + replacement + text[end:]
+
+tests_start = text.index('#[cfg(test)]\nmod tests {')
+text = text[:tests_start] + '''#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loaded_spline_settings_are_clamped_to_simple_fitter_ranges() {
+        let mut settings = Settings::default();
+        settings.spline.width = 999.0;
+        settings.spline.edge_weight = -5.0;
+        settings.spline.snap_points = true;
+
+        let settings = sanitize_loaded_settings(settings);
+
+        assert_eq!(settings.spline.width, 24.0);
+        assert_eq!(settings.spline.edge_weight, 0.0);
+        assert!(settings.spline.snap_points);
+    }
+
+    #[test]
+    fn loaded_spline_settings_recover_from_non_finite_values() {
+        let mut settings = Settings::default();
+        settings.spline.width = f32::NAN;
+        settings.spline.edge_weight = f32::INFINITY;
+        let defaults = crate::paint::SplineSettings::default();
+
+        let settings = sanitize_loaded_settings(settings);
+
+        assert_eq!(settings.spline.width, defaults.width);
+        assert_eq!(settings.spline.edge_weight, defaults.edge_weight);
+    }
+}
+'''
+settings.write_text(text)
 
 workspace = Path('crates/osrs-editor/src/app/workspace.rs')
 text = workspace.read_text()
