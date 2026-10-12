@@ -34,7 +34,7 @@ jobs:
                   Err(error) => Err(error.0),
               }
           }
-          '''
+          '''.replace('              ', '        ')
           new = '''    fn request(&mut self, input: PlanInput) -> Option<PlanInput> {
               if input.key == self.requested_key {
                   return None;
@@ -48,7 +48,7 @@ jobs:
                   Err(error) => Some(error.0),
               }
           }
-          '''
+          '''.replace('              ', '        ')
           if old not in s:
               raise SystemExit('request method block not found')
           s = s.replace(old, new, 1)
