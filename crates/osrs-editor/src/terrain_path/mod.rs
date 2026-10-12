@@ -24,4 +24,6 @@ pub use settings::{AutoConnectPolicy, ObstaclePolicy, PathProfile, PathSettings}
 pub use shapes::{overlay_triangles, shape_triangles};
 
 #[cfg(test)]
+mod geometry_regression;
+#[cfg(test)]
 mod golden;
