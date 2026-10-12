@@ -22,10 +22,18 @@ pub enum Tool {
     Spline,
     /// Sculpt tile heights; paints nothing else.
     Height,
+    /// Move, turn, copy and delete the selected objects.
+    Objects,
 }
 
 impl Tool {
-    pub const ALL: [Self; 4] = [Self::Select, Self::Paint, Self::Spline, Self::Height];
+    pub const ALL: [Self; 5] = [
+        Self::Select,
+        Self::Paint,
+        Self::Spline,
+        Self::Height,
+        Self::Objects,
+    ];
 
     pub const fn label(self) -> &'static str {
         match self {
@@ -33,6 +41,7 @@ impl Tool {
             Self::Paint => "Paint",
             Self::Spline => "Spline",
             Self::Height => "Height",
+            Self::Objects => "Objects",
         }
     }
 
@@ -43,6 +52,7 @@ impl Tool {
             Self::Paint => "tool.paint",
             Self::Spline => "tool.spline",
             Self::Height => "tool.height",
+            Self::Objects => "tool.objects",
         }
     }
 
@@ -57,7 +67,7 @@ impl Tool {
                 DrawerTab::Height,
                 DrawerTab::Mask,
             ],
-            Self::Spline | Self::Height => &[],
+            Self::Spline | Self::Height | Self::Objects => &[],
         }
     }
 
@@ -66,9 +76,10 @@ impl Tool {
         !matches!(self, Self::Select)
     }
 
-    /// Whether the left shelf shows: every tool but Select has options to tune.
+    /// Whether the left shelf shows: the tools with options to tune (Objects only has actions, in
+    /// its drawer).
     pub const fn has_shelf(self) -> bool {
-        !matches!(self, Self::Select)
+        !matches!(self, Self::Select | Self::Objects)
     }
 
     /// Whether the tool paints with the brush footprint.

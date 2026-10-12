@@ -338,6 +338,12 @@ pub struct DecodedLocations {
 }
 
 impl DecodedLocations {
+    /// The decoded entries of `region` with their list replaced (an editor's edit layer adds and
+    /// removes entries; the cache is never written).
+    pub fn with_locations(region: RegionCoord, locations: Vec<DecodedLocation>) -> Self {
+        Self { region, locations }
+    }
+
     pub const fn region(&self) -> RegionCoord {
         self.region
     }

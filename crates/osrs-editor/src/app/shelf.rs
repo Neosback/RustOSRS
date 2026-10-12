@@ -49,7 +49,7 @@ impl EditorApp {
                             self.sculpt_section(ui);
                         }
                         Tool::Spline => self.path_section(ui),
-                        Tool::Select => {}
+                        Tool::Select | Tool::Objects => {}
                     });
             });
     }

@@ -11,7 +11,7 @@ use crate::heights::{self, encode_height};
 use crate::paint::{Brush, Fill, TileValues, Tool};
 use eframe::egui;
 use osrs_core::coords::RegionCoord;
-use osrs_world::TileEdit;
+use osrs_world::{LocEdit, LocSpec, TileEdit};
 use std::collections::HashMap;
 use std::time::Duration;
 use web_time::Instant;
@@ -38,6 +38,9 @@ pub type TileKey = (u8, i32, i32);
 #[derive(Debug, Clone, Default)]
 pub struct EditStep {
     pub changes: Vec<(TileKey, TileValues, TileValues)>,
+    /// Objects the step removed and added (one undo step covers a move: remove, add).
+    pub removed: Vec<LocSpec>,
+    pub added: Vec<LocSpec>,
 }
 
 /// A stroke being painted.
@@ -186,15 +189,20 @@ impl EditorApp {
             return;
         }
         let count = stroke.step.changes.len();
-        self.history.push(stroke.step);
-        if self.history.len() > HISTORY_LIMIT {
-            self.history.remove(0);
-        }
-        self.redo_stack.clear();
+        self.push_step(stroke.step);
         self.notice = Some((
             format!("Changed {count} tile{}", if count == 1 { "" } else { "s" }),
             Instant::now(),
         ));
+    }
+
+    /// One finished undo step (a stroke, or an object action).
+    pub(super) fn push_step(&mut self, step: EditStep) {
+        self.history.push(step);
+        if self.history.len() > HISTORY_LIMIT {
+            self.history.remove(0);
+        }
+        self.redo_stack.clear();
     }
 
     /// Paint the brush footprint around `tile` into the open stroke.
@@ -396,6 +404,27 @@ impl EditorApp {
         count
     }
 
+    /// Remove a tile's overlay (its shape and rotation with it): one undo step.
+    pub(super) fn clear_overlay_at(&mut self, tile: (i32, i32)) {
+        let key = (self.view_plane, tile.0, tile.1);
+        let Some(before) = self.current_tile(key) else {
+            return;
+        };
+        let mut after = before;
+        after.overlay = 0;
+        after.shape = 0;
+        after.rotation = 0;
+        self.begin_stroke();
+        let Some(mut stroke) = self.stroke.take() else {
+            return;
+        };
+        let mut edits = Vec::new();
+        self.record(&mut stroke, key, after, &mut edits);
+        self.send_edits(edits);
+        self.stroke = Some(stroke);
+        self.end_stroke();
+    }
+
     /// One click without a drag (the context menu's "paint here" and "sculpt here").
     pub(super) fn apply_brush_at(&mut self, tile: (i32, i32)) {
         match self.prefs.tool {
@@ -416,7 +445,7 @@ impl EditorApp {
                 self.sculpt_at(tile);
                 self.end_stroke();
             }
-            Tool::Spline | Tool::Select => {}
+            Tool::Spline | Tool::Select | Tool::Objects => {}
         }
     }
 
@@ -470,13 +499,47 @@ impl EditorApp {
             edits.push(self.edit_for(*key, values));
         }
         self.send_edits(edits);
+        if !step.removed.is_empty() || !step.added.is_empty() {
+            let (gone, came) = if forward {
+                (&step.removed, &step.added)
+            } else {
+                (&step.added, &step.removed)
+            };
+            let mut loc_edits: Vec<LocEdit> = gone.iter().map(|s| LocEdit::Remove(*s)).collect();
+            loc_edits.extend(came.iter().map(|s| LocEdit::Add(*s)));
+            self.send_loc_edits(loc_edits);
+            // The objects as they stand now are what a follow-up edit acts on.
+            self.pending_reselect = came.clone();
+            self.clear_selection();
+        }
+    }
+
+    /// Hand object edits to the world worker and queue the regions they sit in for a rebuild.
+    pub(super) fn send_loc_edits(&mut self, edits: Vec<LocEdit>) {
+        if edits.is_empty() {
+            return;
+        }
+        for edit in &edits {
+            let spec = match edit {
+                LocEdit::Remove(spec) | LocEdit::Add(spec) => spec,
+            };
+            let region = spec.region();
+            if self.loaded.contains_key(&region) {
+                self.dirty_regions.insert(region);
+            }
+        }
+        self.streamer.edit_locs(edits);
     }
 
     pub(super) fn undo(&mut self) {
         if let Some(step) = self.history.pop() {
             self.revert(&step, false);
             self.notice = Some((
-                format!("Undid {} tile change(s)", step.changes.len()),
+                if step.changes.is_empty() {
+                    "Undid an object change".to_owned()
+                } else {
+                    format!("Undid {} tile change(s)", step.changes.len())
+                },
                 Instant::now(),
             ));
             self.redo_stack.push(step);
@@ -537,7 +600,7 @@ impl EditorApp {
         match tool {
             Tool::Paint => self.paint_at(tile),
             Tool::Height => self.sculpt_at(tile),
-            Tool::Spline | Tool::Select => {}
+            Tool::Spline | Tool::Select | Tool::Objects => {}
         }
     }
 }

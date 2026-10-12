@@ -125,6 +125,7 @@ pub struct WorldDefinitions {
     skeletons: HashMap<u16, Option<Arc<Vec<LegacySkeletonTransform>>>>,
     frames: HashMap<u32, Option<Arc<LegacyAnimationFrame>>>,
     edits: crate::TerrainEdits,
+    loc_edits: crate::LocEdits,
 }
 
 impl WorldDefinitions {
@@ -251,12 +252,18 @@ impl WorldDefinitions {
             skeletons: HashMap::new(),
             frames: HashMap::new(),
             edits: crate::TerrainEdits::default(),
+            loc_edits: crate::LocEdits::default(),
         })
     }
 
     /// Record editor changes; later builds of the affected regions include them.
     pub fn apply_edits(&mut self, edits: &[crate::TileEdit]) {
         self.edits.apply(edits);
+    }
+
+    /// Record object edits (removed and added placements); later builds include them.
+    pub fn apply_loc_edits(&mut self, edits: &[crate::LocEdit]) {
+        self.loc_edits.apply(edits);
     }
 
     pub fn cache(&self) -> &CacheRepository {
@@ -506,6 +513,14 @@ impl WorldDefinitions {
                 edit.apply_to(tile);
             }
         }
+        let locations = if self.loc_edits.touches((region.x, region.y)) {
+            DecodedLocations::with_locations(
+                region,
+                self.loc_edits.replay(region, locations.locations()),
+            )
+        } else {
+            locations
+        };
         Ok(Some(RegionMap {
             terrain: RegionTerrain::new(tiles)?,
             locations,

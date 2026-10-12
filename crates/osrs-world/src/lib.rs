@@ -14,6 +14,7 @@ mod extract;
 mod floor_palette;
 pub mod hd;
 mod info;
+mod loc_edits;
 mod loc_stage;
 pub mod minimap;
 pub mod oracle_dump;
@@ -40,6 +41,7 @@ pub use info::{
     LocInfo, RegionInfo, SlotInfo, SurfaceKind, TileInfo, extract_region_info,
     loc_outline_triangles,
 };
+pub use loc_edits::{LocEdit, LocEdits, LocSpec};
 pub use loc_stage::{LocRenderable, LocStageOutput, LocStageStats, WorldLoc, place_window_locs};
 pub use scene_builder::{WorldScene, build_world_scene};
 pub use streaming::{

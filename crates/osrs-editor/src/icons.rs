@@ -58,3 +58,7 @@ pub const CH_HEIGHT: &str = ph::MOUNTAINS;
 pub const CH_MASK: &str = ph::FLAG;
 pub const HIDE: &str = ph::EYE_SLASH;
 pub const OVERLAYS: &str = ph::STACK_SIMPLE;
+pub const TOOL_OBJECTS: &str = ph::CUBE_FOCUS;
+pub const ROTATE: &str = ph::ARROW_CLOCKWISE;
+pub const DELETE: &str = ph::TRASH;
+pub const DUPLICATE: &str = ph::COPY;

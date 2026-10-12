@@ -9,6 +9,7 @@ mod hd;
 mod inspector;
 mod menu;
 mod minimap;
+mod object_tool;
 mod overlay;
 mod plugins;
 mod selection;
@@ -180,6 +181,10 @@ pub struct EditorApp {
     cache_dir: PathBuf,
     cache_build: Option<(u32, String)>,
     cache_error: Option<String>,
+    /// The selected objects being dragged by the Objects tool.
+    object_drag: Option<object_tool::ObjectDrag>,
+    /// Placements to select once their rebuilt region arrives (after an object edit).
+    pending_reselect: Vec<osrs_world::LocSpec>,
     /// Where the floating picker rail is (the HUDs keep clear of it).
     rail_rect: Option<egui::Rect>,
     /// Where the quick tools HUD (Space) is open.
@@ -195,6 +200,10 @@ pub struct EditorApp {
     smoke_spline: Option<Vec<(f32, f32)>>,
     /// Smoke-test hook: lay the spline once this frame is reached (`RUSTOSRS_LAY_AT`).
     smoke_lay_at: Option<u64>,
+    /// Smoke-test hook: `RUSTOSRS_OBJECT_OP="frame:delete|turn|copy|move dx dy"` acts on the selected objects.
+    smoke_object_op: Option<(u64, String)>,
+    /// Smoke-test log of an object op's effect: frame to report at, region, locs before.
+    smoke_loc_count: Option<(u64, (i32, i32), usize)>,
     smoke_tiles: Option<(i32, i32, i32, i32)>,
     /// Smoke-test hook: paint the brush here once the region is loaded (`RUSTOSRS_PAINT="x,y"`).
     smoke_paint: Option<(i32, i32)>,
@@ -324,9 +333,16 @@ impl EditorApp {
             }),
             cache_dir: initial_dir,
             cache_build: None,
+            object_drag: None,
+            pending_reselect: Vec::new(),
             rail_rect: None,
             quick_open: std::env::var_os("RUSTOSRS_QUICK").map(|_| egui::pos2(520.0, 300.0)),
             last_hover_tile: None,
+            smoke_object_op: std::env::var("RUSTOSRS_OBJECT_OP").ok().and_then(|value| {
+                let (frame, op) = value.split_once(':')?;
+                Some((frame.trim().parse().ok()?, op.trim().to_owned()))
+            }),
+            smoke_loc_count: None,
             smoke_lay_at: std::env::var("RUSTOSRS_LAY_AT")
                 .ok()
                 .and_then(|value| value.parse().ok()),
@@ -1176,6 +1192,8 @@ impl EditorApp {
         }
         self.tool_actions(ctx);
         self.edit_actions(ctx);
+        self.object_actions(ctx);
+        self.resolve_reselect();
     }
 
     fn handle_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
@@ -1323,6 +1341,38 @@ impl eframe::App for EditorApp {
                 }
             }
         }
+        if let Some((at, op)) = self.smoke_object_op.clone()
+            && self.frames >= at
+            && self.selected.is_some()
+        {
+            if let Some(object) = &self.selected
+                && let Some(info) = self.infos.get(&object.region)
+            {
+                self.smoke_loc_count = Some((self.frames + 80, object.region, info.locs.len()));
+            }
+            let mut parts = op.split_whitespace();
+            match parts.next() {
+                Some("delete") => self.delete_selected_objects(),
+                Some("turn") => self.rotate_selected_objects(1),
+                Some("copy") => self.duplicate_selected_objects(),
+                Some("move") => {
+                    let delta: Vec<i32> = parts.filter_map(|p| p.parse().ok()).collect();
+                    let specs = self.selected_specs();
+                    if let [dx, dy] = delta[..] {
+                        self.move_objects(specs, (dx, dy));
+                    }
+                }
+                _ => {}
+            }
+            self.smoke_object_op = None;
+        }
+        if let Some((at, region, before)) = self.smoke_loc_count
+            && self.frames >= at
+        {
+            let now = self.infos.get(&region).map_or(0, |info| info.locs.len());
+            eprintln!("smoke: region {region:?} had {before} objects, now {now}");
+            self.smoke_loc_count = None;
+        }
         // Smoke-test hook: undo the last stroke on this frame (`RUSTOSRS_UNDO_AT=frame`).
         if let Some(at) = self.smoke_undo_at
             && self.frames >= at
@@ -1427,6 +1477,13 @@ impl eframe::App for EditorApp {
                 }
                 self.draw_selection(ui, rect, pixels_per_point, width, height);
                 self.draw_selection_extras(
+                    &ui.painter().with_clip_rect(rect),
+                    rect,
+                    pixels_per_point,
+                    width,
+                    height,
+                );
+                self.draw_object_drag(
                     &ui.painter().with_clip_rect(rect),
                     rect,
                     pixels_per_point,

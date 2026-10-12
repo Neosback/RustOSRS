@@ -31,6 +31,7 @@ pub fn tool_icon(tool: Tool) -> &'static str {
         Tool::Paint => icons::TOOL_PAINT,
         Tool::Spline => icons::TOOL_SPLINE,
         Tool::Height => icons::TOOL_HEIGHT,
+        Tool::Objects => icons::TOOL_OBJECTS,
     }
 }
 
@@ -433,6 +434,10 @@ impl EditorApp {
                     ui.weak("Brush");
                     self.brush_controls(ui, true, false);
                 });
+            }
+            Tool::Objects => {
+                crate::theme::section_heading(ui, "Objects");
+                self.object_drawer(ui);
             }
         }
     }

@@ -133,6 +133,7 @@ impl EditorApp {
                 130.0,
                 380.0,
             ),
+            Tool::Objects => (72.0, 60.0, 120.0),
             _ => (104.0, 84.0, 200.0),
         };
         egui::Panel::bottom(egui::Id::new(("tool_drawer", tool as u8)))
@@ -153,12 +154,13 @@ impl EditorApp {
             Tool::Paint => self.paint_drawer(ui),
             Tool::Spline => self.spline_drawer(ui),
             Tool::Height => self.height_drawer(ui),
+            Tool::Objects => self.object_drawer(ui),
             Tool::Select => {}
         }
     }
 
     /// The collapse chevron every drawer header ends with.
-    fn drawer_collapse(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn drawer_collapse(&mut self, ui: &mut egui::Ui) {
         if ui
             .small_button(egui_phosphor::regular::CARET_DOWN)
             .on_hover_text("Hide the drawer (Tab)")

@@ -49,6 +49,31 @@ impl EditorApp {
         self.selected = Some(object);
     }
 
+    /// Select every loaded object with definition `id`.
+    pub(super) fn select_similar(&mut self, id: u32) {
+        let mut found = Vec::new();
+        for (region, info) in &self.infos {
+            for (index, loc) in info.locs.iter().enumerate() {
+                if loc.definition.identity.id.get() == id {
+                    found.push(ObjectPick {
+                        region: *region,
+                        index,
+                    });
+                }
+            }
+        }
+        let count = found.len();
+        self.selected = found.last().cloned();
+        self.selection_objects = found;
+        self.notice = Some((
+            format!(
+                "Selected {count} object{} (id {id})",
+                if count == 1 { "" } else { "s" }
+            ),
+            web_time::Instant::now(),
+        ));
+    }
+
     fn toggle_object(&mut self, object: ObjectPick) {
         if let Some(index) = self.selection_objects.iter().position(|o| same(o, &object)) {
             self.selection_objects.remove(index);
@@ -82,10 +107,16 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
-        if self.prefs.tool != crate::paint::Tool::Select
+        let objects_tool = self.prefs.tool == crate::paint::Tool::Objects;
+        if !(self.prefs.tool == crate::paint::Tool::Select || objects_tool)
             || self.quick_open.is_some()
             || self.context_menu.is_some()
         {
+            self.marquee = None;
+            return;
+        }
+        // Dragging a selected object moves it (Objects tool); that drag is not a box.
+        if self.object_drag_input(ctx, response) {
             self.marquee = None;
             return;
         }
@@ -125,7 +156,11 @@ impl EditorApp {
     }
 
     fn click_select(&mut self, additive: bool, toggle: bool) {
-        let mode = self.prefs.select_mode;
+        let mode = if self.prefs.tool == crate::paint::Tool::Objects {
+            SelectMode::Objects
+        } else {
+            self.prefs.select_mode
+        };
         let object = self.hover.object.clone();
         let tile = self.hover.tile.map(|pick| pick.tile);
         if !additive && !toggle {
@@ -168,7 +203,11 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
-        let mode = self.prefs.select_mode;
+        let mode = if self.prefs.tool == crate::paint::Tool::Objects {
+            SelectMode::Objects
+        } else {
+            self.prefs.select_mode
+        };
         let plane = self.view_plane;
         let to_screen = |app: &Self, point: [f64; 3]| -> Option<Pos2> {
             pick::project(

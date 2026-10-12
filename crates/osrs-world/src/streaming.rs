@@ -265,6 +265,7 @@ enum Request {
     Build(RegionCoord),
     SetPresentation(TerrainPresentation, u32),
     Edit(Vec<crate::TileEdit>),
+    EditLocs(Vec<crate::LocEdit>),
     Outline {
         region: (i32, i32),
         index: usize,
@@ -330,6 +331,7 @@ impl StreamWorker {
                 });
             }
             Request::Edit(edits) => self.definitions.apply_edits(&edits),
+            Request::EditLocs(edits) => self.definitions.apply_loc_edits(&edits),
             Request::SetPresentation(presentation, generation) => {
                 self.presentation = presentation;
                 self.generation = generation;
@@ -522,6 +524,11 @@ impl RegionStreamer {
     /// includes them.
     pub fn edit(&self, edits: Vec<crate::TileEdit>) {
         let _ = self.requests.send(Request::Edit(edits));
+    }
+
+    /// Record object edits (removed and added placements); a build queued after this call includes them.
+    pub fn edit_locs(&self, edits: Vec<crate::LocEdit>) {
+        let _ = self.requests.send(Request::EditLocs(edits));
     }
 
     /// Queue a region build.

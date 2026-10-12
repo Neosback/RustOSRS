@@ -225,6 +225,35 @@ pub const CORE_ACTIONS: &[ActionDef] = &[
     ActionDef::new("tool.height", "Height tool", "Tools", Binding::key(Key::H)),
     ActionDef::new("tool.spline", "Spline tool", "Tools", Binding::key(Key::P)),
     ActionDef::new(
+        "tool.objects",
+        "Objects tool",
+        "Tools",
+        Binding::key(Key::O),
+    ),
+    ActionDef::new(
+        "object.delete",
+        "Delete the selected objects",
+        "Objects",
+        Binding::key(Key::Delete),
+    ),
+    ActionDef::new(
+        "object.rotate",
+        "Turn the selected objects a quarter turn",
+        "Objects",
+        Binding::key(Key::R),
+    ),
+    ActionDef::new(
+        "object.duplicate",
+        "Duplicate the selected objects",
+        "Objects",
+        Binding {
+            key: Key::D,
+            command: true,
+            shift: false,
+            alt: false,
+        },
+    ),
+    ActionDef::new(
         "tool.eyedrop",
         "Eyedropper: take the tile under the cursor",
         "Tools",

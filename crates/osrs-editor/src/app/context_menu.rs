@@ -34,6 +34,22 @@ enum MenuAction {
     LayPath,
     ClearPath,
     ClearSelection,
+    /// Act on this object (it becomes the selection first).
+    ObjectOp(ObjectPick, ObjectOp),
+    /// Select every loaded object with this definition id.
+    SelectSimilar(u32),
+    /// Open the object's wiki page.
+    Wiki(ObjectPick),
+    ClearOverlay((i32, i32)),
+}
+
+/// What the menu can do to an object.
+#[derive(Debug, Clone, Copy)]
+enum ObjectOp {
+    Turn,
+    Duplicate,
+    Delete,
+    Move,
 }
 
 impl EditorApp {
@@ -85,6 +101,34 @@ impl EditorApp {
             MenuAction::LayPath => self.commit_spline(),
             MenuAction::ClearPath => self.spline.points.clear(),
             MenuAction::ClearSelection => self.clear_selection(),
+            MenuAction::ObjectOp(object, op) => {
+                self.select_only(object);
+                match op {
+                    ObjectOp::Turn => self.rotate_selected_objects(1),
+                    ObjectOp::Duplicate => self.duplicate_selected_objects(),
+                    ObjectOp::Delete => self.delete_selected_objects(),
+                    ObjectOp::Move => self.set_tool(crate::paint::Tool::Objects),
+                }
+            }
+            MenuAction::SelectSimilar(id) => self.select_similar(id),
+            MenuAction::Wiki(object) => {
+                if let Some(loc) = self
+                    .infos
+                    .get(&object.region)
+                    .and_then(|info| info.locs.get(object.index))
+                {
+                    let url = crate::wiki::lookup_url(
+                        loc.definition.identity.id.get(),
+                        loc.definition.name.as_deref().unwrap_or(""),
+                        loc.tile,
+                        loc.plane,
+                    );
+                    if let Err(error) = crate::platform::open_url(&url) {
+                        self.status = Some(format!("could not open the wiki: {error}"));
+                    }
+                }
+            }
+            MenuAction::ClearOverlay(tile) => self.clear_overlay_at(tile),
             MenuAction::TeleportHere((x, y)) => {
                 let plane = self.view_plane;
                 self.teleport_to(Destination::Tile { x, y, plane });
@@ -234,6 +278,92 @@ impl EditorApp {
                                 outcome.action = Some(MenuAction::Focus(object.clone()));
                                 outcome.close = true;
                             }
+                            if ui
+                                .button(format!(
+                                    "{}  Select all of this kind",
+                                    icons::SELECT_OBJECTS
+                                ))
+                                .on_hover_text("Every loaded object with this id")
+                                .clicked()
+                            {
+                                outcome.action = Some(MenuAction::SelectSimilar(
+                                    loc.definition.identity.id.get(),
+                                ));
+                                outcome.close = true;
+                            }
+                            ui.separator();
+                            let mut op =
+                                |ui: &mut egui::Ui, icon: &str, text: &str, tip: &str, what| {
+                                    if ui
+                                        .button(format!("{icon}  {text}"))
+                                        .on_hover_text(tip)
+                                        .clicked()
+                                    {
+                                        outcome.action =
+                                            Some(MenuAction::ObjectOp(object.clone(), what));
+                                        outcome.close = true;
+                                    }
+                                };
+                            op(
+                                ui,
+                                icons::TOOL_OBJECTS,
+                                "Move",
+                                "Select it and switch to the Objects tool: drag to move",
+                                ObjectOp::Move,
+                            );
+                            op(ui, icons::ROTATE, "Turn", "A quarter turn", ObjectOp::Turn);
+                            op(
+                                ui,
+                                icons::DUPLICATE,
+                                "Duplicate",
+                                "A copy one tile east",
+                                ObjectOp::Duplicate,
+                            );
+                            op(
+                                ui,
+                                icons::DELETE,
+                                "Delete",
+                                "Remove it from the map (Ctrl+Z brings it back)",
+                                ObjectOp::Delete,
+                            );
+                            ui.separator();
+                            // Objects that change with a varbit or varp (doors, quest objects).
+                            if let Some(morphs) = &loc.definition.morphs {
+                                let source =
+                                    match (&morphs.transform_varbit, &morphs.transform_varp) {
+                                        (Some(varbit), _) => format!("varbit {}", varbit.get()),
+                                        (None, Some(varp)) => format!("varp {}", varp.get()),
+                                        (None, None) => "a variable".to_owned(),
+                                    };
+                                ui.menu_button(
+                                    format!("{}  Changes with {source}", icons::LAYERS),
+                                    |ui| {
+                                        ui.weak(format!(
+                                            "{} states; the cache's default is the first match",
+                                            morphs.transforms.len()
+                                        ));
+                                        for (state, target) in
+                                            morphs.transforms.iter().enumerate().take(24)
+                                        {
+                                            match target {
+                                                Some(id) => ui
+                                                    .label(format!("{state}: object {}", id.get())),
+                                                None => ui.weak(format!("{state}: nothing")),
+                                            };
+                                        }
+                                        if let Some(fallback) = morphs.fallback {
+                                            ui.label(format!(
+                                                "otherwise: object {}",
+                                                fallback.get()
+                                            ));
+                                        }
+                                    },
+                                );
+                            }
+                            if ui.button(format!("{}  Wiki page", icons::WIKI)).clicked() {
+                                outcome.action = Some(MenuAction::Wiki(object.clone()));
+                                outcome.close = true;
+                            }
                         } else if let Some(tile) = &pick.tile {
                             ui.strong(format!("Tile {}, {}", tile.tile.0, tile.tile.1));
                             ui.weak(format!("plane {}", self.view_plane));
@@ -252,6 +382,24 @@ impl EditorApp {
                                         "Add this tile to the selection",
                                     ) {
                                         outcome.action = Some(MenuAction::SelectTile(tile));
+                                        outcome.close = true;
+                                    }
+                                    if item(
+                                        ui,
+                                        format!("{}  Use as brush", icons::EYEDROPPER),
+                                        "Take this tile's floor, shape and height into the brush",
+                                    ) {
+                                        outcome.action = Some(MenuAction::Eyedrop(tile));
+                                        outcome.close = true;
+                                    }
+                                    if self.tile_now(tile).is_some_and(|v| v.overlay != 0)
+                                        && item(
+                                            ui,
+                                            format!("{}  Clear overlay", icons::DELETE),
+                                            "Remove the overlay (path, floor) from this tile",
+                                        )
+                                    {
+                                        outcome.action = Some(MenuAction::ClearOverlay(tile));
                                         outcome.close = true;
                                     }
                                 }
@@ -320,6 +468,7 @@ impl EditorApp {
                                         }
                                     }
                                 }
+                                crate::paint::Tool::Objects => {}
                                 crate::paint::Tool::Height => {
                                     if item(
                                         ui,

@@ -1328,7 +1328,10 @@ mod tests {
             let path = entry
                 .map_err(|e| TransportError::Dependency(e.to_string()))?
                 .path();
-            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             let bytes =
                 std::fs::read(&path).map_err(|e| TransportError::Dependency(e.to_string()))?;
             files.add_file(&name, bytes);
