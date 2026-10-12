@@ -18,7 +18,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v2
       - run: python3 scripts/add_path_continuity_repair.py
       - run: cargo fmt --all
-      - run: cargo test --locked -p osrs-editor terrain_path::
+      - run: "cargo test --locked -p osrs-editor terrain_path"
       - run: rm scripts/add_path_continuity_repair.py .github/workflows/branch-continuity.yml
       - run: |
           git config user.name "github-actions[bot]"
