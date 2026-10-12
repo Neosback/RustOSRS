@@ -27,6 +27,10 @@ jobs:
               "profile_start = spline.index('    /// A profile for the planner:', overlay_start)",
               "profile_start = spline.index('    /// A profile for the planner:')",
           )
+          text = text.replace(
+              "plan_fn_start = spline.index('    fn plan_input(&self) -> Option<PlanInput> {', plan_input_comment)",
+              "plan_fn_start = spline.index('    fn plan_input(&self) -> Option<PlanInput> {')",
+          )
           path.write_text(text)
           PY
           python3 scripts/apply_simple_path_fitter.py
