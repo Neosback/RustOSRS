@@ -5,11 +5,13 @@
 //! ECS/runtime state. Presentation and infrastructure layers adapt to and from the
 //! types defined here.
 
+mod document;
 mod object;
 mod patch;
 mod position;
 mod terrain;
 
+pub use document::{MapDocument, PatchApplyError};
 pub use object::{LocKind, ObjectOrientation, ObjectPlacement};
 pub use patch::{ChangeImpact, MapOp, MapPatch};
 pub use position::{HeightVertexCoord, MapPosition};
