@@ -261,6 +261,8 @@ impl EditorApp {
             );
         }
         ui.checkbox(&mut planner.preserve_existing, "Preserve existing overlays");
+        ui.checkbox(&mut planner.repair_continuity, "Repair path continuity")
+            .on_hover_text("Restore tiny raster gaps and repair side-adjacent shape disconnects");
 
         egui::CollapsingHeader::new("Advanced")
             .default_open(false)

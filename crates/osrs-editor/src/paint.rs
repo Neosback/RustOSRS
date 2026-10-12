@@ -203,7 +203,10 @@ impl Default for SplineSettings {
     fn default() -> Self {
         Self {
             mode: PathMode::Terrain,
-            planner: crate::terrain_path::PathSettings::default(),
+            planner: crate::terrain_path::PathSettings {
+                repair_continuity: true,
+                ..crate::terrain_path::PathSettings::default()
+            },
             profile: crate::terrain_path::PathProfile::default(),
             snap_points: false,
             wall_side: 0,

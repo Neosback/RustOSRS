@@ -82,6 +82,9 @@ pub struct PathSettings {
     /// Extra distance kept from obstacles, in tiles.
     pub clearance: f64,
     pub maximum_slope: f64,
+    /// Repair small raster/shape disconnects after normal Terraini planning. Disabled in the
+    /// reference-compatible planner defaults; the interactive editor enables it by default.
+    pub repair_continuity: bool,
     /// Keep tiles that already carry an overlay.
     pub preserve_existing: bool,
 }
@@ -103,6 +106,7 @@ impl Default for PathSettings {
             noise_scale: 1.0,
             clearance: 0.0,
             maximum_slope: f64::MAX,
+            repair_continuity: false,
             preserve_existing: true,
         }
     }
