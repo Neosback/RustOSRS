@@ -104,8 +104,7 @@ fn grammar() -> &'static Grammar {
                 );
                 // A shape that does not reach a side the path continues over is not a choice.
                 let reaches = (0..8).step_by(2).all(|bit| {
-                    mask & (1 << bit) == 0
-                        || atlas.edge_mask(shape, orientation, SIDE_OF[bit]) != 0
+                    mask & (1 << bit) == 0 || atlas.edge_mask(shape, orientation, SIDE_OF[bit]) != 0
                 });
                 if reaches {
                     total += weight;
@@ -127,10 +126,7 @@ fn grammar() -> &'static Grammar {
             mean_area[mask] = area;
             choices[mask] = Some(list);
         }
-        Grammar {
-            choices,
-            mean_area,
-        }
+        Grammar { choices, mean_area }
     })
 }
 

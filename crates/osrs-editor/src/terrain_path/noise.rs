@@ -100,7 +100,11 @@ impl SeededPerlinNoise {
         let ba = p[p[xi + 1] as usize + yi];
         let bb = p[p[xi + 1] as usize + yi + 1];
         let x1 = lerp(gradient(aa, xf, yf), gradient(ba, xf - 1.0, yf), u);
-        let x2 = lerp(gradient(ab, xf, yf - 1.0), gradient(bb, xf - 1.0, yf - 1.0), u);
+        let x2 = lerp(
+            gradient(ab, xf, yf - 1.0),
+            gradient(bb, xf - 1.0, yf - 1.0),
+            u,
+        );
         lerp(x1, x2, v)
     }
 
@@ -132,7 +136,9 @@ mod tests {
         let mut random = SplittableRandom::new(123_456_789);
         let mut hash = 0_i32;
         for i in (1..=255).rev() {
-            hash = hash.wrapping_mul(31).wrapping_add(random.next_bounded(i + 1));
+            hash = hash
+                .wrapping_mul(31)
+                .wrapping_add(random.next_bounded(i + 1));
         }
         assert_eq!(hash, -1_000_247_084);
     }

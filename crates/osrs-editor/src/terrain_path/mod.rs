@@ -21,10 +21,8 @@ pub use model::{
 };
 pub use planner::{PathPlanner, fnv};
 pub use resample::smooth_and_resample as smooth_line;
-pub use settings::{
-    AutoConnectPolicy, MaterialVariant, ObstaclePolicy, PathProfile, PathSettings,
-};
 pub use scene::SceneGrid;
+pub use settings::{AutoConnectPolicy, MaterialVariant, ObstaclePolicy, PathProfile, PathSettings};
 pub use shapes::{overlay_triangles, shape_triangles};
 
 #[cfg(test)]

@@ -175,9 +175,8 @@ fn snap_target(
                 f64::from(paint.tile_y) + (cy as f64 + 0.5) / resolution as f64,
             );
             let distance = point.distance_to(sample);
-            let earlier = best_paint.is_none_or(|b| {
-                (paint.tile_x, paint.tile_y) < (b.tile_x, b.tile_y)
-            });
+            let earlier =
+                best_paint.is_none_or(|b| (paint.tile_x, paint.tile_y) < (b.tile_x, b.tile_y));
             if distance < best - 1.0e-9 || (distance == best && earlier) {
                 best = distance;
                 best_paint = Some(paint);
@@ -226,7 +225,11 @@ impl PathPlanner {
             return PathPlan::empty();
         }
         // Ids come from the stroke itself, so the same stroke plans the same way every time.
-        let signature = format!("{points:?}:{plane}:{}:{}", settings.seed, profile.parameter_signature());
+        let signature = format!(
+            "{points:?}:{plane}:{}:{}",
+            settings.seed,
+            profile.parameter_signature()
+        );
         let id = |salt: &str| fnv(&format!("{signature}:{salt}"));
         let network = stroke_network(
             points,
@@ -250,8 +253,11 @@ impl PathPlanner {
         let samples = settings.supersample as usize;
         let atlas = OverlayShapeAtlas::new(samples);
         let nodes: HashMap<u64, &PathNode> = network.nodes.iter().map(|n| (n.id, n)).collect();
-        let profiles: HashMap<&str, &PathProfile> =
-            network.profiles.iter().map(|p| (p.id.as_str(), p)).collect();
+        let profiles: HashMap<&str, &PathProfile> = network
+            .profiles
+            .iter()
+            .map(|p| (p.id.as_str(), p))
+            .collect();
         let mut cells: BTreeMap<CellKey, Cell> = BTreeMap::new();
         let mut warnings: Vec<PathWarning> = Vec::new();
         let mut lines: Vec<Vec<PathPoint>> = Vec::new();
@@ -283,11 +289,15 @@ impl PathPlanner {
                 warnings.push(PathWarning::general(
                     Severity::Warning,
                     "OUT_OF_BOUNDS",
-                    format!("Part of edge {} lies outside the editable map bounds", edge.id),
+                    format!(
+                        "Part of edge {} lies outside the editable map bounds",
+                        edge.id
+                    ),
                 ));
             }
             let plane = start.plane;
-            let mut line = smooth_and_resample(&drawn, settings.smoothness, settings.sample_spacing);
+            let mut line =
+                smooth_and_resample(&drawn, settings.smoothness, settings.sample_spacing);
             // Join each end onto a path of the same overlay close by.
             if profile.auto_connect
                 && settings.auto_connect_policy != AutoConnectPolicy::Off
@@ -295,8 +305,22 @@ impl PathPlanner {
                 && !env.existing_paints.is_empty()
                 && !line.is_empty()
             {
-                let first = snap_target(line[0], plane, profile, settings.snap_radius, &env.existing_paints, &atlas);
-                let last = snap_target(line[line.len() - 1], plane, profile, settings.snap_radius, &env.existing_paints, &atlas);
+                let first = snap_target(
+                    line[0],
+                    plane,
+                    profile,
+                    settings.snap_radius,
+                    &env.existing_paints,
+                    &atlas,
+                );
+                let last = snap_target(
+                    line[line.len() - 1],
+                    plane,
+                    profile,
+                    settings.snap_radius,
+                    &env.existing_paints,
+                    &atlas,
+                );
                 let mut joined = line.clone();
                 if let Some(first) = first
                     && first.distance_to(joined[0]) > 1.0e-6
@@ -361,7 +385,10 @@ impl PathPlanner {
                 warnings.push(PathWarning::general(
                     Severity::Warning,
                     "OBSTACLE_CONFLICT",
-                    format!("Edge {} intersects a solid object or excessive slope", edge.id),
+                    format!(
+                        "Edge {} intersects a solid object or excessive slope",
+                        edge.id
+                    ),
                 ));
             }
 
@@ -383,7 +410,8 @@ impl PathPlanner {
                         wandered.push(line[i]);
                     } else {
                         let fade = (along.min(total - along) / (scale * 0.5).max(1.0)).min(1.0);
-                        let offset = noise.fbm(along / scale, 0.371, profile.noise_octaves) * wander * fade;
+                        let offset =
+                            noise.fbm(along / scale, 0.371, profile.noise_octaves) * wander * fade;
                         wandered.push(PathPoint::new(
                             line[i].x - ty / length * offset,
                             line[i].y + tx / length * offset,
@@ -427,23 +455,36 @@ impl PathPlanner {
             if joined.len() < 3 {
                 continue;
             }
-            let (Some(node), Some(profile)) = (nodes.get(node_id), profiles.get(profile_id.as_str())) else {
+            let (Some(node), Some(profile)) =
+                (nodes.get(node_id), profiles.get(profile_id.as_str()))
+            else {
                 continue;
             };
             let radius = joined
                 .iter()
-                .map(|e| profile.base_width * e.width_scale * node.width_scale * settings.width_scale)
+                .map(|e| {
+                    profile.base_width * e.width_scale * node.width_scale * settings.width_scale
+                })
                 .fold(0.0, f64::max)
                 * 0.68
                 + 0.9;
-            let mask_blocked = masks_overlap_policy(settings) && joined.iter().any(|e| e.auto_route);
+            let mask_blocked =
+                masks_overlap_policy(settings) && joined.iter().any(|e| e.auto_route);
             let centre = node.point();
             let max_slope = profile.maximum_slope.min(settings.maximum_slope);
             for ty in (centre.y - radius).floor() as i32..(centre.y + radius).ceil() as i32 {
                 for tx in (centre.x - radius).floor() as i32..(centre.x + radius).ceil() as i32 {
                     if !env.bounds.contains(tx, ty)
                         || (mask_blocked
-                            && blocked_at(tx, ty, node.plane, env, settings.obstacle_policy, 0.0, max_slope))
+                            && blocked_at(
+                                tx,
+                                ty,
+                                node.plane,
+                                env,
+                                settings.obstacle_policy,
+                                0.0,
+                                max_slope,
+                            ))
                     {
                         continue;
                     }
@@ -510,9 +551,14 @@ fn stamp(
         let width = lerp(start_width, end_width, t0).max(lerp(start_width, end_width, t1))
             * (1.0 + profile.width_variation);
         let falloff = profile.edge_falloff * (0.2 + width * 0.25).min(0.75);
-        let reach = width * 0.5 + profile.edge_noise * settings.noise_strength + falloff * 0.5 + 0.125;
-        let start_cap = cap_reaches(start_cap, a, b, reach).then_some(start_cap).flatten();
-        let end_cap = cap_reaches(end_cap, a, b, reach).then_some(end_cap).flatten();
+        let reach =
+            width * 0.5 + profile.edge_noise * settings.noise_strength + falloff * 0.5 + 0.125;
+        let start_cap = cap_reaches(start_cap, a, b, reach)
+            .then_some(start_cap)
+            .flatten();
+        let end_cap = cap_reaches(end_cap, a, b, reach)
+            .then_some(end_cap)
+            .flatten();
         let (min_x, min_y) = (
             (a.x.min(b.x) - reach).floor() as i32,
             (a.y.min(b.y) - reach).floor() as i32,
@@ -564,10 +610,18 @@ fn stamp(
                         let local_width = lerp(start_width, end_width, along / total)
                             * (1.0
                                 + profile.width_variation
-                                    * width_noise.fbm(along / width_noise_scale, 0.619, profile.noise_octaves));
+                                    * width_noise.fbm(
+                                        along / width_noise_scale,
+                                        0.619,
+                                        profile.noise_octaves,
+                                    ));
                         let rough = profile.edge_noise
                             * settings.noise_strength
-                            * edge_noise.fbm(px / edge_noise_scale, py / edge_noise_scale, profile.noise_octaves);
+                            * edge_noise.fbm(
+                                px / edge_noise_scale,
+                                py / edge_noise_scale,
+                                profile.noise_octaves,
+                            );
                         let radius = (local_width * 0.5 + rough).max(0.05);
                         let band = profile.edge_falloff * (0.2 + local_width * 0.25).min(0.75);
                         let inside = if band < 1.0e-9 {
@@ -582,7 +636,11 @@ fn stamp(
                                     false
                                 } else {
                                     let scale = (edge_noise_scale * 1.5).max(0.75);
-                                    let noise = falloff_noise.fbm(px / scale, py / scale, profile.noise_octaves);
+                                    let noise = falloff_noise.fbm(
+                                        px / scale,
+                                        py / scale,
+                                        profile.noise_octaves,
+                                    );
                                     let strength = settings.noise_strength.min(1.0);
                                     (outer - distance) / band >= 0.5 + noise * 0.3 * strength
                                 }
@@ -690,7 +748,11 @@ fn finish(
             merged.push((*tile, chosen));
         }
     }
-    let index_of: HashMap<Tile, usize> = merged.iter().enumerate().map(|(i, (t, _))| (*t, i)).collect();
+    let index_of: HashMap<Tile, usize> = merged
+        .iter()
+        .enumerate()
+        .map(|(i, (t, _))| (*t, i))
+        .collect();
     let cell_of = |chosen: &Chosen| &cell_list[chosen.cell_index].1;
 
     // Does the neighbour count as path for this profile?
@@ -770,9 +832,15 @@ fn finish(
         for side in SIDES {
             let next = side_step(*tile, side);
             let neighbour = index_of.get(&next).copied();
-            let paint = if neighbour.is_none() { existing.get(&next) } else { None };
+            let paint = if neighbour.is_none() {
+                existing.get(&next)
+            } else {
+                None
+            };
             let counts_here = match (neighbour, paint) {
-                (Some(j), _) => profile.compatible(cell_of(&merged[j].1).profile.primary_overlay_id),
+                (Some(j), _) => {
+                    profile.compatible(cell_of(&merged[j].1).profile.primary_overlay_id)
+                }
                 (None, Some(p)) => profile.compatible(p.overlay_id),
                 _ => false,
             };
@@ -781,7 +849,11 @@ fn finish(
             }
             let mine = atlas.edge_mask((shapes[i] >> 2) as u8, (shapes[i] & 3) as u8, side);
             let theirs = match (neighbour, paint) {
-                (Some(j), _) => atlas.edge_mask((shapes[j] >> 2) as u8, (shapes[j] & 3) as u8, opposite(side)),
+                (Some(j), _) => atlas.edge_mask(
+                    (shapes[j] >> 2) as u8,
+                    (shapes[j] & 3) as u8,
+                    opposite(side),
+                ),
                 (None, Some(p)) => atlas.edge_mask(p.shape, p.orientation, opposite(side)),
                 _ => 0,
             };
@@ -828,7 +900,12 @@ fn finish(
         });
     }
     paints.sort_by(|a, b| {
-        (a.plane, a.tile_x, a.tile_y, &a.profile_id).cmp(&(b.plane, b.tile_x, b.tile_y, &b.profile_id))
+        (a.plane, a.tile_x, a.tile_y, &a.profile_id).cmp(&(
+            b.plane,
+            b.tile_x,
+            b.tile_y,
+            &b.profile_id,
+        ))
     });
     check_topology(&paints, atlas, &mut warnings);
 
@@ -851,7 +928,11 @@ fn finish(
 }
 
 /// Warn about seams that do not line up and pieces that are not joined to the rest.
-fn check_topology(paints: &[TilePaint], atlas: &OverlayShapeAtlas, warnings: &mut Vec<PathWarning>) {
+fn check_topology(
+    paints: &[TilePaint],
+    atlas: &OverlayShapeAtlas,
+    warnings: &mut Vec<PathWarning>,
+) {
     let by_tile: HashMap<Tile, &TilePaint> = paints
         .iter()
         .map(|p| ((p.tile_x, p.tile_y, p.plane), p))

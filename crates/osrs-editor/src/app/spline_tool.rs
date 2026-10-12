@@ -123,7 +123,13 @@ impl PlanInput {
         let points = to_points(&self.points);
         match self.mode {
             PathMode::Terrain => {
-                let plan = PathPlanner.plan_stroke(&points, self.plane, &self.profile, &self.settings, &self.env);
+                let plan = PathPlanner.plan_stroke(
+                    &points,
+                    self.plane,
+                    &self.profile,
+                    &self.settings,
+                    &self.env,
+                );
                 Preview {
                     key: self.key,
                     paints: plan.paints,
@@ -175,10 +181,15 @@ impl EditorApp {
             .map(|(severity, code, message, count)| {
                 let text = match code {
                     "REROUTED" => "Went round obstacles".to_owned(),
-                    "ROUTE_BLOCKED" => "Could not route round the obstacles; it follows the line you drew".to_owned(),
+                    "ROUTE_BLOCKED" => {
+                        "Could not route round the obstacles; it follows the line you drew"
+                            .to_owned()
+                    }
                     "OUT_OF_BOUNDS" => "Part of the path is off the loaded map".to_owned(),
                     "OBSTACLE_CONFLICT" => "Crosses a solid object or a steep slope".to_owned(),
-                    "EXISTING_OVERLAY" => format!("Kept {count} tile(s) that already have a different overlay"),
+                    "EXISTING_OVERLAY" => {
+                        format!("Kept {count} tile(s) that already have a different overlay")
+                    }
                     "TOPOLOGY_SEAM" => format!("{count} seam(s) between shapes do not meet"),
                     "TOPOLOGY_COMPONENT" => "The path is in separate pieces".to_owned(),
                     _ => message,
@@ -345,7 +356,12 @@ impl EditorApp {
         let Some(input) = input else {
             return;
         };
-        if self.spline.preview.as_ref().is_some_and(|p| p.key == input.key) {
+        if self
+            .spline
+            .preview
+            .as_ref()
+            .is_some_and(|p| p.key == input.key)
+        {
             return;
         }
         self.spline.preview = None;
@@ -372,7 +388,12 @@ impl EditorApp {
         self.spline.job = None;
         match self.plan_input() {
             Some(input) => {
-                if self.spline.preview.as_ref().is_none_or(|p| p.key != input.key) {
+                if self
+                    .spline
+                    .preview
+                    .as_ref()
+                    .is_none_or(|p| p.key != input.key)
+                {
                     self.spline.preview = Some(input.make());
                 }
             }
@@ -403,7 +424,10 @@ impl EditorApp {
                 .as_ref()
                 .map_or("?".to_owned(), |(b, _)| b.to_string())
         ));
-        text.push_str(&format!("settings={:?}\nprofile={:?}\n", spline.planner, spline.profile));
+        text.push_str(&format!(
+            "settings={:?}\nprofile={:?}\n",
+            spline.planner, spline.profile
+        ));
         if let Some(preview) = &self.spline.preview {
             text.push_str(&format!(
                 "planned {} tiles, {} walls band tiles\n",
@@ -671,7 +695,11 @@ impl EditorApp {
                         at(triangle[1][0], triangle[1][1]),
                         at(triangle[2][0], triangle[2][1]),
                     ) {
-                        painter.add(egui::Shape::convex_polygon(vec![a, b, c], overlay_color, edge));
+                        painter.add(egui::Shape::convex_polygon(
+                            vec![a, b, c],
+                            overlay_color,
+                            edge,
+                        ));
                     }
                 }
             };

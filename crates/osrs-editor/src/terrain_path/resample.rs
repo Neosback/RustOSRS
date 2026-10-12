@@ -12,7 +12,10 @@ fn lerp(a: PathPoint, b: PathPoint, t: f64) -> PathPoint {
 fn dedupe(points: &[PathPoint]) -> Vec<PathPoint> {
     let mut out: Vec<PathPoint> = Vec::with_capacity(points.len());
     for point in points {
-        if out.last().is_none_or(|last| last.distance_to(*point) > MIN_DISTANCE) {
+        if out
+            .last()
+            .is_none_or(|last| last.distance_to(*point) > MIN_DISTANCE)
+        {
             out.push(*point);
         }
     }
@@ -102,7 +105,11 @@ pub fn smooth_and_resample(points: &[PathPoint], smoothness: f64, spacing: f64) 
             let b1 = blend(a1, a2, 0.0, t2, t);
             let b2 = blend(a2, a3, t1, t3, t);
             let curve = blend(b1, b2, t1, t2, t);
-            out.push(lerp(straight, curve, alpha[i] + (alpha[i + 1] - alpha[i]) * u));
+            out.push(lerp(
+                straight,
+                curve,
+                alpha[i] + (alpha[i + 1] - alpha[i]) * u,
+            ));
         }
     }
     resample(&out, spacing)
@@ -137,7 +144,13 @@ pub fn resample(points: &[PathPoint], spacing: f64) -> Vec<PathPoint> {
 }
 
 /// A point on the cubic Bezier through `p0`, `p1`, `p2`, `p3` at `t` (0 to 1).
-pub fn bezier_point(p0: PathPoint, p1: PathPoint, p2: PathPoint, p3: PathPoint, t: f64) -> PathPoint {
+pub fn bezier_point(
+    p0: PathPoint,
+    p1: PathPoint,
+    p2: PathPoint,
+    p3: PathPoint,
+    t: f64,
+) -> PathPoint {
     let t = t.clamp(0.0, 1.0);
     let u = 1.0 - t;
     let (w0, w1, w2, w3) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
@@ -184,7 +197,11 @@ mod tests {
         assert_eq!(samples.len(), 41);
         assert_eq!(samples[0], line[0]);
         assert_eq!(samples[samples.len() - 1], line[1]);
-        assert!(samples.windows(2).all(|w| (w[0].distance_to(w[1]) - 0.25).abs() < 1e-9));
+        assert!(
+            samples
+                .windows(2)
+                .all(|w| (w[0].distance_to(w[1]) - 0.25).abs() < 1e-9)
+        );
     }
 
     #[test]

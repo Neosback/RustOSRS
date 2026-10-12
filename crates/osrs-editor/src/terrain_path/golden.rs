@@ -39,7 +39,14 @@ fn render(plan: &PathPlan) -> Expected {
         .map(|p| {
             format!(
                 "{} {} {} {} {} {} {:.6} {}",
-                p.tile_x, p.tile_y, p.plane, p.overlay_id, p.shape, p.orientation, p.coverage, p.profile_id
+                p.tile_x,
+                p.tile_y,
+                p.plane,
+                p.overlay_id,
+                p.shape,
+                p.orientation,
+                p.coverage,
+                p.profile_id
             )
         })
         .collect();
@@ -52,9 +59,9 @@ fn render(plan: &PathPlan) -> Expected {
                 Severity::Warning => "WARNING",
                 Severity::Error => "ERROR",
             };
-            let at = w
-                .tile
-                .map_or("null null null".to_owned(), |(x, y, z)| format!("{x} {y} {z}"));
+            let at = w.tile.map_or("null null null".to_owned(), |(x, y, z)| {
+                format!("{x} {y} {z}")
+            });
             format!("{severity} {} {at}", w.code)
         })
         .collect();
@@ -62,7 +69,10 @@ fn render(plan: &PathPlan) -> Expected {
 }
 
 fn pts(values: &[f64]) -> Vec<PathPoint> {
-    values.chunks(2).map(|c| PathPoint::new(c[0], c[1])).collect()
+    values
+        .chunks(2)
+        .map(|c| PathPoint::new(c[0], c[1]))
+        .collect()
 }
 
 struct Blocks {
@@ -127,11 +137,31 @@ fn the_port_plans_what_the_reference_plans() {
     };
     let curve = [20.0, 20.0, 40.0, 25.0, 55.0, 45.0, 70.0, 48.0, 90.0, 30.0];
 
-    check("straight_calm", &run(&[20.5, 20.5, 60.5, 20.5], &profile, &calm, &open, 1), &golden);
-    check("diagonal_calm", &run(&[20.5, 20.5, 50.5, 44.5], &profile, &calm, &open, 2), &golden);
-    check("curve_calm", &run(&curve, &profile, &calm, &open, 3), &golden);
-    check("curve_default", &run(&curve, &profile, &default, &open, 4), &golden);
-    check("curve_seeded", &run(&curve, &profile, &seeded, &open, 5), &golden);
+    check(
+        "straight_calm",
+        &run(&[20.5, 20.5, 60.5, 20.5], &profile, &calm, &open, 1),
+        &golden,
+    );
+    check(
+        "diagonal_calm",
+        &run(&[20.5, 20.5, 50.5, 44.5], &profile, &calm, &open, 2),
+        &golden,
+    );
+    check(
+        "curve_calm",
+        &run(&curve, &profile, &calm, &open, 3),
+        &golden,
+    );
+    check(
+        "curve_default",
+        &run(&curve, &profile, &default, &open, 4),
+        &golden,
+    );
+    check(
+        "curve_seeded",
+        &run(&curve, &profile, &seeded, &open, 5),
+        &golden,
+    );
 
     let wide = PathProfile {
         id: "wide".to_owned(),
@@ -143,29 +173,61 @@ fn the_port_plans_what_the_reference_plans() {
         ..PathProfile::default()
     }
     .sanitized();
-    check("wide_noisy", &run(&[30.0, 30.0, 50.0, 60.0, 80.0, 70.0], &wide, &seeded, &open, 6), &golden);
+    check(
+        "wide_noisy",
+        &run(
+            &[30.0, 30.0, 50.0, 60.0, 80.0, 70.0],
+            &wide,
+            &seeded,
+            &open,
+            6,
+        ),
+        &golden,
+    );
 
     let mixed = PathProfile {
         id: "mixed".to_owned(),
         name: "Mixed".to_owned(),
         primary_overlay_id: 3,
         material_variants: vec![
-            MaterialVariant { overlay_id: 3, weight: 2.0 },
-            MaterialVariant { overlay_id: 4, weight: 1.0 },
-            MaterialVariant { overlay_id: 9, weight: 1.0 },
+            MaterialVariant {
+                overlay_id: 3,
+                weight: 2.0,
+            },
+            MaterialVariant {
+                overlay_id: 4,
+                weight: 1.0,
+            },
+            MaterialVariant {
+                overlay_id: 9,
+                weight: 1.0,
+            },
         ],
         material_patch_length: 5.0,
         ..PathProfile::default()
     }
     .sanitized();
-    check("mixed_materials", &run(&[20.0, 100.0, 120.0, 100.0], &mixed, &seeded, &open, 7), &golden);
+    check(
+        "mixed_materials",
+        &run(&[20.0, 100.0, 120.0, 100.0], &mixed, &seeded, &open, 7),
+        &golden,
+    );
 
     let walled = PathEnvironment {
         bounds,
-        cost_grid: Arc::new(Blocks { x0: 50, y0: 15, x1: 52, y1: 30 }),
+        cost_grid: Arc::new(Blocks {
+            x0: 50,
+            y0: 15,
+            x1: 52,
+            y1: 30,
+        }),
         existing_paints: Vec::new(),
     };
-    check("reroute", &run(&[20.5, 22.5, 80.5, 22.5], &profile, &default, &walled, 8), &golden);
+    check(
+        "reroute",
+        &run(&[20.5, 22.5, 80.5, 22.5], &profile, &default, &walled, 8),
+        &golden,
+    );
 
     let existing: Vec<TilePaint> = (40..60)
         .map(|x| TilePaint {
@@ -184,8 +246,16 @@ fn the_port_plans_what_the_reference_plans() {
         cost_grid: Arc::new(OpenGround),
         existing_paints: existing,
     };
-    check("autoconnect", &run(&[20.5, 70.5, 38.5, 78.5], &profile, &default, &joined, 9), &golden);
-    check("preserve", &run(&[30.5, 80.5, 70.5, 80.5], &profile, &calm, &joined, 10), &golden);
+    check(
+        "autoconnect",
+        &run(&[20.5, 70.5, 38.5, 78.5], &profile, &default, &joined, 9),
+        &golden,
+    );
+    check(
+        "preserve",
+        &run(&[30.5, 80.5, 70.5, 80.5], &profile, &calm, &joined, 10),
+        &golden,
+    );
 
     // Three edges meeting at one node.
     let nodes = vec![
@@ -207,7 +277,11 @@ fn the_port_plans_what_the_reference_plans() {
         edges,
         profiles: vec![profile.clone()],
     };
-    check("junction", &PathPlanner.plan(&network, &default, &open), &golden);
+    check(
+        "junction",
+        &PathPlanner.plan(&network, &default, &open),
+        &golden,
+    );
 }
 
 const FUZZ: &str = include_str!("fuzz.txt");
@@ -236,7 +310,9 @@ impl CostGrid for Slopes {
 }
 
 fn numbers(line: &str) -> Vec<f64> {
-    line.split_whitespace().filter_map(|t| t.parse().ok()).collect()
+    line.split_whitespace()
+        .filter_map(|t| t.parse().ok())
+        .collect()
 }
 
 fn fnv_lines(plan: &PathPlan) -> u64 {
@@ -244,7 +320,14 @@ fn fnv_lines(plan: &PathPlan) -> u64 {
     for p in &plan.paints {
         let line = format!(
             "{} {} {} {} {} {} {:.6} {}\n",
-            p.tile_x, p.tile_y, p.plane, p.overlay_id, p.shape, p.orientation, p.coverage, p.profile_id
+            p.tile_x,
+            p.tile_y,
+            p.plane,
+            p.overlay_id,
+            p.shape,
+            p.orientation,
+            p.coverage,
+            p.profile_id
         );
         for byte in line.bytes() {
             hash ^= u64::from(byte);
@@ -390,9 +473,16 @@ fn the_port_agrees_with_the_reference_on_random_paths() {
         };
         let network = stroke_network(&points, 0, &profile, settings.seed, [9, 1, 2, 100 + case]);
         let plan = PathPlanner.plan(&network, &settings, &env);
-        if std::env::var("DUMP_CASE").ok().and_then(|v| v.parse::<u64>().ok()) == Some(case) {
+        if std::env::var("DUMP_CASE")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            == Some(case)
+        {
             for p in &plan.paints {
-                eprintln!("TT {} {} {} {} {}", p.tile_x, p.tile_y, p.overlay_id, p.shape, p.orientation);
+                eprintln!(
+                    "TT {} {} {} {} {}",
+                    p.tile_x, p.tile_y, p.overlay_id, p.shape, p.orientation
+                );
             }
         }
         assert_eq!(plan.paints.len(), count, "case {case}: tile count");
@@ -402,4 +492,3 @@ fn the_port_agrees_with_the_reference_on_random_paths() {
     }
     assert_eq!(cases, 40);
 }
-

@@ -113,8 +113,11 @@ impl EditorApp {
         let mut cancel = false;
         let current_tile = self.camera_tile();
         let current_plane = self.view_plane;
-        let (tool_now, brush_now, spline_now) =
-            (self.prefs.tool, self.prefs.brush.clone(), self.prefs.spline.clone());
+        let (tool_now, brush_now, spline_now) = (
+            self.prefs.tool,
+            self.prefs.brush.clone(),
+            self.prefs.spline.clone(),
+        );
         let title = if draft.index.is_some() {
             "Edit tool"
         } else {

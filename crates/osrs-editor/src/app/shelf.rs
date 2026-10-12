@@ -165,12 +165,18 @@ impl EditorApp {
     /// The terrain-path planner and wall-band controls used by the Spline tool.
     fn path_section(&mut self, ui: &mut egui::Ui) {
         crate::theme::section_heading(ui, "Path");
-        let mode_options: Vec<_> = PathMode::ALL.iter().map(|mode| (*mode, mode.label())).collect();
+        let mode_options: Vec<_> = PathMode::ALL
+            .iter()
+            .map(|mode| (*mode, mode.label()))
+            .collect();
         if let Some(mode) = chips(ui, self.prefs.spline.mode, &mode_options) {
             self.prefs.spline.mode = mode;
         }
-        ui.checkbox(&mut self.prefs.spline.snap_points, "Snap points to tile centres")
-            .on_hover_text("Place control points at tile centres instead of the exact cursor position");
+        ui.checkbox(
+            &mut self.prefs.spline.snap_points,
+            "Snap points to tile centres",
+        )
+        .on_hover_text("Place control points at tile centres instead of the exact cursor position");
 
         if self.prefs.spline.mode == PathMode::Walls {
             self.wall_path_section(ui);

@@ -61,7 +61,13 @@ pub struct PathEdge {
 }
 
 impl PathEdge {
-    pub fn new(id: u64, start: u64, end: u64, control_points: Vec<PathPoint>, profile_id: &str) -> Self {
+    pub fn new(
+        id: u64,
+        start: u64,
+        end: u64,
+        control_points: Vec<PathPoint>,
+        profile_id: &str,
+    ) -> Self {
         Self {
             id,
             start,
@@ -100,7 +106,14 @@ pub struct TilePaint {
 }
 
 impl TilePaint {
-    pub fn new(tile_x: i32, tile_y: i32, plane: u8, overlay_id: u16, shape: u8, orientation: u8) -> Self {
+    pub fn new(
+        tile_x: i32,
+        tile_y: i32,
+        plane: u8,
+        overlay_id: u16,
+        shape: u8,
+        orientation: u8,
+    ) -> Self {
         Self {
             tile_x,
             tile_y,
