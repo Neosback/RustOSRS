@@ -171,7 +171,7 @@ impl EditorApp {
 
     /// Keys: delete, turn, duplicate (with objects selected, in Select and in the Objects tool).
     pub(super) fn object_actions(&mut self, ctx: &egui::Context) {
-        if ctx.egui_wants_keyboard_input()
+        if self.keys_blocked(ctx)
             || self.quick_open.is_some()
             || !matches!(self.prefs.tool, Tool::Select | Tool::Objects)
             || (self.selection_objects.is_empty() && self.selected.is_none())

@@ -48,7 +48,6 @@ fn rail_icon(tab: RailTab) -> &'static str {
         RailTab::Inspect => icons::INSPECT,
         RailTab::View => icons::VIEW,
         RailTab::Graphics => icons::GRAPHICS,
-        RailTab::Plugins => icons::PLUGINS,
     }
 }
 
@@ -214,7 +213,6 @@ impl EditorApp {
                             }
                             ViewTab::Overlays => self.overlays_tab(ui),
                         },
-                        RailTab::Plugins => self.plugin_sections(ui),
                         RailTab::Inspect => {}
                     });
             }
@@ -271,22 +269,6 @@ impl EditorApp {
             tint,
         );
         response.on_hover_text(tooltip)
-    }
-
-    fn plugin_sections(&mut self, ui: &mut egui::Ui) {
-        self.user_tool_list(ui);
-        let mut any = false;
-        self.run_plugins(|plugin, cx| {
-            if plugin.has_properties() {
-                any = true;
-                crate::theme::section_heading(ui, plugin.title());
-                plugin.properties(ui, cx);
-            }
-        });
-        if !any {
-            ui.add_space(6.0);
-            ui.weak("No plugin has options to show.");
-        }
     }
 
     /// The View panel's Overlays tab: what the viewport shows on top of the world.

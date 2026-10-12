@@ -131,19 +131,25 @@ impl EditorApp {
             return;
         }
         let Some(catalog) = self.assets.catalog.clone() else {
-            egui::Window::new(format!("{} World map", icons::WORLD_MAP))
-                .collapsible(false)
-                .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label(
-                            self.assets
-                                .status
-                                .clone()
-                                .unwrap_or_else(|| "Loading world map...".to_owned()),
-                        );
-                    });
+            let status = self
+                .assets
+                .status
+                .clone()
+                .unwrap_or_else(|| "Loading world map...".to_owned());
+            let ((), close) = super::modal::Modal::new(
+                "world_map_loading",
+                format!("{} World map", icons::WORLD_MAP),
+            )
+            .size(300.0, 0.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(status);
                 });
+            });
+            if close {
+                self.world_map.open = false;
+            }
             return;
         };
         if !self.world_map.initialised {
@@ -170,24 +176,26 @@ impl EditorApp {
             ctx.request_repaint();
         }
 
-        let mut open = true;
         let mut teleport = None;
-        egui::Window::new(format!("{} World map", icons::WORLD_MAP))
-            .open(&mut open)
-            .default_size([1040.0, 700.0])
-            .resizable(true)
-            .show(ctx, |ui| {
-                self.world_map_toolbar(ui, &catalog);
-                ui.add_space(4.0);
-                if self.world_map.key_open {
-                    egui::Panel::right("world_map_key")
-                        .resizable(false)
-                        .default_size(210.0)
-                        .show(ui, |ui| self.world_map_key(ui, &catalog));
-                }
-                teleport = self.world_map_canvas(ui, &catalog);
-            });
-        self.world_map.open = open;
+        let ((), close) = super::modal::Modal::new(
+            "world_map_window",
+            format!("{} World map", icons::WORLD_MAP),
+        )
+        .size(1040.0, 680.0)
+        .show(ctx, |ui| {
+            self.world_map_toolbar(ui, &catalog);
+            ui.add_space(4.0);
+            if self.world_map.key_open {
+                egui::Panel::right("world_map_key")
+                    .resizable(false)
+                    .default_size(210.0)
+                    .show(ui, |ui| self.world_map_key(ui, &catalog));
+            }
+            teleport = self.world_map_canvas(ui, &catalog);
+        });
+        if close {
+            self.world_map.open = false;
+        }
         if let Some((x, y, plane)) = teleport {
             self.teleport_to(Destination::Tile {
                 x,

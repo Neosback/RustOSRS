@@ -46,3 +46,16 @@ The user's list, grouped into the order it is built in (each group is one commit
   * **Cleanup**: `app.rs` is 900 lines (from 1580): settings I/O, camera moves, streaming and viewport work
     live in their own modules; the env-variable hooks became script commands; dead code and the `.bak` file
     are gone.
+
+## Modal windows and the Plugins menu (2026-10-11)
+
+* **Plugins** is no longer a rail tab or an on/off panel: it is a **Plugins** entry in the menu bar that opens a
+  window (My tools, then each plugin's options). Old settings files that name the Plugins rail tab open on the
+  Inspector.
+* **Every window is modal** (`app/modal.rs`, over `egui::Modal`): Settings, Plugins, Script, Add/Edit tool,
+  Teleport, World map and the cache welcome card. The rest of the editor is dimmed and takes no clicks, scrolls or
+  key bindings until the window is closed (close button or Esc; Esc closes only the topmost, and not while a combo
+  box is open or a key binding is being captured; the cache card has no close because the editor is empty without a
+  cache). Windows opened from a window (Add a tool or Script from Plugins) stack on top.
+* `EditorApp::modal_open` / `keys_blocked` are the one place that decides the editor's key bindings stay quiet.
+* Script: `window settings|plugins|script|map|teleport|none` opens a window (used for screenshots).

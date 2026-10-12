@@ -249,12 +249,9 @@ impl TeleportWindow {
         if !self.open {
             return None;
         }
-        let mut open = self.open;
         let mut destination = None;
-        egui::Window::new("Teleport")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
+        let ((), close) = crate::app::modal::Modal::new("teleport_window", "Teleport")
+            .size(320.0, 0.0)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.mode, Mode::Tile, "Tile x, y, z");
@@ -294,7 +291,9 @@ impl TeleportWindow {
                     }
                 }
             });
-        self.open = open;
+        if close {
+            self.open = false;
+        }
         destination
     }
 

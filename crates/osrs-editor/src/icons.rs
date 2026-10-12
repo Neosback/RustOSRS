@@ -67,4 +67,5 @@ pub const PLAY: &str = ph::PLAY;
 pub const ADD: &str = ph::PLUS;
 pub const POP_OUT: &str = ph::ARROW_SQUARE_OUT;
 pub const DOCK_IN: &str = ph::ARROW_SQUARE_IN;
+pub const CLOSE: &str = ph::X;
 pub const SWAP_SIDE: &str = ph::ARROWS_LEFT_RIGHT;

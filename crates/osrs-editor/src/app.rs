@@ -11,6 +11,7 @@ mod inspector;
 mod map_icons;
 mod menu;
 mod minimap;
+pub(crate) mod modal;
 mod object_tool;
 mod overlay;
 mod plugins;
@@ -195,6 +196,8 @@ pub struct EditorApp {
     /// The script language's queue, its window and text.
     script: script::ScriptRunner,
     script_open: bool,
+    /// The Plugins window (opened from the menu bar).
+    plugins_open: bool,
     script_text: String,
     /// A user tool being made or edited.
     tool_draft: Option<crate::user_tools::ToolDraft>,
@@ -332,6 +335,7 @@ impl EditorApp {
             pending_reselect: Vec::new(),
             script: script::ScriptRunner::default(),
             script_open: false,
+            plugins_open: false,
             script_text: String::new(),
             tool_draft: None,
             rail_rect: None,
@@ -371,7 +375,7 @@ impl EditorApp {
     /// while a binding is being captured in the Keyboard Shortcuts window).
     fn editor_actions(&mut self, ctx: &egui::Context) {
         self.tool_release(ctx);
-        if ctx.egui_wants_keyboard_input() || self.capturing_binding.is_some() {
+        if self.keys_blocked(ctx) {
             return;
         }
         let pressed = |id: &str| ctx.input(|i| self.keymap.pressed(i, id));
@@ -498,7 +502,7 @@ impl EditorApp {
                 }
             }
         }
-        if ctx.egui_wants_keyboard_input() || self.capturing_binding.is_some() {
+        if self.keys_blocked(ctx) {
             return;
         }
         ctx.input(|i| {
@@ -661,6 +665,7 @@ impl eframe::App for EditorApp {
         self.quick_tools_hud(&ctx);
         self.cache_welcome(&ctx);
 
+        self.plugins_window(&ctx);
         self.script_window(&ctx);
         self.tool_draft_window(&ctx);
         self.settings_window(&ctx);

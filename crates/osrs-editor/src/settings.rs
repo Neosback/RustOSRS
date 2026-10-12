@@ -11,26 +11,25 @@ use std::{collections::BTreeMap, fs, io, path::PathBuf};
 /// Categories on the dock's icon rail; each swaps the dock panel's contents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum RailTab {
-    /// The selected object and the hovered tile.
+    /// The selected object and the hovered tile. (Plugins used to be a rail tab; it is a menu-bar
+    /// window now, so old settings files naming it land here.)
     #[default]
+    #[serde(alias = "Plugins")]
     Inspect,
     /// Camera, world, interface and graphics options used while working (tabs inside).
     View,
     /// Retired as a button (it is a tab of View); old settings files may still name it.
     Graphics,
-    /// Plugin sections.
-    Plugins,
 }
 
 impl RailTab {
-    pub const ALL: [Self; 3] = [Self::Inspect, Self::View, Self::Plugins];
+    pub const ALL: [Self; 2] = [Self::Inspect, Self::View];
 
     pub const fn label(self) -> &'static str {
         match self {
             Self::Inspect => "Inspector",
             Self::View => "View",
             Self::Graphics => "Graphics",
-            Self::Plugins => "Plugins",
         }
     }
 }
@@ -541,6 +540,9 @@ mod tests {
         assert_eq!(settings.rail_tab, RailTab::View);
         assert_eq!(settings.view_tab, ViewTab::Graphics);
         assert_eq!(settings.tool, crate::paint::Tool::Paint);
+        // Plugins left the rail for a menu-bar window; a file that names it opens on the Inspector.
+        let old: Settings = serde_json::from_str(r#"{ "rail_tab": "Plugins" }"#)?;
+        assert_eq!(old.rail_tab, RailTab::Inspect);
         Ok(())
     }
 

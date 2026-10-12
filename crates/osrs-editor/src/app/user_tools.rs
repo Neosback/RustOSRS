@@ -75,6 +75,8 @@ impl EditorApp {
             self.tool_draft = Some(self.new_draft());
         }
         if let Some(index) = run {
+            // The tool acts on the map, so the window gets out of the way first.
+            self.plugins_open = false;
             self.run_user_tool(index);
         }
         if let Some(index) = edit {
@@ -107,24 +109,20 @@ impl EditorApp {
         let Some(mut draft) = self.tool_draft.take() else {
             return;
         };
-        let mut open = true;
         let mut save = false;
         let mut cancel = false;
         let current_tile = self.camera_tile();
         let current_plane = self.view_plane;
         let (tool_now, brush_now, spline_now) =
             (self.prefs.tool, self.prefs.brush.clone(), self.prefs.spline);
-        egui::Window::new(if draft.index.is_some() {
+        let title = if draft.index.is_some() {
             "Edit tool"
         } else {
             "Add a tool"
-        })
-        .id(egui::Id::new("tool_draft_window"))
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(false)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-        .show(ctx, |ui| {
+        };
+        let ((), closed) = super::modal::Modal::new("tool_draft_window", title)
+            .size(400.0, 0.0)
+            .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Name");
                 ui.add(egui::TextEdit::singleline(&mut draft.tool.name).desired_width(200.0));
@@ -234,12 +232,12 @@ impl EditorApp {
                 }
                 _ => self.prefs.user_tools.push(tool),
             }
-        } else if open && !cancel {
+        } else if !closed && !cancel {
             self.tool_draft = Some(draft);
         }
     }
 
-    /// The Plugins panel's "My tools" section: the same tools as a list.
+    /// The Plugins window's "My tools" section: the same tools as a list.
     pub(super) fn user_tool_list(&mut self, ui: &mut egui::Ui) {
         crate::theme::section_heading(ui, "My tools");
         if self.prefs.user_tools.is_empty() {

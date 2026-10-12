@@ -337,7 +337,7 @@ impl EditorApp {
         if self.quick_open.is_some() || self.context_menu.is_some() {
             return;
         }
-        if !ctx.egui_wants_keyboard_input() {
+        if !self.keys_blocked(ctx) {
             if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
                 self.commit_spline();
             }
@@ -362,7 +362,7 @@ impl EditorApp {
             .filter(|(_, d)| *d <= GRAB_DISTANCE)
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(i, _)| i);
-        if !ctx.egui_wants_keyboard_input() && ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
+        if !self.keys_blocked(ctx) && ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
             match nearest {
                 Some(index) => {
                     self.spline.points.remove(index);

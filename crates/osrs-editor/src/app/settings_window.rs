@@ -734,66 +734,59 @@ impl EditorApp {
                 self.capturing_binding = None;
             }
         }
-        let mut open = true;
-        egui::Window::new(format!("{} Settings", ph::GEAR))
-            .id(egui::Id::new("settings_window"))
-            .open(&mut open)
-            .collapsible(false)
-            .default_size([780.0, 560.0])
-            .min_size([560.0, 360.0])
-            .default_pos({
-                let screen = ctx.content_rect();
-                egui::pos2(
-                    (screen.center().x - 390.0).max(screen.left() + 8.0),
-                    (screen.center().y - 290.0).max(screen.top() + 64.0),
-                )
-            })
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(ph::MAGNIFYING_GLASS);
-                    let search = ui.add(
-                        egui::TextEdit::singleline(&mut self.settings_search)
-                            .hint_text("Search settings")
-                            .desired_width(260.0),
-                    );
-                    if self.settings_focus_search {
-                        search.request_focus();
-                        self.settings_focus_search = false;
-                    }
-                    if !self.settings_search.is_empty() && ui.small_button("clear").clicked() {
-                        self.settings_search.clear();
-                    }
-                });
-                ui.separator();
-                ui.horizontal_top(|ui| {
-                    ui.vertical(|ui| {
-                        ui.set_width(176.0);
-                        ui.spacing_mut().item_spacing.y = 3.0;
-                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                        for (page, icon, title) in PAGES {
-                            let selected = self.settings_search.is_empty()
-                                && self.prefs.settings_page == *page;
-                            if nav_item(ui, selected, icon, title).clicked() {
-                                self.prefs.settings_page = *page;
-                                self.settings_search.clear();
-                            }
+        let esc = self.capturing_binding.is_none();
+        let ((), close) =
+            super::modal::Modal::new("settings_window", format!("{} Settings", ph::GEAR))
+                .size(780.0, 520.0)
+                .esc_closes(esc)
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(ph::MAGNIFYING_GLASS);
+                        let search = ui.add(
+                            egui::TextEdit::singleline(&mut self.settings_search)
+                                .hint_text("Search settings")
+                                .desired_width(260.0),
+                        );
+                        if self.settings_focus_search {
+                            search.request_focus();
+                            self.settings_focus_search = false;
+                        }
+                        if !self.settings_search.is_empty() && ui.small_button("clear").clicked() {
+                            self.settings_search.clear();
                         }
                     });
                     ui.separator();
-                    ui.vertical(|ui| {
-                        egui::ScrollArea::vertical()
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                if self.settings_search.trim().is_empty() {
-                                    self.page_ui(ui, self.prefs.settings_page);
-                                } else {
-                                    self.search_ui(ui);
+                    ui.horizontal_top(|ui| {
+                        ui.vertical(|ui| {
+                            ui.set_width(176.0);
+                            ui.spacing_mut().item_spacing.y = 3.0;
+                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                            for (page, icon, title) in PAGES {
+                                let selected = self.settings_search.is_empty()
+                                    && self.prefs.settings_page == *page;
+                                if nav_item(ui, selected, icon, title).clicked() {
+                                    self.prefs.settings_page = *page;
+                                    self.settings_search.clear();
                                 }
-                            });
+                            }
+                        });
+                        ui.separator();
+                        ui.vertical(|ui| {
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    if self.settings_search.trim().is_empty() {
+                                        self.page_ui(ui, self.prefs.settings_page);
+                                    } else {
+                                        self.search_ui(ui);
+                                    }
+                                });
+                        });
                     });
                 });
-            });
-        self.settings_open = open;
+        if close {
+            self.settings_open = false;
+        }
     }
 
     /// The colours the viewport draws its indicators, the grid and the HUD with.

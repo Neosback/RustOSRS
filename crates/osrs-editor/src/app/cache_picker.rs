@@ -218,12 +218,9 @@ impl EditorApp {
         let Some(error) = self.cache_error.clone() else {
             return;
         };
-        egui::Window::new("OSRS cache")
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .collapsible(false)
-            .resizable(false)
-            .order(egui::Order::Foreground)
-            .default_width(460.0)
+        super::modal::Modal::new("cache_welcome", "OSRS cache")
+            .size(460.0, 0.0)
+            .closable(false)
             .show(ctx, |ui| {
                 ui.label(egui::RichText::new("Choose an OSRS cache").heading());
                 ui.add_space(4.0);

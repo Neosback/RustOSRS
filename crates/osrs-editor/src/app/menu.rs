@@ -93,6 +93,13 @@ impl EditorApp {
                         ui.close();
                     }
                 });
+                if ui
+                    .button(format!("{} Plugins", icons::PLUGINS))
+                    .on_hover_text("Your tools and each plugin's options")
+                    .clicked()
+                {
+                    self.plugins_open = true;
+                }
                 ui.menu_button("Go", |ui| {
                     if ui.button("World map...").clicked() {
                         self.toggle_world_map();

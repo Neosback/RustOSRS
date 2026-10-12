@@ -42,9 +42,43 @@ impl EditorApp {
         });
     }
 
+    /// The Plugins window (menu bar): the user's own tools and each plugin's options.
+    pub(super) fn plugins_window(&mut self, ctx: &egui::Context) {
+        if !self.plugins_open {
+            return;
+        }
+        let ((), close) = super::modal::Modal::new(
+            "plugins_window",
+            format!("{} Plugins", crate::icons::PLUGINS),
+        )
+        .size(420.0, 460.0)
+        .show(ctx, |ui| {
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    self.user_tool_list(ui);
+                    let mut any = false;
+                    self.run_plugins(|plugin, cx| {
+                        if plugin.has_properties() {
+                            any = true;
+                            crate::theme::section_heading(ui, plugin.title());
+                            plugin.properties(ui, cx);
+                        }
+                    });
+                    if !any {
+                        ui.add_space(6.0);
+                        ui.weak("No plugin has options to show.");
+                    }
+                });
+        });
+        if close {
+            self.plugins_open = false;
+        }
+    }
+
     /// Fire the plugin actions whose bindings were pressed (no text field has focus).
     pub(super) fn plugin_actions(&mut self, ctx: &egui::Context) {
-        if ctx.egui_wants_keyboard_input() {
+        if self.keys_blocked(ctx) {
             return;
         }
         let keymap = &self.keymap;

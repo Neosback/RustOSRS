@@ -101,7 +101,7 @@ Shared UI pieces: `theme::section_heading` (the one heading style), `theme::key_
 ## Scripting (2026-10-11)
 
 The editor has a small script language (`app/script.rs`): one command per line (or separated by `;`), run from
-the Script window (View menu), from a user tool's button on the picker rail, or at start-up. Every command is
+the Script window (View menu or the Plugins window), from a user tool's button on the picker rail, or at start-up. Every command is
 something the UI does (tool, plane, teleport, overlay / underlay / shape / radius, arm, paint, spline, lay,
 select object / tiles, menu, move / turn / copy / delete, hud, grid, camera, undo / redo, wait, at, status,
 count). Commands that need the world loaded (select an object, paint a tile) wait for it. The old smoke-test

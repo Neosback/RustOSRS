@@ -28,6 +28,7 @@ menu                   open the context menu on the selected object
 move DX DY             move the selected objects
 count                  log how many objects the camera's region has
 hud tile|stats|minimap|outline on|off|toggle
+window settings|plugins|script|map|teleport|none   open a window (or close all)
 grid                   toggle the tile grid
 camera fly|orbit
 undo | redo | delete | turn | copy
@@ -202,6 +203,20 @@ impl EditorApp {
                 *slot = on_off(words.next(), *slot)?;
             }
             "grid" => self.plugin_action("grid.toggle"),
+            "window" => {
+                let which = words.next();
+                self.settings_open = which == Some("settings");
+                self.plugins_open = which == Some("plugins");
+                self.script_open = which == Some("script");
+                self.world_map.open = which == Some("map");
+                self.teleport.open = which == Some("teleport");
+                if !matches!(
+                    which,
+                    Some("settings" | "plugins" | "script" | "map" | "teleport" | "none")
+                ) {
+                    return Err(format!("unknown window {which:?}"));
+                }
+            }
             "camera" => {
                 self.camera.mode = match words.next() {
                     Some("fly") => crate::camera::CameraMode::Fly,
@@ -394,41 +409,41 @@ impl EditorApp {
         if !self.script_open {
             return;
         }
-        let mut open = true;
-        egui::Window::new(format!("{} Script", crate::icons::SCRIPT))
-            .id(egui::Id::new("script_window"))
-            .open(&mut open)
-            .default_size([420.0, 380.0])
-            .show(ctx, |ui| {
-                ui.add(
-                    egui::TextEdit::multiline(&mut self.script_text)
-                        .code_editor()
-                        .desired_rows(8)
-                        .desired_width(f32::INFINITY)
-                        .hint_text("tool paint\noverlay 12\nradius 3"),
-                );
-                ui.horizontal(|ui| {
-                    if ui.button(format!("{}  Run", crate::icons::PLAY)).clicked() {
-                        let text = self.script_text.clone();
-                        self.run_script(&text);
-                    }
-                    if self.script.is_running() {
-                        ui.spinner();
-                        ui.weak("running");
-                    }
-                });
-                for message in &self.script.log {
-                    ui.colored_label(ui.visuals().warn_fg_color, message);
-                }
-                egui::CollapsingHeader::new("Commands")
-                    .default_open(false)
-                    .show(ui, |ui| {
-                        ui.add(egui::Label::new(
-                            egui::RichText::new(HELP).monospace().size(11.5),
-                        ));
+        let ((), close) =
+            super::modal::Modal::new("script_window", format!("{} Script", crate::icons::SCRIPT))
+                .size(520.0, 0.0)
+                .show(ctx, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.script_text)
+                            .code_editor()
+                            .desired_rows(8)
+                            .desired_width(f32::INFINITY)
+                            .hint_text("tool paint\noverlay 12\nradius 3"),
+                    );
+                    ui.horizontal(|ui| {
+                        if ui.button(format!("{}  Run", crate::icons::PLAY)).clicked() {
+                            let text = self.script_text.clone();
+                            self.run_script(&text);
+                        }
+                        if self.script.is_running() {
+                            ui.spinner();
+                            ui.weak("running");
+                        }
                     });
-            });
-        self.script_open = open;
+                    for message in &self.script.log {
+                        ui.colored_label(ui.visuals().warn_fg_color, message);
+                    }
+                    egui::CollapsingHeader::new("Commands")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.add(egui::Label::new(
+                                egui::RichText::new(HELP).monospace().size(11.5),
+                            ));
+                        });
+                });
+        if close {
+            self.script_open = false;
+        }
     }
 }
 
