@@ -17,8 +17,6 @@ mod shapes;
 pub mod walls;
 
 pub use model::{PathEnvironment, PathPoint, PathWarning, Severity, TilePaint};
-#[cfg(test)]
-pub use model::TileBounds;
 pub use planner::{PathPlanner, fnv};
 pub use resample::smooth_and_resample as smooth_line;
 pub use scene::SceneGrid;
