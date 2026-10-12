@@ -1,0 +1,28 @@
+name: Fix spline path clippy
+
+on:
+  push:
+    branches:
+      - fix/spline-path-reliability
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/spline-path-reliability
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+      - run: python3 scripts/fix_path_clippy.py
+      - run: cargo fmt --all
+      - run: cargo clippy --locked -p osrs-editor --all-targets --all-features -- -D warnings
+      - run: rm scripts/fix_path_clippy.py .github/workflows/branch-clippy-fix.yml
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(editor): clear spline path clippy gates"
+          git push origin HEAD:fix/spline-path-reliability
