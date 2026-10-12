@@ -61,7 +61,8 @@ fn incompatible_overlay_and_other_plane_do_not_create_network_branches() {
 
     assert_eq!(plan.lines.len(), 2);
     assert_eq!(connected_warning_count(&plan), 1);
-    let target = plan.lines[1].last().copied().expect("connector target");
+    assert!(!plan.lines[1].is_empty());
+    let target = plan.lines[1][plan.lines[1].len() - 1];
     assert!(target.x < 10.0);
 }
 
