@@ -214,12 +214,12 @@ impl EditorApp {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(!draft.tool.name.trim().is_empty(), egui::Button::new("Save"))
+                    .add(crate::theme::primary_button("Save").enabled(!draft.tool.name.trim().is_empty()))
                     .clicked()
                 {
                     save = true;
                 }
-                if ui.button("Cancel").clicked() {
+                if ui.add(crate::theme::outline_button("Cancel")).clicked() {
                     cancel = true;
                 }
             });
@@ -269,11 +269,20 @@ impl EditorApp {
                 });
             });
         }
-        if ui.button(format!("{}  Add a tool", icons::ADD)).clicked() {
+        if ui
+            .add(crate::theme::primary_button(format!(
+                "{}  Add a tool",
+                icons::ADD
+            )))
+            .clicked()
+        {
             self.tool_draft = Some(self.new_draft());
         }
         if ui
-            .button(format!("{}  Script window", icons::SCRIPT))
+            .add(crate::theme::outline_button(format!(
+                "{}  Script window",
+                icons::SCRIPT
+            )))
             .clicked()
         {
             self.script_open = true;

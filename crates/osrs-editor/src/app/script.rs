@@ -421,7 +421,13 @@ impl EditorApp {
                             .hint_text("tool paint\noverlay 12\nradius 3"),
                     );
                     ui.horizontal(|ui| {
-                        if ui.button(format!("{}  Run", crate::icons::PLAY)).clicked() {
+                        if ui
+                            .add(crate::theme::primary_button(format!(
+                                "{}  Run",
+                                crate::icons::PLAY
+                            )))
+                            .clicked()
+                        {
                             let text = self.script_text.clone();
                             self.run_script(&text);
                         }

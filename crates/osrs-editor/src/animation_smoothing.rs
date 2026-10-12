@@ -42,7 +42,7 @@ impl EditorPlugin for AnimationSmoothingPlugin {
     }
 
     fn menu(&mut self, ui: &mut egui::Ui, _cx: &mut PluginContext) {
-        ui.checkbox(&mut self.enabled, "Enabled");
+        crate::theme::toggle(ui, &mut self.enabled, "Enabled");
     }
 
     fn has_properties(&self) -> bool {
@@ -50,7 +50,7 @@ impl EditorPlugin for AnimationSmoothingPlugin {
     }
 
     fn properties(&mut self, ui: &mut egui::Ui, _cx: &mut PluginContext) {
-        ui.checkbox(&mut self.enabled, "Blend frames of animated objects");
+        crate::theme::toggle(ui, &mut self.enabled, "Blend frames of animated objects");
         ui.weak(
             "Matches RuneLite's Animation Smoothing (off by default). Wheels, sails and a few \
              other sequences are left alone, as in the plugin.",

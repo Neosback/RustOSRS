@@ -281,7 +281,7 @@ impl TeleportWindow {
                 if let Some(error) = &self.error {
                     ui.colored_label(egui::Color32::LIGHT_RED, error);
                 }
-                if ui.button("Go").clicked() || submit {
+                if ui.add(crate::theme::primary_button("Go")).clicked() || submit {
                     match self.parse() {
                         Ok(target) => {
                             self.error = None;

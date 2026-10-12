@@ -683,7 +683,7 @@ impl EditorApp {
                     _ => None,
                 };
                 if let Some(value) = toggle {
-                    ui.checkbox(value, def.label);
+                    crate::theme::toggle(ui, value, def.label);
                     continue;
                 }
                 ui.label(egui::RichText::new(def.label).weak());
@@ -957,46 +957,67 @@ impl EditorApp {
                     });
             }
             Row::SidePanel => {
-                ui.checkbox(&mut prefs.properties_panel, "Show");
+                crate::theme::toggle(ui, &mut prefs.properties_panel, "Show");
             }
             Row::DockRight => {
-                ui.checkbox(&mut prefs.dock_right, "Right (off: left)");
+                crate::theme::toggle(ui, &mut prefs.dock_right, "Right (off: left)");
             }
             Row::StatsOverlay => {
-                ui.checkbox(&mut prefs.stats_overlay, "Show");
+                crate::theme::toggle(ui, &mut prefs.stats_overlay, "Show");
             }
             Row::ShowMinimap => {
-                ui.checkbox(&mut prefs.show_minimap, "Show");
+                crate::theme::toggle(ui, &mut prefs.show_minimap, "Show");
             }
             Row::MinimapSize => {
-                ui.horizontal(|ui| {
-                    for size in MinimapSize::ALL {
-                        ui.selectable_value(&mut prefs.minimap_size, size, size.label());
-                    }
-                });
+                let mut at = MinimapSize::ALL
+                    .iter()
+                    .position(|size| *size == prefs.minimap_size)
+                    .unwrap_or(0);
+                let labels: Vec<&str> = MinimapSize::ALL.iter().map(|size| size.label()).collect();
+                if crate::theme::segmented(ui, "minimap_size", &mut at, &labels) {
+                    prefs.minimap_size = MinimapSize::ALL[at];
+                }
             }
             Row::ContextMenu => {
-                ui.horizontal(|ui| {
-                    for style in ContextMenuStyle::ALL {
-                        ui.selectable_value(&mut prefs.context_menu, style, style.short_label())
-                            .on_hover_text(style.label());
-                    }
-                });
+                let mut at = ContextMenuStyle::ALL
+                    .iter()
+                    .position(|style| *style == prefs.context_menu)
+                    .unwrap_or(0);
+                let labels: Vec<&str> = ContextMenuStyle::ALL
+                    .iter()
+                    .map(|style| style.short_label())
+                    .collect();
+                if crate::theme::segmented(ui, "context_menu_style", &mut at, &labels) {
+                    prefs.context_menu = ContextMenuStyle::ALL[at];
+                }
             }
             Row::MouseTooltips => {
-                ui.checkbox(
+                crate::theme::toggle(
+                    ui,
                     &mut prefs.mouse_tooltips,
                     "Show the top menu entry at the cursor",
                 );
             }
             Row::HoverTile => {
-                ui.checkbox(&mut prefs.hover_tile, "Outline the tile under the cursor");
+                crate::theme::toggle(
+                    ui,
+                    &mut prefs.hover_tile,
+                    "Outline the tile under the cursor",
+                );
             }
             Row::TileInfoHud => {
-                ui.checkbox(&mut prefs.tile_info_hud, "Show the tile under the cursor");
+                crate::theme::toggle(
+                    ui,
+                    &mut prefs.tile_info_hud,
+                    "Show the tile under the cursor",
+                );
             }
             Row::MapIcons3d => {
-                ui.checkbox(&mut prefs.map_icons_3d, "Draw map icons over their tiles");
+                crate::theme::toggle(
+                    ui,
+                    &mut prefs.map_icons_3d,
+                    "Draw map icons over their tiles",
+                );
             }
             Row::RenderScale => {
                 ui.add(
@@ -1010,10 +1031,14 @@ impl EditorApp {
                 .on_hover_text("Above 100% renders more pixels than the window has and smooths edges; below saves GPU time");
             }
             Row::CameraMode => {
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.camera.mode, CameraMode::Fly, "Fly");
-                    ui.selectable_value(&mut self.camera.mode, CameraMode::Orbit, "Orbit");
-                });
+                let mut at = usize::from(self.camera.mode == CameraMode::Orbit);
+                if crate::theme::segmented(ui, "camera_mode", &mut at, &["Fly", "Orbit"]) {
+                    self.camera.mode = if at == 0 {
+                        CameraMode::Fly
+                    } else {
+                        CameraMode::Orbit
+                    };
+                }
             }
             Row::FieldOfView => {
                 ui.add(egui::Slider::new(&mut self.camera.fov_degrees, 30.0..=100.0).suffix("°"));
@@ -1040,7 +1065,7 @@ impl EditorApp {
                 ui.add(egui::Slider::new(&mut prefs.draw_distance_tiles, 8..=184).suffix(" tiles"));
             }
             Row::AnimateObjects => {
-                ui.checkbox(&mut prefs.animate_objects, "Play object animations");
+                crate::theme::toggle(ui, &mut prefs.animate_objects, "Play object animations");
             }
             Row::SmoothTerrain => {
                 if ui
@@ -1076,10 +1101,10 @@ impl EditorApp {
                 ui.add(egui::Slider::new(&mut prefs.fog_depth_tiles, 0..=100).suffix(" tiles"));
             }
             Row::ColorBanding => {
-                ui.checkbox(&mut prefs.remove_color_banding, "On");
+                crate::theme::toggle(ui, &mut prefs.remove_color_banding, "On");
             }
             Row::BrightTextures => {
-                ui.checkbox(&mut prefs.bright_textures, "On");
+                crate::theme::toggle(ui, &mut prefs.bright_textures, "On");
             }
             Row::ColorblindMode => {
                 egui::ComboBox::from_id_salt("setting_colorblind")
@@ -1105,19 +1130,21 @@ impl EditorApp {
                     .on_hover_text("A gamma on the finished image; 100 % = as authored.");
             }
             Row::AtmosphericLighting => {
-                ui.checkbox(
+                crate::theme::toggle(
+                    ui,
                     &mut prefs.hd_environment.atmospheric_lighting,
                     "Light each area with its own environment",
                 );
             }
             Row::NormalMapping => {
-                ui.checkbox(&mut prefs.hd_normal_mapping, "On");
+                crate::theme::toggle(ui, &mut prefs.hd_normal_mapping, "On");
             }
             Row::Parallax => {
-                ui.checkbox(&mut prefs.hd_parallax_mapping, "On (higher GPU cost)");
+                crate::theme::toggle(ui, &mut prefs.hd_parallax_mapping, "On (higher GPU cost)");
             }
             Row::Lightning => {
-                ui.checkbox(
+                crate::theme::toggle(
+                    ui,
                     &mut prefs.hd_environment.flashing_effects,
                     "Flash in storm areas",
                 );
@@ -1130,7 +1157,8 @@ impl EditorApp {
                 );
             }
             Row::DistanceFog => {
-                ui.checkbox(
+                crate::theme::toggle(
+                    ui,
                     &mut prefs.hd_environment.distance_fog,
                     "On (off removes all fog)",
                 );
@@ -1155,7 +1183,7 @@ impl EditorApp {
                 );
             }
             Row::GroundFog => {
-                ui.checkbox(&mut prefs.hd_environment.ground_fog, "On");
+                crate::theme::toggle(ui, &mut prefs.hd_environment.ground_fog, "On");
             }
             Row::DefaultSky => {
                 egui::ComboBox::from_id_salt("setting_default_sky")
@@ -1171,19 +1199,20 @@ impl EditorApp {
                     });
             }
             Row::OverrideSky => {
-                ui.checkbox(
+                crate::theme::toggle(
+                    ui,
                     &mut prefs.hd_environment.override_sky,
                     "Use the default sky in every area",
                 );
             }
             Row::DecoupleSky => {
-                ui.checkbox(&mut prefs.hd_environment.decouple_sky_and_water, "On");
+                crate::theme::toggle(ui, &mut prefs.hd_environment.decouple_sky_and_water, "On");
             }
             Row::PohThemes => {
-                ui.checkbox(&mut prefs.hd_environment.poh_themes, "On");
+                crate::theme::toggle(ui, &mut prefs.hd_environment.poh_themes, "On");
             }
             Row::LegacyTob => {
-                ui.checkbox(&mut prefs.hd_environment.legacy_tob, "On");
+                crate::theme::toggle(ui, &mut prefs.hd_environment.legacy_tob, "On");
             }
             Row::ShadowMode => {
                 egui::ComboBox::from_id_salt("setting_shadow_mode")
@@ -1227,16 +1256,22 @@ impl EditorApp {
                 );
             }
             Row::ShadowTransparency => {
-                ui.checkbox(
+                crate::theme::toggle(
+                    ui,
                     &mut prefs.hd_shadows.transparency,
                     "Take model transparency into account",
                 );
             }
             Row::TerrainShadows => {
-                ui.checkbox(&mut prefs.hd_shadows.terrain_shadows, "Hills cast shadows");
+                crate::theme::toggle(
+                    ui,
+                    &mut prefs.hd_shadows.terrain_shadows,
+                    "Hills cast shadows",
+                );
             }
             Row::RoofShadows => {
-                ui.checkbox(
+                crate::theme::toggle(
+                    ui,
                     &mut prefs.hd_shadows.roof_shadows,
                     "Hidden roofs still cast shadows",
                 );
@@ -1248,7 +1283,7 @@ impl EditorApp {
                 ));
             }
             Row::Caustics => {
-                ui.checkbox(&mut prefs.hd_underwater_caustics, "On");
+                crate::theme::toggle(ui, &mut prefs.hd_underwater_caustics, "On");
             }
             Row::Exposure => {
                 ui.add(egui::Slider::new(&mut prefs.hd_exposure, 0.25..=4.0))

@@ -274,17 +274,22 @@ impl EditorApp {
     /// The View panel's Overlays tab: what the viewport shows on top of the world.
     fn overlays_tab(&mut self, ui: &mut egui::Ui) {
         crate::theme::section_heading(ui, "Heads-up");
-        ui.checkbox(&mut self.prefs.tile_info_hud, "Tile info")
+        crate::theme::toggle(ui, &mut self.prefs.tile_info_hud, "Tile info")
             .on_hover_text("The tile under the cursor, in the corner of the viewport");
-        ui.checkbox(&mut self.prefs.stats_overlay, "Statistics")
+        crate::theme::toggle(ui, &mut self.prefs.stats_overlay, "Statistics")
             .on_hover_text("Frame rate, timings and the camera tile");
-        ui.checkbox(&mut self.prefs.show_minimap, "Minimap, compass and globe");
-        ui.checkbox(&mut self.prefs.map_icons_3d, "Map icons in the world")
+        crate::theme::toggle(
+            ui,
+            &mut self.prefs.show_minimap,
+            "Minimap, compass and globe",
+        );
+        crate::theme::toggle(ui, &mut self.prefs.map_icons_3d, "Map icons in the world")
             .on_hover_text("Bank, shop and altar icons floating over their tiles");
-        ui.checkbox(&mut self.prefs.mouse_tooltips, "Action tooltip")
+        crate::theme::toggle(ui, &mut self.prefs.mouse_tooltips, "Action tooltip")
             .on_hover_text("The game's action text next to the cursor");
         crate::theme::section_heading(ui, "Indicators");
-        ui.checkbox(
+        crate::theme::toggle(
+            ui,
             &mut self.prefs.hover_tile,
             "Tile outline and brush footprint",
         )

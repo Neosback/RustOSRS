@@ -91,10 +91,146 @@ pub const DAYLIGHT: Theme = Theme {
     warning: rgb(196, 118, 0),
 };
 
+/// The egui-elegance "slate" look: cool dark blue with a sky focus ring.
+pub const SLATE: Theme = Theme {
+    name: "Slate",
+    dark: true,
+    panel: rgb(15, 23, 42),
+    window: rgb(30, 41, 59),
+    inset: rgb(11, 17, 32),
+    widget: rgb(40, 52, 72),
+    widget_hover: rgb(51, 65, 85),
+    widget_active: rgb(71, 85, 105),
+    border: rgb(51, 65, 85),
+    text: rgb(226, 232, 240),
+    text_dim: rgb(148, 163, 184),
+    accent: rgb(56, 189, 248),
+    danger: rgb(248, 113, 113),
+    warning: rgb(251, 191, 36),
+};
+
+/// The egui-elegance "charcoal" look: neutral dark grey with a cyan accent.
+pub const CHARCOAL: Theme = Theme {
+    name: "Charcoal",
+    dark: true,
+    panel: rgb(20, 20, 22),
+    window: rgb(28, 28, 30),
+    inset: rgb(15, 15, 16),
+    widget: rgb(42, 42, 45),
+    widget_hover: rgb(56, 56, 58),
+    widget_active: rgb(72, 72, 76),
+    border: rgb(56, 56, 58),
+    text: rgb(250, 250, 250),
+    text_dim: rgb(161, 161, 170),
+    accent: rgb(34, 211, 238),
+    danger: rgb(248, 113, 113),
+    warning: rgb(251, 191, 36),
+};
+
+/// The egui-elegance "frost" look: slate-tinted off-white, light.
+pub const FROST: Theme = Theme {
+    name: "Frost",
+    dark: false,
+    panel: rgb(226, 232, 240),
+    window: rgb(248, 250, 252),
+    inset: rgb(255, 255, 255),
+    widget: rgb(213, 221, 232),
+    widget_hover: rgb(200, 210, 224),
+    widget_active: rgb(182, 195, 214),
+    border: rgb(190, 200, 214),
+    text: rgb(15, 23, 42),
+    text_dim: rgb(71, 85, 105),
+    accent: rgb(3, 116, 176),
+    danger: rgb(220, 38, 38),
+    warning: rgb(217, 119, 6),
+};
+
+/// The egui-elegance "paper" look: warm neutral off-white, light.
+pub const PAPER: Theme = Theme {
+    name: "Paper",
+    dark: false,
+    panel: rgb(236, 233, 228),
+    window: rgb(250, 248, 243),
+    inset: rgb(255, 255, 255),
+    widget: rgb(226, 222, 214),
+    widget_hover: rgb(214, 209, 199),
+    widget_active: rgb(199, 193, 180),
+    border: rgb(188, 182, 168),
+    text: rgb(28, 26, 22),
+    text_dim: rgb(87, 82, 74),
+    accent: rgb(12, 128, 158),
+    danger: rgb(220, 38, 38),
+    warning: rgb(217, 119, 6),
+};
+
 /// Variant names, parallel to [`ALL`].
-pub const NAMES: [&str; 3] = [GRAPHITE.name, MIDNIGHT.name, DAYLIGHT.name];
+pub const NAMES: [&str; 7] = [
+    GRAPHITE.name,
+    MIDNIGHT.name,
+    DAYLIGHT.name,
+    SLATE.name,
+    CHARCOAL.name,
+    FROST.name,
+    PAPER.name,
+];
 /// All variants.
-pub const ALL: [Theme; 3] = [GRAPHITE, MIDNIGHT, DAYLIGHT];
+pub const ALL: [Theme; 7] = [GRAPHITE, MIDNIGHT, DAYLIGHT, SLATE, CHARCOAL, FROST, PAPER];
+
+/// The egui-elegance theme that matches `theme`, so its widgets (switches, segmented controls,
+/// buttons) wear the same colours as everything else.
+fn elegance_theme(theme: &Theme) -> elegance::Theme {
+    let mut base = if theme.dark {
+        elegance::Theme::slate()
+    } else {
+        elegance::Theme::frost()
+    };
+    let p = &mut base.palette;
+    p.bg = theme.panel;
+    p.card = theme.window;
+    p.input_bg = theme.inset;
+    p.border = theme.border;
+    p.text = theme.text;
+    p.text_muted = theme.text_dim;
+    p.text_faint = theme.text_dim.gamma_multiply(0.75);
+    p.focus = theme.accent;
+    p.danger = theme.danger;
+    p.warning = theme.warning;
+    // Filled buttons carry white text, so the primary blue is the accent pulled darker on dark themes.
+    let primary = if theme.dark {
+        theme.accent.gamma_multiply(0.62)
+    } else {
+        theme.accent
+    };
+    p.blue = primary;
+    p.blue_hover = primary.gamma_multiply(0.85);
+    base
+}
+
+/// A labelled on/off switch (the editor's one boolean control; replaces checkboxes).
+pub fn toggle(
+    ui: &mut egui::Ui,
+    value: &mut bool,
+    label: impl Into<egui::WidgetText>,
+) -> egui::Response {
+    ui.add(elegance::Switch::new(value, label))
+}
+
+/// One choice out of a few, as a segmented control; returns whether the choice changed.
+pub fn segmented(ui: &mut egui::Ui, id: &str, selected: &mut usize, labels: &[&str]) -> bool {
+    let before = *selected;
+    ui.add(elegance::SegmentedControl::new(selected, labels.iter().copied()).id_salt(id));
+    *selected != before
+}
+
+/// A filled call-to-action button (Save, Run, Go).
+pub fn primary_button(text: impl Into<egui::WidgetText>) -> elegance::Button {
+    elegance::Button::new(text).accent(elegance::Accent::Blue)
+}
+
+/// A quiet outlined button (Cancel).
+pub fn outline_button(text: impl Into<egui::WidgetText>) -> elegance::Button {
+    elegance::Button::new(text).outline()
+}
 
 /// A section heading: small, upper case, in the accent colour, with a hairline under it. The one
 /// heading style for the side panel and the settings window, so groups read the same everywhere.
@@ -128,6 +264,9 @@ pub fn key_hint(ui: &mut egui::Ui, key: &str, action: &str) {
 
 /// Apply `theme` (visuals and the shared style) to the context.
 pub fn set_theme(ctx: &egui::Context, theme: Theme) {
+    // Elegance first (it also restyles the context), then ours on top, so only its widgets keep
+    // its palette.
+    elegance_theme(&theme).install(ctx);
     let slot = if theme.dark {
         egui::Theme::Dark
     } else {

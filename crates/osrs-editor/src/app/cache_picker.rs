@@ -243,11 +243,11 @@ impl EditorApp {
                 ui.add_space(8.0);
                 if ui
                     .add(
-                        egui::Button::new(format!(
+                        crate::theme::primary_button(format!(
                             "{}  Choose cache folder...",
                             egui_phosphor::regular::FOLDER_OPEN
                         ))
-                        .min_size(egui::vec2(240.0, 32.0)),
+                        .min_width(240.0),
                     )
                     .clicked()
                 {

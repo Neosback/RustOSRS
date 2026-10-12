@@ -225,9 +225,9 @@ impl GridPlugin {
     }
 
     fn toggles(&mut self, ui: &mut egui::Ui) {
-        ui.checkbox(&mut self.settings.tiles, "Tiles");
-        ui.checkbox(&mut self.settings.zones, "Zones (8 tiles)");
-        ui.checkbox(&mut self.settings.regions, "Regions (64 tiles)");
+        crate::theme::toggle(ui, &mut self.settings.tiles, "Tiles");
+        crate::theme::toggle(ui, &mut self.settings.zones, "Zones (8 tiles)");
+        crate::theme::toggle(ui, &mut self.settings.regions, "Regions (64 tiles)");
     }
 }
 
