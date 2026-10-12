@@ -277,9 +277,7 @@ mod tests {
     fn scene_with_regions(regions: Vec<(i32, i32, u8, RegionGrid)>) -> SceneGrid {
         let cache = regions
             .into_iter()
-            .map(|(region_x, region_y, plane, grid)| {
-                ((region_x, region_y, plane), Arc::new(grid))
-            })
+            .map(|(region_x, region_y, plane, grid)| ((region_x, region_y, plane), Arc::new(grid)))
             .collect();
         SceneGrid {
             infos: HashMap::new(),
@@ -351,10 +349,7 @@ mod tests {
 
     #[test]
     fn adjacent_loaded_regions_allow_cardinal_seam_crossing() {
-        let scene = scene_with_regions(vec![
-            (0, 0, 0, empty_region()),
-            (1, 0, 0, empty_region()),
-        ]);
+        let scene = scene_with_regions(vec![(0, 0, 0, empty_region()), (1, 0, 0, empty_region())]);
 
         assert!(!scene.edge_blocked(63, 10, 64, 10, 0));
         assert!(!scene.edge_blocked(64, 10, 63, 10, 0));
@@ -383,10 +378,7 @@ mod tests {
     fn diagonal_step_at_loaded_region_seam_cannot_cut_across_wall() {
         let mut right = empty_region();
         right.walls[index(0, 10)] |= 1 << 0;
-        let scene = scene_with_regions(vec![
-            (0, 0, 0, empty_region()),
-            (1, 0, 0, right),
-        ]);
+        let scene = scene_with_regions(vec![(0, 0, 0, empty_region()), (1, 0, 0, right)]);
 
         assert!(scene.edge_blocked(63, 10, 64, 11, 0));
         assert!(scene.edge_blocked(64, 11, 63, 10, 0));
@@ -394,20 +386,14 @@ mod tests {
 
     #[test]
     fn negative_coordinate_region_seam_uses_euclidean_local_coordinates() {
-        let scene = scene_with_regions(vec![
-            (-1, 0, 0, empty_region()),
-            (0, 0, 0, empty_region()),
-        ]);
+        let scene = scene_with_regions(vec![(-1, 0, 0, empty_region()), (0, 0, 0, empty_region())]);
 
         assert!(!scene.edge_blocked(-1, 12, 0, 12, 0));
         assert!(!scene.edge_blocked(0, 12, -1, 12, 0));
 
         let mut negative = empty_region();
         negative.walls[index(63, 12)] |= 1 << 2;
-        let scene = scene_with_regions(vec![
-            (-1, 0, 0, negative),
-            (0, 0, 0, empty_region()),
-        ]);
+        let scene = scene_with_regions(vec![(-1, 0, 0, negative), (0, 0, 0, empty_region())]);
 
         assert!(scene.edge_blocked(-1, 12, 0, 12, 0));
         assert!(scene.edge_blocked(0, 12, -1, 12, 0));
