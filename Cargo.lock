@@ -2402,6 +2402,13 @@ name = "osrs-core"
 version = "0.0.0"
 
 [[package]]
+name = "osrs-edit"
+version = "0.0.0"
+dependencies = [
+ "osrs-core",
+]
+
+[[package]]
 name = "osrs-editor"
 version = "0.0.0"
 dependencies = [
