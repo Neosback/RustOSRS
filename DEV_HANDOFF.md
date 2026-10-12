@@ -56,7 +56,7 @@ The dependency direction is intentional. `osrs-edit` may currently depend only o
 
 ECS, renderer state, meshes, GPU resources, and scene-worker results must never become the source of truth for editable map state. They are projections/caches that can be regenerated from authoritative semantic state.
 
-`MapDocument` is now the first authoritative, headless editable-map state container. It owns semantic terrain, explicit height vertices, and exact object placements without depending on renderer/UI/cache/runtime layers.
+`MapDocument` is the authoritative, headless editable-map state container. It owns semantic terrain, explicit height vertices, and exact object placements without depending on renderer/UI/cache/runtime layers.
 
 ### Coordinates and planes
 
@@ -122,6 +122,21 @@ This preserves the intended rule that one user gesture can become one atomic log
 
 This keeps validation failures deterministic and testable without leaking renderer/UI concerns into the domain.
 
+### Edit history semantics
+
+`EditHistory` is the first headless undo/redo contract around `MapDocument` and `MapPatch`.
+
+- Every successfully committed non-empty `MapPatch` becomes exactly one undo entry.
+- Undo applies the patch's exact inverse and moves the original patch to the redo stack.
+- Redo reapplies the original patch and moves it back to the undo stack.
+- A successful new non-empty commit clears the redo stack.
+- Empty patches do not create history entries and do not destroy an existing redo stack.
+- A failed commit changes neither authoritative document state nor history.
+- If undo or redo validation fails because the document was mutated out-of-band, the popped history entry is restored to its original stack.
+- `undo`/`redo` return the semantic `ChangeImpact` produced by the patch application so later application/view layers can schedule invalidation without inspecting history internals.
+
+`EditHistory` deliberately does not own renderer/UI state. It currently composes with a caller-owned `MapDocument`; a later editor/application session may own the document and history together to prevent normal interactive code from bypassing the history boundary.
+
 ### Change impact
 
 `ChangeImpact` is semantic, not renderer-specific. Current flags cover terrain geometry, terrain material, normals, lighting, collision, locations, and bounds.
@@ -142,8 +157,14 @@ The edit-domain foundation is merged to `main`.
 - Pull request: `#33` (`refactor(editor): establish authoritative edit-domain foundation`)
 - Final pre-merge branch head: `ded9c670dd2c3658785ea462cded34dcd010bd7c`
 - Squash merge commit on `main`: `5c5eef3bde696b20ae0319867e6e84567701ebf6`
+- Post-merge handoff head used as the history-branch base: `31da7b55e45557cd9f4e581b3798310ff26b53d3`
 
-No follow-on development branch has been created yet. The next branch must start from current `main` only after explicit direction to continue.
+Current active branch:
+
+- `refactor/editor-edit-history-foundation`
+- Created directly from `31da7b55e45557cd9f4e581b3798310ff26b53d3`
+- Current implementation head before this handoff update: `a84096b076e95c91ec7c52431a494374ef1ccdce`
+- No editor/UI/tool migration has occurred on this branch.
 
 ### Foundation delivered
 
@@ -174,6 +195,20 @@ No follow-on development branch has been created yet. The next branch must start
 - Added focused unit tests around semantic validation and tile-vs-height-vertex separation.
 - Added and maintained this living `DEV_HANDOFF.md`.
 
+### History work delivered on the active branch
+
+- Added `EditHistory` as a headless domain-level undo/redo stack.
+- Added `commit`, `undo`, `redo`, `can_undo`, `can_redo`, stack-length queries, and `clear`.
+- Preserved one logical `MapPatch` as one history entry regardless of operation count.
+- Used `MapPatch::inverse` for exact undo rather than recording a second independently constructed command.
+- Made failed commit/undo/redo operations history-stack safe.
+- Made successful new edits invalidate redo history.
+- Kept empty patches out of history without clearing redo state.
+- Added exact document-state undo/redo round-trip tests.
+- Added tests for composite terrain + height + object patches as one undo step.
+- Added tests for failed commits and out-of-band-state undo rejection.
+- No renderer, UI, current editor undo stack, brush tools, object tools, spline planner, or path preview code has been changed.
+
 ### Current files in `osrs-edit`
 
 ```text
@@ -181,6 +216,7 @@ crates/osrs-edit/
   Cargo.toml
   src/
     document.rs
+    history.rs
     lib.rs
     object.rs
     patch.rs
@@ -224,6 +260,18 @@ Merge:
 - PR `#33`: MERGED
 - Method: squash
 - Main commit: `5c5eef3bde696b20ae0319867e6e84567701ebf6`
+- Post-merge handoff head `31da7b55e45557cd9f4e581b3798310ff26b53d3`: full Tier A/B/C PASS in CI run `38239181734`.
+
+Checkpoint 7 history implementation before this handoff update:
+
+- Head `a84096b076e95c91ec7c52431a494374ef1ccdce`
+- CI run `38249012271`: PASS
+- Tier A architecture/format/workspace/strict Clippy: PASS
+- Tier B full workspace tests, including new `EditHistory` tests: PASS
+- Tier C M3-M9 semantic/reference suites: PASS
+- One earlier run failed only because rustfmt wanted one assertion wrapped across lines; that exact formatter diff was applied without semantic changes.
+
+The final handoff-update head must also pass CI before Checkpoint 7 is considered closed.
 
 ## Checkpoint history
 
@@ -255,24 +303,32 @@ Audited the complete branch against `main`, confirmed it was 0 commits behind, a
 
 Opened PR `#33`, verified it was mergeable at exact head `ded9c670dd2c3658785ea462cded34dcd010bd7c`, and squash-merged it to `main` as `5c5eef3bde696b20ae0319867e6e84567701ebf6`.
 
+### Checkpoint 7: headless edit history
+
+Created `refactor/editor-edit-history-foundation` from the fully validated post-merge `main` head. Added `EditHistory` around the existing `MapDocument`/`MapPatch` contracts without changing their semantics. A successful non-empty patch is one history step, undo uses the exact inverse patch, redo reapplies the original patch, new commits invalidate redo, and validation failures restore history stacks rather than corrupting them.
+
+Added focused regression coverage for composite one-step undo, exact document-state undo/redo, redo invalidation, failed commits, failed undo after out-of-band mutation, and empty-patch behavior. No editor or renderer integration was added.
+
 ## Next checkpoint
 
-**Do not redesign the path generator yet.**
+**Do not redesign or migrate the path generator yet.**
 
-When explicitly directed to continue:
+The next checkpoint on `refactor/editor-edit-history-foundation` should stay small and headless:
 
-1. Start a new branch from the then-current `main`.
-2. Keep the branch focused on basic edit-history/query contracts around `MapDocument` and `MapPatch`.
-3. Preserve one user gesture = one logical patch/history entry.
-4. Add undo/redo history semantics and tests at the headless domain level before any existing editor UI/tool migration.
-5. Do not migrate spline planning/preview, brush tools, object tools, rendering, or 117HD in that first history checkpoint.
-6. Stop and report after the first small history checkpoint.
+1. Verify full CI on the final handoff-update head.
+2. Define the minimal read-only semantic query contract needed by future tools without exposing mutable `MapDocument` internals.
+3. Prefer implementing the contract for `MapDocument` rather than adding duplicate query storage.
+4. Add focused headless tests for query behavior and coordinate/height semantics.
+5. Do not wire the query contract into spline/path planning, brush tools, object tools, UI, rendering, or 117HD yet.
+6. Stop and report before continuing.
+
+Do not merge this branch until its intended history/query-contract scope is complete and the full branch has been audited against `main`.
 
 ## Later branches, tentative order
 
 These are directional, not permission to start them automatically.
 
-1. Basic history/query contracts around `MapDocument` and `MapPatch`.
+1. Complete basic history/query contracts around `MapDocument` and `MapPatch`.
 2. Migrate one existing edit path through the domain boundary, likely spline/path **commit only**, while leaving its planner/preview algorithm untouched.
 3. Migrate brush/terrain/height editing.
 4. Migrate object editing.
