@@ -35,8 +35,11 @@ pub struct SplineState {
     pub points: Vec<(f32, f32)>,
     drag: Option<usize>,
     preview: Option<Preview>,
-    /// The plan being made on another thread, with the key it is for.
-    job: Option<(u64, std::sync::mpsc::Receiver<Preview>)>,
+    /// The editor state the preview should represent. The worker may still be catching up.
+    desired_key: Option<u64>,
+    /// One background worker. Rapid edits are coalesced to the newest request.
+    #[cfg(not(target_arch = "wasm32"))]
+    worker: Option<PlanWorker>,
     ctx: Option<egui::Context>,
 }
 
@@ -50,6 +53,22 @@ struct Preview {
     /// Walls mode: the band's tiles and their tangents.
     wall_tiles: Vec<(i32, i32)>,
     tangents: HashMap<(i32, i32), (f32, f32)>,
+}
+
+impl SplineState {
+    fn current_preview(&self) -> Option<&Preview> {
+        self.preview
+            .as_ref()
+            .filter(|preview| self.desired_key == Some(preview.key))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug)]
+struct PlanWorker {
+    request: std::sync::mpsc::Sender<PlanInput>,
+    result: std::sync::mpsc::Receiver<Preview>,
+    requested_key: u64,
 }
 
 fn fnv(text: &str) -> u64 {
@@ -155,19 +174,70 @@ impl PlanInput {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+impl PlanWorker {
+    /// A short quiet period prevents expensive plans for every pointer sample while dragging.
+    const DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(24);
+
+    fn new(first: PlanInput, repaint: Option<egui::Context>) -> Self {
+        let requested_key = first.key;
+        let (request, requests) = std::sync::mpsc::channel::<PlanInput>();
+        let (results, result) = std::sync::mpsc::channel::<Preview>();
+        let _ = request.send(first);
+        std::thread::spawn(move || {
+            while let Ok(mut input) = requests.recv() {
+                // Wait briefly for the drag stream to settle, always replacing the pending input
+                // with the newest one. Only one expensive plan is ever running at a time.
+                loop {
+                    match requests.recv_timeout(Self::DEBOUNCE) {
+                        Ok(newer) => input = newer,
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+                    }
+                }
+                let preview = input.make();
+                if results.send(preview).is_err() {
+                    return;
+                }
+                if let Some(ctx) = &repaint {
+                    ctx.request_repaint();
+                }
+            }
+        });
+        Self {
+            request,
+            result,
+            requested_key,
+        }
+    }
+
+    fn request(&mut self, input: PlanInput) -> Option<PlanInput> {
+        if input.key == self.requested_key {
+            return None;
+        }
+        let key = input.key;
+        match self.request.send(input) {
+            Ok(()) => {
+                self.requested_key = key;
+                None
+            }
+            Err(error) => Some(error.0),
+        }
+    }
+}
+
 impl EditorApp {
     /// Tiles the current path would change.
     pub(super) fn spline_tile_count(&self) -> usize {
         self.spline
-            .preview
-            .as_ref()
+            .current_preview()
             .map_or(0, |p| p.paints.len().max(p.wall_tiles.len()))
     }
 
     /// What the planner has to say about the previewed path (reroutes, blocked tiles ...), one
     /// line per kind of note.
     pub(super) fn spline_notes(&self) -> Vec<(Severity, String)> {
-        let Some(preview) = &self.spline.preview else {
+        let Some(preview) = self.spline.current_preview() else {
             return Vec::new();
         };
         let mut seen: Vec<(Severity, &'static str, String, usize)> = Vec::new();
@@ -313,91 +383,85 @@ impl EditorApp {
 
     /// Keep the preview in step with the points and options.
     pub(super) fn spline_update(&mut self) {
-        // Compute the current desired key before looking at an in-flight result. A completed job
-        // must never replace the preview if the points, settings or map changed while it ran.
-        let input = self.plan_input();
-        let desired_key = input.as_ref().map(|input| input.key);
-        if desired_key.is_none() {
-            self.spline.job = None;
+        let Some(input) = self.plan_input() else {
+            self.spline.desired_key = None;
             self.spline.preview = None;
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                self.spline.worker = None;
+            }
             return;
-        }
+        };
+        let desired_key = input.key;
+        self.spline.desired_key = Some(desired_key);
 
-        if let Some((job_key, receiver)) = &self.spline.job {
-            match receiver.try_recv() {
-                Ok(preview) => {
-                    self.spline.job = None;
-                    if Some(preview.key) == desired_key {
-                        self.spline.preview = Some(preview);
-                        return;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut disconnected = false;
+            if let Some(worker) = &mut self.spline.worker {
+                loop {
+                    match worker.result.try_recv() {
+                        Ok(preview) => {
+                            // Results for superseded drag states are harmless. Keep the previous
+                            // tile preview until the worker catches up, but never promote stale
+                            // warnings/counts or a stale planned centre line.
+                            if preview.key == desired_key {
+                                self.spline.preview = Some(preview);
+                            }
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            disconnected = true;
+                            break;
+                        }
                     }
-                    // The job finished for an older state. Discard it and plan the newest state
-                    // below rather than flashing obsolete tiles for a frame.
-                    self.spline.preview = None;
                 }
-                Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    // Avoid displaying an obsolete preview while waiting for the worker. We wait
-                    // for the existing job instead of spawning one thread per drag frame.
-                    if Some(*job_key) != desired_key
-                        || self
-                            .spline
-                            .preview
-                            .as_ref()
-                            .is_some_and(|preview| Some(preview.key) != desired_key)
-                    {
-                        self.spline.preview = None;
-                    }
-                    return;
-                }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.spline.job = None,
+            }
+            if disconnected {
+                self.spline.worker = None;
+            }
+
+            if self.spline.worker.is_none() {
+                self.spline.worker = Some(PlanWorker::new(input, self.spline.ctx.clone()));
+                return;
+            }
+
+            let retry = {
+                self.spline
+                    .worker
+                    .as_mut()
+                    .and_then(|worker| worker.request(input))
+            };
+            if let Some(input) = retry {
+                self.spline.worker = Some(PlanWorker::new(input, self.spline.ctx.clone()));
             }
         }
 
-        let Some(input) = input else {
-            return;
-        };
-        if self
-            .spline
-            .preview
-            .as_ref()
-            .is_some_and(|p| p.key == input.key)
-        {
-            return;
-        }
-        self.spline.preview = None;
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let (sender, receiver) = std::sync::mpsc::channel();
-            self.spline.job = Some((input.key, receiver));
-            let repaint = self.spline.ctx.clone();
-            std::thread::spawn(move || {
-                let _ = sender.send(input.make());
-                if let Some(ctx) = repaint {
-                    ctx.request_repaint();
-                }
-            });
-        }
         #[cfg(target_arch = "wasm32")]
         {
-            self.spline.preview = Some(input.make());
+            if self.spline.current_preview().is_none() {
+                self.spline.preview = Some(input.make());
+            }
         }
     }
 
     /// Plan now, on this thread, so what is laid is what the points and options say.
     fn spline_plan_now(&mut self) {
-        self.spline.job = None;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.spline.worker = None;
+        }
         match self.plan_input() {
             Some(input) => {
-                if self
-                    .spline
-                    .preview
-                    .as_ref()
-                    .is_none_or(|p| p.key != input.key)
-                {
+                self.spline.desired_key = Some(input.key);
+                if self.spline.current_preview().is_none() {
                     self.spline.preview = Some(input.make());
                 }
             }
-            None => self.spline.preview = None,
+            None => {
+                self.spline.desired_key = None;
+                self.spline.preview = None;
+            }
         }
     }
 
@@ -667,10 +731,21 @@ impl EditorApp {
             return;
         }
 
-        // The planned tiles.
-        let overlay_color = self.prefs.colors.get(ColorKey::PathFill);
-        let edge = Stroke::new(0.75, self.prefs.colors.get(ColorKey::PathEdge));
+        // The planned tiles. While a replacement plan is running, retain the last tiles as a
+        // faint spatial reference instead of flashing the whole preview off.
+        let base_overlay_color = self.prefs.colors.get(ColorKey::PathFill);
+        let base_edge_color = self.prefs.colors.get(ColorKey::PathEdge);
         if let Some(preview) = &self.spline.preview {
+            let current = self.spline.desired_key == Some(preview.key);
+            let fade = |color: Color32| {
+                if current {
+                    color
+                } else {
+                    Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), color.a() / 3)
+                }
+            };
+            let overlay_color = fade(base_overlay_color);
+            let edge = Stroke::new(0.75, fade(base_edge_color));
             let tile_polygon = |tile: (i32, i32), shape: u8, rotation: u8| {
                 let Some(corners) = interact::tile_corners(&self.infos, tile, plane) else {
                     return;
@@ -712,7 +787,7 @@ impl EditorApp {
         }
 
         // The centre line.
-        let drawn: Vec<(f32, f32)> = match &self.spline.preview {
+        let drawn: Vec<(f32, f32)> = match self.spline.current_preview() {
             Some(preview) if !preview.lines.is_empty() => {
                 preview.lines.iter().flatten().copied().collect()
             }
