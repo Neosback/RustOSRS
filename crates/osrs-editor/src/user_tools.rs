@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[allow(
     clippy::large_enum_variant,
-    reason = "Preset intentionally stores brush and spline settings inline to preserve the persisted user-tool data model"
+    reason = "Preset is cold persisted UI data; keeping brush and spline settings inline avoids needless indirection"
 )]
 pub enum UserToolKind {
     /// Switch to a tool with a saved brush and path settings ("dirt path, 3 wide").
