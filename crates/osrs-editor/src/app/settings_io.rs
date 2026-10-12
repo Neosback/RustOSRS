@@ -28,10 +28,9 @@ fn sanitize_loaded_settings(settings: Settings) -> Settings {
     spline.profile.edge_noise = spline.profile.edge_noise.clamp(0.0, 1.5);
     spline.profile.obstacle_clearance = spline.profile.obstacle_clearance.clamp(0.0, 4.0);
 
-    spline.wall_thickness = finite_f32_or(spline.wall_thickness, defaults.wall_thickness)
-        .clamp(1.0, 12.0);
-    spline.wall_height =
-        finite_f32_or(spline.wall_height, defaults.wall_height).clamp(1.0, 3.0);
+    spline.wall_thickness =
+        finite_f32_or(spline.wall_thickness, defaults.wall_thickness).clamp(1.0, 12.0);
+    spline.wall_height = finite_f32_or(spline.wall_height, defaults.wall_height).clamp(1.0, 3.0);
     spline.tower_size = finite_f32_or(spline.tower_size, defaults.tower_size).clamp(1.0, 4.0);
 
     settings
