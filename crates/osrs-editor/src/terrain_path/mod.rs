@@ -1,8 +1,8 @@
 //! Terrain path generation: the planner of Terraini's path tool, ported.
 //!
 //! A path is a network of edges between nodes; the planner turns it into the overlay tiles to
-//! paint (an overlay id, a shape and an orientation per tile). See `planner.rs` for the planning,
-//! connectivity and shape-selection steps.
+//! paint (an overlay id, a shape and an orientation per tile). See `planner.rs` for routing,
+//! connectivity, rasterization and shape-selection steps.
 
 mod atlas;
 mod grammar;
