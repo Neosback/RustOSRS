@@ -171,13 +171,14 @@ impl SceneGrid {
         }
         #[cfg(test)]
         {
-            return self
-                .cache
+            self.cache
                 .lock()
-                .is_ok_and(|cache| cache.contains_key(&(key.0, key.1, plane)));
+                .is_ok_and(|cache| cache.contains_key(&(key.0, key.1, plane)))
         }
         #[cfg(not(test))]
-        false
+        {
+            false
+        }
     }
 
     fn wall_blocks(&self, x: i32, y: i32, dx: i32, dy: i32, plane: u8) -> bool {
