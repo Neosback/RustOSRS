@@ -6,9 +6,11 @@
 //! types defined here.
 
 mod object;
+mod patch;
 mod position;
 mod terrain;
 
 pub use object::{LocKind, ObjectOrientation, ObjectPlacement};
+pub use patch::{ChangeImpact, MapOp, MapPatch};
 pub use position::{HeightVertexCoord, MapPosition};
 pub use terrain::{OverlayRotation, OverlayShape, TerrainOverlay, TerrainTile};
