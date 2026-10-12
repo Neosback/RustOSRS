@@ -174,7 +174,10 @@ mod tests {
         assert_eq!(history.redo_len(), 0);
 
         assert_eq!(history.undo(&mut document), Ok(Some(patch_impact())));
-        assert_eq!(document.terrain_at(position(3200, 3200)), TerrainTile::default());
+        assert_eq!(
+            document.terrain_at(position(3200, 3200)),
+            TerrainTile::default()
+        );
         assert_eq!(document.height_at(vertex), Some(32));
         assert!(!document.contains_object(object()));
         assert_eq!(history.undo_len(), 0);
