@@ -188,6 +188,25 @@ trait MapQuery {
 
 Do not expand this interface speculatively. Add area/object enumeration or richer spatial indexes only when a concrete tool requires them and the semantics are clear.
 
+### Current terrain-path commit bridge
+
+Normal `PathMode::Terrain` commits now cross the semantic edit boundary without changing planner or renderer behavior.
+
+The migration is intentionally transitional:
+
+1. `spline_tool` still plans exactly as before and produces the existing `PathTile` sequence.
+2. `apply_terrain_path` snapshots only the touched legacy tile/height values into a temporary semantic `MapDocument`.
+3. `path_commit::build_terrain_path_patch` reads through `MapQuery` and produces one compact `MapPatch` for the entire laid path.
+4. Duplicate tile intents are folded to one final terrain op and one final height op per semantic coordinate.
+5. The complete patch is validated/applied atomically to the semantic snapshot before legacy state changes.
+6. The patched semantic result is projected back into the existing world edit layer.
+7. The existing stroke/history boundary still records the whole laid path as one legacy undo step.
+8. Existing dirty-region/rebuild scheduling remains unchanged.
+
+This means the `MapPatch` is now the canonical semantic description of a normal terrain-path commit, but the editor does **not** yet keep a persistent `MapDocument`/`EditHistory` session. That broader ownership migration comes later.
+
+Wall-mode commits remain on the existing legacy `apply_path` path for now because they also emit object placements. Do not claim wall/object commit migration is complete until its semantic object adapter has been implemented and validated separately.
+
 ### Future revisions / view synchronization
 
 Async scene/mesh work should eventually carry document/chunk revisions. Results built against stale revisions must be discarded so old background work cannot overwrite newer editor state.
@@ -224,6 +243,8 @@ The headless history/query foundation is merged to `main`.
 - PR: `#34` (`refactor(editor): add headless edit history and query contracts`)
 - Final pre-merge branch head: `4847c1edf45d969223d6b9ad32be48b60f01bbf8`
 - Squash merge commit: `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`
+- Post-merge handoff/main head: `32e65e93a1d67282059098bc482aa8bcd6c10a3e`
+- Post-merge CI run `38259779463`: Tier A/B/C PASS
 - Branch comparison before PR: 7 commits ahead, 0 behind `main`
 - Canonical PR diff: 4 files only (`history.rs`, `query.rs`, `lib.rs`, `DEV_HANDOFF.md`)
 - No renderer, 117HD, spline/path planner, preview worker, brush/object tool, or existing editor-runtime files changed
@@ -252,6 +273,33 @@ The headless history/query foundation is merged to `main`.
 - tests proving missing height remains `None`
 - tests proving object identity includes orientation
 - no duplicate query state or mutable internals exposed
+
+## Current active branch
+
+`refactor/editor-path-commit-domain`
+
+- Base: validated `main` head `32e65e93a1d67282059098bc482aa8bcd6c10a3e`
+- Current implementation head before this handoff update: `3a05caebf60eae6ffd0986fadcc1d1bb313584ae`
+- Scope: normal terrain-path commit boundary only
+- Planner, preview worker, routing, geometry, topology, auto-tiling, renderer, and 117HD remain untouched
+- Wall-mode/object path commits remain legacy and are explicitly deferred to a later checkpoint
+
+### Terrain-path commit work delivered on this branch
+
+- Added `osrs-edit` as an `osrs-editor` dependency.
+- Added `app/path_commit.rs` as a pure semantic commit adapter.
+- Added `TerrainPathIntent` for already-planned path output plus armed height/flag intent.
+- Added `build_terrain_path_patch(&impl MapQuery, ...)`.
+- Path commit validation now uses semantic `OverlayShape` / `OverlayRotation` invariants.
+- Duplicate tile intents collapse deterministically before `MapPatch` construction.
+- Semantic no-op path intent produces an empty patch.
+- Armed height requires an explicit semantic height vertex.
+- Normal terrain-path commits validate/apply one `MapPatch` before any legacy editor mutation.
+- Patched terrain/height state is projected into the existing `TileEdit` world layer.
+- Existing dirty-region scheduling and async rebuild behavior are unchanged.
+- Existing legacy stroke history still receives exactly one completed path step.
+- `commit_walls` still calls the legacy `apply_path` implementation.
+- Added focused headless tests for channel preservation, armed height/flags, duplicate intent folding, semantic no-op behavior, and missing-height rejection.
 
 ## Current `osrs-edit` files
 
@@ -317,6 +365,14 @@ Checkpoint 8 final handoff head:
 
 PR `#34` was then squash-merged to `main` as `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`.
 
+### Terrain-path commit branch
+
+Checkpoint 10 implementation head before this handoff update:
+
+- `3a05caebf60eae6ffd0986fadcc1d1bb313584ae`
+- Source formatting was run by the scoped migration helper before commit.
+- Full Tier A/B/C validation must pass on the final handoff-update head before Checkpoint 10 is considered closed.
+
 ## Checkpoint history
 
 ### Checkpoint 1: semantic edit-domain foundation
@@ -355,28 +411,35 @@ Added `MapQuery` as a small tool/planner-facing read-only boundary implemented d
 
 Compared the complete branch against `main`, confirmed it was 7 commits ahead and 0 behind, audited the four-file diff, opened PR `#34`, verified GitHub mergeability, required the PR-triggered exact-head CI to pass Tier A/B/C, and squash-merged the branch as `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`.
 
+### Checkpoint 10: normal terrain-path semantic commit bridge
+
+Created `refactor/editor-path-commit-domain` from validated `main`. Inspected the existing `commit_spline` → `apply_path` seam and kept the planner/preview pipeline unchanged. Added a semantic terrain-path commit adapter that builds one deterministic `MapPatch` from the already-produced path tiles, validates/applies it against a touched-state `MapDocument` snapshot, and then projects the resulting values into the unchanged legacy world-edit/history layer.
+
+Normal terrain-path commits now cross `MapQuery`/`MapPatch`; wall-mode commits remain legacy because they also emit object placements. This is a deliberate checkpoint boundary, not a claim that the whole spline tool or editor session has migrated.
+
 ## Current branch status / next checkpoint
 
-There is **no active development branch** after the history/query merge. Do not create one until explicitly directed to continue.
+The active branch is `refactor/editor-path-commit-domain`.
 
-The next branch should start from the fully validated current `main` head and take one existing editor edit path through the semantic domain boundary. Preferred first migration remains the spline/path **commit path only**, while deliberately leaving its planner, preview worker, topology/routing logic, and eventual generator redesign untouched.
+Do **not** redesign the path planner or preview worker on this branch.
 
-The next small checkpoint should:
+After Checkpoint 10 is fully green, the next small checkpoint should remain on this branch and address wall-mode commit semantics only:
 
-1. Create a new branch from current validated `main`.
-2. Inspect the existing spline/path commit boundary and current editor mutation/history flow.
-3. Define the narrow adapter needed to translate an already-produced path plan into semantic reads/`MapPatch` commits.
-4. Do not redesign path planning, auto-tiling, routing, geometry, or preview behavior.
-5. Preserve one laid path as one undo/history step.
-6. Keep renderer rebuild behavior functionally unchanged for the first migration.
-7. Add regression coverage around the migrated commit boundary.
-8. Stop and report before broadening the migration.
+1. Inspect exact object-placement state available to the editor at wall commit time.
+2. Define the narrow `LocSpec` ↔ `ObjectPlacement` adapter needed for wall additions.
+3. Use semantic object membership/validation without introducing speculative spatial-query APIs.
+4. Keep wall generation, tangents, tower logic, planner/preview behavior, and renderer rebuild scheduling unchanged.
+5. Preserve one laid wall path as one undo step.
+6. Add focused headless regression coverage.
+7. Stop and report before any brush/height/object-tool migration.
+
+Do not merge this branch until the intended spline/path commit migration scope is complete and audited against `main`.
 
 ## Later branches, tentative order
 
 Directional only. Do not start automatically.
 
-1. Migrate spline/path **commit only** through the semantic domain boundary.
+1. Complete spline/path commit migration, including wall/object commit semantics.
 2. Migrate brush/terrain/height editing.
 3. Migrate object editing.
 4. Add revision-based async synchronization and stale-result rejection.
