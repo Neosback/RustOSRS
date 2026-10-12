@@ -259,7 +259,7 @@ impl EditorApp {
         } else if response.hovered() {
             visuals.text_color()
         } else {
-            visuals.widgets.noninteractive.fg_stroke.color
+            visuals.weak_text_color()
         };
         ui.painter().text(
             rect.center(),
@@ -294,7 +294,9 @@ impl EditorApp {
             "Tile outline and brush footprint",
         )
         .on_hover_text("Outline the tile (or the tiles the brush would paint) under the cursor");
-        crate::theme::section_heading(ui, "Grid");
+        if self.plugin_enabled("grid") {
+            crate::theme::section_heading(ui, "Grid");
+        }
         self.run_plugins(|plugin, cx| {
             if plugin.name() == "grid" {
                 plugin.properties(ui, cx);
@@ -734,7 +736,7 @@ fn quick_tool_button(
             egui::Align2::RIGHT_CENTER,
             key,
             egui::FontId::monospace(10.0),
-            visuals.widgets.noninteractive.fg_stroke.color,
+            visuals.weak_text_color(),
         );
     }
     response

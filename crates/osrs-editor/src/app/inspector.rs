@@ -321,7 +321,7 @@ fn card_header(ui: &mut egui::Ui, icon: &str, title: &str) {
         ui.label(
             egui::RichText::new(icon)
                 .size(15.0)
-                .color(ui.visuals().widgets.noninteractive.fg_stroke.color),
+                .color(ui.visuals().weak_text_color()),
         );
         ui.label(egui::RichText::new(title).strong());
     });

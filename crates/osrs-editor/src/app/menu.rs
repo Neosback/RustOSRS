@@ -94,8 +94,8 @@ impl EditorApp {
                     }
                 });
                 if ui
-                    .button(format!("{} Plugins", icons::PLUGINS))
-                    .on_hover_text("Your tools and each plugin's options")
+                    .button("Plugins")
+                    .on_hover_text("Switch plugins on and off, and your own tools")
                     .clicked()
                 {
                     self.plugins_open = true;

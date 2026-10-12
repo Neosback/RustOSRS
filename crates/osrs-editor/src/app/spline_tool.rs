@@ -7,11 +7,15 @@
 //! stretch; Cmd + click or Delete removes the point under the cursor; Backspace removes the last.
 
 use super::EditorApp;
-use crate::autotile::{self, PathParams, TileChoice, shape_triangles};
+use crate::autotile::{
+    self, PathParams, TileChoice, shape_triangles,
+    walls::{WallKit, emit_walls},
+};
 use crate::interact;
 use crate::paint::Tool;
 use crate::style::ColorKey;
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
+use std::collections::{HashMap, HashSet};
 
 /// A click this close (in tiles) to a control point grabs it instead of adding a new one.
 const GRAB_DISTANCE: f32 = 0.9;
@@ -35,7 +39,7 @@ pub struct SplineState {
 /// too slow to run on every drag frame).
 const REFINE_DELAY: std::time::Duration = std::time::Duration::from_millis(220);
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct Preview {
     key: u64,
     tiles: Vec<((i32, i32), TileChoice)>,
@@ -44,9 +48,11 @@ struct Preview {
     /// The points and options the tiles were made from (the refined ones when `refined`).
     points: Vec<(f32, f32)>,
     params: PathParams,
+    /// Per-tile band tangents for wall emission (Walls style only; empty otherwise).
+    tangents: HashMap<(i32, i32), (f32, f32)>,
 }
 
-fn key_of(points: &[(f32, f32)], params: PathParams, terrain: u64) -> u64 {
+fn key_of(points: &[(f32, f32)], params: PathParams, terrain: u64, wall: u64) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     let mut mix = |value: u64| {
         hash ^= value;
@@ -58,13 +64,31 @@ fn key_of(points: &[(f32, f32)], params: PathParams, terrain: u64) -> u64 {
     mix(u64::from(params.closed));
     mix(params.snap.to_bits().into());
     mix(params.straighten.to_bits().into());
-    mix(0);
+    mix(wall);
     mix(terrain);
     for (x, y) in points {
         mix(x.to_bits().into());
         mix(y.to_bits().into());
     }
     hash
+}
+
+/// The wall-kit settings folded into the preview key so the preview refreshes when they change.
+fn wall_key(spline: &crate::paint::SplineSettings) -> u64 {
+    let mut key = u64::from(spline.wall_side);
+    let mut mix = |value: u64| {
+        key = key
+            .wrapping_mul(0x0100_0000_01b3)
+            .wrapping_add(value.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    };
+    mix(u64::from(spline.wall_top));
+    mix(u64::from(spline.wall_door));
+    mix(u64::from(spline.wall_diagonal));
+    mix(spline.wall_thickness.to_bits().into());
+    mix(spline.wall_height.to_bits().into());
+    mix(u64::from(spline.wall_towers));
+    mix(spline.tower_size.to_bits().into());
+    key
 }
 
 fn distance(a: (f32, f32), b: (f32, f32)) -> f32 {
@@ -125,6 +149,7 @@ impl EditorApp {
             (self.edited.len() as u64) << 32
                 ^ self.infos_version
                 ^ u64::from(overlay.unwrap_or(0)) << 48,
+            wall_key(&self.prefs.spline),
         );
         let current = self.spline.preview.as_ref().filter(|p| p.key == key);
         if current.is_some_and(|p| p.refined) {
@@ -143,6 +168,34 @@ impl EditorApp {
             return;
         }
         let plane = self.view_plane;
+        if params.style == crate::autotile::EdgeStyle::Walls {
+            // Castle walls are deterministic and fast: band tiles straight from the drawn
+            // points, no search thread and no refine wait.
+            if self.spline.points.len() < 2 {
+                self.spline.preview = None;
+                return;
+            }
+            let spline = &self.prefs.spline;
+            let plan = autotile::generate_walls(
+                &self.spline.points,
+                params,
+                spline.wall_thickness,
+                if spline.wall_towers {
+                    spline.tower_size
+                } else {
+                    1.0
+                },
+            );
+            self.spline.preview = Some(Preview {
+                key,
+                tiles: plan.tiles,
+                refined: true,
+                points: self.spline.points.clone(),
+                params,
+                tangents: plan.tangents,
+            });
+            return;
+        }
         let existing = |tile: (i32, i32)| {
             let id = overlay?;
             let values = self.current_tile_values((plane, tile.0, tile.1))?;
@@ -207,6 +260,7 @@ impl EditorApp {
             refined: refined_now,
             points,
             params: used,
+            tangents: HashMap::new(),
         });
     }
 
@@ -249,6 +303,20 @@ impl EditorApp {
                 .collect::<Vec<_>>()
                 .join(";")
         ));
+        if self.prefs.spline.style == crate::autotile::EdgeStyle::Walls {
+            let wall = &self.prefs.spline;
+            text.push_str(&format!(
+                "walls side={} top={} door={} diagonal={} thickness={:.1} height={:.1} towers={} tower_size={:.1}\n",
+                wall.wall_side,
+                wall.wall_top,
+                wall.wall_door,
+                wall.wall_diagonal,
+                wall.wall_thickness,
+                wall.wall_height,
+                wall.wall_towers,
+                wall.tower_size,
+            ));
+        }
         if let Some(preview) = &self.spline.preview {
             let plane = self.view_plane;
             let heights: Vec<i32> = preview
@@ -429,6 +497,10 @@ impl EditorApp {
 
     /// Lay the previewed path as one undo step.
     pub(super) fn commit_spline(&mut self) {
+        if self.path_params().style == crate::autotile::EdgeStyle::Walls {
+            self.commit_walls();
+            return;
+        }
         self.spline_refresh(true);
         let tiles = self
             .spline
@@ -453,13 +525,50 @@ impl EditorApp {
             self.ramp_heights()
                 .map(|(first, last)| super::editing::PathGrade { line, first, last })
         });
-        let changed = self.apply_path(&tiles, grade.flatten());
+        let changed = self.apply_path(&tiles, grade.flatten(), Vec::new());
         self.spline.points.clear();
         self.spline.preview = None;
         self.notice = Some((
             format!("Laid a path over {changed} tiles"),
             web_time::Instant::now(),
         ));
+    }
+
+    /// Lay a castle wall: band overlay paint plus spawned wall objects, one undo step. The
+    /// overlay is optional (walls still spawn); the ramp grade does not apply to walls.
+    fn commit_walls(&mut self) {
+        self.spline_refresh(true);
+        let (tiles, tangents) = self
+            .spline
+            .preview
+            .as_ref()
+            .map(|preview| (preview.tiles.clone(), preview.tangents.clone()))
+            .unwrap_or_default();
+        let spline = &self.prefs.spline;
+        let kit = WallKit {
+            side: spline.wall_side,
+            top: spline.wall_top,
+            door: spline.wall_door,
+            diagonal: spline.wall_diagonal,
+        };
+        let height = spline.wall_height.max(1.0).round() as u32;
+        let band: HashSet<(i32, i32)> = tiles.iter().map(|(tile, _)| *tile).collect();
+        let walls = emit_walls(&band, &tangents, &kit, height, self.view_plane);
+        if tiles.is_empty() && walls.is_empty() {
+            return;
+        }
+        let wall_count = walls.len();
+        let changed = self.apply_path(&tiles, None, walls);
+        self.spline.points.clear();
+        self.spline.preview = None;
+        let summary = if kit.side == 0 {
+            format!("Laid a path over {changed} tiles (set a wall Side ID to spawn walls)")
+        } else if changed == 0 {
+            format!("Spawned {wall_count} walls")
+        } else {
+            format!("Laid a path over {changed} tiles and spawned {wall_count} walls")
+        };
+        self.notice = Some((summary, web_time::Instant::now()));
     }
 
     /// The path preview: the shaped tiles, the spline, a ghost segment to the cursor, the control points.

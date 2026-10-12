@@ -207,6 +207,8 @@ pub struct EditorApp {
     /// A user tool being made or edited.
     tool_draft: Option<crate::user_tools::ToolDraft>,
     /// Where the floating picker rail is (the HUDs keep clear of it).
+    /// Where the stats / tile HUD was drawn last frame (the pointer over it still picks the world).
+    hud_rect: Option<egui::Rect>,
     rail_rect: Option<egui::Rect>,
     /// Where the quick tools HUD (Space) is open.
     quick_open: Option<egui::Pos2>,
@@ -231,7 +233,7 @@ impl EditorApp {
         base_y: i32,
     ) -> Result<Self, String> {
         crate::fonts::install(&cc.egui_ctx);
-        crate::theme::set_theme(&cc.egui_ctx, crate::theme::ALL[0]);
+        crate::theme::set_theme(&cc.egui_ctx, crate::theme::ALL[crate::theme::DEFAULT]);
         let render_state = cc
             .wgpu_render_state
             .clone()
@@ -346,6 +348,7 @@ impl EditorApp {
             plugins_open: false,
             script_text: String::new(),
             tool_draft: None,
+            hud_rect: None,
             rail_rect: None,
             quick_open: std::env::var_os("RUSTOSRS_QUICK").map(|_| egui::pos2(520.0, 300.0)),
             last_hover_tile: None,

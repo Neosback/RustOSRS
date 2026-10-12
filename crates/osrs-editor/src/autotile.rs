@@ -24,7 +24,7 @@ use osrs_scene::terrain::{
     ShapedTerrainInput, ShapedTerrainSurface, TerrainColorSource, TerrainCorners,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 const GRID: usize = 16;
@@ -199,19 +199,29 @@ pub enum EdgeStyle {
     Chiselled,
     /// Whole tiles only.
     Whole,
+    /// Castle walls along the path: every band tile is laid whole and wall objects are spawned
+    /// (the old WALL brush style).
+    Walls,
     /// The outline is fitted first with the fewest straight runs the shapes can draw: no zigzag,
     /// at the price of straying a little further (up to about 0.45 tiles) from the drawn curve.
     Runs,
 }
 
 impl EdgeStyle {
-    pub const ALL: [Self; 4] = [Self::Smooth, Self::Runs, Self::Chiselled, Self::Whole];
+    pub const ALL: [Self; 5] = [
+        Self::Smooth,
+        Self::Runs,
+        Self::Chiselled,
+        Self::Whole,
+        Self::Walls,
+    ];
 
     pub const fn label(self) -> &'static str {
         match self {
             Self::Smooth => "Smooth",
             Self::Chiselled => "Chiselled",
             Self::Whole => "Whole tiles",
+            Self::Walls => "Walls",
             Self::Runs => "Straight runs",
         }
     }
@@ -221,6 +231,7 @@ impl EdgeStyle {
             Self::Smooth => "Rounded edge pieces: organic paths and rivers",
             Self::Chiselled => "Straight and diagonal cuts only: roads and courtyards",
             Self::Whole => "Full tiles, no shaped edges",
+            Self::Walls => "Castle wall along the path: whole tiles plus spawned wall objects",
             Self::Runs => "Long straight edges with few turns: no zigzag, strays a little more",
         }
     }
@@ -230,7 +241,8 @@ impl EdgeStyle {
         match self {
             Self::Smooth | Self::Runs => true,
             Self::Chiselled => !matches!(shape, 9..=11),
-            Self::Whole => false,
+            // Walls carry the visuals: every tile is laid whole, like `Whole`.
+            Self::Whole | Self::Walls => false,
         }
     }
 }
@@ -682,6 +694,120 @@ pub fn ramp_parameter(line: &[(f32, f32)], point: (f32, f32)) -> f32 {
         total += length;
     }
     if total > 0.0 { best.1 / total } else { 0.0 }
+}
+
+/// Polyline spacing for the wall band rasterizer (matches the preview line's density).
+const BAND_STEP: f32 = 0.25;
+
+/// A rasterized castle-wall band: the tiles plus the averaged unit tangent per tile (wall
+/// direction info for diagonal detection). Mirrors the old `rasterizeBandWithTangents` band walk.
+pub struct BandTiles {
+    pub tiles: HashSet<(i32, i32)>,
+    pub tangents: HashMap<(i32, i32), (f32, f32)>,
+}
+
+/// Stamp the tiles a dense polyline covers `thickness` tiles wide, walking each sample's
+/// perpendicular, and average the unit tangent per tile. Tiles a straight run crosses are stamped
+/// symmetrically; even thicknesses shift the far edge in by one so the count stays exact.
+pub fn rasterize_band(line: &[(f32, f32)], thickness: f32) -> BandTiles {
+    let mut tiles = HashSet::new();
+    let mut tangents: HashMap<(i32, i32), (f32, f32)> = HashMap::new();
+    if line.len() < 2 {
+        return BandTiles { tiles, tangents };
+    }
+    let count = thickness.max(1.0).round() as i32;
+    let half = count / 2;
+    let even = count % 2 == 0;
+    for (index, &(x, y)) in line.iter().enumerate() {
+        // Central difference along the dense polyline; forward/backward at the ends.
+        let (tx, ty) = if index == 0 {
+            (line[1].0 - x, line[1].1 - y)
+        } else if index + 1 == line.len() {
+            (x - line[index - 1].0, y - line[index - 1].1)
+        } else {
+            (
+                line[index + 1].0 - line[index - 1].0,
+                line[index + 1].1 - line[index - 1].1,
+            )
+        };
+        let (mut dx, mut dy) = (tx, ty);
+        let mut length = (tx * tx + ty * ty).sqrt();
+        if length < 1e-4 {
+            dx = 1.0;
+            dy = 0.0;
+            length = 1.0;
+        }
+        let (nx, ny) = (-dy / length, dx / length);
+        let (ux, uy) = (dx / length, dy / length);
+        // Tiles use floor coordinates throughout the editor (a point at 0.5 sits in tile 0).
+        for k in -half..=(half - if even { 1 } else { 0 }) {
+            let tile = (
+                (x + nx * k as f32).floor() as i32,
+                (y + ny * k as f32).floor() as i32,
+            );
+            tiles.insert(tile);
+            tangents
+                .entry(tile)
+                .and_modify(|tangent| {
+                    tangent.0 = (tangent.0 + ux) * 0.5;
+                    tangent.1 = (tangent.1 + uy) * 0.5;
+                })
+                .or_insert((ux, uy));
+        }
+    }
+    BandTiles { tiles, tangents }
+}
+
+/// A WALL commit: flat overlay tiles (band plus control-point tower squares) with per-tile
+/// tangents for wall emission. No shape search: walls carry the visuals, as in the old WALL mode.
+pub struct WallPlan {
+    pub tiles: Vec<((i32, i32), TileChoice)>,
+    pub tangents: HashMap<(i32, i32), (f32, f32)>,
+}
+
+/// Lay a castle-wall band `thickness` tiles wide with `tower_size` squares around each control
+/// point (size 1 disables towers, as in the old tool). Every covered tile is laid whole.
+pub fn generate_walls(
+    points: &[(f32, f32)],
+    params: PathParams,
+    thickness: f32,
+    tower_size: f32,
+) -> WallPlan {
+    let mut plan = WallPlan {
+        tiles: Vec::new(),
+        tangents: HashMap::new(),
+    };
+    if points.len() < 2 {
+        return plan;
+    }
+    let line = path_polyline(points, params, BAND_STEP);
+    if line.len() < 2 {
+        return plan;
+    }
+    let band = rasterize_band(&line, thickness);
+    let mut tiles = band.tiles;
+    let size = tower_size.max(1.0).round() as i32;
+    if size > 1 {
+        let half = size / 2;
+        let far = size - 1 - half;
+        for &(x, y) in points {
+            let (cx, cy) = (x.floor() as i32, y.floor() as i32);
+            for dx in -half..=far {
+                for dy in -half..=far {
+                    tiles.insert((cx + dx, cy + dy));
+                }
+            }
+        }
+    }
+    let mut tiles: Vec<_> = tiles
+        .into_iter()
+        .map(|tile| (tile, TileChoice::Full))
+        .collect();
+    // Deterministic order (the old tool iterated a hash set).
+    tiles.sort_by_key(|(tile, _)| *tile);
+    plan.tiles = tiles;
+    plan.tangents = band.tangents;
+    plan
 }
 
 /// The polyline's segments bucketed by the tiles they can influence, so a tile only measures the few
@@ -1497,6 +1623,83 @@ mod tests {
         );
         assert!(a < b && b < c && a >= 0.0 && c <= 1.0, "{a} {b} {c}");
     }
+
+    #[test]
+    fn wall_band_of_thickness_1_follows_a_straight_line() {
+        let line = path_polyline(&[(0.5, 0.5), (5.5, 0.5)], params(3.0), 0.25);
+        let band = rasterize_band(&line, 1.0);
+        for x in 0..=5 {
+            assert!(band.tiles.contains(&(x, 0)), "missing ({x}, 0)");
+        }
+        assert_eq!(band.tiles.len(), 6);
+        // Tangents point east everywhere.
+        for tile in &band.tiles {
+            let (tx, ty) = band.tangents[tile];
+            assert!(tx > 0.99 && ty.abs() < 0.01, "{tile:?}: ({tx:?}, {ty:?})");
+        }
+    }
+
+    #[test]
+    fn wall_band_thickness_counts_tiles_exactly() {
+        let line = path_polyline(&[(0.5, 2.5), (6.5, 2.5)], params(3.0), 0.25);
+        // Odd thickness 3 stamps y in 1..=3; even 4 stamps 0..=3 (floor coordinates).
+        let odd = rasterize_band(&line, 3.0);
+        assert!(odd.tiles.contains(&(3, 1)) && odd.tiles.contains(&(3, 3)));
+        assert!(!odd.tiles.contains(&(3, 0)) && !odd.tiles.contains(&(3, 4)));
+        let even = rasterize_band(&line, 4.0);
+        assert!(even.tiles.contains(&(3, 0)) && even.tiles.contains(&(3, 3)));
+        assert!(!even.tiles.contains(&(3, -1)) && !even.tiles.contains(&(3, 4)));
+    }
+
+    #[test]
+    fn wall_band_diagonal_runs_diagonally_with_diagonal_tangents() {
+        let line = path_polyline(&[(0.5, 0.5), (4.5, 4.5)], params(3.0), 0.25);
+        let band = rasterize_band(&line, 1.0);
+        for d in 0..=4 {
+            assert!(band.tiles.contains(&(d, d)), "missing ({d}, {d})");
+        }
+        for tile in &band.tiles {
+            let (tx, ty) = band.tangents[tile];
+            assert!(
+                (tx - ty).abs() < 0.05 && tx > 0.5,
+                "{tile:?}: ({tx:?}, {ty:?})"
+            );
+        }
+    }
+
+    #[test]
+    fn wall_band_needs_two_points() {
+        let empty = rasterize_band(&[], 3.0);
+        assert!(empty.tiles.is_empty() && empty.tangents.is_empty());
+        let single = rasterize_band(&[(1.0, 1.0)], 3.0);
+        assert!(single.tiles.is_empty() && single.tangents.is_empty());
+    }
+
+    #[test]
+    fn generate_walls_lays_band_and_towers_whole() {
+        let points = [(0.5, 0.5), (6.5, 0.5)];
+        let plan = generate_walls(&points, params(3.0), 1.0, 3.0);
+        assert!(!plan.tiles.is_empty());
+        assert!(
+            plan.tiles
+                .iter()
+                .all(|(_, choice)| *choice == TileChoice::Full)
+        );
+        // Towers: 3x3 squares around both control points (rounded to tiles 0 and 6).
+        for (x, y) in [(0, 0), (6, 0), (-1, -1), (7, 1), (0, 1), (6, -1)] {
+            assert!(
+                plan.tiles.iter().any(|(t, _)| *t == (x, y)),
+                "missing tower tile ({x}, {y})"
+            );
+        }
+        // Band row present between the towers.
+        assert!(plan.tiles.iter().any(|(t, _)| *t == (3, 0)));
+        // Tangents cover the band.
+        assert!(plan.tangents.contains_key(&(3, 0)));
+        // Fewer than two points: nothing.
+        let none = generate_walls(&[(1.0, 1.0)], params(3.0), 1.0, 3.0);
+        assert!(none.tiles.is_empty() && none.tangents.is_empty());
+    }
 }
 
 mod outline;
@@ -1504,6 +1707,7 @@ mod refine;
 #[cfg(test)]
 use refine::measure;
 pub use refine::{Refined, generate_refined};
+pub mod walls;
 
 #[cfg(test)]
 mod playground;

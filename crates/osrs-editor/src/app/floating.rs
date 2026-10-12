@@ -49,13 +49,7 @@ impl EditorApp {
                     ui.horizontal(|ui| {
                         let (rect, response) =
                             ui.allocate_exact_size(Vec2::new(BUTTON - 14.0, 16.0), Sense::hover());
-                        let tint = ui
-                            .visuals()
-                            .widgets
-                            .noninteractive
-                            .fg_stroke
-                            .color
-                            .gamma_multiply(0.6);
+                        let tint = ui.visuals().weak_text_color().gamma_multiply(0.6);
                         for dy in [-3.0, 0.0, 3.0] {
                             ui.painter().circle_filled(
                                 rect.center() + Vec2::new(-3.0, dy),
@@ -141,7 +135,7 @@ pub(super) fn picker_button(
     } else if response.hovered() {
         visuals.text_color()
     } else {
-        visuals.widgets.noninteractive.fg_stroke.color
+        visuals.weak_text_color()
     };
     ui.painter().text(
         rect.center(),

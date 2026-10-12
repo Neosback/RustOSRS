@@ -91,6 +91,25 @@ pub const DAYLIGHT: Theme = Theme {
     warning: rgb(196, 118, 0),
 };
 
+/// High-contrast graphite built for reading: near-white text, clearly stepped surfaces, a bright
+/// blue accent. The default.
+pub const INK: Theme = Theme {
+    name: "Ink",
+    dark: true,
+    panel: rgb(19, 22, 28),
+    window: rgb(28, 32, 40),
+    inset: rgb(12, 14, 19),
+    widget: rgb(42, 48, 60),
+    widget_hover: rgb(55, 63, 79),
+    widget_active: rgb(68, 79, 99),
+    border: rgb(52, 59, 73),
+    text: rgb(241, 244, 249),
+    text_dim: rgb(176, 185, 200),
+    accent: rgb(98, 168, 255),
+    danger: rgb(255, 117, 117),
+    warning: rgb(250, 190, 72),
+};
+
 /// The egui-elegance "slate" look: cool dark blue with a sky focus ring.
 pub const SLATE: Theme = Theme {
     name: "Slate",
@@ -164,7 +183,7 @@ pub const PAPER: Theme = Theme {
 };
 
 /// Variant names, parallel to [`ALL`].
-pub const NAMES: [&str; 7] = [
+pub const NAMES: [&str; 8] = [
     GRAPHITE.name,
     MIDNIGHT.name,
     DAYLIGHT.name,
@@ -172,9 +191,15 @@ pub const NAMES: [&str; 7] = [
     CHARCOAL.name,
     FROST.name,
     PAPER.name,
+    INK.name,
 ];
 /// All variants.
-pub const ALL: [Theme; 7] = [GRAPHITE, MIDNIGHT, DAYLIGHT, SLATE, CHARCOAL, FROST, PAPER];
+pub const ALL: [Theme; 8] = [
+    GRAPHITE, MIDNIGHT, DAYLIGHT, SLATE, CHARCOAL, FROST, PAPER, INK,
+];
+
+/// The theme a fresh install starts with (an index into [`ALL`]).
+pub const DEFAULT: usize = 7;
 
 /// The egui-elegance theme that matches `theme`, so its widgets (switches, segmented controls,
 /// buttons) wear the same colours as everything else.
@@ -257,7 +282,7 @@ pub fn key_hint(ui: &mut egui::Ui, key: &str, action: &str) {
     ui.label(
         egui::RichText::new(action)
             .size(12.0)
-            .color(ui.visuals().widgets.noninteractive.fg_stroke.color),
+            .color(ui.visuals().weak_text_color()),
     );
     ui.add_space(6.0);
 }
@@ -301,12 +326,12 @@ fn apply_layout(style: &mut egui::Style) {
     style.text_styles = [
         (
             TextStyle::Small,
-            FontId::new(11.5, FontFamily::Proportional),
+            FontId::new(12.0, FontFamily::Proportional),
         ),
-        (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
+        (TextStyle::Body, FontId::new(14.5, FontFamily::Proportional)),
         (
             TextStyle::Button,
-            FontId::new(14.0, FontFamily::Proportional),
+            FontId::new(14.5, FontFamily::Proportional),
         ),
         (
             TextStyle::Heading,
@@ -349,6 +374,9 @@ impl Theme {
         egui::Visuals {
             dark_mode: self.dark,
             override_text_color: None,
+            // Plain labels use the noninteractive foreground, so it is the full text colour; only
+            // `weak()` text (hints, captions) is dimmed.
+            weak_text_color: Some(self.text_dim),
             hyperlink_color: self.accent,
             faint_bg_color: self.window,
             extreme_bg_color: self.inset,
@@ -373,7 +401,7 @@ impl Theme {
                 color: shadow,
             },
             widgets: style::Widgets {
-                noninteractive: self.widget_visuals(self.panel, hairline, self.text_dim, 6),
+                noninteractive: self.widget_visuals(self.panel, hairline, self.text, 6),
                 inactive: self.widget_visuals(self.widget, Stroke::NONE, self.text, 6),
                 hovered: self.widget_visuals(
                     self.widget_hover,
@@ -390,7 +418,7 @@ impl Theme {
                 open: self.widget_visuals(self.widget_hover, Stroke::NONE, self.text, 6),
             },
             selection: style::Selection {
-                bg_fill: self.accent.gamma_multiply(0.38),
+                bg_fill: self.accent.gamma_multiply(0.42),
                 stroke: Stroke::new(1.0, self.accent),
             },
             striped: false,

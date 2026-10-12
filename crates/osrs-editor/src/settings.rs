@@ -69,6 +69,7 @@ pub enum SettingsPage {
     HdShadowsWater,
     Controls,
     Colors,
+    Plugins,
     Advanced,
 }
 
@@ -254,6 +255,8 @@ pub struct Settings {
     pub shelf_right: bool,
     pub shelf_floating: bool,
     pub shelf_pos: [f32; 2],
+    /// Names of the plugins switched off in the Plugins window (they are not run at all).
+    pub disabled_plugins: Vec<String>,
     pub dock_float_size: [f32; 2],
     /// Dock category and, inside the Inspector, its tab.
     pub rail_tab: RailTab,
@@ -301,7 +304,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            appearance: 0,
+            appearance: crate::theme::DEFAULT,
             properties_panel: true,
             stats_overlay: true,
             show_minimap: true,
@@ -339,6 +342,7 @@ impl Default for Settings {
             shelf_right: false,
             shelf_floating: false,
             shelf_pos: [120.0, 140.0],
+            disabled_plugins: Vec::new(),
             dock_float_size: [330.0, 560.0],
             rail_tab: RailTab::Inspect,
             view_tab: ViewTab::default(),

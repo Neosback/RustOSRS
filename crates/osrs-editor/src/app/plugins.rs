@@ -26,6 +26,14 @@ impl EditorApp {
         let mut plugins = std::mem::take(&mut self.plugins);
         let mut commands = Vec::new();
         for plugin in &mut plugins {
+            if self
+                .prefs
+                .disabled_plugins
+                .iter()
+                .any(|n| n == plugin.name())
+            {
+                continue;
+            }
             let mut cx = PluginContext::new(self.editor_view(), &mut commands, plugin.name());
             f(plugin.as_mut(), &mut cx);
         }
@@ -42,35 +50,71 @@ impl EditorApp {
         });
     }
 
-    /// The Plugins window (menu bar): the user's own tools and each plugin's options.
+    /// Whether a plugin is switched on.
+    pub(super) fn plugin_enabled(&self, name: &str) -> bool {
+        !self.prefs.disabled_plugins.iter().any(|n| n == name)
+    }
+
+    /// Switch a plugin on or off: off, it is not run anywhere and what it drew is gone.
+    pub(super) fn set_plugin_enabled(&mut self, name: &str, enabled: bool) {
+        self.prefs.disabled_plugins.retain(|n| n != name);
+        if !enabled {
+            self.prefs.disabled_plugins.push(name.to_owned());
+        }
+        let mut plugins = std::mem::take(&mut self.plugins);
+        let mut commands = Vec::new();
+        for plugin in &mut plugins {
+            if plugin.name() != name || plugin.core() {
+                continue;
+            }
+            let mut cx = PluginContext::new(self.editor_view(), &mut commands, plugin.name());
+            plugin.set_enabled(enabled, &mut cx);
+            if !enabled {
+                commands.push((plugin.name(), EditorCommand::SetLines(Vec::new())));
+            }
+        }
+        self.plugins = plugins;
+        self.apply_commands(commands);
+    }
+
+    /// The Plugins window (menu bar): the user's own tools, and the plugins with a switch each.
+    /// Switching a plugin off removes it everywhere; core plugins have no switch.
     pub(super) fn plugins_window(&mut self, ctx: &egui::Context) {
         if !self.plugins_open {
             return;
         }
-        let ((), close) = super::modal::Modal::new(
-            "plugins_window",
-            format!("{} Plugins", crate::icons::PLUGINS),
-        )
-        .size(420.0, 460.0)
-        .show(ctx, |ui| {
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    self.user_tool_list(ui);
-                    let mut any = false;
-                    self.run_plugins(|plugin, cx| {
-                        if plugin.has_properties() {
-                            any = true;
-                            crate::theme::section_heading(ui, plugin.title());
-                            plugin.properties(ui, cx);
+        let ((), close) = super::modal::Modal::new("plugins_window", "Plugins")
+            .size(440.0, 460.0)
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        crate::theme::section_heading(ui, "Plugins");
+                        let rows: Vec<(&'static str, &'static str, &'static str, bool)> = self
+                            .plugins
+                            .iter()
+                            .map(|p| (p.name(), p.title(), p.description(), p.core()))
+                            .collect();
+                        for (name, title, description, core) in rows {
+                            let mut on = self.plugin_enabled(name);
+                            ui.horizontal(|ui| {
+                                if core {
+                                    ui.add_enabled(false, egui::Label::new(title));
+                                    ui.weak("core");
+                                } else if crate::theme::toggle(ui, &mut on, title).changed() {
+                                    self.set_plugin_enabled(name, on);
+                                }
+                            });
+                            if !description.is_empty() {
+                                ui.indent(name, |ui| ui.weak(description));
+                            }
+                            ui.add_space(2.0);
                         }
+                        ui.add_space(4.0);
+                        ui.weak("A plugin that is off is gone: no menu, button, overlay or key.");
+                        self.user_tool_list(ui);
                     });
-                    if !any {
-                        ui.add_space(6.0);
-                        ui.weak("No plugin has options to show.");
-                    }
-                });
-        });
+            });
         if close {
             self.plugins_open = false;
         }
@@ -85,6 +129,14 @@ impl EditorApp {
         let mut fired: Vec<&'static str> = Vec::new();
         ctx.input(|input| {
             for plugin in &self.plugins {
+                if self
+                    .prefs
+                    .disabled_plugins
+                    .iter()
+                    .any(|n| n == plugin.name())
+                {
+                    continue;
+                }
                 for action in plugin.actions() {
                     if keymap.pressed(input, action.id) {
                         fired.push(action.id);

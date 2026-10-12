@@ -168,6 +168,19 @@ pub struct SplineSettings {
     pub snap: f32,
     /// Straight runs style: how far (tiles) the outline may stray to keep a run straight.
     pub straighten: f32,
+    /// Walls style: castle-wall kit object ids (0 = unset; top falls back to side).
+    pub wall_side: u32,
+    pub wall_top: u32,
+    pub wall_door: u32,
+    pub wall_diagonal: u32,
+    /// Walls style: band thickness in tiles.
+    pub wall_thickness: f32,
+    /// Walls style: wall height in planes (plus a cap row on top).
+    pub wall_height: f32,
+    /// Walls style: lay tower squares around each control point.
+    pub wall_towers: bool,
+    /// Walls style: tower square size in tiles.
+    pub tower_size: f32,
 }
 
 impl Default for SplineSettings {
@@ -180,6 +193,14 @@ impl Default for SplineSettings {
             ramp: false,
             snap: 1.0,
             straighten: 0.45,
+            wall_side: 0,
+            wall_top: 0,
+            wall_door: 0,
+            wall_diagonal: 0,
+            wall_thickness: 3.0,
+            wall_height: 2.0,
+            wall_towers: true,
+            tower_size: 2.0,
         }
     }
 }

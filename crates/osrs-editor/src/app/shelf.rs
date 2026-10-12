@@ -192,6 +192,47 @@ impl EditorApp {
                 self.prefs.spline.style = style;
             }
         }
+        if self.prefs.spline.style == EdgeStyle::Walls {
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new("Wall kit").weak());
+            let spline = &mut self.prefs.spline;
+            ui.horizontal(|ui| {
+                ui.label("Side");
+                ui.add(egui::DragValue::new(&mut spline.wall_side).speed(1));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Top");
+                ui.add(egui::DragValue::new(&mut spline.wall_top).speed(1));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Door");
+                ui.add(egui::DragValue::new(&mut spline.wall_door).speed(1));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Diagonal");
+                ui.add(egui::DragValue::new(&mut spline.wall_diagonal).speed(1));
+            });
+            ui.label(egui::RichText::new("Thickness").weak());
+            ui.add(
+                egui::Slider::new(&mut spline.wall_thickness, 1.0..=12.0)
+                    .max_decimals(0)
+                    .suffix(" tiles"),
+            );
+            ui.label(egui::RichText::new("Height").weak());
+            ui.add(
+                egui::Slider::new(&mut spline.wall_height, 1.0..=3.0)
+                    .max_decimals(0)
+                    .suffix(" planes"),
+            );
+            ui.checkbox(&mut spline.wall_towers, "Towers at control points");
+            if spline.wall_towers {
+                ui.add(
+                    egui::Slider::new(&mut spline.tower_size, 1.0..=4.0)
+                        .max_decimals(0)
+                        .suffix(" tiles"),
+                );
+            }
+        }
         if self.prefs.spline.style == EdgeStyle::Runs {
             ui.add_space(4.0);
             ui.label(egui::RichText::new("Straighten").weak());

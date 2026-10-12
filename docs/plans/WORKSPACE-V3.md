@@ -80,3 +80,18 @@ The user's list, grouped into the order it is built in (each group is one commit
   it into a window you can drag anywhere over the viewport (position kept), dock it back, or swap it to the
   right edge.
 * Script: `focus` moves the camera to the selection.
+
+## Ink theme, plugin switches, HUD flicker (2026-10-11)
+
+* **Ink** is the new default theme (index 7 in `theme::ALL`; saved choices keep their index). The readability fix
+  is shared by every theme: plain labels now use the full text colour (they used the dim one), only `weak()` text
+  (hints, captions) is dim, and the dim colour itself is brighter in Ink. Body text is 14.5 pt, small 12 pt.
+* **Plugins window** (menu bar, no icon): a switch per plugin, and nothing else of theirs. Off means gone: the
+  plugin is not run, so no menu, toolbar button, overlay, hotkey, guide lines or per-frame work
+  (`EditorApp::set_plugin_enabled`, `disabled_plugins` in the settings, `EditorPlugin::set_enabled` to undo what it
+  left). `EditorPlugin::core()` marks plugins that cannot be switched off (they show "core" instead of a switch;
+  none of the three is core yet). The plugins' own options moved to Settings > Plugin options (and the View panel's
+  Overlays tab for the grid). My tools stays in the window.
+* **Tile HUD flicker**: the HUD in the viewport's corner covered the pointer, the viewport stopped being hovered,
+  the pick went empty, the HUD hid, the pointer was uncovered, repeat. The world under the HUD keeps being picked
+  while the pointer is over it (`hud_rect`).

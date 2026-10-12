@@ -85,6 +85,21 @@ pub trait EditorPlugin {
     /// Title of the View-menu submenu and Properties section.
     fn title(&self) -> &'static str;
 
+    /// One line for the Plugins window: what the plugin adds.
+    fn description(&self) -> &'static str {
+        ""
+    }
+
+    /// Core plugins are always on: the Plugins window has no switch for them.
+    fn core(&self) -> bool {
+        false
+    }
+
+    /// The plugin was switched on or off in the Plugins window. While off it is not run at all (no
+    /// menu, toolbar, overlay, hotkeys or per-frame work), so this is where it undoes what it left
+    /// in the editor.
+    fn set_enabled(&mut self, _enabled: bool, _cx: &mut PluginContext) {}
+
     /// Per-frame work before the UI is drawn (rebuild guide lines, poll tasks).
     fn update(&mut self, _cx: &mut PluginContext) {}
 

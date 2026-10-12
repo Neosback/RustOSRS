@@ -240,6 +240,10 @@ impl EditorPlugin for GridPlugin {
         "Grid"
     }
 
+    fn description(&self) -> &'static str {
+        "Tile, zone and region lines draped over the terrain"
+    }
+
     fn update(&mut self, cx: &mut PluginContext) {
         let key = BuiltFor {
             settings: self.settings,

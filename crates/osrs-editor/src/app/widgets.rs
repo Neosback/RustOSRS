@@ -167,7 +167,7 @@ pub fn tab_label(ui: &mut egui::Ui, selected: bool, text: &str) -> egui::Respons
     } else if response.hovered() {
         ui.visuals().text_color().gamma_multiply(0.85)
     } else {
-        ui.visuals().widgets.noninteractive.fg_stroke.color
+        ui.visuals().weak_text_color()
     };
     ui.painter().galley(
         Pos2::new(rect.left() + 6.0, rect.center().y - galley.size().y / 2.0),
@@ -194,7 +194,7 @@ pub fn empty_state(ui: &mut egui::Ui, icon: &str, title: &str, hint: &str) {
         ui.label(
             egui::RichText::new(icon)
                 .size(28.0)
-                .color(ui.visuals().widgets.noninteractive.fg_stroke.color),
+                .color(ui.visuals().weak_text_color()),
         );
         ui.label(egui::RichText::new(title).strong());
         ui.weak(hint);

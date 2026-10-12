@@ -116,6 +116,7 @@ const fn def(
 use Applies::{Any, Hd, Reference};
 use SettingsPage::{
     Advanced, CameraWorld, Colors, Controls, Graphics, HdLighting, HdShadowsWater, Interface,
+    Plugins,
 };
 
 /// Every setting, in the order a page shows them.
@@ -592,6 +593,7 @@ const PAGES: &[(SettingsPage, &str, &str)] = &[
     (HdShadowsWater, ph::DROP, "Shadows and water"),
     (Controls, ph::KEYBOARD, "Controls"),
     (Colors, ph::PALETTE, "Colours"),
+    (Plugins, ph::PUZZLE_PIECE, "Plugin options"),
     (Advanced, ph::WRENCH, "Advanced"),
 ];
 
@@ -798,6 +800,21 @@ impl EditorApp {
         }
     }
 
+    /// The options of the plugins that are on (switch plugins on and off in the Plugins window).
+    fn plugin_options_page(&mut self, ui: &mut egui::Ui) {
+        let mut any = false;
+        self.run_plugins(|plugin, cx| {
+            if plugin.has_properties() {
+                any = true;
+                crate::theme::section_heading(ui, plugin.title());
+                plugin.properties(ui, cx);
+            }
+        });
+        if !any {
+            ui.weak("No plugin that is on has options.");
+        }
+    }
+
     /// The colours the viewport draws its indicators, the grid and the HUD with.
     fn colors_page(&mut self, ui: &mut egui::Ui) {
         use crate::style::{ColorGroup, ColorKey};
@@ -850,6 +867,7 @@ impl EditorApp {
         match page {
             Controls => self.controls_page(ui),
             Colors => self.colors_page(ui),
+            Plugins => self.plugin_options_page(ui),
             Advanced => {
                 self.rows_ui_for_page(ui, page, "");
                 self.advanced_page(ui);
@@ -1486,9 +1504,10 @@ mod tests {
     fn every_page_with_settings_has_rows() {
         for (page, _, title) in PAGES {
             let has_rows = ROWS.iter().any(|def| def.page == *page);
-            // Controls (shortcuts), Colours and Advanced (reset buttons) are drawn by their own code.
+            // Controls (shortcuts), Colours, Plugin options and Advanced (reset buttons) are drawn by
+            // their own code.
             assert!(
-                has_rows || matches!(page, Controls | Colors | Advanced),
+                has_rows || matches!(page, Controls | Colors | Plugins | Advanced),
                 "{title} has no settings"
             );
         }

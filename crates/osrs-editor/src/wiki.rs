@@ -72,6 +72,10 @@ impl EditorPlugin for WikiPlugin {
         "Wiki"
     }
 
+    fn description(&self) -> &'static str {
+        "Look up the selected object on the OSRS Wiki"
+    }
+
     fn toolbar(&mut self, ui: &mut egui::Ui, cx: &mut PluginContext) {
         let url = Self::selected_url(cx);
         let response = ui

@@ -180,12 +180,15 @@ impl EditorApp {
         true
     }
 
-    /// Finish the open stroke: one undo step, if it changed anything.
+    /// Finish the open stroke: one undo step, if it changed anything (tiles or objects).
     pub(super) fn end_stroke(&mut self) {
         let Some(stroke) = self.stroke.take() else {
             return;
         };
-        if stroke.step.changes.is_empty() {
+        if stroke.step.changes.is_empty()
+            && stroke.step.added.is_empty()
+            && stroke.step.removed.is_empty()
+        {
             return;
         }
         let count = stroke.step.changes.len();
@@ -343,14 +346,17 @@ impl EditorApp {
     }
 
     /// Lay the auto-tiler's result: the brush's overlay with each tile's shape and rotation, plus the
-    /// other armed channels (one undo step). Returns how many tiles changed.
+    /// other armed channels, plus spawned `added` objects (one undo step). Returns how many tiles
+    /// changed.
     pub(super) fn apply_path(
         &mut self,
         tiles: &[((i32, i32), TileChoice)],
         grade: Option<PathGrade>,
+        added: Vec<LocSpec>,
     ) -> usize {
         let brush = self.prefs.brush.clone();
-        if !brush.overlay.armed || tiles.is_empty() {
+        let loc_edits: Vec<LocEdit> = added.iter().map(|s| LocEdit::Add(*s)).collect();
+        if (!brush.overlay.armed || tiles.is_empty()) && loc_edits.is_empty() {
             return 0;
         }
         self.begin_stroke();
@@ -398,7 +404,11 @@ impl EditorApp {
             self.record(&mut stroke, key, after, &mut edits);
         }
         let count = edits.len();
+        if !added.is_empty() {
+            stroke.step.added = added;
+        }
         self.send_edits(edits);
+        self.send_loc_edits(loc_edits);
         self.stroke = Some(stroke);
         self.end_stroke();
         count

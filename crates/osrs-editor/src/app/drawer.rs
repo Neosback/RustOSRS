@@ -849,12 +849,7 @@ fn channel_tab(
                 if on_tick {
                     accent
                 } else {
-                    visuals
-                        .widgets
-                        .noninteractive
-                        .fg_stroke
-                        .color
-                        .gamma_multiply(0.8)
+                    visuals.weak_text_color().gamma_multiply(0.8)
                 },
             ),
         );
@@ -862,7 +857,7 @@ fn channel_tab(
     let tint = if selected {
         visuals.text_color()
     } else {
-        visuals.widgets.noninteractive.fg_stroke.color
+        visuals.weak_text_color()
     };
     // Disarmed channels read as dimmer: nothing will be painted there.
     let tint = if armed {

@@ -38,11 +38,12 @@ impl EditorApp {
             _ => rect.min.x + OVERLAY_MARGIN,
         };
         let mut hide_tile_hud = false;
+        self.hud_rect = None;
         if self.prefs.stats_overlay || tile_lines.is_some() {
             let (region_x, region_y) = self.camera_region();
             let (tile_x, tile_y) = self.camera_tile();
             let stats = self.prefs.stats_overlay;
-            egui::Area::new(egui::Id::new("stats_overlay"))
+            let hud = egui::Area::new(egui::Id::new("stats_overlay"))
                 .order(egui::Order::Background)
                 .fixed_pos(egui::pos2(left, rect.min.y + OVERLAY_MARGIN))
                 .show(&ctx, |ui| {
@@ -106,6 +107,7 @@ impl EditorApp {
                         });
                     }
                 });
+            self.hud_rect = Some(hud.response.rect);
             if hide_tile_hud {
                 self.prefs.tile_info_hud = false;
             }

@@ -30,6 +30,18 @@ impl EditorPlugin for AnimationSmoothingPlugin {
         "Animation smoothing"
     }
 
+    fn description(&self) -> &'static str {
+        "Blends the frames of animated objects, like RuneLite's plugin"
+    }
+
+    fn set_enabled(&mut self, enabled: bool, cx: &mut PluginContext) {
+        // Off: the game's own stepping. On: announce the saved choice again.
+        self.announced = None;
+        if !enabled {
+            cx.send(EditorCommand::SetAnimationSmoothing(false));
+        }
+    }
+
     fn update(&mut self, cx: &mut PluginContext) {
         if self.announced != Some(self.enabled) {
             self.announced = Some(self.enabled);

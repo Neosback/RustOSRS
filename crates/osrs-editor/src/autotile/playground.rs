@@ -556,6 +556,7 @@ fn user_cases() -> Vec<Case> {
                             "Chiselled" => EdgeStyle::Chiselled,
                             "Whole" => EdgeStyle::Whole,
                             "Runs" => EdgeStyle::Runs,
+                            "Walls" => EdgeStyle::Walls,
                             _ => EdgeStyle::Smooth,
                         }
                     }

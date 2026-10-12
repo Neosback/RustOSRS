@@ -16,7 +16,15 @@ impl EditorApp {
         if response.dragged() && !response.dragged_by(egui::PointerButton::Primary) {
             return;
         }
-        let Some(position) = response.hover_pos() else {
+        // The HUD sits over the viewport's corner; with the pointer on it the viewport is not hovered,
+        // and dropping the pick there would hide the HUD, uncover the pointer and flicker. So the
+        // world under the HUD keeps being picked.
+        let over_hud = || {
+            let pointer = response.ctx.input(|i| i.pointer.latest_pos())?;
+            self.hud_rect.filter(|hud| hud.contains(pointer))?;
+            Some(pointer)
+        };
+        let Some(position) = response.hover_pos().or_else(over_hud) else {
             self.hover = Pick::default();
             // The pointer left the viewport: a stroke or box in progress ends here.
             if !response.ctx.input(|i| i.pointer.primary_down()) {
