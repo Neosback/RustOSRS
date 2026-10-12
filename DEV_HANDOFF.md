@@ -74,16 +74,14 @@ Overlay shape is validated as `0..=11` and overlay rotation as `0..=3` at constr
 
 Semantic object placements use validated object kind/orientation values and `ObjectId` plus `MapPosition`. Raw `(u8, i32, i32)` style infrastructure DTOs may remain at adapter boundaries but should not become the authoritative editor model.
 
-### Future transaction model
+### Patch and transaction model
 
-Prefer an explicit patch model rather than command objects that mutate state while discovering undo information.
-
-Planned direction:
+The edit domain now uses explicit reversible patch primitives rather than command objects that mutate state while discovering undo information.
 
 ```rust
 MapPatch
-  Vec<MapOp>
-  ChangeImpact
+  private Vec<MapOp>
+  private derived ChangeImpact
 
 MapOp
   SetTerrain { coord, before, after }
@@ -92,15 +90,21 @@ MapOp
   RemoveObject { placement }
 ```
 
-A tool should calculate and validate a complete patch before authoritative state changes. Applying a patch should be atomic. Undo should apply its inverse. One user gesture should remain one logical history operation.
+`MapPatch::new` derives the union of semantic change impact from its operations so callers cannot construct a patch with stale or missing invalidation metadata. `MapPatch::inverse` reverses operation order and inverts each operation so dependent multi-operation transactions can be undone exactly.
+
+No patch-application engine exists yet. A future `MapDocument` should validate a complete patch against authoritative state and apply it atomically. One user gesture should remain one logical history operation.
+
+### Change impact
+
+`ChangeImpact` is semantic, not renderer-specific. Current flags cover terrain geometry, terrain material, normals, lighting, collision, locations, and bounds.
+
+The initial impact mapping is intentionally conservative. Later view-synchronization work may translate these semantic effects into tighter chunk/region rebuild radii without changing patch data.
+
+No-op terrain/height value changes produce no impact. Terrain flag changes include collision/bounds impact. Object add/remove operations include location/collision/bounds impact.
 
 ### Future view synchronization
 
 Async scene/mesh rebuilds should eventually carry document/chunk revisions. Results built from stale revisions must be discarded so old background work cannot replace newer editor state.
-
-### Future change impact
-
-Dirty-region behavior should evolve from ad hoc invalidation into semantic `ChangeImpact` data describing affected geometry, material, normals, lighting, collision, locations, and bounds. Existing conservative rebuild behavior should be preserved until the replacement policy is proven.
 
 ## Current branch
 
@@ -121,9 +125,15 @@ Purpose: establish the first additive, headless edit-domain boundary without cha
 - Added validated `LocKind`.
 - Added validated `ObjectOrientation`.
 - Added semantic `ObjectPlacement`.
+- Added `ChangeImpact` semantic invalidation flags.
+- Added reversible `MapOp` variants for terrain, height, and object edits.
+- Added `MapPatch` with private derived impact metadata.
+- Added exact patch inversion with reverse operation ordering.
+- Added focused unit tests for impact union, no-op impact, flag collision impact, and exact inverse round trips.
 - Added focused unit tests around semantic validation and tile-vs-height-vertex separation.
 - Regenerated the workspace lockfile after introducing `osrs-edit`.
 - Removed the temporary lockfile-regeneration workflow after use.
+- Added this living `DEV_HANDOFF.md`.
 
 ### Current files in `osrs-edit`
 
@@ -133,6 +143,7 @@ crates/osrs-edit/
   src/
     lib.rs
     object.rs
+    patch.rs
     position.rs
     terrain.rs
 ```
@@ -141,19 +152,18 @@ No renderer, egui, cache-codec, scene-worker, or runtime dependencies belong in 
 
 ## Validation record
 
-Latest fully observed validation before this handoff update:
+Clean baseline immediately before patch primitives:
 
-- Architecture boundary check: PASS
-- Architecture guard tests: PASS
-- Reference-regeneration safety: PASS
-- Historical deob golden-index test: PASS
-- `cargo fmt --all --check`: PASS
-- `cargo check --locked --workspace --all-targets --all-features`: PASS
-- strict workspace Clippy: PASS
+- Commit `b8424103483209fcddd9b525b46eba6f40f5af93`
+- CI run `38229765193`: PASS
+- Tier A static quality: PASS
+- Tier B workspace tests: PASS
+- Tier C semantic/reference suites: PASS
 
-That corresponds to CI Tier A on parent head `69346d01ed30c0b6bddad4e3763c064a2f96d300`.
+Current patch-primitives validation:
 
-Tier B workspace tests were still running when this handoff checkpoint began. Re-check CI on the new documentation head before advancing implementation work.
+- Patch implementation/export commits are on this branch.
+- Final CI must be checked on the post-handoff checkpoint head before advancing.
 
 ## Checkpoint history
 
@@ -167,18 +177,23 @@ Added architecture boundary enforcement, corrected formatting, regenerated `Carg
 
 ### Checkpoint 3: living handoff
 
-Added this `DEV_HANDOFF.md` as the single project handoff and continuity document.
+Added this `DEV_HANDOFF.md` as the single project handoff and continuity document. Full Tier A/B/C CI subsequently passed on that checkpoint.
+
+### Checkpoint 4: patch primitives
+
+Added semantic `ChangeImpact`, reversible `MapOp`, and invariant-preserving `MapPatch` primitives with focused tests. No editor tools, renderer state, existing undo/redo, spline planner, or commit path has been wired to them yet.
 
 ## Next checkpoint
 
 **Do not redesign the path generator yet.**
 
-Next implementation checkpoint on the current branch should be small:
+Before any additional implementation:
 
-1. Re-check the latest full CI state after this documentation commit.
-2. If CI is green, add only the minimal `MapPatch` / `MapOp` / `ChangeImpact` type skeleton and focused inverse/impact unit tests.
-3. Do not wire editor tools, spline commits, rendering, or existing undo/redo into the new patch model yet.
-4. Stop and report before continuing.
+1. Check full CI on the final Checkpoint 4 head.
+2. If green, the next small implementation should introduce the initial authoritative `MapDocument` storage/query boundary and patch-state validation/application tests.
+3. Keep editor/UI wiring out of that checkpoint.
+4. Preserve atomicity: a patch must be fully valid before any authoritative state changes.
+5. Stop and report before continuing.
 
 After the branch eventually contains the complete foundation planned for it and full Tier A/B/C CI is green, open/update the PR as needed and merge it before starting the next branch.
 
@@ -186,8 +201,8 @@ After the branch eventually contains the complete foundation planned for it and 
 
 These are directional, not permission to start them automatically.
 
-1. Edit-domain foundation and patch primitives.
-2. Authoritative `MapDocument` plus atomic patch application/inversion.
+1. Edit-domain foundation, patch primitives, and authoritative `MapDocument` foundation.
+2. Complete atomic patch application/inversion and basic history/query contracts.
 3. Migrate one existing edit path through the domain boundary, likely spline/path **commit only**, while leaving its planner/preview algorithm untouched.
 4. Migrate brush/terrain/height editing.
 5. Migrate object editing.
