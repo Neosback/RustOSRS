@@ -17,7 +17,7 @@ jobs:
       - run: cargo fmt --all
       - run: cargo check --locked -p osrs-editor --all-targets --all-features
       - run: cargo clippy --locked -p osrs-editor --all-targets --all-features -- -D warnings
-      - run: cargo test --locked -p osrs-editor failed_main_route_blocks_path_commit planner_errors_block_path_commit diagnostic_warnings_do_not_block_path_commit
+      - run: cargo test --locked -p osrs-editor spline_tool
       - run: cargo test --locked -p osrs-editor terrain_path
       - run: rm scripts/fix_spline_failed_route_commit.py .github/workflows/branch-spline-failed-route-guard.yml
       - run: |
