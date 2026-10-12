@@ -150,11 +150,7 @@ impl SceneGrid {
             .ok()
             .and_then(|cache| cache.get(&cache_key).cloned())
         {
-            return Some((
-                grid,
-                x.rem_euclid(64) as usize,
-                y.rem_euclid(64) as usize,
-            ));
+            return Some((grid, x.rem_euclid(64) as usize, y.rem_euclid(64) as usize));
         }
         let info = self.infos.get(&key)?;
         let mut cache = self.cache.lock().ok()?;
@@ -276,7 +272,10 @@ mod tests {
     fn scene_with_region(region_x: i32, region_y: i32, plane: u8, grid: RegionGrid) -> SceneGrid {
         SceneGrid {
             infos: HashMap::new(),
-            cache: Mutex::new(HashMap::from([((region_x, region_y, plane), Arc::new(grid))])),
+            cache: Mutex::new(HashMap::from([(
+                (region_x, region_y, plane),
+                Arc::new(grid),
+            )])),
         }
     }
 
