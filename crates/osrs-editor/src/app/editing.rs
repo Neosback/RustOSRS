@@ -6,7 +6,6 @@
 //! regions whose geometry can change are rebuilt and replace the old ones when ready.
 
 use super::EditorApp;
-use crate::autotile::TileChoice;
 use crate::heights::{self, encode_height};
 use crate::paint::{Brush, Fill, TileValues, Tool};
 use eframe::egui;
@@ -24,11 +23,13 @@ const HISTORY_LIMIT: usize = 200;
 /// How often a held sculpting brush applies again without moving.
 const SCULPT_REPEAT: Duration = Duration::from_millis(110);
 
-/// How the ground is graded along a laid path: the path's polyline and the heights at its ends.
-pub struct PathGrade {
-    pub line: Vec<(f32, f32)>,
-    pub first: i32,
-    pub last: i32,
+/// One tile of a path to lay: the overlay (when the path sets one) with its shape and rotation.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PathTile {
+    pub tile: (i32, i32),
+    pub overlay: Option<u16>,
+    pub shape: u8,
+    pub rotation: u8,
 }
 
 /// `(plane, world x, world y)`.
@@ -345,18 +346,12 @@ impl EditorApp {
         self.end_stroke();
     }
 
-    /// Lay the auto-tiler's result: the brush's overlay with each tile's shape and rotation, plus the
-    /// other armed channels, plus spawned `added` objects (one undo step). Returns how many tiles
-    /// changed.
-    pub(super) fn apply_path(
-        &mut self,
-        tiles: &[((i32, i32), TileChoice)],
-        grade: Option<PathGrade>,
-        added: Vec<LocSpec>,
-    ) -> usize {
+    /// Lay a path: each tile's overlay with its shape and rotation, the other armed channels of the
+    /// brush, and spawned `added` objects (one undo step). Returns how many tiles changed.
+    pub(super) fn apply_path(&mut self, tiles: &[PathTile], added: Vec<LocSpec>) -> usize {
         let brush = self.prefs.brush.clone();
         let loc_edits: Vec<LocEdit> = added.iter().map(|s| LocEdit::Add(*s)).collect();
-        if (!brush.overlay.armed || tiles.is_empty()) && loc_edits.is_empty() {
+        if tiles.is_empty() && loc_edits.is_empty() {
             return 0;
         }
         self.begin_stroke();
@@ -365,38 +360,19 @@ impl EditorApp {
         };
         let plane = self.view_plane;
         let mut edits = Vec::new();
-        for (tile, choice) in tiles {
-            let key = (plane, tile.0, tile.1);
+        for path_tile in tiles {
+            let key = (plane, path_tile.tile.0, path_tile.tile.1);
             let Some(before) = self.current_tile(key) else {
                 continue;
             };
             let mut after = before;
-            if brush.overlay.armed {
-                match brush.overlay.fill {
-                    Fill::Set(id) => {
-                        after.overlay = id;
-                        if let Some((shape, rotation)) = choice.shape_rotation() {
-                            after.shape = shape;
-                            after.rotation = rotation;
-                        }
-                    }
-                    Fill::Clear => {
-                        after.overlay = 0;
-                        after.shape = 0;
-                        after.rotation = 0;
-                    }
-                }
+            if let Some(id) = path_tile.overlay {
+                after.overlay = id;
+                after.shape = path_tile.shape;
+                after.rotation = path_tile.rotation;
             }
             if brush.height.armed {
                 after.height = brush.height.value;
-            }
-            if let Some(PathGrade { line, first, last }) = &grade {
-                // Slope the ground along the path from the first height to the last.
-                let t = crate::autotile::ramp_parameter(
-                    line,
-                    (tile.0 as f32 + 0.5, tile.1 as f32 + 0.5),
-                );
-                after.height = first + ((last - first) as f32 * t).round() as i32;
             }
             if brush.flags.armed {
                 after.flags = brush.flags.bits;

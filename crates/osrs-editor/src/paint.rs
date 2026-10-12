@@ -17,7 +17,7 @@ pub enum Tool {
     Select,
     /// Paint channels (overlay, underlay, shape, height, flags) onto tiles.
     Paint,
-    /// Lay a path along a spline and let the auto-tiler pick every tile's shape.
+    /// Lay a path along a line and let the path planner pick every tile's shape.
     #[serde(alias = "Flags")]
     Spline,
     /// Sculpt tile heights; paints nothing else.
@@ -152,47 +152,60 @@ impl SelectMode {
     }
 }
 
-/// How the spline tool lays a path.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// What the path tool lays along the line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PathMode {
+    /// A natural path of overlay tiles (the terrain path planner).
+    #[default]
+    Terrain,
+    /// A castle wall: a band of tiles with wall objects on its edges.
+    Walls,
+}
+
+impl PathMode {
+    pub const ALL: [Self; 2] = [Self::Terrain, Self::Walls];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Terrain => "Path",
+            Self::Walls => "Walls",
+        }
+    }
+}
+
+/// How the path tool lays a path.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SplineSettings {
-    /// Path width in tiles.
-    pub width: f32,
-    pub style: crate::autotile::EdgeStyle,
-    pub curve: crate::autotile::CurveKind,
-    /// Join the last point back to the first.
-    pub closed: bool,
-    /// Grade the terrain along the path from the first point's height to the last's.
-    pub ramp: bool,
-    /// How far (tiles) control points may be nudged so runs take a clean slope.
-    pub snap: f32,
-    /// Straight runs style: how far (tiles) the outline may stray to keep a run straight.
-    pub straighten: f32,
-    /// Walls style: castle-wall kit object ids (0 = unset; top falls back to side).
+    pub mode: PathMode,
+    /// The planner's settings (smoothness, obstacles, noise, seed ...).
+    pub planner: crate::terrain_path::PathSettings,
+    /// What the path is made of (width, falloff, wander ...). Its overlay is the brush's overlay.
+    pub profile: crate::terrain_path::PathProfile,
+    /// Control points land on tile centres (off: where you click).
+    pub snap_points: bool,
+    /// Walls mode: castle-wall kit object ids (0 = unset; top falls back to side).
     pub wall_side: u32,
     pub wall_top: u32,
     pub wall_door: u32,
     pub wall_diagonal: u32,
-    /// Walls style: band thickness in tiles.
+    /// Walls mode: band thickness in tiles.
     pub wall_thickness: f32,
-    /// Walls style: wall height in planes (plus a cap row on top).
+    /// Walls mode: wall height in planes (plus a cap row on top).
     pub wall_height: f32,
-    /// Walls style: lay tower squares around each control point.
+    /// Walls mode: lay tower squares around each control point.
     pub wall_towers: bool,
-    /// Walls style: tower square size in tiles.
+    /// Walls mode: tower square size in tiles.
     pub tower_size: f32,
 }
 
 impl Default for SplineSettings {
     fn default() -> Self {
         Self {
-            width: 3.0,
-            style: crate::autotile::EdgeStyle::Runs,
-            curve: crate::autotile::CurveKind::Curve,
-            closed: false,
-            ramp: false,
-            snap: 1.0,
-            straighten: 0.45,
+            mode: PathMode::Terrain,
+            planner: crate::terrain_path::PathSettings::default(),
+            profile: crate::terrain_path::PathProfile::default(),
+            snap_points: false,
             wall_side: 0,
             wall_top: 0,
             wall_door: 0,

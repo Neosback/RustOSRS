@@ -9,7 +9,6 @@
 mod animation_smoothing;
 mod app;
 mod assets;
-mod autotile;
 mod camera;
 mod fonts;
 mod grid;
@@ -25,6 +24,7 @@ mod plugin;
 mod screenshot;
 mod settings;
 mod style;
+mod terrain_path;
 mod theme;
 mod user_tools;
 mod wiki;

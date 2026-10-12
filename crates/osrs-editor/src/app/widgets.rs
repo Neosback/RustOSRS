@@ -1,6 +1,6 @@
 //! Small widgets shared by the dock, the drawer and the floating toolbar.
 
-use crate::autotile::shape_triangles;
+use crate::terrain_path::shape_triangles;
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
 
 /// How the overlay part of a tile is filled.

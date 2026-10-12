@@ -98,7 +98,7 @@ impl EditorApp {
             draft.tool.kind = UserToolKind::Preset {
                 tool: self.prefs.tool,
                 brush: self.prefs.brush.clone(),
-                spline: self.prefs.spline,
+                spline: self.prefs.spline.clone(),
             };
         }
         draft
@@ -114,7 +114,7 @@ impl EditorApp {
         let current_tile = self.camera_tile();
         let current_plane = self.view_plane;
         let (tool_now, brush_now, spline_now) =
-            (self.prefs.tool, self.prefs.brush.clone(), self.prefs.spline);
+            (self.prefs.tool, self.prefs.brush.clone(), self.prefs.spline.clone());
         let title = if draft.index.is_some() {
             "Edit tool"
         } else {
@@ -149,7 +149,7 @@ impl EditorApp {
                     draft.tool.kind = UserToolKind::Preset {
                         tool: if tool_now == Tool::Select { Tool::Paint } else { tool_now },
                         brush: brush_now.clone(),
-                        spline: spline_now,
+                        spline: spline_now.clone(),
                     };
                 }
                 if ui.selectable_label(is("Bookmark"), "Bookmark").clicked() {
@@ -180,7 +180,7 @@ impl EditorApp {
                     if ui.button("Take the current brush again").clicked() {
                         *tool = if tool_now == Tool::Select { *tool } else { tool_now };
                         *brush = brush_now.clone();
-                        *spline = spline_now;
+                        *spline = spline_now.clone();
                     }
                 }
                 UserToolKind::Bookmark { x, y, plane } => {

@@ -1,4 +1,5 @@
-//! Castle-wall emission along a rasterized band (the old WALL brush style).
+//! Castle walls along a path: the band of tiles, then wall objects on its outward faces (the old
+//! WALL brush style).
 //!
 //! A band tile grows walls only on the sides facing out of the band; diagonal tiles get diagonal
 //! walls when the band tangent runs diagonally and a diagonal id is configured. Walls stack
@@ -117,6 +118,110 @@ pub fn emit_walls(
         }
     }
     specs
+}
+
+/// A rasterized castle-wall band: the tiles plus the averaged unit tangent per tile (wall
+/// direction info for diagonal detection).
+pub struct BandTiles {
+    pub tiles: HashSet<(i32, i32)>,
+    pub tangents: HashMap<(i32, i32), (f32, f32)>,
+}
+
+/// Stamp the tiles a dense polyline covers `thickness` tiles wide, walking each sample's
+/// perpendicular, and average the unit tangent per tile. Tiles a straight run crosses are stamped
+/// symmetrically; even thicknesses shift the far edge in by one so the count stays exact.
+pub fn rasterize_band(line: &[(f32, f32)], thickness: f32) -> BandTiles {
+    let mut tiles = HashSet::new();
+    let mut tangents: HashMap<(i32, i32), (f32, f32)> = HashMap::new();
+    if line.len() < 2 {
+        return BandTiles { tiles, tangents };
+    }
+    let count = thickness.max(1.0).round() as i32;
+    let half = count / 2;
+    let even = count % 2 == 0;
+    for (index, &(x, y)) in line.iter().enumerate() {
+        // Central difference along the dense polyline; forward/backward at the ends.
+        let (tx, ty) = if index == 0 {
+            (line[1].0 - x, line[1].1 - y)
+        } else if index + 1 == line.len() {
+            (x - line[index - 1].0, y - line[index - 1].1)
+        } else {
+            (
+                line[index + 1].0 - line[index - 1].0,
+                line[index + 1].1 - line[index - 1].1,
+            )
+        };
+        let (mut dx, mut dy) = (tx, ty);
+        let mut length = (tx * tx + ty * ty).sqrt();
+        if length < 1e-4 {
+            dx = 1.0;
+            dy = 0.0;
+            length = 1.0;
+        }
+        let (nx, ny) = (-dy / length, dx / length);
+        let (ux, uy) = (dx / length, dy / length);
+        // Tiles use floor coordinates throughout the editor (a point at 0.5 sits in tile 0).
+        for k in -half..=(half - if even { 1 } else { 0 }) {
+            let tile = (
+                (x + nx * k as f32).floor() as i32,
+                (y + ny * k as f32).floor() as i32,
+            );
+            tiles.insert(tile);
+            tangents
+                .entry(tile)
+                .and_modify(|tangent| {
+                    tangent.0 = (tangent.0 + ux) * 0.5;
+                    tangent.1 = (tangent.1 + uy) * 0.5;
+                })
+                .or_insert((ux, uy));
+        }
+    }
+    BandTiles { tiles, tangents }
+}
+
+/// A castle wall's band: whole tiles (the band plus the control-point tower squares) with
+/// per-tile tangents for wall emission. Walls carry the visuals; the tiles are laid whole.
+pub struct WallPlan {
+    pub tiles: Vec<(i32, i32)>,
+    pub tangents: HashMap<(i32, i32), (f32, f32)>,
+}
+
+/// Lay a castle-wall band `thickness` tiles wide along `line` with `tower_size` squares around
+/// each control point (size 1 disables towers).
+pub fn generate_walls(
+    line: &[(f32, f32)],
+    points: &[(f32, f32)],
+    thickness: f32,
+    tower_size: f32,
+) -> WallPlan {
+    let mut plan = WallPlan {
+        tiles: Vec::new(),
+        tangents: HashMap::new(),
+    };
+    if points.len() < 2 || line.len() < 2 {
+        return plan;
+    }
+    let band = rasterize_band(line, thickness);
+    let mut tiles = band.tiles;
+    let size = tower_size.max(1.0).round() as i32;
+    if size > 1 {
+        let half = size / 2;
+        let far = size - 1 - half;
+        for &(x, y) in points {
+            let (cx, cy) = (x.floor() as i32, y.floor() as i32);
+            for dx in -half..=far {
+                for dy in -half..=far {
+                    tiles.insert((cx + dx, cy + dy));
+                }
+            }
+        }
+    }
+    let mut tiles: Vec<_> = tiles.into_iter().collect();
+    // Deterministic order (a hash set has none).
+    tiles.sort_unstable();
+    plan.tiles = tiles;
+    plan.tangents = band.tangents;
+    plan
 }
 
 #[cfg(test)]
