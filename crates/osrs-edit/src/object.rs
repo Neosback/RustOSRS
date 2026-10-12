@@ -58,7 +58,10 @@ mod tests {
     fn loc_kind_and_orientation_validate_at_construction() {
         assert_eq!(LocKind::new(22).map(LocKind::get), Some(22));
         assert_eq!(LocKind::new(23), None);
-        assert_eq!(ObjectOrientation::new(3).map(ObjectOrientation::get), Some(3));
+        assert_eq!(
+            ObjectOrientation::new(3).map(ObjectOrientation::get),
+            Some(3)
+        );
         assert_eq!(ObjectOrientation::new(4), None);
     }
 }
