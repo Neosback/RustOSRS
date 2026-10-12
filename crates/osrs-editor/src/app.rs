@@ -15,6 +15,7 @@ mod minimap;
 pub(crate) mod modal;
 mod object_tool;
 mod overlay;
+mod path_commit;
 mod plugins;
 mod script;
 mod selection;

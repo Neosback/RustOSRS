@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 osrs-core = { path = "../osrs-core" }
+osrs-edit = { path = "../osrs-edit" }
 osrs-cache = { path = "../osrs-cache" }
 osrs-scene = { path = "../osrs-scene" }
 osrs-render = { path = "../osrs-render" }

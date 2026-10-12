@@ -6,12 +6,18 @@
 //! regions whose geometry can change are rebuilt and replace the old ones when ready.
 
 use super::EditorApp;
+use super::path_commit::{TerrainPathIntent, build_terrain_path_patch};
 use crate::heights::{self, encode_height};
 use crate::paint::{Brush, TileValues, Tool};
 use eframe::egui;
-use osrs_core::coords::RegionCoord;
+use osrs_core::coords::{MapTile, RegionCoord, SourcePlane};
+use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
+use osrs_edit::{
+    HeightVertexCoord, MapDocument, MapPosition, OverlayRotation, OverlayShape, TerrainOverlay,
+    TerrainTile,
+};
 use osrs_world::{LocEdit, LocSpec, TileEdit};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use web_time::Instant;
 
@@ -30,6 +36,45 @@ pub struct PathTile {
     pub overlay: Option<u16>,
     pub shape: u8,
     pub rotation: u8,
+}
+
+fn semantic_terrain(values: TileValues) -> Option<TerrainTile> {
+    let underlay = (values.underlay != 0).then(|| FloorUnderlayId::new(u32::from(values.underlay)));
+    let overlay = if values.overlay == 0 {
+        None
+    } else {
+        Some(TerrainOverlay {
+            id: FloorOverlayId::new(u32::from(values.overlay)),
+            shape: OverlayShape::new(values.shape)?,
+            rotation: OverlayRotation::new(values.rotation)?,
+        })
+    };
+    Some(TerrainTile {
+        underlay,
+        overlay,
+        flags: values.flags,
+    })
+}
+
+fn project_semantic_terrain(values: &mut TileValues, terrain: TerrainTile) -> Option<()> {
+    values.underlay = match terrain.underlay {
+        Some(id) => u16::try_from(id.get()).ok()?,
+        None => 0,
+    };
+    match terrain.overlay {
+        Some(overlay) => {
+            values.overlay = u16::try_from(overlay.id.get()).ok()?;
+            values.shape = overlay.shape.get();
+            values.rotation = overlay.rotation.get();
+        }
+        None => {
+            values.overlay = 0;
+            values.shape = 0;
+            values.rotation = 0;
+        }
+    }
+    values.flags = terrain.flags;
+    Some(())
 }
 
 /// `(plane, world x, world y)`.
@@ -344,6 +389,125 @@ impl EditorApp {
         self.send_edits(edits);
         self.stroke = Some(stroke);
         self.end_stroke();
+    }
+
+    /// Lay a normal terrain path through the semantic edit-domain boundary.
+    ///
+    /// The domain patch is the canonical description of this commit. The patched semantic snapshot
+    /// is then projected into the existing world edit layer and legacy undo stack so rendering and
+    /// editor-wide undo behavior remain unchanged while migration proceeds one tool at a time.
+    pub(super) fn apply_terrain_path(&mut self, tiles: &[PathTile]) -> usize {
+        if tiles.is_empty() {
+            return 0;
+        }
+        let Some(plane) = SourcePlane::new(self.view_plane) else {
+            self.notice = Some((
+                "The path uses an invalid source plane".to_owned(),
+                Instant::now(),
+            ));
+            return 0;
+        };
+
+        let brush = self.prefs.brush.clone();
+        let mut terrain = Vec::new();
+        let mut heights = Vec::new();
+        let mut intents = Vec::new();
+        let mut snapshotted = HashSet::new();
+
+        for path_tile in tiles {
+            let key = (self.view_plane, path_tile.tile.0, path_tile.tile.1);
+            let Some(before) = self.current_tile(key) else {
+                continue;
+            };
+            let Some(before_terrain) = semantic_terrain(before) else {
+                self.notice = Some((
+                    format!(
+                        "The path was not laid: tile {:?} has invalid terrain shape data",
+                        path_tile.tile
+                    ),
+                    Instant::now(),
+                ));
+                return 0;
+            };
+            let map_tile = MapTile::new(path_tile.tile.0, path_tile.tile.1);
+            if snapshotted.insert(path_tile.tile) {
+                terrain.push((MapPosition::new(map_tile, plane), before_terrain));
+                heights.push((HeightVertexCoord::new(map_tile, plane), before.height));
+            }
+            let height = brush
+                .height
+                .armed
+                .then(|| self.quantize_height(key, brush.height.value));
+            let flags = brush.flags.armed.then_some(brush.flags.bits);
+            intents.push(TerrainPathIntent::from_path_tile(*path_tile, height, flags));
+        }
+
+        if intents.is_empty() {
+            return 0;
+        }
+
+        let mut document = MapDocument::from_parts(terrain, heights, []);
+        let patch = match build_terrain_path_patch(&document, plane, &intents) {
+            Ok(patch) => patch,
+            Err(error) => {
+                self.notice = Some((
+                    format!("The path was not laid: invalid semantic commit data ({error:?})"),
+                    Instant::now(),
+                ));
+                return 0;
+            }
+        };
+        if patch.is_empty() {
+            return 0;
+        }
+        if let Err(error) = document.apply_patch(&patch) {
+            self.notice = Some((
+                format!("The path was not laid: semantic patch validation failed ({error:?})"),
+                Instant::now(),
+            ));
+            return 0;
+        }
+
+        let mut projected = HashSet::new();
+        let mut final_tiles = Vec::new();
+        for intent in &intents {
+            if !projected.insert(intent.tile) {
+                continue;
+            }
+            let key = (self.view_plane, intent.tile.0, intent.tile.1);
+            let Some(mut after) = self.current_tile(key) else {
+                continue;
+            };
+            let map_tile = MapTile::new(intent.tile.0, intent.tile.1);
+            let position = MapPosition::new(map_tile, plane);
+            if project_semantic_terrain(&mut after, document.terrain_at(position)).is_none() {
+                self.notice = Some((
+                    "The path was not laid: semantic terrain IDs exceed the legacy adapter range"
+                        .to_owned(),
+                    Instant::now(),
+                ));
+                return 0;
+            }
+            let vertex = HeightVertexCoord::new(map_tile, plane);
+            if let Some(height) = document.height_at(vertex) {
+                after.height = height;
+            }
+            final_tiles.push((key, after));
+        }
+
+        self.begin_stroke();
+        let Some(mut stroke) = self.stroke.take() else {
+            return 0;
+        };
+        let mut edits = Vec::new();
+        for (key, after) in final_tiles {
+            self.record(&mut stroke, key, after, &mut edits);
+        }
+        let count = edits.len();
+        self.send_edits(edits);
+        self.stroke = Some(stroke);
+        self.end_stroke();
+        count
     }
 
     /// Lay a path: each tile's overlay with its shape and rotation, the other armed channels of the

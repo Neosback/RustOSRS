@@ -649,7 +649,7 @@ impl EditorApp {
                 rotation: p.orientation,
             })
             .collect();
-        let changed = self.apply_path(&tiles, Vec::new());
+        let changed = self.apply_terrain_path(&tiles);
         self.spline.points.clear();
         self.notice = Some((
             format!("Laid a path over {changed} tiles"),
