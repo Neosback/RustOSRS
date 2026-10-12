@@ -276,8 +276,14 @@ pub fn route(
     let corridor = settings.route_corridor;
     let min_x = stretch.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
     let min_y = stretch.iter().map(|p| p.y).fold(f64::INFINITY, f64::min);
-    let max_x = stretch.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max);
-    let max_y = stretch.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max);
+    let max_x = stretch
+        .iter()
+        .map(|p| p.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let max_y = stretch
+        .iter()
+        .map(|p| p.y)
+        .fold(f64::NEG_INFINITY, f64::max);
     let area = TileBounds::new(
         (min_x - corridor).floor() as i32,
         (min_y - corridor).floor() as i32,
@@ -390,8 +396,8 @@ fn pull_straight(router: &mut Router<'_>, points: &[PathPoint]) -> Vec<PathPoint
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::model::CostGrid;
+    use super::*;
     use std::sync::Arc;
 
     /// A wall of solid tiles across the way.
@@ -432,16 +438,28 @@ mod tests {
         let result = route(&line, 0, &env, &PathSettings::default(), 0.0, f64::MAX);
         assert!(result.succeeded() && result.rerouted, "{}", result.failure);
         assert_eq!(result.points[0], line[0]);
-        assert!(result
-            .points
-            .iter()
-            .all(|p| !blocked_at(p.x.floor() as i32, p.y.floor() as i32, 0, &env, ObstaclePolicy::AvoidSolids, 0.0, f64::MAX)));
+        assert!(result.points.iter().all(|p| !blocked_at(
+            p.x.floor() as i32,
+            p.y.floor() as i32,
+            0,
+            &env,
+            ObstaclePolicy::AvoidSolids,
+            0.0,
+            f64::MAX
+        )));
     }
 
     #[test]
     fn a_blocked_end_fails_with_a_reason() {
         let line = resample(&[PathPoint::new(2.5, 0.5), PathPoint::new(10.5, 0.5)], 0.25);
-        let result = route(&line, 0, &environment(), &PathSettings::default(), 0.0, f64::MAX);
+        let result = route(
+            &line,
+            0,
+            &environment(),
+            &PathSettings::default(),
+            0.0,
+            f64::MAX,
+        );
         assert!(!result.succeeded());
         assert!(!result.failure.is_empty());
     }

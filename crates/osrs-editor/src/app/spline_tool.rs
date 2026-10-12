@@ -26,6 +26,8 @@ use std::collections::{HashMap, HashSet};
 const GRAB_DISTANCE: f32 = 0.9;
 /// Spacing of the polyline used for drawing and for walls.
 const STEP: f64 = 0.25;
+const FNV_OFFSET: u64 = 0xCBF2_9CE4_8422_2325;
+const FNV_PRIME: u64 = 0x0100_0000_01B3;
 
 #[derive(Debug, Default)]
 pub struct SplineState {
@@ -52,6 +54,28 @@ struct Preview {
 
 fn fnv(text: &str) -> u64 {
     terrain_path::fnv(text)
+}
+
+fn mix_u64(mut hash: u64, value: u64) -> u64 {
+    for byte in value.to_le_bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
+/// A stable signature of the nearby overlays that affect preservation, joining and topology.
+fn paint_signature(paints: &[TilePaint]) -> u64 {
+    let mut hash = mix_u64(FNV_OFFSET, paints.len() as u64);
+    for paint in paints {
+        hash = mix_u64(hash, paint.tile_x as i64 as u64);
+        hash = mix_u64(hash, paint.tile_y as i64 as u64);
+        hash = mix_u64(hash, u64::from(paint.plane));
+        hash = mix_u64(hash, u64::from(paint.overlay_id));
+        hash = mix_u64(hash, u64::from(paint.shape));
+        hash = mix_u64(hash, u64::from(paint.orientation));
+    }
+    hash
 }
 
 fn distance(a: (f32, f32), b: (f32, f32)) -> f32 {
@@ -99,7 +123,13 @@ impl PlanInput {
         let points = to_points(&self.points);
         match self.mode {
             PathMode::Terrain => {
-                let plan = PathPlanner.plan_stroke(&points, self.plane, &self.profile, &self.settings, &self.env);
+                let plan = PathPlanner.plan_stroke(
+                    &points,
+                    self.plane,
+                    &self.profile,
+                    &self.settings,
+                    &self.env,
+                );
                 Preview {
                     key: self.key,
                     paints: plan.paints,
@@ -151,10 +181,15 @@ impl EditorApp {
             .map(|(severity, code, message, count)| {
                 let text = match code {
                     "REROUTED" => "Went round obstacles".to_owned(),
-                    "ROUTE_BLOCKED" => "Could not route round the obstacles; it follows the line you drew".to_owned(),
+                    "ROUTE_BLOCKED" => {
+                        "Could not route round the obstacles; it follows the line you drew"
+                            .to_owned()
+                    }
                     "OUT_OF_BOUNDS" => "Part of the path is off the loaded map".to_owned(),
                     "OBSTACLE_CONFLICT" => "Crosses a solid object or a steep slope".to_owned(),
-                    "EXISTING_OVERLAY" => format!("Kept {count} tile(s) that already have a different overlay"),
+                    "EXISTING_OVERLAY" => {
+                        format!("Kept {count} tile(s) that already have a different overlay")
+                    }
                     "TOPOLOGY_SEAM" => format!("{count} seam(s) between shapes do not meet"),
                     "TOPOLOGY_COMPONENT" => "The path is in separate pieces".to_owned(),
                     _ => message,
@@ -227,18 +262,6 @@ impl EditorApp {
         }
         let settings = spline.planner.sanitized();
         let profile = self.path_profile(overlay.unwrap_or(1));
-        let key = fnv(&format!(
-            "{:?}|{:?}|{:?}|{:?}|{}|{}|{}|{}|{:?}",
-            self.spline.points,
-            settings,
-            profile,
-            spline.mode,
-            self.view_plane,
-            self.infos_version,
-            self.edited.len(),
-            spline.wall_thickness.to_bits() ^ spline.tower_size.to_bits(),
-            (spline.wall_towers, spline.snap_points),
-        ));
         let reach = (profile.base_width * settings.width_scale) as f32
             + settings.route_corridor as f32
             + settings.snap_radius as f32
@@ -248,6 +271,23 @@ impl EditorApp {
         } else {
             Vec::new()
         };
+        let existing_key = paint_signature(&existing);
+        let key = fnv(&format!(
+            "{:?}|{:?}|{:?}|{:?}|{}|{}|{}|{}|{}|{}|{}|{}|{:?}",
+            self.spline.points,
+            settings,
+            profile,
+            spline.mode,
+            self.view_plane,
+            self.infos_version,
+            self.stroke_counter,
+            self.history.len(),
+            self.redo_stack.len(),
+            existing_key,
+            spline.wall_thickness.to_bits(),
+            spline.tower_size.to_bits(),
+            (spline.wall_towers, spline.snap_points),
+        ));
         let grid = SceneGrid::new(self.infos.clone());
         let env = PathEnvironment {
             bounds: grid.bounds(),
@@ -273,25 +313,58 @@ impl EditorApp {
 
     /// Keep the preview in step with the points and options.
     pub(super) fn spline_update(&mut self) {
-        // A plan finished on its thread?
-        if let Some((key, receiver)) = &self.spline.job {
+        // Compute the current desired key before looking at an in-flight result. A completed job
+        // must never replace the preview if the points, settings or map changed while it ran.
+        let input = self.plan_input();
+        let desired_key = input.as_ref().map(|input| input.key);
+        if desired_key.is_none() {
+            self.spline.job = None;
+            self.spline.preview = None;
+            return;
+        }
+
+        if let Some((job_key, receiver)) = &self.spline.job {
             match receiver.try_recv() {
                 Ok(preview) => {
-                    let _ = key;
                     self.spline.job = None;
-                    self.spline.preview = Some(preview);
+                    if Some(preview.key) == desired_key {
+                        self.spline.preview = Some(preview);
+                        return;
+                    }
+                    // The job finished for an older state. Discard it and plan the newest state
+                    // below rather than flashing obsolete tiles for a frame.
+                    self.spline.preview = None;
                 }
-                Err(std::sync::mpsc::TryRecvError::Empty) => return,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    // Avoid displaying an obsolete preview while waiting for the worker. We wait
+                    // for the existing job instead of spawning one thread per drag frame.
+                    if Some(*job_key) != desired_key
+                        || self
+                            .spline
+                            .preview
+                            .as_ref()
+                            .is_some_and(|preview| Some(preview.key) != desired_key)
+                    {
+                        self.spline.preview = None;
+                    }
+                    return;
+                }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => self.spline.job = None,
             }
         }
-        let Some(input) = self.plan_input() else {
-            self.spline.preview = None;
+
+        let Some(input) = input else {
             return;
         };
-        if self.spline.preview.as_ref().is_some_and(|p| p.key == input.key) {
+        if self
+            .spline
+            .preview
+            .as_ref()
+            .is_some_and(|p| p.key == input.key)
+        {
             return;
         }
+        self.spline.preview = None;
         #[cfg(not(target_arch = "wasm32"))]
         {
             let (sender, receiver) = std::sync::mpsc::channel();
@@ -315,7 +388,12 @@ impl EditorApp {
         self.spline.job = None;
         match self.plan_input() {
             Some(input) => {
-                if self.spline.preview.as_ref().is_none_or(|p| p.key != input.key) {
+                if self
+                    .spline
+                    .preview
+                    .as_ref()
+                    .is_none_or(|p| p.key != input.key)
+                {
                     self.spline.preview = Some(input.make());
                 }
             }
@@ -346,7 +424,10 @@ impl EditorApp {
                 .as_ref()
                 .map_or("?".to_owned(), |(b, _)| b.to_string())
         ));
-        text.push_str(&format!("settings={:?}\nprofile={:?}\n", spline.planner, spline.profile));
+        text.push_str(&format!(
+            "settings={:?}\nprofile={:?}\n",
+            spline.planner, spline.profile
+        ));
         if let Some(preview) = &self.spline.preview {
             text.push_str(&format!(
                 "planned {} tiles, {} walls band tiles\n",
@@ -590,7 +671,7 @@ impl EditorApp {
         let overlay_color = self.prefs.colors.get(ColorKey::PathFill);
         let edge = Stroke::new(0.75, self.prefs.colors.get(ColorKey::PathEdge));
         if let Some(preview) = &self.spline.preview {
-            let mut tile_polygon = |tile: (i32, i32), shape: u8, rotation: u8| {
+            let tile_polygon = |tile: (i32, i32), shape: u8, rotation: u8| {
                 let Some(corners) = interact::tile_corners(&self.infos, tile, plane) else {
                     return;
                 };
@@ -614,7 +695,11 @@ impl EditorApp {
                         at(triangle[1][0], triangle[1][1]),
                         at(triangle[2][0], triangle[2][1]),
                     ) {
-                        painter.add(egui::Shape::convex_polygon(vec![a, b, c], overlay_color, edge));
+                        painter.add(egui::Shape::convex_polygon(
+                            vec![a, b, c],
+                            overlay_color,
+                            edge,
+                        ));
                     }
                 }
             };

@@ -40,17 +40,9 @@ impl BitMask {
         self.words.iter().all(|w| *w == 0)
     }
 
-    pub fn len(&self) -> usize {
-        self.bits
-    }
-
     /// The set bits, lowest first.
     pub fn iter(&self) -> impl Iterator<Item = usize> + '_ {
         (0..self.bits).filter(|i| self.get(*i))
-    }
-
-    pub fn words(&self) -> &[u64] {
-        &self.words
     }
 }
 
@@ -69,7 +61,9 @@ pub struct OverlayShapeAtlas {
 
 fn inside(point: [f64; 2], triangle: &[[f32; 2]; 3]) -> bool {
     let at = |i: usize| [f64::from(triangle[i][0]), f64::from(triangle[i][1])];
-    let side = |p: [f64; 2], a: [f64; 2], b: [f64; 2]| (p[0] - b[0]) * (a[1] - b[1]) - (a[0] - b[0]) * (p[1] - b[1]);
+    let side = |p: [f64; 2], a: [f64; 2], b: [f64; 2]| {
+        (p[0] - b[0]) * (a[1] - b[1]) - (a[0] - b[0]) * (p[1] - b[1])
+    };
     let d1 = side(point, at(0), at(1));
     let d2 = side(point, at(1), at(2));
     let d3 = side(point, at(2), at(0));
@@ -132,10 +126,11 @@ impl OverlayShapeAtlas {
                     }
                 }
                 let edges = [NORTH, EAST, SOUTH, WEST].map(|d| edge_of(&mask, resolution, d));
-                let portals = edges
-                    .iter()
-                    .enumerate()
-                    .fold(0, |acc, (i, bits)| if *bits != 0 { acc | 1 << i } else { acc });
+                let portals =
+                    edges.iter().enumerate().fold(
+                        0,
+                        |acc, (i, bits)| if *bits != 0 { acc | 1 << i } else { acc },
+                    );
                 entries.push(Entry {
                     mask,
                     portals,

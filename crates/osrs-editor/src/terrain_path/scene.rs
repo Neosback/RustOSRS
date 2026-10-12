@@ -35,7 +35,8 @@ impl RegionGrid {
         let (base_x, base_y) = (info.region.x * 64, info.region.y * 64);
         for lx in 0..SIZE {
             for ly in 0..SIZE {
-                let corner = |dx: usize, dy: usize| info.corner_height(usize::from(plane), lx + dx, ly + dy);
+                let corner =
+                    |dx: usize, dy: usize| info.corner_height(usize::from(plane), lx + dx, ly + dy);
                 let heights = [corner(0, 0), corner(1, 0), corner(1, 1), corner(0, 1)];
                 let (low, high) = heights
                     .iter()
@@ -77,7 +78,11 @@ impl RegionGrid {
                 }
                 _ => {
                     let footprint = loc.plan.rotated_definition_footprint;
-                    let mark_as = if solid { Occupancy::Solid } else { Occupancy::Decoration };
+                    let mark_as = if solid {
+                        Occupancy::Solid
+                    } else {
+                        Occupancy::Decoration
+                    };
                     for dx in 0..i32::from(footprint.width) {
                         for dy in 0..i32::from(footprint.depth) {
                             let (x, y) = (lx + dx, ly + dy);
@@ -143,15 +148,14 @@ impl SceneGrid {
             .entry((key.0, key.1, plane))
             .or_insert_with(|| Arc::new(RegionGrid::build(info, plane)))
             .clone();
-        Some((
-            grid,
-            x.rem_euclid(64) as usize,
-            y.rem_euclid(64) as usize,
-        ))
+        Some((grid, x.rem_euclid(64) as usize, y.rem_euclid(64) as usize))
     }
 
     fn exists(&self, x: i32, y: i32, plane: u8) -> bool {
-        plane < 4 && self.infos.contains_key(&(x.div_euclid(64), y.div_euclid(64)))
+        plane < 4
+            && self
+                .infos
+                .contains_key(&(x.div_euclid(64), y.div_euclid(64)))
     }
 
     fn wall_blocks(&self, x: i32, y: i32, dx: i32, dy: i32, plane: u8) -> bool {
@@ -194,7 +198,11 @@ impl CostGrid for SceneGrid {
     }
 
     fn traversal_cost(&self, x: i32, y: i32, plane: u8) -> f64 {
-        if self.exists(x, y, plane) { 1.0 } else { f64::INFINITY }
+        if self.exists(x, y, plane) {
+            1.0
+        } else {
+            f64::INFINITY
+        }
     }
 
     fn slope(&self, x: i32, y: i32, plane: u8) -> f64 {

@@ -7,7 +7,7 @@
 
 use super::EditorApp;
 use crate::heights::{self, encode_height};
-use crate::paint::{Brush, Fill, TileValues, Tool};
+use crate::paint::{Brush, TileValues, Tool};
 use eframe::egui;
 use osrs_core::coords::RegionCoord;
 use osrs_world::{LocEdit, LocSpec, TileEdit};

@@ -44,6 +44,7 @@ impl Cell {
 type CellKey = (i32, i32, u8, String);
 
 /// A tile that is part of the plan, with the cell that won it.
+#[derive(Clone)]
 struct Chosen {
     key: CellKey,
     cell_index: usize,
@@ -76,6 +77,182 @@ fn tile_order(tile: &Tile) -> (u8, i32, i32) {
 /// Two edge masks that both reach their side but never at the same place.
 fn seam_mismatch(a: u32, b: u32) -> bool {
     a != 0 && b != 0 && a & b == 0
+}
+
+/// Label cardinally connected selected tiles, keeping profiles separate.
+fn coverage_component_labels(
+    strong: &BTreeMap<(u8, i32, i32), Chosen>,
+    weak: &BTreeMap<(u8, i32, i32), Chosen>,
+) -> HashMap<Tile, usize> {
+    let mut by_tile: HashMap<Tile, String> = HashMap::new();
+    for (key, chosen) in strong.iter().chain(weak.iter()) {
+        by_tile.insert((key.1, key.2, key.0), chosen.key.3.clone());
+    }
+    let mut order: Vec<Tile> = by_tile.keys().copied().collect();
+    order.sort_by_key(tile_order);
+    let mut labels = HashMap::new();
+    let mut component = 0;
+    for seed in order {
+        if labels.contains_key(&seed) {
+            continue;
+        }
+        let profile = by_tile[&seed].clone();
+        let mut queue = VecDeque::from([seed]);
+        labels.insert(seed, component);
+        while let Some(current) = queue.pop_front() {
+            for side in SIDES {
+                let next = side_step(current, side);
+                if labels.contains_key(&next)
+                    || by_tile
+                        .get(&next)
+                        .is_none_or(|candidate| candidate != &profile)
+                {
+                    continue;
+                }
+                labels.insert(next, component);
+                queue.push_back(next);
+            }
+        }
+        component += 1;
+    }
+    labels
+}
+
+/// Restore only low-coverage tiles that actually join two otherwise separate generated pieces.
+/// This runs after the normal Terraini coverage rule, so already-connected parity cases are left
+/// untouched.
+fn repair_coverage_continuity(
+    strong: &BTreeMap<(u8, i32, i32), Chosen>,
+    weak: &mut BTreeMap<(u8, i32, i32), Chosen>,
+    candidates: &BTreeMap<(u8, i32, i32), Chosen>,
+) -> usize {
+    let mut added = 0;
+    loop {
+        let labels = coverage_component_labels(strong, weak);
+        let mut best: Option<((u8, i32, i32), Chosen)> = None;
+        for (key, chosen) in candidates {
+            if strong.contains_key(key) || weak.contains_key(key) {
+                continue;
+            }
+            let tile = (key.1, key.2, key.0);
+            let mut components = Vec::new();
+            for side in SIDES {
+                let next = side_step(tile, side);
+                let next_key = tile_order(&next);
+                let neighbour = strong.get(&next_key).or_else(|| weak.get(&next_key));
+                let Some(neighbour) = neighbour else {
+                    continue;
+                };
+                if neighbour.key.3 != chosen.key.3 {
+                    continue;
+                }
+                if let Some(component) = labels.get(&next)
+                    && !components.contains(component)
+                {
+                    components.push(*component);
+                }
+            }
+            if components.len() < 2 {
+                continue;
+            }
+            let replace = best.as_ref().is_none_or(|(best_key, best_chosen)| {
+                chosen.coverage > best_chosen.coverage
+                    || (chosen.coverage == best_chosen.coverage && key < best_key)
+            });
+            if replace {
+                best = Some((*key, chosen.clone()));
+            }
+        }
+        let Some((key, chosen)) = best else {
+            break;
+        };
+        weak.insert(key, chosen);
+        added += 1;
+    }
+    added
+}
+
+fn shape_component_labels(
+    merged: &[(Tile, Chosen)],
+    index_of: &HashMap<Tile, usize>,
+    shapes: &[u32],
+    atlas: &OverlayShapeAtlas,
+) -> Vec<usize> {
+    let mut labels = vec![usize::MAX; merged.len()];
+    let mut component = 0;
+    for seed in 0..merged.len() {
+        if labels[seed] != usize::MAX {
+            continue;
+        }
+        labels[seed] = component;
+        let mut queue = VecDeque::from([seed]);
+        while let Some(current) = queue.pop_front() {
+            let (tile, chosen) = &merged[current];
+            for side in SIDES {
+                let next = side_step(*tile, side);
+                let Some(&neighbour) = index_of.get(&next) else {
+                    continue;
+                };
+                if labels[neighbour] != usize::MAX || merged[neighbour].1.key.3 != chosen.key.3 {
+                    continue;
+                }
+                let mine = atlas.edge_mask(
+                    (shapes[current] >> 2) as u8,
+                    (shapes[current] & 3) as u8,
+                    side,
+                );
+                let theirs = atlas.edge_mask(
+                    (shapes[neighbour] >> 2) as u8,
+                    (shapes[neighbour] & 3) as u8,
+                    opposite(side),
+                );
+                if mine & theirs != 0 {
+                    labels[neighbour] = component;
+                    queue.push_back(neighbour);
+                }
+            }
+        }
+        component += 1;
+    }
+    labels
+}
+
+/// If side-adjacent generated tiles still belong to different shape components after normal seam
+/// repair, make the boundary tiles whole. Distant components remain warnings rather than being
+/// joined across empty or obstacle-masked space.
+fn repair_shape_continuity(
+    merged: &[(Tile, Chosen)],
+    index_of: &HashMap<Tile, usize>,
+    shapes: &mut [u32],
+    atlas: &OverlayShapeAtlas,
+) -> usize {
+    let mut repaired = 0;
+    loop {
+        let labels = shape_component_labels(merged, index_of, shapes, atlas);
+        let mut bridge = None;
+        'outer: for (i, (tile, chosen)) in merged.iter().enumerate() {
+            for side in [EAST, SOUTH] {
+                let next = side_step(*tile, side);
+                let Some(&j) = index_of.get(&next) else {
+                    continue;
+                };
+                if merged[j].1.key.3 == chosen.key.3 && labels[i] != labels[j] {
+                    bridge = Some((i, j));
+                    break 'outer;
+                }
+            }
+        }
+        let Some((a, b)) = bridge else {
+            break;
+        };
+        if shapes[a] == 0 && shapes[b] == 0 {
+            break;
+        }
+        shapes[a] = 0;
+        shapes[b] = 0;
+        repaired += 1;
+    }
+    repaired
 }
 
 fn length_of(points: &[PathPoint]) -> f64 {
@@ -175,9 +352,8 @@ fn snap_target(
                 f64::from(paint.tile_y) + (cy as f64 + 0.5) / resolution as f64,
             );
             let distance = point.distance_to(sample);
-            let earlier = best_paint.is_none_or(|b| {
-                (paint.tile_x, paint.tile_y) < (b.tile_x, b.tile_y)
-            });
+            let earlier =
+                best_paint.is_none_or(|b| (paint.tile_x, paint.tile_y) < (b.tile_x, b.tile_y));
             if distance < best - 1.0e-9 || (distance == best && earlier) {
                 best = distance;
                 best_paint = Some(paint);
@@ -186,6 +362,61 @@ fn snap_target(
         }
     }
     best_point
+}
+
+/// In Network mode, find the best interior point from which to branch onto an existing
+/// compatible path. Endpoint snapping is handled separately so this connector does not bend the
+/// authored centre line just to create a network junction.
+fn network_branch(
+    line: &[PathPoint],
+    plane: u8,
+    profile: &PathProfile,
+    settings: &PathSettings,
+    existing: &[TilePaint],
+    atlas: &OverlayShapeAtlas,
+) -> Option<Vec<PathPoint>> {
+    if settings.auto_connect_policy != AutoConnectPolicy::Network
+        || !profile.auto_connect
+        || settings.snap_radius <= 0.0
+        || line.len() < 3
+        || existing.is_empty()
+    {
+        return None;
+    }
+    let first = line[0];
+    let last = line[line.len() - 1];
+    let endpoint_guard = settings.snap_radius.max(profile.base_width * 0.5);
+    let mut best: Option<(f64, usize, PathPoint)> = None;
+    for (index, point) in line
+        .iter()
+        .copied()
+        .enumerate()
+        .skip(1)
+        .take(line.len() - 2)
+    {
+        if point.distance_to(first) <= endpoint_guard || point.distance_to(last) <= endpoint_guard {
+            continue;
+        }
+        let Some(target) =
+            snap_target(point, plane, profile, settings.snap_radius, existing, atlas)
+        else {
+            continue;
+        };
+        let distance = point.distance_to(target);
+        // If the line already touches the existing path there is nothing useful to branch.
+        if distance <= 0.35 {
+            continue;
+        }
+        let replace = best.is_none_or(|(best_distance, best_index, _)| {
+            distance < best_distance - 1.0e-9
+                || ((distance - best_distance).abs() <= 1.0e-9 && index < best_index)
+        });
+        if replace {
+            best = Some((distance, index, target));
+        }
+    }
+    let (_, index, target) = best?;
+    Some(resample(&[line[index], target], settings.sample_spacing))
 }
 
 /// How the overlay of one tile is chosen among the profile's variants: a patch of the path (a
@@ -226,7 +457,11 @@ impl PathPlanner {
             return PathPlan::empty();
         }
         // Ids come from the stroke itself, so the same stroke plans the same way every time.
-        let signature = format!("{points:?}:{plane}:{}:{}", settings.seed, profile.parameter_signature());
+        let signature = format!(
+            "{points:?}:{plane}:{}:{}",
+            settings.seed,
+            profile.parameter_signature()
+        );
         let id = |salt: &str| fnv(&format!("{signature}:{salt}"));
         let network = stroke_network(
             points,
@@ -250,8 +485,11 @@ impl PathPlanner {
         let samples = settings.supersample as usize;
         let atlas = OverlayShapeAtlas::new(samples);
         let nodes: HashMap<u64, &PathNode> = network.nodes.iter().map(|n| (n.id, n)).collect();
-        let profiles: HashMap<&str, &PathProfile> =
-            network.profiles.iter().map(|p| (p.id.as_str(), p)).collect();
+        let profiles: HashMap<&str, &PathProfile> = network
+            .profiles
+            .iter()
+            .map(|p| (p.id.as_str(), p))
+            .collect();
         let mut cells: BTreeMap<CellKey, Cell> = BTreeMap::new();
         let mut warnings: Vec<PathWarning> = Vec::new();
         let mut lines: Vec<Vec<PathPoint>> = Vec::new();
@@ -283,11 +521,15 @@ impl PathPlanner {
                 warnings.push(PathWarning::general(
                     Severity::Warning,
                     "OUT_OF_BOUNDS",
-                    format!("Part of edge {} lies outside the editable map bounds", edge.id),
+                    format!(
+                        "Part of edge {} lies outside the editable map bounds",
+                        edge.id
+                    ),
                 ));
             }
             let plane = start.plane;
-            let mut line = smooth_and_resample(&drawn, settings.smoothness, settings.sample_spacing);
+            let mut line =
+                smooth_and_resample(&drawn, settings.smoothness, settings.sample_spacing);
             // Join each end onto a path of the same overlay close by.
             if profile.auto_connect
                 && settings.auto_connect_policy != AutoConnectPolicy::Off
@@ -295,8 +537,22 @@ impl PathPlanner {
                 && !env.existing_paints.is_empty()
                 && !line.is_empty()
             {
-                let first = snap_target(line[0], plane, profile, settings.snap_radius, &env.existing_paints, &atlas);
-                let last = snap_target(line[line.len() - 1], plane, profile, settings.snap_radius, &env.existing_paints, &atlas);
+                let first = snap_target(
+                    line[0],
+                    plane,
+                    profile,
+                    settings.snap_radius,
+                    &env.existing_paints,
+                    &atlas,
+                );
+                let last = snap_target(
+                    line[line.len() - 1],
+                    plane,
+                    profile,
+                    settings.snap_radius,
+                    &env.existing_paints,
+                    &atlas,
+                );
                 let mut joined = line.clone();
                 if let Some(first) = first
                     && first.distance_to(joined[0]) > 1.0e-6
@@ -361,7 +617,10 @@ impl PathPlanner {
                 warnings.push(PathWarning::general(
                     Severity::Warning,
                     "OBSTACLE_CONFLICT",
-                    format!("Edge {} intersects a solid object or excessive slope", edge.id),
+                    format!(
+                        "Edge {} intersects a solid object or excessive slope",
+                        edge.id
+                    ),
                 ));
             }
 
@@ -383,7 +642,8 @@ impl PathPlanner {
                         wandered.push(line[i]);
                     } else {
                         let fade = (along.min(total - along) / (scale * 0.5).max(1.0)).min(1.0);
-                        let offset = noise.fbm(along / scale, 0.371, profile.noise_octaves) * wander * fade;
+                        let offset =
+                            noise.fbm(along / scale, 0.371, profile.noise_octaves) * wander * fade;
                         wandered.push(PathPoint::new(
                             line[i].x - ty / length * offset,
                             line[i].y + tx / length * offset,
@@ -392,6 +652,35 @@ impl PathPlanner {
                 }
                 wandered.push(line[line.len() - 1]);
                 line = resample(&wandered, settings.sample_spacing);
+            }
+
+            let mut branch = network_branch(
+                &line,
+                plane,
+                profile,
+                settings,
+                &env.existing_paints,
+                &atlas,
+            );
+            if let Some(connector) = &mut branch
+                && edge.auto_route
+                && avoids
+                && profile.reroute
+            {
+                let routed = route(connector, plane, env, settings, clearance, max_slope);
+                if routed.succeeded() {
+                    *connector = routed.points;
+                } else {
+                    warnings.push(PathWarning::general(
+                        Severity::Warning,
+                        "NETWORK_CONNECT_BLOCKED",
+                        format!(
+                            "Edge {} could not connect to the nearby path: {}",
+                            edge.id, routed.failure
+                        ),
+                    ));
+                    branch = None;
+                }
             }
 
             lines.push(line.clone());
@@ -409,6 +698,26 @@ impl PathPlanner {
                 mask_blocked,
                 &mut cells,
             );
+            if let Some(connector) = branch {
+                warnings.push(PathWarning::general(
+                    Severity::Info,
+                    "NETWORK_CONNECTED",
+                    format!("Edge {} joined a nearby path from its interior", edge.id),
+                ));
+                lines.push(connector.clone());
+                stamp(
+                    &connector,
+                    plane,
+                    profile,
+                    settings,
+                    env,
+                    edge_seed ^ 0x004E_4554_574F_524B_i64,
+                    base_width,
+                    base_width,
+                    mask_blocked,
+                    &mut cells,
+                );
+            }
         }
 
         // A junction of three or more edges of one profile gets a round pad.
@@ -427,23 +736,36 @@ impl PathPlanner {
             if joined.len() < 3 {
                 continue;
             }
-            let (Some(node), Some(profile)) = (nodes.get(node_id), profiles.get(profile_id.as_str())) else {
+            let (Some(node), Some(profile)) =
+                (nodes.get(node_id), profiles.get(profile_id.as_str()))
+            else {
                 continue;
             };
             let radius = joined
                 .iter()
-                .map(|e| profile.base_width * e.width_scale * node.width_scale * settings.width_scale)
+                .map(|e| {
+                    profile.base_width * e.width_scale * node.width_scale * settings.width_scale
+                })
                 .fold(0.0, f64::max)
                 * 0.68
                 + 0.9;
-            let mask_blocked = masks_overlap_policy(settings) && joined.iter().any(|e| e.auto_route);
+            let mask_blocked =
+                masks_overlap_policy(settings) && joined.iter().any(|e| e.auto_route);
             let centre = node.point();
             let max_slope = profile.maximum_slope.min(settings.maximum_slope);
             for ty in (centre.y - radius).floor() as i32..(centre.y + radius).ceil() as i32 {
                 for tx in (centre.x - radius).floor() as i32..(centre.x + radius).ceil() as i32 {
                     if !env.bounds.contains(tx, ty)
                         || (mask_blocked
-                            && blocked_at(tx, ty, node.plane, env, settings.obstacle_policy, 0.0, max_slope))
+                            && blocked_at(
+                                tx,
+                                ty,
+                                node.plane,
+                                env,
+                                settings.obstacle_policy,
+                                0.0,
+                                max_slope,
+                            ))
                     {
                         continue;
                     }
@@ -510,9 +832,14 @@ fn stamp(
         let width = lerp(start_width, end_width, t0).max(lerp(start_width, end_width, t1))
             * (1.0 + profile.width_variation);
         let falloff = profile.edge_falloff * (0.2 + width * 0.25).min(0.75);
-        let reach = width * 0.5 + profile.edge_noise * settings.noise_strength + falloff * 0.5 + 0.125;
-        let start_cap = cap_reaches(start_cap, a, b, reach).then_some(start_cap).flatten();
-        let end_cap = cap_reaches(end_cap, a, b, reach).then_some(end_cap).flatten();
+        let reach =
+            width * 0.5 + profile.edge_noise * settings.noise_strength + falloff * 0.5 + 0.125;
+        let start_cap = cap_reaches(start_cap, a, b, reach)
+            .then_some(start_cap)
+            .flatten();
+        let end_cap = cap_reaches(end_cap, a, b, reach)
+            .then_some(end_cap)
+            .flatten();
         let (min_x, min_y) = (
             (a.x.min(b.x) - reach).floor() as i32,
             (a.y.min(b.y) - reach).floor() as i32,
@@ -564,10 +891,18 @@ fn stamp(
                         let local_width = lerp(start_width, end_width, along / total)
                             * (1.0
                                 + profile.width_variation
-                                    * width_noise.fbm(along / width_noise_scale, 0.619, profile.noise_octaves));
+                                    * width_noise.fbm(
+                                        along / width_noise_scale,
+                                        0.619,
+                                        profile.noise_octaves,
+                                    ));
                         let rough = profile.edge_noise
                             * settings.noise_strength
-                            * edge_noise.fbm(px / edge_noise_scale, py / edge_noise_scale, profile.noise_octaves);
+                            * edge_noise.fbm(
+                                px / edge_noise_scale,
+                                py / edge_noise_scale,
+                                profile.noise_octaves,
+                            );
                         let radius = (local_width * 0.5 + rough).max(0.05);
                         let band = profile.edge_falloff * (0.2 + local_width * 0.25).min(0.75);
                         let inside = if band < 1.0e-9 {
@@ -582,7 +917,11 @@ fn stamp(
                                     false
                                 } else {
                                     let scale = (edge_noise_scale * 1.5).max(0.75);
-                                    let noise = falloff_noise.fbm(px / scale, py / scale, profile.noise_octaves);
+                                    let noise = falloff_noise.fbm(
+                                        px / scale,
+                                        py / scale,
+                                        profile.noise_octaves,
+                                    );
                                     let strength = settings.noise_strength.min(1.0);
                                     (outer - distance) / band >= 0.5 + noise * 0.3 * strength
                                 }
@@ -673,6 +1012,9 @@ fn finish(
         target.insert(tile_order(tile), chosen);
     }
     // A thinly covered tile only counts when three of its four sides are path (it fills a notch).
+    // Keep the discarded candidates around so a single low-coverage bridge can repair an actual
+    // break without changing normal connected Terraini output.
+    let continuity_candidates = weak.clone();
     let strong_keys: HashSet<Tile> = strong.keys().map(|k| (k.1, k.2, k.0)).collect();
     weak.retain(|k, _| {
         let tile = (k.1, k.2, k.0);
@@ -682,6 +1024,9 @@ fn finish(
             .count()
             >= 3
     });
+    if settings.repair_continuity {
+        repair_coverage_continuity(&strong, &mut weak, &continuity_candidates);
+    }
     // The plan's tiles, in plane, x, y order.
     let mut merged: Vec<(Tile, Chosen)> = Vec::new();
     for tile in &order {
@@ -690,7 +1035,11 @@ fn finish(
             merged.push((*tile, chosen));
         }
     }
-    let index_of: HashMap<Tile, usize> = merged.iter().enumerate().map(|(i, (t, _))| (*t, i)).collect();
+    let index_of: HashMap<Tile, usize> = merged
+        .iter()
+        .enumerate()
+        .map(|(i, (t, _))| (*t, i))
+        .collect();
     let cell_of = |chosen: &Chosen| &cell_list[chosen.cell_index].1;
 
     // Does the neighbour count as path for this profile?
@@ -770,9 +1119,15 @@ fn finish(
         for side in SIDES {
             let next = side_step(*tile, side);
             let neighbour = index_of.get(&next).copied();
-            let paint = if neighbour.is_none() { existing.get(&next) } else { None };
+            let paint = if neighbour.is_none() {
+                existing.get(&next)
+            } else {
+                None
+            };
             let counts_here = match (neighbour, paint) {
-                (Some(j), _) => profile.compatible(cell_of(&merged[j].1).profile.primary_overlay_id),
+                (Some(j), _) => {
+                    profile.compatible(cell_of(&merged[j].1).profile.primary_overlay_id)
+                }
                 (None, Some(p)) => profile.compatible(p.overlay_id),
                 _ => false,
             };
@@ -781,7 +1136,11 @@ fn finish(
             }
             let mine = atlas.edge_mask((shapes[i] >> 2) as u8, (shapes[i] & 3) as u8, side);
             let theirs = match (neighbour, paint) {
-                (Some(j), _) => atlas.edge_mask((shapes[j] >> 2) as u8, (shapes[j] & 3) as u8, opposite(side)),
+                (Some(j), _) => atlas.edge_mask(
+                    (shapes[j] >> 2) as u8,
+                    (shapes[j] & 3) as u8,
+                    opposite(side),
+                ),
                 (None, Some(p)) => atlas.edge_mask(p.shape, p.orientation, opposite(side)),
                 _ => 0,
             };
@@ -804,6 +1163,9 @@ fn finish(
     }
     for i in whole {
         shapes[i] = 0;
+    }
+    if settings.repair_continuity {
+        repair_shape_continuity(&merged, &index_of, &mut shapes, atlas);
     }
 
     // The paints.
@@ -828,7 +1190,12 @@ fn finish(
         });
     }
     paints.sort_by(|a, b| {
-        (a.plane, a.tile_x, a.tile_y, &a.profile_id).cmp(&(b.plane, b.tile_x, b.tile_y, &b.profile_id))
+        (a.plane, a.tile_x, a.tile_y, &a.profile_id).cmp(&(
+            b.plane,
+            b.tile_x,
+            b.tile_y,
+            &b.profile_id,
+        ))
     });
     check_topology(&paints, atlas, &mut warnings);
 
@@ -851,7 +1218,11 @@ fn finish(
 }
 
 /// Warn about seams that do not line up and pieces that are not joined to the rest.
-fn check_topology(paints: &[TilePaint], atlas: &OverlayShapeAtlas, warnings: &mut Vec<PathWarning>) {
+fn check_topology(
+    paints: &[TilePaint],
+    atlas: &OverlayShapeAtlas,
+    warnings: &mut Vec<PathWarning>,
+) {
     let by_tile: HashMap<Tile, &TilePaint> = paints
         .iter()
         .map(|p| ((p.tile_x, p.tile_y, p.plane), p))
@@ -939,4 +1310,132 @@ pub fn fnv(text: &str) -> u64 {
 /// into one number; ids here are that number).
 fn id_mix(id: u64) -> i64 {
     id as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn existing_vertical_path() -> Vec<TilePaint> {
+        (9..=12)
+            .map(|y| TilePaint::new(10, y, 0, 5, 0, 0))
+            .collect()
+    }
+
+    #[test]
+    fn continuity_repair_promotes_a_single_weak_cardinal_bridge() {
+        let chosen = |x: i32, y: i32, coverage: f64| Chosen {
+            key: (x, y, 0, "p".to_owned()),
+            cell_index: 0,
+            coverage,
+        };
+        let mut strong = BTreeMap::new();
+        strong.insert((0, 0, 0), chosen(0, 0, 1.0));
+        strong.insert((0, 1, 1), chosen(1, 1, 1.0));
+        let weak = BTreeMap::new();
+        let mut candidates = BTreeMap::new();
+        candidates.insert((0, 1, 0), chosen(1, 0, 0.08));
+        candidates.insert((0, 0, 1), chosen(0, 1, 0.06));
+
+        let mut repaired = weak;
+        assert_eq!(
+            repair_coverage_continuity(&strong, &mut repaired, &candidates),
+            1
+        );
+        assert!(repaired.contains_key(&(0, 1, 0)));
+        let labels = coverage_component_labels(&strong, &repaired);
+        let unique: HashSet<_> = labels.values().copied().collect();
+        assert_eq!(unique.len(), 1);
+    }
+
+    #[test]
+    fn shape_continuity_repair_joins_side_adjacent_disconnected_shapes() {
+        let atlas = OverlayShapeAtlas::new(8);
+        let mut pair = None;
+        'find: for a_shape in 0..12_u8 {
+            for a_orientation in 0..4_u8 {
+                for b_shape in 0..12_u8 {
+                    for b_orientation in 0..4_u8 {
+                        if atlas.edge_mask(a_shape, a_orientation, EAST)
+                            & atlas.edge_mask(b_shape, b_orientation, WEST)
+                            == 0
+                        {
+                            pair = Some((a_shape, a_orientation, b_shape, b_orientation));
+                            break 'find;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            pair.is_some(),
+            "the atlas should contain a disconnected east/west shape pair"
+        );
+        let (a_shape, a_orientation, b_shape, b_orientation) = pair.unwrap_or_default();
+        let chosen = |x: i32| Chosen {
+            key: (x, 0, 0, "p".to_owned()),
+            cell_index: 0,
+            coverage: 1.0,
+        };
+        let merged = vec![((0, 0, 0), chosen(0)), ((1, 0, 0), chosen(1))];
+        let index_of = HashMap::from([((0, 0, 0), 0), ((1, 0, 0), 1)]);
+        let mut shapes = vec![
+            (u32::from(a_shape) << 2) | u32::from(a_orientation),
+            (u32::from(b_shape) << 2) | u32::from(b_orientation),
+        ];
+        let before = shape_component_labels(&merged, &index_of, &shapes, &atlas);
+        assert_ne!(before[0], before[1]);
+        assert_eq!(
+            repair_shape_continuity(&merged, &index_of, &mut shapes, &atlas),
+            1
+        );
+        let after = shape_component_labels(&merged, &index_of, &shapes, &atlas);
+        assert_eq!(after[0], after[1]);
+    }
+
+    #[test]
+    fn network_policy_adds_an_interior_connector_without_bending_the_main_line() {
+        let profile = PathProfile::new("default", "Default path", 5).sanitized();
+        let env = PathEnvironment {
+            bounds: TileBounds::new(0, 0, 24, 20),
+            cost_grid: Arc::new(OpenGround),
+            existing_paints: existing_vertical_path(),
+        };
+        let points = [PathPoint::new(2.5, 5.5), PathPoint::new(18.5, 5.5)];
+        let endpoints = PathSettings {
+            smoothness: 0.0,
+            noise_strength: 0.0,
+            snap_radius: 4.0,
+            auto_connect_policy: AutoConnectPolicy::Endpoints,
+            ..PathSettings::default()
+        };
+        let network = PathSettings {
+            auto_connect_policy: AutoConnectPolicy::Network,
+            ..endpoints
+        };
+
+        let endpoint_plan = PathPlanner.plan_stroke(&points, 0, &profile, &endpoints, &env);
+        let network_plan = PathPlanner.plan_stroke(&points, 0, &profile, &network, &env);
+
+        assert_eq!(endpoint_plan.lines.len(), 1);
+        assert_eq!(network_plan.lines.len(), 2);
+        assert_eq!(network_plan.lines[0][0], endpoint_plan.lines[0][0]);
+        assert_eq!(
+            network_plan.lines[0][network_plan.lines[0].len() - 1],
+            endpoint_plan.lines[0][endpoint_plan.lines[0].len() - 1]
+        );
+        assert!(
+            network_plan
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "NETWORK_CONNECTED")
+        );
+        assert!(
+            network_plan
+                .paints
+                .iter()
+                .any(|paint| paint.tile_x == 10 && paint.tile_y >= 7)
+        );
+    }
 }
