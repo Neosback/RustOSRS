@@ -29,3 +29,5 @@ mod geometry_regression;
 mod golden;
 #[cfg(test)]
 mod network_regression;
+#[cfg(test)]
+mod stress_regression;
