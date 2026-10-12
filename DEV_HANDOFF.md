@@ -56,6 +56,8 @@ The dependency direction is intentional. `osrs-edit` may currently depend only o
 
 ECS, renderer state, meshes, GPU resources, and scene-worker results must never become the source of truth for editable map state. They are projections/caches that can be regenerated from authoritative semantic state.
 
+`MapDocument` is now the first authoritative, headless editable-map state container. It owns semantic terrain, explicit height vertices, and exact object placements without depending on renderer/UI/cache/runtime layers.
+
 ### Coordinates and planes
 
 Reuse the semantic coordinate and plane types already in `osrs-core`. Do not collapse world/source coordinates, storage planes, render levels, collision planes, or renderer-local positions into raw tuples.
@@ -70,13 +72,23 @@ Terrain heights use a separate `HeightVertexCoord`. Tile attributes and terrain 
 
 Overlay shape is validated as `0..=11` and overlay rotation as `0..=3` at construction instead of silently normalizing invalid values later.
 
+`MapDocument` stores terrain sparsely. A missing terrain entry is semantically `TerrainTile::default()`. Applying a patch that returns a tile to its semantic default removes the sparse entry.
+
+### Height values
+
+Height vertices are explicit authoritative values. A missing height vertex is not treated as height zero. `SetHeight` therefore requires the addressed height vertex to exist and its `before` value to match current state.
+
+This distinction prevents an absent source height from being silently conflated with a legitimate numeric height.
+
 ### Object placements
 
 Semantic object placements use validated object kind/orientation values and `ObjectId` plus `MapPosition`. Raw `(u8, i32, i32)` style infrastructure DTOs may remain at adapter boundaries but should not become the authoritative editor model.
 
+`MapDocument` stores exact object placements. `AddObject` requires the placement to be absent; `RemoveObject` requires it to be present.
+
 ### Patch and transaction model
 
-The edit domain now uses explicit reversible patch primitives rather than command objects that mutate state while discovering undo information.
+The edit domain uses explicit reversible patch primitives rather than command objects that mutate state while discovering undo information.
 
 ```rust
 MapPatch
@@ -92,7 +104,23 @@ MapOp
 
 `MapPatch::new` derives the union of semantic change impact from its operations so callers cannot construct a patch with stale or missing invalidation metadata. `MapPatch::inverse` reverses operation order and inverts each operation so dependent multi-operation transactions can be undone exactly.
 
-No patch-application engine exists yet. A future `MapDocument` should validate a complete patch against authoritative state and apply it atomically. One user gesture should remain one logical history operation.
+`MapDocument::validate_patch` simulates only entries touched by the patch. Validation sees the effects of earlier operations in the same patch, but does not mutate authoritative state.
+
+`MapDocument::apply_patch` validates the complete patch first. Only after every operation succeeds does it mutate authoritative state. A rejected operation at any index leaves the real document unchanged.
+
+This preserves the intended rule that one user gesture can become one atomic logical history operation.
+
+### Patch validation errors
+
+`PatchApplyError` records the failing operation index and semantic reason. Current failure modes cover:
+
+- terrain `before` mismatch
+- missing height vertex
+- height `before` mismatch
+- duplicate object add
+- missing object remove
+
+This keeps validation failures deterministic and testable without leaking renderer/UI concerns into the domain.
 
 ### Change impact
 
@@ -129,11 +157,19 @@ Purpose: establish the first additive, headless edit-domain boundary without cha
 - Added reversible `MapOp` variants for terrain, height, and object edits.
 - Added `MapPatch` with private derived impact metadata.
 - Added exact patch inversion with reverse operation ordering.
+- Added authoritative `MapDocument` terrain/height/object storage and query methods.
+- Added `PatchApplyError` with operation-indexed validation failures.
+- Added whole-patch validation that simulates prior operations without mutating authoritative state.
+- Added atomic patch application after complete validation.
+- Added tests proving rejected late operations leave `MapDocument` unchanged.
+- Added tests proving dependent operations in one patch validate sequentially.
+- Added tests proving patch + inverse restores exact document state.
+- Added tests for missing heights and duplicate object adds.
 - Added focused unit tests for impact union, no-op impact, flag collision impact, and exact inverse round trips.
 - Added focused unit tests around semantic validation and tile-vs-height-vertex separation.
 - Regenerated the workspace lockfile after introducing `osrs-edit`.
 - Removed the temporary lockfile-regeneration workflow after use.
-- Added this living `DEV_HANDOFF.md`.
+- Added and maintained this living `DEV_HANDOFF.md`.
 
 ### Current files in `osrs-edit`
 
@@ -141,6 +177,7 @@ Purpose: establish the first additive, headless edit-domain boundary without cha
 crates/osrs-edit/
   Cargo.toml
   src/
+    document.rs
     lib.rs
     object.rs
     patch.rs
@@ -152,18 +189,23 @@ No renderer, egui, cache-codec, scene-worker, or runtime dependencies belong in 
 
 ## Validation record
 
-Clean baseline immediately before patch primitives:
+Checkpoint 4 patch-primitives final head:
 
-- Commit `b8424103483209fcddd9b525b46eba6f40f5af93`
-- CI run `38229765193`: PASS
+- Commit `4394278f69c3523b7115d76ac0b4afaeace06fb8`
+- CI run `38231806257`: PASS
 - Tier A static quality: PASS
 - Tier B workspace tests: PASS
-- Tier C semantic/reference suites: PASS
+- Tier C M3-M9 semantic/reference suites: PASS
 
-Current patch-primitives validation:
+Checkpoint 5 `MapDocument` implementation head before this handoff update:
 
-- Patch implementation/export commits are on this branch.
-- Final CI must be checked on the post-handoff checkpoint head before advancing.
+- Commit `c94e9a71c02b62b84a74651827b3f02d10ddf96c`
+- CI run `38233801420`: PASS
+- Tier A architecture/format/workspace/strict Clippy: PASS
+- Tier B workspace tests: PASS
+- Tier C M3-M9 semantic/reference suites: PASS
+
+The final handoff-update head must also pass CI before this checkpoint is considered closed.
 
 ## Checkpoint history
 
@@ -181,35 +223,40 @@ Added this `DEV_HANDOFF.md` as the single project handoff and continuity documen
 
 ### Checkpoint 4: patch primitives
 
-Added semantic `ChangeImpact`, reversible `MapOp`, and invariant-preserving `MapPatch` primitives with focused tests. No editor tools, renderer state, existing undo/redo, spline planner, or commit path has been wired to them yet.
+Added semantic `ChangeImpact`, reversible `MapOp`, and invariant-preserving `MapPatch` primitives with focused tests. No editor tools, renderer state, existing undo/redo, spline planner, or commit path was wired to them.
+
+### Checkpoint 5: authoritative MapDocument
+
+Added sparse semantic terrain storage, explicit height storage, exact object-placement storage, read queries, deterministic patch-state validation, operation-indexed validation errors, and atomic whole-patch application. Added regression tests proving failed patches cannot partially mutate authoritative state and that patch inversion round-trips the document exactly.
+
+No editor tools, renderer state, current undo/redo stack, spline planner, or existing edit commit path has been wired to `MapDocument` yet.
 
 ## Next checkpoint
 
 **Do not redesign the path generator yet.**
 
-Before any additional implementation:
+The next checkpoint should be a branch-readiness checkpoint, not another feature expansion:
 
-1. Check full CI on the final Checkpoint 4 head.
-2. If green, the next small implementation should introduce the initial authoritative `MapDocument` storage/query boundary and patch-state validation/application tests.
-3. Keep editor/UI wiring out of that checkpoint.
-4. Preserve atomicity: a patch must be fully valid before any authoritative state changes.
-5. Stop and report before continuing.
+1. Verify full CI on the final handoff-update head.
+2. Compare `refactor/editor-edit-domain-foundation` against `main` and review the complete branch diff for accidental scope leakage.
+3. If clean, open/update the PR and merge this foundation branch.
+4. Do not add history/UI/editor integration to this branch merely to keep it open.
+5. Stop and report after the merge before creating the next branch.
 
-After the branch eventually contains the complete foundation planned for it and full Tier A/B/C CI is green, open/update the PR as needed and merge it before starting the next branch.
+The next branch should begin the basic edit-history/query contract work on top of the merged `osrs-edit` foundation. Editor tool migration remains later.
 
 ## Later branches, tentative order
 
 These are directional, not permission to start them automatically.
 
-1. Edit-domain foundation, patch primitives, and authoritative `MapDocument` foundation.
-2. Complete atomic patch application/inversion and basic history/query contracts.
-3. Migrate one existing edit path through the domain boundary, likely spline/path **commit only**, while leaving its planner/preview algorithm untouched.
-4. Migrate brush/terrain/height editing.
-5. Migrate object editing.
-6. Revision-based async view synchronization and stale-result rejection.
-7. Semantic change-impact/invalidation cleanup.
-8. Persistence/export hardening and round-trip fixtures.
-9. Replace/redesign the spline/path/auto-tile generator on top of the completed edit architecture.
+1. Basic history/query contracts around `MapDocument` and `MapPatch`.
+2. Migrate one existing edit path through the domain boundary, likely spline/path **commit only**, while leaving its planner/preview algorithm untouched.
+3. Migrate brush/terrain/height editing.
+4. Migrate object editing.
+5. Revision-based async view synchronization and stale-result rejection.
+6. Semantic change-impact/invalidation cleanup.
+7. Persistence/export hardening and round-trip fixtures.
+8. Replace/redesign the spline/path/auto-tile generator on top of the completed edit architecture.
 
 ## Important deferred work
 
