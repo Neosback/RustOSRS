@@ -60,10 +60,16 @@ fn wide_winding_wall_band_is_deterministic_unique_and_bounded() {
     assert_eq!(specs, repeat);
     assert!(!specs.is_empty());
     assert!(specs.iter().all(|spec| (1..=3).contains(&spec.plane)));
-    assert!(specs.iter().all(|spec| spec.loc_type == 0 || spec.loc_type == 9));
-    assert!(specs
-        .iter()
-        .all(|spec| matches!(spec.object_id, 100 | 101 | 200)));
+    assert!(
+        specs
+            .iter()
+            .all(|spec| spec.loc_type == 0 || spec.loc_type == 9)
+    );
+    assert!(
+        specs
+            .iter()
+            .all(|spec| matches!(spec.object_id, 100 | 101 | 200))
+    );
 
     let mut unique = HashSet::new();
     assert!(specs.iter().all(|spec| unique.insert((
@@ -84,8 +90,9 @@ fn even_width_straight_band_keeps_exact_cross_section() {
     assert_eq!(ys.len(), 12);
     assert_eq!(ys.iter().copied().min(), Some(4));
     assert_eq!(ys.iter().copied().max(), Some(15));
-    assert!(band
-        .tangents
-        .values()
-        .all(|tangent| tangent.0 > 0.99 && tangent.1.abs() < 1.0e-4));
+    assert!(
+        band.tangents
+            .values()
+            .all(|tangent| tangent.0 > 0.99 && tangent.1.abs() < 1.0e-4)
+    );
 }
