@@ -2,7 +2,9 @@ use super::model::PathPoint;
 use super::resample::smooth_and_resample;
 
 fn all_finite(points: &[PathPoint]) -> bool {
-    points.iter().all(|point| point.x.is_finite() && point.y.is_finite())
+    points
+        .iter()
+        .all(|point| point.x.is_finite() && point.y.is_finite())
 }
 
 #[test]
