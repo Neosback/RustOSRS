@@ -91,14 +91,17 @@ fn max_supersample_wide_path_clips_cleanly_to_editable_bounds() {
     assert_eq!(plan.lines.len(), 1);
     assert!(plan.lines[0].len() < 1_000);
     assert!(plan.paints.len() <= 96 * 24);
-    assert!(plan
-        .paints
-        .iter()
-        .all(|paint| bounds.contains(paint.tile_x, paint.tile_y)));
-    assert!(!plan
-        .warnings
-        .iter()
-        .any(|warning| warning.code == "OUT_OF_BOUNDS"));
+    assert!(
+        plan.paints
+            .iter()
+            .all(|paint| bounds.contains(paint.tile_x, paint.tile_y))
+    );
+    assert!(
+        !plan
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "OUT_OF_BOUNDS")
+    );
 }
 
 #[test]
