@@ -17,7 +17,19 @@ jobs:
         with:
           fetch-depth: 0
       - name: Apply scoped migration
-        run: python3 scripts/apply_simple_path_fitter.py
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply_simple_path_fitter.py')
+          text = path.read_text()
+          text = text.replace(
+              "profile_start = spline.index('    /// A profile for the planner:', overlay_start)",
+              "profile_start = spline.index('    /// A profile for the planner:')",
+          )
+          path.write_text(text)
+          PY
+          python3 scripts/apply_simple_path_fitter.py
       - name: Format, test compile, and commit
         shell: bash
         run: |
