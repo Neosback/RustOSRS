@@ -142,20 +142,46 @@ impl SceneGrid {
 
     fn region(&self, x: i32, y: i32, plane: u8) -> Option<(Arc<RegionGrid>, usize, usize)> {
         let key = (x.div_euclid(64), y.div_euclid(64));
+        let cache_key = (key.0, key.1, plane);
+        #[cfg(test)]
+        if let Some(grid) = self
+            .cache
+            .lock()
+            .ok()
+            .and_then(|cache| cache.get(&cache_key).cloned())
+        {
+            return Some((
+                grid,
+                x.rem_euclid(64) as usize,
+                y.rem_euclid(64) as usize,
+            ));
+        }
         let info = self.infos.get(&key)?;
         let mut cache = self.cache.lock().ok()?;
         let grid = cache
-            .entry((key.0, key.1, plane))
+            .entry(cache_key)
             .or_insert_with(|| Arc::new(RegionGrid::build(info, plane)))
             .clone();
         Some((grid, x.rem_euclid(64) as usize, y.rem_euclid(64) as usize))
     }
 
     fn exists(&self, x: i32, y: i32, plane: u8) -> bool {
-        plane < 4
-            && self
-                .infos
-                .contains_key(&(x.div_euclid(64), y.div_euclid(64)))
+        if plane >= 4 {
+            return false;
+        }
+        let key = (x.div_euclid(64), y.div_euclid(64));
+        if self.infos.contains_key(&key) {
+            return true;
+        }
+        #[cfg(test)]
+        {
+            return self
+                .cache
+                .lock()
+                .is_ok_and(|cache| cache.contains_key(&(key.0, key.1, plane)));
+        }
+        #[cfg(not(test))]
+        false
     }
 
     fn wall_blocks(&self, x: i32, y: i32, dx: i32, dy: i32, plane: u8) -> bool {
@@ -231,5 +257,84 @@ impl CostGrid for SceneGrid {
             self.wall_blocks(from_x, from_y, dx, dy, plane)
                 || self.wall_blocks(to_x, to_y, -dx, -dy, plane)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_region() -> RegionGrid {
+        RegionGrid {
+            occupancy: vec![Occupancy::Clear; SIZE * SIZE],
+            slope: vec![0.0; SIZE * SIZE],
+            walls: vec![0; SIZE * SIZE],
+            diagonals: vec![0; SIZE * SIZE],
+        }
+    }
+
+    fn scene_with_region(region_x: i32, region_y: i32, plane: u8, grid: RegionGrid) -> SceneGrid {
+        SceneGrid {
+            infos: HashMap::new(),
+            cache: Mutex::new(HashMap::from([((region_x, region_y, plane), Arc::new(grid))])),
+        }
+    }
+
+    #[test]
+    fn unloaded_region_is_solid_and_blocks_boundary_crossings() {
+        let scene = scene_with_region(0, 0, 0, empty_region());
+
+        assert_eq!(scene.occupancy(63, 10, 0), Occupancy::Clear);
+        assert_eq!(scene.occupancy(64, 10, 0), Occupancy::Solid);
+        assert!(scene.traversal_cost(64, 10, 0).is_infinite());
+        assert!(scene.edge_blocked(63, 10, 64, 10, 0));
+        assert!(scene.edge_blocked(0, 10, -1, 10, 0));
+        assert!(scene.edge_blocked(10, 10, 10, 10, 4));
+    }
+
+    #[test]
+    fn cardinal_wall_blocks_crossing_in_both_directions() {
+        let mut grid = empty_region();
+        grid.walls[index(10, 10)] |= 1 << 2;
+        let scene = scene_with_region(0, 0, 0, grid);
+
+        assert!(scene.edge_blocked(10, 10, 11, 10, 0));
+        assert!(scene.edge_blocked(11, 10, 10, 10, 0));
+        assert!(!scene.edge_blocked(10, 10, 10, 11, 0));
+    }
+
+    #[test]
+    fn diagonal_wall_blocks_matching_diagonal_in_both_directions() {
+        let mut grid = empty_region();
+        grid.diagonals[index(10, 10)] |= 1 << 1;
+        let scene = scene_with_region(0, 0, 0, grid);
+
+        assert!(scene.edge_blocked(10, 10, 11, 11, 0));
+        assert!(scene.edge_blocked(11, 11, 10, 10, 0));
+        assert!(!scene.edge_blocked(10, 10, 11, 9, 0));
+    }
+
+    #[test]
+    fn diagonal_step_cannot_cut_across_cardinal_wall() {
+        let mut grid = empty_region();
+        grid.walls[index(10, 10)] |= 1 << 2;
+        let scene = scene_with_region(0, 0, 0, grid);
+
+        assert!(scene.edge_blocked(10, 10, 11, 11, 0));
+        assert!(scene.edge_blocked(11, 11, 10, 10, 0));
+    }
+
+    #[test]
+    fn cached_occupancy_and_slope_drive_cost_grid_queries() {
+        let mut grid = empty_region();
+        grid.occupancy[index(12, 13)] = Occupancy::Decoration;
+        grid.occupancy[index(14, 15)] = Occupancy::Solid;
+        grid.slope[index(16, 17)] = 1.25;
+        let scene = scene_with_region(0, 0, 0, grid);
+
+        assert_eq!(scene.occupancy(12, 13, 0), Occupancy::Decoration);
+        assert_eq!(scene.occupancy(14, 15, 0), Occupancy::Solid);
+        assert_eq!(scene.slope(16, 17, 0), 1.25);
+        assert_eq!(scene.traversal_cost(12, 13, 0), 1.0);
     }
 }
