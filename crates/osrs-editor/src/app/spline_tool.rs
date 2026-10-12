@@ -97,6 +97,12 @@ fn paint_signature(paints: &[TilePaint]) -> u64 {
     hash
 }
 
+fn commit_blocker(warnings: &[PathWarning]) -> Option<&PathWarning> {
+    warnings.iter().find(|warning| {
+        matches!(warning.severity, Severity::Error) || warning.code == "ROUTE_BLOCKED"
+    })
+}
+
 fn distance(a: (f32, f32), b: (f32, f32)) -> f32 {
     ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()
 }
@@ -614,6 +620,17 @@ impl EditorApp {
         let Some(preview) = self.spline.preview.take() else {
             return;
         };
+        let blocked_message = commit_blocker(&preview.warnings).map(|warning| match warning.code {
+            "ROUTE_BLOCKED" => {
+                "The path could not route around an obstacle. Move the path or increase the route corridor before laying it.".to_owned()
+            }
+            _ => format!("The path was not laid: {}", warning.message),
+        });
+        if let Some(message) = blocked_message {
+            self.spline.preview = Some(preview);
+            self.notice = Some((message, web_time::Instant::now()));
+            return;
+        }
         if preview.paints.is_empty() {
             self.spline.preview = Some(preview);
             self.notice = Some((
@@ -833,5 +850,51 @@ impl EditorApp {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_main_route_blocks_path_commit() {
+        let warnings = [PathWarning::general(
+            Severity::Warning,
+            "ROUTE_BLOCKED",
+            "No route exists inside the configured corridor",
+        )];
+        assert_eq!(
+            commit_blocker(&warnings).map(|warning| warning.code),
+            Some("ROUTE_BLOCKED")
+        );
+    }
+
+    #[test]
+    fn planner_errors_block_path_commit() {
+        let warnings = [PathWarning::general(
+            Severity::Error,
+            "INVALID_EDGE",
+            "Missing path data",
+        )];
+        assert!(commit_blocker(&warnings).is_some());
+    }
+
+    #[test]
+    fn diagnostic_warnings_do_not_block_path_commit() {
+        let warnings = [
+            PathWarning::general(Severity::Info, "REROUTED", "Went round obstacles"),
+            PathWarning::general(
+                Severity::Warning,
+                "EXISTING_OVERLAY",
+                "Existing overlay was preserved",
+            ),
+            PathWarning::general(
+                Severity::Warning,
+                "NETWORK_CONNECT_BLOCKED",
+                "An optional network branch could not connect",
+            ),
+        ];
+        assert!(commit_blocker(&warnings).is_none());
     }
 }
