@@ -4,3 +4,5 @@
 //! It owns authoritative semantic map state plus its undo/redo history and revision counter.
 
 mod edit_session;
+
+pub(crate) use edit_session::EditorSession;
