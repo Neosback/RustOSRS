@@ -163,13 +163,11 @@ Checkpoint 17 validated head:
 
 ## Checkpoint 18: live Paint stroke -> authoritative semantic commit
 
-Live terrain Paint now commits through the persistent `EditorSession` at stroke completion while preserving the current immediate worker/render preview during the drag.
-
-### Runtime flow
+Live terrain Paint commits through the persistent `EditorSession` at stroke completion while preserving the current immediate worker/render preview during the drag.
 
 ```text
 pointer drag
-  -> legacy live TileEdit preview (unchanged responsiveness)
+  -> legacy live TileEdit preview
   -> completed Stroke
   -> captured Paint Brush
   -> TerrainPaintIntent values
@@ -179,87 +177,105 @@ pointer drag
   -> existing dirty-region renderer rebuild path
 ```
 
-The semantic commit, not `EditorApp.edited` or worker `TerrainEdits`, is the authoritative completed Paint transaction.
-
-### Stroke semantics
+Key behavior:
 
 - the exact `Brush` first used by a Paint stroke is captured in `Stroke::paint_brush`
-- later UI brush changes cannot silently change the meaning of an already-open stroke
-- finished Paint tile transitions are translated into typed semantic intents
-- changes are grouped by `SourcePlane`, then combined into one final `MapPatch`
-- one Paint stroke creates one `EditorSession::commit`, even if the adapter contains changes on more than one source plane
-- armed Paint height uses the already-quantized runtime result as the semantic target
-- semantic no-op patches do not create semantic history
-- semantic planning or commit failure rolls the already-visible preview back through the existing projection path
-- after a successful commit, the visible legacy projection is reconciled to the authoritative semantic result; this canonicalizes cases such as adding an overlay to a semantically empty tile with unarmed shape/rotation
+- finished Paint transitions are translated into typed semantic intents
+- changes are grouped by `SourcePlane` and combined into one final `MapPatch`
+- one Paint stroke creates one semantic history entry even across source planes
+- armed Paint height uses the already-quantized runtime result
+- semantic no-op patches do not create history
+- planning/commit failure rolls the preview back through the existing projection path
+- successful commits reconcile visible projection from authoritative semantic state
 
-### Compatibility boundary
+Checkpoint 18 validated head:
 
-This checkpoint intentionally leaves live preview/projection infrastructure in place:
+- `dfee0084867b301288a5749cd6f2225a2b3abd53`
+- CI `38368016985`: Tier A/B/C PASS
 
-- `EditorApp.edited` still caches/projectively mirrors visible tile state
-- `record()` and `send_edits()` still feed current worker `TerrainEdits`
-- renderer dirty-region rebuild behavior is unchanged
-- the completed Paint step is still copied to legacy `EditStep` history temporarily so existing global UI state remains compatible
+## Checkpoint 19: Paint undo/redo -> authoritative semantic history
 
-That legacy `EditStep` is now transitional compatibility state for Paint, not the semantic source of truth.
+User-facing Paint undo/redo now routes through `EditorSession::undo/redo`. Paint no longer stores legacy before/after tile values as undo authority.
 
-Global Ctrl/Cmd+Z and redo are **not cut over yet**. They still pop the legacy history stack. Therefore the branch must not merge yet: semantic Paint history and global legacy history need to be unified before Paint migration is complete.
+### Mixed-history router
 
-Also intentionally unchanged:
+Height, Objects, terrain-path compatibility actions, and context-menu clear-overlay are still legacy. To preserve chronological global Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z without migrating those systems prematurely, the existing editor history stack now acts as a routing ledger:
 
-- Height tool
-- Object tool
-- global undo/redo routing
-- context-menu `clear_overlay_at` legacy action
-- existing terrain-path transitional bridge
-- cache decode/region ingestion
-- renderer/117HD behavior
+- legacy entries still carry their existing `EditStep` before/after/object data
+- semantic Paint entries carry only `SemanticPaintHistory { brush, keys }`
+- the semantic Paint marker contains no legacy tile before/after state
+- popping a Paint marker dispatches to `EditorSession::undo/redo`
+- popping a legacy entry continues to use the existing `revert` path
+
+This keeps one chronological user-facing history order while leaving Paint state authority exclusively in `EditorSession`.
+
+### Semantic Paint projection
+
+After semantic Paint undo/redo, `project_semantic_paint_history` reads the authoritative `MapDocument` and updates the existing `EditorApp.edited` / `TileEdit` / worker path only as a projection.
+
+Projection is channel-aware:
+
+- only channels armed by the original Paint brush are projected from semantic state
+- unarmed channels remain untouched, which allows still-legacy actions on other channels to interleave without Paint overwriting them
+- overlay projection includes canonical semantic shape/rotation when overlay was armed
+- Paint height projection requires an explicit semantic height
+- projection values are prepared before mutation so adapter failure does not leave a partially projected Paint step
+- if projection fails after semantic undo/redo, the code attempts the inverse semantic operation and restores the routing marker to its original global stack
+
+Live drag preview remains transitional infrastructure for responsiveness; it is not completed-edit authority.
+
+### Redo/no-op semantics
+
+- an empty Paint patch creates no semantic history and no routing marker
+- one Paint commit -> one semantic undo -> one semantic redo restores the authoritative states
+- a new semantic Paint commit after undo invalidates semantic redo through `EditHistory::commit`
+- `can_undo` / `can_redo` remain based on the chronological global routing stacks so hidden semantic history cannot bypass still-legacy actions
 
 ### Regression coverage
 
-Added an adapter-level regression proving that one Paint stroke containing multiple semantic operations across source planes:
+Checkpoint 19 adds/keeps focused tests proving:
 
-- produces one combined patch
-- advances `EditorSession` revision once
-- creates one semantic undo entry
-- is fully reversed by one semantic undo
+1. one Paint stroke is one semantic session history entry
+2. semantic Paint projection follows commit -> undo -> redo
+3. unarmed height survives Paint undo/redo projection unchanged
+4. semantic Paint no-op creates no history
+5. a new semantic Paint commit invalidates semantic redo
+6. a semantic Paint routing marker carries no legacy tile/object authority
 
-Checkpoint 18 implementation head before this handoff update:
+### Deliberately unchanged
 
-- `0996bfcc7a3c58eb302585f83eb33900746d18d1`
-- CI `38367658420`: Tier A/B/C PASS
+- Height remains legacy
+- Objects remain legacy
+- terrain-path runtime bridge remains transitional
+- context-menu `clear_overlay_at` remains legacy
+- `EditorApp.edited` and worker `TerrainEdits` remain live projection/cache infrastructure
+- renderer invalidation and 117HD are unchanged
+
+Checkpoint 19 implementation head before this handoff update:
+
+- `7cb50b1f040796c2b7d733429d76aa88a7029be7`
+- CI `38370104124`: Tier A/B/C PASS
 - Tier A architecture, formatting, workspace check, strict Clippy: PASS
-- Tier B full workspace tests, including the Paint runtime adapter regression: PASS
+- Tier B full workspace tests including semantic Paint history/projection regressions: PASS
 - Tier C M3-M9 semantic/reference parity: PASS
 
-## Remaining Paint architecture debt
+## Paint subsystem status
 
-Paint is now semantically authoritative when a stroke completes, but two temporary compatibility structures remain:
+The terrain Paint tool migration is now complete for the intended branch scope:
 
-1. live legacy projection state (`EditorApp.edited` / worker `TerrainEdits`) used to preserve current rendering behavior
-2. legacy `EditStep` history used by the current global undo/redo UI
+- planning is semantic
+- completed Paint commits are semantic
+- Paint undo is semantic
+- Paint redo is semantic
+- legacy Paint `EditStep` before/after tile authority is retired
+- live worker/render structures are projection only
 
-Do not turn either into a permanent second authority.
+The global history stack still exists because non-Paint tools remain legacy, but Paint contributes only a lightweight routing marker for chronological interleaving. Do not expand that marker into a second Paint state store.
 
-Height and Objects remain intentionally legacy until their own future subsystems.
+This branch is now eligible for merge after the exact documentation head passes Tier A/B/C.
 
-## Next checkpoint
+## Next subsystem
 
-Do not begin without explicit direction.
+Do not begin without explicit direction and do not continue it on this completed Paint branch.
 
-### Checkpoint 19: Paint undo/redo cutover
-
-Scope only Paint history synchronization:
-
-1. make user-facing undo/redo for semantic Paint invoke `EditorSession::undo/redo`
-2. project the resulting authoritative semantic state back through the existing `TileEdit` / worker / dirty-region path
-3. preserve correct interleaving behavior with still-legacy Height/Object actions; if a safe mixed-history boundary cannot be kept narrow, stop and document the required history-router design instead of silently broadening scope
-4. remove Paint's dependence on legacy `EditStep` as undo authority once semantic undo/redo is proven
-5. keep live worker/render projection as a cache/adapter only
-6. add regression coverage for Paint commit -> undo -> redo, no-op history, and redo invalidation after a new Paint commit
-7. do not migrate Height or Objects
-8. do not redesign renderer invalidation or 117HD
-9. run Tier A/B/C and stop for review
-
-Only after Paint commit + undo + redo are all semantic and the corresponding legacy Paint history authority is retired should this branch be considered for merge.
+After this branch is merged, start a fresh branch from validated `main`. The next editor-domain migration should be chosen as its own subsystem; Height is the natural next terrain candidate because it still owns legacy height mutation/history, but no Height work is authorized by this handoff alone.
