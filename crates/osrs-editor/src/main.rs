@@ -22,6 +22,8 @@ mod pick;
 mod platform;
 mod plugin;
 mod screenshot;
+#[allow(dead_code)]
+mod session;
 mod settings;
 mod style;
 mod terrain_path;
