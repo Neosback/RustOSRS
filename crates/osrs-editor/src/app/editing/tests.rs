@@ -190,9 +190,8 @@ fn paint_and_height_share_one_semantic_history_order() {
     .unwrap_or_else(|error| unreachable!("valid Paint patch: {error:?}"));
     assert!(session.commit(paint_patch).is_ok());
 
-    let height_patch =
-        build_terrain_height_patch(session.document(), &height_spec(), &[map_tile])
-            .unwrap_or_else(|error| unreachable!("valid Height patch: {error:?}"));
+    let height_patch = build_terrain_height_patch(session.document(), &height_spec(), &[map_tile])
+        .unwrap_or_else(|error| unreachable!("valid Height patch: {error:?}"));
     assert!(session.commit(height_patch).is_ok());
     assert_eq!(session.document().height_at(vertex(tile)), Some(-16));
     assert_eq!(
@@ -260,16 +259,14 @@ fn semantic_paint_projection_tracks_undo_redo_and_preserves_unarmed_height() {
     .unwrap_or_else(|error| unreachable!("valid Paint patch: {error:?}"));
     assert!(session.commit(patch).is_ok());
 
-    let committed =
-        project_paint_values(session.document(), &brush, (0, tile.0, tile.1), before)
-            .unwrap_or_else(|| unreachable!("semantic Paint state is projectable"));
+    let committed = project_paint_values(session.document(), &brush, (0, tile.0, tile.1), before)
+        .unwrap_or_else(|| unreachable!("semantic Paint state is projectable"));
     assert_eq!(committed.overlay, 1);
     assert_eq!(committed.height, before.height);
 
     assert!(session.undo().is_ok());
-    let undone =
-        project_paint_values(session.document(), &brush, (0, tile.0, tile.1), committed)
-            .unwrap_or_else(|| unreachable!("semantic undo is projectable"));
+    let undone = project_paint_values(session.document(), &brush, (0, tile.0, tile.1), committed)
+        .unwrap_or_else(|| unreachable!("semantic undo is projectable"));
     assert_eq!(undone, before);
 
     assert!(session.redo().is_ok());

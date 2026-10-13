@@ -5,8 +5,8 @@
 //! transitional worker/render projection required after semantic undo/redo.
 
 use super::{EditorApp, TileKey, project_height_values, project_paint_values};
-use crate::paint::{Brush, TileValues};
 use crate::app::object_tool::{ObjectHistoryRoute, build_object_history_projection};
+use crate::paint::{Brush, TileValues};
 use eframe::egui;
 use osrs_world::{LocEdit, LocSpec};
 use web_time::Instant;

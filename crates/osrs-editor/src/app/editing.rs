@@ -15,8 +15,8 @@ use crate::heights::commit::{HeightStrokeSpec, build_terrain_height_patch};
 use crate::heights::{self, encode_height};
 use crate::paint::{Brush, Fill, TileValues, Tool};
 use eframe::egui;
-use history::{SemanticHeightHistory, SemanticPaintHistory};
 pub(super) use history::EditStep;
+use history::{SemanticHeightHistory, SemanticPaintHistory};
 use osrs_core::coords::{MapTile, RegionCoord, SourcePlane};
 use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
 use osrs_edit::{

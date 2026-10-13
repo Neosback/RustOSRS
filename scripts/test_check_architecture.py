@@ -20,6 +20,38 @@ class ArchitectureGuardTests(unittest.TestCase):
         errors = check_architecture.check_workspace(check_architecture.CRATES)
         self.assertEqual(errors, [])
 
+    def test_current_editor_modules_are_api_safe(self) -> None:
+        errors = check_architecture.check_editor_module_sizes(check_architecture.EDITOR_SOURCE)
+        self.assertEqual(errors, [])
+
+    def test_editor_module_line_cap_is_enforced(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "app" / "god_file.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("one\ntwo\nthree\nfour\n", encoding="utf-8")
+
+            errors = check_architecture.check_editor_module_sizes(
+                root,
+                max_lines=3,
+                max_bytes=1024,
+            )
+            self.assertTrue(any("4 lines exceeds the 3-line module cap" in error for error in errors))
+
+    def test_editor_module_byte_cap_is_enforced(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "app" / "god_file.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("0123456789ABCDEF", encoding="utf-8")
+
+            errors = check_architecture.check_editor_module_sizes(
+                root,
+                max_lines=10,
+                max_bytes=8,
+            )
+            self.assertTrue(any("16 bytes exceeds the 8-byte" in error for error in errors))
+
     def test_production_crate_cannot_depend_on_reference(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
