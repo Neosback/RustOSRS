@@ -155,7 +155,7 @@ Purpose: migrate the dedicated Height tool to the persistent semantic session. D
 
 ## Checkpoint 20: pure semantic Height stroke planner
 
-Added `crates/osrs-editor/src/heights/commit.rs` and registered it beneath the existing `heights` module. Runtime Height behavior is intentionally unchanged in this checkpoint.
+Added `crates/osrs-editor/src/heights/commit.rs` and registered it beneath the existing `heights` module. Runtime Height behavior was intentionally unchanged in this checkpoint.
 
 ### Captured stroke meaning
 
@@ -168,7 +168,7 @@ Added `crates/osrs-editor/src/heights/commit.rs` and registered it beneath the e
 - flatten anchor
 - deterministic stroke seed
 
-This is deliberately one value rather than a wide planner argument list. It also establishes the contract needed for the runtime cutover: once a Height stroke starts, later UI preference changes must not silently alter the operation that eventually commits.
+This is deliberately one value rather than a wide planner argument list. It also establishes the runtime contract: once a Height stroke starts, later UI preference changes must not silently alter the operation that eventually commits.
 
 ### Planner contract
 
@@ -192,7 +192,7 @@ The planner:
 
 ### Exact OSRS height-storage quantization
 
-The planner uses the existing `encode_height` / `decode_height` rules after each application, not only at final commit. This is important because subsequent repeated Height samples read the already-quantized result in the current runtime.
+The planner uses the existing `encode_height` / `decode_height` rules after each application, not only at final commit. Subsequent repeated Height samples therefore read the already-quantized result exactly as the current runtime does.
 
 Plane handling is explicit:
 
@@ -201,7 +201,7 @@ Plane handling is explicit:
 - a missing lower-plane base returns `HeightCommitError::MissingBaseHeight`
 - missing lower-plane data is **not** treated as height zero
 
-The last rule is an intentional semantic hardening over the legacy `EditorApp::base_height`, which currently falls back to zero when the lower tile cannot be found. It preserves the domain invariant that a missing semantic height and numeric zero are different states.
+The last rule intentionally hardens the legacy `EditorApp::base_height`, which falls back to zero when the lower tile cannot be found. It preserves the domain invariant that missing semantic height and numeric zero are distinct states.
 
 ### Regression coverage
 
@@ -215,49 +215,154 @@ Focused tests prove:
 6. negative world coordinates remain exact
 7. final patch operation order is deterministic even when sample order is not coordinate order
 
-Checkpoint 20 implementation head before this handoff update:
+Checkpoint 20 final documented head:
 
-- `ea326104fdce233b5bc476e447e580f04523a328`
-- CI `38372440515`: Tier A/B/C PASS
+- `0671dda23f9328e129b30fe8e809d01afb17797d`
+- CI `38372828941`: Tier A/B/C PASS
+
+## Checkpoint 21: live Height stroke -> authoritative semantic commit
+
+Completed Height gestures now commit through the persistent `EditorSession` while the existing worker/render path remains the immediate preview/projection layer.
+
+```text
+pointer drag / selection Height action
+  -> captured HeightStrokeSpec
+  -> ordered Height sample centers
+  -> existing live TileEdit preview
+  -> release / completed gesture
+  -> build_terrain_height_patch(EditorSession::document, spec, centers)
+  -> one EditorSession::commit
+  -> authoritative semantic heights
+  -> reconcile current TileEdit/world projection
+```
+
+### Immutable live-stroke semantics
+
+The first actual Height application captures one `HeightStrokeSpec`. The live preview then uses `HeightStrokeSpec::apply_sample`, the same captured arithmetic entry point used by semantic replay.
+
+This means changing Height settings while a drag is already open cannot change the semantic meaning of the transaction at release.
+
+`Stroke` now records:
+
+- `height_spec: Option<HeightStrokeSpec>`
+- ordered `height_centers: Vec<MapTile>`
+
+Repeated centers are retained intentionally because holding the sculpt brush on one tile applies again after `SCULPT_REPEAT`.
+
+### One gesture -> one semantic commit
+
+At `end_stroke`:
+
+- the exact ordered samples are replayed against `EditorSession::document()`
+- one `MapPatch` is built for the complete Height gesture
+- `EditorSession::commit` is called exactly once
+- one successful non-empty Height gesture therefore creates one semantic history entry and one session revision advance
+- a semantic no-op creates no semantic history entry and no global legacy entry
+
+The existing live `TileEdit` preview still updates during the drag for responsiveness. It is not the completed Height state authority after commit.
+
+### Projection and failure handling
+
+Successful semantic commits are reconciled back into the legacy `TileValues` / `TileEdit` / worker projection by reading authoritative heights from the session document.
+
+Projection preparation happens before mutation so a projection error cannot leave half of a Height stroke reconciled.
+
+Failure handling is conservative:
+
+- if a preview-touched semantic height is missing, the visible preview is reverted and nothing is committed
+- planner errors such as a missing upper-plane base revert the visible preview
+- semantic commit rejection reverts the visible preview
+- if projection fails after commit, the editor attempts an immediate semantic undo and reverts the visible preview
+- missing semantic heights are never converted to numeric zero
+
+`height_edited` remains active because the current worker/cache-format adapter still needs to know when to emit an encoded height byte. It is projection/storage-adapter state, not completed semantic authority.
+
+### Selection-based Height
+
+`height_on_selection` now uses the same captured `HeightStrokeSpec` and semantic commit boundary as pointer sculpting.
+
+Selected coordinates are sorted before application. This removes the old `HashSet` iteration nondeterminism so operations whose result can depend on application order, especially Smooth/Flatten interactions, replay identically and deterministically.
+
+The existing selection behavior remains otherwise intact:
+
+- radius 0
+- square footprint
+- flat falloff
+- first coordinate in the deterministic selection sequence supplies the automatic Flatten anchor
+- one selection action remains one logical Height transaction
+
+### Regression coverage
+
+Checkpoint 21 adds a focused regression proving repeated live Height samples collapse into one semantic patch/session history entry and one revision advance. Checkpoint 20 planner regressions remain active, and the full workspace/reference suite remains green.
+
+Checkpoint 21 implementation head before this handoff update:
+
+- `d26608f9282ce83488bb6bf9f94e4c10f4b82adf`
+- CI `38380243232`: Tier A/B/C PASS
 - Tier A architecture, formatting, workspace check, strict Clippy: PASS
-- Tier B full workspace tests including Height-planner regressions: PASS
+- Tier B full workspace tests including Height semantic-commit regression: PASS
 - Tier C M3-M9 semantic/reference parity: PASS
 
-### Deliberately unchanged
+### Deliberately unchanged in Checkpoint 21
 
-- `sculpt_at` still previews/mutates through legacy `EditorApp.edited` and worker `TileEdit`
-- `height_on_selection` still uses the legacy runtime path
-- completed Height strokes still enter legacy `EditStep` history
-- Height undo/redo is still legacy
-- `height_edited` remains active projection/storage-adapter state
+- Height undo still uses the legacy `EditStep` before/after payload
+- Height redo still uses the legacy `EditStep` before/after payload
 - Objects remain legacy
 - terrain-path runtime bridge remains transitional
 - context-menu `clear_overlay_at` remains legacy
+- live worker/render preview remains transitional projection infrastructure
 - renderer invalidation and 117HD are unchanged
+
+## Critical temporary history limitation — branch must not merge yet
+
+Checkpoint 21 intentionally stops between semantic commit and semantic undo/redo.
+
+A successful Height gesture now creates an `EditorSession` history entry, but the global chronological history router still treats Height as a legacy `EditStep`. Therefore the semantic session stack and the global mixed-history stack are not yet guaranteed to advance together when Paint and Height actions are interleaved and then undone/redone.
+
+Example of the temporary risk:
+
+```text
+semantic Paint commit
+semantic Height commit
+Ctrl+Z while Height still uses legacy undo
+```
+
+The visible Height projection can move backward through legacy `revert`, while the authoritative semantic session still has the Height patch on top of its history. A later semantic Paint undo would then ask `EditorSession::undo` to pop the wrong semantic transaction.
+
+**Do not merge, release, or treat this branch as a completed Height subsystem until Checkpoint 22 closes this routing gap.**
+
+This temporary state is acceptable only as an isolated checkpoint on the unmerged feature branch.
 
 ## Height subsystem status
 
-Checkpoint 20 establishes the semantic Height planning boundary only. The Height subsystem is **not complete and must not be merged yet**.
+After Checkpoint 21:
 
-The next runtime migration must keep the current responsive preview as projection while making the completed Height transaction authoritative in `EditorSession`.
+- Height planning is semantic
+- completed Height commits are semantic
+- live Height preview is projection
+- selection sequencing is deterministic
+- Height undo is still legacy
+- Height redo is still legacy
+
+The Height subsystem is therefore **not complete and is not mergeable yet**.
 
 ## Next checkpoint
 
 Do not begin without explicit direction.
 
-### Checkpoint 21: live Height stroke -> authoritative semantic commit
+### Checkpoint 22: Height undo/redo -> authoritative semantic history
 
 Narrow scope:
 
-1. capture one immutable `HeightStrokeSpec` when a Height stroke begins/first applies
-2. record the ordered Height application centers, including repeated held-brush samples
-3. make completed Height strokes plan one `MapPatch` from the authoritative session and call `EditorSession::commit` exactly once
-4. preserve current live `TileEdit` / worker preview during the stroke
-5. reconcile successful semantic heights back through the existing projection path
-6. roll back the visible preview if semantic planning/commit fails
-7. make selection-based Height sequencing deterministic before semantic planning
-8. keep global Height undo/redo on the legacy routing path for this checkpoint
-9. do not migrate Objects, path, context-menu terrain actions, renderer invalidation, or 117HD
-10. run Tier A/B/C and stop for review
+1. replace Height legacy before/after undo authority with a lightweight global routing marker, analogous to Paint
+2. route Height Ctrl/Cmd+Z through `EditorSession::undo`
+3. route Height redo through `EditorSession::redo`
+4. project authoritative semantic heights back into `EditorApp.edited` / `TileEdit` after undo/redo
+5. preserve chronological interleaving with Paint and still-legacy Object/path/context-menu actions
+6. make projection failure rollback-safe in both directions
+7. ensure one Height marker carries no duplicate before/after semantic authority
+8. verify new semantic commits invalidate redo correctly
+9. keep Objects, path, context-menu terrain actions, renderer invalidation, and 117HD out of scope
+10. run Tier A/B/C, update this handoff, and stop for review
 
-Only after Height commit is semantic should Height undo/redo be migrated in a separate checkpoint.
+Only after Checkpoint 22 is complete and exact-head CI is green should the Height subsystem be considered for PR/merge.
