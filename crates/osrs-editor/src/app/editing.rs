@@ -6,6 +6,7 @@
 //! regions whose geometry can change are rebuilt and replace the old ones when ready.
 
 use super::EditorApp;
+use super::object_tool::{ObjectHistoryRoute, build_object_history_projection};
 use super::paint_commit::{PaintCommitError, TerrainPaintIntent, build_terrain_paint_patch};
 use super::path_commit::{TerrainPathIntent, build_terrain_path_patch};
 use crate::heights::commit::{HeightStrokeSpec, build_terrain_height_patch};
@@ -156,15 +157,16 @@ pub(super) struct SemanticHeightHistory {
 }
 
 /// Before and after values of one still-legacy action, or a routing marker for a semantic action.
-/// Paint and Height never use `changes` as undo authority after Checkpoint 22.
+/// Paint, Height, and Objects never use these legacy fields as undo authority after Checkpoint 25.
 #[derive(Debug, Clone, Default)]
 pub struct EditStep {
     pub changes: Vec<(TileKey, TileValues, TileValues)>,
-    /// Objects the step removed and added (one undo step covers a move: remove, add).
+    /// Transitional legacy object fields retained only for still-unmigrated callers.
     pub removed: Vec<LocSpec>,
     pub added: Vec<LocSpec>,
     pub(super) semantic_paint: Option<SemanticPaintHistory>,
     pub(super) semantic_height: Option<SemanticHeightHistory>,
+    pub(super) semantic_object: Option<ObjectHistoryRoute>,
 }
 
 impl EditStep {
@@ -178,6 +180,13 @@ impl EditStep {
     fn semantic_height(keys: Vec<TileKey>) -> Self {
         Self {
             semantic_height: Some(SemanticHeightHistory { keys }),
+            ..Self::default()
+        }
+    }
+
+    pub(super) fn semantic_object(removed: Vec<LocSpec>, added: Vec<LocSpec>) -> Self {
+        Self {
+            semantic_object: Some(ObjectHistoryRoute::new(removed, added)),
             ..Self::default()
         }
     }
@@ -605,8 +614,8 @@ impl EditorApp {
         ));
     }
 
-    /// One finished undo step. Paint and Height carry only semantic routing metadata; Objects/path
-    /// actions still carry their legacy before/after data here.
+    /// One finished undo step. Semantic tools carry only projection-routing metadata; remaining
+    /// legacy terrain/path actions still carry their before/after values here.
     pub(super) fn push_step(&mut self, step: EditStep) {
         self.history.push(step);
         if self.history.len() > HISTORY_LIMIT {
@@ -1047,6 +1056,20 @@ impl EditorApp {
         Ok(height.keys.len())
     }
 
+    fn project_semantic_object_history(
+        &mut self,
+        object: &ObjectHistoryRoute,
+        forward: bool,
+    ) -> Result<usize, String> {
+        let projection = build_object_history_projection(self.session.document(), object, forward)
+            .map_err(|error| format!("{error:?}"))?;
+        let count = object.object_count();
+        self.send_loc_edits(projection.edits);
+        self.clear_selection();
+        self.pending_reselect = projection.reselect;
+        Ok(count)
+    }
+
     /// Hand object edits to the world worker and queue the regions they sit in for a rebuild.
     pub(super) fn send_loc_edits(&mut self, edits: Vec<LocEdit>) {
         if edits.is_empty() {
@@ -1158,14 +1181,55 @@ impl EditorApp {
             }
             return;
         }
+        if let Some(object) = step.semantic_object.clone() {
+            match self.session.undo() {
+                Ok(Some(_)) => match self.project_semantic_object_history(&object, false) {
+                    Ok(count) => {
+                        self.notice = Some((
+                            format!(
+                                "Undid {count} object{}",
+                                if count == 1 { "" } else { "s" }
+                            ),
+                            Instant::now(),
+                        ));
+                        self.redo_stack.push(step);
+                    }
+                    Err(message) => {
+                        let rollback_succeeded = matches!(self.session.redo(), Ok(Some(_)));
+                        self.history.push(step);
+                        self.notice = Some((
+                            if rollback_succeeded {
+                                format!("Object undo was rolled back: {message}")
+                            } else {
+                                format!(
+                                    "Object undo projection failed and rollback failed: {message}"
+                                )
+                            },
+                            Instant::now(),
+                        ));
+                    }
+                },
+                Ok(None) => {
+                    self.history.push(step);
+                    self.notice = Some((
+                        "Object undo history is out of sync with the semantic session".to_owned(),
+                        Instant::now(),
+                    ));
+                }
+                Err(error) => {
+                    self.history.push(step);
+                    self.notice = Some((
+                        format!("Object undo was rejected by the semantic session: {error:?}"),
+                        Instant::now(),
+                    ));
+                }
+            }
+            return;
+        }
 
         self.revert(&step, false);
         self.notice = Some((
-            if step.changes.is_empty() {
-                "Undid an object change".to_owned()
-            } else {
-                format!("Undid {} tile change(s)", step.changes.len())
-            },
+            format!("Undid {} tile change(s)", step.changes.len()),
             Instant::now(),
         ));
         self.redo_stack.push(step);
@@ -1259,6 +1323,51 @@ impl EditorApp {
                     self.redo_stack.push(step);
                     self.notice = Some((
                         format!("Height redo was rejected by the semantic session: {error:?}"),
+                        Instant::now(),
+                    ));
+                }
+            }
+            return;
+        }
+        if let Some(object) = step.semantic_object.clone() {
+            match self.session.redo() {
+                Ok(Some(_)) => match self.project_semantic_object_history(&object, true) {
+                    Ok(count) => {
+                        self.notice = Some((
+                            format!(
+                                "Redid {count} object{}",
+                                if count == 1 { "" } else { "s" }
+                            ),
+                            Instant::now(),
+                        ));
+                        self.history.push(step);
+                    }
+                    Err(message) => {
+                        let rollback_succeeded = matches!(self.session.undo(), Ok(Some(_)));
+                        self.redo_stack.push(step);
+                        self.notice = Some((
+                            if rollback_succeeded {
+                                format!("Object redo was rolled back: {message}")
+                            } else {
+                                format!(
+                                    "Object redo projection failed and rollback failed: {message}"
+                                )
+                            },
+                            Instant::now(),
+                        ));
+                    }
+                },
+                Ok(None) => {
+                    self.redo_stack.push(step);
+                    self.notice = Some((
+                        "Object redo history is out of sync with the semantic session".to_owned(),
+                        Instant::now(),
+                    ));
+                }
+                Err(error) => {
+                    self.redo_stack.push(step);
+                    self.notice = Some((
+                        format!("Object redo was rejected by the semantic session: {error:?}"),
                         Instant::now(),
                     ));
                 }
@@ -1682,6 +1791,7 @@ mod tests {
         assert!(step.added.is_empty());
         assert!(step.semantic_paint.is_some());
         assert!(step.semantic_height.is_none());
+        assert!(step.semantic_object.is_none());
     }
 
     #[test]
@@ -1693,5 +1803,34 @@ mod tests {
         assert!(step.added.is_empty());
         assert!(step.semantic_paint.is_none());
         assert!(step.semantic_height.is_some());
+        assert!(step.semantic_object.is_none());
+    }
+
+    #[test]
+    fn semantic_object_history_marker_carries_no_legacy_object_authority() {
+        let removed = LocSpec {
+            object_id: 100,
+            tile: (3200, 3200),
+            plane: 0,
+            loc_type: 10,
+            orientation: 1,
+        };
+        let added = LocSpec {
+            tile: (3201, 3200),
+            ..removed
+        };
+        let step = EditStep::semantic_object(vec![removed], vec![added]);
+
+        assert!(step.changes.is_empty());
+        assert!(step.removed.is_empty());
+        assert!(step.added.is_empty());
+        assert!(step.semantic_paint.is_none());
+        assert!(step.semantic_height.is_none());
+        let object = step
+            .semantic_object
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("Object marker should be present"));
+        assert_eq!(object.removed(), &[removed]);
+        assert_eq!(object.added(), &[added]);
     }
 }
