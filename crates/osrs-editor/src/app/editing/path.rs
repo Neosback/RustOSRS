@@ -34,6 +34,26 @@ fn project_semantic_terrain(values: &mut TileValues, terrain: TerrainTile) -> Op
     Some(())
 }
 
+/// Project one authoritative semantic Path result into the transitional worker tile value.
+///
+/// Terrain channels always come from `MapQuery`. Height comes from semantic state only when the
+/// Path gesture armed Height; otherwise the worker's current height is deliberately preserved.
+pub(super) fn project_semantic_path_values(
+    query: &impl MapQuery,
+    key: TileKey,
+    current: TileValues,
+    include_height: bool,
+) -> Option<TileValues> {
+    let plane = SourcePlane::new(key.0)?;
+    let tile = MapTile::new(key.1, key.2);
+    let mut values = current;
+    project_semantic_terrain(&mut values, query.terrain_at(MapPosition::new(tile, plane)))?;
+    if include_height {
+        values.height = query.height_at(HeightVertexCoord::new(tile, plane))?;
+    }
+    Some(values)
+}
+
 fn quantize_path_height(
     query: &impl MapQuery,
     plane: SourcePlane,
@@ -152,33 +172,21 @@ impl EditorApp {
                 ));
                 return 0;
             };
-            let mut after = before;
-            let map_tile = MapTile::new(intent.tile.0, intent.tile.1);
-            let position = MapPosition::new(map_tile, plane);
-            if project_semantic_terrain(&mut after, projected_document.terrain_at(position))
-                .is_none()
-            {
+            let Some(after) = project_semantic_path_values(
+                &projected_document,
+                key,
+                before,
+                brush.height.armed,
+            ) else {
                 self.notice = Some((
-                    "The path was not laid: semantic terrain IDs exceed the legacy adapter range"
-                        .to_owned(),
+                    format!(
+                        "The path was not laid: semantic state at {:?} cannot be represented by the legacy projection",
+                        intent.tile
+                    ),
                     Instant::now(),
                 ));
                 return 0;
-            }
-            if brush.height.armed {
-                let vertex = HeightVertexCoord::new(map_tile, plane);
-                let Some(height) = projected_document.height_at(vertex) else {
-                    self.notice = Some((
-                        format!(
-                            "The path was not laid: semantic height is missing at {:?}",
-                            intent.tile
-                        ),
-                        Instant::now(),
-                    ));
-                    return 0;
-                };
-                after.height = height;
-            }
+            };
             if after != before {
                 changes.push((key, before, after));
             }
@@ -219,11 +227,9 @@ impl EditorApp {
             edits.push(self.edit_for(*key, *after));
         }
         let count = changes.len();
+        let keys = changes.iter().map(|(key, _, _)| *key).collect();
         self.send_edits(edits);
-        self.push_step(EditStep {
-            changes,
-            ..EditStep::default()
-        });
+        self.push_step(EditStep::semantic_path(keys, brush.height.armed));
         self.notice = Some((
             format!(
                 "Changed {count} path tile{}",
@@ -239,7 +245,7 @@ impl EditorApp {
 mod tests {
     use super::*;
     use crate::session::EditorSession;
-    use osrs_core::ids::FloorOverlayId;
+    use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
     use osrs_edit::{MapDocument, OverlayRotation, OverlayShape, TerrainOverlay};
 
     fn plane(value: u8) -> SourcePlane {
@@ -291,5 +297,62 @@ mod tests {
         assert_eq!(session.revision(), 1);
         assert!(session.can_undo());
         assert_eq!(session.document().terrain_at(coord).overlay, Some(overlay));
+    }
+
+    #[test]
+    fn semantic_path_projection_tracks_undo_redo_and_optional_height() {
+        let tile = MapTile::new(3200, 3200);
+        let key = (0, 3200, 3200);
+        let coord = MapPosition::new(tile, plane(0));
+        let vertex = HeightVertexCoord::new(tile, plane(0));
+        let before_terrain = TerrainTile {
+            underlay: Some(FloorUnderlayId::new(3)),
+            overlay: None,
+            flags: 1,
+        };
+        let before = TileValues {
+            underlay: 3,
+            height: -96,
+            flags: 1,
+            ..TileValues::default()
+        };
+        let mut session = EditorSession::new(MapDocument::from_parts(
+            [(coord, before_terrain)],
+            [(vertex, -96)],
+            [],
+        ));
+        let intent = TerrainPathIntent {
+            tile: (3200, 3200),
+            overlay: Some(7),
+            shape: 4,
+            rotation: 2,
+            height: Some(-32),
+            flags: Some(5),
+        };
+        let patch = build_terrain_path_patch(session.document(), plane(0), &[intent])
+            .unwrap_or_else(|error| unreachable!("valid path patch: {error:?}"));
+        assert!(session.commit(patch).is_ok());
+
+        let terrain_only = project_semantic_path_values(session.document(), key, before, false)
+            .unwrap_or_else(|| unreachable!("semantic Path terrain is projectable"));
+        assert_eq!(terrain_only.overlay, 7);
+        assert_eq!(terrain_only.shape, 4);
+        assert_eq!(terrain_only.rotation, 2);
+        assert_eq!(terrain_only.flags, 5);
+        assert_eq!(terrain_only.height, -96);
+
+        let committed = project_semantic_path_values(session.document(), key, before, true)
+            .unwrap_or_else(|| unreachable!("semantic Path state is projectable"));
+        assert_eq!(committed.height, -32);
+
+        assert!(session.undo().is_ok());
+        let undone = project_semantic_path_values(session.document(), key, committed, true)
+            .unwrap_or_else(|| unreachable!("semantic Path undo is projectable"));
+        assert_eq!(undone, before);
+
+        assert!(session.redo().is_ok());
+        let redone = project_semantic_path_values(session.document(), key, undone, true)
+            .unwrap_or_else(|| unreachable!("semantic Path redo is projectable"));
+        assert_eq!(redone, committed);
     }
 }
