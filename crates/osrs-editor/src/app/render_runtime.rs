@@ -81,7 +81,8 @@ impl RenderRuntime {
     }
 
     pub(super) fn install_hd_materials(&mut self, data: HdGpuData) -> Result<(), String> {
-        data.install(&mut self.scene).map_err(|error| error.to_string())
+        data.install(&mut self.scene)
+            .map_err(|error| error.to_string())
     }
 
     pub(super) fn resident_zone_count(&self) -> usize {
@@ -160,12 +161,12 @@ impl RenderRuntime {
 
     pub(super) fn encode_viewport(&self, params: FrameParams) -> Option<EncodedViewport> {
         let targets = self.targets.as_ref()?;
-        let mut encoder = self
-            .render_state
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("viewport"),
-            });
+        let mut encoder =
+            self.render_state
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("viewport"),
+                });
         self.scene.encode_frame(
             &mut encoder,
             &targets.color_view,
