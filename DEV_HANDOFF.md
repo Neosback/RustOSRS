@@ -199,9 +199,9 @@ Removed from the product and source tree for now:
 - wander/noise generation
 - width-variation generation
 - preserve-existing-overlay topology repair
-- old planner/router/network/wall code and their obsolete regression/fixture files
+- old planner/router/network/wall code and obsolete regression/fixture files
 
-The active `terrain_path` directory is now intentionally:
+The runtime `terrain_path` implementation is intentionally small:
 
 ```text
 terrain_path/
@@ -210,7 +210,9 @@ terrain_path/
   shapes.rs
 ```
 
-### Active fitting pipeline
+`quality.rs` is present only under `#[cfg(test)]` for the Checkpoint 12 regression harness.
+
+#### Active fitting pipeline
 
 1. User control points are smoothed with clamped uniform Catmull-Rom.
 2. Fewer than three control points remain unchanged, so two points are exactly a straight segment.
@@ -218,14 +220,14 @@ terrain_path/
 4. Candidate tiles come from segment-local boxes expanded by half the requested width.
 5. Tile centers farther than `half_width + 0.75` are rejected early.
 6. Every remaining tile gets an 8x8 ideal coverage mask from exact point-to-polyline distance.
-7. Candidate overlay masks come from the repository's audited `osrs_scene::ShapedTerrainSurface` geometry through `terrain_path::overlay_triangles`; shape tables/rotation formulas are not duplicated.
+7. Candidate overlay masks come from audited `osrs_scene::ShapedTerrainSurface` geometry through `terrain_path::overlay_triangles`; shape tables/rotation formulas are not duplicated.
 8. Candidate set is EMPTY first, then stored full-tile shape `0`, then stored shapes `1..=11` at rotations `0..=3`.
 9. Initial selection maximizes 8x8 area agreement. Exact ties retain the earlier candidate, so EMPTY wins exact total ties.
 10. If `edge_weight > 0`, up to six deterministic coordinate-descent passes add shared-edge mismatch cost against current neighboring choices.
 11. Empty fits are omitted from output.
 12. Fitted tiles still commit through the Checkpoint 10 semantic `MapPatch` boundary as one undo step.
 
-### Conservative improvements over the supplied PathOverlayFitter idea
+#### Conservative improvements over the supplied PathOverlayFitter idea
 
 Only low-risk improvements were added:
 
@@ -246,7 +248,7 @@ Deliberately not added:
 
 The goal is to make the simple algorithm reliable before adding sophistication.
 
-### Simplified Spline settings
+#### Simplified Spline settings
 
 `SplineSettings` now contains only:
 
@@ -256,24 +258,60 @@ The goal is to make the simple algorithm reliable before adding sophistication.
 
 Persisted values are sanitized to the same ranges the UI exposes. Old planner/wall settings are no longer retained as compatibility fields.
 
-### Fitter regression coverage
+Checkpoint 11 validated final head:
 
-Current focused tests cover:
+- `83e3bd1f68a6550a467e18ee6ee5bc588fb049fe`
+- CI `38266732098`: Tier A/B/C PASS
 
-- exact candidate count and EMPTY/full ordering
-- two-point straight-line preservation
-- Catmull-Rom endpoint preservation
-- deterministic output
-- stored shape range `0..=11`
-- rotation range `0..=3`
-- negative world coordinates
-- simplified persisted-settings clamping/fallback
+### Checkpoint 12: deterministic fitter quality fixtures
 
-The migration workspace passed `cargo check --workspace` and the focused fitter tests before publishing the production tree. Normal repository Tier A/B/C validation is required on the final handoff head before this checkpoint is closed.
+The production fitter was intentionally left unchanged. This checkpoint added an independent black-box quality harness in `terrain_path/quality.rs` to determine whether the simple algorithm actually needed more heuristics before changing it.
 
-Pre-handoff cleanup head removing the legacy generator files:
+Representative fixture matrix:
 
-- `f676fa59007ec86efda0c3b485a9aae805587d57`
+1. horizontal straight path
+2. vertical straight path
+3. 45-degree diagonal
+4. shallow diagonal
+5. gentle curve
+6. tight multi-turn curve
+7. narrow path
+8. wide path
+9. exact tile-corner crossing
+10. negative world coordinates
+
+The harness independently:
+
+- rasterizes the requested band rather than calling the fitter's private scoring helpers
+- samples selected coverage from renderer-derived overlay triangles
+- measures 8x8 ideal-vs-selected coverage agreement
+- measures opposing shared-edge strip disagreement
+- compares default `edge_weight = 0.75` against independent `edge_weight = 0` fitting on the basic straight/diagonal fixtures
+- runs the same fixtures twice to prove repeatability
+- locks stable FNV-1a hashes over `(tile_x, tile_y, shape, orientation)` output for all ten fixtures
+
+Quality contract currently enforced:
+
+- ordinary straight/diagonal/gentle fixtures require at least 82% sampled coverage agreement
+- tight/corner/negative fixtures require at least 80% sampled coverage agreement
+- the wide fixture requires at least 86% sampled coverage agreement
+- edge mismatch ceilings are 35-45% depending on fixture difficulty
+- default edge relaxation must not increase shared-edge mismatches on the four basic fixtures
+- every fixture output must be repeatable and match its locked golden hash
+
+The first measurement run intentionally used zero placeholder hashes. CI `38343977544` proved all substantive checks passed and failed only the deliberately unseeded snapshot assertion. That run produced the canonical ten output hashes, which were then locked.
+
+Checkpoint 12 implementation head with locked snapshots:
+
+- `1260f359f196b561948ad41c7186d00f4670d5a3`
+- CI `38344200202`: Tier A/B/C PASS
+- Tier A architecture/format/workspace/strict Clippy: PASS
+- Tier B full workspace tests including all fitter quality fixtures: PASS
+- Tier C M3-M9 semantic/reference parity: PASS
+
+Conclusion from the fixture evidence: **do not add another fitter heuristic now.** The simple deterministic algorithm meets the current representative coverage/continuity contract, and extra routing/topology/global-optimization complexity would add risk without a demonstrated failure to solve.
+
+Any future intentional fitter change must review both quality metrics and golden-hash changes before updating the snapshots.
 
 ## Current boundaries
 
@@ -281,15 +319,17 @@ The editor still does **not** own a persistent `MapDocument` + `EditHistory` ses
 
 Do not reintroduce walls or pathfinding without an explicit decision.
 
-Do not broaden the next checkpoint into brush/height/object-tool migration, revision synchronization, renderer, or 117HD work.
+Do not broaden this branch into brush/height/object-tool migration, revision synchronization, renderer, or 117HD work.
 
-## Next checkpoint after validation
+## Next checkpoint
 
-Perform a focused quality/fixture pass on the new fitter only:
+Perform branch readiness for `refactor/editor-path-commit-domain`, not another fitter feature pass:
 
-1. Add representative straight, diagonal, gentle-curve, sharp-curve, narrow, wide, and negative-coordinate fixtures.
-2. Measure area-fit error and shared-edge disagreement deterministically.
-3. Verify shape/orientation output against exact renderer geometry.
-4. Check boundary behavior around tile edges/corners and widths near the lower UI bound.
-5. Tune only constants with evidence. Do not add routing or heuristic complexity by default.
-6. Stop and report before any new feature work.
+1. Compare the full branch against current `main`.
+2. Audit the complete changed-file list and diff for scope leakage.
+3. Confirm no temporary migration/helper files remain.
+4. Confirm the removed legacy planner/wall stack has no surviving references.
+5. Review the semantic path-commit bridge + simplified fitter + quality fixtures as one coherent PR scope.
+6. Update this handoff with exact branch-readiness evidence if needed.
+7. Open/update the PR, verify exact-head CI/mergeability, and merge only when the branch is clean.
+8. Stop before starting the next feature branch.
