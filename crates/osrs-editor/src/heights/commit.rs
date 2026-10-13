@@ -18,6 +18,42 @@ pub(crate) enum HeightCommitError {
     MissingBaseHeight { coord: HeightVertexCoord },
 }
 
+/// Immutable meaning of one logical Height stroke.
+///
+/// Capturing this once prevents UI changes during an open stroke from silently changing the
+/// operation that will eventually be committed to the semantic session.
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HeightStrokeSpec {
+    plane: SourcePlane,
+    tool: HeightTool,
+    radius: u8,
+    shape: BrushShape,
+    anchor: i32,
+    seed: u64,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+impl HeightStrokeSpec {
+    pub(crate) const fn new(
+        plane: SourcePlane,
+        tool: HeightTool,
+        radius: u8,
+        shape: BrushShape,
+        anchor: i32,
+        seed: u64,
+    ) -> Self {
+        Self {
+            plane,
+            tool,
+            radius,
+            shape,
+            anchor,
+            seed,
+        }
+    }
+}
+
 fn query_height(query: &impl MapQuery, plane: SourcePlane, tile: MapTile) -> Option<i32> {
     query.height_at(HeightVertexCoord::new(tile, plane))
 }
@@ -53,12 +89,7 @@ fn quantize_height(
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn build_terrain_height_patch(
     query: &impl MapQuery,
-    plane: SourcePlane,
-    tool: &HeightTool,
-    radius: u8,
-    shape: BrushShape,
-    anchor: i32,
-    seed: u64,
+    spec: &HeightStrokeSpec,
     centers: &[MapTile],
 ) -> Result<MapPatch, HeightCommitError> {
     let mut staged = BTreeMap::<MapTile, i32>::new();
@@ -74,15 +105,15 @@ pub(crate) fn build_terrain_height_patch(
                 staged
                     .get(&tile)
                     .copied()
-                    .or_else(|| query_height(query, plane, tile))
+                    .or_else(|| query_height(query, spec.plane, tile))
             };
             apply(
-                tool,
+                &spec.tool,
                 (center.x, center.y),
-                radius,
-                shape,
-                anchor,
-                seed,
+                spec.radius,
+                spec.shape,
+                spec.anchor,
+                spec.seed,
                 &height,
             )
         };
@@ -92,11 +123,11 @@ pub(crate) fn build_terrain_height_patch(
             let current = staged
                 .get(&tile)
                 .copied()
-                .or_else(|| query_height(query, plane, tile))
+                .or_else(|| query_height(query, spec.plane, tile))
                 .unwrap_or_else(|| {
                     unreachable!("Height arithmetic only returns vertices with explicit heights")
                 });
-            let after = quantize_height(query, plane, tile, desired)?;
+            let after = quantize_height(query, spec.plane, tile, desired)?;
             if after == current {
                 continue;
             }
@@ -111,7 +142,7 @@ pub(crate) fn build_terrain_height_patch(
             .copied()
             .unwrap_or_else(|| unreachable!("every staged Height vertex records its original"));
         (before != after).then_some(MapOp::SetHeight {
-            coord: HeightVertexCoord::new(tile, plane),
+            coord: HeightVertexCoord::new(tile, spec.plane),
             before,
             after,
         })
@@ -143,22 +174,31 @@ mod tests {
         }
     }
 
+    fn spec(
+        source_plane: SourcePlane,
+        op: HeightOp,
+        strength: i32,
+        anchor: i32,
+        seed: u64,
+    ) -> HeightStrokeSpec {
+        HeightStrokeSpec::new(
+            source_plane,
+            tool(op, strength),
+            0,
+            BrushShape::Square,
+            anchor,
+            seed,
+        )
+    }
+
     #[test]
     fn repeated_samples_fold_into_one_final_height_operation() {
         let tile = MapTile::new(3200, 3200);
         let source_plane = plane(0);
         let document = MapDocument::from_parts([], [(vertex(tile, source_plane), 0)], []);
-        let patch = build_terrain_height_patch(
-            &document,
-            source_plane,
-            &tool(HeightOp::Raise, 16),
-            0,
-            BrushShape::Square,
-            0,
-            7,
-            &[tile, tile],
-        )
-        .unwrap_or_else(|error| unreachable!("plane-zero Height stroke is valid: {error:?}"));
+        let stroke = spec(source_plane, HeightOp::Raise, 16, 0, 7);
+        let patch = build_terrain_height_patch(&document, &stroke, &[tile, tile])
+            .unwrap_or_else(|error| unreachable!("plane-zero Height stroke is valid: {error:?}"));
 
         assert_eq!(
             patch.ops(),
@@ -175,17 +215,9 @@ mod tests {
         let tile = MapTile::new(3200, 3200);
         let source_plane = plane(0);
         let document = MapDocument::new();
-        let patch = build_terrain_height_patch(
-            &document,
-            source_plane,
-            &tool(HeightOp::Raise, 16),
-            0,
-            BrushShape::Square,
-            0,
-            1,
-            &[tile],
-        )
-        .unwrap_or_else(|error| unreachable!("missing target vertices are skipped: {error:?}"));
+        let stroke = spec(source_plane, HeightOp::Raise, 16, 0, 1);
+        let patch = build_terrain_height_patch(&document, &stroke, &[tile])
+            .unwrap_or_else(|error| unreachable!("missing target vertices are skipped: {error:?}"));
 
         assert!(patch.is_empty());
     }
@@ -196,17 +228,11 @@ mod tests {
         let upper = plane(1);
         let lower = plane(0);
         let document = MapDocument::from_parts([], [(vertex(tile, upper), -96)], []);
-        let error = build_terrain_height_patch(
-            &document,
-            upper,
-            &tool(HeightOp::Lower, 8),
-            0,
-            BrushShape::Square,
-            -96,
-            1,
-            &[tile],
-        )
-        .expect_err("upper-plane cache encoding needs the lower-plane base height");
+        let stroke = spec(upper, HeightOp::Lower, 8, -96, 1);
+        let error = match build_terrain_height_patch(&document, &stroke, &[tile]) {
+            Err(error) => error,
+            Ok(_) => unreachable!("upper-plane cache encoding must require a lower-plane base"),
+        };
 
         assert_eq!(
             error,
@@ -226,17 +252,9 @@ mod tests {
             [(vertex(tile, lower), -80), (vertex(tile, upper), -96)],
             [],
         );
-        let patch = build_terrain_height_patch(
-            &document,
-            upper,
-            &tool(HeightOp::Lower, 8),
-            0,
-            BrushShape::Square,
-            -96,
-            1,
-            &[tile],
-        )
-        .unwrap_or_else(|error| unreachable!("explicit lower-plane base is valid: {error:?}"));
+        let stroke = spec(upper, HeightOp::Lower, 8, -96, 1);
+        let patch = build_terrain_height_patch(&document, &stroke, &[tile])
+            .unwrap_or_else(|error| unreachable!("explicit lower-plane base is valid: {error:?}"));
 
         // Desired -88 is one cache step below the -80 base. Stored byte 1 decodes as zero steps,
         // so the nearest representable semantic height is -80 rather than an invented -88.
@@ -255,17 +273,9 @@ mod tests {
         let tile = MapTile::new(3200, 3200);
         let source_plane = plane(0);
         let document = MapDocument::from_parts([], [(vertex(tile, source_plane), 0)], []);
-        let patch = build_terrain_height_patch(
-            &document,
-            source_plane,
-            &tool(HeightOp::Lower, 8),
-            0,
-            BrushShape::Square,
-            0,
-            1,
-            &[tile],
-        )
-        .unwrap_or_else(|error| unreachable!("plane-zero Height stroke is valid: {error:?}"));
+        let stroke = spec(source_plane, HeightOp::Lower, 8, 0, 1);
+        let patch = build_terrain_height_patch(&document, &stroke, &[tile])
+            .unwrap_or_else(|error| unreachable!("plane-zero Height stroke is valid: {error:?}"));
 
         assert!(patch.is_empty());
     }
@@ -275,17 +285,9 @@ mod tests {
         let tile = MapTile::new(-65, -1);
         let source_plane = plane(0);
         let document = MapDocument::from_parts([], [(vertex(tile, source_plane), -40)], []);
-        let patch = build_terrain_height_patch(
-            &document,
-            source_plane,
-            &tool(HeightOp::Raise, 16),
-            0,
-            BrushShape::Square,
-            -40,
-            99,
-            &[tile],
-        )
-        .unwrap_or_else(|error| unreachable!("negative coordinates are valid: {error:?}"));
+        let stroke = spec(source_plane, HeightOp::Raise, 16, -40, 99);
+        let patch = build_terrain_height_patch(&document, &stroke, &[tile])
+            .unwrap_or_else(|error| unreachable!("negative coordinates are valid: {error:?}"));
 
         assert_eq!(
             patch.ops(),
@@ -307,17 +309,9 @@ mod tests {
             [(vertex(a, source_plane), 0), (vertex(b, source_plane), 0)],
             [],
         );
-        let patch = build_terrain_height_patch(
-            &document,
-            source_plane,
-            &tool(HeightOp::Raise, 16),
-            0,
-            BrushShape::Square,
-            0,
-            1,
-            &[a, b],
-        )
-        .unwrap_or_else(|error| unreachable!("plane-zero Height stroke is valid: {error:?}"));
+        let stroke = spec(source_plane, HeightOp::Raise, 16, 0, 1);
+        let patch = build_terrain_height_patch(&document, &stroke, &[a, b])
+            .unwrap_or_else(|error| unreachable!("plane-zero Height stroke is valid: {error:?}"));
 
         assert_eq!(
             patch.ops(),
