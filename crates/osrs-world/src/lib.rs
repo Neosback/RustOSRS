@@ -30,6 +30,7 @@ pub use animation_worker::{AnimationUpdate, AnimationWorker};
 pub use assets::{AssetEvent, AssetWorker, SpriteImage, WorldMapRegionImage};
 pub use definitions::{
     FloorTable, RegionMap, TEXTURE_SIZE, TextureImage, TextureTable, WorldDefinitions,
+    region_tiles_from_decoded,
 };
 pub use error::WorldError;
 pub use extract::{

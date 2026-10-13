@@ -151,6 +151,15 @@ impl MapDocument {
             .retain(|placement| placement.position.tile.split_region().0 != region);
     }
 
+    /// Every object placement whose source ownership is `region`, in no particular order.
+    pub fn objects_in_region(&self, region: RegionCoord) -> Vec<ObjectPlacement> {
+        self.objects
+            .iter()
+            .filter(|placement| placement.position.tile.split_region().0 == region)
+            .copied()
+            .collect()
+    }
+
     /// Query one terrain tile. Missing sparse entries are semantic defaults.
     pub fn terrain_at(&self, coord: MapPosition) -> TerrainTile {
         self.terrain.get(&coord).copied().unwrap_or_default()

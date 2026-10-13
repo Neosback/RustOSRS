@@ -3,10 +3,11 @@
 use crate::WorldError;
 use osrs_cache::{
     decode::{
-        ArchiveFileProvenance, DecodedLocations, DecoderContext, decode_floor_overlay,
-        decode_floor_underlay, decode_legacy_animation_frame, decode_legacy_skeleton,
-        decode_locations, decode_object_definition, decode_sequence_definition,
-        decode_sprite_group, decode_terrain, decode_texture_definition, legacy_frame_skeleton_id,
+        ArchiveFileProvenance, DecodedLocations, DecodedTerrain, DecoderContext,
+        decode_floor_overlay, decode_floor_underlay, decode_legacy_animation_frame,
+        decode_legacy_skeleton, decode_locations, decode_object_definition,
+        decode_sequence_definition, decode_sprite_group, decode_terrain, decode_texture_definition,
+        legacy_frame_skeleton_id,
     },
     model_repository::ModelSourceRepository,
     object_model::resolve_object_model,
@@ -107,6 +108,29 @@ impl TextureTable {
 pub struct RegionMap {
     pub terrain: RegionTerrain,
     pub locations: DecodedLocations,
+}
+
+/// Adapt decoded terrain-stream tiles to the scene loader's tile type, in stream order.
+pub fn region_tiles_from_decoded(terrain: &DecodedTerrain) -> Vec<RegionTerrainTile> {
+    terrain
+        .tiles()
+        .iter()
+        .map(|tile| RegionTerrainTile {
+            height: match tile.height {
+                osrs_cache::decode::EncodedTileHeight::Default => RegionTileHeight::Default,
+                osrs_cache::decode::EncodedTileHeight::Explicit(value) => {
+                    RegionTileHeight::Explicit(value)
+                }
+            },
+            overlay: tile.overlay.map(|overlay| RegionTileOverlay {
+                raw_id: overlay.encoded_id,
+                shape: overlay.shape,
+                rotation: overlay.rotation,
+            }),
+            settings: (tile.settings != 0).then_some(tile.settings),
+            underlay: tile.underlay_id,
+        })
+        .collect()
 }
 
 /// Definitions and map data read from the pinned build-241 cache.
@@ -487,25 +511,7 @@ impl WorldDefinitions {
             &square.locations.provenance,
             region,
         )?;
-        let mut tiles: Vec<RegionTerrainTile> = terrain
-            .tiles()
-            .iter()
-            .map(|tile| RegionTerrainTile {
-                height: match tile.height {
-                    osrs_cache::decode::EncodedTileHeight::Default => RegionTileHeight::Default,
-                    osrs_cache::decode::EncodedTileHeight::Explicit(value) => {
-                        RegionTileHeight::Explicit(value)
-                    }
-                },
-                overlay: tile.overlay.map(|overlay| RegionTileOverlay {
-                    raw_id: overlay.encoded_id,
-                    shape: overlay.shape,
-                    rotation: overlay.rotation,
-                }),
-                settings: (tile.settings != 0).then_some(tile.settings),
-                underlay: tile.underlay_id,
-            })
-            .collect();
+        let mut tiles = region_tiles_from_decoded(&terrain);
         for edit in self.edits.region((region.x, region.y)) {
             let (_, (x, y)) = edit.locate();
             let index = (usize::from(edit.plane) * 64 + usize::from(x)) * 64 + usize::from(y);
