@@ -173,9 +173,7 @@ impl EditorApp {
             .collect();
         for key in stale {
             self.loaded.remove(&key);
-            let _ = self
-                .session
-                .unload_region(RegionCoord::new(key.0, key.1));
+            let _ = self.session.unload_region(RegionCoord::new(key.0, key.1));
             self.renderer.remove_region(key);
             self.animations.remove_region(key);
             self.infos.remove(&key);
