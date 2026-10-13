@@ -6,18 +6,19 @@
 //! regions whose geometry can change are rebuilt and replace the old ones when ready.
 
 use super::EditorApp;
+use super::paint_commit::{PaintCommitError, TerrainPaintIntent, build_terrain_paint_patch};
 use super::path_commit::{TerrainPathIntent, build_terrain_path_patch};
 use crate::heights::{self, encode_height};
-use crate::paint::{Brush, TileValues, Tool};
+use crate::paint::{Brush, Fill, TileValues, Tool};
 use eframe::egui;
 use osrs_core::coords::{MapTile, RegionCoord, SourcePlane};
 use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
 use osrs_edit::{
-    HeightVertexCoord, MapDocument, MapPosition, OverlayRotation, OverlayShape, TerrainOverlay,
-    TerrainTile,
+    HeightVertexCoord, MapDocument, MapPatch, MapPosition, MapQuery, OverlayRotation, OverlayShape,
+    TerrainOverlay, TerrainTile,
 };
 use osrs_world::{LocEdit, LocSpec, TileEdit};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Duration;
 use web_time::Instant;
 
@@ -77,6 +78,60 @@ fn project_semantic_terrain(values: &mut TileValues, terrain: TerrainTile) -> Op
     Some(())
 }
 
+fn paint_intent_from_brush(
+    brush: &Brush,
+    tile: (i32, i32),
+    after: TileValues,
+) -> TerrainPaintIntent {
+    let mut intent = TerrainPaintIntent::new(tile);
+    if brush.underlay.armed {
+        intent.underlay = Some(match brush.underlay.fill {
+            Fill::Clear | Fill::Set(0) => None,
+            Fill::Set(id) => Some(FloorUnderlayId::new(u32::from(id))),
+        });
+    }
+    if brush.overlay.armed {
+        intent.overlay = Some(match brush.overlay.fill {
+            Fill::Clear | Fill::Set(0) => None,
+            Fill::Set(id) => Some(FloorOverlayId::new(u32::from(id))),
+        });
+    }
+    if brush.shape.armed && after.overlay != 0 {
+        intent.overlay_shape = Some((
+            OverlayShape::new(after.shape)
+                .unwrap_or_else(|| unreachable!("Brush::apply clamps overlay shape")),
+            OverlayRotation::new(after.rotation)
+                .unwrap_or_else(|| unreachable!("Brush::apply clamps overlay rotation")),
+        ));
+    }
+    intent.height = brush.height.armed.then_some(after.height);
+    intent.flags = brush.flags.armed.then_some(after.flags);
+    intent
+}
+
+fn build_paint_stroke_patch(
+    query: &impl MapQuery,
+    brush: &Brush,
+    changes: &[(TileKey, TileValues, TileValues)],
+) -> Result<MapPatch, PaintCommitError> {
+    let mut by_plane = BTreeMap::<SourcePlane, Vec<TerrainPaintIntent>>::new();
+    for (key, _, after) in changes {
+        let plane = SourcePlane::new(key.0)
+            .unwrap_or_else(|| unreachable!("editor stroke planes are always validated"));
+        by_plane
+            .entry(plane)
+            .or_default()
+            .push(paint_intent_from_brush(brush, (key.1, key.2), *after));
+    }
+
+    let mut ops = Vec::new();
+    for (plane, intents) in by_plane {
+        let patch = build_terrain_paint_patch(query, plane, &intents)?;
+        ops.extend_from_slice(patch.ops());
+    }
+    Ok(MapPatch::new(ops))
+}
+
 /// `(plane, world x, world y)`.
 pub type TileKey = (u8, i32, i32);
 
@@ -96,6 +151,9 @@ pub struct Stroke {
     index: HashMap<TileKey, usize>,
     last_tile: Option<(i32, i32)>,
     last_applied: Instant,
+    /// The exact Paint brush captured for this stroke. `None` keeps non-Paint strokes on the legacy
+    /// commit path until their own migration checkpoints.
+    paint_brush: Option<Brush>,
     /// The height under the cursor when the stroke began (what Flatten levels to).
     anchor: Option<i32>,
     seed: u64,
@@ -108,6 +166,7 @@ impl Default for Stroke {
             index: HashMap::new(),
             last_tile: None,
             last_applied: Instant::now(),
+            paint_brush: None,
             anchor: None,
             seed: 0,
         }
@@ -222,11 +281,125 @@ impl EditorApp {
         true
     }
 
-    /// Finish the open stroke: one undo step, if it changed anything (tiles or objects).
+    /// Reconcile the already-visible Paint preview with the authoritative semantic result. Most
+    /// strokes are already identical; this mainly canonicalizes overlay shape/rotation when an
+    /// overlay is created on a semantically empty tile.
+    fn project_paint_stroke(&mut self, stroke: &mut Stroke, brush: &Brush) {
+        let mut edits = Vec::new();
+        for (key, before, after) in &mut stroke.step.changes {
+            let Some(plane) = SourcePlane::new(key.0) else {
+                continue;
+            };
+            let position = MapPosition::new(MapTile::new(key.1, key.2), plane);
+            let vertex = HeightVertexCoord::new(MapTile::new(key.1, key.2), plane);
+            let terrain = self.session.document().terrain_at(position);
+            let semantic_height = self.session.document().height_at(vertex);
+            let mut projected = *after;
+
+            if brush.underlay.armed {
+                projected.underlay = match brush.underlay.fill {
+                    Fill::Clear | Fill::Set(0) => 0,
+                    Fill::Set(id) => id,
+                };
+            }
+            if brush.overlay.armed {
+                match brush.overlay.fill {
+                    Fill::Clear | Fill::Set(0) => {
+                        projected.overlay = 0;
+                        projected.shape = 0;
+                        projected.rotation = 0;
+                    }
+                    Fill::Set(id) => {
+                        projected.overlay = id;
+                        if let Some(overlay) = terrain.overlay {
+                            projected.shape = overlay.shape.get();
+                            projected.rotation = overlay.rotation.get();
+                        } else {
+                            projected.shape = 0;
+                            projected.rotation = 0;
+                        }
+                    }
+                }
+            } else if brush.shape.armed {
+                if let Some(overlay) = terrain.overlay {
+                    projected.shape = overlay.shape.get();
+                    projected.rotation = overlay.rotation.get();
+                } else {
+                    projected.shape = before.shape;
+                    projected.rotation = before.rotation;
+                }
+            }
+            if brush.height.armed
+                && let Some(height) = semantic_height
+            {
+                projected.height = height;
+            }
+            if brush.flags.armed {
+                projected.flags = terrain.flags;
+            }
+
+            if projected != *after {
+                self.edited.insert(*key, projected);
+                edits.push(self.edit_for(*key, projected));
+            }
+            *after = projected;
+        }
+        self.send_edits(edits);
+        stroke.step.changes.retain(|(_, before, after)| before != after);
+    }
+
+    /// Finish the open stroke. Paint strokes commit exactly once to the semantic session before the
+    /// current world/renderer projection and legacy compatibility history are finalized. Other tools
+    /// remain on the existing legacy path until their own migration checkpoints.
     pub(super) fn end_stroke(&mut self) {
-        let Some(stroke) = self.stroke.take() else {
+        let Some(mut stroke) = self.stroke.take() else {
             return;
         };
+        if stroke.step.changes.is_empty()
+            && stroke.step.added.is_empty()
+            && stroke.step.removed.is_empty()
+        {
+            return;
+        }
+
+        if let Some(brush) = stroke.paint_brush.clone() {
+            let patch = match build_paint_stroke_patch(
+                self.session.document(),
+                &brush,
+                &stroke.step.changes,
+            ) {
+                Ok(patch) => patch,
+                Err(error) => {
+                    self.revert(&stroke.step, false);
+                    self.notice = Some((
+                        format!("Paint stroke was not committed: {error:?}"),
+                        Instant::now(),
+                    ));
+                    return;
+                }
+            };
+
+            match self.session.commit(patch) {
+                Ok(Some(_)) => self.project_paint_stroke(&mut stroke, &brush),
+                Ok(None) => {
+                    self.project_paint_stroke(&mut stroke, &brush);
+                    self.notice = Some((
+                        "Paint stroke made no semantic changes".to_owned(),
+                        Instant::now(),
+                    ));
+                    return;
+                }
+                Err(error) => {
+                    self.revert(&stroke.step, false);
+                    self.notice = Some((
+                        format!("Paint stroke was rejected by the semantic session: {error:?}"),
+                        Instant::now(),
+                    ));
+                    return;
+                }
+            }
+        }
+
         if stroke.step.changes.is_empty()
             && stroke.step.added.is_empty()
             && stroke.step.removed.is_empty()
@@ -260,7 +433,10 @@ impl EditorApp {
             return;
         }
         stroke.last_tile = Some(tile);
-        let brush: Brush = self.prefs.brush.clone();
+        let brush = stroke
+            .paint_brush
+            .get_or_insert_with(|| self.prefs.brush.clone())
+            .clone();
         let plane = self.view_plane;
         let mut edits = Vec::new();
         for (x, y) in brush.footprint_tiles(tile) {
@@ -372,7 +548,10 @@ impl EditorApp {
         let Some(mut stroke) = self.stroke.take() else {
             return;
         };
-        let brush = self.prefs.brush.clone();
+        let brush = stroke
+            .paint_brush
+            .get_or_insert_with(|| self.prefs.brush.clone())
+            .clone();
         let plane = self.view_plane;
         let mut edits = Vec::new();
         for (x, y) in tiles {
@@ -710,6 +889,7 @@ impl EditorApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::EditorSession;
 
     #[test]
     fn an_interior_tile_rebuilds_only_its_own_region() {
@@ -722,5 +902,57 @@ mod tests {
         assert_eq!(regions.len(), 4);
         assert!(regions.contains(&(49, 49)) && regions.contains(&(50, 50)));
         assert_eq!(affected_regions((3263, 3230)).len(), 2);
+    }
+
+    #[test]
+    fn one_paint_stroke_is_one_semantic_session_history_entry() {
+        let brush = Brush::default();
+        let before = TileValues::default();
+        let after = brush.apply(before);
+        let changes = vec![
+            ((0, 3200, 3200), before, after),
+            ((1, 3200, 3200), before, after),
+        ];
+        let mut session = EditorSession::new(MapDocument::new());
+        let patch = build_paint_stroke_patch(session.document(), &brush, &changes)
+            .unwrap_or_else(|error| unreachable!("valid Paint stroke: {error:?}"));
+
+        assert_eq!(patch.len(), 2);
+        assert!(
+            session
+                .commit(patch)
+                .unwrap_or_else(|error| unreachable!("valid semantic commit: {error:?}"))
+                .is_some()
+        );
+        assert_eq!(session.revision(), 1);
+        assert!(session.can_undo());
+
+        for plane in [0, 1] {
+            let source_plane = SourcePlane::new(plane)
+                .unwrap_or_else(|| unreachable!("test plane is valid"));
+            let position = MapPosition::new(MapTile::new(3200, 3200), source_plane);
+            assert_eq!(
+                session
+                    .document()
+                    .terrain_at(position)
+                    .overlay
+                    .map(|overlay| overlay.id),
+                Some(FloorOverlayId::new(1))
+            );
+        }
+
+        assert!(
+            session
+                .undo()
+                .unwrap_or_else(|error| unreachable!("valid semantic undo: {error:?}"))
+                .is_some()
+        );
+        assert_eq!(session.revision(), 2);
+        for plane in [0, 1] {
+            let source_plane = SourcePlane::new(plane)
+                .unwrap_or_else(|| unreachable!("test plane is valid"));
+            let position = MapPosition::new(MapTile::new(3200, 3200), source_plane);
+            assert_eq!(session.document().terrain_at(position), TerrainTile::default());
+        }
     }
 }
