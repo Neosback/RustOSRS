@@ -1,6 +1,6 @@
 # RustOSRS Map Editor Architecture Handoff
 
-Last updated: 2026-10-12
+Last updated: 2026-10-13
 
 This is the living handoff for the RustOSRS map-editor architecture project. Update it at every meaningful checkpoint and before each branch merge.
 
@@ -309,9 +309,53 @@ Checkpoint 12 implementation head with locked snapshots:
 - Tier B full workspace tests including all fitter quality fixtures: PASS
 - Tier C M3-M9 semantic/reference parity: PASS
 
+Checkpoint 12 final handoff head:
+
+- `3fe38c8cd518b29c013310882cebb9efb58c643f`
+- CI `38344475400`: Tier A/B/C PASS
+
 Conclusion from the fixture evidence: **do not add another fitter heuristic now.** The simple deterministic algorithm meets the current representative coverage/continuity contract, and extra routing/topology/global-optimization complexity would add risk without a demonstrated failure to solve.
 
 Any future intentional fitter change must review both quality metrics and golden-hash changes before updating the snapshots.
+
+### Checkpoint 13: branch readiness
+
+The complete branch was audited as one coherent PR before merge.
+
+Readiness evidence against `main`:
+
+- compare status: ahead
+- branch commits ahead: 23
+- branch commits behind: 0
+- merge base: `32e65e93a1d67282059098bc482aa8bcd6c10a3e`
+- audited pre-readiness head: `3fe38c8cd518b29c013310882cebb9efb58c643f`
+- no existing PR was present for this branch at audit time
+
+Scope audit:
+
+- semantic path-commit bridge is confined to the editor/application boundary plus the `osrs-edit` dependency
+- simplified Spline UI/settings changes are limited to the active path controls
+- active `terrain_path` directory contains exactly `fitter.rs`, `mod.rs`, `quality.rs`, and `shapes.rs`
+- `quality.rs` is test-only through `#[cfg(test)]`
+- legacy `atlas`, `model`, `planner`, `router`, `scene`, `settings`, `walls`, noise/resample/grammar code, old golden/fuzz/reference material, and legacy stress/network regressions are deletions in the branch diff
+- no `.github` workflow or temporary CI/helper file is changed by the branch
+- normal workspace compilation plus Tier A/B/C validation proves there are no live module/import references to the removed generator stack
+- the current Spline implementation and shelf explicitly contain no obstacle routing, path-network, or wall mode behavior
+- no brush/height/object migration, revision synchronization, renderer, or 117HD feature work was pulled into this branch
+
+The intended PR is therefore one coherent migration:
+
+1. route laid terrain paths through the semantic `MapPatch` boundary
+2. replace the legacy routing/network/wall generator with the deterministic true-shape overlay fitter
+3. simplify the Spline settings/UI to the fitter's real inputs
+4. enforce the behavior with independent deterministic quality fixtures and locked outputs
+
+Validation before the readiness documentation commit:
+
+- exact head `3fe38c8cd518b29c013310882cebb9efb58c643f`
+- CI `38344475400`: Tier A/B/C PASS
+
+Merge rule: the readiness documentation head must also pass Tier A/B/C, the PR must remain mergeable against `main`, and the branch must not drift before squash merge.
 
 ## Current boundaries
 
@@ -321,15 +365,6 @@ Do not reintroduce walls or pathfinding without an explicit decision.
 
 Do not broaden this branch into brush/height/object-tool migration, revision synchronization, renderer, or 117HD work.
 
-## Next checkpoint
+## Next checkpoint after merge
 
-Perform branch readiness for `refactor/editor-path-commit-domain`, not another fitter feature pass:
-
-1. Compare the full branch against current `main`.
-2. Audit the complete changed-file list and diff for scope leakage.
-3. Confirm no temporary migration/helper files remain.
-4. Confirm the removed legacy planner/wall stack has no surviving references.
-5. Review the semantic path-commit bridge + simplified fitter + quality fixtures as one coherent PR scope.
-6. Update this handoff with exact branch-readiness evidence if needed.
-7. Open/update the PR, verify exact-head CI/mergeability, and merge only when the branch is clean.
-8. Stop before starting the next feature branch.
+Stop after merging this branch. Do not start another feature branch until the next explicit direction.
