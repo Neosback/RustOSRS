@@ -34,33 +34,33 @@ pub(super) struct ObjectCommitPlan {
 /// These exact identities are projection metadata only. `EditorSession::history` remains the
 /// authoritative before/after state and is always transitioned before this route is used.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ObjectHistoryRoute {
+pub(in crate::app) struct ObjectHistoryRoute {
     removed: Vec<LocSpec>,
     added: Vec<LocSpec>,
 }
 
 impl ObjectHistoryRoute {
-    pub(super) fn new(removed: Vec<LocSpec>, added: Vec<LocSpec>) -> Self {
+    pub(in crate::app) fn new(removed: Vec<LocSpec>, added: Vec<LocSpec>) -> Self {
         Self { removed, added }
     }
 
-    pub(super) fn object_count(&self) -> usize {
+    pub(in crate::app) fn object_count(&self) -> usize {
         self.removed.len().max(self.added.len())
     }
 
     #[cfg(test)]
-    pub(super) fn removed(&self) -> &[LocSpec] {
+    pub(in crate::app) fn removed(&self) -> &[LocSpec] {
         &self.removed
     }
 
     #[cfg(test)]
-    pub(super) fn added(&self) -> &[LocSpec] {
+    pub(in crate::app) fn added(&self) -> &[LocSpec] {
         &self.added
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ObjectHistoryProjectionError {
+pub(in crate::app) enum ObjectHistoryProjectionError {
     Adapter(ObjectCommitError),
     ExpectedAbsent { spec: LocSpec },
     ExpectedPresent { spec: LocSpec },
@@ -73,9 +73,9 @@ impl From<ObjectCommitError> for ObjectHistoryProjectionError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ObjectHistoryProjection {
-    pub edits: Vec<LocEdit>,
-    pub reselect: Vec<LocSpec>,
+pub(in crate::app) struct ObjectHistoryProjection {
+    pub(in crate::app) edits: Vec<LocEdit>,
+    pub(in crate::app) reselect: Vec<LocSpec>,
 }
 
 pub(super) fn build_object_commit_plan(
@@ -115,7 +115,7 @@ pub(super) fn build_object_commit_plan(
 /// `forward = false` projects an undo; `forward = true` projects a redo. The semantic document is
 /// checked first so a stale/misordered global route cannot mutate the worker independently from the
 /// authoritative session.
-pub(super) fn build_object_history_projection(
+pub(in crate::app) fn build_object_history_projection(
     query: &impl MapQuery,
     route: &ObjectHistoryRoute,
     forward: bool,
