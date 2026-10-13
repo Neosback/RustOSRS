@@ -88,6 +88,7 @@ impl EditorApp {
         }
         self.tool_actions(ctx);
         self.edit_actions(ctx);
+        self.project_actions(ctx);
         self.script_frame(ctx);
         self.object_actions(ctx);
         self.resolve_reselect();

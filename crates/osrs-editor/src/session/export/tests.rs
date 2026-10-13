@@ -1,10 +1,14 @@
 use super::*;
+use crate::session::adapt_region_map;
+use crate::session::region_diff::{DiffError, baseline_document};
 use osrs_cache::decode::EncodedTerrainTile;
+use osrs_core::coords::SourcePlane;
 use osrs_core::ids::{FloorOverlayId, FloorUnderlayId, ObjectId};
 use osrs_edit::{
     LocKind, MapOp, MapPatch, ObjectOrientation, OverlayRotation, OverlayShape, TerrainOverlay,
     TerrainTile,
 };
+use osrs_world::RegionMap;
 
 const PROFILE_YAML: &str =
     include_str!("../../../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
@@ -187,7 +191,7 @@ fn a_region_missing_from_the_document_is_an_error_not_a_mass_deletion() {
     let locations = source_locations();
     assert_eq!(
         export_region(&terrain, &locations, &MapDocument::new()),
-        Err(ExportError::RegionNotLoaded(region()))
+        Err(ExportError::Diff(DiffError::RegionNotLoaded(region())))
     );
 }
 

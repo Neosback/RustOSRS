@@ -329,7 +329,19 @@ Canonical form: per tile `overlay, settings, underlay, height`, then a trailing 
 - `app/export.rs` runs the export on a worker thread over a document snapshot and writes `5/<group>.dat` (gzip container of the original group with files 0 and 1 replaced, files 2..=4 preserved) and `manifest.json` (profile, cache fingerprint, per-region change counts). The source cache is never modified. Native only; the menu entry is a no-op on wasm.
 - Validation: unit tests plus real-cache tests (skipped without `RUSTOSRS_TARGET_CACHE_DIR`): every sampled real square exports as `None` when unedited, real edits survive export and reload, and the full file-writing path decodes back to the edit with files 2..=4 byte-identical.
 
-Not done: writing into `.dat2`/`.idx` and updating the reference table (a loadable repacked cache), project save/load, version/CRC bookkeeping in exported containers. Placement note: `session::export` lives in `osrs-editor` because it needs `adapt_region_map`; move it down with that adapter if another consumer appears.
+Not done: writing into `.dat2`/`.idx` and updating the reference table (a loadable repacked cache), version/CRC bookkeeping in exported containers. Placement note: `session::export` lives in `osrs-editor` because it needs `adapt_region_map`; move it down with that adapter if another consumer appears.
+
+### Projects: File > Open / Save project (Ctrl/Cmd+S)
+
+Edits now persist between runs. A project file (`rustosrs-project-v1` JSON, `session/project_file.rs`) stores only per-region `RegionDiff`s (`session/region_diff.rs`: document vs the semantic baseline of the stored square: changed tiles, absolute final heights, object adds/removes) plus the bundled cache profile id (bound to the cache fingerprint). Decoding validates every value through the semantic constructors; unknown formats and out-of-range values are rejected, never clamped.
+
+- Save (`app/project.rs`) runs on a worker thread: reads pristine source squares, diffs against a document snapshot, merges still-unapplied diffs of an opened project, and writes atomically (temp file + rename).
+- Open validates the profile against the open cache, clears undo history (opened edits are not undo steps), then applies each region's diff the moment that region's semantic state is loaded (resident regions immediately, others when they stream in). `EditorSession::apply_untracked` applies without a history entry and marks the region dirty (streaming-safe); projection into the worker/picker mirrors reuses the Path primitives (`project_document_tiles`, `build_object_history_projection`).
+- Export now shares the same `RegionDiff` (`session::export` = diff + encode).
+- Verified in the real app with scripted runs (`project save|open PATH`, `inspect X Y`, `sleep SECONDS` were added to the script language for this): a fresh start shows overlay 10 at a tile, opening a saved project shows overlay 5 in both the semantic document and the projected view, tiles outside the brush are untouched. Screenshots stopped working in this environment mid-session (capture never fires), so the rendered result of an opened project was not eyeballed; the geometry rebuild path is the same dirty-region flush every interactive edit uses.
+- Known limits: opening a project overrides conflicting current edits in loaded regions (no merge UI); no unsaved-changes prompt on quit; projects are native-only (stub on wasm).
+
+Corrected `osrs-cache`'s `configured_build_241_cache_matches_pinned_source_shape`, which asserted map groups hold files `[0, 1]`; the pinned cache has `[0, 1, 2, 3, 4]`. That test is skipped without `RUSTOSRS_TARGET_CACHE_DIR`, so CI never exercised it.
 
 ### Phase 7 gate: WebAssembly portability
 

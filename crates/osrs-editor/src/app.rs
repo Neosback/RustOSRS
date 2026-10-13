@@ -25,6 +25,8 @@ mod overlay;
 mod paint_commit;
 mod path_commit;
 mod plugins;
+#[cfg_attr(target_arch = "wasm32", path = "app/project_web.rs")]
+mod project;
 mod render_runtime;
 mod script;
 mod selection;
@@ -81,6 +83,8 @@ pub struct EditorApp {
     renderer: render_runtime::RenderRuntime,
     /// A running File > Export, if any.
     export_job: Option<export::ExportJob>,
+    /// The opened project's unapplied edits, its file, and a running save.
+    project: project::ProjectState,
     /// Camera, picking, selection, and in-progress tool gestures.
     interaction: interaction_runtime::InteractionRuntime,
     /// Persistent authoritative semantic edit state. Legacy edit stores remain projections until
@@ -214,6 +218,7 @@ impl eframe::App for EditorApp {
 
         self.poll_palette();
         self.poll_export();
+        self.poll_project();
         self.menu_bar(ui);
         self.toolbar(ui);
         self.status_bar(ui);

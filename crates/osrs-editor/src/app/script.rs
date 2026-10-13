@@ -5,6 +5,8 @@
 //! switch tool, set the brush, go somewhere, toggle overlays, undo. `wait N` pauses N frames (the
 //! script resumes on its own), which is how smoke tests line things up with the world loading.
 
+mod window;
+
 use super::EditorApp;
 use crate::hud::Destination;
 use crate::paint::{Fill, Tool};
@@ -30,10 +32,13 @@ count                  log how many objects the camera's region has
 hud tile|stats|minimap|outline on|off|toggle
 window settings|plugins|script|map|teleport|none   open a window (or close all)
 grid                   toggle the tile grid
+project save|open PATH write / read a project file (Save returns at once; wait for it)
 camera fly|orbit
 focus                  move the camera to the selection
 undo | redo | delete | turn | copy
 wait N                 pause N frames; at N waits until frame N
+sleep SECONDS          pause by the clock, whatever the frame rate
+inspect X Y            log a tile's projected and document values (smoke tests)
 status TEXT
 # a comment";
 
@@ -42,6 +47,8 @@ status TEXT
 pub struct ScriptRunner {
     queue: VecDeque<String>,
     wait_until: u64,
+    /// `sleep SECONDS`: wall-clock hold, steady regardless of the frame rate.
+    sleep_until: Option<Instant>,
     /// Frames the current line has been waiting for what it needs (a loading region ...).
     retries: u32,
     /// What the last runs said (errors are one line each, with the line text).
@@ -92,7 +99,14 @@ impl EditorApp {
 
     /// Run queued commands until the queue is empty or a `wait` holds it (once per frame).
     pub(super) fn script_frame(&mut self, ctx: &egui::Context) {
-        while self.frames >= self.script.wait_until {
+        if let Some(until) = self.script.sleep_until {
+            if Instant::now() < until {
+                ctx.request_repaint();
+                return;
+            }
+            self.script.sleep_until = None;
+        }
+        while self.frames >= self.script.wait_until && self.script.sleep_until.is_none() {
             let Some(line) = self.script.queue.pop_front() else {
                 return;
             };
@@ -103,6 +117,7 @@ impl EditorApp {
                     if self.script.retries > RETRY_LIMIT {
                         self.script.retries = 0;
                         let message = format!("{line}: still waiting after {RETRY_LIMIT} frames");
+                        eprintln!("smoke: script: {message}");
                         self.script.log.push(message.clone());
                         self.status = Some(format!("script: {message}"));
                     } else {
@@ -112,6 +127,7 @@ impl EditorApp {
                 }
                 Err(error) => {
                     self.script.retries = 0;
+                    eprintln!("smoke: script: {line}: {error}");
                     self.script.log.push(format!("{line}: {error}"));
                     self.status = Some(format!("script: {line}: {error}"));
                 }
@@ -317,8 +333,36 @@ impl EditorApp {
             "wait" => {
                 self.script.wait_until = self.frames + number::<u64>(words.next(), "frames")?;
             }
+            "inspect" => {
+                let x = number::<i32>(words.next(), "x")?;
+                let y = number::<i32>(words.next(), "y")?;
+                let plane = self.interaction.view_plane;
+                let semantic = osrs_core::coords::SourcePlane::new(plane).map(|plane| {
+                    self.session
+                        .document()
+                        .terrain_at(osrs_edit::MapPosition::new(
+                            osrs_core::coords::MapTile::new(x, y),
+                            plane,
+                        ))
+                });
+                eprintln!(
+                    "smoke: inspect ({x},{y}) plane {plane}: view {:?}, document {semantic:?}",
+                    self.tile_now((x, y))
+                );
+            }
+            "sleep" => {
+                let seconds = number::<f32>(words.next(), "seconds")?;
+                self.script.sleep_until =
+                    Some(Instant::now() + std::time::Duration::from_secs_f32(seconds));
+            }
             "at" => {
                 self.script.wait_until = number::<u64>(words.next(), "frame")?;
+            }
+            "project" => {
+                let action = words.next().unwrap_or_default();
+                let path: Vec<&str> = words.collect();
+                let message = self.script_project(action, &path.join(" "))?;
+                self.notice = Some((message, Instant::now()));
             }
             "status" => {
                 let text: Vec<&str> = words.collect();
@@ -363,98 +407,6 @@ impl EditorApp {
                 true
             }
             None => false,
-        }
-    }
-
-    /// The script the old `RUSTOSRS_*` smoke-test variables describe, so they keep working.
-    pub(super) fn env_script() -> String {
-        let var = |name: &str| std::env::var(name).ok();
-        let mut lines: Vec<String> = Vec::new();
-        if let Some(value) = var("RUSTOSRS_TELEPORT") {
-            lines.push(format!("teleport {}", value.replace(',', " ")));
-        }
-        if let Some(value) = var("RUSTOSRS_SPLINE") {
-            lines.push(format!("spline {}", value.replace(';', " ")));
-        }
-        if let Some(value) = var("RUSTOSRS_PAINT") {
-            lines.push(format!("paint {}", value.replace(',', " ")));
-        }
-        if let Some(value) = var("RUSTOSRS_SELECT") {
-            lines.push(format!("select object {}", value.replace(',', " ")));
-            if std::env::var_os("RUSTOSRS_CONTEXT").is_some() {
-                lines.push("menu".to_owned());
-            }
-        }
-        if let Some(value) = var("RUSTOSRS_SELECT_TILES") {
-            lines.push(format!("select tiles {}", value.replace(',', " ")));
-        }
-        if let Some(frame) = var("RUSTOSRS_LAY_AT") {
-            lines.push(format!("at {frame}"));
-            lines.push("lay".to_owned());
-        }
-        if let Some(value) = var("RUSTOSRS_OBJECT_OP")
-            && let Some((frame, op)) = value.split_once(':')
-        {
-            lines.push(format!("at {}", frame.trim()));
-            lines.push(op.trim().to_owned());
-            lines.push("wait 80".to_owned());
-            lines.push("count".to_owned());
-        }
-        if let Some(frame) = var("RUSTOSRS_UNDO_AT") {
-            lines.push(format!("at {frame}"));
-            lines.push("undo".to_owned());
-        }
-        if let Some(text) = var("RUSTOSRS_SCRIPT") {
-            lines.push(text);
-        }
-        lines.join("\n")
-    }
-
-    /// The Script window: a text box, Run, the log and the command reference.
-    pub(super) fn script_window(&mut self, ctx: &egui::Context) {
-        if !self.script_open {
-            return;
-        }
-        let ((), close) =
-            super::modal::Modal::new("script_window", format!("{} Script", crate::icons::SCRIPT))
-                .size(520.0, 0.0)
-                .show(ctx, |ui| {
-                    ui.add(
-                        egui::TextEdit::multiline(&mut self.script_text)
-                            .code_editor()
-                            .desired_rows(8)
-                            .desired_width(f32::INFINITY)
-                            .hint_text("tool paint\noverlay 12\nradius 3"),
-                    );
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add(crate::theme::primary_button(format!(
-                                "{}  Run",
-                                crate::icons::PLAY
-                            )))
-                            .clicked()
-                        {
-                            let text = self.script_text.clone();
-                            self.run_script(&text);
-                        }
-                        if self.script.is_running() {
-                            ui.spinner();
-                            ui.weak("running");
-                        }
-                    });
-                    for message in &self.script.log {
-                        ui.colored_label(ui.visuals().warn_fg_color, message);
-                    }
-                    egui::CollapsingHeader::new("Commands")
-                        .default_open(false)
-                        .show(ui, |ui| {
-                            ui.add(egui::Label::new(
-                                egui::RichText::new(HELP).monospace().size(11.5),
-                            ));
-                        });
-                });
-        if close {
-            self.script_open = false;
         }
     }
 }

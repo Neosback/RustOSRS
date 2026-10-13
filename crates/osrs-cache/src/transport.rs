@@ -1466,7 +1466,12 @@ mod tests {
             return Err(TransportError::MissingGroup);
         };
         let metadata = cache.group_metadata(MAP_INDEX, map_group)?;
-        assert_eq!(metadata.file_ids, vec![0, 1]);
+        // Files 0 and 1 are terrain and locations; build-241 map groups also carry files 2..=4.
+        assert!(
+            metadata.file_ids.starts_with(&[0, 1]),
+            "{:?}",
+            metadata.file_ids
+        );
         let model_groups = cache.group_ids(MODEL_INDEX)?;
         let Some(model_group) = model_groups.first().copied() else {
             return Err(TransportError::MissingGroup);

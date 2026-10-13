@@ -84,6 +84,7 @@ impl EditorApp {
                     self.infos_version += 1;
                     self.world
                         .region_installed(key, &region.geometry, region.animations);
+                    self.apply_project_region(RegionCoord::new(key.0, key.1));
                 }
                 StreamEvent::Outline {
                     region,

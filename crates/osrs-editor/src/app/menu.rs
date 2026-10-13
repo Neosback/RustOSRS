@@ -11,6 +11,7 @@ impl EditorApp {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     self.cache_menu(ui);
+                    self.project_menu(ui);
                     self.export_menu(ui);
                     ui.separator();
                     if ui.button("Quit").clicked() {

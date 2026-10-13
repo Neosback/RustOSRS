@@ -125,4 +125,43 @@ impl EditorApp {
             Tool::Spline | Tool::Select | Tool::Objects => {}
         }
     }
+
+    /// Project authoritative document values into the worker/picker mirrors for tiles that were
+    /// changed outside an interactive stroke (a project being applied). Terrain channels always
+    /// come from the document; heights only for `height_keys`.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(in crate::app) fn project_document_tiles(
+        &mut self,
+        terrain_keys: &[TileKey],
+        height_keys: &[TileKey],
+    ) -> Result<(), &'static str> {
+        let mut projected = Vec::with_capacity(terrain_keys.len() + height_keys.len());
+        for (keys, include_height) in [(terrain_keys, false), (height_keys, true)] {
+            for key in keys {
+                let current = self
+                    .current_tile(*key)
+                    .ok_or("a project tile is not available to the projection adapter")?;
+                let values = super::path::project_semantic_path_values(
+                    self.session.document(),
+                    *key,
+                    current,
+                    include_height,
+                )
+                .ok_or("project state cannot be represented by the worker projection")?;
+                projected.push((*key, current, values, include_height));
+            }
+        }
+        let mut edits = Vec::new();
+        for (key, current, values, include_height) in projected {
+            if include_height {
+                self.height_edited.insert(key);
+            }
+            if values != current {
+                self.edited.insert(key, values);
+                edits.push(self.edit_for(key, values));
+            }
+        }
+        self.send_edits(edits);
+        Ok(())
+    }
 }

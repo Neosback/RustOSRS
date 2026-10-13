@@ -193,6 +193,17 @@ pub const CORE_ACTIONS: &[ActionDef] = &[
         Binding::key(Key::Escape),
     ),
     ActionDef::new(
+        "project.save",
+        "Save project",
+        "File",
+        Binding {
+            key: Key::S,
+            command: true,
+            shift: false,
+            alt: false,
+        },
+    ),
+    ActionDef::new(
         "edit.undo",
         "Undo",
         "Edit",
