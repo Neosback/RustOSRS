@@ -66,6 +66,10 @@ impl EditorApp {
                     profile_id,
                     build,
                 } => {
+                    // `Ready` is emitted exactly once by each newly opened cache worker. Visual
+                    // presentation rebuilds do not emit it, so this is the cache/source boundary
+                    // where old semantic state must be discarded.
+                    self.session.reset();
                     self.cache_opened(ctx, profile_id, build);
                     self.renderer.set_textures(&textures);
                     self.floor_textures = Some(textures);
