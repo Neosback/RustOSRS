@@ -1,11 +1,10 @@
-use crate::session::EditorSession;
 use osrs_core::{
     coords::{MapTile, SourcePlane},
     ids::ObjectId,
 };
 use osrs_edit::{
-    MapDocument, MapOp, MapPatch, MapPosition, MapQuery, ObjectEditError, ObjectOrientation,
-    ObjectPlacement, LocKind, build_object_patch,
+    LocKind, MapOp, MapPatch, MapPosition, MapQuery, ObjectEditError, ObjectOrientation,
+    ObjectPlacement, build_object_patch,
 };
 use osrs_world::LocSpec;
 
@@ -107,6 +106,8 @@ fn spec_from_placement(placement: ObjectPlacement) -> LocSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::EditorSession;
+    use osrs_edit::MapDocument;
 
     fn spec(
         object_id: u32,
@@ -176,12 +177,8 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("valid source: {error:?}"));
         let document = MapDocument::from_parts([], [], [source_placement]);
 
-        let plan = build_object_commit_plan(
-            &document,
-            &[source, source],
-            &[moved, moved],
-        )
-        .unwrap_or_else(|error| unreachable!("valid move: {error:?}"));
+        let plan = build_object_commit_plan(&document, &[source, source], &[moved, moved])
+            .unwrap_or_else(|error| unreachable!("valid move: {error:?}"));
 
         assert_eq!(plan.removed, vec![source]);
         assert_eq!(plan.added, vec![moved]);
