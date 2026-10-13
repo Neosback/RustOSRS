@@ -480,7 +480,11 @@ impl EditorApp {
             let missing = stroke.step.changes.iter().find_map(|(key, _, _)| {
                 let plane = SourcePlane::new(key.0)?;
                 let coord = HeightVertexCoord::new(MapTile::new(key.1, key.2), plane);
-                self.session.document().height_at(coord).is_none().then_some(coord)
+                self.session
+                    .document()
+                    .height_at(coord)
+                    .is_none()
+                    .then_some(coord)
             });
             if let Some(coord) = missing {
                 self.revert(&stroke.step, false);
@@ -634,19 +638,15 @@ impl EditorApp {
         let source_plane = SourcePlane::new(plane)
             .unwrap_or_else(|| unreachable!("editor view planes are always validated"));
         let center = MapTile::new(tile.0, tile.1);
-        let spec = stroke
-            .height_spec
-            .get_or_insert_with(|| {
-                HeightStrokeSpec::new(
-                    source_plane,
-                    self.prefs.height_tool.clone(),
-                    self.prefs.brush.radius,
-                    self.prefs.brush.footprint,
-                    stroke.anchor.unwrap_or(0),
-                    stroke.seed,
-                )
-            })
-            .clone();
+        let captured_spec = HeightStrokeSpec::new(
+            source_plane,
+            self.prefs.height_tool.clone(),
+            self.prefs.brush.radius,
+            self.prefs.brush.footprint,
+            stroke.anchor.unwrap_or(0),
+            stroke.seed,
+        );
+        let spec = stroke.height_spec.get_or_insert(captured_spec).clone();
         stroke.height_centers.push(center);
         let lookup = |t: (i32, i32)| self.current_tile((plane, t.0, t.1)).map(|v| v.height);
         let changes = spec.apply_sample(center, &lookup);
