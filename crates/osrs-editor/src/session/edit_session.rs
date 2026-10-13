@@ -289,10 +289,16 @@ mod tests {
         assert_eq!(session.unload_region(region()), RegionSyncOutcome::Changed);
         assert_eq!(session.revision(), 2);
         assert_eq!(session.document().height_at(vertex()), None);
-        assert_eq!(session.document().terrain_at(position()), TerrainTile::default());
+        assert_eq!(
+            session.document().terrain_at(position()),
+            TerrainTile::default()
+        );
         assert!(!session.can_undo());
         assert!(!session.can_redo());
-        assert_eq!(session.unload_region(region()), RegionSyncOutcome::Unchanged);
+        assert_eq!(
+            session.unload_region(region()),
+            RegionSyncOutcome::Unchanged
+        );
     }
 
     #[test]
@@ -336,7 +342,10 @@ mod tests {
 
         assert_eq!(session.revision(), 0);
         assert_eq!(session.document().height_at(vertex()), None);
-        assert_eq!(session.document().terrain_at(position()), TerrainTile::default());
+        assert_eq!(
+            session.document().terrain_at(position()),
+            TerrainTile::default()
+        );
         assert!(!session.can_undo());
         assert!(!session.can_redo());
     }
