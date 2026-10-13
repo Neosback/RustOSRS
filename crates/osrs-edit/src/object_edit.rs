@@ -71,7 +71,7 @@ fn canonical_unique(placements: &[ObjectPlacement]) -> Vec<ObjectPlacement> {
 
 fn placement_key(placement: &ObjectPlacement) -> (u8, i32, i32, u32, u8, u8) {
     (
-        placement.position.plane.get(),
+        placement.position.plane.index().get(),
         placement.position.tile.x,
         placement.position.tile.y,
         placement.object_id.get(),
