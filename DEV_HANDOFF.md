@@ -319,15 +319,37 @@ Ratchet rules now enforced by `scripts/check_architecture.py`:
 
 Self-tests in `scripts/test_check_architecture.py` cover the normal caps, test caps, debt no-growth, stale exception removal, orphan detection, malformed entries, and existing dependency rules.
 
-Current Phase 1 implementation commits before final documentation validation:
+Current Phase 1 implementation commits before final handoff bookkeeping:
 
 - `3400e9704911f664e2cb882144eade44f607a062` - measure live module debt
 - `b795cacdd435c93519c599ea2fa383af36e0136b` - record measured debt baselines
 - `3648bec3e310a16936a3391baa8e70fbc987dea7` - enforce editor debt ratchet
 - `79d4bdfed3a1c62aacaf620dfba8c8408780952c` - add debt-ratchet self-tests
 - `54fbaee2576eaba3309a5f1595f86df2d5bdef0a` - add Architecture Contract v2
+- `0eb135ff55b4bf58a334608fa5802d2136850023` - reconcile handoff and complete pre-PR documentation
 
-Final exact-head validation and PR state must be recorded after this handoff commit and before the checkpoint is reported complete.
+### Phase 1 validation and PR
+
+Validated implementation/documentation head before this final handoff bookkeeping commit:
+`0eb135ff55b4bf58a334608fa5802d2136850023`
+
+Exact CI:
+`38426658112` - Tier A/B/C PASS, including M3-M9 semantic/reference parity.
+
+Focused integration PR:
+`#41 architecture(editor): adopt contract v2 and debt ratchet`
+
+The PR diff contains exactly these five files:
+
+- `ARCHITECTURE.md`
+- `DEV_HANDOFF.md`
+- `scripts/architecture_debt.json`
+- `scripts/check_architecture.py`
+- `scripts/test_check_architecture.py`
+
+No runtime editor, renderer, world, cache codec, or 117HD production source file is changed by this checkpoint.
+
+This final handoff bookkeeping commit changes documentation only. Its resulting branch SHA must receive exact-head CI before Phase 1 is reported complete. After that validation, PR metadata may be updated with the final SHA and CI run because PR metadata does not alter the branch commit.
 
 ## Remaining migration roadmap
 
