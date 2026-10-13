@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-13
 
-This is the living handoff for the RustOSRS map-editor architecture migration. Keep it current at meaningful checkpoints and before subsystem merges.
+`ARCHITECTURE.md` is the authoritative architecture contract. This handoff records current implementation state, exact SHAs, completed checkpoints, transitional hazards, validation, and the next allowed boundary.
 
 ## Project goal
 
@@ -12,34 +12,40 @@ Core invariant:
 
 > If every GPU buffer, scene cache, picker cache, world-worker edit mirror, and UI widget vanished, the complete edited map would still exist correctly inside the semantic editor session.
 
-## Working rules
+## Mandatory working rules
 
-1. One active development branch/system at a time.
-2. Work in small checkpoints and stop after each checkpoint for review.
-3. Do not begin the next checkpoint without explicit user direction.
-4. A completed subsystem must pass exact-head Tier A/B/C before merge.
-5. After merge, validate the exact integrated commit on `main`.
-6. Preserve semantic/reference parity unless a checkpoint explicitly changes behavior.
-7. Keep renderer/117HD work isolated from editor-domain migration unless a narrow adapter change is required.
-8. One logical user gesture should become one logical `MapPatch` and one semantic history entry.
-9. `MapDocument` is authoritative; worker/render/picker/UI state is projection/cache only.
-10. Use the existing workspace boundaries; do not create parallel replacement architecture crates.
-11. Prefer actively edited modules below ~1,000 LOC and split by reason to change.
-12. Every Rust module under `crates/osrs-editor/src` has a hard CI ceiling of 1,600 lines and 64 KiB.
+1. Read `ARCHITECTURE.md` and this handoff before coding.
+2. One active development branch/system at a time.
+3. Work in small checkpoints and stop after each checkpoint for review.
+4. Do not begin the next checkpoint without explicit user direction.
+5. A completed subsystem must pass exact-head Tier A/B/C as required before merge.
+6. After merge, validate the exact integrated `main` commit.
+7. Preserve semantic/reference parity unless a checkpoint explicitly changes behavior.
+8. Keep renderer/117HD work isolated from editor-domain migration unless a narrow adapter change is required.
+9. One logical user gesture should become at most one logical `MapPatch` and one semantic history entry.
+10. `MapDocument` is authoritative. Worker/render/picker/UI state is projection/cache only.
+11. Use existing workspace boundaries. Do not create parallel replacement architecture crates.
+12. New or fully refactored production Rust files have a normal hard cap of 500 lines and 32 KiB.
+13. Dedicated test modules have a hard cap of 700 lines and 40 KiB.
+14. Existing oversized production modules are listed in `scripts/architecture_debt.json` at exact measured baselines and may never grow beyond those baselines.
+15. Once an allowlisted file falls within the normal cap, its exception must be removed permanently.
+16. Exact SHA matters. A green run certifies only the SHA it tested.
 
-## Target architecture
+## Target data flow
 
 ```text
-UI gesture
-  -> tool/intent
-  -> pure semantic planner
-  -> MapPatch
-  -> EditorSession::commit
-  -> revision + ChangeImpact
-  -> projection/invalidation
-  -> async rebuild
-  -> generation/revision check
-  -> GPU replacement
+COMMAND
+UI/input -> typed intent -> pure planner -> MapPatch -> EditorSession::commit
+
+QUERY
+UI/tool/read model -> read-only semantic query -> MapDocument
+
+PROJECTION
+semantic commit -> revision + ChangeImpact + touched area
+                -> projection invalidation
+                -> async rebuild
+                -> revision/generation check
+                -> worker/render/GPU replacement
 ```
 
 Loading remains:
@@ -52,22 +58,23 @@ cache decode
   -> renderer
 ```
 
-Never seed semantic authority by scraping renderer meshes, picker geometry, or GPU buffers.
+Never seed semantic authority by scraping renderer meshes, picker geometry, worker edit mirrors, or GPU buffers.
 
-## Workspace mapping
+## Workspace ownership summary
 
 - `osrs-core`: typed coordinates, IDs, planes, shared semantic vocabulary
 - `osrs-edit`: pure/headless editable domain, patches, history, validation, queries
 - `osrs-cache`: cache codecs/infrastructure
 - `osrs-scene`: OSRS scene semantics
-- `osrs-world`: cache/scene orchestration and transitional worker projection
-- `osrs-editor`: application/session/tools/input/UI/adapters
-- `osrs-render`: renderer projection
-- `osrs-hd`: 117HD rendering work
+- `osrs-hd`: reusable 117HD data/settings/material/environment semantics
+- `osrs-render`: WGPU projection only
+- `osrs-world`: streaming/orchestration and transitional projection workers
+- `osrs-reference`: fixtures/parity infrastructure, never a production dependency
+- `osrs-editor`: product composition root, UI, tools/controllers, application adapters
 
-## Core semantic contract
+## Core semantic contract already established
 
-- typed coordinates come from `osrs-core`
+- canonical typed coordinates come from `osrs-core`
 - `MapPosition = MapTile + SourcePlane`
 - `HeightVertexCoord = MapTile corner + SourcePlane`
 - `TerrainTile` owns underlay/overlay/flags; height is separate
@@ -82,14 +89,22 @@ Never seed semantic authority by scraping renderer meshes, picker geometry, or G
 
 ## Merged architecture systems
 
-### PR #33 — edit-domain foundation
-Squash merge: `5c5eef3bde696b20ae0319867e6e84567701ebf6`
+### PR #33: edit-domain foundation
 
-### PR #34 — history/query foundation
-Squash merge: `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`
+Squash merge:
+`5c5eef3bde696b20ae0319867e6e84567701ebf6`
 
-### PR #35 — semantic path planner + simplified fitter
-Squash merge: `cf552b734e1fdef54bf90b3b5c08211433f56a40`
+### PR #34: history/query foundation
+
+Squash merge:
+`cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`
+
+### PR #35: semantic path planner + simplified fitter
+
+Squash merge:
+`cf552b734e1fdef54bf90b3b5c08211433f56a40`
+
+Established:
 
 - deterministic Catmull-Rom fitting
 - OSRS overlay-shape matching
@@ -98,145 +113,108 @@ Squash merge: `cf552b734e1fdef54bf90b3b5c08211433f56a40`
 
 Do not reintroduce pathfinding, wall mode, topology repair, automatic joining, or hidden obstacle routing without an explicit product decision.
 
-### PR #36 — persistent semantic editor session
-Squash merge: `ace39238f67fa5c3f31611bf60ca5c106ace1d90`
+### PR #36: persistent semantic editor session
+
+Squash merge:
+`ace39238f67fa5c3f31611bf60ca5c106ace1d90`
+
 Post-merge CI `38363970256`: Tier A/B/C PASS.
+
+Established:
 
 - persistent `EditorSession { MapDocument, EditHistory, revision }`
 - semantic region hydration/unload
 - dirty-region preservation across streaming churn
 - cache-source reset boundary
 
-### PR #37 — Paint -> semantic session
-Squash merge: `be59c01dc57e72d256ff616d1947594d939a4b5b`
+### PR #37: Paint -> semantic session
+
+Squash merge:
+`be59c01dc57e72d256ff616d1947594d939a4b5b`
+
 Post-merge CI `38370847153`: Tier A/B/C PASS.
+
+Established:
 
 - Paint commit + undo/redo authoritative through `EditorSession`
 - worker `TileEdit` is projection only
 
-### PR #38 — Height -> semantic session
-Squash merge: `392206ae55e35dbe26e17d664a693b21a42dc006`
+### PR #38: Height -> semantic session
+
+Squash merge:
+`392206ae55e35dbe26e17d664a693b21a42dc006`
+
 Post-merge CI `38384232077`: Tier A/B/C PASS.
+
+Established:
 
 - Height commit + undo/redo authoritative through `EditorSession`
 - exact storage quantization and explicit lower-plane semantics
 - worker preview remains projection only
 
-### PR #39 — Object -> semantic session + editor module hardening
-Merged by user as a regular merge commit:
+### PR #39: Object -> semantic session + editor module hardening
+
+Regular merge commit:
 `50960fddbcc6851dea285b4b90c51b806fd70215`
 
 Post-merge CI `38410554574`: Tier A/B/C PASS, including M3-M9.
+
 The former `refactor/editor-object-session` branch is retired.
 
-Object status:
+Established:
 
 - pure deterministic Object planner
-- all live Object actions commit once through `EditorSession`
+- live Object actions commit once through `EditorSession`
 - Object undo/redo use `EditorSession`
 - worker `LocEdit` is projection only
 - stale projection routes validate against authoritative `MapDocument`
-- Paint/Height/Object share one chronological global-routing / semantic-history order
+- Paint, Height, and Object share one chronological semantic-history routing order
+- old `app/editing.rs` responsibility was split into focused history/tests modules
 
-Module hardening merged with PR #39:
+The 1,600-line / 64-KiB guard introduced during this checkpoint was an interim hardening step. Phase 1 replaces it with the Architecture Contract v2 ratchet.
 
-- old `app/editing.rs` (~1,830 LOC / ~68 KiB on the Object branch) was split by responsibility
-- `editing/history.rs` owns chronological semantic history routing/projection
-- `editing/tests.rs` owns editing/history regressions
-- hard CI module guard: 1,600 lines and 64 KiB
-- soft design target: <1,000 LOC where practical
+### PR #40: Path -> persistent semantic session
 
-## Semantic loading / residency
+PR:
+`#40 refactor(editor): migrate terrain path editing to semantic session`
 
-`EditorSession` tracks loaded and dirty regions.
+Final pre-merge branch head:
+`6a66758bf901a3c8af919dffc1434b84a0735c23`
 
-- clean region ingestion may replace semantic source state
-- identical ingestion is a no-op
-- dirty regions are not overwritten by incoming streaming snapshots
-- dirty regions are not semantically evicted by camera unload
-- cache-source switch resets the semantic session
+Exact branch CI:
+`38416867837` - Tier A/B/C PASS, including M3-M9.
 
-Height ingestion stores source-owned 64x64 final height samples per plane. Do not invent shared 65th boundary samples; neighboring source regions own their own boundary data.
+Regular merge commit on `main`:
+`a125f8e237f4a1594fe585df5a0dd7a2e2011da6`
 
-Transitional caveat: `WorldDefinitions::region()` can include legacy worker edits until all editing systems are migrated.
+Exact post-merge CI:
+`38422182517` - Tier A/B/C PASS, including M3-M9.
 
-## Current active branch
+The former `refactor/editor-path-session` branch is retired.
 
-Branch: `refactor/editor-path-session`
-
-Base / validated `main`:
-`50960fddbcc6851dea285b4b90c51b806fd70215`
-
-Purpose: migrate live terrain-path commit/history from the temporary semantic snapshot bridge to the persistent `EditorSession` without mixing context-menu, renderer, or 117HD work.
-
-The Path subsystem is now functionally complete on this branch. Do not start another subsystem here. The next boundary is a focused integration PR after explicit user direction.
-
-## Checkpoint 27 — live terrain path -> persistent semantic commit
-
-Status: COMPLETE.
-
-Implementation head:
-`2245f2dc027123362e1d38869981e56b4fdc1aba`
-
-Final documented head:
-`ac11b771c38bc0ac02ffa13fdf507cc0326ed2b1`
-
-Final CI:
-`38413087953` — Tier A/B/C PASS, including M3-M9.
-
-### Runtime authority
-
-Before this checkpoint, `apply_terrain_path` built a temporary `MapDocument`, applied the semantic path patch there, then copied the result back into legacy tile state. The persistent `EditorSession` did not receive the path transaction.
-
-Checkpoint 27 changed the live path commit boundary to:
+Path authority now follows:
 
 ```text
 fitted PathTile[]
   -> TerrainPathIntent[]
   -> build_terrain_path_patch(EditorSession::document, ...)
-  -> projection preflight on a disposable scratch clone
+  -> projection preflight on disposable scratch state
   -> one EditorSession::commit
   -> authoritative MapDocument
-  -> existing TileEdit worker projection
+  -> transitional worker TileEdit projection
 ```
 
-The scratch `MapDocument` clone is projection preflight only. It receives the exact already-built patch solely to prove that the authoritative result can be represented by the transitional worker adapter before the real session is mutated. It is never editor authority and is discarded before worker mutation.
+Path undo/redo follows:
 
-### Height semantics
+```text
+global chronological route
+  -> EditorSession::undo / redo
+  -> authoritative MapDocument
+  -> complete projection preflight
+  -> worker/render mirror update
+```
 
-When the path brush has Height armed:
-
-- plane 0 uses storage base `0`
-- upper planes require the actual semantic lower-plane height
-- a missing lower-plane base rejects the path instead of silently substituting zero
-- the pure path planner still requires an explicit existing semantic height vertex on the edited plane
-- storage quantization remains consistent with existing cache representation
-
-### Anti-god/module split
-
-Path runtime responsibility moved out of `app/editing.rs` into:
-
-`crates/osrs-editor/src/app/editing/path.rs`
-
-This removed roughly another 166 lines from the editing shell instead of adding new path logic back into a growing central module. Path fitting remains in `terrain_path` / `spline_tool`; pure semantic path planning remains in `app/path_commit.rs`.
-
-Checkpoint 27 intentionally left Path undo/redo on legacy `EditStep.changes`; Checkpoint 28 closes that temporary split-history boundary.
-
-## Checkpoint 28 — terrain-path undo/redo -> semantic session
-
-Status: IMPLEMENTATION COMPLETE; final documented-head validation pending.
-
-Implementation head:
-`6c2969d368818d3ca6094a91053274483e78d588`
-
-Implementation CI:
-`38416343243` — Tier A/B/C PASS, including M3-M9.
-
-### Path history authority
-
-Path no longer stores terrain or Height before/after values in application history.
-
-The global route now carries only:
+Path no longer stores terrain/height before/after values as history authority. Its global route stores only lightweight semantic projection metadata:
 
 ```text
 SemanticPathHistory {
@@ -245,67 +223,7 @@ SemanticPathHistory {
 }
 ```
 
-`keys` identify every unique Path tile participating in the semantic transaction. `include_height` records whether the Path gesture changed Height and therefore whether semantic Height should also be mirrored by worker projection.
-
-The actual reversible terrain/height state exists only in `EditorSession::history`.
-
-### Undo/redo flow
-
-Path now follows the same authoritative chronology as Paint, Height, and Object:
-
-```text
-global chronological route
-  -> EditorSession::undo / redo
-  -> authoritative MapDocument
-  -> preflight complete Path TileEdit projection
-  -> worker/render mirror update
-```
-
-Undo/redo does not read legacy stored Path before/after values.
-
-`project_semantic_path_values` derives terrain channels directly from `MapQuery` / `MapDocument`. If Path Height was armed, Height is also read from semantic state; otherwise the current worker Height is deliberately preserved.
-
-### Failure safety
-
-After semantic history moves, the complete Path worker projection is prepared before any worker mutation.
-
-Projection rejects if:
-
-- a routed Path tile is no longer available to the worker adapter
-- the source plane is invalid
-- semantic terrain IDs cannot fit the transitional worker representation
-- an armed semantic Height vertex is missing
-
-If projection preparation fails after `EditorSession::undo()`, the code attempts `EditorSession::redo()` and restores the global marker to the undo stack.
-
-If projection preparation fails after `EditorSession::redo()`, the code attempts `EditorSession::undo()` and restores the global marker to the redo stack.
-
-This keeps semantic history and the global chronological router aligned before worker mutation.
-
-### Immediate commit projection versus history routing
-
-The live Path commit still computes local worker before/after values for the immediate `TileEdit` projection only. Those values are not retained as Path history authority.
-
-The semantic history route records every unique Path intent key, even if a worker mirror already happens to equal the committed semantic result and therefore needs no immediate `TileEdit`. This ensures later undo/redo still validates and projects the complete semantic transaction footprint.
-
-### Regression coverage
-
-Checkpoint 28 adds/retains coverage that:
-
-- the Path history marker contains no legacy tile/object before/after authority
-- semantic Path projection follows `MapDocument` across undo and redo
-- unarmed Path Height is preserved in worker projection
-- armed Path Height follows semantic state
-- consecutive Path transactions undo and redo in semantic order
-- upper-plane Height still requires a real semantic lower-plane base
-- one non-empty Path patch remains one persistent semantic revision/history entry
-- architecture/module-size guard, workspace tests, and M3-M9 parity all remain green
-
-`editing/path.rs` is now roughly 440 lines including focused regression tests and remains well below the 1,000-line soft target and 1,600-line hard CI ceiling.
-
-### Chronology after Checkpoint 28
-
-Paint, Height, Object, and Path now all use the same model:
+Paint, Height, Object, and Path now share the same semantic-history model:
 
 ```text
 one user transaction
@@ -315,31 +233,177 @@ one user transaction
   -> projection-only worker mirror
 ```
 
-The Checkpoint 27 split-history hazard is closed.
+The former Path split-history hazard is closed.
 
-## Next boundary — Path integration PR
+## Semantic loading and residency
 
-Do not start this boundary without explicit user direction.
+`EditorSession` tracks loaded and dirty regions.
 
-After this documented head passes exact Tier A/B/C:
+- clean region ingestion may replace semantic source state
+- identical ingestion is a no-op
+- dirty regions are not overwritten by incoming streaming snapshots
+- dirty regions are not semantically evicted by camera unload
+- cache-source switch resets the semantic session
 
-1. verify `refactor/editor-path-session` is still 0 commits behind current `main`
-2. verify the diff remains limited to the Path/history/handoff scope
-3. open one focused Path semantic-session integration PR
-4. stop for review before merge
-5. merge only after a later explicit user continuation
-6. after merge, validate the exact integrated `main` commit and retire the branch if tooling permits
+Height ingestion stores source-owned 64x64 final height samples per plane. Do not invent shared 65th boundary samples. Neighboring source regions own their boundary data.
 
-Do not start context-menu cleanup, generic worker cleanup, renderer invalidation work, or 117HD work on this branch.
+Transitional caveat: `WorldDefinitions::region()` can still include legacy worker edits until remaining editing/projection routes are migrated.
 
-## Remaining separate migration targets
+## Current active checkpoint: Phase 1 architecture enforcement
 
-After Path is merged:
+Branch:
+`architecture/editor-contract-v2`
 
-- context-menu `clear_overlay_at`
-- remaining legacy worker/projection cleanup
-- renderer invalidation/reactive projection improvements
-- 117HD integration/parity work
-- unrelated large UI-module cleanup such as `settings_window.rs`
+Validated base `main`:
+`a125f8e237f4a1594fe585df5a0dd7a2e2011da6`
 
-Keep these separate from the Path branch.
+Purpose:
+
+- add `ARCHITECTURE.md` as the authoritative Architecture Contract v2
+- replace the interim 1,600-line / 64-KiB editor module guard
+- enforce 500-line / 32-KiB normal production limits
+- enforce 700-line / 40-KiB dedicated-test limits
+- freeze existing oversized production modules at exact measured baselines
+- make stale/orphan/malformed debt entries fail CI
+- self-test the debt ratchet
+- reconcile this handoff with the real merged Path state
+
+Explicitly out of scope:
+
+- `EditorApp` runtime extraction
+- context-menu semantic migration
+- generic projection/invalidation redesign
+- renderer refactor
+- UI feature decomposition
+- platform/WASM refactor
+- cache save/repack work
+- 117HD work
+
+### Debt measurement checkpoint
+
+Temporary measurement head:
+`3400e9704911f664e2cb882144eade44f607a062`
+
+CI run:
+`38425580831`
+
+This run intentionally lowered the normal production cap before adding exceptions so CI would report the complete live debt set. It found exactly 13 oversized production modules:
+
+| Module | Baseline lines | Baseline bytes |
+| --- | ---: | ---: |
+| `app/context_menu.rs` | 647 | 31,661 |
+| `app/drawer.rs` | 951 | 37,023 |
+| `app/editing.rs` | 792 | 28,638 |
+| `app/editing/history.rs` | 641 | 25,633 |
+| `app/object_tool.rs` | 550 | 20,164 |
+| `app/settings_window.rs` | 1,569 | 51,638 |
+| `app/spline_tool.rs` | 580 | 21,409 |
+| `app/workspace.rs` | 755 | 28,664 |
+| `app/worldmap.rs` | 619 | 23,663 |
+| `app.rs` | 738 | 29,602 |
+| `paint.rs` | 583 | 17,591 |
+| `pick.rs` | 716 | 24,812 |
+| `settings.rs` | 592 | 22,909 |
+
+The measured baselines live in `scripts/architecture_debt.json`.
+
+Ratchet rules now enforced by `scripts/check_architecture.py`:
+
+1. A new/non-allowlisted production module fails above 500 lines or 32 KiB.
+2. A dedicated test module fails above 700 lines or 40 KiB.
+3. An allowlisted module may not exceed either its recorded line or byte baseline.
+4. An allowlisted file that falls within the normal cap fails until its stale exception is removed.
+5. An allowlist entry with no matching file fails.
+6. Malformed debt configuration fails.
+7. Existing workspace dependency-boundary rules remain enforced.
+
+Self-tests in `scripts/test_check_architecture.py` cover the normal caps, test caps, debt no-growth, stale exception removal, orphan detection, malformed entries, and existing dependency rules.
+
+Current Phase 1 implementation commits before final documentation validation:
+
+- `3400e9704911f664e2cb882144eade44f607a062` - measure live module debt
+- `b795cacdd435c93519c599ea2fa383af36e0136b` - record measured debt baselines
+- `3648bec3e310a16936a3391baa8e70fbc987dea7` - enforce editor debt ratchet
+- `79d4bdfed3a1c62aacaf620dfba8c8408780952c` - add debt-ratchet self-tests
+- `54fbaee2576eaba3309a5f1595f86df2d5bdef0a` - add Architecture Contract v2
+
+Final exact-head validation and PR state must be recorded after this handoff commit and before the checkpoint is reported complete.
+
+## Remaining migration roadmap
+
+After Phase 1 is merged and exact integrated `main` is green, continue only after explicit user direction.
+
+### Phase 2: decompose EditorApp state ownership
+
+Extract one coherent runtime at a time, in this order unless live evidence justifies a deliberate architecture checkpoint change:
+
+1. `RenderRuntime`
+2. `WorldRuntime`
+3. `InteractionRuntime`
+4. `ProjectRuntime`
+5. `UiRuntime`
+6. `DiagnosticsRuntime`
+
+Do not combine these into one large refactor. Behavior should remain unchanged during pure ownership extraction.
+
+### Phase 3: central edit gateway
+
+- one application gateway for edit intents/patches
+- Paint, Height, Object, Path, and context-menu edits converge on one semantic commit-result path
+- remove transitional split routing when safe
+- keep `MapPatch` and `EditorSession` as semantic authority
+
+### Phase 4: context-menu semantic migration
+
+- migrate `clear_overlay_at`
+- prove all semantic map mutations enter through the transaction boundary
+
+### Phase 5: projection/invalidation service
+
+- centralize semantic receipt/change impact -> invalidation
+- remove tool-specific dirty-region poking
+- revision/generation-check every async install
+- add 8x8 projection granularity only after profiling and edge-rule tests justify it
+
+### Phase 6: large UI debt
+
+Refactor allowlisted UI/application modules one responsibility at a time. Do not merely move broad `impl EditorApp` blocks.
+
+### Phase 7: platform ports + WebAssembly gate
+
+- concentrate native/web differences
+- add WASM compile gate
+- harden browser storage/project abstractions
+
+### Phase 8: cache writing/round-trip guarantees
+
+- encoder guarantee definitions
+- semantic and byte-exact roundtrip tests where promised
+- untouched archive preservation
+- transactional save/repack design
+
+### Phase 9: renderer/projection optimization
+
+- profile first
+- introduce finer zone/chunk rebuilds only where measured
+- semantic ownership remains unchanged
+
+### Phase 10: continue 117HD parity
+
+Resume on separate focused branches once editor authority/projection boundaries are stable enough to prevent coupling.
+
+## Next boundary after Phase 1
+
+The next planned subsystem is **Phase 2.1: RenderRuntime ownership extraction**.
+
+It is NOT started on the current branch.
+
+Do not begin it until:
+
+1. Phase 1 exact branch head passes required CI.
+2. Phase 1 diff is verified architecture/docs/tests only.
+3. A focused Phase 1 PR is opened.
+4. The user explicitly authorizes the merge.
+5. The real integrated `main` SHA is read and validated.
+6. The Phase 1 branch is retired if tooling permits.
+7. The user explicitly says to continue to the next checkpoint.
