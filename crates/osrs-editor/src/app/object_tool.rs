@@ -10,6 +10,9 @@ use super::EditorApp;
 use super::editing::EditStep;
 use crate::icons;
 use crate::paint::Tool;
+pub(super) use commit::{
+    ObjectHistoryRoute, build_object_history_projection,
+};
 use commit::{ObjectCommitPlan, build_object_commit_plan};
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
 use egui_phosphor::regular as ph;
@@ -99,15 +102,7 @@ impl EditorApp {
         let mut edits: Vec<LocEdit> = removed.iter().map(|s| LocEdit::Remove(*s)).collect();
         edits.extend(added.iter().map(|s| LocEdit::Add(*s)));
         self.send_loc_edits(edits);
-
-        // Transitional until Object undo/redo migrates: this legacy step keeps the global history
-        // order and current Ctrl+Z behavior, but the semantic session is already the completed-state
-        // authority. The branch must not merge until Object history is routed through the session.
-        self.push_step(EditStep {
-            removed,
-            added: added.clone(),
-            ..EditStep::default()
-        });
+        self.push_step(EditStep::semantic_object(removed, added.clone()));
         self.clear_selection();
         self.pending_reselect = added;
         self.notice = Some((label.to_owned(), Instant::now()));
