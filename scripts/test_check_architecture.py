@@ -25,11 +25,14 @@ class ArchitectureGuardTests(unittest.TestCase):
         errors = check_architecture.check_editor_module_sizes(check_architecture.EDITOR_SOURCE)
         self.assertEqual(errors, [])
 
-    def test_current_debt_allowlist_has_measured_entries(self) -> None:
+    def test_current_debt_allowlist_only_holds_modules_over_the_cap(self) -> None:
         debt = check_architecture.load_editor_debt()
-        self.assertEqual(len(debt), 13)
-        self.assertEqual(debt["app/settings_window.rs"]["max_lines"], 1569)
-        self.assertEqual(debt["app/settings_window.rs"]["max_bytes"], 51638)
+        for relative, limits in debt.items():
+            self.assertTrue(
+                limits["max_lines"] > check_architecture.EDITOR_MAX_RUST_LINES
+                or limits["max_bytes"] > check_architecture.EDITOR_MAX_RUST_BYTES,
+                f"{relative} fits the normal cap; its exception must be removed",
+            )
 
     def test_production_module_line_cap_is_enforced(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -1,41 +1,4 @@
 {
   "version": 1,
-  "editor_modules": {
-    "app/editing.rs": {
-      "max_lines": 670,
-      "max_bytes": 24884
-    },
-    "app/editing/history.rs": {
-      "max_lines": 632,
-      "max_bytes": 25323
-    },
-    "app/object_tool.rs": {
-      "max_lines": 550,
-      "max_bytes": 20164
-    },
-    "app/spline_tool.rs": {
-      "max_lines": 580,
-      "max_bytes": 21409
-    },
-    "app/worldmap.rs": {
-      "max_lines": 619,
-      "max_bytes": 23663
-    },
-    "app.rs": {
-      "max_lines": 665,
-      "max_bytes": 26642
-    },
-    "paint.rs": {
-      "max_lines": 583,
-      "max_bytes": 17591
-    },
-    "pick.rs": {
-      "max_lines": 716,
-      "max_bytes": 24812
-    },
-    "settings.rs": {
-      "max_lines": 592,
-      "max_bytes": 22909
-    }
-  }
+  "editor_modules": {}
 }
