@@ -345,7 +345,10 @@ impl EditorApp {
             *after = projected;
         }
         self.send_edits(edits);
-        stroke.step.changes.retain(|(_, before, after)| before != after);
+        stroke
+            .step
+            .changes
+            .retain(|(_, before, after)| before != after);
     }
 
     /// Finish the open stroke. Paint strokes commit exactly once to the semantic session before the
@@ -928,8 +931,8 @@ mod tests {
         assert!(session.can_undo());
 
         for plane in [0, 1] {
-            let source_plane = SourcePlane::new(plane)
-                .unwrap_or_else(|| unreachable!("test plane is valid"));
+            let source_plane =
+                SourcePlane::new(plane).unwrap_or_else(|| unreachable!("test plane is valid"));
             let position = MapPosition::new(MapTile::new(3200, 3200), source_plane);
             assert_eq!(
                 session
@@ -949,10 +952,13 @@ mod tests {
         );
         assert_eq!(session.revision(), 2);
         for plane in [0, 1] {
-            let source_plane = SourcePlane::new(plane)
-                .unwrap_or_else(|| unreachable!("test plane is valid"));
+            let source_plane =
+                SourcePlane::new(plane).unwrap_or_else(|| unreachable!("test plane is valid"));
             let position = MapPosition::new(MapTile::new(3200, 3200), source_plane);
-            assert_eq!(session.document().terrain_at(position), TerrainTile::default());
+            assert_eq!(
+                session.document().terrain_at(position),
+                TerrainTile::default()
+            );
         }
     }
 }
