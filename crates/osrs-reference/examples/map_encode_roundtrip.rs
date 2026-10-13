@@ -4,7 +4,10 @@
 //! whose bytes differ are tallied by cause (non-canonical opcode order, trailing flags block,
 //! unsorted loc stream) so the canonical-encoding claim is measured, not assumed.
 use osrs_cache::decode::{DecoderContext, decode_locations, decode_terrain};
-use osrs_cache::encode::{encode_locations, encode_terrain};
+use osrs_cache::encode::{
+    ContainerCompression, decode_container, encode_container, encode_locations, encode_terrain,
+    pack_group,
+};
 use osrs_cache::profile::TargetProfile;
 use osrs_cache::transport::CacheRepository;
 use osrs_core::coords::RegionCoord;
@@ -21,6 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let context = DecoderContext::from_profile(&profile)?;
 
     let mut undecodable = 0;
+    let (mut group_exact, mut group_other, mut container_ok) = (0, 0, 0);
     let (mut squares, mut terrain_exact, mut terrain_flags, mut terrain_other) = (0, 0, 0, 0);
     let (mut loc_exact, mut loc_semantic, mut loc_bad) = (0, 0, 0);
     let mut first_terrain_diff = None;
@@ -59,6 +63,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 first_terrain_diff.get_or_insert((x, y));
             }
             // The re-encoded stream must always decode back to the same semantic tiles.
+            // Group packing: the original files repack to the cache's own decoded group bytes.
+            // Build-241 map groups also carry files 2..=4, which an export must preserve.
+            let group_id = (x * 256 + y) as u32;
+            if let (Ok(group), Ok(files)) = (
+                cache.read_decoded_group(5, group_id, None),
+                cache.read_group_files(5, group_id),
+            ) {
+                let parts: Vec<&[u8]> = files.iter().map(|(_, f)| f.bytes.as_slice()).collect();
+                let packed = pack_group(&parts)?;
+                if packed == group.bytes {
+                    group_exact += 1;
+                } else {
+                    group_other += 1;
+                }
+                let container = encode_container(packed.clone(), ContainerCompression::Gzip, None)?;
+                if decode_container(container)? == packed {
+                    container_ok += 1;
+                }
+            }
             let again = decode_terrain(&encoded, &context, &square.terrain.provenance, region)?;
             assert_eq!(again.tiles(), terrain.tiles(), "terrain ({x},{y}) semantic");
 
@@ -95,6 +118,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "terrain: byte-exact={terrain_exact} trailing-flags-dropped={terrain_flags} other-diff={terrain_other}"
     );
     println!("locations: byte-exact={loc_exact} semantic-only={loc_semantic} mismatched={loc_bad}");
+    println!(
+        "groups: repacked byte-exact={group_exact} other={group_other}; gzip container round-trips={container_ok}"
+    );
     if let Some((x, y)) = first_terrain_diff {
         println!("first non-canonical terrain square: ({x}, {y})");
     }

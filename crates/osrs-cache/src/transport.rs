@@ -780,7 +780,7 @@ fn dependency_call<T>(
     }
 }
 
-fn split_group_files(
+pub(crate) fn split_group_files(
     decoded: &[u8],
     file_ids: &[u32],
     max_files: usize,
