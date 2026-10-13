@@ -1,6 +1,10 @@
 use osrs_edit::{ChangeImpact, EditHistory, MapDocument, MapPatch, PatchApplyError};
 
 /// One successful semantic state transition in the editor session.
+#[expect(
+    dead_code,
+    reason = "constructed by the staged mutation API before runtime edit cutover"
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EditCommit {
     pub revision: u64,
@@ -18,6 +22,10 @@ pub struct EditorSession {
     revision: u64,
 }
 
+#[expect(
+    dead_code,
+    reason = "mutation/query methods are staged and tested before individual editor tools cut over"
+)]
 impl EditorSession {
     pub fn new(document: MapDocument) -> Self {
         Self {
