@@ -155,7 +155,8 @@ impl EditorApp {
             let mut after = before;
             let map_tile = MapTile::new(intent.tile.0, intent.tile.1);
             let position = MapPosition::new(map_tile, plane);
-            if project_semantic_terrain(&mut after, projected_document.terrain_at(position)).is_none()
+            if project_semantic_terrain(&mut after, projected_document.terrain_at(position))
+                .is_none()
             {
                 self.notice = Some((
                     "The path was not laid: semantic terrain IDs exceed the legacy adapter range"
@@ -224,7 +225,10 @@ impl EditorApp {
             ..EditStep::default()
         });
         self.notice = Some((
-            format!("Changed {count} path tile{}", if count == 1 { "" } else { "s" }),
+            format!(
+                "Changed {count} path tile{}",
+                if count == 1 { "" } else { "s" }
+            ),
             Instant::now(),
         ));
         count
@@ -245,11 +249,8 @@ mod tests {
     #[test]
     fn upper_plane_path_height_requires_the_semantic_lower_plane_base() {
         let tile = MapTile::new(3200, 3200);
-        let document = MapDocument::from_parts(
-            [],
-            [(HeightVertexCoord::new(tile, plane(1)), 100)],
-            [],
-        );
+        let document =
+            MapDocument::from_parts([], [(HeightVertexCoord::new(tile, plane(1)), 100)], []);
 
         assert_eq!(
             quantize_path_height(&document, plane(1), tile, 64),
@@ -267,7 +268,8 @@ mod tests {
             rotation: OverlayRotation::new(0)
                 .unwrap_or_else(|| unreachable!("rotation zero is valid")),
         };
-        let document = MapDocument::from_parts([], [(HeightVertexCoord::new(tile, plane(0)), 0)], []);
+        let document =
+            MapDocument::from_parts([], [(HeightVertexCoord::new(tile, plane(0)), 0)], []);
         let mut session = EditorSession::new(document);
         let intent = TerrainPathIntent {
             tile: (3200, 3200),
