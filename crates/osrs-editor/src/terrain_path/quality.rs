@@ -200,14 +200,14 @@ fn measure(points: &[(f32, f32)], width: f32, edge_weight: f32) -> QualityMetric
     for tile in &ideal_tiles {
         let ideal = ideal_mask(*tile, points, width * 0.5);
         let selected = fitted_by_tile.get(tile).copied();
-        for index in 0..CELLS {
+        for (index, ideal_covered) in ideal.iter().copied().enumerate() {
             let sx = index % GRID;
             let sy = index / GRID;
             let point = (
                 (sx as f32 + 0.5) / GRID as f32,
                 (sy as f32 + 0.5) / GRID as f32,
             );
-            if ideal[index] == selected_covers(selected, point) {
+            if ideal_covered == selected_covers(selected, point) {
                 agreed += 1;
             }
             sampled += 1;
