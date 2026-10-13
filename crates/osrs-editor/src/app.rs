@@ -19,6 +19,7 @@ mod overlay;
 mod paint_commit;
 mod path_commit;
 mod plugins;
+mod render_runtime;
 mod script;
 mod selection;
 mod settings_io;
@@ -48,9 +49,9 @@ use crate::session::EditorSession;
 use crate::settings::ProfileChoice;
 use crate::settings::{self, Settings};
 use crate::style::ColorKey;
-use eframe::{egui, egui_wgpu, wgpu};
+use eframe::egui;
 use osrs_core::coords::RegionCoord;
-use osrs_render::gpu::{COLOR_FORMAT, DEPTH_FORMAT, FrameParams, SceneRenderer};
+use osrs_render::gpu::FrameParams;
 use osrs_world::{AnimationWorker, RegionStreamer, StreamEvent, TerrainPresentation};
 use std::{
     collections::{HashMap, HashSet},
@@ -65,15 +66,6 @@ const REGION_UNITS: i32 = 64 * 128;
 const REBASE_DISTANCE: f32 = 90_000.0;
 /// Regions being built at once.
 const MAX_IN_FLIGHT: usize = 2;
-
-struct ViewportTargets {
-    width: u32,
-    height: u32,
-    color: wgpu::Texture,
-    color_view: wgpu::TextureView,
-    depth_view: wgpu::TextureView,
-    texture_id: egui::TextureId,
-}
 
 #[derive(Clone, Copy)]
 struct RegionStats {
@@ -91,10 +83,8 @@ const ANIMATION_RADIUS_TILES: i32 = 80;
 const ANIMATION_STRIDE_CYCLES: u64 = 2;
 
 pub struct EditorApp {
-    render_state: egui_wgpu::RenderState,
-    renderer: SceneRenderer,
+    renderer: render_runtime::RenderRuntime,
     camera: FlyCamera,
-    targets: Option<ViewportTargets>,
     view_plane: u8,
     /// Persistent authoritative semantic edit state. Legacy edit stores remain projections until
     /// their individual migration checkpoints.
@@ -248,13 +238,11 @@ impl EditorApp {
             .wgpu_render_state
             .clone()
             .ok_or("eframe is not running on the wgpu backend")?;
-        let mut renderer =
-            SceneRenderer::with_device(render_state.device.clone(), render_state.queue.clone());
 
         // Start above the middle of the requested window's region, looking north.
         let start_region = (base_x.div_euclid(64) + 1, base_y.div_euclid(64) + 1);
         let origin = (start_region.0 * REGION_UNITS, start_region.1 * REGION_UNITS);
-        renderer.set_render_origin(origin);
+        let renderer = render_runtime::RenderRuntime::new(render_state, origin);
         let camera = FlyCamera::new(
             0.45 * REGION_UNITS as f32,
             -2600.0,
@@ -267,10 +255,8 @@ impl EditorApp {
         streamer.set_presentation(Self::presentation(false, false), 1);
 
         let mut app = Self {
-            render_state,
             renderer,
             camera,
-            targets: None,
             view_plane: 0,
             session: EditorSession::default(),
             settings_path: None,
@@ -609,44 +595,28 @@ impl eframe::App for EditorApp {
                     if self.prefs.render_profile == ProfileChoice::Hd {
                         self.update_hd_lighting();
                     }
-                    if let Some(targets) = &self.targets {
-                        let mut encoder = self.render_state.device.create_command_encoder(
-                            &wgpu::CommandEncoderDescriptor {
-                                label: Some("viewport"),
-                            },
-                        );
-                        let phase = Instant::now();
-                        self.renderer.set_hd_params(self.prefs.hd_params());
-                        self.renderer.encode_frame(
-                            &mut encoder,
-                            &targets.color_view,
-                            &targets.depth_view,
-                            FrameParams {
-                                camera: self.camera.reference(targets.width as f32),
-                                view_plane: self.view_plane,
-                                // The client's `gameCycle & 127`, at 50 cycles per second.
-                                tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
-                                brightness: self.prefs.brightness,
-                                remove_color_banding: self.prefs.remove_color_banding,
-                                bright_textures: self.prefs.bright_textures,
-                                fog: self.prefs.fog(),
-                                colorblind: self.prefs.colorblind(),
-                                clear_color: self.prefs.sky_color.map(f64::from),
-                                profile: self.prefs.render_profile.render_profile(),
-                            },
-                            targets.width,
-                            targets.height,
-                        );
+                    let phase = Instant::now();
+                    self.renderer.set_hd_params(self.prefs.hd_params());
+                    if let Some(frame) = self.renderer.encode_viewport(FrameParams {
+                        camera: self.camera.reference(width as f32),
+                        view_plane: self.view_plane,
+                        // The client's `gameCycle & 127`, at 50 cycles per second.
+                        tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
+                        brightness: self.prefs.brightness,
+                        remove_color_banding: self.prefs.remove_color_banding,
+                        bright_textures: self.prefs.bright_textures,
+                        fog: self.prefs.fog(),
+                        colorblind: self.prefs.colorblind(),
+                        clear_color: self.prefs.sky_color.map(f64::from),
+                        profile: self.prefs.render_profile.render_profile(),
+                    }) {
                         self.stats.phase("encode", phase);
-                        self.render_state.queue.submit(Some(encoder.finish()));
-                        self.renderer.finish_frame();
-                        self.stats.set_gpu_scene_ms(self.renderer.gpu_scene_ms());
-                        self.render_state
-                            .queue
-                            .on_submitted_work_done(self.stats.gpu_probe());
-                        let _ = &targets.color;
+                        let gpu_scene_ms = self.renderer.submit_viewport(frame.command_buffer);
+                        self.stats.set_gpu_scene_ms(gpu_scene_ms);
+                        let probe = self.stats.gpu_probe();
+                        self.renderer.on_submitted_work_done(probe);
                         ui.painter().image(
-                            targets.texture_id,
+                            frame.texture_id,
                             rect,
                             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                             egui::Color32::WHITE,

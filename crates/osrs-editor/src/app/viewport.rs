@@ -275,68 +275,6 @@ impl EditorApp {
     }
 
     pub(super) fn ensure_targets(&mut self, width: u32, height: u32) {
-        if let Some(targets) = &self.targets
-            && targets.width == width
-            && targets.height == height
-        {
-            return;
-        }
-        let device = &self.render_state.device;
-        let color = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("viewport-color"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: COLOR_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-        let depth = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("viewport-depth"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        let color_view = color.create_view(&wgpu::TextureViewDescriptor::default());
-        let depth_view = depth.create_view(&wgpu::TextureViewDescriptor::default());
-
-        let mut egui_renderer = self.render_state.renderer.write();
-        let texture_id = match self.targets.take() {
-            Some(old) => {
-                egui_renderer.update_egui_texture_from_wgpu_texture(
-                    device,
-                    &color_view,
-                    wgpu::FilterMode::Nearest,
-                    old.texture_id,
-                );
-                old.texture_id
-            }
-            None => egui_renderer.register_native_texture(
-                device,
-                &color_view,
-                wgpu::FilterMode::Nearest,
-            ),
-        };
-        self.targets = Some(ViewportTargets {
-            width,
-            height,
-            color,
-            color_view,
-            depth_view,
-            texture_id,
-        });
+        self.renderer.ensure_targets(width, height);
     }
 }
