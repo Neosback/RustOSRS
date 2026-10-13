@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Tests for the RustOSRS architecture dependency guard."""
+"""Tests for the RustOSRS architecture dependency and debt-ratchet guard."""
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,11 +21,17 @@ class ArchitectureGuardTests(unittest.TestCase):
         errors = check_architecture.check_workspace(check_architecture.CRATES)
         self.assertEqual(errors, [])
 
-    def test_current_editor_modules_are_api_safe(self) -> None:
+    def test_current_editor_modules_respect_debt_ratchet(self) -> None:
         errors = check_architecture.check_editor_module_sizes(check_architecture.EDITOR_SOURCE)
         self.assertEqual(errors, [])
 
-    def test_editor_module_line_cap_is_enforced(self) -> None:
+    def test_current_debt_allowlist_has_measured_entries(self) -> None:
+        debt = check_architecture.load_editor_debt()
+        self.assertEqual(len(debt), 13)
+        self.assertEqual(debt["app/settings_window.rs"]["max_lines"], 1569)
+        self.assertEqual(debt["app/settings_window.rs"]["max_bytes"], 51638)
+
+    def test_production_module_line_cap_is_enforced(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "app" / "god_file.rs"
@@ -35,10 +42,13 @@ class ArchitectureGuardTests(unittest.TestCase):
                 root,
                 max_lines=3,
                 max_bytes=1024,
+                debt={},
             )
-            self.assertTrue(any("4 lines exceeds the 3-line module cap" in error for error in errors))
+            self.assertTrue(
+                any("4 lines exceeds the 3-line production module cap" in error for error in errors)
+            )
 
-    def test_editor_module_byte_cap_is_enforced(self) -> None:
+    def test_production_module_byte_cap_is_enforced(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "app" / "god_file.rs"
@@ -49,8 +59,153 @@ class ArchitectureGuardTests(unittest.TestCase):
                 root,
                 max_lines=10,
                 max_bytes=8,
+                debt={},
             )
-            self.assertTrue(any("16 bytes exceeds the 8-byte" in error for error in errors))
+            self.assertTrue(
+                any("16 bytes exceeds the 8-byte production module cap" in error for error in errors)
+            )
+
+    def test_dedicated_test_module_uses_test_cap(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "app" / "tests.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("one\ntwo\nthree\nfour\n", encoding="utf-8")
+
+            errors = check_architecture.check_editor_module_sizes(
+                root,
+                max_lines=3,
+                max_bytes=1024,
+                test_max_lines=4,
+                test_max_bytes=1024,
+                debt={},
+            )
+            self.assertEqual(errors, [])
+
+    def test_dedicated_test_module_test_cap_is_enforced(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "tests" / "large_tests.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("one\ntwo\nthree\nfour\nfive\n", encoding="utf-8")
+
+            errors = check_architecture.check_editor_module_sizes(
+                root,
+                max_lines=3,
+                max_bytes=1024,
+                test_max_lines=4,
+                test_max_bytes=1024,
+                debt={},
+            )
+            self.assertTrue(
+                any("5 lines exceeds the 4-line test module cap" in error for error in errors)
+            )
+
+    def test_legacy_debt_at_recorded_baseline_is_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "app" / "legacy.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("one\ntwo\nthree\nfour\n", encoding="utf-8")
+            debt = {
+                "app/legacy.rs": {
+                    "max_lines": 4,
+                    "max_bytes": len(source.read_bytes()),
+                }
+            }
+
+            errors = check_architecture.check_editor_module_sizes(
+                root,
+                max_lines=3,
+                max_bytes=1024,
+                debt=debt,
+            )
+            self.assertEqual(errors, [])
+
+    def test_legacy_debt_cannot_grow_in_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "app" / "legacy.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("one\ntwo\nthree\nfour\n", encoding="utf-8")
+            debt = {
+                "app/legacy.rs": {
+                    "max_lines": 3,
+                    "max_bytes": len(source.read_bytes()),
+                }
+            }
+
+            errors = check_architecture.check_editor_module_sizes(
+                root,
+                max_lines=3,
+                max_bytes=1024,
+                debt=debt,
+            )
+            self.assertTrue(any("legacy debt grew from 3 to 4 lines" in error for error in errors))
+
+    def test_legacy_debt_cannot_grow_in_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "app" / "legacy.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("0123456789ABCDEF", encoding="utf-8")
+            debt = {"app/legacy.rs": {"max_lines": 10, "max_bytes": 15}}
+
+            errors = check_architecture.check_editor_module_sizes(
+                root,
+                max_lines=10,
+                max_bytes=8,
+                debt=debt,
+            )
+            self.assertTrue(any("legacy debt grew from 15 to 16 bytes" in error for error in errors))
+
+    def test_debt_entry_must_be_removed_after_file_reaches_normal_cap(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "app" / "legacy.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("one\ntwo\n", encoding="utf-8")
+            debt = {
+                "app/legacy.rs": {
+                    "max_lines": 4,
+                    "max_bytes": len(source.read_bytes()) + 100,
+                }
+            }
+
+            errors = check_architecture.check_editor_module_sizes(
+                root,
+                max_lines=3,
+                max_bytes=1024,
+                debt=debt,
+            )
+            self.assertTrue(any("legacy debt exception is stale" in error for error in errors))
+
+    def test_orphaned_debt_entry_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            root.mkdir(exist_ok=True)
+            debt = {"app/missing.rs": {"max_lines": 600, "max_bytes": 20000}}
+
+            errors = check_architecture.check_editor_module_sizes(root, debt=debt)
+            self.assertTrue(any("has no matching Rust module" in error for error in errors))
+
+    def test_malformed_debt_allowlist_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            debt_path = Path(directory) / "architecture_debt.json"
+            debt_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "editor_modules": {
+                            "app/legacy.rs": {"max_lines": 600, "max_bytes": "not-an-int"}
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "positive integer max_lines/max_bytes"):
+                check_architecture.load_editor_debt(debt_path)
 
     def test_production_crate_cannot_depend_on_reference(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -168,7 +323,9 @@ wgpu = "28"
             )
 
             errors = check_architecture.check_workspace(root)
-            self.assertTrue(any("renderer/UI/cache-transport dependency leakage: wgpu" in error for error in errors))
+            self.assertTrue(
+                any("renderer/UI/cache-transport dependency leakage: wgpu" in error for error in errors)
+            )
 
     def test_aliased_renderer_dependency_is_still_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -187,7 +344,9 @@ gpu = { package = "wgpu", version = "28" }
             )
 
             errors = check_architecture.check_workspace(root)
-            self.assertTrue(any("renderer/UI/cache-transport dependency leakage: wgpu" in error for error in errors))
+            self.assertTrue(
+                any("renderer/UI/cache-transport dependency leakage: wgpu" in error for error in errors)
+            )
 
     def test_world_may_compose_reusable_runtime_layers(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

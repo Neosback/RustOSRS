@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "editor_modules": {
+    "app/context_menu.rs": {
+      "max_lines": 647,
+      "max_bytes": 31661
+    },
+    "app/drawer.rs": {
+      "max_lines": 951,
+      "max_bytes": 37023
+    },
+    "app/editing.rs": {
+      "max_lines": 792,
+      "max_bytes": 28638
+    },
+    "app/editing/history.rs": {
+      "max_lines": 641,
+      "max_bytes": 25633
+    },
+    "app/object_tool.rs": {
+      "max_lines": 550,
+      "max_bytes": 20164
+    },
+    "app/settings_window.rs": {
+      "max_lines": 1569,
+      "max_bytes": 51638
+    },
+    "app/spline_tool.rs": {
+      "max_lines": 580,
+      "max_bytes": 21409
+    },
+    "app/workspace.rs": {
+      "max_lines": 755,
+      "max_bytes": 28664
+    },
+    "app/worldmap.rs": {
+      "max_lines": 619,
+      "max_bytes": 23663
+    },
+    "app.rs": {
+      "max_lines": 738,
+      "max_bytes": 29602
+    },
+    "paint.rs": {
+      "max_lines": 583,
+      "max_bytes": 17591
+    },
+    "pick.rs": {
+      "max_lines": 716,
+      "max_bytes": 24812
+    },
+    "settings.rs": {
+      "max_lines": 592,
+      "max_bytes": 22909
+    }
+  }
+}
