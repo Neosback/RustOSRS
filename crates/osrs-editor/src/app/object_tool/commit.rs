@@ -6,7 +6,7 @@ use osrs_edit::{
     LocKind, MapOp, MapPatch, MapPosition, MapQuery, ObjectEditError, ObjectOrientation,
     ObjectPlacement, build_object_patch,
 };
-use osrs_world::LocSpec;
+use osrs_world::{LocEdit, LocSpec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ObjectCommitError {
@@ -27,6 +27,55 @@ pub(super) struct ObjectCommitPlan {
     pub patch: MapPatch,
     pub removed: Vec<LocSpec>,
     pub added: Vec<LocSpec>,
+}
+
+/// Lightweight global-history route for one semantic Object transaction.
+///
+/// These exact identities are projection metadata only. `EditorSession::history` remains the
+/// authoritative before/after state and is always transitioned before this route is used.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ObjectHistoryRoute {
+    removed: Vec<LocSpec>,
+    added: Vec<LocSpec>,
+}
+
+impl ObjectHistoryRoute {
+    pub(super) fn new(removed: Vec<LocSpec>, added: Vec<LocSpec>) -> Self {
+        Self { removed, added }
+    }
+
+    pub(super) fn object_count(&self) -> usize {
+        self.removed.len().max(self.added.len())
+    }
+
+    #[cfg(test)]
+    pub(super) fn removed(&self) -> &[LocSpec] {
+        &self.removed
+    }
+
+    #[cfg(test)]
+    pub(super) fn added(&self) -> &[LocSpec] {
+        &self.added
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ObjectHistoryProjectionError {
+    Adapter(ObjectCommitError),
+    ExpectedAbsent { spec: LocSpec },
+    ExpectedPresent { spec: LocSpec },
+}
+
+impl From<ObjectCommitError> for ObjectHistoryProjectionError {
+    fn from(error: ObjectCommitError) -> Self {
+        Self::Adapter(error)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ObjectHistoryProjection {
+    pub edits: Vec<LocEdit>,
+    pub reselect: Vec<LocSpec>,
 }
 
 pub(super) fn build_object_commit_plan(
@@ -58,6 +107,41 @@ pub(super) fn build_object_commit_plan(
         patch,
         removed: canonical_removed,
         added: canonical_added,
+    })
+}
+
+/// Build the worker projection for an already-completed semantic Object undo/redo.
+///
+/// `forward = false` projects an undo; `forward = true` projects a redo. The semantic document is
+/// checked first so a stale/misordered global route cannot mutate the worker independently from the
+/// authoritative session.
+pub(super) fn build_object_history_projection(
+    query: &impl MapQuery,
+    route: &ObjectHistoryRoute,
+    forward: bool,
+) -> Result<ObjectHistoryProjection, ObjectHistoryProjectionError> {
+    let (gone, came) = if forward {
+        (&route.removed, &route.added)
+    } else {
+        (&route.added, &route.removed)
+    };
+
+    for &spec in gone {
+        if query.contains_object(placement_from_spec(spec)?) {
+            return Err(ObjectHistoryProjectionError::ExpectedAbsent { spec });
+        }
+    }
+    for &spec in came {
+        if !query.contains_object(placement_from_spec(spec)?) {
+            return Err(ObjectHistoryProjectionError::ExpectedPresent { spec });
+        }
+    }
+
+    let mut edits: Vec<LocEdit> = gone.iter().map(|spec| LocEdit::Remove(*spec)).collect();
+    edits.extend(came.iter().map(|spec| LocEdit::Add(*spec)));
+    Ok(ObjectHistoryProjection {
+        edits,
+        reselect: came.clone(),
     })
 }
 
@@ -217,5 +301,65 @@ mod tests {
         assert!(session.can_undo());
         assert!(!session.document().contains_object(source_placement));
         assert!(session.document().contains_object(moved_placement));
+    }
+
+    #[test]
+    fn semantic_object_undo_projection_is_validated_from_session_state() {
+        let source = spec(100, (3200, 3200), 0, 10, 1);
+        let moved = spec(100, (3201, 3200), 0, 10, 1);
+        let source_placement = placement_from_spec(source)
+            .unwrap_or_else(|error| unreachable!("valid source: {error:?}"));
+        let mut session = EditorSession::new(MapDocument::from_parts([], [], [source_placement]));
+        let plan = build_object_commit_plan(session.document(), &[source], &[moved])
+            .unwrap_or_else(|error| unreachable!("valid move: {error:?}"));
+        let route = ObjectHistoryRoute::new(plan.removed.clone(), plan.added.clone());
+        assert!(session.commit(plan.patch).is_ok());
+        assert!(session.undo().is_ok());
+
+        let projection = build_object_history_projection(session.document(), &route, false)
+            .unwrap_or_else(|error| unreachable!("valid undo projection: {error:?}"));
+        assert_eq!(
+            projection.edits,
+            vec![LocEdit::Remove(moved), LocEdit::Add(source)]
+        );
+        assert_eq!(projection.reselect, vec![source]);
+    }
+
+    #[test]
+    fn semantic_object_redo_projection_is_validated_from_session_state() {
+        let source = spec(100, (3200, 3200), 0, 10, 1);
+        let moved = spec(100, (3201, 3200), 0, 10, 1);
+        let source_placement = placement_from_spec(source)
+            .unwrap_or_else(|error| unreachable!("valid source: {error:?}"));
+        let mut session = EditorSession::new(MapDocument::from_parts([], [], [source_placement]));
+        let plan = build_object_commit_plan(session.document(), &[source], &[moved])
+            .unwrap_or_else(|error| unreachable!("valid move: {error:?}"));
+        let route = ObjectHistoryRoute::new(plan.removed.clone(), plan.added.clone());
+        assert!(session.commit(plan.patch).is_ok());
+        assert!(session.undo().is_ok());
+        assert!(session.redo().is_ok());
+
+        let projection = build_object_history_projection(session.document(), &route, true)
+            .unwrap_or_else(|error| unreachable!("valid redo projection: {error:?}"));
+        assert_eq!(
+            projection.edits,
+            vec![LocEdit::Remove(source), LocEdit::Add(moved)]
+        );
+        assert_eq!(projection.reselect, vec![moved]);
+    }
+
+    #[test]
+    fn stale_object_history_route_is_rejected_before_worker_projection() {
+        let source = spec(100, (3200, 3200), 0, 10, 1);
+        let moved = spec(100, (3201, 3200), 0, 10, 1);
+        let source_placement = placement_from_spec(source)
+            .unwrap_or_else(|error| unreachable!("valid source: {error:?}"));
+        let document = MapDocument::from_parts([], [], [source_placement]);
+        let route = ObjectHistoryRoute::new(vec![source], vec![moved]);
+
+        assert_eq!(
+            build_object_history_projection(&document, &route, true),
+            Err(ObjectHistoryProjectionError::ExpectedAbsent { spec: source })
+        );
     }
 }
