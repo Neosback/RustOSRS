@@ -103,7 +103,7 @@ MapOp
 
 ### Read-only query boundary
 
-`MapQuery` exposes only semantic reads currently required by migrated tools:
+`MapQuery` exposes semantic reads required by migrated planners:
 
 ```rust
 trait MapQuery {
@@ -131,186 +131,158 @@ Delivered failure-safe `EditHistory` and read-only `MapQuery`.
 
 ### PR #35: semantic path commit + simplified fitter
 
-Delivered:
-
-- terrain-path commits through one semantic `MapPatch` before legacy projection
-- one laid path remains one logical undo step
-- deterministic Catmull-Rom + true OSRS overlay-shape fitter
-- independent quality fixtures and locked deterministic outputs
-- simplified Spline settings: `width`, `edge_weight`, `snap_points`
-- removal of the legacy planner/router/network/wall/noise stack and obsolete fixtures
+Delivered terrain-path commits through semantic `MapPatch`, deterministic Catmull-Rom + OSRS overlay-shape fitting, quality fixtures, and removal of the obsolete planner/router/network/wall/noise stack.
 
 Do not reintroduce pathfinding, wall mode, topology repair, automatic joining, or hidden obstacle routing without an explicit product decision.
 
-- merged/current `main` base before this branch: `cf552b734e1fdef54bf90b3b5c08211433f56a40`
-- latest observed full `main` validation before this branch: Tier A/B/C PASS
+- squash merge: `cf552b734e1fdef54bf90b3b5c08211433f56a40`
+
+### PR #36: persistent semantic editor session
+
+Delivered the completed semantic-session subsystem:
+
+- persistent `EditorSession` owning authoritative `MapDocument + EditHistory + revision`
+- one real session owned by `EditorApp`
+- canonical `MapRegionSnapshot`
+- deterministic/idempotent region replacement and unload
+- decoded `RegionMap` -> semantic snapshot adapter before renderer/picker/GPU extraction
+- terrain-height resolution through existing terrain-load semantics
+- streamed semantic hydration from decoded source data
+- dirty-region protection against streaming overwrite/eviction
+- explicit semantic-session reset on cache switch
+- renderer, picker, GPU, and 117HD remain downstream projections
+
+No Paint, Height, Object, or runtime undo/redo gesture was cut over in this PR.
+
+- squash merge/current validated `main`: `ace39238f67fa5c3f31611bf60ca5c106ace1d90`
+- PR: #36
+- post-merge CI `38363970256`: Tier A/B/C PASS
 
 ## Current branch
 
-Branch: `refactor/editor-session-domain`
+Branch: `refactor/editor-paint-session`
 
-Base: validated `main` head `cf552b734e1fdef54bf90b3b5c08211433f56a40`.
+Base: validated `main` head `ace39238f67fa5c3f31611bf60ca5c106ace1d90`.
 
-This branch completes the persistent semantic editor-session subsystem. It establishes the session contract, installs it into `EditorApp`, and hydrates it directly from decoded source-region data before any individual editing tool is cut over.
+Purpose: cut the terrain Paint tool over to the persistent semantic session in small checkpoints. Do not mix Height, Objects, renderer/117HD redesign, or unrelated editor cleanup into this branch.
 
-### Checkpoint 14: persistent semantic editor session contract
+## Checkpoint 17: pure semantic Paint planner
 
-Added `crates/osrs-editor/src/session/` with an application-layer `EditorSession` around the already-tested headless domain primitives.
+Added `crates/osrs-editor/src/app/paint_commit.rs` as a pure application-layer planner. Runtime input, world projection, renderer invalidation, and legacy history are intentionally unchanged at this checkpoint.
+
+### Intent contract
 
 ```rust
-EditorSession {
-    document: MapDocument,
-    history: EditHistory,
-    revision: u64,
-}
-
-EditCommit {
-    revision: u64,
-    impact: ChangeImpact,
+TerrainPaintIntent {
+    tile: (i32, i32),
+    underlay: Option<Option<FloorUnderlayId>>,
+    overlay: Option<Option<FloorOverlayId>>,
+    overlay_shape: Option<(OverlayShape, OverlayRotation)>,
+    height: Option<i32>,
+    flags: Option<u8>,
 }
 ```
 
-Contract established by this checkpoint:
+For underlay/overlay channels:
 
-- `MapDocument` is owned persistently by the session
-- `EditHistory` remains the sole undo/redo implementation; the application layer does not duplicate its rules
-- successful non-empty commit advances the session revision exactly once
-- successful undo advances the session revision exactly once
-- successful redo advances the session revision exactly once
-- empty commits are true no-ops and preserve redo history
-- undo/redo with no available entry do not advance revision
-- rejected commits do not mutate the document, history, or revision
-- failed undo does not advance revision or corrupt the history stack
-- callers receive read-only document access through `document()`
-- each successful edit transition returns semantic `ChangeImpact` with its new revision
+- `None` = preserve current semantic channel
+- `Some(None)` = clear channel
+- `Some(Some(id))` = set channel
 
-Focused regression coverage was added for all of the above behaviors.
+Shape/rotation apply only when the resulting tile actually has an overlay.
 
-Checkpoint 14 final handoff head:
+### Planner contract
 
-- `a2cda76d80542725f4aafc64d197b443e2efca66`
-- CI `38359876749`: Tier A/B/C PASS
+`build_terrain_paint_patch(query, plane, intents)`:
 
-### Checkpoint 15: EditorApp session ownership
+- reads current authoritative state only through `MapQuery`
+- produces one compact `MapPatch` for one logical Paint stroke
+- preserves all unarmed semantic channels
+- supports underlay set/clear
+- supports overlay set/clear
+- preserves existing overlay shape/rotation when replacing only overlay id
+- uses canonical shape 0 / rotation 0 when adding an overlay to a tile with no prior overlay and no armed shape channel
+- ignores shape/rotation after an overlay clear because no semantic overlay remains
+- supports explicit Paint-height intent without treating a missing height as zero
+- returns `PaintCommitError::MissingHeight` when an armed height edit targets a coordinate with no explicit semantic height
+- folds repeated samples of one tile into one final terrain operation and one final height operation
+- removes semantic no-ops from the final patch
+- emits operations in typed-coordinate `BTreeMap` order for deterministic output
+- preserves region-boundary distinctions and negative world coordinates
 
-`EditorApp` now owns exactly one persistent `EditorSession` for the lifetime of the application.
+The planner does not mutate `EditorSession`, `MapDocument`, renderer state, worker state, or legacy edit maps itself.
 
-Ownership wiring:
+### Regression coverage
 
-- `app.rs` imports `crate::session::EditorSession`
-- `EditorApp` contains a real `session: EditorSession` field
-- `EditorApp::new` initializes the session deterministically with `EditorSession::default()`
-- startup asserts revision zero in debug builds
-- the session module is active normally from `main.rs`; the old broad module-level dead-code allowance is gone
-- legacy `edited`, `height_edited`, legacy history/redo, stroke, dirty-region, and world projection fields remain untouched
-- no editing gesture is routed into the session yet
+Focused tests cover:
 
-The session mutation/query API is regression-tested. A narrow `#[cfg_attr(not(test), allow(dead_code))]` remains only on staged edit APIs not yet used by runtime tools. Remove it naturally as tools cut over.
+1. only armed channels change
+2. overlay clear removes overlay shape/rotation semantically
+3. overlay creation on an empty tile gets canonical default shape/rotation when shape is unarmed
+4. semantic no-op produces an empty patch
+5. repeated stroke samples collapse to final terrain/height operations
+6. adjacent tiles across a 64x64 region boundary remain distinct
+7. negative world coordinates remain exact
+8. armed Paint-height requires an explicit semantic height
 
-Checkpoint 15 implementation head:
+### Runtime compatibility boundary
 
-- `398e7287c2b6acfaef0389e1c53bf0e95fc0b163`
-- CI `38361076460`: Tier A/B/C PASS
+This checkpoint deliberately does **not** change live Paint behavior yet.
 
-### Checkpoint 16: semantic loaded-region ingestion
+Still legacy/runtime-active:
 
-The application session now owns truthful semantic state for streamed source regions without scraping renderer output.
+- `editing::Stroke`
+- `EditorApp.edited`
+- legacy `EditStep` Paint history/redo
+- `record()` / `send_edits()` projection path
+- current worker `TerrainEdits`
+- current renderer dirty-region rebuild flow
 
-#### Canonical region snapshots
+No Height-tool, Object-tool, global undo/redo UI, renderer, cache decode, or 117HD behavior changed.
 
-`osrs-edit` now exposes `MapRegionSnapshot` as the pure domain boundary for one 64x64 source region:
+Checkpoint 17 implementation head before this handoff update:
 
-- exact `RegionCoord`
-- sparse canonical `TerrainTile` entries
-- explicit `HeightVertexCoord -> i32` values
-- exact `ObjectPlacement` set
-- construction rejects terrain, height, or object values assigned to the wrong region
-
-`MapDocument::replace_region` and `MapDocument::remove_region` provide deterministic infrastructure hydration/eviction without creating user edit history. Exact repeated replacement is a true no-op; replacement removes stale values only inside the target region and preserves all other regions.
-
-#### Decoded-source adapter
-
-`crates/osrs-editor/src/session/region_ingest.rs` adapts `osrs_world::RegionMap` into `MapRegionSnapshot` before renderer/picker/GPU extraction participates.
-
-The adapter:
-
-- uses canonical typed world coordinates and `SourcePlane`
-- preserves underlay, overlay id, overlay shape, overlay rotation, settings/flags, and object placements
-- masks source floor ids with the same `0x7fff` semantic id mask used by scene construction
-- validates overlay shape/rotation and object kind/orientation instead of clamping invalid data
-- resolves final terrain heights with `osrs_scene::terrain_load::TerrainLoadGrid`, preserving default-noise, explicit-height, and lower-plane inheritance semantics
-- stores the 64x64 source-owned height samples per plane; neighboring source-region boundary samples remain owned by their neighboring region rather than being invented
-
-#### Stream integration
-
-`RegionGeometry` now carries `Arc<RegionMap>` containing the decoded source-region state used for semantic hydration. This payload is produced before render extraction and is independent of Reference/117HD geometry.
-
-For each current-generation `StreamEvent::Region`, `EditorApp` adapts and ingests that decoded source snapshot into its persistent session before uploading renderer projections.
-
-Streaming lifecycle rules:
-
-- identical clean-region rebuilds do not advance session revision
-- changed clean-region snapshots replace the region deterministically and advance revision
-- clean regions leaving the camera working set are evicted from the semantic document
-- presentation-only rebuilds do not clear semantic session state
-- a newly opened cache worker emits `Ready`, which resets the entire semantic session so data cannot leak between caches
-- failed render builds do not silently destroy previously valid semantic state
-
-#### Dirty-region protection
-
-Once a successful semantic edit touches a region, the session marks that region dirty. Later stream snapshots or camera eviction cannot overwrite/discard that authored region state. Dirty status remains conservative across undo/redo for this subsystem; clearing/compacting dirty provenance is deferred until tool cutover and persistence semantics require it.
-
-This prevents streaming from becoming a competing authority once semantic tools begin committing into the session.
-
-#### Compatibility boundary
-
-Legacy Paint, Height, Object, legacy undo/redo, `TerrainEdits`, dirty-region renderer projection, and existing world edit behavior remain active and unchanged. Transitional legacy worker edits can still appear in decoded clean-region snapshots during this migration. No editing gesture has been cut over to `EditorSession::commit` yet.
-
-No 117HD/rendering behavior was intentionally changed. The decoded semantic source payload is orthogonal to whether the region is rendered through Reference, HD, or Reference fallback.
-
-Checkpoint 16 implementation head before this handoff update:
-
-- `dc7efccdb28d6d7b0bd6f1051936ba9e8f95c918`
-- CI `38363291044`: Tier A/B/C PASS
+- `cff67249c721dd4f388fb4c258261290c9832139`
+- CI `38365239576`: Tier A/B/C PASS
 - Tier A architecture, formatting, workspace check, strict Clippy: PASS
-- Tier B full workspace tests, including region ingestion/replacement/dirty protection: PASS
+- Tier B full workspace tests, including all Paint-planner regressions: PASS
 - Tier C M3-M9 semantic/reference parity: PASS
 
-## Persistent semantic session subsystem status
+Final code diff at that head is intentionally narrow:
 
-The subsystem is complete and ready to merge as one unit:
+- `crates/osrs-editor/src/app.rs`: +2 module-registration lines
+- `crates/osrs-editor/src/app/paint_commit.rs`: new pure planner/tests
+- branch was 0 commits behind `main`
 
-1. `EditorSession` owns authoritative `MapDocument + EditHistory + revision`.
-2. `EditorApp` owns exactly one persistent session.
-3. Decoded cache/world regions hydrate that session directly into canonical semantic values.
-4. Region replacement and unload behavior are deterministic and idempotent.
-5. Session-authored dirty regions are protected from streaming overwrite/eviction.
-6. Cache switches reset semantic authority explicitly.
-7. Renderer, picker, GPU, and 117HD data remain downstream projections, never semantic load sources.
-8. Full Tier A/B/C is green.
+## Current architecture debt
 
-After the final documentation head is validated, squash-merge this branch to `main` and retire it before beginning tool migration.
+Paint still has two representations in the application only because runtime cutover has not happened yet:
 
-## Architecture debt after this merge
+1. the new pure semantic planner contract exists
+2. live Paint still mutates legacy `EditorApp.edited` and legacy history
 
-The remaining major debt is tool/runtime cutover. `EditorApp` still contains legacy editable-tile state and independent legacy undo/redo, and `osrs-world::TerrainEdits` remains a transitional projection/store.
+Do **not** create a permanent synchronization model between those two. The next checkpoints must make the semantic session authoritative for Paint, then retire Paint-specific legacy authority once runtime projection and undo/redo are proven.
 
-Do not remove those structures wholesale. Cut over one complete editing system at a time so each logical gesture commits one semantic `MapPatch`, projects its result to current world/render adapters, and preserves established behavior.
+Height and Objects remain intentionally legacy until their own future subsystems.
 
-## Next subsystem after merge
+## Next checkpoint
 
-Start from the newly validated `main` on a fresh branch. Do not mix this into `refactor/editor-session-domain` after merge.
+Do not begin this checkpoint without explicit direction.
 
-Recommended first tool cutover: terrain Paint.
+### Checkpoint 18: route completed Paint strokes through `EditorSession`
 
-Suggested checkpoints:
+Scope only the terrain Paint tool:
 
-1. define/reuse a pure Paint intent/planner that reads `MapQuery` and produces one `MapPatch` per logical stroke
-2. route Paint commit through the persistent `EditorSession`
-3. project the resulting semantic changes through the existing world/renderer invalidation path without creating a second authority
-4. preserve one stroke = one semantic history entry
-5. add regression coverage for underlay, overlay, clear/no-op, repeated samples, region boundaries, and negative coordinates
-6. only after Paint undo/redo uses the session successfully, remove the corresponding legacy Paint authority
-7. Tier A/B/C, merge to `main`, retire that branch, then choose the next tool
+1. translate the completed Paint stroke into `TerrainPaintIntent` values
+2. build one `MapPatch` against `self.session.document()`
+3. commit that patch exactly once with `self.session.commit(...)`
+4. preserve one user stroke = one semantic history entry
+5. project the committed semantic result through the existing `TileEdit` / worker / dirty-region path so visible behavior remains unchanged
+6. do not let the projection become a second semantic authority
+7. preserve no-op behavior: an empty semantic patch must not create history or disturb redo
+8. add runtime-adapter tests where practical
+9. keep Height and Objects on their existing paths
+10. do not cut global undo/redo over yet unless required to keep Paint state coherent; if it is required, stop and reassess the checkpoint boundary rather than broadening silently
+11. run Tier A/B/C and stop for review
 
-Do not begin Height, Objects, renderer invalidation redesign, or 117HD work in the Paint branch unless required by a narrow adapter boundary.
+Only after live Paint commits authoritatively through `EditorSession` should the next checkpoint move Paint undo/redo and remove its corresponding legacy authority.
