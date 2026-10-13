@@ -10,8 +10,8 @@
       "max_bytes": 37023
     },
     "app/editing.rs": {
-      "max_lines": 770,
-      "max_bytes": 27859
+      "max_lines": 670,
+      "max_bytes": 24884
     },
     "app/editing/history.rs": {
       "max_lines": 632,

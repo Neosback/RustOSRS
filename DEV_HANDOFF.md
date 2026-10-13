@@ -286,7 +286,13 @@ Branch: `refactor/editor-world-runtime` (cut from `main` `adb80da2`).
 
 Validation (local; no CI access from this environment): `cargo fmt`, `cargo clippy --workspace --all-targets --all-features -D warnings`, `cargo test -p osrs-editor`, architecture guard, and a 25 s release smoke run against the pinned b241 cache (9 regions streamed, animation upload live, ~60 fps).
 
-Debt baselines tightened: `app.rs` 738 -> 665 lines, `app/editing.rs` 792 -> 770, `app/editing/history.rs` 641 -> 632.
+Debt baselines tightened: `app.rs` 738 -> 665 lines, `app/editing.rs` 792 -> 670, `app/editing/history.rs` 641 -> 632.
+
+### Phase 4 closed: context-menu overlay clear is semantic
+
+`clear_overlay_at` previously fell through `end_stroke` to the legacy `push_step(stroke.step)` path, so it was the last terrain mutation outside `EditorSession`. It now arms `overlay_clear_brush()` (overlay channel `Fill::Clear`, nothing else) and commits through the same Paint planner as every other stroke. The legacy fallback in `end_stroke` is removed: a stroke without a Paint brush or Height spec is reverted with a notice (and trips a `debug_assert!`), so the invariant "every terrain mutation enters through `EditorSession`" is enforced in code, not just by convention. Pure Paint/Height planning and projection helpers moved to `app/editing/plan.rs`. Regression tests cover the clear commit/undo and the no-op case.
+
+Rejected experiment: an `InteractionRuntime` that only renamed ~300 `self.camera`/`self.selected`/... field paths pushed nine frozen-debt files over their no-growth baselines for no encapsulation gain. Revisit it only together with real behavior moves (e.g. selection methods) and the Phase 6 UI splits that shrink those files first. The experiment is kept in `git stash` only.
 
 ## Remaining migration roadmap
 
@@ -351,4 +357,4 @@ Resume on separate focused branches once editor authority/projection boundaries 
 
 ## Next boundary
 
-Phase 2.3 `InteractionRuntime` (camera, hover/picking, selection, marquee, gizmo, active tool/gesture state).
+Phase 6 debt splits first (shrinks the files an `InteractionRuntime` rename would otherwise grow): `settings_window.rs` (1569 lines) is the largest. Then Phase 3 central edit gateway, Phase 5 projection service, Phase 7 WASM gate.

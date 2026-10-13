@@ -7,24 +7,23 @@
 
 mod history;
 mod path;
+mod plan;
 #[cfg(test)]
 mod tests;
 
 use super::EditorApp;
-use super::paint_commit::{PaintCommitError, TerrainPaintIntent, build_terrain_paint_patch};
+use super::paint_commit::overlay_clear_brush;
 use crate::heights::commit::{HeightStrokeSpec, build_terrain_height_patch};
 use crate::heights::{self, encode_height};
-use crate::paint::{Brush, Fill, TileValues, Tool};
+use crate::paint::{Brush, TileValues, Tool};
 use eframe::egui;
 pub(super) use history::EditStep;
 use history::{SemanticHeightHistory, SemanticPaintHistory};
 use osrs_core::coords::{MapTile, SourcePlane};
-use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
-use osrs_edit::{
-    HeightVertexCoord, MapPatch, MapPosition, MapQuery, OverlayRotation, OverlayShape,
-};
+use osrs_edit::HeightVertexCoord;
 use osrs_world::TileEdit;
-use std::collections::{BTreeMap, HashMap};
+use plan::{build_paint_stroke_patch, project_height_values, project_paint_values};
+use std::collections::HashMap;
 use std::time::Duration;
 use web_time::Instant;
 
@@ -43,117 +42,8 @@ pub struct PathTile {
     pub rotation: u8,
 }
 
-fn paint_intent_from_brush(
-    brush: &Brush,
-    tile: (i32, i32),
-    after: TileValues,
-) -> TerrainPaintIntent {
-    let mut intent = TerrainPaintIntent::new(tile);
-    if brush.underlay.armed {
-        intent.underlay = Some(match brush.underlay.fill {
-            Fill::Clear | Fill::Set(0) => None,
-            Fill::Set(id) => Some(FloorUnderlayId::new(u32::from(id))),
-        });
-    }
-    if brush.overlay.armed {
-        intent.overlay = Some(match brush.overlay.fill {
-            Fill::Clear | Fill::Set(0) => None,
-            Fill::Set(id) => Some(FloorOverlayId::new(u32::from(id))),
-        });
-    }
-    if brush.shape.armed && after.overlay != 0 {
-        intent.overlay_shape = Some((
-            OverlayShape::new(after.shape)
-                .unwrap_or_else(|| unreachable!("Brush::apply clamps overlay shape")),
-            OverlayRotation::new(after.rotation)
-                .unwrap_or_else(|| unreachable!("Brush::apply clamps overlay rotation")),
-        ));
-    }
-    intent.height = brush.height.armed.then_some(after.height);
-    intent.flags = brush.flags.armed.then_some(after.flags);
-    intent
-}
-
-fn build_paint_stroke_patch(
-    query: &impl MapQuery,
-    brush: &Brush,
-    changes: &[(TileKey, TileValues, TileValues)],
-) -> Result<MapPatch, PaintCommitError> {
-    let mut by_plane = BTreeMap::<SourcePlane, Vec<TerrainPaintIntent>>::new();
-    for (key, _, after) in changes {
-        let plane = SourcePlane::new(key.0)
-            .unwrap_or_else(|| unreachable!("editor stroke planes are always validated"));
-        by_plane
-            .entry(plane)
-            .or_default()
-            .push(paint_intent_from_brush(brush, (key.1, key.2), *after));
-    }
-
-    let mut ops = Vec::new();
-    for (plane, intents) in by_plane {
-        let patch = build_terrain_paint_patch(query, plane, &intents)?;
-        ops.extend_from_slice(patch.ops());
-    }
-    Ok(MapPatch::new(ops))
-}
-
 /// `(plane, world x, world y)`.
 pub type TileKey = (u8, i32, i32);
-
-fn project_paint_values(
-    query: &impl MapQuery,
-    brush: &Brush,
-    key: TileKey,
-    mut current: TileValues,
-) -> Option<TileValues> {
-    let plane = SourcePlane::new(key.0)?;
-    let tile = MapTile::new(key.1, key.2);
-    let terrain = query.terrain_at(MapPosition::new(tile, plane));
-
-    if brush.underlay.armed {
-        current.underlay = match terrain.underlay {
-            Some(id) => u16::try_from(id.get()).ok()?,
-            None => 0,
-        };
-    }
-    if brush.overlay.armed {
-        match terrain.overlay {
-            Some(overlay) => {
-                current.overlay = u16::try_from(overlay.id.get()).ok()?;
-                current.shape = overlay.shape.get();
-                current.rotation = overlay.rotation.get();
-            }
-            None => {
-                current.overlay = 0;
-                current.shape = 0;
-                current.rotation = 0;
-            }
-        }
-    } else if brush.shape.armed
-        && let Some(overlay) = terrain.overlay
-    {
-        current.shape = overlay.shape.get();
-        current.rotation = overlay.rotation.get();
-    }
-    if brush.height.armed {
-        current.height = query.height_at(HeightVertexCoord::new(tile, plane))?;
-    }
-    if brush.flags.armed {
-        current.flags = terrain.flags;
-    }
-    Some(current)
-}
-
-fn project_height_values(
-    query: &impl MapQuery,
-    key: TileKey,
-    mut current: TileValues,
-) -> Option<TileValues> {
-    let plane = SourcePlane::new(key.0)?;
-    let tile = MapTile::new(key.1, key.2);
-    current.height = query.height_at(HeightVertexCoord::new(tile, plane))?;
-    Some(current)
-}
 
 /// A stroke being painted.
 #[derive(Debug)]
@@ -354,7 +244,8 @@ impl EditorApp {
 
     /// Finish the open stroke. Paint and Height commit exactly once to the semantic session and
     /// leave only lightweight routing markers in the global mixed-history stack. Terrain paths
-    /// commit separately in `editing/path.rs`; remaining legacy actions stay on the fallback path.
+    /// commit separately in `editing/path.rs`. There is no legacy fallback: a stroke without a semantic
+    /// planner is reverted, so every terrain mutation enters through `EditorSession`.
     pub(super) fn end_stroke(&mut self) {
         let Some(mut stroke) = self.stroke.take() else {
             return;
@@ -514,7 +405,15 @@ impl EditorApp {
         } else if let Some(height_history) = height_history {
             self.push_step(EditStep::semantic_height(height_history.keys));
         } else {
-            self.push_step(stroke.step);
+            // Every terrain stroke carries a Paint brush or a Height spec. Refuse rather than
+            // recreate legacy tile-history authority outside `EditorSession`.
+            debug_assert!(false, "terrain stroke without a semantic planner");
+            self.revert(&stroke.step, false);
+            self.notice = Some((
+                "Edit was not committed: no semantic planner for this stroke".to_owned(),
+                Instant::now(),
+            ));
+            return;
         }
         self.notice = Some((
             format!("Changed {count} tile{}", if count == 1 { "" } else { "s" }),
@@ -674,22 +573,23 @@ impl EditorApp {
         self.end_stroke();
     }
 
-    /// Remove a tile's overlay (its shape and rotation with it): one undo step.
+    /// Remove a tile's overlay (its shape and rotation with it): one semantic commit and one undo
+    /// step, planned through the same Paint planner as every other terrain stroke.
     pub(super) fn clear_overlay_at(&mut self, tile: (i32, i32)) {
         let key = (self.view_plane, tile.0, tile.1);
         let Some(before) = self.current_tile(key) else {
             return;
         };
-        let mut after = before;
-        after.overlay = 0;
-        after.shape = 0;
-        after.rotation = 0;
         self.begin_stroke();
         let Some(mut stroke) = self.stroke.take() else {
             return;
         };
+        let brush = stroke
+            .paint_brush
+            .get_or_insert_with(overlay_clear_brush)
+            .clone();
         let mut edits = Vec::new();
-        self.record(&mut stroke, key, after, &mut edits);
+        self.record(&mut stroke, key, brush.apply(before), &mut edits);
         self.send_edits(edits);
         self.stroke = Some(stroke);
         self.end_stroke();

@@ -3,6 +3,7 @@
 //! Runtime input and projection stay in `editing` for now. This module only folds one logical
 //! Paint stroke into one reversible `MapPatch` against read-only authoritative semantic state.
 
+use crate::paint::{Brush, Fill, IdChannel};
 use osrs_core::{
     coords::{MapTile, SourcePlane},
     ids::{FloorOverlayId, FloorUnderlayId},
@@ -43,6 +44,17 @@ impl TerrainPaintIntent {
             || self.overlay.is_some()
             || self.overlay_shape.is_some()
             || self.flags.is_some()
+    }
+}
+
+/// The brush that removes a tile's overlay (shape and rotation go with it) and touches nothing else.
+pub(super) fn overlay_clear_brush() -> Brush {
+    Brush {
+        overlay: IdChannel {
+            armed: true,
+            fill: Fill::Clear,
+        },
+        ..Brush::default()
     }
 }
 
