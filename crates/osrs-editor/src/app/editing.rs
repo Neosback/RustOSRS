@@ -899,7 +899,9 @@ impl EditorApp {
                             if rollback.is_ok() {
                                 format!("Paint undo was rolled back: {message}")
                             } else {
-                                format!("Paint undo projection failed and rollback failed: {message}")
+                                format!(
+                                    "Paint undo projection failed and rollback failed: {message}"
+                                )
                             },
                             Instant::now(),
                         ));
@@ -959,7 +961,9 @@ impl EditorApp {
                             if rollback.is_ok() {
                                 format!("Paint redo was rolled back: {message}")
                             } else {
-                                format!("Paint redo projection failed and rollback failed: {message}")
+                                format!(
+                                    "Paint redo projection failed and rollback failed: {message}"
+                                )
                             },
                             Instant::now(),
                         ));
@@ -1151,29 +1155,21 @@ mod tests {
         .unwrap_or_else(|error| unreachable!("valid Paint patch: {error:?}"));
         assert!(session.commit(patch).is_ok());
 
-        let committed = project_paint_values(session.document(), &brush, (0, tile.0, tile.1), before)
-            .unwrap_or_else(|| unreachable!("semantic Paint state is projectable"));
+        let committed =
+            project_paint_values(session.document(), &brush, (0, tile.0, tile.1), before)
+                .unwrap_or_else(|| unreachable!("semantic Paint state is projectable"));
         assert_eq!(committed.overlay, 1);
         assert_eq!(committed.height, before.height);
 
         assert!(session.undo().is_ok());
-        let undone = project_paint_values(
-            session.document(),
-            &brush,
-            (0, tile.0, tile.1),
-            committed,
-        )
-        .unwrap_or_else(|| unreachable!("semantic undo is projectable"));
+        let undone =
+            project_paint_values(session.document(), &brush, (0, tile.0, tile.1), committed)
+                .unwrap_or_else(|| unreachable!("semantic undo is projectable"));
         assert_eq!(undone, before);
 
         assert!(session.redo().is_ok());
-        let redone = project_paint_values(
-            session.document(),
-            &brush,
-            (0, tile.0, tile.1),
-            undone,
-        )
-        .unwrap_or_else(|| unreachable!("semantic redo is projectable"));
+        let redone = project_paint_values(session.document(), &brush, (0, tile.0, tile.1), undone)
+            .unwrap_or_else(|| unreachable!("semantic redo is projectable"));
         assert_eq!(redone, committed);
     }
 
