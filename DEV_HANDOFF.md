@@ -151,7 +151,7 @@ Branch: `refactor/editor-session-domain`
 
 Base: validated `main` head `cf552b734e1fdef54bf90b3b5c08211433f56a40`.
 
-This branch is the first step toward making the editor application own persistent authoritative semantic state. It must remain narrow until the session contract is integrated safely.
+This branch establishes one persistent semantic session in the application before any editing tool is cut over from legacy authority.
 
 ### Checkpoint 14: persistent semantic editor session contract
 
@@ -181,45 +181,64 @@ Contract established by this checkpoint:
 - undo/redo with no available entry do not advance revision
 - rejected commits do not mutate the document, history, or revision
 - failed undo does not advance revision or corrupt the history stack
-- callers currently receive read-only document access through `document()`
+- callers receive read-only document access through `document()`
 - each successful state transition returns semantic `ChangeImpact` with its new revision
 
 Focused regression coverage was added for all of the above behaviors.
 
-Implementation head before this handoff update:
+Checkpoint 14 final handoff head:
 
-- `5ce2874e12b5ffb3fa019c3cca69c0973b4e9eee`
-- CI `38359568161`: Tier A/B/C PASS
+- `a2cda76d80542725f4aafc64d197b443e2efca66`
+- CI `38359876749`: Tier A/B/C PASS
+
+### Checkpoint 15: EditorApp session ownership
+
+`EditorApp` now owns exactly one persistent `EditorSession` for the lifetime of the application.
+
+Ownership wiring:
+
+- `app.rs` imports `crate::session::EditorSession`
+- `EditorApp` contains a real `session: EditorSession` field
+- `EditorApp::new` initializes the session deterministically with `EditorSession::default()`
+- startup asserts revision zero in debug builds
+- the session module is active normally from `main.rs`; the old broad module-level dead-code allowance is gone
+- legacy `edited`, `height_edited`, legacy history/redo, stroke, dirty-region, and world projection fields remain untouched
+- no editing gesture is routed into the session yet
+
+The semantic document is intentionally empty at startup. Cache-loaded terrain has not been ingested into it yet. Do not fake that ownership transition by reconstructing semantic state from renderer meshes, picker data, GPU buffers, or other presentation caches.
+
+The session mutation/query API is already regression-tested but most of it is not yet called by the normal binary. A narrow `#[cfg_attr(not(test), allow(dead_code))]` remains on the staged `EditCommit`/session API only. Tests are not suppressed. Remove that narrow allowance naturally as runtime tools begin using those methods.
+
+No Paint, Height, Object, undo/redo UI, cache decoding, world-worker, renderer, or 117HD behavior changed in this checkpoint.
+
+Checkpoint 15 implementation head before this handoff update:
+
+- `398e7287c2b6acfaef0389e1c53bf0e95fc0b163`
+- CI `38361076460`: Tier A/B/C PASS
 - Tier A architecture, formatting, workspace check, strict Clippy: PASS
 - Tier B full workspace tests: PASS
 - Tier C M3-M9 semantic/reference parity: PASS
 
-### Intentional boundary at Checkpoint 14
-
-`EditorSession` is **not yet installed into `EditorApp`**. The existing legacy fields (`edited`, legacy history/redo stacks, world `TerrainEdits`, etc.) remain untouched in this checkpoint.
-
-The root module is temporarily allowed as dead code because the contract is compiled and tested one checkpoint before runtime ownership wiring. Remove that allowance when `EditorApp` begins owning the session.
-
-No Paint, Height, Object, renderer, cache loading, world-worker, or 117HD behavior was changed.
-
 ## Current architecture debt
 
-The editor still has parallel legacy edit authority in application/world structures. The largest remaining debt is that `EditorApp` still owns legacy edited-tile state and undo/redo independently from the new semantic session.
+The application now owns the semantic session, but it does not yet contain the cache-loaded map state. Legacy edit stores therefore remain the active runtime behavior and must not be deleted yet.
 
-The migration must remove that authority deliberately, one tool/system at a time. Do not create a second permanent synchronization model.
+The migration must remove parallel authority deliberately, one source/tool at a time. Do not create a permanent synchronization model between two editable documents.
 
 ## Next checkpoint
 
-Do **not** migrate Paint/Height/Objects yet.
+Do **not** migrate Paint, Height, Objects, legacy undo/redo, renderer invalidation, or 117HD yet.
 
-Next, integrate one persistent `EditorSession` into `EditorApp` ownership with no behavior cutover:
+Next solve the semantic loaded-region ingestion boundary:
 
-1. add the session as a real `EditorApp` field
-2. initialize it deterministically
-3. remove the temporary dead-code allowance
-4. expose only the minimum internal access needed for later adapters
-5. add lifecycle/ownership tests where practical
-6. prove existing editor behavior and Tier A/B/C remain unchanged
-7. stop and report before moving any tool commits into the session
+1. identify the authoritative decoded/cache-side semantic data available when a region finishes loading
+2. define the smallest region snapshot/ingestion contract needed by `EditorSession`
+3. preserve exact tile attributes, explicit corner heights, object placements, typed coordinates, and source-plane semantics
+4. make region ingestion deterministic and idempotent
+5. define region replacement/unload behavior explicitly before wiring streaming churn
+6. do not derive semantic state from rendered geometry, picker caches, or GPU data
+7. add focused headless tests for region ingestion/replacement semantics
+8. keep current visual/editor behavior unchanged
+9. run Tier A/B/C and stop for review
 
-The following checkpoint after that should solve semantic loaded-region ingestion before the legacy edit stores are removed. Do not seed authoritative session state by scraping renderer geometry or picker output.
+Only after the session can own truthful loaded semantic state should individual editing tools begin committing to it.
