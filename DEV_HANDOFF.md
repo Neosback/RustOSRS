@@ -2,419 +2,373 @@
 
 Last updated: 2026-10-13
 
-This is the living handoff for the RustOSRS map-editor architecture project. Update it at every meaningful checkpoint and before each branch merge.
+This is the living handoff for the RustOSRS map-editor architecture migration. Keep it current at meaningful checkpoints and before subsystem merges.
 
 ## Project goal
 
-Build a production-grade OSRS editor where semantic map state is authoritative, deterministic, headless-testable, and independent from UI, rendering, world-worker state, and cache codecs.
+Build a production-grade OSRS editor where semantic map state is authoritative, deterministic, headless-testable, and independent from UI, rendering, world-worker state, picker state, cache codecs, and GPU resources.
+
+Core invariant:
+
+> If every GPU buffer, scene cache, picker cache, world-worker edit mirror, and UI widget vanished, the complete edited map would still exist correctly inside the semantic editor session.
 
 ## Working rules
 
-1. One active development branch at a time.
-2. Break work into small checkpoints and stop after each checkpoint for review.
-3. Do not start the next checkpoint without explicit direction.
-4. A completed subsystem must pass Tier A/B/C before merge.
-5. Merge completed systems back to `main`, then retire the finished branch when tooling permits.
+1. One active development branch/system at a time.
+2. Work in small checkpoints and stop after each checkpoint for review.
+3. Do not begin the next checkpoint without explicit user direction.
+4. A completed subsystem must pass exact-head Tier A/B/C before merge.
+5. After merge, validate the exact squash commit on `main`.
 6. Preserve semantic/reference parity unless a checkpoint explicitly changes behavior.
-7. Keep renderer/117HD work isolated from editor-domain refactors unless a narrow adapter change is required.
+7. Keep renderer/117HD work isolated from editor-domain migration unless a narrow adapter change is required.
 8. One logical user gesture should become one logical `MapPatch` and one semantic history entry.
-9. `MapDocument` remains authoritative even if renderer, picker, worker, or UI caches disappear.
+9. `MapDocument` is authoritative; worker/render/picker/UI state is projection/cache only.
+10. Do not create parallel replacement architecture crates. Use the existing workspace boundaries.
+11. Prefer modules below 1,000 LOC. Split by reason to change before a module becomes a god file.
+12. `osrs-editor` Rust modules have a hard CI ceiling of 1,600 lines and 64 KiB so whole-file tooling remains comfortably safe.
 
 ## Target architecture
 
 ```text
-osrs-core
-  Canonical semantic vocabulary: coordinates, IDs, planes, shared OSRS values.
-
-osrs-edit
-  Authoritative headless editable-map domain.
-  Owns semantic state, validation, reversible patches, history, query contracts,
-  and semantic change impact.
-
-osrs-cache
-  Cache codecs and cache-format infrastructure.
-
-osrs-scene
-  OSRS scene semantics.
-
-osrs-world
-  Cache-to-scene orchestration and transitional render projection.
-  Must not become the authoritative edit store.
-
-osrs-editor
-  Application/product layer: persistent editor session, tools, input, previews,
-  orchestration, adapters, and UI.
-
-renderer / 117HD
-  Disposable reactive projection/cache of authoritative semantic state.
+UI gesture
+  -> tool/intent
+  -> pure semantic planner
+  -> MapPatch
+  -> EditorSession::commit
+  -> revision + ChangeImpact
+  -> projection/invalidation
+  -> async rebuild
+  -> generation/revision check
+  -> GPU replacement
 ```
 
-`osrs-edit` depends only on `osrs-core`, enforced by the repository architecture guard.
+Loading remains:
 
-## Core domain contract
+```text
+cache decode
+  -> semantic RegionMap / MapRegionSnapshot
+  -> EditorSession / MapDocument
+  -> scene construction
+  -> renderer
+```
 
-### Authoritative state
+Never seed semantic authority by scraping renderer meshes, picker geometry, or GPU buffers.
 
-`MapDocument` is the authoritative editable-map state. Renderer meshes, GPU resources, picker data, world-worker edits, and UI state are projections/caches, not final edit authority.
+## Workspace mapping
 
-### Coordinates and terrain
+Use the existing crates:
 
-- use typed coordinates and planes from `osrs-core`
-- `MapPosition` = map tile + `SourcePlane`
-- `HeightVertexCoord` = terrain corner + `SourcePlane`
+- `osrs-core`: canonical coordinates, IDs, planes, shared semantic vocabulary
+- `osrs-edit`: pure/headless editable-map domain, patches, history, validation, query contracts
+- `osrs-cache`: cache codecs/infrastructure
+- `osrs-scene`: OSRS scene semantics
+- `osrs-world`: cache-to-scene orchestration and transitional worker/render projection
+- `osrs-editor`: application/session/tools/input/UI/adapters
+- `osrs-render`: renderer projection
+- `osrs-hd`: 117HD-related rendering work
+
+Do not introduce parallel `domain`, `editor-core`, `editor-app`, or ECS replacement crates for this migration.
+
+## Core semantic contract
+
+- typed coordinates come from `osrs-core`
+- `MapPosition = MapTile + SourcePlane`
+- `HeightVertexCoord = MapTile corner + SourcePlane`
 - `TerrainTile` owns underlay/overlay/flags; height is separate
-- overlay shape range is `0..=11`
-- overlay rotation range is `0..=3`
-- missing terrain is `TerrainTile::default()`
-- missing height is not numeric zero
+- `OverlayShape`: `0..=11`
+- `OverlayRotation`: `0..=3`
+- `LocKind`: `0..=22`
+- `ObjectOrientation`: `0..=3`
+- missing sparse terrain = `TerrainTile::default()`
+- missing height is distinct from numeric `0`
+- object identity is exact `ObjectPlacement`
 
-### Patch/history model
+`MapPatch` contains reversible `MapOp` values and derives `ChangeImpact` from the operations.
 
-`MapPatch` contains reversible semantic `MapOp` values and derives `ChangeImpact` from them. `MapDocument::apply_patch` validates the full touched state before mutation.
+`MapDocument::apply_patch` validates the complete touched state atomically before mutation.
 
-`EditHistory` is the only intended long-term undo/redo authority:
+`EditHistory` semantics:
 
-- one successful non-empty patch = one history entry
+- one successful non-empty patch = one semantic history entry
 - undo applies the exact inverse
 - redo reapplies the original
-- a successful new edit clears redo
-- empty patches do not create history or clear redo
-- failed commit/undo/redo leaves history coherent
+- a new successful edit clears semantic redo
+- empty patches create no history and do not clear semantic redo
+- failed commit/undo/redo leaves state/history coherent
 
-`MapQuery` exposes only semantic reads needed by migrated planners: terrain, height, and object presence.
+`MapQuery` exposes semantic reads only: terrain, explicit height, and exact object-placement presence.
 
-## Merged systems
+## Merged architecture systems
 
-### PR #33: edit-domain foundation
+### PR #33 — edit-domain foundation
 
-- `osrs-edit`, semantic values, architecture guard
-- `ChangeImpact`, reversible `MapPatch`, authoritative `MapDocument`
-- atomic validation/application and inverse round trips
-- squash merge: `5c5eef3bde696b20ae0319867e6e84567701ebf6`
+Squash merge: `5c5eef3bde696b20ae0319867e6e84567701ebf6`
 
-### PR #34: history/query foundation
+- `osrs-edit`
+- semantic values
+- architecture guard
+- `ChangeImpact`
+- reversible `MapPatch`
+- authoritative `MapDocument`
+- atomic validation/application
+
+### PR #34 — history/query foundation
+
+Squash merge: `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`
 
 - failure-safe `EditHistory`
 - read-only `MapQuery`
-- squash merge: `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`
 
-### PR #35: semantic path commit + simplified fitter
+### PR #35 — semantic path commit + simplified fitter
 
-- terrain-path commits through semantic `MapPatch`
-- deterministic Catmull-Rom + OSRS overlay-shape fitting
+Squash merge: `cf552b734e1fdef54bf90b3b5c08211433f56a40`
+
+- path planning through semantic `MapPatch`
+- deterministic Catmull-Rom fitting
+- OSRS overlay-shape matching
 - quality fixtures
-- removed obsolete planner/router/network/wall/noise stack
-- squash merge: `cf552b734e1fdef54bf90b3b5c08211433f56a40`
+- obsolete planner/router/network/wall/noise stack removed
 
 Do not reintroduce pathfinding, wall mode, topology repair, automatic joining, or hidden obstacle routing without an explicit product decision.
 
-### PR #36: persistent semantic editor session
+### PR #36 — persistent semantic editor session
 
-Delivered the semantic-session subsystem:
+Squash merge / validated main: `ace39238f67fa5c3f31611bf60ca5c106ace1d90`
+Post-merge CI `38363970256`: Tier A/B/C PASS.
 
-- persistent `EditorSession` owning `MapDocument + EditHistory + revision`
-- one real session owned by `EditorApp`
-- canonical `MapRegionSnapshot`
-- deterministic/idempotent region replacement and unload
-- decoded `RegionMap` -> semantic snapshot adapter before renderer/picker/GPU extraction
-- terrain-height resolution through existing terrain-load semantics
-- streamed semantic hydration from decoded source data
-- dirty-region protection against streaming overwrite/eviction
-- semantic-session reset on cache switch
-- renderer, picker, GPU, and 117HD remain downstream projections
+- persistent `EditorSession { MapDocument, EditHistory, revision }`
+- real session owned by `EditorApp`
+- semantic region hydration/unload
+- decoded `RegionMap` -> semantic snapshot before render extraction
+- exact terrain-height resolution through scene-load semantics
+- dirty-region preservation across streaming churn
+- session reset on cache-source switch
 
-- squash merge: `ace39238f67fa5c3f31611bf60ca5c106ace1d90`
-- PR: #36
-- post-merge CI `38363970256`: Tier A/B/C PASS
+### PR #37 — Paint -> semantic session
 
-### PR #37: terrain Paint -> semantic session
+Squash merge / validated main: `be59c01dc57e72d256ff616d1947594d939a4b5b`
+Post-merge CI `38370847153`: Tier A/B/C PASS.
 
-Completed the Paint migration:
+- one Paint stroke -> one semantic commit/history entry
+- Paint undo/redo -> `EditorSession`
+- worker `TileEdit` projection only
+- legacy Paint before/after authority retired
 
-- pure deterministic Paint planner
-- one completed Paint stroke -> one `EditorSession::commit`
-- Paint undo/redo -> `EditorSession::undo/redo`
-- live `TileEdit` / worker state retained only as projection for responsiveness
-- Paint legacy before/after `EditStep` state retired as undo authority
-- global history stack retains only a lightweight Paint routing marker so chronological interleaving with still-legacy actions is preserved
-- semantic no-op and redo invalidation behavior covered by regression tests
+### PR #38 — Height -> semantic session
 
-- squash merge/current validated `main`: `be59c01dc57e72d256ff616d1947594d939a4b5b`
-- PR: #37
-- post-merge CI `38370847153`: Tier A/B/C PASS
+Squash merge / current validated `main`:
+`392206ae55e35dbe26e17d664a693b21a42dc006`
 
-The merged Paint feature branch still exists because the connected GitHub tooling does not expose safe branch deletion. It is safe to remove manually.
+Post-merge CI `38384232077`: Tier A/B/C PASS.
 
-## Current branch
+- deterministic Height planner and immutable stroke spec
+- exact storage quantization and lower-plane handling
+- one completed Height gesture -> one semantic commit
+- Height undo/redo -> `EditorSession`
+- worker preview projection only
+- legacy Height before/after authority retired
 
-Branch: `refactor/editor-height-session`
+## Semantic loading / residency
 
-Base: validated `main` head `be59c01dc57e72d256ff616d1947594d939a4b5b`.
+`EditorSession` tracks loaded and dirty regions.
 
-PR: #38 — `Migrate Height editing to semantic EditorSession`
+- clean region ingestion may replace semantic source state
+- identical ingestion is a no-op
+- dirty regions are not overwritten by incoming streaming snapshots
+- dirty regions are not semantically evicted by camera unload
+- cache-source switch resets the semantic session
 
-Purpose: migrate the dedicated Height tool to the persistent semantic session. Do not mix Objects, terrain-path migration, context-menu terrain actions, renderer/117HD redesign, or unrelated editor cleanup into this branch.
+`RegionGeometry` carries the decoded semantic `RegionMap` source used before scene/render extraction.
 
-## Checkpoint 20: pure semantic Height stroke planner
+Height ingestion stores source-owned 64x64 final height samples per plane. Do not invent shared 65th boundary samples; neighboring source regions own their own boundary data.
 
-Added `crates/osrs-editor/src/heights/commit.rs` and registered it beneath the existing `heights` module. Runtime Height behavior was intentionally unchanged in this checkpoint.
+Transitional caveat: `WorldDefinitions::region()` can already include legacy worker edits, so region ingestion may observe transitional legacy-edited source values until all editing systems are migrated.
 
-### Captured stroke meaning
+## Current active branch
 
-`HeightStrokeSpec` captures the immutable semantic meaning of one Height stroke:
+Branch: `refactor/editor-object-session`
 
-- `SourcePlane`
-- `HeightTool`
-- brush radius
-- brush shape
-- flatten anchor
-- deterministic stroke seed
+Base:
+`392206ae55e35dbe26e17d664a693b21a42dc006`
 
-This is deliberately one value rather than a wide planner argument list. It also establishes the runtime contract: once a Height stroke starts, later UI preference changes must not silently alter the operation that eventually commits.
+Purpose: complete and integrate the Object editing subsystem migration to authoritative semantic state/history.
 
-### Planner contract
+Do not mix terrain-path migration, context-menu terrain cleanup, renderer redesign, 117HD work, or unrelated UI cleanup into this branch.
 
-`build_terrain_height_patch(query, spec, centers)` produces one deterministic `MapPatch` from ordered Height-tool samples.
+## Checkpoint 23 — pure semantic Object planner
 
-The planner:
+Status: COMPLETE.
 
-- reads authoritative height state only through `MapQuery`
-- addresses terrain corners with typed `MapTile + SourcePlane -> HeightVertexCoord`
-- preserves the order of stroke samples
-- allows repeated centers because a held sculpt brush intentionally applies repeatedly
-- makes later samples see the storage-quantized result of earlier samples
-- evaluates each individual brush application against a stable pre-application snapshot, matching the current live tool
-- uses the existing pure Raise / Lower / Smooth / Flatten / Roughen arithmetic
-- preserves deterministic Roughen behavior through the captured stroke seed
-- skips missing target heights instead of inventing numeric zero
-- folds every touched corner into one final `SetHeight { before, after }`
-- removes final semantic no-ops
-- emits operations in deterministic coordinate order through `BTreeMap`
-- preserves negative world coordinates exactly
+Implementation head: `678a032b4ce68d2f6d675ac0fc1faca818a962ca`
+CI `38385929194`: Tier A/B/C PASS.
 
-### Exact OSRS height-storage quantization
+Final documented head: `9c69eb2a6f807fd8139114ac9ca6cfd4119b4c3d`
+CI `38386822954`: Tier A/B/C PASS.
 
-The planner uses the existing `encode_height` / `decode_height` rules after each application, not only at final commit. Subsequent repeated Height samples therefore read the already-quantized result exactly as the current runtime does.
+Added `osrs-edit::build_object_patch` and `ObjectEditError`.
 
-Plane handling is explicit:
+Planner properties:
 
-- plane 0 uses cache base height `0`
-- planes 1..=3 encode relative to the explicit height on the plane directly below
-- a missing lower-plane base returns `HeightCommitError::MissingBaseHeight`
-- missing lower-plane data is **not** treated as height zero
+- `MapQuery` + exact `ObjectPlacement` only
+- no UI/renderer/picker/worker dependency
+- deterministic canonical ordering
+- repeated requests deduplicated
+- exact remove+add collapses to no-op
+- removals must exist; additions must be absent
+- removals precede additions
+- delete/duplicate/move/turn/floor shift/multi-object actions are one reversible patch
 
-The last rule intentionally hardens the legacy `EditorApp::base_height`, which falls back to zero when the lower tile cannot be found. It preserves the domain invariant that missing semantic height and numeric zero are distinct states.
+## Checkpoint 24 — live Object action -> semantic commit
 
-### Regression coverage
+Status: COMPLETE.
 
-Focused tests prove:
+Implementation head: `085285739f0a2090b5ccafa731ecd2c937440f74`
+CI `38389419996`: Tier A/B/C PASS.
 
-1. repeated samples on one corner fold into one final semantic `SetHeight`
-2. a missing target height is skipped rather than treated as zero
-3. an upper-plane edit requires its explicit lower-plane base
-4. upper-plane quantization uses the real lower-plane base and preserves the OSRS stored-byte-1 quirk
-5. storage quantization can correctly collapse a Height application into a semantic no-op
-6. negative world coordinates remain exact
-7. final patch operation order is deterministic even when sample order is not coordinate order
+Final documented head: `8ed687844c2bbb3cd1d554f82d26c9d9c9f695de`
+CI `38389908396`: Tier A/B/C PASS.
 
-Checkpoint 20 final documented head:
-
-- `0671dda23f9328e129b30fe8e809d01afb17797d`
-- CI `38372828941`: Tier A/B/C PASS
-
-## Checkpoint 21: live Height stroke -> authoritative semantic commit
-
-Completed Height gestures now commit through the persistent `EditorSession` while the existing worker/render path remains the immediate preview/projection layer.
+All current Object action sources converge on one semantic transaction funnel:
 
 ```text
-pointer drag / selection Height action
-  -> captured HeightStrokeSpec
-  -> ordered Height sample centers
-  -> existing live TileEdit preview
-  -> release / completed gesture
-  -> build_terrain_height_patch(EditorSession::document, spec, centers)
+Object action
+  -> strict LocSpec -> ObjectPlacement adapter
+  -> build_object_patch(EditorSession::document, ...)
   -> one EditorSession::commit
-  -> authoritative semantic heights
-  -> reconcile current TileEdit/world projection
+  -> authoritative MapDocument
+  -> canonical LocEdit projection
+  -> worker rebuild/reselect
 ```
 
-### Immutable live-stroke semantics
+The strict adapter validates plane, loc kind, and orientation before mutation. Canonical patch operations drive worker projection, so duplicate requests and semantic no-ops cannot leak into the worker layer.
 
-The first actual Height application captures one `HeightStrokeSpec`. The live preview then uses `HeightStrokeSpec::apply_sample`, the same captured arithmetic entry point used by semantic replay.
+Checkpoint 24 intentionally left Object undo/redo legacy and was a do-not-merge intermediate state.
 
-This means changing Height settings while a drag is already open cannot change the semantic meaning of the transaction at release.
+## Checkpoint 25 — Object undo/redo -> semantic session
 
-`Stroke` records:
+Status: COMPLETE.
 
-- `height_spec: Option<HeightStrokeSpec>`
-- ordered `height_centers: Vec<MapTile>`
+Implementation head: `c3e76736e27ea623ee43c4b07d702186493c3098`
+Implementation CI `38395996742`: Tier A/B/C PASS.
 
-Repeated centers are retained intentionally because holding the sculpt brush on one tile applies again after `SCULPT_REPEAT`.
+Final documented head before integration hardening:
+`a04a58987225be737ba12c409b4f157513d9cb41`
+CI `38396388862`: Tier A/B/C PASS.
 
-### One gesture -> one semantic commit
+Live Object actions no longer use `EditStep.removed / EditStep.added` as Object undo authority. Each action stores one lightweight `ObjectHistoryRoute` containing only canonical `LocSpec` identities needed for downstream projection.
 
-At `end_stroke`:
-
-- the exact ordered samples are replayed against `EditorSession::document()`
-- one `MapPatch` is built for the complete Height gesture
-- `EditorSession::commit` is called exactly once
-- one successful non-empty Height gesture therefore creates one semantic history entry and one session revision advance
-- a semantic no-op creates no semantic history entry and no global legacy entry
-
-The existing live `TileEdit` preview still updates during the drag for responsiveness. It is not the completed Height state authority after commit.
-
-### Projection and failure handling
-
-Successful semantic commits are reconciled back into the legacy `TileValues` / `TileEdit` / worker projection by reading authoritative heights from the session document.
-
-Projection preparation happens before mutation so a projection error cannot leave half of a Height stroke reconciled.
-
-Failure handling is conservative:
-
-- if a preview-touched semantic height is missing, the visible preview is reverted and nothing is committed
-- planner errors such as a missing upper-plane base revert the visible preview
-- semantic commit rejection reverts the visible preview
-- if projection fails after commit, the editor attempts an immediate semantic undo and reverts the visible preview
-- missing semantic heights are never converted to numeric zero
-
-`height_edited` remains active because the current worker/cache-format adapter still needs to know when to emit an encoded height byte. It is projection/storage-adapter state, not completed semantic authority.
-
-### Selection-based Height
-
-`height_on_selection` uses the same captured `HeightStrokeSpec` and semantic commit boundary as pointer sculpting.
-
-Selected coordinates are sorted before application. This removes the old `HashSet` iteration nondeterminism so operations whose result can depend on application order replay identically and deterministically.
-
-The existing selection behavior remains otherwise intact:
-
-- radius 0
-- square footprint
-- flat falloff
-- first coordinate in the deterministic selection sequence supplies the automatic Flatten anchor
-- one selection action remains one logical Height transaction
-
-Checkpoint 21 implementation head before its handoff update:
-
-- `d26608f9282ce83488bb6bf9f94e4c10f4b82adf`
-- CI `38380243232`: Tier A/B/C PASS
-
-Checkpoint 21 stopped intentionally before Height undo/redo. That temporary history gap is closed by Checkpoint 22 below.
-
-## Checkpoint 22: Height undo/redo -> authoritative semantic history
-
-Height history now follows the same authority model as Paint: the global mixed-history stack decides **when** a Height transaction is undone or redone, while `EditorSession::history` exclusively decides **what semantic state** is restored.
-
-### Lightweight Height routing marker
-
-Added:
+Undo/redo model:
 
 ```text
-SemanticHeightHistory { keys: Vec<TileKey> }
+global chronological route
+  -> EditorSession::undo / redo
+  -> authoritative MapDocument
+  -> validate route against resulting semantic state
+  -> derive LocEdit projection
+  -> worker rebuild/reselect
 ```
 
-A completed semantic Height transaction now leaves only this lightweight marker in the global `EditStep` stack.
+If projection validation fails after semantic history moves, the inverse semantic operation is attempted and the global marker returns to its original stack. Stale/misordered routes therefore fail before worker mutation.
 
-The marker contains no before/after heights and no duplicate semantic state. `EditStep::changes` is empty for semantic Height markers, so legacy `revert` can no longer act as Height undo authority.
+Paint, Height, and Object now share the same one-commit / one-route / one-semantic-history chronology.
 
-### Authoritative undo and redo
+## Checkpoint 26 — Object integration hardening / anti-god-module guard
 
-When global history reaches a Height marker:
+Status: IMPLEMENTATION COMPLETE; PR creation pending final documented-head validation.
+
+Implementation head:
+`d1a5c154d45711999fea1181278fa7a348227d3f`
+
+Implementation CI:
+`38406565544` — Tier A/B/C PASS.
+
+### `editing.rs` responsibility split
+
+The branch had grown `crates/osrs-editor/src/app/editing.rs` to roughly 1,830 LOC / 68 KiB. It was still below GitHub's absolute file API limits, but whole-file connector edits were becoming unnecessarily fragile and the module mixed too many reasons to change.
+
+Checkpoint 26 splits it by responsibility:
 
 ```text
-Ctrl/Cmd+Z
-  -> global marker selects the chronological Height action
-  -> EditorSession::undo()
-  -> MapDocument restores exact inverse semantic height state
-  -> projection adapter reads MapDocument
-  -> EditorApp.edited / TileEdit / worker mirror the result
+app/editing.rs
+  - stroke construction/input
+  - Paint/Height semantic commit bridge
+  - legacy terrain-path bridge
+  - tile worker projection
+  - dirty-region rebuild requests
+
+app/editing/history.rs
+  - EditStep / semantic routing markers
+  - global chronological history stack
+  - Paint/Height/Object semantic undo/redo routing
+  - Object LocEdit projection dispatch
+
+app/editing/tests.rs
+  - editing/history regression coverage
 ```
 
-Redo is symmetric through `EditorSession::redo()`.
+`editing.rs` is now roughly 950 LOC, below the project's <1,000 LOC soft design target.
 
-This closes the Checkpoint 21 failure mode where visible Height state could move backward through legacy history while the semantic session still retained the Height patch on top.
+No Object/Paint/Height semantic behavior changed in the split. Tier B and M3-M9 parity remained green.
 
-Paint and Height now share one semantic subsequence in `EditorSession::history`, and their global routing markers preserve chronological ordering around still-legacy actions.
+### API-safe editor module guard
 
-### Height projection contract
+`scripts/check_architecture.py` now scans every `crates/osrs-editor/src/**/*.rs` file.
 
-`project_height_values` changes only the height channel of the current `TileValues` projection. It preserves:
+Hard CI limits:
 
-- underlay
-- overlay
-- overlay shape
-- overlay rotation
-- flags
+- maximum 1,600 lines per Rust module
+- maximum 64 KiB per Rust module
 
-`project_semantic_height_history` prepares every projected value before mutating the worker-facing state, so a missing tile or missing semantic height cannot produce a partially applied undo/redo projection.
+These are intentionally much stricter than GitHub's absolute API maximum. They are a repository maintainability/tooling ceiling so files are split before whole-file editing becomes fragile.
 
-`height_edited` remains a transitional cache-format/worker projection flag so encoded `TileEdit.height` bytes continue to be emitted. It is not semantic history or completed Height authority.
+Soft design target:
 
-### Failure-safe routing
+- prefer <1,000 LOC
+- typical focused modules should be substantially smaller
+- split by reason to change, not arbitrary line chunks
 
-Height undo:
+The architecture-guard regression suite now verifies:
 
-- `EditorSession::undo()` must return one semantic edit
-- projection failure attempts `EditorSession::redo()` to restore the semantic transaction
-- the global marker is returned to the undo stack when the operation cannot complete coherently
+- the current editor tree satisfies the size policy
+- line-cap violations fail
+- byte-cap violations fail
 
-Height redo mirrors this behavior:
+Existing unrelated UI debt such as `settings_window.rs` remains below the hard ceiling and is deliberately not refactored on the Object branch. Future cleanup should be a separate focused checkpoint.
 
-- `EditorSession::redo()`
-- projection failure attempts `EditorSession::undo()`
-- the global marker is returned to the redo stack on failure
+### Checkpoint 26 integration status
 
-An unexpected `Ok(None)` is treated as a history desynchronization and does not advance the global routing stack.
+At implementation head `d1a5c154...`:
 
-### Regression coverage
-
-Checkpoint 22 adds focused coverage proving:
-
-1. semantic Height projection follows commit -> undo -> redo exactly
-2. Height projection preserves every non-height terrain channel
-3. Paint followed by Height shares one semantic history order
-4. undo first removes Height while preserving Paint
-5. the next undo removes Paint
-6. redo restores Paint before Height
-7. a semantic Height global marker carries no legacy tile before/after authority
-8. the existing Paint marker remains unaffected and explicitly carries no Height marker
-
-Checkpoint 22 implementation head before this handoff update:
-
-- `cf93a569654124ff09c6265d0341d31880dd2754`
-- CI `38383558840`: Tier A/B/C PASS
-- Tier A architecture, formatting, workspace check, strict Clippy: PASS
-- Tier B full workspace tests including Height history/projection regressions: PASS
+- architecture boundaries: PASS
+- editor module-size guard: PASS
+- rustfmt: PASS
+- workspace compile: PASS
+- strict Clippy: PASS
+- Tier B workspace tests: PASS
 - Tier C M3-M9 semantic/reference parity: PASS
 
-## Height subsystem status
+The Object subsystem remains functionally complete and is now structurally safer to maintain through GitHub/API tooling.
 
-The dedicated Height tool migration is now **complete** for this architecture phase:
+## Next boundary — Object integration PR
 
-- semantic Height planner: complete
-- immutable live-stroke meaning: complete
-- one gesture -> one semantic commit: complete
-- deterministic selection sequencing: complete
-- live preview retained only as projection: complete
-- Height undo -> `EditorSession::undo`: complete
-- Height redo -> `EditorSession::redo`: complete
-- legacy Height before/after undo authority: retired
-- Paint + Height semantic history ordering: covered
+After this documented head passes exact A/B/C:
 
-PR #38 is the integration PR for this completed subsystem.
+1. verify branch is still based cleanly on current `main`
+2. open the focused Object migration PR
+3. stop for review before merge
+4. on explicit continuation: verify PR head, squash merge, validate exact squash commit on `main`, and retire the branch if tooling permits
 
-### Deliberately still transitional / out of scope
+Do not merge during Checkpoint 26.
 
-- `EditorApp.edited` remains worker/render projection state
-- `height_edited` remains cache-format/worker projection state
-- Objects remain legacy
-- terrain-path runtime history remains transitional
-- context-menu `clear_overlay_at` remains legacy
-- renderer invalidation and 117HD are unchanged
+## Remaining separate migration targets
 
-These are separate migration systems and must not be folded into the completed Height branch.
+After Objects are merged, keep these as separate systems/checkpoints:
 
-## Next work after PR #38
+- terrain-path runtime commit/history migration from temporary semantic snapshot to persistent `EditorSession`
+- context-menu `clear_overlay_at`
+- remaining legacy worker/projection cleanup
+- renderer invalidation/reactive projection improvements
+- 117HD integration/parity work
+- unrelated large UI-module cleanup such as `settings_window.rs`
 
-Do not begin another subsystem without explicit direction.
-
-After PR #38 is merged and post-merge `main` CI is green, choose one separate next migration target rather than broadening this branch. Likely candidates are Objects or the remaining terrain/path/context-menu legacy bridges, but that choice is a new checkpoint/product decision.
+Do not fold these into the Object subsystem branch.

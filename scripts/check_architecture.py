@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce RustOSRS workspace dependency boundaries from ADR-0001."""
+"""Enforce RustOSRS architecture boundaries and editor module size limits."""
 
 from __future__ import annotations
 
@@ -9,6 +9,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CRATES = ROOT / "crates"
+EDITOR_SOURCE = CRATES / "osrs-editor" / "src"
+
+# Keep editor modules comfortably below whole-file API/connector pressure and make oversized
+# responsibility clusters fail CI before they become another god file. Existing UI debt such as
+# settings_window.rs remains below these hard limits; actively edited modules should target <1,000
+# lines and be split by reason to change well before reaching the cap.
+EDITOR_MAX_RUST_LINES = 1600
+EDITOR_MAX_RUST_BYTES = 64 * 1024
 
 ALLOWED_INTERNAL: dict[str, set[str]] = {
     "osrs-core": set(),
@@ -116,15 +124,46 @@ def check_workspace(crates_root: Path = CRATES) -> list[str]:
     return errors
 
 
+def check_editor_module_sizes(
+    editor_root: Path = EDITOR_SOURCE,
+    *,
+    max_lines: int = EDITOR_MAX_RUST_LINES,
+    max_bytes: int = EDITOR_MAX_RUST_BYTES,
+) -> list[str]:
+    """Reject editor Rust modules that are too large for safe whole-file maintenance."""
+    if not editor_root.exists():
+        return []
+
+    errors: list[str] = []
+    for path in sorted(editor_root.rglob("*.rs")):
+        data = path.read_bytes()
+        line_count = len(data.splitlines())
+        relative = path.relative_to(editor_root)
+
+        if line_count > max_lines:
+            errors.append(
+                f"osrs-editor/{relative}: {line_count} lines exceeds the {max_lines}-line "
+                "module cap; split by responsibility before adding more code"
+            )
+        if len(data) > max_bytes:
+            errors.append(
+                f"osrs-editor/{relative}: {len(data)} bytes exceeds the {max_bytes}-byte "
+                "API-safe module cap; split the module before whole-file tooling becomes fragile"
+            )
+
+    return errors
+
+
 def main() -> int:
     errors = check_workspace()
+    errors.extend(check_editor_module_sizes())
     if errors:
-        print("Architecture dependency check failed:", file=sys.stderr)
+        print("Architecture check failed:", file=sys.stderr)
         for error in errors:
             print(f"  - {error}", file=sys.stderr)
         return 1
 
-    print("Architecture dependency check passed.")
+    print("Architecture checks passed.")
     return 0
 
 
