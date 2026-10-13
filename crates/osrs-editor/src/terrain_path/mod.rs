@@ -1,35 +1,13 @@
-//! Terrain path generation: the planner of Terraini's path tool, ported.
+//! Deterministic terrain-path overlay fitting for the Spline tool.
 //!
-//! A path is a network of edges between nodes; the planner turns it into the overlay tiles to
-//! paint (an overlay id, a shape and an orientation per tile). See `planner.rs` for routing,
-//! connectivity, rasterization and shape-selection steps.
+//! The current path tool intentionally has no obstacle routing, network pathfinding, walls, noise,
+//! or auto-connect behavior. It smooths the user's control polyline and fits the exact OSRS overlay
+//! shape geometry to that band.
 
-mod atlas;
-mod grammar;
-mod model;
-mod noise;
-mod planner;
-mod resample;
-mod router;
-mod scene;
-mod settings;
+mod fitter;
+#[cfg(test)]
+mod quality;
 mod shapes;
-pub mod walls;
 
-pub use model::{PathEnvironment, PathPoint, PathWarning, Severity, TilePaint};
-pub use planner::{PathPlanner, fnv};
-pub use resample::smooth_and_resample as smooth_line;
-pub use scene::SceneGrid;
-pub use settings::{AutoConnectPolicy, ObstaclePolicy, PathProfile, PathSettings};
+pub use fitter::{FittedTile, fit_path_overlay, smooth_catmull_rom};
 pub use shapes::{overlay_triangles, shape_triangles};
-
-#[cfg(test)]
-mod geometry_regression;
-#[cfg(test)]
-mod golden;
-#[cfg(test)]
-mod network_regression;
-#[cfg(test)]
-mod stress_regression;
-#[cfg(test)]
-mod wall_stress_regression;

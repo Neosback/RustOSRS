@@ -2424,6 +2424,7 @@ dependencies = [
  "open",
  "osrs-cache",
  "osrs-core",
+ "osrs-edit",
  "osrs-hd",
  "osrs-render",
  "osrs-scene",

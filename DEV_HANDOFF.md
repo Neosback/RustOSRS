@@ -1,14 +1,12 @@
 # RustOSRS Map Editor Architecture Handoff
 
-Last updated: 2026-10-12
+Last updated: 2026-10-13
 
-This is the living development handoff for the RustOSRS map-editor architecture project. Update it at every meaningful checkpoint and before each branch merge.
+This is the living handoff for the RustOSRS map-editor architecture project. Update it at every meaningful checkpoint and before each branch merge.
 
 ## Project goal
 
-Build a production-grade OSRS editor architecture where semantic map state is authoritative, deterministic, headless-testable, and independent from UI, rendering, ECS/runtime state, and cache codecs.
-
-The current spline/path generator is intentionally **not** being redesigned yet. Its replacement comes later, after the edit-domain, history/query, view-synchronization, and persistence boundaries are stable.
+Build a production-grade OSRS editor where semantic map state is authoritative, deterministic, headless-testable, and independent from UI, rendering, ECS/runtime state, and cache codecs.
 
 ## Working rules
 
@@ -49,9 +47,9 @@ renderer / 117HD
   Disposable reactive projection/cache of authoritative semantic state.
 ```
 
-`osrs-edit` currently depends only on `osrs-core`, enforced by the repository architecture guard.
+`osrs-edit` depends only on `osrs-core`, enforced by the repository architecture guard.
 
-## Core architecture decisions
+## Core domain decisions
 
 ### Authoritative state
 
@@ -59,37 +57,32 @@ renderer / 117HD
 
 ### Coordinates and planes
 
-Reuse the typed coordinate/plane vocabulary in `osrs-core`.
+Reuse typed coordinates/planes from `osrs-core`.
 
-- `MapPosition` = source-map tile + `SourcePlane`
+- `MapPosition` = map tile + `SourcePlane`
 - `HeightVertexCoord` = terrain corner/height vertex + `SourcePlane`
-- Tile attributes and terrain-corner heights remain distinct semantic coordinates.
-- Do not collapse source planes, storage planes, render levels, collision planes, or local renderer coordinates into raw tuples.
+- Tile attributes and corner heights remain distinct semantic coordinates.
+- Do not collapse source planes, storage planes, render levels, collision planes, or renderer-local coordinates into raw tuples.
 
 ### Terrain
 
-`TerrainTile` owns tile-level underlay/overlay/flags. Height is not part of `TerrainTile`.
+`TerrainTile` owns tile-level underlay/overlay/flags. Height is separate.
 
 - overlay shape: `0..=11`
 - overlay rotation: `0..=3`
 - terrain storage is sparse
-- an absent terrain entry means `TerrainTile::default()`
-- setting terrain back to default removes the sparse entry
+- absent terrain = `TerrainTile::default()`
+- setting terrain to default removes the sparse entry
 
 ### Heights
 
-Height vertices are explicit values. Missing height is not equivalent to numeric zero.
+Height vertices are explicit. Missing height is not numeric zero.
 
-`SetHeight` therefore requires:
-
-- the addressed vertex to exist
-- the current value to equal the operation's `before` value
+`SetHeight` requires the vertex to exist and its current value to match the operation's `before` value.
 
 ### Objects
 
 `ObjectPlacement` uses semantic `ObjectId`, `MapPosition`, validated loc kind, and validated orientation.
-
-`MapDocument` stores exact semantic placements:
 
 - `AddObject` requires absence
 - `RemoveObject` requires presence
@@ -108,66 +101,33 @@ MapOp
   RemoveObject { placement }
 ```
 
-`MapPatch::new` derives semantic change impact from operations. Callers cannot provide stale dirty metadata.
-
-`MapPatch::inverse`:
-
-- reverses operation order
-- swaps before/after values
-- converts add/remove pairs
-
-This preserves exact transactional undo for dependent multi-operation patches.
+`MapPatch::new` derives semantic impact. `MapPatch::inverse` reverses operation order and exactly inverts every operation.
 
 ### Atomic application
 
-`MapDocument::validate_patch` simulates all touched state, including effects of earlier operations in the same patch, without mutating the real document.
+`MapDocument::validate_patch` simulates touched state, including effects of earlier operations in the same patch, without mutating the real document.
 
-`MapDocument::apply_patch` mutates only after the entire patch validates. Any rejected operation leaves the authoritative document unchanged.
-
-Current deterministic validation failures include:
-
-- terrain before-value mismatch
-- missing height vertex
-- height before-value mismatch
-- duplicate object add
-- missing object remove
+`MapDocument::apply_patch` mutates only after the entire patch validates.
 
 ### Change impact
 
-`ChangeImpact` is semantic rather than renderer-specific. Current categories:
-
-- terrain geometry
-- terrain material
-- normals
-- lighting
-- collision
-- locations
-- bounds
-
-The mapping is intentionally conservative. Later view synchronization may translate semantic impact into tighter region/chunk rebuild work without changing patch data.
+`ChangeImpact` is semantic, not renderer-specific. Current categories cover terrain geometry/material, normals, lighting, collision, locations, and bounds.
 
 ### Edit history
 
 `EditHistory` is the headless undo/redo contract around `MapDocument` + `MapPatch`.
 
-Rules now enforced:
-
-- every successful non-empty `MapPatch` is exactly one undo entry
-- undo applies the exact inverse patch
-- redo reapplies the original patch
-- successful new non-empty commits clear redo history
-- empty patches create no entry and do not destroy redo history
-- failed commits change neither document nor history
-- failed undo/redo restores the popped history entry to its original stack
+- one successful non-empty patch = one history entry
+- undo applies the exact inverse
+- redo reapplies the original
+- successful new edits clear redo
+- empty patches create no history
+- failed commit/undo/redo leaves stacks coherent
 - undo/redo return `ChangeImpact`
 
-`EditHistory` owns no UI or renderer state.
+### Read-only query boundary
 
-### Read-only semantic queries
-
-`MapQuery` is the first read-only tool/planner-facing semantic query contract.
-
-Current methods:
+`MapQuery` currently exposes:
 
 ```rust
 trait MapQuery {
@@ -177,221 +137,234 @@ trait MapQuery {
 }
 ```
 
-`MapDocument` implements `MapQuery` directly. The contract:
+`MapDocument` implements it directly. Do not expand it speculatively.
 
-- duplicates no map state
-- exposes no mutation capability
-- preserves sparse terrain semantics
-- preserves missing-height vs zero-height semantics
-- uses exact semantic object-placement identity
-- exposes semantic values rather than renderer/cache/runtime representations
+## Merged foundation history
 
-Do not expand this interface speculatively. Add area/object enumeration or richer spatial indexes only when a concrete tool requires them and the semantics are clear.
-
-### Future revisions / view synchronization
-
-Async scene/mesh work should eventually carry document/chunk revisions. Results built against stale revisions must be discarded so old background work cannot overwrite newer editor state.
-
-## Foundation merge
-
-The first edit-domain foundation was merged previously.
+### PR #33: edit-domain foundation
 
 - Branch: `refactor/editor-edit-domain-foundation`
-- PR: `#33`
-- Final pre-merge branch head: `ded9c670dd2c3658785ea462cded34dcd010bd7c`
+- Final pre-merge head: `ded9c670dd2c3658785ea462cded34dcd010bd7c`
 - Squash merge: `5c5eef3bde696b20ae0319867e6e84567701ebf6`
-- Post-merge handoff/base commit: `31da7b55e45557cd9f4e581b3798310ff26b53d3`
-- Post-merge CI run `38239181734`: Tier A/B/C PASS
+- Post-merge handoff/main: `31da7b55e45557cd9f4e581b3798310ff26b53d3`
+- CI `38239181734`: Tier A/B/C PASS
 
-The foundation delivered:
+Delivered `osrs-edit`, semantic values, architecture guard, `ChangeImpact`, reversible `MapPatch`, authoritative `MapDocument`, atomic validation/application, and exact inverse round trips.
 
-- new `osrs-edit` workspace crate
-- semantic map/height/object values
-- architecture dependency guard
-- `ChangeImpact`
-- reversible `MapOp` / `MapPatch`
-- authoritative `MapDocument`
-- atomic patch validation/application
-- exact inverse round trips
-- semantic validation tests
-
-## History/query merge
-
-The headless history/query foundation is merged to `main`.
+### PR #34: history/query foundation
 
 - Branch: `refactor/editor-edit-history-foundation`
-- Base: `31da7b55e45557cd9f4e581b3798310ff26b53d3`
-- PR: `#34` (`refactor(editor): add headless edit history and query contracts`)
-- Final pre-merge branch head: `4847c1edf45d969223d6b9ad32be48b60f01bbf8`
-- Squash merge commit: `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`
-- Branch comparison before PR: 7 commits ahead, 0 behind `main`
-- Canonical PR diff: 4 files only (`history.rs`, `query.rs`, `lib.rs`, `DEV_HANDOFF.md`)
-- No renderer, 117HD, spline/path planner, preview worker, brush/object tool, or existing editor-runtime files changed
+- Final pre-merge head: `4847c1edf45d969223d6b9ad32be48b60f01bbf8`
+- Squash merge: `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`
+- Post-merge main: `32e65e93a1d67282059098bc482aa8bcd6c10a3e`
+- Post-merge CI `38259779463`: Tier A/B/C PASS
 
-### History work delivered
+Delivered failure-safe `EditHistory` and read-only `MapQuery`.
 
-- `crates/osrs-edit/src/history.rs`
-- exported `EditHistory`
-- commit / undo / redo
-- one non-empty `MapPatch` = one logical history entry
-- redo invalidation after a successful new edit
-- failure-safe stack restoration
-- empty-patch behavior
-- exact document-state undo/redo tests
-- composite terrain + height + object patch as one history step
+## Current branch
 
-### Query work delivered
+Branch: `refactor/editor-path-commit-domain`
 
-- `crates/osrs-edit/src/query.rs`
-- exported `MapQuery`
-- `MapQuery` implemented directly for `MapDocument`
-- semantic terrain query
-- explicit height query
-- exact object-placement membership query
-- tests proving sparse terrain defaults remain defaults
-- tests proving missing height remains `None`
-- tests proving object identity includes orientation
-- no duplicate query state or mutable internals exposed
+Base: validated `main` head `32e65e93a1d67282059098bc482aa8bcd6c10a3e`.
 
-## Current `osrs-edit` files
+### Checkpoint 10: semantic terrain-path commit bridge
+
+Normal terrain-path commits were moved across the semantic edit boundary before changing the generator.
+
+- `app/path_commit.rs` defines `TerrainPathIntent` and `build_terrain_path_patch`.
+- Touched legacy tile/height values seed a temporary semantic `MapDocument`.
+- The complete laid path becomes one deterministic `MapPatch`.
+- Duplicate tile intents fold to final terrain/height operations per coordinate.
+- Shape/rotation are validated through semantic types.
+- The full semantic patch validates/applies before legacy editor mutation.
+- The result is projected into the current `TileEdit` world layer.
+- Existing dirty-region/rebuild behavior remains unchanged.
+- One laid path remains one existing undo step.
+
+Checkpoint 10 final head:
+
+- `7a9fc7af761046093bbf15ffa229acfa2cc828f6`
+- CI `38261950847`: Tier A/B/C PASS
+
+### Checkpoint 11: simplified true-shape overlay fitter
+
+Direction changed intentionally: the path tool should draw the band the user asks for, not secretly solve a routing problem.
+
+Removed from the product and source tree for now:
+
+- Walls mode and wall/tower object emission
+- obstacle avoidance and rerouting
+- A*/cost-grid pathfinding
+- path-network/auto-connect behavior
+- wander/noise generation
+- width-variation generation
+- preserve-existing-overlay topology repair
+- old planner/router/network/wall code and obsolete regression/fixture files
+
+The runtime `terrain_path` implementation is intentionally small:
 
 ```text
-crates/osrs-edit/
-  Cargo.toml
-  src/
-    document.rs
-    history.rs
-    lib.rs
-    object.rs
-    patch.rs
-    position.rs
-    query.rs
-    terrain.rs
+terrain_path/
+  fitter.rs
+  mod.rs
+  shapes.rs
 ```
 
-No renderer, egui, cache-codec, scene-worker, ECS, or runtime dependency belongs in this crate.
+`quality.rs` is present only under `#[cfg(test)]` for the Checkpoint 12 regression harness.
 
-## Validation record
+#### Active fitting pipeline
 
-### Foundation branch
+1. User control points are smoothed with clamped uniform Catmull-Rom.
+2. Fewer than three control points remain unchanged, so two points are exactly a straight segment.
+3. Curved segments use 12 samples per control segment and preserve exact endpoints.
+4. Candidate tiles come from segment-local boxes expanded by half the requested width.
+5. Tile centers farther than `half_width + 0.75` are rejected early.
+6. Every remaining tile gets an 8x8 ideal coverage mask from exact point-to-polyline distance.
+7. Candidate overlay masks come from audited `osrs_scene::ShapedTerrainSurface` geometry through `terrain_path::overlay_triangles`; shape tables/rotation formulas are not duplicated.
+8. Candidate set is EMPTY first, then stored full-tile shape `0`, then stored shapes `1..=11` at rotations `0..=3`.
+9. Initial selection maximizes 8x8 area agreement. Exact ties retain the earlier candidate, so EMPTY wins exact total ties.
+10. If `edge_weight > 0`, up to six deterministic coordinate-descent passes add shared-edge mismatch cost against current neighboring choices.
+11. Empty fits are omitted from output.
+12. Fitted tiles still commit through the Checkpoint 10 semantic `MapPatch` boundary as one undo step.
 
-- patch primitives head `4394278f69c3523b7115d76ac0b4afaeace06fb8`
-- CI `38231806257`: PASS
-- `MapDocument` implementation head `c94e9a71c02b62b84a74651827b3f02d10ddf96c`
-- CI `38233801420`: PASS
-- final foundation head `ded9c670dd2c3658785ea462cded34dcd010bd7c`
-- CI `38238688037`: PASS
-- merged PR `#33`
+#### Conservative improvements over the supplied PathOverlayFitter idea
 
-### History/query branch
+Only low-risk improvements were added:
 
-Checkpoint 7 implementation head:
+- signed world coordinates work directly; there is no fixed `mapWidth`/`mapLength` clamp assumption
+- exact existing renderer-derived OSRS shape geometry is reused instead of copying shape tables or rotation formulas
+- segment-local candidate boxes avoid scanning a huge global rectangle on long diagonal paths while preserving the possible touched area
+- persisted/UI `width` and `edge_weight` are finite and clamped
+- deterministic `BTreeMap`/`BTreeSet` traversal is used where ordering matters
 
-- `a84096b076e95c91ec7c52431a494374ef1ccdce`
-- CI `38249012271`: PASS
+Deliberately not added:
+
+- randomness
+- annealing/global optimization
+- hidden obstacle logic
+- topology repair
+- automatic joining to existing overlays
+- new shape heuristics beyond area agreement + shared-edge agreement
+
+The goal is to make the simple algorithm reliable before adding sophistication.
+
+#### Simplified Spline settings
+
+`SplineSettings` now contains only:
+
+- `width`
+- `edge_weight`
+- `snap_points`
+
+Persisted values are sanitized to the same ranges the UI exposes. Old planner/wall settings are no longer retained as compatibility fields.
+
+Checkpoint 11 validated final head:
+
+- `83e3bd1f68a6550a467e18ee6ee5bc588fb049fe`
+- CI `38266732098`: Tier A/B/C PASS
+
+### Checkpoint 12: deterministic fitter quality fixtures
+
+The production fitter was intentionally left unchanged. This checkpoint added an independent black-box quality harness in `terrain_path/quality.rs` to determine whether the simple algorithm actually needed more heuristics before changing it.
+
+Representative fixture matrix:
+
+1. horizontal straight path
+2. vertical straight path
+3. 45-degree diagonal
+4. shallow diagonal
+5. gentle curve
+6. tight multi-turn curve
+7. narrow path
+8. wide path
+9. exact tile-corner crossing
+10. negative world coordinates
+
+The harness independently:
+
+- rasterizes the requested band rather than calling the fitter's private scoring helpers
+- samples selected coverage from renderer-derived overlay triangles
+- measures 8x8 ideal-vs-selected coverage agreement
+- measures opposing shared-edge strip disagreement
+- compares default `edge_weight = 0.75` against independent `edge_weight = 0` fitting on the basic straight/diagonal fixtures
+- runs the same fixtures twice to prove repeatability
+- locks stable FNV-1a hashes over `(tile_x, tile_y, shape, orientation)` output for all ten fixtures
+
+Quality contract currently enforced:
+
+- ordinary straight/diagonal/gentle fixtures require at least 82% sampled coverage agreement
+- tight/corner/negative fixtures require at least 80% sampled coverage agreement
+- the wide fixture requires at least 86% sampled coverage agreement
+- edge mismatch ceilings are 35-45% depending on fixture difficulty
+- default edge relaxation must not increase shared-edge mismatches on the four basic fixtures
+- every fixture output must be repeatable and match its locked golden hash
+
+The first measurement run intentionally used zero placeholder hashes. CI `38343977544` proved all substantive checks passed and failed only the deliberately unseeded snapshot assertion. That run produced the canonical ten output hashes, which were then locked.
+
+Checkpoint 12 implementation head with locked snapshots:
+
+- `1260f359f196b561948ad41c7186d00f4670d5a3`
+- CI `38344200202`: Tier A/B/C PASS
 - Tier A architecture/format/workspace/strict Clippy: PASS
-- Tier B workspace tests including `EditHistory`: PASS
+- Tier B full workspace tests including all fitter quality fixtures: PASS
 - Tier C M3-M9 semantic/reference parity: PASS
 
-Checkpoint 7 final handoff head:
+Checkpoint 12 final handoff head:
 
-- `a24258054497fda6b0655f6098bbd009b7bf6815`
-- CI `38249383659`: PASS
+- `3fe38c8cd518b29c013310882cebb9efb58c643f`
+- CI `38344475400`: Tier A/B/C PASS
 
-Checkpoint 8 query implementation head:
+Conclusion from the fixture evidence: **do not add another fitter heuristic now.** The simple deterministic algorithm meets the current representative coverage/continuity contract, and extra routing/topology/global-optimization complexity would add risk without a demonstrated failure to solve.
 
-- `4c5dd4c5bad2f3bde6f7016ef8413a8f7e93a328`
-- CI `38251735284`: PASS
-- Tier A architecture/format/workspace/strict Clippy: PASS
-- Tier B workspace tests including `MapQuery`: PASS
-- Tier C M3-M9 semantic/reference parity: PASS
+Any future intentional fitter change must review both quality metrics and golden-hash changes before updating the snapshots.
 
-Checkpoint 8 final handoff head:
+### Checkpoint 13: branch readiness
 
-- `4847c1edf45d969223d6b9ad32be48b60f01bbf8`
-- push CI `38252254353`: PASS
-- PR-triggered CI `38259341642`: PASS
-- Tier A architecture/format/workspace/strict Clippy: PASS
-- Tier B full workspace tests: PASS
-- Tier C M3-M9 semantic/reference parity: PASS
+The complete branch was audited as one coherent PR before merge.
 
-PR `#34` was then squash-merged to `main` as `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`.
+Readiness evidence against `main`:
 
-## Checkpoint history
+- compare status: ahead
+- branch commits ahead: 23
+- branch commits behind: 0
+- merge base: `32e65e93a1d67282059098bc482aa8bcd6c10a3e`
+- audited pre-readiness head: `3fe38c8cd518b29c013310882cebb9efb58c643f`
+- no existing PR was present for this branch at audit time
 
-### Checkpoint 1: semantic edit-domain foundation
+Scope audit:
 
-Created additive `osrs-edit` semantic value types without changing runtime/editor behavior.
+- semantic path-commit bridge is confined to the editor/application boundary plus the `osrs-edit` dependency
+- simplified Spline UI/settings changes are limited to the active path controls
+- active `terrain_path` directory contains exactly `fitter.rs`, `mod.rs`, `quality.rs`, and `shapes.rs`
+- `quality.rs` is test-only through `#[cfg(test)]`
+- legacy `atlas`, `model`, `planner`, `router`, `scene`, `settings`, `walls`, noise/resample/grammar code, old golden/fuzz/reference material, and legacy stress/network regressions are deletions in the branch diff
+- no `.github` workflow or temporary CI/helper file is changed by the branch
+- normal workspace compilation plus Tier A/B/C validation proves there are no live module/import references to the removed generator stack
+- the current Spline implementation and shelf explicitly contain no obstacle routing, path-network, or wall mode behavior
+- no brush/height/object migration, revision synchronization, renderer, or 117HD feature work was pulled into this branch
 
-### Checkpoint 2: architecture/workspace integration
+The intended PR is therefore one coherent migration:
 
-Added dependency-boundary enforcement and workspace/lockfile integration.
+1. route laid terrain paths through the semantic `MapPatch` boundary
+2. replace the legacy routing/network/wall generator with the deterministic true-shape overlay fitter
+3. simplify the Spline settings/UI to the fitter's real inputs
+4. enforce the behavior with independent deterministic quality fixtures and locked outputs
 
-### Checkpoint 3: living handoff
+Validation before the readiness documentation commit:
 
-Established this file as the architecture/project continuity document.
+- exact head `3fe38c8cd518b29c013310882cebb9efb58c643f`
+- CI `38344475400`: Tier A/B/C PASS
 
-### Checkpoint 4: patch primitives
+Merge rule: the readiness documentation head must also pass Tier A/B/C, the PR must remain mergeable against `main`, and the branch must not drift before squash merge.
 
-Added `ChangeImpact`, reversible `MapOp`, and `MapPatch`.
+## Current boundaries
 
-### Checkpoint 5: authoritative `MapDocument`
+The editor still does **not** own a persistent `MapDocument` + `EditHistory` session. Checkpoint 10 uses a touched-state semantic snapshot and projects the validated patch into the existing legacy editor/world-edit layer. That broader ownership migration remains later work.
 
-Added authoritative semantic storage, queries, deterministic validation, and atomic whole-patch application.
+Do not reintroduce walls or pathfinding without an explicit decision.
 
-### Checkpoint 6: foundation branch readiness and merge
+Do not broaden this branch into brush/height/object-tool migration, revision synchronization, renderer, or 117HD work.
 
-Audited scope, removed unrelated lockfile churn, validated, opened PR `#33`, and squash-merged the foundation.
+## Next checkpoint after merge
 
-### Checkpoint 7: headless edit history
-
-Added failure-safe `EditHistory` with one patch = one history step and exact undo/redo semantics.
-
-### Checkpoint 8: read-only semantic query contract
-
-Added `MapQuery` as a small tool/planner-facing read-only boundary implemented directly by `MapDocument`. It currently exposes terrain lookup, explicit height lookup, and exact object-placement membership only. No planner, editor tool, UI, renderer, or 117HD integration was added.
-
-### Checkpoint 9: history/query branch readiness and merge
-
-Compared the complete branch against `main`, confirmed it was 7 commits ahead and 0 behind, audited the four-file diff, opened PR `#34`, verified GitHub mergeability, required the PR-triggered exact-head CI to pass Tier A/B/C, and squash-merged the branch as `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`.
-
-## Current branch status / next checkpoint
-
-There is **no active development branch** after the history/query merge. Do not create one until explicitly directed to continue.
-
-The next branch should start from the fully validated current `main` head and take one existing editor edit path through the semantic domain boundary. Preferred first migration remains the spline/path **commit path only**, while deliberately leaving its planner, preview worker, topology/routing logic, and eventual generator redesign untouched.
-
-The next small checkpoint should:
-
-1. Create a new branch from current validated `main`.
-2. Inspect the existing spline/path commit boundary and current editor mutation/history flow.
-3. Define the narrow adapter needed to translate an already-produced path plan into semantic reads/`MapPatch` commits.
-4. Do not redesign path planning, auto-tiling, routing, geometry, or preview behavior.
-5. Preserve one laid path as one undo/history step.
-6. Keep renderer rebuild behavior functionally unchanged for the first migration.
-7. Add regression coverage around the migrated commit boundary.
-8. Stop and report before broadening the migration.
-
-## Later branches, tentative order
-
-Directional only. Do not start automatically.
-
-1. Migrate spline/path **commit only** through the semantic domain boundary.
-2. Migrate brush/terrain/height editing.
-3. Migrate object editing.
-4. Add revision-based async synchronization and stale-result rejection.
-5. Refine semantic change-impact/invalidation mapping.
-6. Harden persistence/export and round-trip fixtures.
-7. Replace/redesign the spline/path/auto-tile generator on top of the stable semantic query/patch architecture.
-8. Plugin contracts only after the editor boundaries have proven stable.
-
-## Path-generator rewrite remains deferred
-
-The existing spline/path generator has grown too large and should eventually be replaced, but not during the current architecture checkpoints.
-
-When that rewrite starts:
-
-- build against `MapQuery` for reads
-- emit `MapPatch` for authoritative commits
-- do not mutate `EditorApp` or renderer state directly
-- preserve useful existing golden/topology/geometry/seam/network/routing/determinism fixtures as successor acceptance tests where they describe desired behavior
+Stop after merging this branch. Do not start another feature branch until the next explicit direction.
