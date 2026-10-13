@@ -73,7 +73,7 @@ impl EditStep {
 impl EditorApp {
     /// One finished undo step. Semantic tools carry only projection-routing metadata; remaining
     /// legacy terrain/path actions still carry their before/after values here.
-    pub(super) fn push_step(&mut self, step: EditStep) {
+    pub(in crate::app) fn push_step(&mut self, step: EditStep) {
         self.history.push(step);
         if self.history.len() > HISTORY_LIMIT {
             self.history.remove(0);
