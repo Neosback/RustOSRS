@@ -183,7 +183,18 @@ fn fixture_hashes_are_locked() {
 
     // Seeded from the first validated run of this independent quality harness. Any intentional
     // fitter change must review the visual/metric delta before updating these values.
-    let expected = [0_u64; 10];
+    let expected = [
+        9_698_767_332_744_141_528,
+        16_827_461_290_919_595_932,
+        9_837_969_246_590_686_967,
+        3_271_925_537_409_006_157,
+        13_962_819_451_543_403_686,
+        16_478_564_135_416_554_377,
+        9_966_194_120_848_495_766,
+        11_251_971_564_733_650_760,
+        1_110_224_164_382_363_969,
+        7_079_287_740_327_523_224,
+    ];
     assert_eq!(actual, expected);
 }
 
