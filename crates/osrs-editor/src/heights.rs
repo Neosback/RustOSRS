@@ -4,6 +4,8 @@
 //! current height of a tile through a lookup (so it sees earlier edits) and returns the new heights;
 //! the editor turns them into edits and clamps them to what the map file can store.
 
+pub(crate) mod commit;
+
 use crate::paint::{BrushShape, footprint};
 use serde::{Deserialize, Serialize};
 

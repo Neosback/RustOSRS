@@ -8,6 +8,7 @@
 use super::EditorApp;
 use super::paint_commit::{PaintCommitError, TerrainPaintIntent, build_terrain_paint_patch};
 use super::path_commit::{TerrainPathIntent, build_terrain_path_patch};
+use crate::heights::commit::{HeightStrokeSpec, build_terrain_height_patch};
 use crate::heights::{self, encode_height};
 use crate::paint::{Brush, Fill, TileValues, Tool};
 use eframe::egui;
@@ -145,8 +146,17 @@ pub(super) struct SemanticPaintHistory {
     keys: Vec<TileKey>,
 }
 
-/// Before and after values of one still-legacy action, or a routing marker for one semantic Paint
-/// action. Paint never uses `changes` as undo authority after Checkpoint 19.
+/// Global-history routing metadata for one semantic Height transaction.
+///
+/// Heights themselves remain exclusively in `EditorSession::history`; the keys only tell the
+/// worker/render projection which tiles need to mirror the authoritative semantic state.
+#[derive(Debug, Clone)]
+pub(super) struct SemanticHeightHistory {
+    keys: Vec<TileKey>,
+}
+
+/// Before and after values of one still-legacy action, or a routing marker for a semantic action.
+/// Paint and Height never use `changes` as undo authority after Checkpoint 22.
 #[derive(Debug, Clone, Default)]
 pub struct EditStep {
     pub changes: Vec<(TileKey, TileValues, TileValues)>,
@@ -154,12 +164,20 @@ pub struct EditStep {
     pub removed: Vec<LocSpec>,
     pub added: Vec<LocSpec>,
     pub(super) semantic_paint: Option<SemanticPaintHistory>,
+    pub(super) semantic_height: Option<SemanticHeightHistory>,
 }
 
 impl EditStep {
     fn semantic_paint(brush: Brush, keys: Vec<TileKey>) -> Self {
         Self {
             semantic_paint: Some(SemanticPaintHistory { brush, keys }),
+            ..Self::default()
+        }
+    }
+
+    fn semantic_height(keys: Vec<TileKey>) -> Self {
+        Self {
+            semantic_height: Some(SemanticHeightHistory { keys }),
             ..Self::default()
         }
     }
@@ -209,6 +227,17 @@ fn project_paint_values(
     Some(current)
 }
 
+fn project_height_values(
+    query: &impl MapQuery,
+    key: TileKey,
+    mut current: TileValues,
+) -> Option<TileValues> {
+    let plane = SourcePlane::new(key.0)?;
+    let tile = MapTile::new(key.1, key.2);
+    current.height = query.height_at(HeightVertexCoord::new(tile, plane))?;
+    Some(current)
+}
+
 /// A stroke being painted.
 #[derive(Debug)]
 pub struct Stroke {
@@ -219,6 +248,10 @@ pub struct Stroke {
     /// The exact Paint brush captured for this stroke. `None` keeps non-Paint strokes on the legacy
     /// commit path until their own migration checkpoints.
     paint_brush: Option<Brush>,
+    /// The exact Height settings captured on the first applied sample of this stroke.
+    height_spec: Option<HeightStrokeSpec>,
+    /// Ordered Height brush centers. Repeated centers are intentional for held sculpting.
+    height_centers: Vec<MapTile>,
     /// The height under the cursor when the stroke began (what Flatten levels to).
     anchor: Option<i32>,
     seed: u64,
@@ -232,6 +265,8 @@ impl Default for Stroke {
             last_tile: None,
             last_applied: Instant::now(),
             paint_brush: None,
+            height_spec: None,
+            height_centers: Vec::new(),
             anchor: None,
             seed: 0,
         }
@@ -370,9 +405,39 @@ impl EditorApp {
             .retain(|(_, before, after)| before != after);
     }
 
-    /// Finish the open stroke. Paint strokes commit exactly once to the semantic session and leave
-    /// only a lightweight routing marker in the global mixed-history stack. Other tools remain on
-    /// the existing legacy history path until their own migration checkpoints.
+    /// Reconcile the already-visible Height preview with authoritative semantic heights.
+    ///
+    /// Values are prepared before mutation so an adapter failure cannot leave a partially projected
+    /// Height stroke.
+    fn project_height_stroke(&mut self, stroke: &mut Stroke) -> Result<(), &'static str> {
+        let mut projected = Vec::with_capacity(stroke.step.changes.len());
+        for (index, (key, _, after)) in stroke.step.changes.iter().enumerate() {
+            let values = project_height_values(self.session.document(), *key, *after)
+                .ok_or("a Height preview vertex is missing from semantic state")?;
+            projected.push((index, *key, values));
+        }
+
+        let mut edits = Vec::new();
+        for (index, key, values) in projected {
+            let after = &mut stroke.step.changes[index].2;
+            self.height_edited.insert(key);
+            if values != *after {
+                self.edited.insert(key, values);
+                edits.push(self.edit_for(key, values));
+            }
+            *after = values;
+        }
+        self.send_edits(edits);
+        stroke
+            .step
+            .changes
+            .retain(|(_, before, after)| before != after);
+        Ok(())
+    }
+
+    /// Finish the open stroke. Paint and Height commit exactly once to the semantic session and
+    /// leave only lightweight routing markers in the global mixed-history stack. Other tools remain
+    /// on the existing legacy history path until their own migration checkpoints.
     pub(super) fn end_stroke(&mut self) {
         let Some(mut stroke) = self.stroke.take() else {
             return;
@@ -430,6 +495,93 @@ impl EditorApp {
             None
         };
 
+        let mut height_history = None;
+        if paint_history.is_none()
+            && let Some(spec) = stroke.height_spec.clone()
+        {
+            let missing = stroke.step.changes.iter().find_map(|(key, _, _)| {
+                let plane = SourcePlane::new(key.0)?;
+                let coord = HeightVertexCoord::new(MapTile::new(key.1, key.2), plane);
+                self.session
+                    .document()
+                    .height_at(coord)
+                    .is_none()
+                    .then_some(coord)
+            });
+            if let Some(coord) = missing {
+                self.revert(&stroke.step, false);
+                self.notice = Some((
+                    format!(
+                        "Height stroke was not committed: semantic height is missing at {coord:?}"
+                    ),
+                    Instant::now(),
+                ));
+                return;
+            }
+
+            let patch = match build_terrain_height_patch(
+                self.session.document(),
+                &spec,
+                &stroke.height_centers,
+            ) {
+                Ok(patch) => patch,
+                Err(error) => {
+                    self.revert(&stroke.step, false);
+                    self.notice = Some((
+                        format!("Height stroke was not committed: {error:?}"),
+                        Instant::now(),
+                    ));
+                    return;
+                }
+            };
+
+            match self.session.commit(patch) {
+                Ok(Some(_)) => {
+                    if let Err(message) = self.project_height_stroke(&mut stroke) {
+                        let rollback_succeeded = matches!(self.session.undo(), Ok(Some(_)));
+                        self.revert(&stroke.step, false);
+                        self.notice = Some((
+                            if rollback_succeeded {
+                                format!("Height commit was rolled back: {message}")
+                            } else {
+                                format!(
+                                    "Height projection failed and semantic rollback failed: {message}"
+                                )
+                            },
+                            Instant::now(),
+                        ));
+                        return;
+                    }
+                    height_history = Some(SemanticHeightHistory {
+                        keys: stroke.step.changes.iter().map(|(key, _, _)| *key).collect(),
+                    });
+                }
+                Ok(None) => {
+                    if let Err(message) = self.project_height_stroke(&mut stroke) {
+                        self.revert(&stroke.step, false);
+                        self.notice = Some((
+                            format!("Height no-op projection failed: {message}"),
+                            Instant::now(),
+                        ));
+                    } else {
+                        self.notice = Some((
+                            "Height stroke made no semantic changes".to_owned(),
+                            Instant::now(),
+                        ));
+                    }
+                    return;
+                }
+                Err(error) => {
+                    self.revert(&stroke.step, false);
+                    self.notice = Some((
+                        format!("Height stroke was rejected by the semantic session: {error:?}"),
+                        Instant::now(),
+                    ));
+                    return;
+                }
+            }
+        }
+
         if stroke.step.changes.is_empty()
             && stroke.step.added.is_empty()
             && stroke.step.removed.is_empty()
@@ -442,6 +594,8 @@ impl EditorApp {
                 paint_history.brush,
                 paint_history.keys,
             ));
+        } else if let Some(height_history) = height_history {
+            self.push_step(EditStep::semantic_height(height_history.keys));
         } else {
             self.push_step(stroke.step);
         }
@@ -451,7 +605,7 @@ impl EditorApp {
         ));
     }
 
-    /// One finished undo step. For Paint this is only a global routing marker; Height/Object/path
+    /// One finished undo step. Paint and Height carry only semantic routing metadata; Objects/path
     /// actions still carry their legacy before/after data here.
     pub(super) fn push_step(&mut self, step: EditStep) {
         self.history.push(step);
@@ -508,18 +662,21 @@ impl EditorApp {
         if stroke.anchor.is_none() {
             stroke.anchor = self.current_tile((plane, tile.0, tile.1)).map(|v| v.height);
         }
-        let tool = self.prefs.height_tool.clone();
-        let (radius, shape) = (self.prefs.brush.radius, self.prefs.brush.footprint);
-        let lookup = |t: (i32, i32)| self.current_tile((plane, t.0, t.1)).map(|v| v.height);
-        let changes = heights::apply(
-            &tool,
-            tile,
-            radius,
-            shape,
+        let source_plane = SourcePlane::new(plane)
+            .unwrap_or_else(|| unreachable!("editor view planes are always validated"));
+        let center = MapTile::new(tile.0, tile.1);
+        let captured_spec = HeightStrokeSpec::new(
+            source_plane,
+            self.prefs.height_tool.clone(),
+            self.prefs.brush.radius,
+            self.prefs.brush.footprint,
             stroke.anchor.unwrap_or(0),
             stroke.seed,
-            &lookup,
         );
+        let spec = stroke.height_spec.get_or_insert(captured_spec).clone();
+        stroke.height_centers.push(center);
+        let lookup = |t: (i32, i32)| self.current_tile((plane, t.0, t.1)).map(|v| v.height);
+        let changes = spec.apply_sample(center, &lookup);
         let mut edits = Vec::new();
         for (t, height) in changes {
             let key = (plane, t.0, t.1);
@@ -535,7 +692,8 @@ impl EditorApp {
 
     /// Apply the Height tool's op to every selected tile (one undo step).
     pub(super) fn height_on_selection(&mut self) {
-        let tiles: Vec<(i32, i32)> = self.selection_tiles.iter().copied().collect();
+        let mut tiles: Vec<(i32, i32)> = self.selection_tiles.iter().copied().collect();
+        tiles.sort_unstable();
         if tiles.is_empty() {
             return;
         }
@@ -544,6 +702,8 @@ impl EditorApp {
             return;
         };
         let plane = self.view_plane;
+        let source_plane = SourcePlane::new(plane)
+            .unwrap_or_else(|| unreachable!("editor view planes are always validated"));
         let mut tool = self.prefs.height_tool.clone();
         tool.falloff = crate::heights::Falloff::Flat;
         // Flatten levels the whole selection to one height: the first selected tile's.
@@ -551,18 +711,21 @@ impl EditorApp {
             .first()
             .and_then(|t| self.current_tile((plane, t.0, t.1)))
             .map_or(0, |v| v.height);
+        let spec = HeightStrokeSpec::new(
+            source_plane,
+            tool,
+            0,
+            crate::paint::BrushShape::Square,
+            anchor,
+            stroke.seed,
+        );
+        stroke.height_spec = Some(spec.clone());
         let mut edits = Vec::new();
         for tile in tiles {
+            let center = MapTile::new(tile.0, tile.1);
+            stroke.height_centers.push(center);
             let lookup = |t: (i32, i32)| self.current_tile((plane, t.0, t.1)).map(|v| v.height);
-            let changes = heights::apply(
-                &tool,
-                tile,
-                0,
-                crate::paint::BrushShape::Square,
-                anchor,
-                stroke.seed,
-                &lookup,
-            );
+            let changes = spec.apply_sample(center, &lookup);
             for (t, height) in changes {
                 let key = (plane, t.0, t.1);
                 if let Some(mut after) = self.current_tile(key) {
@@ -858,6 +1021,32 @@ impl EditorApp {
         Ok(paint.keys.len())
     }
 
+    fn project_semantic_height_history(
+        &mut self,
+        height: &SemanticHeightHistory,
+    ) -> Result<usize, &'static str> {
+        let mut projected = Vec::with_capacity(height.keys.len());
+        for key in &height.keys {
+            let current = self
+                .current_tile(*key)
+                .ok_or("a Height tile is no longer available to the projection adapter")?;
+            let values = project_height_values(self.session.document(), *key, current)
+                .ok_or("semantic Height state cannot be represented by the legacy projection")?;
+            projected.push((*key, current, values));
+        }
+
+        let mut edits = Vec::new();
+        for (key, current, values) in projected {
+            self.height_edited.insert(key);
+            if values != current {
+                self.edited.insert(key, values);
+                edits.push(self.edit_for(key, values));
+            }
+        }
+        self.send_edits(edits);
+        Ok(height.keys.len())
+    }
+
     /// Hand object edits to the world worker and queue the regions they sit in for a rebuild.
     pub(super) fn send_loc_edits(&mut self, edits: Vec<LocEdit>) {
         if edits.is_empty() {
@@ -918,6 +1107,51 @@ impl EditorApp {
                     self.history.push(step);
                     self.notice = Some((
                         format!("Paint undo was rejected by the semantic session: {error:?}"),
+                        Instant::now(),
+                    ));
+                }
+            }
+            return;
+        }
+        if let Some(height) = step.semantic_height.clone() {
+            match self.session.undo() {
+                Ok(Some(_)) => match self.project_semantic_height_history(&height) {
+                    Ok(count) => {
+                        self.notice = Some((
+                            format!(
+                                "Undid {count} Height tile{}",
+                                if count == 1 { "" } else { "s" }
+                            ),
+                            Instant::now(),
+                        ));
+                        self.redo_stack.push(step);
+                    }
+                    Err(message) => {
+                        let rollback_succeeded = matches!(self.session.redo(), Ok(Some(_)));
+                        self.history.push(step);
+                        self.notice = Some((
+                            if rollback_succeeded {
+                                format!("Height undo was rolled back: {message}")
+                            } else {
+                                format!(
+                                    "Height undo projection failed and rollback failed: {message}"
+                                )
+                            },
+                            Instant::now(),
+                        ));
+                    }
+                },
+                Ok(None) => {
+                    self.history.push(step);
+                    self.notice = Some((
+                        "Height undo history is out of sync with the semantic session".to_owned(),
+                        Instant::now(),
+                    ));
+                }
+                Err(error) => {
+                    self.history.push(step);
+                    self.notice = Some((
+                        format!("Height undo was rejected by the semantic session: {error:?}"),
                         Instant::now(),
                     ));
                 }
@@ -986,6 +1220,51 @@ impl EditorApp {
             }
             return;
         }
+        if let Some(height) = step.semantic_height.clone() {
+            match self.session.redo() {
+                Ok(Some(_)) => match self.project_semantic_height_history(&height) {
+                    Ok(count) => {
+                        self.notice = Some((
+                            format!(
+                                "Redid {count} Height tile{}",
+                                if count == 1 { "" } else { "s" }
+                            ),
+                            Instant::now(),
+                        ));
+                        self.history.push(step);
+                    }
+                    Err(message) => {
+                        let rollback_succeeded = matches!(self.session.undo(), Ok(Some(_)));
+                        self.redo_stack.push(step);
+                        self.notice = Some((
+                            if rollback_succeeded {
+                                format!("Height redo was rolled back: {message}")
+                            } else {
+                                format!(
+                                    "Height redo projection failed and rollback failed: {message}"
+                                )
+                            },
+                            Instant::now(),
+                        ));
+                    }
+                },
+                Ok(None) => {
+                    self.redo_stack.push(step);
+                    self.notice = Some((
+                        "Height redo history is out of sync with the semantic session".to_owned(),
+                        Instant::now(),
+                    ));
+                }
+                Err(error) => {
+                    self.redo_stack.push(step);
+                    self.notice = Some((
+                        format!("Height redo was rejected by the semantic session: {error:?}"),
+                        Instant::now(),
+                    ));
+                }
+            }
+            return;
+        }
 
         self.revert(&step, true);
         self.history.push(step);
@@ -1046,6 +1325,7 @@ impl EditorApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::heights::{Falloff, HeightOp, HeightTool};
     use crate::session::EditorSession;
 
     fn plane() -> SourcePlane {
@@ -1058,6 +1338,22 @@ mod tests {
 
     fn vertex(tile: (i32, i32)) -> HeightVertexCoord {
         HeightVertexCoord::new(MapTile::new(tile.0, tile.1), plane())
+    }
+
+    fn height_spec() -> HeightStrokeSpec {
+        HeightStrokeSpec::new(
+            plane(),
+            HeightTool {
+                op: HeightOp::Raise,
+                strength: 16,
+                falloff: Falloff::Flat,
+                flatten_to: None,
+            },
+            0,
+            crate::paint::BrushShape::Square,
+            0,
+            7,
+        )
     }
 
     #[test]
@@ -1126,6 +1422,140 @@ mod tests {
                 TerrainTile::default()
             );
         }
+    }
+
+    #[test]
+    fn one_height_stroke_is_one_semantic_session_history_entry() {
+        let tile = (3200, 3200);
+        let map_tile = MapTile::new(tile.0, tile.1);
+        let document = MapDocument::from_parts([], [(vertex(tile), 0)], []);
+        let mut session = EditorSession::new(document);
+        let patch =
+            build_terrain_height_patch(session.document(), &height_spec(), &[map_tile, map_tile])
+                .unwrap_or_else(|error| unreachable!("valid Height stroke: {error:?}"));
+
+        assert_eq!(patch.len(), 1);
+        assert!(
+            session
+                .commit(patch)
+                .unwrap_or_else(|error| unreachable!("valid semantic commit: {error:?}"))
+                .is_some()
+        );
+        assert_eq!(session.revision(), 1);
+        assert!(session.can_undo());
+        assert_eq!(session.document().height_at(vertex(tile)), Some(-32));
+    }
+
+    #[test]
+    fn semantic_height_projection_tracks_undo_redo_and_preserves_other_channels() {
+        let tile = (3200, 3200);
+        let map_tile = MapTile::new(tile.0, tile.1);
+        let current = TileValues {
+            underlay: 4,
+            overlay: 7,
+            shape: 3,
+            rotation: 2,
+            height: 0,
+            flags: 1,
+        };
+        let document = MapDocument::from_parts(
+            [(
+                position(tile),
+                semantic_terrain(current).unwrap_or_default(),
+            )],
+            [(vertex(tile), current.height)],
+            [],
+        );
+        let mut session = EditorSession::new(document);
+        let patch = build_terrain_height_patch(session.document(), &height_spec(), &[map_tile])
+            .unwrap_or_else(|error| unreachable!("valid Height patch: {error:?}"));
+        assert!(session.commit(patch).is_ok());
+
+        let committed = project_height_values(session.document(), (0, tile.0, tile.1), current)
+            .unwrap_or_else(|| unreachable!("semantic Height state is projectable"));
+        assert_eq!(committed.height, -16);
+        assert_eq!(
+            TileValues {
+                height: current.height,
+                ..committed
+            },
+            current
+        );
+
+        assert!(session.undo().is_ok());
+        let undone = project_height_values(session.document(), (0, tile.0, tile.1), committed)
+            .unwrap_or_else(|| unreachable!("semantic Height undo is projectable"));
+        assert_eq!(undone, current);
+
+        assert!(session.redo().is_ok());
+        let redone = project_height_values(session.document(), (0, tile.0, tile.1), undone)
+            .unwrap_or_else(|| unreachable!("semantic Height redo is projectable"));
+        assert_eq!(redone, committed);
+    }
+
+    #[test]
+    fn paint_and_height_share_one_semantic_history_order() {
+        let tile = (3200, 3200);
+        let map_tile = MapTile::new(tile.0, tile.1);
+        let before = TileValues::default();
+        let brush = Brush::default();
+        let painted = brush.apply(before);
+        let document = MapDocument::from_parts(
+            [(position(tile), semantic_terrain(before).unwrap_or_default())],
+            [(vertex(tile), 0)],
+            [],
+        );
+        let mut session = EditorSession::new(document);
+
+        let paint_patch = build_paint_stroke_patch(
+            session.document(),
+            &brush,
+            &[((0, tile.0, tile.1), before, painted)],
+        )
+        .unwrap_or_else(|error| unreachable!("valid Paint patch: {error:?}"));
+        assert!(session.commit(paint_patch).is_ok());
+
+        let height_patch =
+            build_terrain_height_patch(session.document(), &height_spec(), &[map_tile])
+                .unwrap_or_else(|error| unreachable!("valid Height patch: {error:?}"));
+        assert!(session.commit(height_patch).is_ok());
+        assert_eq!(session.document().height_at(vertex(tile)), Some(-16));
+        assert_eq!(
+            session
+                .document()
+                .terrain_at(position(tile))
+                .overlay
+                .map(|overlay| overlay.id),
+            Some(FloorOverlayId::new(1))
+        );
+
+        assert!(session.undo().is_ok());
+        assert_eq!(session.document().height_at(vertex(tile)), Some(0));
+        assert_eq!(
+            session
+                .document()
+                .terrain_at(position(tile))
+                .overlay
+                .map(|overlay| overlay.id),
+            Some(FloorOverlayId::new(1))
+        );
+
+        assert!(session.undo().is_ok());
+        assert_eq!(
+            session.document().terrain_at(position(tile)),
+            TerrainTile::default()
+        );
+        assert!(session.redo().is_ok());
+        assert_eq!(
+            session
+                .document()
+                .terrain_at(position(tile))
+                .overlay
+                .map(|overlay| overlay.id),
+            Some(FloorOverlayId::new(1))
+        );
+        assert!(session.redo().is_ok());
+        assert_eq!(session.document().height_at(vertex(tile)), Some(-16));
     }
 
     #[test]
@@ -1251,5 +1681,17 @@ mod tests {
         assert!(step.removed.is_empty());
         assert!(step.added.is_empty());
         assert!(step.semantic_paint.is_some());
+        assert!(step.semantic_height.is_none());
+    }
+
+    #[test]
+    fn semantic_height_history_marker_carries_no_legacy_tile_authority() {
+        let step = EditStep::semantic_height(vec![(0, 3200, 3200)]);
+
+        assert!(step.changes.is_empty());
+        assert!(step.removed.is_empty());
+        assert!(step.added.is_empty());
+        assert!(step.semantic_paint.is_none());
+        assert!(step.semantic_height.is_some());
     }
 }
