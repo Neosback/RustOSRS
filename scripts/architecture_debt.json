@@ -21,10 +21,6 @@
       "max_lines": 550,
       "max_bytes": 20164
     },
-    "app/settings_window.rs": {
-      "max_lines": 1569,
-      "max_bytes": 51638
-    },
     "app/spline_tool.rs": {
       "max_lines": 580,
       "max_bytes": 21409
