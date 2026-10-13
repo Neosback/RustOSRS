@@ -1,10 +1,6 @@
 {
   "version": 1,
   "editor_modules": {
-    "app/context_menu.rs": {
-      "max_lines": 647,
-      "max_bytes": 31661
-    },
     "app/editing.rs": {
       "max_lines": 670,
       "max_bytes": 24884
@@ -20,10 +16,6 @@
     "app/spline_tool.rs": {
       "max_lines": 580,
       "max_bytes": 21409
-    },
-    "app/workspace.rs": {
-      "max_lines": 755,
-      "max_bytes": 28664
     },
     "app/worldmap.rs": {
       "max_lines": 619,
