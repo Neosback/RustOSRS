@@ -11,6 +11,7 @@ mod object;
 mod patch;
 mod position;
 mod query;
+mod region;
 mod terrain;
 
 pub use document::{MapDocument, PatchApplyError};
@@ -19,4 +20,5 @@ pub use object::{LocKind, ObjectOrientation, ObjectPlacement};
 pub use patch::{ChangeImpact, MapOp, MapPatch};
 pub use position::{HeightVertexCoord, MapPosition};
 pub use query::MapQuery;
+pub use region::{MapRegionSnapshot, RegionSnapshotError};
 pub use terrain::{OverlayRotation, OverlayShape, TerrainOverlay, TerrainTile};
