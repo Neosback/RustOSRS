@@ -137,18 +137,9 @@ impl MapDocument {
     /// Returns whether the document changed. Session policy decides whether an edited region may
     /// actually be evicted; this low-level operation intentionally has no history knowledge.
     pub fn remove_region(&mut self, region: RegionCoord) -> bool {
-        let before = (
-            self.terrain.len(),
-            self.heights.len(),
-            self.objects.len(),
-        );
+        let before = (self.terrain.len(), self.heights.len(), self.objects.len());
         self.remove_region_entries(region);
-        before
-            != (
-                self.terrain.len(),
-                self.heights.len(),
-                self.objects.len(),
-            )
+        before != (self.terrain.len(), self.heights.len(), self.objects.len())
     }
 
     fn remove_region_entries(&mut self, region: RegionCoord) {
