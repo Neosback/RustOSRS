@@ -93,6 +93,10 @@ impl RenderRuntime {
         self.scene.resident_vertex_bytes()
     }
 
+    pub(super) fn hd_shadow_map_bytes(&self) -> u64 {
+        self.scene.hd_shadow_map_bytes()
+    }
+
     pub(super) fn ensure_targets(&mut self, width: u32, height: u32) {
         if let Some(targets) = &self.targets
             && targets.width == width
