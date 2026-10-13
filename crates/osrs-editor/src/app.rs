@@ -9,6 +9,7 @@ mod camera_ops;
 mod context_menu;
 mod drawer;
 mod editing;
+mod export;
 mod floating;
 mod gizmo;
 mod hd;
@@ -77,6 +78,8 @@ const ANIMATED_KEY: (i32, i32) = (i32::MIN, i32::MIN);
 
 pub struct EditorApp {
     renderer: render_runtime::RenderRuntime,
+    /// A running File > Export, if any.
+    export_job: Option<export::ExportJob>,
     /// Camera, picking, selection, and in-progress tool gestures.
     interaction: interaction_runtime::InteractionRuntime,
     /// Persistent authoritative semantic edit state. Legacy edit stores remain projections until
@@ -209,6 +212,7 @@ impl eframe::App for EditorApp {
         self.peak_resident = self.peak_resident.max(self.world.resident_regions());
 
         self.poll_palette();
+        self.poll_export();
         self.menu_bar(ui);
         self.toolbar(ui);
         self.status_bar(ui);

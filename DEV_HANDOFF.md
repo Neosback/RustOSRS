@@ -320,7 +320,16 @@ Known remaining smell (move-only, not yet fixed): `routing.rs` holds ~190-line `
 - 1 square is undecodable without XTEA keys (the profile has none)
 - every re-encoded terrain stream decodes back to identical tiles
 
-Canonical form: per tile `overlay, settings, underlay, height`, then a trailing flags byte `0` (build-241 files always end with it). Not yet done: converting an edited `MapDocument` region back into `DecodedTerrain`/`DecodedLocations` (plan: patch the original decoded square so untouched tiles keep their exact opcodes), JS5 container packing, and project save/load. Writing archives back into `.dat2`/`.idx` is out of scope until those exist; `vendor/rune-fs` only has container compression.
+Canonical form: per tile `overlay, settings, underlay, height`, then a trailing flags byte `0` (build-241 files always end with it). Map groups hold five files (0 terrain, 1 locations, 2..=4 other); `pack_group`/`split_group`/`encode_container`/`decode_container` reproduce them, and repacking all five files of every real group is byte-exact (2936 / 2936). Every real map container uses gzip.
+
+### Phase 8: export of edited regions (File > Export edited regions...)
+
+- `session::export::export_region(original terrain, original locations, MapDocument)` diffs the authoritative document against the semantic baseline of the same decoded square and patches only differences into the original tiles/locations: channels (underlay, overlay id+shape+rotation, flags; raw id bit 15 preserved when the semantic id is unchanged), heights (re-stored plane by plane because explicit heights are relative to the plane below; unstorable heights are an error, never silently rounded), and objects. It returns `None` for an unedited square (untouched archives are never rewritten) and `RegionNotLoaded` when the document holds no state for the square (instead of reading as a mass deletion).
+- `osrs-world::SourceSquares` reads pristine squares (no worker edit layer) plus all group files.
+- `app/export.rs` runs the export on a worker thread over a document snapshot and writes `5/<group>.dat` (gzip container of the original group with files 0 and 1 replaced, files 2..=4 preserved) and `manifest.json` (profile, cache fingerprint, per-region change counts). The source cache is never modified. Native only; the menu entry is a no-op on wasm.
+- Validation: unit tests plus real-cache tests (skipped without `RUSTOSRS_TARGET_CACHE_DIR`): every sampled real square exports as `None` when unedited, real edits survive export and reload, and the full file-writing path decodes back to the edit with files 2..=4 byte-identical.
+
+Not done: writing into `.dat2`/`.idx` and updating the reference table (a loadable repacked cache), project save/load, version/CRC bookkeeping in exported containers. Placement note: `session::export` lives in `osrs-editor` because it needs `adapt_region_map`; move it down with that adapter if another consumer appears.
 
 ## Remaining migration roadmap
 

@@ -50,6 +50,11 @@ impl EditorSession {
         }
     }
 
+    /// Regions an interactive edit has touched (and that therefore keep their document state).
+    pub fn dirty_regions(&self) -> impl Iterator<Item = RegionCoord> + '_ {
+        self.dirty_regions.iter().copied()
+    }
+
     /// Drop all semantic state when switching to a different cache/source.
     pub fn reset(&mut self) {
         *self = Self::default();

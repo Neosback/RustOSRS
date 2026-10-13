@@ -10,6 +10,7 @@ mod map;
 
 pub use group::{
     ContainerCompression, ContainerError, decode_container, encode_container, pack_group,
+    split_group,
 };
 
 pub use map::{MapEncodeError, encode_locations, encode_terrain};

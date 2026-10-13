@@ -19,6 +19,7 @@ mod loc_stage;
 pub mod minimap;
 pub mod oracle_dump;
 mod scene_builder;
+mod source_squares;
 mod streaming;
 mod terrain_edits;
 mod terrain_stage;
@@ -45,6 +46,7 @@ pub use info::{
 pub use loc_edits::{LocEdit, LocEdits, LocSpec};
 pub use loc_stage::{LocRenderable, LocStageOutput, LocStageStats, WorldLoc, place_window_locs};
 pub use scene_builder::{WorldScene, build_world_scene};
+pub use source_squares::{SourceSquare, SourceSquares};
 pub use streaming::{
     HdRegionStats, REGION_WINDOW_MARGIN, RegionGeometry, RegionRenderPath, RegionStreamer,
     StreamEvent, build_region_geometry, build_region_geometry_with, region_window,

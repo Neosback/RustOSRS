@@ -182,6 +182,16 @@ fn edited_terrain_heights_and_objects_survive_export_and_reload() {
 }
 
 #[test]
+fn a_region_missing_from_the_document_is_an_error_not_a_mass_deletion() {
+    let terrain = blank_terrain();
+    let locations = source_locations();
+    assert_eq!(
+        export_region(&terrain, &locations, &MapDocument::new()),
+        Err(ExportError::RegionNotLoaded(region()))
+    );
+}
+
+#[test]
 fn unstorable_heights_are_an_error_not_a_silent_round() {
     let terrain = blank_terrain();
     let locations = source_locations();

@@ -25,6 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut undecodable = 0;
     let (mut group_exact, mut group_other, mut container_ok) = (0, 0, 0);
+    let mut compression = std::collections::BTreeMap::<u8, usize>::new();
     let (mut squares, mut terrain_exact, mut terrain_flags, mut terrain_other) = (0, 0, 0, 0);
     let (mut loc_exact, mut loc_semantic, mut loc_bad) = (0, 0, 0);
     let mut first_terrain_diff = None;
@@ -70,6 +71,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cache.read_decoded_group(5, group_id, None),
                 cache.read_group_files(5, group_id),
             ) {
+                if let Ok(encoded) = cache.read_encoded_group(5, group_id) {
+                    *compression.entry(encoded.bytes[0]).or_default() += 1;
+                }
                 let parts: Vec<&[u8]> = files.iter().map(|(_, f)| f.bytes.as_slice()).collect();
                 let packed = pack_group(&parts)?;
                 if packed == group.bytes {
@@ -118,6 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "terrain: byte-exact={terrain_exact} trailing-flags-dropped={terrain_flags} other-diff={terrain_other}"
     );
     println!("locations: byte-exact={loc_exact} semantic-only={loc_semantic} mismatched={loc_bad}");
+    println!("source container compression bytes (1=bzip2, 2=gzip): {compression:?}");
     println!(
         "groups: repacked byte-exact={group_exact} other={group_other}; gzip container round-trips={container_ok}"
     );

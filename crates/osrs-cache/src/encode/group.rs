@@ -63,6 +63,20 @@ pub fn pack_group(files: &[&[u8]]) -> Result<Vec<u8>, ContainerError> {
     Ok(out)
 }
 
+/// Split a payload produced by [`pack_group`] (or read from a cache) into its `file_count` files,
+/// numbered `0..file_count`.
+pub fn split_group(
+    payload: &[u8],
+    file_count: usize,
+) -> Result<Vec<(u32, Vec<u8>)>, ContainerError> {
+    let ids: Vec<u32> = (0..file_count as u32).collect();
+    crate::transport::split_group_files(payload, &ids, file_count.max(1)).map_err(|error| {
+        ContainerError::Codec {
+            detail: format!("{error:?}"),
+        }
+    })
+}
+
 /// Wrap a group payload in a JS5 container (compression byte, lengths, data, optional version).
 pub fn encode_container(
     payload: Vec<u8>,

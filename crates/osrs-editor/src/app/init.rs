@@ -33,6 +33,7 @@ impl EditorApp {
 
         let mut app = Self {
             renderer,
+            export_job: None,
             interaction: interaction_runtime::InteractionRuntime::new(camera),
             session: EditorSession::default(),
             settings_path: None,

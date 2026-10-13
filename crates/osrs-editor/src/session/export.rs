@@ -29,6 +29,8 @@ const TILES_PER_PLANE: usize = REGION_TILES * REGION_TILES;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExportError {
+    /// The document holds no state for this square, so a diff would read as "everything deleted".
+    RegionNotLoaded(RegionCoord),
     /// The source square could not be adapted to its semantic baseline.
     Baseline(RegionAdaptError),
     /// The patched tile list was not a valid region terrain.
@@ -70,6 +72,10 @@ pub fn export_region(
     document: &MapDocument,
 ) -> Result<Option<ExportedRegion>, ExportError> {
     let region = terrain.region();
+    let corner = HeightVertexCoord::new(tile_of(region, 0), plane_of(0));
+    if document.height_at(corner).is_none() {
+        return Err(ExportError::RegionNotLoaded(region));
+    }
     let baseline = baseline_document(terrain, locations)?;
     let mut tiles = terrain.tiles().to_vec();
     let mut changes = ExportChanges::default();
@@ -90,7 +96,7 @@ pub fn export_region(
     }))
 }
 
-fn baseline_document(
+pub(crate) fn baseline_document(
     terrain: &DecodedTerrain,
     locations: &DecodedLocations,
 ) -> Result<MapDocument, ExportError> {
