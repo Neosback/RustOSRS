@@ -1,15 +1,16 @@
 //! Editing objects: move, turn, copy and delete the selected placements.
 //!
-//! Like terrain, object edits live in the world worker's edit layer (`osrs_world::LocEdits`): an edit is
-//! a list of placements removed and added, one undo step covers a whole action, and the regions the
-//! edits sit in are rebuilt. An object is identified by what the map file says about it (object id,
-//! tile, plane, type, orientation), not by its slot in the loaded region, so the identity survives a
-//! rebuild; after an action the moved or new objects are re-selected once their region arrives.
+//! Completed object actions commit through the authoritative semantic editor session. The existing
+//! world-worker `LocEdit` layer remains a downstream projection that rebuilds affected regions and
+//! re-selects moved/new placements after the rebuild arrives.
+
+mod commit;
 
 use super::EditorApp;
 use super::editing::EditStep;
 use crate::icons;
 use crate::paint::Tool;
+use commit::{ObjectCommitPlan, build_object_commit_plan};
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
 use egui_phosphor::regular as ph;
 use osrs_world::{LocEdit, LocSpec};
@@ -55,14 +56,53 @@ impl EditorApp {
             .collect()
     }
 
-    /// Apply an object edit as one undo step and select the placements it made.
-    fn edit_objects(&mut self, removed: Vec<LocSpec>, added: Vec<LocSpec>, label: &str) {
+    /// Commit one complete object action semantically, project it to the world worker, and select
+    /// the placements it made. Returns whether a non-empty semantic transaction committed.
+    fn edit_objects(&mut self, removed: Vec<LocSpec>, added: Vec<LocSpec>, label: &str) -> bool {
         if removed.is_empty() && added.is_empty() {
-            return;
+            return false;
         }
+
+        let ObjectCommitPlan {
+            patch,
+            removed,
+            added,
+        } = match build_object_commit_plan(self.session.document(), &removed, &added) {
+            Ok(plan) => plan,
+            Err(error) => {
+                self.notice = Some((
+                    format!("Object action was not committed: {error:?}"),
+                    Instant::now(),
+                ));
+                return false;
+            }
+        };
+
+        match self.session.commit(patch) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                self.notice = Some((
+                    "Object action made no semantic changes".to_owned(),
+                    Instant::now(),
+                ));
+                return false;
+            }
+            Err(error) => {
+                self.notice = Some((
+                    format!("Object action was rejected by the semantic session: {error:?}"),
+                    Instant::now(),
+                ));
+                return false;
+            }
+        }
+
         let mut edits: Vec<LocEdit> = removed.iter().map(|s| LocEdit::Remove(*s)).collect();
         edits.extend(added.iter().map(|s| LocEdit::Add(*s)));
         self.send_loc_edits(edits);
+
+        // Transitional until Object undo/redo migrates: this legacy step keeps the global history
+        // order and current Ctrl+Z behavior, but the semantic session is already the completed-state
+        // authority. The branch must not merge until Object history is routed through the session.
         self.push_step(EditStep {
             removed,
             added: added.clone(),
@@ -71,6 +111,7 @@ impl EditorApp {
         self.clear_selection();
         self.pending_reselect = added;
         self.notice = Some((label.to_owned(), Instant::now()));
+        true
     }
 
     pub(super) fn delete_selected_objects(&mut self) {
@@ -150,7 +191,7 @@ impl EditorApp {
             .collect();
         let count = specs.len();
         let target = moved[0].plane;
-        self.edit_objects(
+        if self.edit_objects(
             specs,
             moved,
             &format!(
@@ -158,8 +199,9 @@ impl EditorApp {
                 if count == 1 { "" } else { "s" },
                 if planes > 0 { "up" } else { "down" }
             ),
-        );
-        self.view_plane = target;
+        ) {
+            self.view_plane = target;
+        }
     }
 
     /// Move the selected objects by `delta` tiles.
