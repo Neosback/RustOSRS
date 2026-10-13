@@ -59,7 +59,7 @@ impl EditorApp {
     /// The scratch document below is projection preflight only: it is cloned from authoritative
     /// session state and receives the exact patch that will later be committed. It never becomes
     /// editor authority and is discarded before worker mutation.
-    pub(super) fn apply_terrain_path(&mut self, tiles: &[PathTile]) -> usize {
+    pub(in crate::app) fn apply_terrain_path(&mut self, tiles: &[PathTile]) -> usize {
         if tiles.is_empty() {
             return 0;
         }
@@ -240,7 +240,7 @@ mod tests {
     use super::*;
     use crate::session::EditorSession;
     use osrs_core::ids::FloorOverlayId;
-    use osrs_edit::{MapDocument, MapQuery, OverlayRotation, OverlayShape, TerrainOverlay};
+    use osrs_edit::{MapDocument, OverlayRotation, OverlayShape, TerrainOverlay};
 
     fn plane(value: u8) -> SourcePlane {
         SourcePlane::new(value).unwrap_or_else(|| unreachable!("test plane is valid"))
