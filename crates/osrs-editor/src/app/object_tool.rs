@@ -10,10 +10,8 @@ use super::EditorApp;
 use super::editing::EditStep;
 use crate::icons;
 use crate::paint::Tool;
-pub(super) use commit::{
-    ObjectHistoryRoute, build_object_history_projection,
-};
 use commit::{ObjectCommitPlan, build_object_commit_plan};
+pub(super) use commit::{ObjectHistoryRoute, build_object_history_projection};
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
 use egui_phosphor::regular as ph;
 use osrs_world::{LocEdit, LocSpec};
