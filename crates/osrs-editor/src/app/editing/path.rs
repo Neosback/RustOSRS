@@ -173,12 +173,9 @@ impl EditorApp {
                 ));
                 return 0;
             };
-            let Some(after) = project_semantic_path_values(
-                &projected_document,
-                key,
-                before,
-                brush.height.armed,
-            ) else {
+            let Some(after) =
+                project_semantic_path_values(&projected_document, key, before, brush.height.armed)
+            else {
                 self.notice = Some((
                     format!(
                         "The path was not laid: semantic state at {:?} cannot be represented by the legacy projection",
