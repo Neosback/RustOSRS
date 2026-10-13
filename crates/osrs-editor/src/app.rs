@@ -19,6 +19,7 @@ mod overlay;
 mod paint_commit;
 mod path_commit;
 mod plugins;
+mod render_runtime;
 mod script;
 mod selection;
 mod settings_io;
@@ -50,7 +51,7 @@ use crate::settings::{self, Settings};
 use crate::style::ColorKey;
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_core::coords::RegionCoord;
-use osrs_render::gpu::{COLOR_FORMAT, DEPTH_FORMAT, FrameParams, SceneRenderer};
+use osrs_render::gpu::{COLOR_FORMAT, DEPTH_FORMAT, FrameParams};
 use osrs_world::{AnimationWorker, RegionStreamer, StreamEvent, TerrainPresentation};
 use std::{
     collections::{HashMap, HashSet},
@@ -92,7 +93,7 @@ const ANIMATION_STRIDE_CYCLES: u64 = 2;
 
 pub struct EditorApp {
     render_state: egui_wgpu::RenderState,
-    renderer: SceneRenderer,
+    renderer: render_runtime::RenderRuntime,
     camera: FlyCamera,
     targets: Option<ViewportTargets>,
     view_plane: u8,
@@ -248,13 +249,11 @@ impl EditorApp {
             .wgpu_render_state
             .clone()
             .ok_or("eframe is not running on the wgpu backend")?;
-        let mut renderer =
-            SceneRenderer::with_device(render_state.device.clone(), render_state.queue.clone());
 
         // Start above the middle of the requested window's region, looking north.
         let start_region = (base_x.div_euclid(64) + 1, base_y.div_euclid(64) + 1);
         let origin = (start_region.0 * REGION_UNITS, start_region.1 * REGION_UNITS);
-        renderer.set_render_origin(origin);
+        let renderer = render_runtime::RenderRuntime::new(&render_state, origin);
         let camera = FlyCamera::new(
             0.45 * REGION_UNITS as f32,
             -2600.0,
