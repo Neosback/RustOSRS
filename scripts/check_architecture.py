@@ -11,12 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 CRATES = ROOT / "crates"
 EDITOR_SOURCE = CRATES / "osrs-editor" / "src"
 
-# Keep editor modules comfortably below whole-file API/connector pressure and make oversized
-# responsibility clusters fail CI before they become another god file. Existing UI debt such as
-# settings_window.rs remains below these hard limits; actively edited modules should target <1,000
-# lines and be split by reason to change well before reaching the cap.
-EDITOR_MAX_RUST_LINES = 1600
-EDITOR_MAX_RUST_BYTES = 64 * 1024
+# Architecture Contract v2 baseline. Legacy files above these limits will move to an explicit
+# measured debt allowlist. This temporary commit intentionally reports the exact live offenders so
+# the ratchet is based on repository state rather than guessed exceptions.
+EDITOR_MAX_RUST_LINES = 500
+EDITOR_MAX_RUST_BYTES = 32 * 1024
 
 ALLOWED_INTERNAL: dict[str, set[str]] = {
     "osrs-core": set(),
