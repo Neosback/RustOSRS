@@ -159,8 +159,6 @@ Regular merge commit:
 
 Post-merge CI `38410554574`: Tier A/B/C PASS, including M3-M9.
 
-The former `refactor/editor-object-session` branch is retired.
-
 Established:
 
 - pure deterministic Object planner
@@ -171,12 +169,7 @@ Established:
 - Paint, Height, and Object share one chronological semantic-history routing order
 - old `app/editing.rs` responsibility was split into focused history/tests modules
 
-The 1,600-line / 64-KiB guard introduced during this checkpoint was an interim hardening step. Phase 1 replaces it with the Architecture Contract v2 ratchet.
-
 ### PR #40: Path -> persistent semantic session
-
-PR:
-`#40 refactor(editor): migrate terrain path editing to semantic session`
 
 Final pre-merge branch head:
 `6a66758bf901a3c8af919dffc1434b84a0735c23`
@@ -189,8 +182,6 @@ Regular merge commit on `main`:
 
 Exact post-merge CI:
 `38422182517` - Tier A/B/C PASS, including M3-M9.
-
-The former `refactor/editor-path-session` branch is retired.
 
 Path authority now follows:
 
@@ -235,6 +226,31 @@ one user transaction
 
 The former Path split-history hazard is closed.
 
+### PR #41: Architecture Contract v2 + debt ratchet
+
+Final branch head:
+`e38a3b5035c6ebd6ea65adb899fc31a89c45ebea`
+
+Exact branch CI:
+`38427434417` - Tier A/B/C PASS, including M3-M9.
+
+Regular merge commit on `main`:
+`bd21b72555cbe75dd1fbb8b70df1f7cd5b90ad41`
+
+Exact post-merge CI:
+`38428015008` - Tier A/B/C PASS, including M3-M9.
+
+Established:
+
+- root `ARCHITECTURE.md` is the authoritative Architecture Contract v2
+- production Rust module normal cap is 500 lines / 32 KiB
+- dedicated test-module cap is 700 lines / 40 KiB
+- 13 pre-existing oversized production modules are frozen at measured debt baselines
+- stale, orphaned, malformed, or growing debt entries fail the architecture guard
+- architecture guard self-tests run in Tier A
+
+The former `architecture/editor-contract-v2` branch could not be deleted through the currently available repository tooling, so its continued remote existence must not be interpreted as an active development branch.
+
 ## Semantic loading and residency
 
 `EditorSession` tracks loaded and dirty regions.
@@ -249,124 +265,86 @@ Height ingestion stores source-owned 64x64 final height samples per plane. Do no
 
 Transitional caveat: `WorldDefinitions::region()` can still include legacy worker edits until remaining editing/projection routes are migrated.
 
-## Current active checkpoint: Phase 1 architecture enforcement
+## Current active checkpoint: Phase 2.1 RenderRuntime ownership extraction
 
 Branch:
-`architecture/editor-contract-v2`
+`refactor/editor-render-runtime`
 
-Validated base `main`:
-`a125f8e237f4a1594fe585df5a0dd7a2e2011da6`
+Certified base `main`:
+`bd21b72555cbe75dd1fbb8b70df1f7cd5b90ad41`
 
-Purpose:
+Base CI:
+`38428015008` - Tier A/B/C PASS.
 
-- add `ARCHITECTURE.md` as the authoritative Architecture Contract v2
-- replace the interim 1,600-line / 64-KiB editor module guard
-- enforce 500-line / 32-KiB normal production limits
-- enforce 700-line / 40-KiB dedicated-test limits
-- freeze existing oversized production modules at exact measured baselines
-- make stale/orphan/malformed debt entries fail CI
-- self-test the debt ratchet
-- reconcile this handoff with the real merged Path state
+Validated implementation head before final handoff bookkeeping:
+`89392a6c28eb645a9a787ac8e72d7db946c4813b`
 
-Explicitly out of scope:
+Exact implementation CI:
+`38430771972` - Tier A/B/C PASS, including M3-M9 semantic/reference parity.
 
-- `EditorApp` runtime extraction
-- context-menu semantic migration
-- generic projection/invalidation redesign
-- renderer refactor
-- UI feature decomposition
-- platform/WASM refactor
-- cache save/repack work
-- 117HD work
+### Ownership extracted
 
-### Debt measurement checkpoint
+`EditorApp` no longer directly owns the eframe WGPU render state, raw `SceneRenderer`, or viewport render targets.
 
-Temporary measurement head:
-`3400e9704911f664e2cb882144eade44f607a062`
+`RenderRuntime` now owns:
 
-CI run:
-`38425580831`
+- `egui_wgpu::RenderState`
+- the sole `SceneRenderer`
+- viewport color texture and texture view
+- viewport depth texture and texture view
+- egui viewport texture registration/update
+- render-origin reads and rebasing
+- region upload/removal and texture installation adapters
+- overlay-line installation
+- HD lighting, shadow settings, parameters, material GPU installation, and shadow-memory metrics
+- viewport command-encoder creation
+- scene frame encoding
+- queue submission
+- `finish_frame()` / GPU scene timing
+- submitted-work completion callback registration
+- resident GPU-zone and vertex-memory metrics
 
-This run intentionally lowered the normal production cap before adding exceptions so CI would report the complete live debt set. It found exactly 13 oversized production modules:
+Existing UI, streaming, selection, gizmo, plugin, settings, and HD modules reach rendering through explicit `RenderRuntime` methods. There is no broad `Deref` escape hatch back to `SceneRenderer`.
 
-| Module | Baseline lines | Baseline bytes |
-| --- | ---: | ---: |
-| `app/context_menu.rs` | 647 | 31,661 |
-| `app/drawer.rs` | 951 | 37,023 |
-| `app/editing.rs` | 792 | 28,638 |
-| `app/editing/history.rs` | 641 | 25,633 |
-| `app/object_tool.rs` | 550 | 20,164 |
-| `app/settings_window.rs` | 1,569 | 51,638 |
-| `app/spline_tool.rs` | 580 | 21,409 |
-| `app/workspace.rs` | 755 | 28,664 |
-| `app/worldmap.rs` | 619 | 23,663 |
-| `app.rs` | 738 | 29,602 |
-| `paint.rs` | 583 | 17,591 |
-| `pick.rs` | 716 | 24,812 |
-| `settings.rs` | 592 | 22,909 |
+The viewport camera and semantic/editor state remain outside `RenderRuntime`, as required. This checkpoint does not change scene semantics, rendering algorithms, 117HD behavior, cache decoding, edit authority, streaming policy, or user-visible product behavior.
 
-The measured baselines live in `scripts/architecture_debt.json`.
+### Validated diff before handoff bookkeeping
 
-Ratchet rules now enforced by `scripts/check_architecture.py`:
+Compared with certified base `bd21b72555cbe75dd1fbb8b70df1f7cd5b90ad41`:
 
-1. A new/non-allowlisted production module fails above 500 lines or 32 KiB.
-2. A dedicated test module fails above 700 lines or 40 KiB.
-3. An allowlisted module may not exceed either its recorded line or byte baseline.
-4. An allowlisted file that falls within the normal cap fails until its stale exception is removed.
-5. An allowlist entry with no matching file fails.
-6. Malformed debt configuration fails.
-7. Existing workspace dependency-boundary rules remain enforced.
+- branch status: 8 commits ahead, 0 behind
+- `crates/osrs-editor/src/app.rs`: +25 / -55
+- `crates/osrs-editor/src/app/render_runtime.rs`: +198 / -0
+- `crates/osrs-editor/src/app/streaming.rs`: +1 / -1
+- `crates/osrs-editor/src/app/viewport.rs`: +1 / -63
 
-Self-tests in `scripts/test_check_architecture.py` cover the normal caps, test caps, debt no-growth, stale exception removal, orphan detection, malformed entries, and existing dependency rules.
+No `osrs-render`, `osrs-world`, `osrs-edit`, `osrs-cache`, `osrs-scene`, `osrs-hd`, or `osrs-reference` source file is changed by the implementation checkpoint.
 
-Current Phase 1 implementation commits before final handoff bookkeeping:
+### Validation history
 
-- `3400e9704911f664e2cb882144eade44f607a062` - measure live module debt
-- `b795cacdd435c93519c599ea2fa383af36e0136b` - record measured debt baselines
-- `3648bec3e310a16936a3391baa8e70fbc987dea7` - enforce editor debt ratchet
-- `79d4bdfed3a1c62aacaf620dfba8c8408780952c` - add debt-ratchet self-tests
-- `54fbaee2576eaba3309a5f1595f86df2d5bdef0a` - add Architecture Contract v2
-- `0eb135ff55b4bf58a334608fa5802d2136850023` - reconcile handoff and complete pre-PR documentation
+Two intermediate CI runs failed before semantic tests because the extraction deliberately exposed narrow mechanical issues:
 
-### Phase 1 validation and PR
+- `38430309846`: formatting-only failure in the new runtime module
+- `38430582735`: compile failure because the explicit runtime facade initially omitted `hd_shadow_map_bytes()` used by the settings UI
 
-Validated implementation/documentation head before this final handoff bookkeeping commit:
-`0eb135ff55b4bf58a334608fa5802d2136850023`
+Both were corrected without changing architecture or behavior. The next exact head `89392a6c28eb645a9a787ac8e72d7db946c4813b` passed Tier A/B/C completely.
 
-Exact CI:
-`38426658112` - Tier A/B/C PASS, including M3-M9 semantic/reference parity.
-
-Focused integration PR:
-`#41 architecture(editor): adopt contract v2 and debt ratchet`
-
-The PR diff contains exactly these five files:
-
-- `ARCHITECTURE.md`
-- `DEV_HANDOFF.md`
-- `scripts/architecture_debt.json`
-- `scripts/check_architecture.py`
-- `scripts/test_check_architecture.py`
-
-No runtime editor, renderer, world, cache codec, or 117HD production source file is changed by this checkpoint.
-
-This final handoff bookkeeping commit changes documentation only. Its resulting branch SHA must receive exact-head CI before Phase 1 is reported complete. After that validation, PR metadata may be updated with the final SHA and CI run because PR metadata does not alter the branch commit.
+This handoff bookkeeping commit changes documentation only. Its resulting branch SHA must receive exact-head Tier A/B/C before the Phase 2.1 PR is opened and the checkpoint is reported complete.
 
 ## Remaining migration roadmap
 
-After Phase 1 is merged and exact integrated `main` is green, continue only after explicit user direction.
-
 ### Phase 2: decompose EditorApp state ownership
 
-Extract one coherent runtime at a time, in this order unless live evidence justifies a deliberate architecture checkpoint change:
+Extract one coherent runtime at a time:
 
-1. `RenderRuntime`
-2. `WorldRuntime`
+1. `RenderRuntime` - current Phase 2.1 checkpoint
+2. `WorldRuntime` - next, not started
 3. `InteractionRuntime`
 4. `ProjectRuntime`
 5. `UiRuntime`
 6. `DiagnosticsRuntime`
 
-Do not combine these into one large refactor. Behavior should remain unchanged during pure ownership extraction.
+Do not combine runtimes into one large refactor. Behavior remains unchanged during pure ownership extraction.
 
 ### Phase 3: central edit gateway
 
@@ -414,18 +392,18 @@ Refactor allowlisted UI/application modules one responsibility at a time. Do not
 
 Resume on separate focused branches once editor authority/projection boundaries are stable enough to prevent coupling.
 
-## Next boundary after Phase 1
+## Next boundary after Phase 2.1
 
-The next planned subsystem is **Phase 2.1: RenderRuntime ownership extraction**.
+The next planned subsystem is **Phase 2.2: WorldRuntime ownership extraction**.
 
 It is NOT started on the current branch.
 
 Do not begin it until:
 
-1. Phase 1 exact branch head passes required CI.
-2. Phase 1 diff is verified architecture/docs/tests only.
-3. A focused Phase 1 PR is opened.
-4. The user explicitly authorizes the merge.
-5. The real integrated `main` SHA is read and validated.
-6. The Phase 1 branch is retired if tooling permits.
-7. The user explicitly says to continue to the next checkpoint.
+1. the final Phase 2.1 branch head passes exact Tier A/B/C
+2. the Phase 2.1 diff is verified as RenderRuntime ownership work plus handoff documentation only
+3. a focused Phase 2.1 PR is opened
+4. the user explicitly authorizes its merge
+5. the real integrated `main` SHA is read and validated
+6. the Phase 2.1 branch is retired if tooling permits
+7. the user explicitly says to continue to Phase 2.2
