@@ -127,6 +127,7 @@ mod tests {
         let region = RegionCoord::new(50, 50);
         assert_eq!(
             MapRegionSnapshot::from_parts(
+                region,
                 [
                     (
                         position(3200, 3200),
@@ -145,7 +146,6 @@ mod tests {
                 ],
                 [],
                 [],
-                region,
             ),
             Err(RegionSnapshotError::TerrainOutsideRegion {
                 region,
