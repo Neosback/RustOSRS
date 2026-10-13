@@ -6,18 +6,19 @@ This is the living handoff for the RustOSRS map-editor architecture project. Upd
 
 ## Project goal
 
-Build a production-grade OSRS editor where semantic map state is authoritative, deterministic, headless-testable, and independent from UI, rendering, ECS/runtime state, and cache codecs.
+Build a production-grade OSRS editor where semantic map state is authoritative, deterministic, headless-testable, and independent from UI, rendering, world-worker state, and cache codecs.
 
 ## Working rules
 
-1. One branch at a time.
-2. Work in small checkpoints and stop after each checkpoint for review.
+1. One active development branch at a time.
+2. Break work into small checkpoints and stop after each checkpoint for review.
 3. Do not start the next checkpoint without explicit direction.
-4. Fully validate intended branch scope before merge.
-5. Preserve semantic/reference parity unless a checkpoint explicitly changes behavior.
-6. Keep 117HD/rendering isolated from editor-domain refactors unless an explicit adapter change is required.
-7. One logical user gesture should become one logical `MapPatch` and one history entry.
-8. Update this file at each meaningful checkpoint and before merge.
+4. A completed subsystem must pass Tier A/B/C before merge.
+5. Merge completed systems back to `main`, then retire the finished branch.
+6. Preserve semantic/reference parity unless a checkpoint explicitly changes behavior.
+7. Keep renderer/117HD work isolated from editor-domain refactors unless an adapter change is explicitly required.
+8. One logical user gesture should become one logical `MapPatch` and one history entry.
+9. `MapDocument` must remain authoritative even if renderer, picker, worker, or UI caches disappear.
 
 ## Target architecture
 
@@ -28,7 +29,7 @@ osrs-core
 osrs-edit
   Authoritative headless editable-map domain.
   Owns semantic state, validation, reversible patches, history, query contracts,
-  change impact, and later revisions/transactions.
+  and semantic change impact.
 
 osrs-cache
   Cache codecs and cache-format infrastructure.
@@ -37,11 +38,12 @@ osrs-scene
   OSRS scene semantics.
 
 osrs-world
-  Cache-to-scene orchestration only. No new authoritative edit semantics.
+  Cache-to-scene orchestration and transitional render projection.
+  Must not become the authoritative edit store.
 
 osrs-editor
-  Application/product layer: sessions, tools, input, previews, orchestration,
-  adapters, and UI.
+  Application/product layer: persistent editor session, tools, input, previews,
+  orchestration, adapters, and UI.
 
 renderer / 117HD
   Disposable reactive projection/cache of authoritative semantic state.
@@ -49,43 +51,28 @@ renderer / 117HD
 
 `osrs-edit` depends only on `osrs-core`, enforced by the repository architecture guard.
 
-## Core domain decisions
+## Core domain contract
 
 ### Authoritative state
 
-`MapDocument` is the authoritative editable-map state. Renderer meshes, GPU resources, ECS state, scene-worker results, and UI state are projections/caches and must never become the edit source of truth.
+`MapDocument` is the authoritative editable-map state. Renderer meshes, GPU resources, picker data, world-worker edits, and UI state are projections/caches and must never become the final edit source of truth.
 
 ### Coordinates and planes
 
-Reuse typed coordinates/planes from `osrs-core`.
+Reuse typed coordinates and planes from `osrs-core`.
 
 - `MapPosition` = map tile + `SourcePlane`
 - `HeightVertexCoord` = terrain corner/height vertex + `SourcePlane`
-- Tile attributes and corner heights remain distinct semantic coordinates.
-- Do not collapse source planes, storage planes, render levels, collision planes, or renderer-local coordinates into raw tuples.
+- tile attributes and corner heights remain distinct semantic coordinates
+- do not collapse source planes, storage planes, render levels, collision planes, or renderer-local coordinates into raw tuples
 
-### Terrain
+### Terrain and heights
 
-`TerrainTile` owns tile-level underlay/overlay/flags. Height is separate.
-
-- overlay shape: `0..=11`
-- overlay rotation: `0..=3`
-- terrain storage is sparse
-- absent terrain = `TerrainTile::default()`
-- setting terrain to default removes the sparse entry
-
-### Heights
-
-Height vertices are explicit. Missing height is not numeric zero.
-
-`SetHeight` requires the vertex to exist and its current value to match the operation's `before` value.
-
-### Objects
-
-`ObjectPlacement` uses semantic `ObjectId`, `MapPosition`, validated loc kind, and validated orientation.
-
-- `AddObject` requires absence
-- `RemoveObject` requires presence
+- `TerrainTile` owns underlay/overlay/flags; height is separate
+- overlay shape range is `0..=11`
+- overlay rotation range is `0..=3`
+- terrain storage is sparse; absent terrain is `TerrainTile::default()`
+- missing height is not numeric zero
 
 ### Patch model
 
@@ -101,33 +88,22 @@ MapOp
   RemoveObject { placement }
 ```
 
-`MapPatch::new` derives semantic impact. `MapPatch::inverse` reverses operation order and exactly inverts every operation.
+`MapPatch::new` derives semantic impact. `MapPatch::inverse` reverses operation order and exactly inverts each operation. `MapDocument::validate_patch` validates the complete touched state before mutation, and `MapDocument::apply_patch` applies only after full validation succeeds.
 
-### Atomic application
+### History
 
-`MapDocument::validate_patch` simulates touched state, including effects of earlier operations in the same patch, without mutating the real document.
-
-`MapDocument::apply_patch` mutates only after the entire patch validates.
-
-### Change impact
-
-`ChangeImpact` is semantic, not renderer-specific. Current categories cover terrain geometry/material, normals, lighting, collision, locations, and bounds.
-
-### Edit history
-
-`EditHistory` is the headless undo/redo contract around `MapDocument` + `MapPatch`.
+`EditHistory` is failure-safe undo/redo around `MapDocument + MapPatch`.
 
 - one successful non-empty patch = one history entry
 - undo applies the exact inverse
 - redo reapplies the original
-- successful new edits clear redo
-- empty patches create no history
-- failed commit/undo/redo leaves stacks coherent
-- undo/redo return `ChangeImpact`
+- a successful new edit clears redo
+- empty patches do not create history or clear redo
+- failed commit/undo/redo leaves history coherent
 
 ### Read-only query boundary
 
-`MapQuery` currently exposes:
+`MapQuery` exposes only semantic reads currently required by migrated tools:
 
 ```rust
 trait MapQuery {
@@ -137,234 +113,113 @@ trait MapQuery {
 }
 ```
 
-`MapDocument` implements it directly. Do not expand it speculatively.
+Do not expand it speculatively.
 
-## Merged foundation history
+## Merged systems
 
 ### PR #33: edit-domain foundation
 
-- Branch: `refactor/editor-edit-domain-foundation`
-- Final pre-merge head: `ded9c670dd2c3658785ea462cded34dcd010bd7c`
-- Squash merge: `5c5eef3bde696b20ae0319867e6e84567701ebf6`
-- Post-merge handoff/main: `31da7b55e45557cd9f4e581b3798310ff26b53d3`
-- CI `38239181734`: Tier A/B/C PASS
+Delivered `osrs-edit`, semantic values, the architecture guard, `ChangeImpact`, reversible `MapPatch`, authoritative `MapDocument`, atomic validation/application, and exact inverse round trips.
 
-Delivered `osrs-edit`, semantic values, architecture guard, `ChangeImpact`, reversible `MapPatch`, authoritative `MapDocument`, atomic validation/application, and exact inverse round trips.
+- squash merge: `5c5eef3bde696b20ae0319867e6e84567701ebf6`
 
 ### PR #34: history/query foundation
 
-- Branch: `refactor/editor-edit-history-foundation`
-- Final pre-merge head: `4847c1edf45d969223d6b9ad32be48b60f01bbf8`
-- Squash merge: `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`
-- Post-merge main: `32e65e93a1d67282059098bc482aa8bcd6c10a3e`
-- Post-merge CI `38259779463`: Tier A/B/C PASS
-
 Delivered failure-safe `EditHistory` and read-only `MapQuery`.
+
+- squash merge: `cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`
+
+### PR #35: semantic path commit + simplified fitter
+
+Delivered:
+
+- terrain-path commits through one semantic `MapPatch` before legacy projection
+- one laid path remains one logical undo step
+- deterministic Catmull-Rom + true OSRS overlay-shape fitter
+- independent quality fixtures and locked deterministic outputs
+- simplified Spline settings: `width`, `edge_weight`, `snap_points`
+- removal of the legacy planner/router/network/wall/noise stack and obsolete fixtures
+
+Do not reintroduce pathfinding, wall mode, topology repair, automatic joining, or hidden obstacle routing without an explicit product decision.
+
+- merged/current `main` base: `cf552b734e1fdef54bf90b3b5c08211433f56a40`
+- latest observed full `main` validation: Tier A/B/C PASS
 
 ## Current branch
 
-Branch: `refactor/editor-path-commit-domain`
+Branch: `refactor/editor-session-domain`
 
-Base: validated `main` head `32e65e93a1d67282059098bc482aa8bcd6c10a3e`.
+Base: validated `main` head `cf552b734e1fdef54bf90b3b5c08211433f56a40`.
 
-### Checkpoint 10: semantic terrain-path commit bridge
+This branch is the first step toward making the editor application own persistent authoritative semantic state. It must remain narrow until the session contract is integrated safely.
 
-Normal terrain-path commits were moved across the semantic edit boundary before changing the generator.
+### Checkpoint 14: persistent semantic editor session contract
 
-- `app/path_commit.rs` defines `TerrainPathIntent` and `build_terrain_path_patch`.
-- Touched legacy tile/height values seed a temporary semantic `MapDocument`.
-- The complete laid path becomes one deterministic `MapPatch`.
-- Duplicate tile intents fold to final terrain/height operations per coordinate.
-- Shape/rotation are validated through semantic types.
-- The full semantic patch validates/applies before legacy editor mutation.
-- The result is projected into the current `TileEdit` world layer.
-- Existing dirty-region/rebuild behavior remains unchanged.
-- One laid path remains one existing undo step.
+Added `crates/osrs-editor/src/session/` with an application-layer `EditorSession` around the already-tested headless domain primitives.
 
-Checkpoint 10 final head:
+```rust
+EditorSession {
+    document: MapDocument,
+    history: EditHistory,
+    revision: u64,
+}
 
-- `7a9fc7af761046093bbf15ffa229acfa2cc828f6`
-- CI `38261950847`: Tier A/B/C PASS
-
-### Checkpoint 11: simplified true-shape overlay fitter
-
-Direction changed intentionally: the path tool should draw the band the user asks for, not secretly solve a routing problem.
-
-Removed from the product and source tree for now:
-
-- Walls mode and wall/tower object emission
-- obstacle avoidance and rerouting
-- A*/cost-grid pathfinding
-- path-network/auto-connect behavior
-- wander/noise generation
-- width-variation generation
-- preserve-existing-overlay topology repair
-- old planner/router/network/wall code and obsolete regression/fixture files
-
-The runtime `terrain_path` implementation is intentionally small:
-
-```text
-terrain_path/
-  fitter.rs
-  mod.rs
-  shapes.rs
+EditCommit {
+    revision: u64,
+    impact: ChangeImpact,
+}
 ```
 
-`quality.rs` is present only under `#[cfg(test)]` for the Checkpoint 12 regression harness.
+Contract established by this checkpoint:
 
-#### Active fitting pipeline
+- `MapDocument` is owned persistently by the session
+- `EditHistory` remains the sole undo/redo implementation; the application layer does not duplicate its rules
+- successful non-empty commit advances the session revision exactly once
+- successful undo advances the session revision exactly once
+- successful redo advances the session revision exactly once
+- empty commits are true no-ops and preserve redo history
+- undo/redo with no available entry do not advance revision
+- rejected commits do not mutate the document, history, or revision
+- failed undo does not advance revision or corrupt the history stack
+- callers currently receive read-only document access through `document()`
+- each successful state transition returns semantic `ChangeImpact` with its new revision
 
-1. User control points are smoothed with clamped uniform Catmull-Rom.
-2. Fewer than three control points remain unchanged, so two points are exactly a straight segment.
-3. Curved segments use 12 samples per control segment and preserve exact endpoints.
-4. Candidate tiles come from segment-local boxes expanded by half the requested width.
-5. Tile centers farther than `half_width + 0.75` are rejected early.
-6. Every remaining tile gets an 8x8 ideal coverage mask from exact point-to-polyline distance.
-7. Candidate overlay masks come from audited `osrs_scene::ShapedTerrainSurface` geometry through `terrain_path::overlay_triangles`; shape tables/rotation formulas are not duplicated.
-8. Candidate set is EMPTY first, then stored full-tile shape `0`, then stored shapes `1..=11` at rotations `0..=3`.
-9. Initial selection maximizes 8x8 area agreement. Exact ties retain the earlier candidate, so EMPTY wins exact total ties.
-10. If `edge_weight > 0`, up to six deterministic coordinate-descent passes add shared-edge mismatch cost against current neighboring choices.
-11. Empty fits are omitted from output.
-12. Fitted tiles still commit through the Checkpoint 10 semantic `MapPatch` boundary as one undo step.
+Focused regression coverage was added for all of the above behaviors.
 
-#### Conservative improvements over the supplied PathOverlayFitter idea
+Implementation head before this handoff update:
 
-Only low-risk improvements were added:
-
-- signed world coordinates work directly; there is no fixed `mapWidth`/`mapLength` clamp assumption
-- exact existing renderer-derived OSRS shape geometry is reused instead of copying shape tables or rotation formulas
-- segment-local candidate boxes avoid scanning a huge global rectangle on long diagonal paths while preserving the possible touched area
-- persisted/UI `width` and `edge_weight` are finite and clamped
-- deterministic `BTreeMap`/`BTreeSet` traversal is used where ordering matters
-
-Deliberately not added:
-
-- randomness
-- annealing/global optimization
-- hidden obstacle logic
-- topology repair
-- automatic joining to existing overlays
-- new shape heuristics beyond area agreement + shared-edge agreement
-
-The goal is to make the simple algorithm reliable before adding sophistication.
-
-#### Simplified Spline settings
-
-`SplineSettings` now contains only:
-
-- `width`
-- `edge_weight`
-- `snap_points`
-
-Persisted values are sanitized to the same ranges the UI exposes. Old planner/wall settings are no longer retained as compatibility fields.
-
-Checkpoint 11 validated final head:
-
-- `83e3bd1f68a6550a467e18ee6ee5bc588fb049fe`
-- CI `38266732098`: Tier A/B/C PASS
-
-### Checkpoint 12: deterministic fitter quality fixtures
-
-The production fitter was intentionally left unchanged. This checkpoint added an independent black-box quality harness in `terrain_path/quality.rs` to determine whether the simple algorithm actually needed more heuristics before changing it.
-
-Representative fixture matrix:
-
-1. horizontal straight path
-2. vertical straight path
-3. 45-degree diagonal
-4. shallow diagonal
-5. gentle curve
-6. tight multi-turn curve
-7. narrow path
-8. wide path
-9. exact tile-corner crossing
-10. negative world coordinates
-
-The harness independently:
-
-- rasterizes the requested band rather than calling the fitter's private scoring helpers
-- samples selected coverage from renderer-derived overlay triangles
-- measures 8x8 ideal-vs-selected coverage agreement
-- measures opposing shared-edge strip disagreement
-- compares default `edge_weight = 0.75` against independent `edge_weight = 0` fitting on the basic straight/diagonal fixtures
-- runs the same fixtures twice to prove repeatability
-- locks stable FNV-1a hashes over `(tile_x, tile_y, shape, orientation)` output for all ten fixtures
-
-Quality contract currently enforced:
-
-- ordinary straight/diagonal/gentle fixtures require at least 82% sampled coverage agreement
-- tight/corner/negative fixtures require at least 80% sampled coverage agreement
-- the wide fixture requires at least 86% sampled coverage agreement
-- edge mismatch ceilings are 35-45% depending on fixture difficulty
-- default edge relaxation must not increase shared-edge mismatches on the four basic fixtures
-- every fixture output must be repeatable and match its locked golden hash
-
-The first measurement run intentionally used zero placeholder hashes. CI `38343977544` proved all substantive checks passed and failed only the deliberately unseeded snapshot assertion. That run produced the canonical ten output hashes, which were then locked.
-
-Checkpoint 12 implementation head with locked snapshots:
-
-- `1260f359f196b561948ad41c7186d00f4670d5a3`
-- CI `38344200202`: Tier A/B/C PASS
-- Tier A architecture/format/workspace/strict Clippy: PASS
-- Tier B full workspace tests including all fitter quality fixtures: PASS
+- `5ce2874e12b5ffb3fa019c3cca69c0973b4e9eee`
+- CI `38359568161`: Tier A/B/C PASS
+- Tier A architecture, formatting, workspace check, strict Clippy: PASS
+- Tier B full workspace tests: PASS
 - Tier C M3-M9 semantic/reference parity: PASS
 
-Checkpoint 12 final handoff head:
+### Intentional boundary at Checkpoint 14
 
-- `3fe38c8cd518b29c013310882cebb9efb58c643f`
-- CI `38344475400`: Tier A/B/C PASS
+`EditorSession` is **not yet installed into `EditorApp`**. The existing legacy fields (`edited`, legacy history/redo stacks, world `TerrainEdits`, etc.) remain untouched in this checkpoint.
 
-Conclusion from the fixture evidence: **do not add another fitter heuristic now.** The simple deterministic algorithm meets the current representative coverage/continuity contract, and extra routing/topology/global-optimization complexity would add risk without a demonstrated failure to solve.
+The root module is temporarily allowed as dead code because the contract is compiled and tested one checkpoint before runtime ownership wiring. Remove that allowance when `EditorApp` begins owning the session.
 
-Any future intentional fitter change must review both quality metrics and golden-hash changes before updating the snapshots.
+No Paint, Height, Object, renderer, cache loading, world-worker, or 117HD behavior was changed.
 
-### Checkpoint 13: branch readiness
+## Current architecture debt
 
-The complete branch was audited as one coherent PR before merge.
+The editor still has parallel legacy edit authority in application/world structures. The largest remaining debt is that `EditorApp` still owns legacy edited-tile state and undo/redo independently from the new semantic session.
 
-Readiness evidence against `main`:
+The migration must remove that authority deliberately, one tool/system at a time. Do not create a second permanent synchronization model.
 
-- compare status: ahead
-- branch commits ahead: 23
-- branch commits behind: 0
-- merge base: `32e65e93a1d67282059098bc482aa8bcd6c10a3e`
-- audited pre-readiness head: `3fe38c8cd518b29c013310882cebb9efb58c643f`
-- no existing PR was present for this branch at audit time
+## Next checkpoint
 
-Scope audit:
+Do **not** migrate Paint/Height/Objects yet.
 
-- semantic path-commit bridge is confined to the editor/application boundary plus the `osrs-edit` dependency
-- simplified Spline UI/settings changes are limited to the active path controls
-- active `terrain_path` directory contains exactly `fitter.rs`, `mod.rs`, `quality.rs`, and `shapes.rs`
-- `quality.rs` is test-only through `#[cfg(test)]`
-- legacy `atlas`, `model`, `planner`, `router`, `scene`, `settings`, `walls`, noise/resample/grammar code, old golden/fuzz/reference material, and legacy stress/network regressions are deletions in the branch diff
-- no `.github` workflow or temporary CI/helper file is changed by the branch
-- normal workspace compilation plus Tier A/B/C validation proves there are no live module/import references to the removed generator stack
-- the current Spline implementation and shelf explicitly contain no obstacle routing, path-network, or wall mode behavior
-- no brush/height/object migration, revision synchronization, renderer, or 117HD feature work was pulled into this branch
+Next, integrate one persistent `EditorSession` into `EditorApp` ownership with no behavior cutover:
 
-The intended PR is therefore one coherent migration:
+1. add the session as a real `EditorApp` field
+2. initialize it deterministically
+3. remove the temporary dead-code allowance
+4. expose only the minimum internal access needed for later adapters
+5. add lifecycle/ownership tests where practical
+6. prove existing editor behavior and Tier A/B/C remain unchanged
+7. stop and report before moving any tool commits into the session
 
-1. route laid terrain paths through the semantic `MapPatch` boundary
-2. replace the legacy routing/network/wall generator with the deterministic true-shape overlay fitter
-3. simplify the Spline settings/UI to the fitter's real inputs
-4. enforce the behavior with independent deterministic quality fixtures and locked outputs
-
-Validation before the readiness documentation commit:
-
-- exact head `3fe38c8cd518b29c013310882cebb9efb58c643f`
-- CI `38344475400`: Tier A/B/C PASS
-
-Merge rule: the readiness documentation head must also pass Tier A/B/C, the PR must remain mergeable against `main`, and the branch must not drift before squash merge.
-
-## Current boundaries
-
-The editor still does **not** own a persistent `MapDocument` + `EditHistory` session. Checkpoint 10 uses a touched-state semantic snapshot and projects the validated patch into the existing legacy editor/world-edit layer. That broader ownership migration remains later work.
-
-Do not reintroduce walls or pathfinding without an explicit decision.
-
-Do not broaden this branch into brush/height/object-tool migration, revision synchronization, renderer, or 117HD work.
-
-## Next checkpoint after merge
-
-Stop after merging this branch. Do not start another feature branch until the next explicit direction.
+The following checkpoint after that should solve semantic loaded-region ingestion before the legacy edit stores are removed. Do not seed authoritative session state by scraping renderer geometry or picker output.
