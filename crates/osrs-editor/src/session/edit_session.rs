@@ -51,6 +51,7 @@ impl EditorSession {
     }
 
     /// Regions an interactive edit has touched (and that therefore keep their document state).
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub fn dirty_regions(&self) -> impl Iterator<Item = RegionCoord> + '_ {
         self.dirty_regions.iter().copied()
     }

@@ -331,6 +331,10 @@ Canonical form: per tile `overlay, settings, underlay, height`, then a trailing 
 
 Not done: writing into `.dat2`/`.idx` and updating the reference table (a loadable repacked cache), project save/load, version/CRC bookkeeping in exported containers. Placement note: `session::export` lives in `osrs-editor` because it needs `adapt_region_map`; move it down with that adapter if another consumer appears.
 
+### Phase 7 gate: WebAssembly portability
+
+`cargo check --target wasm32-unknown-unknown` passes for every library crate and `cargo clippy --target wasm32-unknown-unknown -p osrs-editor -- -D warnings` is clean (verified locally). Native-only code is cfg-gated: `session::export` and `app/export.rs` have a stub `app/export_web.rs` on wasm. The gate is added to the Tier A CI job (`.github/workflows/ci.yml`); that workflow edit has NOT been executed on GitHub from this environment, so treat its first run as the verification.
+
 ## Remaining migration roadmap
 
 ### Phase 2: decompose EditorApp state ownership

@@ -9,6 +9,7 @@ mod camera_ops;
 mod context_menu;
 mod drawer;
 mod editing;
+#[cfg_attr(target_arch = "wasm32", path = "app/export_web.rs")]
 mod export;
 mod floating;
 mod gizmo;

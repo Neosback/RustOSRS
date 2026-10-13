@@ -112,7 +112,6 @@ fn entry_json(
 
 impl EditorApp {
     /// File menu entry. Disabled until an edit exists, or when the cache is not a folder.
-    #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn export_menu(&mut self, ui: &mut egui::Ui) {
         let editable = self.session.dirty_regions().next().is_some();
         let enabled =
@@ -132,10 +131,6 @@ impl EditorApp {
         }
     }
 
-    #[cfg(target_arch = "wasm32")]
-    pub(super) fn export_menu(&mut self, _ui: &mut egui::Ui) {}
-
-    #[cfg(not(target_arch = "wasm32"))]
     fn start_export(&mut self) {
         let Some(out_dir) = rfd::FileDialog::new()
             .set_title("Choose an empty folder for the exported map squares")
