@@ -1,10 +1,13 @@
 //! Mixed editor history routing and worker projection.
 //!
-//! Semantic Paint, Height, and Object actions keep their authoritative before/after state in
+//! Semantic Paint, Height, Object, and Path actions keep their authoritative before/after state in
 //! `EditorSession::history`. This module owns only the chronological application marker and the
 //! transitional worker/render projection required after semantic undo/redo.
 
-use super::{EditorApp, TileKey, project_height_values, project_paint_values};
+use super::{
+    EditorApp, TileKey, path::project_semantic_path_values, project_height_values,
+    project_paint_values,
+};
 use crate::app::object_tool::{ObjectHistoryRoute, build_object_history_projection};
 use crate::paint::{Brush, TileValues};
 use eframe::egui;
@@ -33,10 +36,21 @@ pub(super) struct SemanticHeightHistory {
     pub(super) keys: Vec<TileKey>,
 }
 
+/// Global-history routing metadata for one semantic terrain-Path transaction.
+///
+/// Terrain and optional Height before/after state remain exclusively in `EditorSession::history`.
+/// The route only identifies touched worker tiles and whether Height participates in projection.
+#[derive(Debug, Clone)]
+pub(super) struct SemanticPathHistory {
+    pub(super) keys: Vec<TileKey>,
+    pub(super) include_height: bool,
+}
+
 /// One chronological editor-history marker.
 ///
-/// Paint, Height, and Objects use only semantic routing metadata. `changes`, `removed`, and `added`
-/// remain transitional storage for editor actions that have not migrated to the persistent session.
+/// Paint, Height, Objects, and Path use only semantic routing metadata. `changes`, `removed`, and
+/// `added` remain transitional storage for editor actions that have not migrated to the persistent
+/// session.
 #[derive(Debug, Clone, Default)]
 pub(in crate::app) struct EditStep {
     pub(super) changes: Vec<(TileKey, TileValues, TileValues)>,
@@ -45,6 +59,7 @@ pub(in crate::app) struct EditStep {
     pub(super) semantic_paint: Option<SemanticPaintHistory>,
     pub(super) semantic_height: Option<SemanticHeightHistory>,
     pub(super) semantic_object: Option<ObjectHistoryRoute>,
+    pub(super) semantic_path: Option<SemanticPathHistory>,
 }
 
 impl EditStep {
@@ -68,11 +83,21 @@ impl EditStep {
             ..Self::default()
         }
     }
+
+    pub(super) fn semantic_path(keys: Vec<TileKey>, include_height: bool) -> Self {
+        Self {
+            semantic_path: Some(SemanticPathHistory {
+                keys,
+                include_height,
+            }),
+            ..Self::default()
+        }
+    }
 }
 
 impl EditorApp {
     /// One finished undo step. Semantic tools carry only projection-routing metadata; remaining
-    /// legacy terrain/path actions still carry their before/after values here.
+    /// legacy actions still carry their before/after values here.
     pub(in crate::app) fn push_step(&mut self, step: EditStep) {
         self.history.push(step);
         if self.history.len() > HISTORY_LIMIT {
@@ -160,6 +185,39 @@ impl EditorApp {
         }
         self.send_edits(edits);
         Ok(height.keys.len())
+    }
+
+    fn project_semantic_path_history(
+        &mut self,
+        path: &SemanticPathHistory,
+    ) -> Result<usize, &'static str> {
+        let mut projected = Vec::with_capacity(path.keys.len());
+        for key in &path.keys {
+            let current = self
+                .current_tile(*key)
+                .ok_or("a Path tile is no longer available to the projection adapter")?;
+            let values = project_semantic_path_values(
+                self.session.document(),
+                *key,
+                current,
+                path.include_height,
+            )
+            .ok_or("semantic Path state cannot be represented by the legacy projection")?;
+            projected.push((*key, current, values));
+        }
+
+        let mut edits = Vec::new();
+        for (key, current, values) in projected {
+            if path.include_height {
+                self.height_edited.insert(key);
+            }
+            if values != current {
+                self.edited.insert(key, values);
+                edits.push(self.edit_for(key, values));
+            }
+        }
+        self.send_edits(edits);
+        Ok(path.keys.len())
     }
 
     fn project_semantic_object_history(
@@ -281,6 +339,51 @@ impl EditorApp {
                     self.history.push(step);
                     self.notice = Some((
                         format!("Height undo was rejected by the semantic session: {error:?}"),
+                        Instant::now(),
+                    ));
+                }
+            }
+            return;
+        }
+        if let Some(path) = step.semantic_path.clone() {
+            match self.session.undo() {
+                Ok(Some(_)) => match self.project_semantic_path_history(&path) {
+                    Ok(count) => {
+                        self.notice = Some((
+                            format!(
+                                "Undid {count} path tile{}",
+                                if count == 1 { "" } else { "s" }
+                            ),
+                            Instant::now(),
+                        ));
+                        self.redo_stack.push(step);
+                    }
+                    Err(message) => {
+                        let rollback_succeeded = matches!(self.session.redo(), Ok(Some(_)));
+                        self.history.push(step);
+                        self.notice = Some((
+                            if rollback_succeeded {
+                                format!("Path undo was rolled back: {message}")
+                            } else {
+                                format!(
+                                    "Path undo projection failed and rollback failed: {message}"
+                                )
+                            },
+                            Instant::now(),
+                        ));
+                    }
+                },
+                Ok(None) => {
+                    self.history.push(step);
+                    self.notice = Some((
+                        "Path undo history is out of sync with the semantic session".to_owned(),
+                        Instant::now(),
+                    ));
+                }
+                Err(error) => {
+                    self.history.push(step);
+                    self.notice = Some((
+                        format!("Path undo was rejected by the semantic session: {error:?}"),
                         Instant::now(),
                     ));
                 }
@@ -426,6 +529,51 @@ impl EditorApp {
                     self.redo_stack.push(step);
                     self.notice = Some((
                         format!("Height redo was rejected by the semantic session: {error:?}"),
+                        Instant::now(),
+                    ));
+                }
+            }
+            return;
+        }
+        if let Some(path) = step.semantic_path.clone() {
+            match self.session.redo() {
+                Ok(Some(_)) => match self.project_semantic_path_history(&path) {
+                    Ok(count) => {
+                        self.notice = Some((
+                            format!(
+                                "Redid {count} path tile{}",
+                                if count == 1 { "" } else { "s" }
+                            ),
+                            Instant::now(),
+                        ));
+                        self.history.push(step);
+                    }
+                    Err(message) => {
+                        let rollback_succeeded = matches!(self.session.undo(), Ok(Some(_)));
+                        self.redo_stack.push(step);
+                        self.notice = Some((
+                            if rollback_succeeded {
+                                format!("Path redo was rolled back: {message}")
+                            } else {
+                                format!(
+                                    "Path redo projection failed and rollback failed: {message}"
+                                )
+                            },
+                            Instant::now(),
+                        ));
+                    }
+                },
+                Ok(None) => {
+                    self.redo_stack.push(step);
+                    self.notice = Some((
+                        "Path redo history is out of sync with the semantic session".to_owned(),
+                        Instant::now(),
+                    ));
+                }
+                Err(error) => {
+                    self.redo_stack.push(step);
+                    self.notice = Some((
+                        format!("Path redo was rejected by the semantic session: {error:?}"),
                         Instant::now(),
                     ));
                 }
