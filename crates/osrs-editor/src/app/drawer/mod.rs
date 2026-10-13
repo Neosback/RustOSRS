@@ -115,7 +115,7 @@ impl EditorApp {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 self.drawer_collapse(ui);
-                let selected = self.selection_tiles.len();
+                let selected = self.interaction.selection_tiles.len();
                 if selected > 0 && !self.prefs.brush.is_empty() {
                     ui.add_space(8.0);
                     if ui
@@ -223,7 +223,7 @@ impl EditorApp {
                 ui.weak(format!("#{id}"));
             }
             ui.separator();
-            let points = self.spline.points.len();
+            let points = self.interaction.spline.points.len();
             ui.weak(format!(
                 "{points} point{}  \u{b7}  {} tiles",
                 if points == 1 { "" } else { "s" },
@@ -241,7 +241,7 @@ impl EditorApp {
                 .on_hover_text("Esc")
                 .clicked()
             {
-                self.spline.points.clear();
+                self.interaction.spline.points.clear();
             }
             if ui
                 .add_enabled(points >= 1, egui::Button::new("Copy"))

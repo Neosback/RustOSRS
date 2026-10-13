@@ -72,7 +72,7 @@ impl EditorApp {
             self.prefs.properties_panel = !self.prefs.properties_panel;
         }
         if toggle_camera {
-            self.camera.mode = match self.camera.mode {
+            self.interaction.camera.mode = match self.interaction.camera.mode {
                 CameraMode::Fly => CameraMode::Orbit,
                 CameraMode::Orbit => CameraMode::Fly,
             };
@@ -84,7 +84,7 @@ impl EditorApp {
             self.escape_action();
         }
         if let Some(plane) = plane {
-            self.view_plane = plane;
+            self.interaction.view_plane = plane;
         }
         self.tool_actions(ctx);
         self.edit_actions(ctx);
@@ -98,39 +98,40 @@ impl EditorApp {
         let delta = response.drag_delta();
         let shift = ctx.input(|i| i.modifiers.shift);
         // Right drag moves the view in both modes; the left button is left to selection and tools.
-        match self.camera.mode {
+        match self.interaction.camera.mode {
             CameraMode::Fly => {
                 if response.dragged_by(egui::PointerButton::Secondary) && !shift {
-                    self.camera.look(delta.x, delta.y);
+                    self.interaction.camera.look(delta.x, delta.y);
                 }
                 if response.dragged_by(egui::PointerButton::Middle)
                     || (response.dragged_by(egui::PointerButton::Secondary) && shift)
                 {
-                    self.camera.pan(delta.x, delta.y);
+                    self.interaction.camera.pan(delta.x, delta.y);
                 }
             }
             CameraMode::Orbit => {
                 if response.dragged_by(egui::PointerButton::Middle)
                     || (response.dragged_by(egui::PointerButton::Secondary) && shift)
                 {
-                    self.camera.pan(delta.x, delta.y);
+                    self.interaction.camera.pan(delta.x, delta.y);
                 } else if response.dragged_by(egui::PointerButton::Secondary) {
-                    self.camera.orbit(delta.x, delta.y);
+                    self.interaction.camera.orbit(delta.x, delta.y);
                 }
             }
         }
         if response.hovered() {
             let scroll = ctx.input(|i| i.smooth_scroll_delta.y);
-            match self.camera.mode {
+            match self.interaction.camera.mode {
                 CameraMode::Fly => {
                     if scroll != 0.0 {
-                        self.camera.speed =
-                            (self.camera.speed * (1.0 + scroll * 0.002)).clamp(50.0, 20_000.0);
+                        self.interaction.camera.speed = (self.interaction.camera.speed
+                            * (1.0 + scroll * 0.002))
+                            .clamp(50.0, 20_000.0);
                     }
                 }
                 CameraMode::Orbit => {
                     let pinch = ctx.input(|i| i.zoom_delta());
-                    self.camera.zoom(scroll + (pinch - 1.0) * 500.0);
+                    self.interaction.camera.zoom(scroll + (pinch - 1.0) * 500.0);
                 }
             }
         }
@@ -146,7 +147,7 @@ impl EditorApp {
             let right = axis("camera.right", "camera.left") * boost;
             let up = axis("camera.up", "camera.down") * boost;
             if forward != 0.0 || right != 0.0 || up != 0.0 {
-                self.camera.translate(forward, right, up, dt);
+                self.interaction.camera.translate(forward, right, up, dt);
             }
         });
     }

@@ -36,8 +36,8 @@ pub struct ObjectDrag {
 impl EditorApp {
     /// What the map file says about each selected object.
     pub(super) fn selected_specs(&self) -> Vec<LocSpec> {
-        let mut objects = self.selection_objects.clone();
-        if let Some(selected) = &self.selected
+        let mut objects = self.interaction.selection_objects.clone();
+        if let Some(selected) = &self.interaction.selected
             && !objects
                 .iter()
                 .any(|o| o.region == selected.region && o.index == selected.index)
@@ -104,7 +104,7 @@ impl EditorApp {
         self.send_loc_edits(edits);
         self.push_step(EditStep::semantic_object(removed, added.clone()));
         self.clear_selection();
-        self.pending_reselect = added;
+        self.interaction.pending_reselect = added;
         self.notice = Some((label.to_owned(), Instant::now()));
         true
     }
@@ -195,7 +195,7 @@ impl EditorApp {
                 if planes > 0 { "up" } else { "down" }
             ),
         ) {
-            self.view_plane = target;
+            self.interaction.view_plane = target;
         }
     }
 
@@ -247,11 +247,11 @@ impl EditorApp {
 
     /// Select the placements an edit made, once the rebuilt regions are in.
     pub(super) fn resolve_reselect(&mut self) {
-        if self.pending_reselect.is_empty() {
+        if self.interaction.pending_reselect.is_empty() {
             return;
         }
         let mut found = Vec::new();
-        for spec in &self.pending_reselect {
+        for spec in &self.interaction.pending_reselect {
             let Some(info) = self.infos.get(&spec.region()) else {
                 continue;
             };
@@ -269,10 +269,10 @@ impl EditorApp {
                 });
             }
         }
-        if found.len() == self.pending_reselect.len() {
-            self.selected = found.last().cloned();
-            self.selection_objects = found;
-            self.pending_reselect.clear();
+        if found.len() == self.interaction.pending_reselect.len() {
+            self.interaction.selected = found.last().cloned();
+            self.interaction.selection_objects = found;
+            self.interaction.pending_reselect.clear();
         }
     }
 
@@ -281,7 +281,8 @@ impl EditorApp {
         if self.keys_blocked(ctx)
             || self.quick_open.is_some()
             || !matches!(self.prefs.tool, Tool::Select | Tool::Objects)
-            || (self.selection_objects.is_empty() && self.selected.is_none())
+            || (self.interaction.selection_objects.is_empty()
+                && self.interaction.selected.is_none())
         {
             return;
         }
@@ -312,32 +313,33 @@ impl EditorApp {
         response: &egui::Response,
     ) -> bool {
         if self.prefs.tool != Tool::Objects {
-            self.object_drag = None;
+            self.interaction.object_drag = None;
             return false;
         }
         let primary = egui::PointerButton::Primary;
         if response.drag_started_by(primary)
-            && let Some(object) = &self.hover.object
-            && let Some(tile) = self.hover.tile.map(|p| p.tile)
+            && let Some(object) = &self.interaction.hover.object
+            && let Some(tile) = self.interaction.hover.tile.map(|p| p.tile)
             && self
+                .interaction
                 .selection_objects
                 .iter()
                 .any(|o| o.region == object.region && o.index == object.index)
         {
-            self.object_drag = Some(ObjectDrag {
+            self.interaction.object_drag = Some(ObjectDrag {
                 anchor: tile,
                 specs: self.selected_specs(),
                 delta: (0, 0),
             });
         }
-        let Some(drag) = &mut self.object_drag else {
+        let Some(drag) = &mut self.interaction.object_drag else {
             return false;
         };
-        if let Some(tile) = self.hover.tile.map(|p| p.tile) {
+        if let Some(tile) = self.interaction.hover.tile.map(|p| p.tile) {
             drag.delta = (tile.0 - drag.anchor.0, tile.1 - drag.anchor.1);
         }
         if response.drag_stopped_by(primary) || !ctx.input(|i| i.pointer.primary_down()) {
-            let drag = self.object_drag.take();
+            let drag = self.interaction.object_drag.take();
             if let Some(drag) = drag {
                 self.move_objects(drag.specs, drag.delta);
             }
@@ -355,7 +357,7 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
-        let Some(drag) = &self.object_drag else {
+        let Some(drag) = &self.interaction.object_drag else {
             return;
         };
         let colors = &self.prefs.colors;
@@ -370,7 +372,8 @@ impl EditorApp {
         }
         for spec in &drag.specs {
             let target = (spec.tile.0 + drag.delta.0, spec.tile.1 + drag.delta.1);
-            let Some(corners) = crate::interact::tile_corners(&self.infos, target, self.view_plane)
+            let Some(corners) =
+                crate::interact::tile_corners(&self.infos, target, self.interaction.view_plane)
             else {
                 continue;
             };

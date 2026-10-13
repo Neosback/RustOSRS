@@ -2,6 +2,7 @@
 
 mod init;
 mod input;
+mod interaction_runtime;
 
 mod cache_picker;
 mod camera_ops;
@@ -76,8 +77,8 @@ const ANIMATED_KEY: (i32, i32) = (i32::MIN, i32::MIN);
 
 pub struct EditorApp {
     renderer: render_runtime::RenderRuntime,
-    camera: FlyCamera,
-    view_plane: u8,
+    /// Camera, picking, selection, and in-progress tool gestures.
+    interaction: interaction_runtime::InteractionRuntime,
     /// Persistent authoritative semantic edit state. Legacy edit stores remain projections until
     /// their individual migration checkpoints.
     session: EditorSession,
@@ -101,17 +102,6 @@ pub struct EditorApp {
     /// Background (and the colour holes in the terrain show). RuneLite's default sky is black.
     /// Inspection data of the resident regions (for picking).
     infos: Infos,
-    hover: Pick,
-    selected: Option<ObjectPick>,
-    /// Every selected object (the last added is `selected`) and every selected tile.
-    selection_objects: Vec<ObjectPick>,
-    selection_tiles: HashSet<(i32, i32)>,
-    /// The box being dragged with the Select tool.
-    marquee: Option<selection::Marquee>,
-    /// The spline tool's control points and preview.
-    spline: spline_tool::SplineState,
-    /// A held tool key: the tool to return to on release, the key and when it went down.
-    peek: Option<(crate::paint::Tool, egui::Key, Instant)>,
     /// Floor textures from the world worker, and their egui copies for the palettes.
     floor_textures: Option<Vec<Option<osrs_render::gpu::TextureLayer>>>,
     texture_handles: HashMap<u32, (egui::TextureHandle, osrs_render::TextureAnimationVector)>,
@@ -122,7 +112,6 @@ pub struct EditorApp {
     /// Model triangles of picked objects, keyed by (region, loc index).
     outlines: HashMap<OutlineKey, Arc<Vec<[[i32; 3]; 3]>>>,
     outline_requested: HashSet<OutlineKey>,
-    context_pick: Pick,
     /// Where the viewport context menu (Shift + right click) is open.
     context_menu: Option<egui::Pos2>,
     keymap: Keymap,
@@ -162,14 +151,6 @@ pub struct EditorApp {
     cache_dir: PathBuf,
     cache_build: Option<(u32, String)>,
     cache_error: Option<String>,
-    /// The selected objects being dragged by the Objects tool.
-    object_drag: Option<object_tool::ObjectDrag>,
-    /// The Objects tool's transform gizmo, its drag in progress, and whether it has the pointer.
-    gizmo: transform_gizmo_egui::Gizmo,
-    gizmo_drag: Option<gizmo::GizmoDrag>,
-    gizmo_busy: bool,
-    /// Placements to select once their rebuilt region arrives (after an object edit).
-    pending_reselect: Vec<osrs_world::LocSpec>,
     /// The script language's queue, its window and text.
     script: script::ScriptRunner,
     script_open: bool,
@@ -184,11 +165,6 @@ pub struct EditorApp {
     rail_rect: Option<egui::Rect>,
     /// Where the quick tools HUD (Space) is open.
     quick_open: Option<egui::Pos2>,
-    /// The last tile the cursor was over (the Tile tab keeps showing it after the cursor leaves).
-    last_hover_tile: Option<(i32, i32)>,
-    /// The tile the Inspector shows when it is not following the cursor: the last one selected
-    /// (or the tile under the last object selected).
-    inspect_tile: Option<(i32, i32)>,
     /// Smoke-test hook: exit after this many seconds (`RUSTOSRS_EXIT_AFTER_SECONDS`).
     exit_after_seconds: Option<f32>,
     screenshot: Option<crate::screenshot::ScreenshotHook>,
@@ -217,8 +193,8 @@ impl eframe::App for EditorApp {
         self.plugin_actions(&ctx);
         if let Some((vx, vz)) = self.autofly {
             let step = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
-            self.camera.x += vx * step;
-            self.camera.z += vz * step;
+            self.interaction.camera.x += vx * step;
+            self.interaction.camera.z += vz * step;
         }
         self.rebase_if_needed();
         let phase = Instant::now();
@@ -266,8 +242,8 @@ impl eframe::App for EditorApp {
                     let phase = Instant::now();
                     self.renderer.set_hd_params(self.prefs.hd_params());
                     if let Some(frame) = self.renderer.encode_viewport(FrameParams {
-                        camera: self.camera.reference(width as f32),
-                        view_plane: self.view_plane,
+                        camera: self.interaction.camera.reference(width as f32),
+                        view_plane: self.interaction.view_plane,
                         // The client's `gameCycle & 127`, at 50 cycles per second.
                         tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
                         brightness: self.prefs.brightness,

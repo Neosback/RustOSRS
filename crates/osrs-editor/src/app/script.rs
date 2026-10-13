@@ -134,11 +134,11 @@ impl EditorApp {
                 };
                 self.set_tool(tool);
             }
-            "plane" => self.view_plane = number::<u8>(words.next(), "plane")?.min(3),
+            "plane" => self.interaction.view_plane = number::<u8>(words.next(), "plane")?.min(3),
             "teleport" => {
                 let x = number(words.next(), "x")?;
                 let y = number(words.next(), "y")?;
-                let plane = words.next().map_or(Ok(self.view_plane), |p| {
+                let plane = words.next().map_or(Ok(self.interaction.view_plane), |p| {
                     p.parse::<u8>()
                         .map(|p| p.min(3))
                         .map_err(|_| "plane is not a number".to_owned())
@@ -186,7 +186,9 @@ impl EditorApp {
             "paint" => {
                 let x = number(words.next(), "x")?;
                 let y = number(words.next(), "y")?;
-                if crate::pick::tile_values(&self.infos, (x, y), self.view_plane).is_none() {
+                if crate::pick::tile_values(&self.infos, (x, y), self.interaction.view_plane)
+                    .is_none()
+                {
                     return Ok(Step::Retry);
                 }
                 self.apply_brush_at((x, y));
@@ -220,7 +222,7 @@ impl EditorApp {
                 }
             }
             "camera" => {
-                self.camera.mode = match words.next() {
+                self.interaction.camera.mode = match words.next() {
                     Some("fly") => crate::camera::CameraMode::Fly,
                     Some("orbit") => crate::camera::CameraMode::Orbit,
                     other => return Err(format!("unknown camera {other:?}")),
@@ -235,10 +237,10 @@ impl EditorApp {
                         number::<f32>(Some(y), "y")? + 0.5,
                     ));
                 }
-                self.spline.points = points;
+                self.interaction.spline.points = points;
             }
             "lay" => {
-                if self.spline.points.is_empty() {
+                if self.interaction.spline.points.is_empty() {
                     return Err("no path points".to_owned());
                 }
                 self.commit_spline();
@@ -260,14 +262,14 @@ impl EditorApp {
                     let y1: i32 = number(words.next(), "y1")?;
                     for x in x0.min(x1)..=x0.max(x1) {
                         for y in y0.min(y1)..=y0.max(y1) {
-                            self.selection_tiles.insert((x, y));
+                            self.interaction.selection_tiles.insert((x, y));
                         }
                     }
                 }
                 other => return Err(format!("select object or tiles, not {other:?}")),
             },
             "menu" => {
-                let Some(object) = self.selected.clone() else {
+                let Some(object) = self.interaction.selected.clone() else {
                     return Ok(Step::Retry);
                 };
                 let anchor = self
@@ -278,7 +280,7 @@ impl EditorApp {
                         tile: loc.tile,
                         at: (loc.tile.0 as f32 + 0.5, loc.tile.1 as f32 + 0.5),
                     });
-                self.context_pick = crate::pick::Pick {
+                self.interaction.context_pick = crate::pick::Pick {
                     object: Some(object),
                     tile: anchor,
                 };
@@ -287,7 +289,7 @@ impl EditorApp {
             "move" => {
                 let dx: i32 = number(words.next(), "dx")?;
                 let dy: i32 = number(words.next(), "dy")?;
-                if self.selected.is_none() {
+                if self.interaction.selected.is_none() {
                     return Ok(Step::Retry);
                 }
                 let specs = self.selected_specs();
@@ -306,7 +308,9 @@ impl EditorApp {
                 self.undo();
             }
             "redo" => self.redo(),
-            "delete" | "turn" | "copy" if self.selected.is_none() => return Ok(Step::Retry),
+            "delete" | "turn" | "copy" if self.interaction.selected.is_none() => {
+                return Ok(Step::Retry);
+            }
             "delete" => self.delete_selected_objects(),
             "turn" => self.rotate_selected_objects(1),
             "copy" => self.duplicate_selected_objects(),

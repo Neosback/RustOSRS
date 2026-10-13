@@ -64,7 +64,7 @@ impl EditorApp {
         let Some(position) = self.context_menu else {
             return;
         };
-        let pick = self.context_pick.clone();
+        let pick = self.interaction.context_pick.clone();
         let outcome = match self.prefs.context_menu {
             ContextMenuStyle::Game => self.game_menu(ctx, position, &pick),
             ContextMenuStyle::Editor => self.editor_menu(ctx, position, &pick),
@@ -89,23 +89,26 @@ impl EditorApp {
             }
             MenuAction::SetTool(tool) => self.set_tool(tool),
             MenuAction::Eyedrop(tile) => {
-                if let Some(values) = pick::tile_values(&self.infos, tile, self.view_plane) {
+                if let Some(values) =
+                    pick::tile_values(&self.infos, tile, self.interaction.view_plane)
+                {
                     self.eyedrop(values);
                 }
             }
             MenuAction::ApplyBrush(tile) => self.apply_brush_at(tile),
             MenuAction::SelectTile(tile) => {
-                self.selection_tiles.insert(tile);
+                self.interaction.selection_tiles.insert(tile);
             }
             MenuAction::FillSelection => self.fill_selection(),
             MenuAction::HeightSelection => self.height_on_selection(),
             MenuAction::AddPathPoint(tile) => {
-                self.spline
+                self.interaction
+                    .spline
                     .points
                     .push((tile.0 as f32 + 0.5, tile.1 as f32 + 0.5));
             }
             MenuAction::LayPath => self.commit_spline(),
-            MenuAction::ClearPath => self.spline.points.clear(),
+            MenuAction::ClearPath => self.interaction.spline.points.clear(),
             MenuAction::ClearSelection => self.clear_selection(),
             MenuAction::ObjectOp(object, op) => {
                 self.select_only(object);
@@ -136,7 +139,7 @@ impl EditorApp {
             }
             MenuAction::ClearOverlay(tile) => self.clear_overlay_at(tile),
             MenuAction::TeleportHere((x, y)) => {
-                let plane = self.view_plane;
+                let plane = self.interaction.view_plane;
                 self.teleport_to(Destination::Tile { x, y, plane });
                 self.notice = Some((format!("Teleported to {x}, {y}"), Instant::now()));
             }

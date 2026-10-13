@@ -112,9 +112,9 @@ impl EditorApp {
                 .on_hover_text("Above 100% renders more pixels than the window has and smooths edges; below saves GPU time");
             }
             Row::CameraMode => {
-                let mut at = usize::from(self.camera.mode == CameraMode::Orbit);
+                let mut at = usize::from(self.interaction.camera.mode == CameraMode::Orbit);
                 if crate::theme::segmented(ui, "camera_mode", &mut at, &["Fly", "Orbit"]) {
-                    self.camera.mode = if at == 0 {
+                    self.interaction.camera.mode = if at == 0 {
                         CameraMode::Fly
                     } else {
                         CameraMode::Orbit
@@ -122,11 +122,14 @@ impl EditorApp {
                 }
             }
             Row::FieldOfView => {
-                ui.add(egui::Slider::new(&mut self.camera.fov_degrees, 30.0..=100.0).suffix("°"));
+                ui.add(
+                    egui::Slider::new(&mut self.interaction.camera.fov_degrees, 30.0..=100.0)
+                        .suffix("°"),
+                );
             }
             Row::FlySpeed => {
                 ui.add(
-                    egui::Slider::new(&mut self.camera.speed, 50.0..=20_000.0)
+                    egui::Slider::new(&mut self.interaction.camera.speed, 50.0..=20_000.0)
                         .logarithmic(true)
                         .fixed_decimals(0)
                         .suffix(" u/s"),

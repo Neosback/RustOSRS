@@ -307,7 +307,9 @@ Every file on the debt allowlist is now within the 500-line / 32 KiB cap and `sc
 
 Known remaining smell (move-only, not yet fixed): `routing.rs` holds ~190-line `undo` and `redo`, `commit.rs::end_stroke` ~175 lines, `row_widgets.rs::draw_row` ~365 lines. These exceed the 100-line function guideline and are the next real refactor targets. Submodules use `use super::*;`, matching the existing `app/streaming.rs` style.
 
-Rejected experiment: an `InteractionRuntime` that only renamed ~300 `self.camera`/`self.selected`/... field paths pushed nine frozen-debt files over their no-growth baselines for no encapsulation gain. Revisit it only together with real behavior moves (e.g. selection methods) and the Phase 6 UI splits that shrink those files first. The experiment is kept in `git stash` only.
+### Phase 2.3: InteractionRuntime (field ownership)
+
+`InteractionRuntime` (`app/interaction_runtime.rs`) now owns camera, view plane, hover/context picks, selection (objects, tiles, pending reselect), marquee, spline state, tool peek, object drag, and gizmo state. It was first tried before the size debt was retired and rejected because the ~300 call-site renames pushed frozen files over their baselines; with the debt gone it landed as a field-ownership move only. It is still a plain-fields struct: encapsulating selection behind methods is the follow-up that would make it more than a rename. `EditorApp` is down to 58 direct fields (target: roughly 8-12 subsystem fields).
 
 ## Remaining migration roadmap
 
@@ -317,7 +319,7 @@ Extract one coherent runtime at a time:
 
 1. `RenderRuntime` - done (PR #42)
 2. `WorldRuntime` - done (this branch)
-3. `InteractionRuntime`
+3. `InteractionRuntime` - done (field ownership; behavior encapsulation pending)
 4. `ProjectRuntime`
 5. `UiRuntime`
 6. `DiagnosticsRuntime`
@@ -372,4 +374,4 @@ Resume on separate focused branches once editor authority/projection boundaries 
 
 ## Next boundary
 
-With the file-size debt gone, the `InteractionRuntime` extraction can be retried (see rejected experiment). Other candidates: break up the long functions listed above, Phase 3 central edit gateway, Phase 5 projection service, Phase 7 WASM gate.
+Next candidates: encapsulate selection behind `InteractionRuntime` methods, `ProjectRuntime`/`UiRuntime` field extractions, break up the long functions listed above, Phase 3 central edit gateway, Phase 5 projection service, Phase 7 WASM gate.

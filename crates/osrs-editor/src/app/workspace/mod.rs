@@ -42,15 +42,19 @@ impl EditorApp {
     pub(super) fn tile_info_lines(&self) -> Option<Vec<(String, String)>> {
         // With nothing under the cursor the last tile stays, so the HUD does not blink out.
         let tile = self
+            .interaction
             .hover
             .tile
             .map(|pick| pick.tile)
-            .or(self.last_hover_tile)?;
+            .or(self.interaction.last_hover_tile)?;
         let values = self.tile_now(tile)?;
         let mut lines = vec![
             (
                 "Tile".to_owned(),
-                format!("{}, {}  \u{b7}  plane {}", tile.0, tile.1, self.view_plane),
+                format!(
+                    "{}, {}  \u{b7}  plane {}",
+                    tile.0, tile.1, self.interaction.view_plane
+                ),
             ),
             (
                 "Region".to_owned(),
@@ -84,7 +88,7 @@ impl EditorApp {
                 ),
             ),
         ];
-        if let Some(object) = &self.hover.object
+        if let Some(object) = &self.interaction.hover.object
             && let Some(loc) = self
                 .infos
                 .get(&object.region)

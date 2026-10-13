@@ -36,9 +36,9 @@ impl EditorApp {
     /// The settings as they are right now: the prefs plus the runtime state that persists.
     pub(super) fn settings_snapshot(&self) -> Settings {
         Settings {
-            fov_degrees: self.camera.fov_degrees,
-            fly_speed: self.camera.speed,
-            orbit_camera: self.camera.mode == CameraMode::Orbit,
+            fov_degrees: self.interaction.camera.fov_degrees,
+            fly_speed: self.interaction.camera.speed,
+            orbit_camera: self.interaction.camera.mode == CameraMode::Orbit,
             keymap: self.keymap.to_saved(),
             plugins: self
                 .plugins
@@ -53,9 +53,9 @@ impl EditorApp {
     pub(super) fn apply_settings(&mut self, settings: Settings, ctx: &egui::Context) {
         let settings = sanitize_loaded_settings(settings);
         crate::theme::set_theme(ctx, crate::theme::ALL[settings.appearance]);
-        self.camera.fov_degrees = settings.fov_degrees;
-        self.camera.speed = settings.fly_speed;
-        self.camera.mode = if settings.orbit_camera {
+        self.interaction.camera.fov_degrees = settings.fov_degrees;
+        self.interaction.camera.speed = settings.fly_speed;
+        self.interaction.camera.mode = if settings.orbit_camera {
             CameraMode::Orbit
         } else {
             CameraMode::Fly

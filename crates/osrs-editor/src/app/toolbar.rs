@@ -16,12 +16,12 @@ impl EditorApp {
             ui.horizontal(|ui| {
                 ui.label("Plane");
                 for plane in 0..4_u8 {
-                    ui.selectable_value(&mut self.view_plane, plane, plane.to_string())
+                    ui.selectable_value(&mut self.interaction.view_plane, plane, plane.to_string())
                         .on_hover_text(format!("Show plane {plane}"));
                 }
                 ui.separator();
                 ui.selectable_value(
-                    &mut self.camera.mode,
+                    &mut self.interaction.camera.mode,
                     CameraMode::Fly,
                     if compact {
                         icons::FLY.to_owned()
@@ -31,7 +31,7 @@ impl EditorApp {
                 )
                 .on_hover_text("Fly camera: right drag looks, WASD moves");
                 ui.selectable_value(
-                    &mut self.camera.mode,
+                    &mut self.interaction.camera.mode,
                     CameraMode::Orbit,
                     if compact {
                         icons::ORBIT.to_owned()

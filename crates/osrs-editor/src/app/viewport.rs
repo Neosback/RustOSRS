@@ -25,40 +25,40 @@ impl EditorApp {
             Some(pointer)
         };
         let Some(position) = response.hover_pos().or_else(over_hud) else {
-            self.hover = Pick::default();
+            self.interaction.hover = Pick::default();
             // The pointer left the viewport: a stroke or box in progress ends here.
             if !response.ctx.input(|i| i.pointer.primary_down()) {
                 self.end_stroke();
-                self.marquee = None;
+                self.interaction.marquee = None;
             }
             return;
         };
         let ray = pick::ray_through_pixel(
-            &self.camera,
+            &self.interaction.camera,
             self.renderer.render_origin(),
             width as f32,
             height as f32,
             (position.x - rect.min.x) * pixels_per_point,
             (position.y - rect.min.y) * pixels_per_point,
         );
-        self.hover = pick::pick(&self.infos, &ray, self.view_plane);
+        self.interaction.hover = pick::pick(&self.infos, &ray, self.interaction.view_plane);
         // Selecting tools read the tile an object stands on, not the ground the ray reaches behind it.
         if matches!(
             self.prefs.tool,
             crate::paint::Tool::Select | crate::paint::Tool::Objects
-        ) && let Some(object) = &self.hover.object
+        ) && let Some(object) = &self.interaction.hover.object
             && let Some(loc) = self
                 .infos
                 .get(&object.region)
                 .and_then(|info| info.locs.get(object.index))
         {
-            self.hover.tile = Some(pick::TilePick {
+            self.interaction.hover.tile = Some(pick::TilePick {
                 tile: loc.tile,
                 at: (loc.tile.0 as f32 + 0.5, loc.tile.1 as f32 + 0.5),
             });
         }
-        if let Some(pick) = self.hover.tile {
-            self.last_hover_tile = Some(pick.tile);
+        if let Some(pick) = self.interaction.hover.tile {
+            self.interaction.last_hover_tile = Some(pick.tile);
         }
         // The brush tools keep the left button for painting; Select clicks and boxes.
         self.brush_input(&response.ctx, response);
@@ -72,13 +72,13 @@ impl EditorApp {
             height,
         );
         if response.secondary_clicked() && response.ctx.input(|i| i.modifiers.shift) {
-            self.context_pick = self.hover.clone();
+            self.interaction.context_pick = self.interaction.hover.clone();
             self.context_menu = response.interact_pointer_pos();
         }
         let wanted: Vec<ObjectPick> = [
-            self.hover.object.clone(),
-            self.selected.clone(),
-            self.context_pick.object.clone(),
+            self.interaction.hover.object.clone(),
+            self.interaction.selected.clone(),
+            self.interaction.context_pick.object.clone(),
         ]
         .into_iter()
         .flatten()
@@ -114,7 +114,7 @@ impl EditorApp {
             };
             let to_screen = |point: [i32; 3]| {
                 pick::project(
-                    &self.camera,
+                    &self.interaction.camera,
                     self.renderer.render_origin(),
                     width as f32,
                     height as f32,
@@ -156,14 +156,14 @@ impl EditorApp {
             painter.add(egui::Shape::mesh(mesh));
         };
         let colors = &self.prefs.colors;
-        if let Some(object) = &self.hover.object {
+        if let Some(object) = &self.interaction.hover.object {
             outline(
                 object,
                 colors.get(ColorKey::ObjectHoverFill),
                 colors.get(ColorKey::ObjectHoverOutline),
             );
         }
-        if let Some(object) = &self.selected {
+        if let Some(object) = &self.interaction.selected {
             outline(
                 object,
                 colors.get(ColorKey::SelectionFill),
@@ -173,7 +173,7 @@ impl EditorApp {
         // The hovered tile, outlined like RuneLite's tile indicator; with a brush tool, the tiles
         // the brush would paint (orange), or grey when nothing is armed.
         if self.prefs.hover_tile
-            && let Some(tile) = &self.hover.tile
+            && let Some(tile) = &self.interaction.hover.tile
         {
             let brushing = self.prefs.tool != crate::paint::Tool::Select;
             let tiles = if brushing {
@@ -198,7 +198,8 @@ impl EditorApp {
                 )
             };
             for tile in tiles {
-                let Some(corners) = interact::tile_corners(&self.infos, tile, self.view_plane)
+                let Some(corners) =
+                    interact::tile_corners(&self.infos, tile, self.interaction.view_plane)
                 else {
                     continue;
                 };
@@ -206,7 +207,7 @@ impl EditorApp {
                     .iter()
                     .filter_map(|corner| {
                         pick::project(
-                            &self.camera,
+                            &self.interaction.camera,
                             self.renderer.render_origin(),
                             width as f32,
                             height as f32,
@@ -237,7 +238,7 @@ impl EditorApp {
             && rect.contains(pointer)
             && !ui.input(|i| i.pointer.any_down())
         {
-            let entries = interact::entries(&self.infos, &self.hover);
+            let entries = interact::entries(&self.infos, &self.interaction.hover);
             if let Some(top) = entries.first() {
                 // Menu entries plus the always-present Cancel.
                 let extra = interact::more_options(entries.len() + 1);
@@ -262,7 +263,7 @@ impl EditorApp {
                 painter.galley(at + egui::vec2(6.0, 3.0), galley, egui::Color32::WHITE);
             }
         }
-        let text = pick::summary(&self.infos, &self.hover);
+        let text = pick::summary(&self.infos, &self.interaction.hover);
         if !text.is_empty() {
             painter.text(
                 rect.left_bottom() + egui::vec2(8.0, -8.0),

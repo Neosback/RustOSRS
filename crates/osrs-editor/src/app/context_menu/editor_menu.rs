@@ -61,7 +61,7 @@ impl EditorApp {
                                 loc.plane
                             ));
                             ui.separator();
-                            let already = self.selected.as_ref().is_some_and(|s| {
+                            let already = self.interaction.selected.as_ref().is_some_and(|s| {
                                 s.region == object.region && s.index == object.index
                             });
                             if ui
@@ -169,7 +169,7 @@ impl EditorApp {
                             }
                         } else if let Some(tile) = &pick.tile {
                             ui.strong(format!("Tile {}, {}", tile.tile.0, tile.tile.1));
-                            ui.weak(format!("plane {}", self.view_plane));
+                            ui.weak(format!("plane {}", self.interaction.view_plane));
                             ui.separator();
                         }
                         let tool = self.prefs.tool;
@@ -224,7 +224,7 @@ impl EditorApp {
                                         outcome.action = Some(MenuAction::ApplyBrush(tile));
                                         outcome.close = true;
                                     }
-                                    let selected = self.selection_tiles.len();
+                                    let selected = self.interaction.selection_tiles.len();
                                     if selected > 0
                                         && !empty
                                         && item(
@@ -252,7 +252,7 @@ impl EditorApp {
                                         outcome.action = Some(MenuAction::AddPathPoint(tile));
                                         outcome.close = true;
                                     }
-                                    if !self.spline.points.is_empty() {
+                                    if !self.interaction.spline.points.is_empty() {
                                         if item(
                                             ui,
                                             "Lay path (Enter)".to_owned(),
@@ -285,7 +285,7 @@ impl EditorApp {
                                         outcome.action = Some(MenuAction::ApplyBrush(tile));
                                         outcome.close = true;
                                     }
-                                    let selected = self.selection_tiles.len();
+                                    let selected = self.interaction.selection_tiles.len();
                                     if selected > 0
                                         && item(
                                             ui,
@@ -314,8 +314,8 @@ impl EditorApp {
                             }
                         }
                         if tool == crate::paint::Tool::Select
-                            && (!self.selection_objects.is_empty()
-                                || !self.selection_tiles.is_empty())
+                            && (!self.interaction.selection_objects.is_empty()
+                                || !self.interaction.selection_tiles.is_empty())
                             && ui.button("Clear selection").clicked()
                         {
                             outcome.action = Some(MenuAction::ClearSelection);

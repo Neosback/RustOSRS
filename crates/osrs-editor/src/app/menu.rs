@@ -74,7 +74,11 @@ impl EditorApp {
                     ui.separator();
                     ui.label("Plane");
                     for plane in 0..4_u8 {
-                        ui.radio_value(&mut self.view_plane, plane, format!("z = {plane}"));
+                        ui.radio_value(
+                            &mut self.interaction.view_plane,
+                            plane,
+                            format!("z = {plane}"),
+                        );
                     }
                     ui.separator();
                     if ui
@@ -122,7 +126,15 @@ impl EditorApp {
 
     /// Fly / orbit camera choice.
     pub(super) fn camera_mode_picker(&mut self, ui: &mut egui::Ui) {
-        ui.radio_value(&mut self.camera.mode, CameraMode::Fly, "Fly   C");
-        ui.radio_value(&mut self.camera.mode, CameraMode::Orbit, "Orbit   C");
+        ui.radio_value(
+            &mut self.interaction.camera.mode,
+            CameraMode::Fly,
+            "Fly   C",
+        );
+        ui.radio_value(
+            &mut self.interaction.camera.mode,
+            CameraMode::Orbit,
+            "Orbit   C",
+        );
     }
 }

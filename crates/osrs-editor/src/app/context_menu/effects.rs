@@ -24,7 +24,7 @@ impl EditorApp {
         match effect {
             interact::Effect::Cancel => {}
             interact::Effect::WalkHere((x, y)) => {
-                let plane = self.view_plane;
+                let plane = self.interaction.view_plane;
                 self.teleport_to(Destination::Tile { x, y, plane });
             }
             interact::Effect::Examine(object) => {
@@ -59,7 +59,9 @@ impl EditorApp {
             .as_ref()
             .and_then(|object| self.infos.get(&object.region)?.locs.get(object.index));
         let center = loc.map(|loc| loc.tile).or(pick.tile.map(|tile| tile.tile));
-        let plane = loc.map_or(usize::from(self.view_plane), |loc| usize::from(loc.plane));
+        let plane = loc.map_or(usize::from(self.interaction.view_plane), |loc| {
+            usize::from(loc.plane)
+        });
         let mut copy = |ui: &mut egui::Ui, label: &str, text: String| {
             if ui.button(label).clicked() {
                 ui.ctx().copy_text(text);

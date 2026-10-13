@@ -33,8 +33,7 @@ impl EditorApp {
 
         let mut app = Self {
             renderer,
-            camera,
-            view_plane: 0,
+            interaction: interaction_runtime::InteractionRuntime::new(camera),
             session: EditorSession::default(),
             settings_path: None,
             saved_settings: Settings::default(),
@@ -52,13 +51,6 @@ impl EditorApp {
             prefs: Settings::default(),
             hd: hd::HdRuntime::new(),
             infos: Infos::new(),
-            hover: Pick::default(),
-            selected: None,
-            selection_objects: Vec::new(),
-            selection_tiles: HashSet::new(),
-            marquee: None,
-            spline: spline_tool::SplineState::default(),
-            peek: None,
             floor_textures: None,
             texture_handles: HashMap::new(),
             palette_search: String::new(),
@@ -66,7 +58,6 @@ impl EditorApp {
             stroke_counter: 0,
             outlines: HashMap::new(),
             outline_requested: HashSet::new(),
-            context_pick: Pick::default(),
             context_menu: None,
             keymap: Keymap::new(),
             // Smoke-test hook: open the settings window at start (`RUSTOSRS_OPEN_SETTINGS=1`).
@@ -99,11 +90,6 @@ impl EditorApp {
             }),
             cache_dir: initial_dir,
             cache_build: None,
-            object_drag: None,
-            gizmo: Self::new_gizmo(),
-            gizmo_drag: None,
-            gizmo_busy: false,
-            pending_reselect: Vec::new(),
             script: script::ScriptRunner::default(),
             script_open: false,
             plugins_open: false,
@@ -112,8 +98,6 @@ impl EditorApp {
             hud_rect: None,
             rail_rect: None,
             quick_open: std::env::var_os("RUSTOSRS_QUICK").map(|_| egui::pos2(520.0, 300.0)),
-            last_hover_tile: None,
-            inspect_tile: None,
             screenshot: crate::screenshot::ScreenshotHook::from_env(),
             exit_after_seconds: std::env::var("RUSTOSRS_EXIT_AFTER_SECONDS")
                 .ok()

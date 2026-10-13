@@ -20,11 +20,12 @@ impl EditorApp {
         let width = ui.available_width();
         // The half with something to show gets the room; an empty one shrinks.
         let has_tile = if self.prefs.inspector_follow {
-            self.hover.tile.is_some() || self.last_hover_tile.is_some()
+            self.interaction.hover.tile.is_some() || self.interaction.last_hover_tile.is_some()
         } else {
-            self.inspect_tile.is_some()
+            self.interaction.inspect_tile.is_some()
         };
-        let has_object = self.selected.is_some() || !self.selection_objects.is_empty();
+        let has_object =
+            self.interaction.selected.is_some() || !self.interaction.selection_objects.is_empty();
         let (tile_weight, object_weight) = (
             if has_tile { 1.0 } else { 0.55 },
             if has_object { 1.0 } else { 0.55 },
@@ -89,14 +90,15 @@ impl EditorApp {
         // Following the cursor: the tile under it (the last one when it is over nothing). Otherwise
         // the tile that was selected.
         let hovered = self
+            .interaction
             .hover
             .tile
             .map(|pick| pick.tile)
-            .or(self.last_hover_tile);
+            .or(self.interaction.last_hover_tile);
         let (tile, source) = if self.prefs.inspector_follow {
             (hovered, "under the cursor")
         } else {
-            (self.inspect_tile, "selected")
+            (self.interaction.inspect_tile, "selected")
         };
         let Some(tile) = tile else {
             if self.prefs.inspector_follow {
@@ -125,10 +127,13 @@ impl EditorApp {
             );
             return;
         };
-        let selected_tiles = self.selection_tiles.len();
+        let selected_tiles = self.interaction.selection_tiles.len();
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(format!("{}, {}", tile.0, tile.1)).heading());
-            ui.weak(format!("plane {}  \u{b7}  {source}", self.view_plane));
+            ui.weak(format!(
+                "plane {}  \u{b7}  {source}",
+                self.interaction.view_plane
+            ));
         });
         if selected_tiles > 1 {
             ui.weak(format!("{selected_tiles} tiles selected"));
@@ -215,8 +220,11 @@ impl EditorApp {
 
     /// The object card: the selection, the primary object's footprint and fields.
     fn object_card(&mut self, ui: &mut egui::Ui) {
-        let (objects, tiles) = (self.selection_objects.len(), self.selection_tiles.len());
-        if objects == 0 && self.selected.is_none() {
+        let (objects, tiles) = (
+            self.interaction.selection_objects.len(),
+            self.interaction.selection_tiles.len(),
+        );
+        if objects == 0 && self.interaction.selected.is_none() {
             empty_state(
                 ui,
                 icons::SELECT_OBJECTS,
@@ -236,6 +244,7 @@ impl EditorApp {
                 });
             });
             let names: Vec<(usize, String)> = self
+                .interaction
                 .selection_objects
                 .iter()
                 .enumerate()
@@ -263,7 +272,8 @@ impl EditorApp {
                 .collect();
             for (index, name) in names {
                 if ui.selectable_label(false, name).clicked() {
-                    self.selected = self.selection_objects.get(index).cloned();
+                    self.interaction.selected =
+                        self.interaction.selection_objects.get(index).cloned();
                 }
             }
             if objects > 40 {
@@ -271,7 +281,7 @@ impl EditorApp {
             }
             ui.separator();
         }
-        let Some(object) = self.selected.clone() else {
+        let Some(object) = self.interaction.selected.clone() else {
             return;
         };
         let Some(loc) = self
@@ -325,7 +335,7 @@ impl EditorApp {
             ui.menu_button("Copy", |ui| self.copy_menu(ui, &pick));
             self.run_plugins(|plugin, cx| plugin.selection_ui(ui, cx));
             if ui.button("Deselect").clicked() {
-                self.selected = None;
+                self.interaction.selected = None;
             }
         });
         let text = pick::describe_object(&self.infos, &object);

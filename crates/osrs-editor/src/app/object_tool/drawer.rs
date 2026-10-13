@@ -20,9 +20,10 @@ impl EditorApp {
     /// The Objects tool's drawer: what it can do to the selected objects, in groups.
     pub(in crate::app) fn object_drawer(&mut self, ui: &mut egui::Ui) {
         let count = self
+            .interaction
             .selection_objects
             .len()
-            .max(usize::from(self.selected.is_some()));
+            .max(usize::from(self.interaction.selected.is_some()));
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Objects").strong().size(15.0));
             ui.label(match count {

@@ -126,7 +126,7 @@ impl EditorApp {
         self.redo_stack.clear();
         self.height_edited.clear();
         self.stroke = None;
-        self.spline.points.clear();
+        self.interaction.spline.points.clear();
         self.texture_handles.clear();
         self.floor_textures = None;
         self.palette = None;

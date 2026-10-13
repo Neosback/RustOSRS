@@ -161,7 +161,8 @@ impl PlanWorker {
 impl EditorApp {
     /// Tiles the current path would change.
     pub(super) fn spline_tile_count(&self) -> usize {
-        self.spline
+        self.interaction
+            .spline
             .current_preview()
             .map_or(0, |preview| preview.paints.len())
     }
@@ -177,7 +178,7 @@ impl EditorApp {
 
     /// Everything the current path is planned from, or `None` when there is nothing to plan.
     fn plan_input(&self) -> Option<PlanInput> {
-        if self.spline.points.len() < 2 {
+        if self.interaction.spline.points.len() < 2 {
             return None;
         }
         let overlay_id = self.laying_overlay()?;
@@ -186,16 +187,16 @@ impl EditorApp {
         let edge_weight = spline.edge_weight.clamp(0.0, 2.0);
         let key = fnv(&format!(
             "{:?}|{}|{}|{}|{}|{}",
-            self.spline.points,
+            self.interaction.spline.points,
             width.to_bits(),
             edge_weight.to_bits(),
             overlay_id,
-            self.view_plane,
+            self.interaction.view_plane,
             spline.snap_points,
         ));
         Some(PlanInput {
             key,
-            points: self.spline.points.clone(),
+            points: self.interaction.spline.points.clone(),
             width,
             edge_weight,
             overlay_id,
@@ -205,21 +206,21 @@ impl EditorApp {
     /// Keep the preview in step with the points and options.
     pub(super) fn spline_update(&mut self) {
         let Some(input) = self.plan_input() else {
-            self.spline.desired_key = None;
-            self.spline.preview = None;
+            self.interaction.spline.desired_key = None;
+            self.interaction.spline.preview = None;
             #[cfg(not(target_arch = "wasm32"))]
             {
-                self.spline.worker = None;
+                self.interaction.spline.worker = None;
             }
             return;
         };
         let desired_key = input.key;
-        self.spline.desired_key = Some(desired_key);
+        self.interaction.spline.desired_key = Some(desired_key);
 
         #[cfg(not(target_arch = "wasm32"))]
         {
             let mut disconnected = false;
-            if let Some(worker) = &mut self.spline.worker {
+            if let Some(worker) = &mut self.interaction.spline.worker {
                 loop {
                     match worker.result.try_recv() {
                         Ok(preview) => {
@@ -227,7 +228,7 @@ impl EditorApp {
                             // tile preview until the worker catches up, but never promote stale
                             // warnings/counts or a stale planned centre line.
                             if preview.key == desired_key {
-                                self.spline.preview = Some(preview);
+                                self.interaction.spline.preview = Some(preview);
                             }
                         }
                         Err(std::sync::mpsc::TryRecvError::Empty) => break,
@@ -239,29 +240,32 @@ impl EditorApp {
                 }
             }
             if disconnected {
-                self.spline.worker = None;
+                self.interaction.spline.worker = None;
             }
 
-            if self.spline.worker.is_none() {
-                self.spline.worker = Some(PlanWorker::new(input, self.spline.ctx.clone()));
+            if self.interaction.spline.worker.is_none() {
+                self.interaction.spline.worker =
+                    Some(PlanWorker::new(input, self.interaction.spline.ctx.clone()));
                 return;
             }
 
             let retry = {
-                self.spline
+                self.interaction
+                    .spline
                     .worker
                     .as_mut()
                     .and_then(|worker| worker.request(input))
             };
             if let Some(input) = retry {
-                self.spline.worker = Some(PlanWorker::new(input, self.spline.ctx.clone()));
+                self.interaction.spline.worker =
+                    Some(PlanWorker::new(input, self.interaction.spline.ctx.clone()));
             }
         }
 
         #[cfg(target_arch = "wasm32")]
         {
-            if self.spline.current_preview().is_none() {
-                self.spline.preview = Some(input.make());
+            if self.interaction.spline.current_preview().is_none() {
+                self.interaction.spline.preview = Some(input.make());
             }
         }
     }
@@ -270,18 +274,18 @@ impl EditorApp {
     fn spline_plan_now(&mut self) {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            self.spline.worker = None;
+            self.interaction.spline.worker = None;
         }
         match self.plan_input() {
             Some(input) => {
-                self.spline.desired_key = Some(input.key);
-                if self.spline.current_preview().is_none() {
-                    self.spline.preview = Some(input.make());
+                self.interaction.spline.desired_key = Some(input.key);
+                if self.interaction.spline.current_preview().is_none() {
+                    self.interaction.spline.preview = Some(input.make());
                 }
             }
             None => {
-                self.spline.desired_key = None;
-                self.spline.preview = None;
+                self.interaction.spline.desired_key = None;
+                self.interaction.spline.preview = None;
             }
         }
     }
@@ -290,6 +294,7 @@ impl EditorApp {
     pub(super) fn spline_report(&self) -> String {
         let spline = &self.prefs.spline;
         let raw: Vec<String> = self
+            .interaction
             .spline
             .points
             .iter()
@@ -297,13 +302,13 @@ impl EditorApp {
             .collect();
         let mut text = format!(
             "PATH plane={} points={}\nwidth={:.2} edge_weight={:.2} overlay={:?}\n",
-            self.view_plane,
+            self.interaction.view_plane,
             raw.join(";"),
             spline.width,
             spline.edge_weight,
             self.prefs.brush.overlay.fill,
         );
-        if let Some(preview) = &self.spline.preview {
+        if let Some(preview) = &self.interaction.spline.preview {
             text.push_str(&format!("fitted {} tiles\n", preview.paints.len()));
         }
         text

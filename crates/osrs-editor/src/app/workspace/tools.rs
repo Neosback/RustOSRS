@@ -89,7 +89,7 @@ impl EditorApp {
             return;
         }
         self.stroke = None;
-        self.marquee = None;
+        self.interaction.marquee = None;
         self.prefs.tool = tool;
         if tool == Tool::Objects {
             // The Objects tool works on objects: its picker is the object picker.
@@ -152,16 +152,20 @@ impl EditorApp {
                         ui.horizontal(|ui| {
                             ui.weak("Plane");
                             for plane in 0..4_u8 {
-                                ui.selectable_value(&mut self.view_plane, plane, plane.to_string());
+                                ui.selectable_value(
+                                    &mut self.interaction.view_plane,
+                                    plane,
+                                    plane.to_string(),
+                                );
                             }
                             ui.separator();
                             ui.selectable_value(
-                                &mut self.camera.mode,
+                                &mut self.interaction.camera.mode,
                                 crate::camera::CameraMode::Fly,
                                 "Fly",
                             );
                             ui.selectable_value(
-                                &mut self.camera.mode,
+                                &mut self.interaction.camera.mode,
                                 crate::camera::CameraMode::Orbit,
                                 "Orbit",
                             );
@@ -250,13 +254,13 @@ impl EditorApp {
     /// A held tool key returns to the previous tool when released (called every frame, even
     /// while a text field has focus, so a held key can never strand the tool).
     pub(in crate::app) fn tool_release(&mut self, ctx: &egui::Context) {
-        let Some((previous, key, since)) = self.peek else {
+        let Some((previous, key, since)) = self.interaction.peek else {
             return;
         };
         if ctx.input(|i| i.key_down(key)) {
             return;
         }
-        self.peek = None;
+        self.interaction.peek = None;
         if since.elapsed() > PEEK_AFTER {
             self.set_tool(previous);
         }
@@ -278,11 +282,11 @@ impl EditorApp {
             let key = self.keymap.binding(tool.action()).map(|b| b.key);
             if tool == self.prefs.tool && tool != Tool::Select {
                 self.set_tool(Tool::Select);
-                self.peek = None;
+                self.interaction.peek = None;
             } else {
                 let previous = self.prefs.tool;
                 self.set_tool(tool);
-                self.peek = key.map(|key| (previous, key, Instant::now()));
+                self.interaction.peek = key.map(|key| (previous, key, Instant::now()));
             }
         }
         if quick {
@@ -304,7 +308,7 @@ impl EditorApp {
             self.prefs.brush.radius = (self.prefs.brush.radius + 1).min(16);
         }
         if eyedrop
-            && let Some(tile) = self.hover.tile.map(|pick| pick.tile)
+            && let Some(tile) = self.interaction.hover.tile.map(|pick| pick.tile)
             && let Some(values) = self.tile_now(tile)
         {
             self.eyedrop(values);
@@ -314,7 +318,7 @@ impl EditorApp {
     /// Esc: back to Select; in Select it clears the selection.
     pub(in crate::app) fn escape_action(&mut self) {
         if self.prefs.tool != Tool::Select {
-            self.spline.points.clear();
+            self.interaction.spline.points.clear();
             self.set_tool(Tool::Select);
         } else {
             self.clear_selection();

@@ -120,10 +120,12 @@ impl EditorApp {
         // Camera marker.
         let (cx, cz) = self.world_position();
         let (tile_x, tile_y) = ((cx / 128.0).floor() as i32, (cz / 128.0).floor() as i32);
-        if let Some((mx, my)) = area.position(i32::from(self.view_plane), tile_x, tile_y) {
+        if let Some((mx, my)) =
+            area.position(i32::from(self.interaction.view_plane), tile_x, tile_y)
+        {
             let marker = to_screen(f64::from(mx) + 0.5, f64::from(my) + 0.5);
             if rect.contains(marker) {
-                let yaw = self.camera.yaw;
+                let yaw = self.interaction.camera.yaw;
                 let tip = marker + egui::vec2(-yaw.sin(), -yaw.cos()) * 16.0;
                 let gold = egui::Color32::from_rgb(255, 204, 0);
                 painter.line_segment([marker, tip], egui::Stroke::new(2.0, gold));

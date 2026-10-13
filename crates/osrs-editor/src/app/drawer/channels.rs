@@ -183,7 +183,7 @@ impl EditorApp {
         }
         let op = tool.op;
         self.prefs.height_tool = tool;
-        let selected = self.selection_tiles.len();
+        let selected = self.interaction.selection_tiles.len();
         ui.horizontal(|ui| {
             ui.weak(op.hint());
             if selected > 0

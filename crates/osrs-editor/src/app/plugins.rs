@@ -9,12 +9,12 @@ impl EditorApp {
         EditorView {
             camera_tile: self.camera_tile(),
             camera_region: self.camera_region(),
-            view_plane: self.view_plane,
+            view_plane: self.interaction.view_plane,
             render_origin: self.renderer.render_origin(),
             infos: &self.infos,
             infos_version: self.infos_version,
             colors: &self.prefs.colors,
-            selected: self.selected.as_ref(),
+            selected: self.interaction.selected.as_ref(),
         }
     }
 
@@ -161,7 +161,7 @@ impl EditorApp {
         for (plugin, command) in commands {
             match command {
                 EditorCommand::Teleport(destination) => self.teleport_to(destination),
-                EditorCommand::SetPlane(plane) => self.view_plane = plane.min(3),
+                EditorCommand::SetPlane(plane) => self.interaction.view_plane = plane.min(3),
                 EditorCommand::SetLines(lines) => {
                     self.plugin_lines.insert(plugin, lines);
                     lines_changed = true;

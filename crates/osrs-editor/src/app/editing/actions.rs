@@ -5,7 +5,7 @@ use super::*;
 impl EditorApp {
     /// Apply the Height tool's op to every selected tile (one undo step).
     pub(in crate::app) fn height_on_selection(&mut self) {
-        let mut tiles: Vec<(i32, i32)> = self.selection_tiles.iter().copied().collect();
+        let mut tiles: Vec<(i32, i32)> = self.interaction.selection_tiles.iter().copied().collect();
         tiles.sort_unstable();
         if tiles.is_empty() {
             return;
@@ -14,7 +14,7 @@ impl EditorApp {
         let Some(mut stroke) = self.stroke.take() else {
             return;
         };
-        let plane = self.view_plane;
+        let plane = self.interaction.view_plane;
         let source_plane = SourcePlane::new(plane)
             .unwrap_or_else(|| unreachable!("editor view planes are always validated"));
         let mut tool = self.prefs.height_tool.clone();
@@ -54,7 +54,7 @@ impl EditorApp {
 
     /// Apply the brush to every selected tile (one undo step).
     pub(in crate::app) fn fill_selection(&mut self) {
-        let tiles: Vec<(i32, i32)> = self.selection_tiles.iter().copied().collect();
+        let tiles: Vec<(i32, i32)> = self.interaction.selection_tiles.iter().copied().collect();
         if tiles.is_empty() || self.prefs.brush.is_empty() {
             return;
         }
@@ -66,7 +66,7 @@ impl EditorApp {
             .paint_brush
             .get_or_insert_with(|| self.prefs.brush.clone())
             .clone();
-        let plane = self.view_plane;
+        let plane = self.interaction.view_plane;
         let mut edits = Vec::new();
         for (x, y) in tiles {
             let key = (plane, x, y);
@@ -83,7 +83,7 @@ impl EditorApp {
     /// Remove a tile's overlay (its shape and rotation with it): one semantic commit and one undo
     /// step, planned through the same Paint planner as every other terrain stroke.
     pub(in crate::app) fn clear_overlay_at(&mut self, tile: (i32, i32)) {
-        let key = (self.view_plane, tile.0, tile.1);
+        let key = (self.interaction.view_plane, tile.0, tile.1);
         let Some(before) = self.current_tile(key) else {
             return;
         };

@@ -16,7 +16,7 @@ impl EditorApp {
         if self.prefs.tool != Tool::Spline {
             return;
         }
-        let plane = self.view_plane;
+        let plane = self.interaction.view_plane;
         let project = |p: [f64; 3]| self.screen_point(p, viewport, pixels_per_point, width, height);
         // A point on the ground at tile coordinates, lifted a little.
         let ground = |p: (f32, f32), lift: f64| -> Option<Pos2> {
@@ -30,11 +30,11 @@ impl EditorApp {
                 + corners[3][1] * (1.0 - u) * v;
             project([f64::from(p.0) * 128.0, y - lift, f64::from(p.1) * 128.0])
         };
-        let cursor = self.hover.tile.map(|pick| pick.at);
+        let cursor = self.interaction.hover.tile.map(|pick| pick.at);
         let outline = self.prefs.colors.get(ColorKey::PathLine);
         let ghost = self.prefs.colors.get(ColorKey::PathGhost);
 
-        if self.spline.points.is_empty() {
+        if self.interaction.spline.points.is_empty() {
             if let Some(at) = cursor
                 && let Some(position) = ground(at, 8.0)
             {
@@ -54,8 +54,8 @@ impl EditorApp {
         // faint spatial reference instead of flashing the whole preview off.
         let base_overlay_color = self.prefs.colors.get(ColorKey::PathFill);
         let base_edge_color = self.prefs.colors.get(ColorKey::PathEdge);
-        if let Some(preview) = &self.spline.preview {
-            let current = self.spline.desired_key == Some(preview.key);
+        if let Some(preview) = &self.interaction.spline.preview {
+            let current = self.interaction.spline.desired_key == Some(preview.key);
             let fade = |color: Color32| {
                 if current {
                     color
@@ -103,11 +103,11 @@ impl EditorApp {
         }
 
         // The centre line.
-        let drawn: Vec<(f32, f32)> = match self.spline.current_preview() {
+        let drawn: Vec<(f32, f32)> = match self.interaction.spline.current_preview() {
             Some(preview) if !preview.lines.is_empty() => {
                 preview.lines.iter().flatten().copied().collect()
             }
-            _ => terrain_path::smooth_catmull_rom(&self.spline.points),
+            _ => terrain_path::smooth_catmull_rom(&self.interaction.spline.points),
         };
         let screen: Vec<Pos2> = drawn.iter().filter_map(|p| ground(*p, 10.0)).collect();
         if screen.len() >= 2 {
@@ -118,8 +118,8 @@ impl EditorApp {
             painter.add(egui::Shape::line(screen, Stroke::new(2.5, outline)));
         }
         // A ghost stretch from the last point to the cursor while no point is being dragged.
-        if self.spline.drag.is_none()
-            && let (Some(last), Some(at)) = (self.spline.points.last(), cursor)
+        if self.interaction.spline.drag.is_none()
+            && let (Some(last), Some(at)) = (self.interaction.spline.points.last(), cursor)
             && let (Some(a), Some(b)) = (ground(*last, 10.0), ground(at, 10.0))
         {
             painter.add(egui::Shape::dashed_line(
@@ -131,9 +131,9 @@ impl EditorApp {
             painter.circle_stroke(b, 5.0, Stroke::new(1.5, ghost));
         }
         // The control points.
-        for (index, point) in self.spline.points.iter().enumerate() {
+        for (index, point) in self.interaction.spline.points.iter().enumerate() {
             if let Some(position) = ground(*point, 12.0) {
-                let active = self.spline.drag == Some(index);
+                let active = self.interaction.spline.drag == Some(index);
                 painter.circle_filled(position, if active { 8.0 } else { 6.5 }, Color32::WHITE);
                 painter.circle_stroke(position, 7.5, Stroke::new(2.0, outline));
                 painter.text(

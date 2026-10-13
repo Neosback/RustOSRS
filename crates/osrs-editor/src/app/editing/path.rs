@@ -83,7 +83,7 @@ impl EditorApp {
         if tiles.is_empty() {
             return 0;
         }
-        let Some(plane) = SourcePlane::new(self.view_plane) else {
+        let Some(plane) = SourcePlane::new(self.interaction.view_plane) else {
             self.notice = Some((
                 "The path uses an invalid source plane".to_owned(),
                 Instant::now(),
@@ -94,7 +94,11 @@ impl EditorApp {
         let brush = self.prefs.brush.clone();
         let mut intents = Vec::new();
         for path_tile in tiles {
-            let key = (self.view_plane, path_tile.tile.0, path_tile.tile.1);
+            let key = (
+                self.interaction.view_plane,
+                path_tile.tile.0,
+                path_tile.tile.1,
+            );
             if self.current_tile(key).is_none() {
                 continue;
             }
@@ -162,7 +166,7 @@ impl EditorApp {
             if !projected.insert(intent.tile) {
                 continue;
             }
-            let key = (self.view_plane, intent.tile.0, intent.tile.1);
+            let key = (self.interaction.view_plane, intent.tile.0, intent.tile.1);
             let Some(before) = self.current_tile(key) else {
                 self.notice = Some((
                     format!(

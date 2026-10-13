@@ -162,7 +162,7 @@ impl EditorApp {
             self.world_map.open_area(&catalog, main);
             let (x, z) = self.world_position();
             let (tx, ty) = ((x / 128.0).floor() as i32, (z / 128.0).floor() as i32);
-            let plane = i32::from(self.view_plane);
+            let plane = i32::from(self.interaction.view_plane);
             let area = &catalog.areas[main];
             self.world_map.jump_to_world(area, plane, tx, ty);
         }
@@ -253,7 +253,7 @@ impl EditorApp {
             {
                 let (x, z) = self.world_position();
                 let (tx, ty) = ((x / 128.0).floor() as i32, (z / 128.0).floor() as i32);
-                let plane = i32::from(self.view_plane);
+                let plane = i32::from(self.interaction.view_plane);
                 let main = self.world_map.area;
                 if !self
                     .world_map

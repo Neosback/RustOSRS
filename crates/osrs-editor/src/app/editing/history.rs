@@ -133,7 +133,7 @@ impl EditorApp {
             let mut loc_edits: Vec<LocEdit> = gone.iter().map(|s| LocEdit::Remove(*s)).collect();
             loc_edits.extend(came.iter().map(|s| LocEdit::Add(*s)));
             self.send_loc_edits(loc_edits);
-            self.pending_reselect = came.clone();
+            self.interaction.pending_reselect = came.clone();
             self.clear_selection();
         }
     }
@@ -232,7 +232,7 @@ impl EditorApp {
         let count = object.object_count();
         self.send_loc_edits(projection.edits);
         self.clear_selection();
-        self.pending_reselect = projection.reselect;
+        self.interaction.pending_reselect = projection.reselect;
         Ok(count)
     }
 

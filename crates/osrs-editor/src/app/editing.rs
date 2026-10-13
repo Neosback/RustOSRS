@@ -105,7 +105,7 @@ pub fn affected_regions(tile: (i32, i32)) -> Vec<(i32, i32)> {
 impl EditorApp {
     /// The tile on the viewed plane as the map has it now: the editor's value if edited, else the picker's.
     pub(super) fn tile_now(&self, tile: (i32, i32)) -> Option<TileValues> {
-        self.current_tile((self.view_plane, tile.0, tile.1))
+        self.current_tile((self.interaction.view_plane, tile.0, tile.1))
     }
 
     fn current_tile(&self, key: TileKey) -> Option<TileValues> {
@@ -259,7 +259,7 @@ impl EditorApp {
             .paint_brush
             .get_or_insert_with(|| self.prefs.brush.clone())
             .clone();
-        let plane = self.view_plane;
+        let plane = self.interaction.view_plane;
         let mut edits = Vec::new();
         for (x, y) in brush.footprint_tiles(tile) {
             let key = (plane, x, y);
@@ -288,7 +288,7 @@ impl EditorApp {
         }
         stroke.last_tile = Some(tile);
         stroke.last_applied = Instant::now();
-        let plane = self.view_plane;
+        let plane = self.interaction.view_plane;
         if stroke.anchor.is_none() {
             stroke.anchor = self.current_tile((plane, tile.0, tile.1)).map(|v| v.height);
         }
@@ -349,7 +349,7 @@ impl EditorApp {
         if !response.is_pointer_button_down_on() {
             return;
         }
-        let Some(tile) = self.hover.tile.map(|pick| pick.tile) else {
+        let Some(tile) = self.interaction.hover.tile.map(|pick| pick.tile) else {
             return;
         };
         if alt {
