@@ -116,10 +116,7 @@ mod tests {
         let patch = build_object_patch(&document, &[object], &[])
             .unwrap_or_else(|error| unreachable!("valid delete: {error:?}"));
 
-        assert_eq!(
-            patch.ops(),
-            &[MapOp::RemoveObject { placement: object }]
-        );
+        assert_eq!(patch.ops(), &[MapOp::RemoveObject { placement: object }]);
     }
 
     #[test]
