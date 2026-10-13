@@ -239,16 +239,7 @@ impl EditorApp {
         if edits.is_empty() {
             return;
         }
-        for edit in &edits {
-            let spec = match edit {
-                LocEdit::Remove(spec) | LocEdit::Add(spec) => spec,
-            };
-            let region = spec.region();
-            if self.loaded.contains_key(&region) {
-                self.dirty_regions.insert(region);
-            }
-        }
-        self.streamer.edit_locs(edits);
+        self.world.mirror_loc_edits(edits);
     }
 
     pub(in crate::app) fn undo(&mut self) {

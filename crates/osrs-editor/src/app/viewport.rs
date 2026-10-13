@@ -93,7 +93,7 @@ impl EditorApp {
                 .get(&object.region)
                 .and_then(|info| info.locs.get(object.index))
             {
-                self.streamer
+                self.world
                     .request_outline(object.region, object.index, loc.clone());
             }
         }

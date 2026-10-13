@@ -34,6 +34,7 @@ mod user_tools;
 mod viewport;
 mod widgets;
 mod workspace;
+mod world_runtime;
 mod worldmap;
 
 use crate::animation_smoothing::AnimationSmoothingPlugin;
@@ -52,7 +53,6 @@ use crate::style::ColorKey;
 use eframe::egui;
 use osrs_core::coords::RegionCoord;
 use osrs_render::gpu::FrameParams;
-use osrs_world::{AnimationWorker, RegionStreamer, StreamEvent, TerrainPresentation};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -64,23 +64,12 @@ use web_time::Instant;
 const REGION_UNITS: i32 = 64 * 128;
 /// Rebase the render origin once the camera is this far (local units) from it.
 const REBASE_DISTANCE: f32 = 90_000.0;
-/// Regions being built at once.
-const MAX_IN_FLIGHT: usize = 2;
-
-#[derive(Clone, Copy)]
-struct RegionStats {
-    vertices: usize,
-}
 
 /// `(region, loc index)` of a picked object.
 type OutlineKey = ((i32, i32), usize);
 
 /// Renderer key of the per-frame animated-loc geometry.
 const ANIMATED_KEY: (i32, i32) = (i32::MIN, i32::MIN);
-/// Animated locs farther than this many tiles from the camera are not drawn.
-const ANIMATION_RADIUS_TILES: i32 = 80;
-/// Animated geometry is rebuilt at most once per this many game cycles (20 ms each).
-const ANIMATION_STRIDE_CYCLES: u64 = 2;
 
 pub struct EditorApp {
     renderer: render_runtime::RenderRuntime,
@@ -104,9 +93,6 @@ pub struct EditorApp {
     minimap_hud: minimap::MinimapHud,
     /// Every persisted value (see `settings.rs`); the UI edits it in place.
     prefs: Settings,
-    presentation_generation: u32,
-    /// Whether regions are being built with the HD vertex stream (the HD render profile).
-    presentation_hd: bool,
     /// The HD profile's area environments and their transition state.
     hd: hd::HdRuntime,
     /// Background (and the colour holes in the terrain show). RuneLite's default sky is black.
@@ -144,23 +130,11 @@ pub struct EditorApp {
     settings_focus_search: bool,
     /// The keyboard shortcut waiting for a key press (settings window, Controls page).
     capturing_binding: Option<&'static str>,
-    streamer: RegionStreamer,
-    animations: AnimationWorker,
-    /// Whether animation frames are blended (changes the update stride).
-    animation_smoothing: bool,
+    /// Region residency, stream requests, and animation scheduling (projection state only).
+    world: world_runtime::WorldRuntime,
     /// A short message shown in the status bar (menu choices that need a client).
     notice: Option<(String, Instant)>,
-    /// Whether the worker currently holds animated objects at their rest pose.
-    animations_frozen: bool,
-    animation_cycle: u64,
-    animation_center: (i32, i32),
-    animation_dirty: bool,
-    ready: bool,
     status: Option<String>,
-    /// Regions resident on the GPU (`None` = the cache has no map data there).
-    loaded: HashMap<(i32, i32), Option<RegionStats>>,
-    in_flight: HashSet<(i32, i32)>,
-    last_build_ms: f32,
     stats: FrameStats,
     teleport: TeleportWindow,
     /// Floor colours for the drawer's palettes, loaded on a worker thread.
@@ -181,8 +155,6 @@ pub struct EditorApp {
     history: Vec<editing::EditStep>,
     redo_stack: Vec<editing::EditStep>,
     stroke: Option<editing::Stroke>,
-    /// Regions waiting for a rebuild after an edit.
-    dirty_regions: HashSet<(i32, i32)>,
     /// The cache folder in use, the build and profile it matched, and why it could not be opened.
     cache_dir: PathBuf,
     cache_build: Option<(u32, String)>,
@@ -250,9 +222,9 @@ impl EditorApp {
         );
         let initial_dir = cache_dir.clone();
         let initial_source = osrs_cache::source::CacheSource::Dir(cache_dir);
-        let streamer =
-            RegionStreamer::spawn(initial_source.clone(), Self::presentation(false, false));
-        streamer.set_presentation(Self::presentation(false, false), 1);
+        let world = world_runtime::WorldRuntime::new(world_runtime::WorldRuntime::spawn_streamer(
+            initial_source.clone(),
+        ));
 
         let mut app = Self {
             renderer,
@@ -273,8 +245,6 @@ impl EditorApp {
             world_map: worldmap::WorldMapView::new(),
             minimap_hud: minimap::MinimapHud::default(),
             prefs: Settings::default(),
-            presentation_generation: 1,
-            presentation_hd: false,
             hd: hd::HdRuntime::new(),
             infos: Infos::new(),
             hover: Pick::default(),
@@ -299,19 +269,9 @@ impl EditorApp {
             settings_search: String::new(),
             settings_focus_search: false,
             capturing_binding: None,
-            streamer,
-            animations: AnimationWorker::spawn(),
-            animation_smoothing: false,
+            world,
             notice: None,
-            animations_frozen: false,
-            animation_cycle: 0,
-            animation_center: (0, 0),
-            animation_dirty: true,
-            ready: false,
             status: None,
-            loaded: HashMap::new(),
-            in_flight: HashSet::new(),
-            last_build_ms: 0.0,
             stats: FrameStats::new(),
             teleport: TeleportWindow::new(),
             palette: None,
@@ -325,7 +285,6 @@ impl EditorApp {
             history: Vec::new(),
             redo_stack: Vec::new(),
             stroke: None,
-            dirty_regions: HashSet::new(),
             cache_error: (!cache_picker::looks_like_cache(&initial_dir)).then(|| {
                 if initial_dir.as_os_str().is_empty() {
                     "No cache is open yet.".to_owned()
@@ -560,9 +519,7 @@ impl eframe::App for EditorApp {
         let phase = Instant::now();
         self.run_plugins(|plugin, cx| plugin.update(cx));
         self.stats.phase("plugins", phase);
-        self.peak_resident = self
-            .peak_resident
-            .max(self.loaded.values().flatten().count());
+        self.peak_resident = self.peak_resident.max(self.world.resident_regions());
 
         self.poll_palette();
         self.menu_bar(ui);
@@ -590,7 +547,7 @@ impl eframe::App for EditorApp {
                 self.update_picking(&response, rect, pixels_per_point, width, height);
                 self.stats.phase("pick", phase);
 
-                if self.ready {
+                if self.world.is_ready() {
                     self.ensure_targets(width, height);
                     if self.prefs.render_profile == ProfileChoice::Hd {
                         self.update_hd_lighting();
@@ -689,7 +646,7 @@ impl eframe::App for EditorApp {
                 self.frames,
                 seconds,
                 self.frames as f32 / seconds,
-                self.loaded.values().flatten().count(),
+                self.world.resident_regions(),
                 self.peak_resident,
                 self.renderer.resident_vertex_bytes() as f32 / (1024.0 * 1024.0),
                 self.renderer.resident_zone_count(),

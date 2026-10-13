@@ -265,71 +265,28 @@ Height ingestion stores source-owned 64x64 final height samples per plane. Do no
 
 Transitional caveat: `WorldDefinitions::region()` can still include legacy worker edits until remaining editing/projection routes are migrated.
 
-## Current active checkpoint: Phase 2.1 RenderRuntime ownership extraction
+## Completed: Phase 2.1 RenderRuntime ownership extraction
 
-Branch:
-`refactor/editor-render-runtime`
+Merged as PR #42 (`adb80da2`). `RenderRuntime` (`app/render_runtime.rs`) owns the eframe WGPU render state, the sole `SceneRenderer`, viewport targets, HD GPU install, and frame submission. No behavior change.
 
-Certified base `main`:
-`bd21b72555cbe75dd1fbb8b70df1f7cd5b90ad41`
+## Current checkpoint: Phase 2.2 WorldRuntime ownership extraction
 
-Base CI:
-`38428015008` - Tier A/B/C PASS.
+Branch: `refactor/editor-world-runtime` (cut from `main` `adb80da2`).
 
-Validated implementation head before final handoff bookkeeping:
-`89392a6c28eb645a9a787ac8e72d7db946c4813b`
+`WorldRuntime` (`app/world_runtime.rs`) now owns the disposable world-side projection state that previously lived directly on `EditorApp`:
 
-Exact implementation CI:
-`38430771972` - Tier A/B/C PASS, including M3-M9 semantic/reference parity.
+- the `RegionStreamer` and `AnimationWorker`
+- presentation generation / HD flag (stale-build rejection via `is_current_generation`)
+- resident (`loaded`), `in_flight`, and edit-`dirty` region sets, with the stream-window policy (`wanted_regions`, `stale_regions`) as pure, unit-tested functions
+- the animation schedule (smoothing, frozen, cycle, centre, dirty)
+- worker-readiness flag
+- mirroring of tile/loc edits to the worker (`mirror_tile_edits`, `mirror_loc_edits`) - still projection only; `EditorSession` stays authoritative
 
-### Ownership extracted
+`EditorApp` keeps orchestration of stream events (`app/streaming.rs`): it asks `WorldRuntime` for bookkeeping and applies the render/inspection/semantic-session consequences itself. The write-only `last_build_ms` field was deleted.
 
-`EditorApp` no longer directly owns the eframe WGPU render state, raw `SceneRenderer`, or viewport render targets.
+Validation (local; no CI access from this environment): `cargo fmt`, `cargo clippy --workspace --all-targets --all-features -D warnings`, `cargo test -p osrs-editor`, architecture guard, and a 25 s release smoke run against the pinned b241 cache (9 regions streamed, animation upload live, ~60 fps).
 
-`RenderRuntime` now owns:
-
-- `egui_wgpu::RenderState`
-- the sole `SceneRenderer`
-- viewport color texture and texture view
-- viewport depth texture and texture view
-- egui viewport texture registration/update
-- render-origin reads and rebasing
-- region upload/removal and texture installation adapters
-- overlay-line installation
-- HD lighting, shadow settings, parameters, material GPU installation, and shadow-memory metrics
-- viewport command-encoder creation
-- scene frame encoding
-- queue submission
-- `finish_frame()` / GPU scene timing
-- submitted-work completion callback registration
-- resident GPU-zone and vertex-memory metrics
-
-Existing UI, streaming, selection, gizmo, plugin, settings, and HD modules reach rendering through explicit `RenderRuntime` methods. There is no broad `Deref` escape hatch back to `SceneRenderer`.
-
-The viewport camera and semantic/editor state remain outside `RenderRuntime`, as required. This checkpoint does not change scene semantics, rendering algorithms, 117HD behavior, cache decoding, edit authority, streaming policy, or user-visible product behavior.
-
-### Validated diff before handoff bookkeeping
-
-Compared with certified base `bd21b72555cbe75dd1fbb8b70df1f7cd5b90ad41`:
-
-- branch status: 8 commits ahead, 0 behind
-- `crates/osrs-editor/src/app.rs`: +25 / -55
-- `crates/osrs-editor/src/app/render_runtime.rs`: +198 / -0
-- `crates/osrs-editor/src/app/streaming.rs`: +1 / -1
-- `crates/osrs-editor/src/app/viewport.rs`: +1 / -63
-
-No `osrs-render`, `osrs-world`, `osrs-edit`, `osrs-cache`, `osrs-scene`, `osrs-hd`, or `osrs-reference` source file is changed by the implementation checkpoint.
-
-### Validation history
-
-Two intermediate CI runs failed before semantic tests because the extraction deliberately exposed narrow mechanical issues:
-
-- `38430309846`: formatting-only failure in the new runtime module
-- `38430582735`: compile failure because the explicit runtime facade initially omitted `hd_shadow_map_bytes()` used by the settings UI
-
-Both were corrected without changing architecture or behavior. The next exact head `89392a6c28eb645a9a787ac8e72d7db946c4813b` passed Tier A/B/C completely.
-
-This handoff bookkeeping commit changes documentation only. Its resulting branch SHA must receive exact-head Tier A/B/C before the Phase 2.1 PR is opened and the checkpoint is reported complete.
+Debt baselines tightened: `app.rs` 738 -> 665 lines, `app/editing.rs` 792 -> 770, `app/editing/history.rs` 641 -> 632.
 
 ## Remaining migration roadmap
 
@@ -337,8 +294,8 @@ This handoff bookkeeping commit changes documentation only. Its resulting branch
 
 Extract one coherent runtime at a time:
 
-1. `RenderRuntime` - current Phase 2.1 checkpoint
-2. `WorldRuntime` - next, not started
+1. `RenderRuntime` - done (PR #42)
+2. `WorldRuntime` - done (this branch)
 3. `InteractionRuntime`
 4. `ProjectRuntime`
 5. `UiRuntime`
@@ -392,18 +349,6 @@ Refactor allowlisted UI/application modules one responsibility at a time. Do not
 
 Resume on separate focused branches once editor authority/projection boundaries are stable enough to prevent coupling.
 
-## Next boundary after Phase 2.1
+## Next boundary
 
-The next planned subsystem is **Phase 2.2: WorldRuntime ownership extraction**.
-
-It is NOT started on the current branch.
-
-Do not begin it until:
-
-1. the final Phase 2.1 branch head passes exact Tier A/B/C
-2. the Phase 2.1 diff is verified as RenderRuntime ownership work plus handoff documentation only
-3. a focused Phase 2.1 PR is opened
-4. the user explicitly authorizes its merge
-5. the real integrated `main` SHA is read and validated
-6. the Phase 2.1 branch is retired if tooling permits
-7. the user explicitly says to continue to Phase 2.2
+Phase 2.3 `InteractionRuntime` (camera, hover/picking, selection, marquee, gizmo, active tool/gesture state).

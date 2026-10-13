@@ -18,7 +18,7 @@ use crate::paint::{Brush, Fill, TileValues, Tool};
 use eframe::egui;
 pub(super) use history::EditStep;
 use history::{SemanticHeightHistory, SemanticPaintHistory};
-use osrs_core::coords::{MapTile, RegionCoord, SourcePlane};
+use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
 use osrs_edit::{
     HeightVertexCoord, MapPatch, MapPosition, MapQuery, OverlayRotation, OverlayShape,
@@ -725,30 +725,8 @@ impl EditorApp {
         if edits.is_empty() {
             return;
         }
-        for edit in &edits {
-            for region in affected_regions(edit.tile) {
-                if self.loaded.contains_key(&region) {
-                    self.dirty_regions.insert(region);
-                }
-            }
-        }
-        self.streamer.edit(edits);
-    }
-
-    /// Request a rebuild of every dirty region that is not already being built; the old geometry
-    /// stays on screen until the new one arrives.
-    pub(super) fn flush_dirty_regions(&mut self) {
-        let ready: Vec<(i32, i32)> = self
-            .dirty_regions
-            .iter()
-            .copied()
-            .filter(|key| !self.in_flight.contains(key))
-            .collect();
-        for key in ready {
-            self.dirty_regions.remove(&key);
-            self.in_flight.insert(key);
-            self.streamer.request(RegionCoord::new(key.0, key.1));
-        }
+        self.world
+            .mirror_tile_edits(edits, |edit| affected_regions(edit.tile));
     }
 
     // -------------------------------------------------------------------- input

@@ -75,7 +75,7 @@ impl EditorApp {
         self.camera.z = (world_z - origin.1) as f32;
         self.camera.y = -(1800.0 + 240.0 * f32::from(plane));
         self.view_plane = plane;
-        self.animation_dirty = true;
+        self.world.mark_animation_dirty();
     }
 
     pub(super) fn camera_region(&self) -> (i32, i32) {

@@ -70,10 +70,7 @@ impl EditorApp {
             );
         }
         if settings.smooth_terrain != self.prefs.smooth_terrain {
-            self.streamer.set_presentation(
-                Self::presentation(settings.smooth_terrain, self.presentation_hd),
-                self.presentation_generation,
-            );
+            self.world.set_smooth_terrain(settings.smooth_terrain);
         }
         self.prefs = settings;
     }

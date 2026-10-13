@@ -5,10 +5,10 @@
 //! opens without configuration and an unknown one is reported with what is supported.
 
 use super::EditorApp;
+use super::world_runtime::WorldRuntime;
 use crate::assets::Assets;
 use eframe::egui;
 use osrs_cache::source::CacheSource;
-use osrs_world::RegionStreamer;
 use std::path::{Path, PathBuf};
 
 const RECENT_LIMIT: usize = 8;
@@ -78,7 +78,7 @@ impl EditorApp {
     /// so the fingerprint is already known.
     #[cfg(target_arch = "wasm32")]
     pub(super) fn run_palette_job(&mut self) {
-        if !self.ready {
+        if !self.world.is_ready() {
             return;
         }
         if let Some((sender, source)) = self.palette_job.take() {
@@ -104,10 +104,9 @@ impl EditorApp {
         self.cache_error = None;
         self.cache_build = None;
         // The old workers finish their current job before stopping; do not wait for them here.
-        let old_streamer = std::mem::replace(
-            &mut self.streamer,
-            RegionStreamer::spawn(source.clone(), Self::presentation(false, false)),
-        );
+        let old_streamer = self
+            .world
+            .replace_streamer(WorldRuntime::spawn_streamer(source.clone()));
         let old_assets = std::mem::replace(&mut self.assets, Assets::new(source.clone()));
         #[cfg(not(target_arch = "wasm32"))]
         std::thread::spawn(move || {
@@ -126,14 +125,12 @@ impl EditorApp {
         self.history.clear();
         self.redo_stack.clear();
         self.height_edited.clear();
-        self.dirty_regions.clear();
         self.stroke = None;
         self.spline.points.clear();
         self.texture_handles.clear();
         self.floor_textures = None;
         self.palette = None;
         self.start_palette_loader(source.clone());
-        self.ready = false;
 
         if matches!(source, CacheSource::Dir(_)) {
             let text = dir.to_string_lossy().into_owned();

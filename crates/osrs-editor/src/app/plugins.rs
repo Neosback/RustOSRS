@@ -168,8 +168,7 @@ impl EditorApp {
                 }
                 EditorCommand::Status(message) => self.status = Some(message),
                 EditorCommand::SetAnimationSmoothing(enabled) => {
-                    self.animation_smoothing = enabled;
-                    self.animations.set_smoothing(enabled);
+                    self.world.set_animation_smoothing(enabled);
                 }
             }
         }

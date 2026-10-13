@@ -10,12 +10,12 @@
       "max_bytes": 37023
     },
     "app/editing.rs": {
-      "max_lines": 792,
-      "max_bytes": 28638
+      "max_lines": 770,
+      "max_bytes": 27859
     },
     "app/editing/history.rs": {
-      "max_lines": 641,
-      "max_bytes": 25633
+      "max_lines": 632,
+      "max_bytes": 25323
     },
     "app/object_tool.rs": {
       "max_lines": 550,
@@ -38,8 +38,8 @@
       "max_bytes": 23663
     },
     "app.rs": {
-      "max_lines": 738,
-      "max_bytes": 29602
+      "max_lines": 665,
+      "max_bytes": 26642
     },
     "paint.rs": {
       "max_lines": 583,
