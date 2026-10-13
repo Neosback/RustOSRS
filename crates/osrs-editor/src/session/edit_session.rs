@@ -71,10 +71,7 @@ impl EditorSession {
     }
 
     fn record_change(&mut self, impact: ChangeImpact) -> EditCommit {
-        self.revision = self
-            .revision
-            .checked_add(1)
-            .expect("editor session revision overflow");
+        self.revision += 1;
         EditCommit {
             revision: self.revision,
             impact,
