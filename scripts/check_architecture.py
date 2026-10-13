@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Enforce RustOSRS architecture boundaries and editor module size limits."""
+"""Enforce RustOSRS architecture boundaries and editor module debt ratchets."""
 
 from __future__ import annotations
 
+import json
 import sys
 import tomllib
 from pathlib import Path
@@ -10,12 +11,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CRATES = ROOT / "crates"
 EDITOR_SOURCE = CRATES / "osrs-editor" / "src"
+ARCHITECTURE_DEBT_FILE = ROOT / "scripts" / "architecture_debt.json"
 
-# Architecture Contract v2 baseline. Legacy files above these limits will move to an explicit
-# measured debt allowlist. This temporary commit intentionally reports the exact live offenders so
-# the ratchet is based on repository state rather than guessed exceptions.
+# Architecture Contract v2 normal limits. Dedicated test modules receive the larger test-only cap.
+# Existing production modules above a normal limit must be listed in architecture_debt.json at an
+# exact measured baseline and may never grow beyond that baseline.
 EDITOR_MAX_RUST_LINES = 500
 EDITOR_MAX_RUST_BYTES = 32 * 1024
+EDITOR_TEST_MAX_RUST_LINES = 700
+EDITOR_TEST_MAX_RUST_BYTES = 40 * 1024
 
 ALLOWED_INTERNAL: dict[str, set[str]] = {
     "osrs-core": set(),
@@ -58,6 +62,8 @@ CORE_FORBIDDEN = {
     "eframe",
     "rs-cache",
 }
+
+EditorDebt = dict[str, dict[str, int]]
 
 
 def dependency_names(node: object) -> set[str]:
@@ -123,32 +129,143 @@ def check_workspace(crates_root: Path = CRATES) -> list[str]:
     return errors
 
 
+def is_dedicated_test_module(relative: Path) -> bool:
+    """Return whether a Rust source file is a dedicated test-only module."""
+    return (
+        relative.name in {"test.rs", "tests.rs"}
+        or relative.name.endswith("_tests.rs")
+        or "tests" in relative.parts
+    )
+
+
+def load_editor_debt(debt_path: Path = ARCHITECTURE_DEBT_FILE) -> EditorDebt:
+    """Load and validate the explicit editor module debt baselines."""
+    if not debt_path.exists():
+        raise ValueError(f"missing debt allowlist: {debt_path}")
+
+    try:
+        payload = json.loads(debt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"cannot read debt allowlist {debt_path}: {exc}") from exc
+
+    if not isinstance(payload, dict) or payload.get("version") != 1:
+        raise ValueError("architecture debt allowlist must be an object with version = 1")
+
+    modules = payload.get("editor_modules")
+    if not isinstance(modules, dict):
+        raise ValueError("architecture debt allowlist must contain an editor_modules object")
+
+    debt: EditorDebt = {}
+    for relative, baseline in modules.items():
+        if not isinstance(relative, str) or not relative or relative.startswith("/"):
+            raise ValueError(f"invalid editor debt path: {relative!r}")
+        path = Path(relative)
+        if ".." in path.parts or path.suffix != ".rs":
+            raise ValueError(f"invalid editor debt path: {relative!r}")
+        if not isinstance(baseline, dict):
+            raise ValueError(f"editor debt entry {relative!r} must be an object")
+
+        max_lines = baseline.get("max_lines")
+        max_bytes = baseline.get("max_bytes")
+        if (
+            not isinstance(max_lines, int)
+            or isinstance(max_lines, bool)
+            or max_lines <= 0
+            or not isinstance(max_bytes, int)
+            or isinstance(max_bytes, bool)
+            or max_bytes <= 0
+        ):
+            raise ValueError(
+                f"editor debt entry {relative!r} requires positive integer max_lines/max_bytes"
+            )
+
+        debt[path.as_posix()] = {"max_lines": max_lines, "max_bytes": max_bytes}
+
+    return debt
+
+
 def check_editor_module_sizes(
     editor_root: Path = EDITOR_SOURCE,
     *,
     max_lines: int = EDITOR_MAX_RUST_LINES,
     max_bytes: int = EDITOR_MAX_RUST_BYTES,
+    test_max_lines: int = EDITOR_TEST_MAX_RUST_LINES,
+    test_max_bytes: int = EDITOR_TEST_MAX_RUST_BYTES,
+    debt: EditorDebt | None = None,
+    debt_path: Path = ARCHITECTURE_DEBT_FILE,
 ) -> list[str]:
-    """Reject editor Rust modules that are too large for safe whole-file maintenance."""
+    """Enforce normal module caps and no-growth baselines for explicit legacy debt."""
     if not editor_root.exists():
         return []
 
+    if debt is None:
+        try:
+            debt = load_editor_debt(debt_path)
+        except ValueError as exc:
+            return [f"architecture debt: {exc}"]
+
     errors: list[str] = []
+    seen: set[str] = set()
+
     for path in sorted(editor_root.rglob("*.rs")):
         data = path.read_bytes()
         line_count = len(data.splitlines())
+        byte_count = len(data)
         relative = path.relative_to(editor_root)
+        key = relative.as_posix()
+        seen.add(key)
 
-        if line_count > max_lines:
+        if is_dedicated_test_module(relative):
+            normal_lines = test_max_lines
+            normal_bytes = test_max_bytes
+            kind = "test module"
+        else:
+            normal_lines = max_lines
+            normal_bytes = max_bytes
+            kind = "production module"
+
+        over_normal = line_count > normal_lines or byte_count > normal_bytes
+        baseline = debt.get(key)
+
+        if baseline is None:
+            if line_count > normal_lines:
+                errors.append(
+                    f"osrs-editor/{key}: {line_count} lines exceeds the {normal_lines}-line "
+                    f"{kind} cap; split by responsibility before adding more code"
+                )
+            if byte_count > normal_bytes:
+                errors.append(
+                    f"osrs-editor/{key}: {byte_count} bytes exceeds the {normal_bytes}-byte "
+                    f"{kind} cap; split before whole-file tooling becomes fragile"
+                )
+            continue
+
+        baseline_lines = baseline["max_lines"]
+        baseline_bytes = baseline["max_bytes"]
+
+        if not over_normal:
             errors.append(
-                f"osrs-editor/{relative}: {line_count} lines exceeds the {max_lines}-line "
-                "module cap; split by responsibility before adding more code"
+                f"osrs-editor/{key}: legacy debt exception is stale because the file is now "
+                f"within the normal {normal_lines}-line/{normal_bytes}-byte cap; remove it"
             )
-        if len(data) > max_bytes:
+            continue
+
+        if line_count > baseline_lines:
             errors.append(
-                f"osrs-editor/{relative}: {len(data)} bytes exceeds the {max_bytes}-byte "
-                "API-safe module cap; split the module before whole-file tooling becomes fragile"
+                f"osrs-editor/{key}: legacy debt grew from {baseline_lines} to {line_count} lines; "
+                "an allowlisted file may never exceed its recorded baseline"
             )
+        if byte_count > baseline_bytes:
+            errors.append(
+                f"osrs-editor/{key}: legacy debt grew from {baseline_bytes} to {byte_count} bytes; "
+                "an allowlisted file may never exceed its recorded baseline"
+            )
+
+    orphaned = sorted(set(debt) - seen)
+    for key in orphaned:
+        errors.append(
+            f"osrs-editor/{key}: debt allowlist entry has no matching Rust module; remove it"
+        )
 
     return errors
 
