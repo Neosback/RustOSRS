@@ -62,7 +62,8 @@ pub(super) fn build_terrain_paint_patch(
     plane: SourcePlane,
     intents: &[TerrainPaintIntent],
 ) -> Result<MapPatch, PaintCommitError> {
-    let mut terrain = BTreeMap::<MapPosition, (osrs_edit::TerrainTile, osrs_edit::TerrainTile)>::new();
+    let mut terrain =
+        BTreeMap::<MapPosition, (osrs_edit::TerrainTile, osrs_edit::TerrainTile)>::new();
     let mut heights = BTreeMap::<HeightVertexCoord, (i32, i32)>::new();
 
     for intent in intents.iter().copied() {
@@ -84,18 +85,21 @@ pub(super) fn build_terrain_paint_patch(
                 after.overlay = match overlay {
                     None => None,
                     Some(id) => {
-                        let (shape, rotation) = intent.overlay_shape.or_else(|| {
-                            after
-                                .overlay
-                                .map(|existing| (existing.shape, existing.rotation))
-                        }).unwrap_or_else(|| {
-                            (
-                                OverlayShape::new(0)
-                                    .unwrap_or_else(|| unreachable!("shape zero is valid")),
-                                OverlayRotation::new(0)
-                                    .unwrap_or_else(|| unreachable!("rotation zero is valid")),
-                            )
-                        });
+                        let (shape, rotation) = intent
+                            .overlay_shape
+                            .or_else(|| {
+                                after
+                                    .overlay
+                                    .map(|existing| (existing.shape, existing.rotation))
+                            })
+                            .unwrap_or_else(|| {
+                                (
+                                    OverlayShape::new(0)
+                                        .unwrap_or_else(|| unreachable!("shape zero is valid")),
+                                    OverlayRotation::new(0)
+                                        .unwrap_or_else(|| unreachable!("rotation zero is valid")),
+                                )
+                            });
                         Some(TerrainOverlay {
                             id,
                             shape,
@@ -265,7 +269,8 @@ mod tests {
             underlay: Some(FloorUnderlayId::new(3)),
             ..TerrainTile::default()
         };
-        let document = MapDocument::from_parts([(position(tile), before)], [(vertex(tile), 32)], []);
+        let document =
+            MapDocument::from_parts([(position(tile), before)], [(vertex(tile), 32)], []);
         let mut intent = TerrainPaintIntent::new(tile);
         intent.underlay = Some(before.underlay);
         intent.height = Some(32);
@@ -318,7 +323,10 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(coords, vec![MapTile::new(3263, 3200), MapTile::new(3264, 3200)]);
+        assert_eq!(
+            coords,
+            vec![MapTile::new(3263, 3200), MapTile::new(3264, 3200)]
+        );
     }
 
     #[test]
