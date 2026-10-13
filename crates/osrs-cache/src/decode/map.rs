@@ -172,6 +172,20 @@ pub struct DecodedTerrain {
 }
 
 impl DecodedTerrain {
+    /// Assemble a terrain value from already-validated parts (an editor applying edits to a
+    /// decoded square before re-encoding it).
+    pub fn from_parts(
+        region: RegionCoord,
+        tiles: Vec<EncodedTerrainTile>,
+        trailing_flags: u8,
+    ) -> Self {
+        Self {
+            region,
+            tiles,
+            trailing_flags,
+        }
+    }
+
     pub const fn region(&self) -> RegionCoord {
         self.region
     }

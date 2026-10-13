@@ -311,6 +311,17 @@ Known remaining smell (move-only, not yet fixed): `routing.rs` holds ~190-line `
 
 `InteractionRuntime` (`app/interaction_runtime.rs`) now owns camera, view plane, hover/context picks, selection (objects, tiles, pending reselect), marquee, spline state, tool peek, object drag, and gizmo state. It was first tried before the size debt was retired and rejected because the ~300 call-site renames pushed frozen files over their baselines; with the debt gone it landed as a field-ownership move only. It is still a plain-fields struct: encapsulating selection behind methods is the follow-up that would make it more than a rename. `EditorApp` is down to 58 direct fields (target: roughly 8-12 subsystem fields).
 
+### Phase 8 started: map-stream encoders (`osrs-cache::encode`)
+
+`encode_terrain` / `encode_locations` are strict inverses of `decode_terrain` / `decode_locations`, with typed `MapEncodeError`s for unrepresentable values (no silent truncation). Measured against every decodable square of the pinned build-241 cache with `cargo run --release -p osrs-reference --example map_encode_roundtrip -- $RUSTOSRS_TARGET_CACHE_DIR`:
+
+- locations: 2936 / 2936 byte-exact
+- terrain: 2935 / 2936 byte-exact; the one exception carries the client-discarded second tile block (flags bit 0), which the decoder does not retain, so the encoder cannot reproduce it
+- 1 square is undecodable without XTEA keys (the profile has none)
+- every re-encoded terrain stream decodes back to identical tiles
+
+Canonical form: per tile `overlay, settings, underlay, height`, then a trailing flags byte `0` (build-241 files always end with it). Not yet done: converting an edited `MapDocument` region back into `DecodedTerrain`/`DecodedLocations` (plan: patch the original decoded square so untouched tiles keep their exact opcodes), JS5 container packing, and project save/load. Writing archives back into `.dat2`/`.idx` is out of scope until those exist; `vendor/rune-fs` only has container compression.
+
 ## Remaining migration roadmap
 
 ### Phase 2: decompose EditorApp state ownership
