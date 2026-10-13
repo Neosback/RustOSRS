@@ -1430,12 +1430,9 @@ mod tests {
         let map_tile = MapTile::new(tile.0, tile.1);
         let document = MapDocument::from_parts([], [(vertex(tile), 0)], []);
         let mut session = EditorSession::new(document);
-        let patch = build_terrain_height_patch(
-            session.document(),
-            &height_spec(),
-            &[map_tile, map_tile],
-        )
-        .unwrap_or_else(|error| unreachable!("valid Height stroke: {error:?}"));
+        let patch =
+            build_terrain_height_patch(session.document(), &height_spec(), &[map_tile, map_tile])
+                .unwrap_or_else(|error| unreachable!("valid Height stroke: {error:?}"));
 
         assert_eq!(patch.len(), 1);
         assert!(
@@ -1462,7 +1459,10 @@ mod tests {
             flags: 1,
         };
         let document = MapDocument::from_parts(
-            [(position(tile), semantic_terrain(current).unwrap_or_default())],
+            [(
+                position(tile),
+                semantic_terrain(current).unwrap_or_default(),
+            )],
             [(vertex(tile), current.height)],
             [],
         );
@@ -1515,8 +1515,9 @@ mod tests {
         .unwrap_or_else(|error| unreachable!("valid Paint patch: {error:?}"));
         assert!(session.commit(paint_patch).is_ok());
 
-        let height_patch = build_terrain_height_patch(session.document(), &height_spec(), &[map_tile])
-            .unwrap_or_else(|error| unreachable!("valid Height patch: {error:?}"));
+        let height_patch =
+            build_terrain_height_patch(session.document(), &height_spec(), &[map_tile])
+                .unwrap_or_else(|error| unreachable!("valid Height patch: {error:?}"));
         assert!(session.commit(height_patch).is_ok());
         assert_eq!(session.document().height_at(vertex(tile)), Some(-16));
         assert_eq!(
