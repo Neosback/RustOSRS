@@ -113,8 +113,16 @@ fn representative_fixture_matrix_meets_quality_floors() {
     for fixture in fixtures() {
         let dense = smooth_catmull_rom(fixture.control_points);
         let metrics = measure(&dense, fixture.width, 0.75);
-        assert!(metrics.ideal_tiles > 0, "{} produced no ideal tiles", fixture.name);
-        assert!(metrics.fitted_tiles > 0, "{} produced no fitted tiles", fixture.name);
+        assert!(
+            metrics.ideal_tiles > 0,
+            "{} produced no ideal tiles",
+            fixture.name
+        );
+        assert!(
+            metrics.fitted_tiles > 0,
+            "{} produced no fitted tiles",
+            fixture.name
+        );
         assert!(
             metrics.coverage_agreement >= fixture.min_coverage_agreement,
             "{} coverage agreement {:.4} fell below {:.4}: {metrics:?}",
