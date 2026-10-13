@@ -5,6 +5,8 @@
 //! shape geometry to that band.
 
 mod fitter;
+#[cfg(test)]
+mod quality;
 mod shapes;
 
 pub use fitter::{FittedTile, fit_path_overlay, smooth_catmull_rom};
