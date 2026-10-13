@@ -142,8 +142,8 @@ Delivered:
 
 Do not reintroduce pathfinding, wall mode, topology repair, automatic joining, or hidden obstacle routing without an explicit product decision.
 
-- merged/current `main` base: `cf552b734e1fdef54bf90b3b5c08211433f56a40`
-- latest observed full `main` validation: Tier A/B/C PASS
+- merged/current `main` base before this branch: `cf552b734e1fdef54bf90b3b5c08211433f56a40`
+- latest observed full `main` validation before this branch: Tier A/B/C PASS
 
 ## Current branch
 
@@ -151,7 +151,7 @@ Branch: `refactor/editor-session-domain`
 
 Base: validated `main` head `cf552b734e1fdef54bf90b3b5c08211433f56a40`.
 
-This branch establishes one persistent semantic session in the application before any editing tool is cut over from legacy authority.
+This branch completes the persistent semantic editor-session subsystem. It establishes the session contract, installs it into `EditorApp`, and hydrates it directly from decoded source-region data before any individual editing tool is cut over.
 
 ### Checkpoint 14: persistent semantic editor session contract
 
@@ -182,7 +182,7 @@ Contract established by this checkpoint:
 - rejected commits do not mutate the document, history, or revision
 - failed undo does not advance revision or corrupt the history stack
 - callers receive read-only document access through `document()`
-- each successful state transition returns semantic `ChangeImpact` with its new revision
+- each successful edit transition returns semantic `ChangeImpact` with its new revision
 
 Focused regression coverage was added for all of the above behaviors.
 
@@ -205,40 +205,112 @@ Ownership wiring:
 - legacy `edited`, `height_edited`, legacy history/redo, stroke, dirty-region, and world projection fields remain untouched
 - no editing gesture is routed into the session yet
 
-The semantic document is intentionally empty at startup. Cache-loaded terrain has not been ingested into it yet. Do not fake that ownership transition by reconstructing semantic state from renderer meshes, picker data, GPU buffers, or other presentation caches.
+The session mutation/query API is regression-tested. A narrow `#[cfg_attr(not(test), allow(dead_code))]` remains only on staged edit APIs not yet used by runtime tools. Remove it naturally as tools cut over.
 
-The session mutation/query API is already regression-tested but most of it is not yet called by the normal binary. A narrow `#[cfg_attr(not(test), allow(dead_code))]` remains on the staged `EditCommit`/session API only. Tests are not suppressed. Remove that narrow allowance naturally as runtime tools begin using those methods.
-
-No Paint, Height, Object, undo/redo UI, cache decoding, world-worker, renderer, or 117HD behavior changed in this checkpoint.
-
-Checkpoint 15 implementation head before this handoff update:
+Checkpoint 15 implementation head:
 
 - `398e7287c2b6acfaef0389e1c53bf0e95fc0b163`
 - CI `38361076460`: Tier A/B/C PASS
+
+### Checkpoint 16: semantic loaded-region ingestion
+
+The application session now owns truthful semantic state for streamed source regions without scraping renderer output.
+
+#### Canonical region snapshots
+
+`osrs-edit` now exposes `MapRegionSnapshot` as the pure domain boundary for one 64x64 source region:
+
+- exact `RegionCoord`
+- sparse canonical `TerrainTile` entries
+- explicit `HeightVertexCoord -> i32` values
+- exact `ObjectPlacement` set
+- construction rejects terrain, height, or object values assigned to the wrong region
+
+`MapDocument::replace_region` and `MapDocument::remove_region` provide deterministic infrastructure hydration/eviction without creating user edit history. Exact repeated replacement is a true no-op; replacement removes stale values only inside the target region and preserves all other regions.
+
+#### Decoded-source adapter
+
+`crates/osrs-editor/src/session/region_ingest.rs` adapts `osrs_world::RegionMap` into `MapRegionSnapshot` before renderer/picker/GPU extraction participates.
+
+The adapter:
+
+- uses canonical typed world coordinates and `SourcePlane`
+- preserves underlay, overlay id, overlay shape, overlay rotation, settings/flags, and object placements
+- masks source floor ids with the same `0x7fff` semantic id mask used by scene construction
+- validates overlay shape/rotation and object kind/orientation instead of clamping invalid data
+- resolves final terrain heights with `osrs_scene::terrain_load::TerrainLoadGrid`, preserving default-noise, explicit-height, and lower-plane inheritance semantics
+- stores the 64x64 source-owned height samples per plane; neighboring source-region boundary samples remain owned by their neighboring region rather than being invented
+
+#### Stream integration
+
+`RegionGeometry` now carries `Arc<RegionMap>` containing the decoded source-region state used for semantic hydration. This payload is produced before render extraction and is independent of Reference/117HD geometry.
+
+For each current-generation `StreamEvent::Region`, `EditorApp` adapts and ingests that decoded source snapshot into its persistent session before uploading renderer projections.
+
+Streaming lifecycle rules:
+
+- identical clean-region rebuilds do not advance session revision
+- changed clean-region snapshots replace the region deterministically and advance revision
+- clean regions leaving the camera working set are evicted from the semantic document
+- presentation-only rebuilds do not clear semantic session state
+- a newly opened cache worker emits `Ready`, which resets the entire semantic session so data cannot leak between caches
+- failed render builds do not silently destroy previously valid semantic state
+
+#### Dirty-region protection
+
+Once a successful semantic edit touches a region, the session marks that region dirty. Later stream snapshots or camera eviction cannot overwrite/discard that authored region state. Dirty status remains conservative across undo/redo for this subsystem; clearing/compacting dirty provenance is deferred until tool cutover and persistence semantics require it.
+
+This prevents streaming from becoming a competing authority once semantic tools begin committing into the session.
+
+#### Compatibility boundary
+
+Legacy Paint, Height, Object, legacy undo/redo, `TerrainEdits`, dirty-region renderer projection, and existing world edit behavior remain active and unchanged. Transitional legacy worker edits can still appear in decoded clean-region snapshots during this migration. No editing gesture has been cut over to `EditorSession::commit` yet.
+
+No 117HD/rendering behavior was intentionally changed. The decoded semantic source payload is orthogonal to whether the region is rendered through Reference, HD, or Reference fallback.
+
+Checkpoint 16 implementation head before this handoff update:
+
+- `dc7efccdb28d6d7b0bd6f1051936ba9e8f95c918`
+- CI `38363291044`: Tier A/B/C PASS
 - Tier A architecture, formatting, workspace check, strict Clippy: PASS
-- Tier B full workspace tests: PASS
+- Tier B full workspace tests, including region ingestion/replacement/dirty protection: PASS
 - Tier C M3-M9 semantic/reference parity: PASS
 
-## Current architecture debt
+## Persistent semantic session subsystem status
 
-The application now owns the semantic session, but it does not yet contain the cache-loaded map state. Legacy edit stores therefore remain the active runtime behavior and must not be deleted yet.
+The subsystem is complete and ready to merge as one unit:
 
-The migration must remove parallel authority deliberately, one source/tool at a time. Do not create a permanent synchronization model between two editable documents.
+1. `EditorSession` owns authoritative `MapDocument + EditHistory + revision`.
+2. `EditorApp` owns exactly one persistent session.
+3. Decoded cache/world regions hydrate that session directly into canonical semantic values.
+4. Region replacement and unload behavior are deterministic and idempotent.
+5. Session-authored dirty regions are protected from streaming overwrite/eviction.
+6. Cache switches reset semantic authority explicitly.
+7. Renderer, picker, GPU, and 117HD data remain downstream projections, never semantic load sources.
+8. Full Tier A/B/C is green.
 
-## Next checkpoint
+After the final documentation head is validated, squash-merge this branch to `main` and retire it before beginning tool migration.
 
-Do **not** migrate Paint, Height, Objects, legacy undo/redo, renderer invalidation, or 117HD yet.
+## Architecture debt after this merge
 
-Next solve the semantic loaded-region ingestion boundary:
+The remaining major debt is tool/runtime cutover. `EditorApp` still contains legacy editable-tile state and independent legacy undo/redo, and `osrs-world::TerrainEdits` remains a transitional projection/store.
 
-1. identify the authoritative decoded/cache-side semantic data available when a region finishes loading
-2. define the smallest region snapshot/ingestion contract needed by `EditorSession`
-3. preserve exact tile attributes, explicit corner heights, object placements, typed coordinates, and source-plane semantics
-4. make region ingestion deterministic and idempotent
-5. define region replacement/unload behavior explicitly before wiring streaming churn
-6. do not derive semantic state from rendered geometry, picker caches, or GPU data
-7. add focused headless tests for region ingestion/replacement semantics
-8. keep current visual/editor behavior unchanged
-9. run Tier A/B/C and stop for review
+Do not remove those structures wholesale. Cut over one complete editing system at a time so each logical gesture commits one semantic `MapPatch`, projects its result to current world/render adapters, and preserves established behavior.
 
-Only after the session can own truthful loaded semantic state should individual editing tools begin committing to it.
+## Next subsystem after merge
+
+Start from the newly validated `main` on a fresh branch. Do not mix this into `refactor/editor-session-domain` after merge.
+
+Recommended first tool cutover: terrain Paint.
+
+Suggested checkpoints:
+
+1. define/reuse a pure Paint intent/planner that reads `MapQuery` and produces one `MapPatch` per logical stroke
+2. route Paint commit through the persistent `EditorSession`
+3. project the resulting semantic changes through the existing world/renderer invalidation path without creating a second authority
+4. preserve one stroke = one semantic history entry
+5. add regression coverage for underlay, overlay, clear/no-op, repeated samples, region boundaries, and negative coordinates
+6. only after Paint undo/redo uses the session successfully, remove the corresponding legacy Paint authority
+7. Tier A/B/C, merge to `main`, retire that branch, then choose the next tool
+
+Do not begin Height, Objects, renderer invalidation redesign, or 117HD work in the Paint branch unless required by a narrow adapter boundary.
