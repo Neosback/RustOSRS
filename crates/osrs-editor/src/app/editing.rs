@@ -1186,10 +1186,7 @@ impl EditorApp {
                 Ok(Some(_)) => match self.project_semantic_object_history(&object, false) {
                     Ok(count) => {
                         self.notice = Some((
-                            format!(
-                                "Undid {count} object{}",
-                                if count == 1 { "" } else { "s" }
-                            ),
+                            format!("Undid {count} object{}", if count == 1 { "" } else { "s" }),
                             Instant::now(),
                         ));
                         self.redo_stack.push(step);
@@ -1334,10 +1331,7 @@ impl EditorApp {
                 Ok(Some(_)) => match self.project_semantic_object_history(&object, true) {
                     Ok(count) => {
                         self.notice = Some((
-                            format!(
-                                "Redid {count} object{}",
-                                if count == 1 { "" } else { "s" }
-                            ),
+                            format!("Redid {count} object{}", if count == 1 { "" } else { "s" }),
                             Instant::now(),
                         ));
                         self.history.push(step);
