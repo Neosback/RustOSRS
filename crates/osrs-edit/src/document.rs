@@ -1,6 +1,8 @@
 use crate::{
-    ChangeImpact, HeightVertexCoord, MapOp, MapPatch, MapPosition, ObjectPlacement, TerrainTile,
+    ChangeImpact, HeightVertexCoord, MapOp, MapPatch, MapPosition, MapRegionSnapshot,
+    ObjectPlacement, TerrainTile,
 };
+use osrs_core::coords::RegionCoord;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Authoritative, headless editable map state.
@@ -82,6 +84,71 @@ impl MapDocument {
             heights: heights.into_iter().collect(),
             objects: objects.into_iter().collect(),
         }
+    }
+
+    /// Replace one region's currently loaded semantic state without creating edit history.
+    ///
+    /// This is an infrastructure hydration boundary, not an interactive edit path. Values outside
+    /// `snapshot.region()` are preserved exactly. Replacing a region with identical semantic data
+    /// is a true no-op and returns `false`.
+    pub fn replace_region(&mut self, snapshot: &MapRegionSnapshot) -> bool {
+        let region = snapshot.region();
+        let current_terrain: BTreeMap<_, _> = self
+            .terrain
+            .iter()
+            .filter(|(coord, _)| coord.tile.split_region().0 == region)
+            .map(|(coord, tile)| (*coord, *tile))
+            .collect();
+        let current_heights: BTreeMap<_, _> = self
+            .heights
+            .iter()
+            .filter(|(coord, _)| coord.corner.split_region().0 == region)
+            .map(|(coord, height)| (*coord, *height))
+            .collect();
+        let current_objects: HashSet<_> = self
+            .objects
+            .iter()
+            .filter(|placement| placement.position.tile.split_region().0 == region)
+            .copied()
+            .collect();
+
+        if current_terrain == snapshot.terrain
+            && current_heights == snapshot.heights
+            && current_objects == snapshot.objects
+        {
+            return false;
+        }
+
+        self.remove_region_entries(region);
+        self.terrain
+            .extend(snapshot.terrain.iter().map(|(coord, tile)| (*coord, *tile)));
+        self.heights.extend(
+            snapshot
+                .heights
+                .iter()
+                .map(|(coord, height)| (*coord, *height)),
+        );
+        self.objects.extend(snapshot.objects.iter().copied());
+        true
+    }
+
+    /// Remove all semantic values whose source ownership is `region`.
+    ///
+    /// Returns whether the document changed. Session policy decides whether an edited region may
+    /// actually be evicted; this low-level operation intentionally has no history knowledge.
+    pub fn remove_region(&mut self, region: RegionCoord) -> bool {
+        let before = (self.terrain.len(), self.heights.len(), self.objects.len());
+        self.remove_region_entries(region);
+        before != (self.terrain.len(), self.heights.len(), self.objects.len())
+    }
+
+    fn remove_region_entries(&mut self, region: RegionCoord) {
+        self.terrain
+            .retain(|coord, _| coord.tile.split_region().0 != region);
+        self.heights
+            .retain(|coord, _| coord.corner.split_region().0 != region);
+        self.objects
+            .retain(|placement| placement.position.tile.split_region().0 != region);
     }
 
     /// Query one terrain tile. Missing sparse entries are semantic defaults.
@@ -255,9 +322,13 @@ mod tests {
     }
 
     fn object() -> ObjectPlacement {
+        object_at(3200, 3200)
+    }
+
+    fn object_at(x: i32, y: i32) -> ObjectPlacement {
         ObjectPlacement {
             object_id: ObjectId::new(100),
-            position: position(3200, 3200),
+            position: position(x, y),
             kind: LocKind::new(10).unwrap_or_else(|| unreachable!("loc kind is valid")),
             orientation: ObjectOrientation::new(2)
                 .unwrap_or_else(|| unreachable!("orientation is valid")),
@@ -292,6 +363,79 @@ mod tests {
         assert_eq!(document.terrain_at(tile), terrain_after);
         assert_eq!(document.height_at(vertex), Some(64));
         assert!(document.contains_object(placement));
+    }
+
+    #[test]
+    fn region_replacement_is_idempotent_and_removes_stale_values() {
+        let region = RegionCoord::new(50, 50);
+        let outside = position(3264, 3200);
+        let outside_height = height(3264, 3200);
+        let inside = position(3200, 3200);
+        let inside_height = height(3200, 3200);
+        let placement = object();
+        let terrain = TerrainTile {
+            underlay: Some(FloorUnderlayId::new(7)),
+            ..TerrainTile::default()
+        };
+        let mut document = MapDocument::from_parts(
+            [(outside, terrain)],
+            [(outside_height, -8)],
+            [object_at(3264, 3200)],
+        );
+        let first = MapRegionSnapshot::from_parts(
+            region,
+            [(inside, terrain)],
+            [(inside_height, -64)],
+            [placement],
+        )
+        .unwrap_or_else(|error| unreachable!("valid snapshot: {error:?}"));
+
+        assert!(document.replace_region(&first));
+        assert!(!document.replace_region(&first));
+        assert_eq!(document.terrain_at(inside), terrain);
+        assert_eq!(document.height_at(inside_height), Some(-64));
+        assert!(document.contains_object(placement));
+
+        let replacement = MapRegionSnapshot::from_parts(
+            region,
+            [(inside, TerrainTile::default())],
+            [(inside_height, -128)],
+            [],
+        )
+        .unwrap_or_else(|error| unreachable!("valid replacement: {error:?}"));
+        assert!(document.replace_region(&replacement));
+        assert_eq!(document.terrain_at(inside), TerrainTile::default());
+        assert_eq!(document.height_at(inside_height), Some(-128));
+        assert!(!document.contains_object(placement));
+
+        assert_eq!(document.terrain_at(outside), terrain);
+        assert_eq!(document.height_at(outside_height), Some(-8));
+        assert!(document.contains_object(object_at(3264, 3200)));
+    }
+
+    #[test]
+    fn region_removal_preserves_other_regions() {
+        let region = RegionCoord::new(50, 50);
+        let inside = position(3200, 3200);
+        let outside = position(3264, 3200);
+        let terrain = TerrainTile {
+            underlay: Some(FloorUnderlayId::new(7)),
+            ..TerrainTile::default()
+        };
+        let mut document = MapDocument::from_parts(
+            [(inside, terrain), (outside, terrain)],
+            [(height(3200, 3200), -64), (height(3264, 3200), -8)],
+            [object(), object_at(3264, 3200)],
+        );
+
+        assert!(document.remove_region(region));
+        assert!(!document.remove_region(region));
+        assert_eq!(document.terrain_at(inside), TerrainTile::default());
+        assert_eq!(document.height_at(height(3200, 3200)), None);
+        assert!(!document.contains_object(object()));
+        assert_eq!(document.terrain_at(outside), terrain);
+        assert_eq!(document.height_at(height(3264, 3200)), Some(-8));
+        assert!(document.contains_object(object_at(3264, 3200)));
     }
 
     #[test]

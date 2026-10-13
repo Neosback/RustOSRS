@@ -66,6 +66,10 @@ impl EditorApp {
                     profile_id,
                     build,
                 } => {
+                    // `Ready` is emitted exactly once by each newly opened cache worker. Visual
+                    // presentation rebuilds do not emit it, so this is the cache/source boundary
+                    // where old semantic state must be discarded.
+                    self.session.reset();
                     self.cache_opened(ctx, profile_id, build);
                     self.renderer.set_textures(&textures);
                     self.floor_textures = Some(textures);
@@ -77,6 +81,17 @@ impl EditorApp {
                         continue;
                     }
                     self.in_flight.remove(&key);
+                    match crate::session::adapt_region_map(&region.source) {
+                        Ok(snapshot) => {
+                            let _ = self.session.ingest_region(&snapshot);
+                        }
+                        Err(error) => {
+                            self.status = Some(format!(
+                                "semantic region {},{} failed: {error:?}",
+                                region.region.x, region.region.y
+                            ));
+                        }
+                    }
                     // Object indices in a rebuilt region are new (an edit shifts them), so what was
                     // outlined for the old ones is gone: the selection's highlight is made afresh.
                     self.outlines.retain(|(r, _), _| *r != key);
@@ -104,6 +119,7 @@ impl EditorApp {
                 StreamEvent::Empty(region) => {
                     let key = (region.x, region.y);
                     self.in_flight.remove(&key);
+                    let _ = self.session.unload_region(region);
                     self.loaded.insert(key, None);
                 }
                 StreamEvent::Failed(region, error) => {
@@ -157,6 +173,7 @@ impl EditorApp {
             .collect();
         for key in stale {
             self.loaded.remove(&key);
+            let _ = self.session.unload_region(RegionCoord::new(key.0, key.1));
             self.renderer.remove_region(key);
             self.animations.remove_region(key);
             self.infos.remove(&key);

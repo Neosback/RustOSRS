@@ -22,6 +22,7 @@ mod pick;
 mod platform;
 mod plugin;
 mod screenshot;
+mod session;
 mod settings;
 mod style;
 mod terrain_path;

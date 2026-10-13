@@ -7,9 +7,9 @@
 //! context in every direction.
 
 use crate::{
-    AnimatedInstance, OwnedTiles, RegionInfo, SceneWindow, TerrainPresentation, WorldDefinitions,
-    WorldError, build_world_scene, extract_animated_instances, extract_owned_geometry,
-    extract_region_info,
+    AnimatedInstance, OwnedTiles, RegionInfo, RegionMap, SceneWindow, TerrainPresentation,
+    WorldDefinitions, WorldError, build_world_scene, extract_animated_instances,
+    extract_owned_geometry, extract_region_info,
     hd::{HdContext, extract::extract_owned_geometry_hd, gpu::HdGpuData},
     texture_layers,
 };
@@ -143,6 +143,9 @@ pub fn region_window(region: RegionCoord) -> SceneWindow {
 #[derive(Debug, Clone)]
 pub struct RegionGeometry {
     pub region: RegionCoord,
+    /// Decoded source-region state from before any scene/render extraction. The editor adapts this
+    /// into its canonical semantic document; renderer and picker data remain disposable views.
+    pub source: Arc<RegionMap>,
     pub geometry: SceneGeometry,
     /// The extraction path that actually produced `geometry`.
     pub render_path: RegionRenderPath,
@@ -175,9 +178,9 @@ pub fn build_region_geometry_with(
     presentation: TerrainPresentation,
     hd: Option<&HdContext>,
 ) -> Result<Option<RegionGeometry>, WorldError> {
-    if definitions.region(region)?.is_none() {
+    let Some(source) = definitions.region(region)? else {
         return Ok(None);
-    }
+    };
     let started = Instant::now();
     let window = region_window(region);
     let world = build_world_scene(definitions, window, presentation)?;
@@ -205,6 +208,7 @@ pub fn build_region_geometry_with(
     ));
     Ok(Some(RegionGeometry {
         region,
+        source: Arc::new(source),
         geometry,
         render_path,
         hd_stats,

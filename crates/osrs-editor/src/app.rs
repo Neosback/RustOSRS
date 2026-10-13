@@ -42,6 +42,7 @@ use crate::interact;
 use crate::keymap::Keymap;
 use crate::pick::{self, Infos, ObjectPick, Pick};
 use crate::plugin::EditorPlugin;
+use crate::session::EditorSession;
 use crate::settings::ProfileChoice;
 use crate::settings::{self, Settings};
 use crate::style::ColorKey;
@@ -93,6 +94,9 @@ pub struct EditorApp {
     camera: FlyCamera,
     targets: Option<ViewportTargets>,
     view_plane: u8,
+    /// Persistent authoritative semantic edit state. Legacy edit stores remain projections until
+    /// their individual migration checkpoints.
+    session: EditorSession,
     /// Optional tools and overlays (see `plugin.rs`).
     plugins: Vec<Box<dyn EditorPlugin>>,
     /// Guide lines per plugin, merged into the renderer's line overlay.
@@ -266,6 +270,7 @@ impl EditorApp {
             camera,
             targets: None,
             view_plane: 0,
+            session: EditorSession::default(),
             settings_path: None,
             saved_settings: Settings::default(),
             settings_checked: Instant::now(),
@@ -369,6 +374,7 @@ impl EditorApp {
             peak_resident: 0,
             started: Instant::now(),
         };
+        debug_assert_eq!(app.session.revision(), 0);
         for plugin in &app.plugins {
             app.keymap.register(plugin.actions());
         }
