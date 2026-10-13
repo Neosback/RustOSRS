@@ -5,7 +5,7 @@
 //! checkpoint: ordered brush samples are evaluated against authoritative semantic heights, storage
 //! quantization is applied exactly, and the final result is emitted as one reversible `MapPatch`.
 
-use super::{HeightTool, apply, decode_height, encode_height};
+use super::{HeightTool, apply as apply_height, decode_height, encode_height};
 use crate::paint::BrushShape;
 use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::{HeightVertexCoord, MapOp, MapPatch, MapQuery};
@@ -51,6 +51,23 @@ impl HeightStrokeSpec {
             anchor,
             seed,
         }
+    }
+
+    /// Evaluate one preview/planner sample using the exact settings captured for this stroke.
+    pub(crate) fn apply_sample(
+        &self,
+        center: MapTile,
+        height: &dyn Fn((i32, i32)) -> Option<i32>,
+    ) -> Vec<((i32, i32), i32)> {
+        apply_height(
+            &self.tool,
+            (center.x, center.y),
+            self.radius,
+            self.shape,
+            self.anchor,
+            self.seed,
+            height,
+        )
     }
 }
 
@@ -107,15 +124,7 @@ pub(crate) fn build_terrain_height_patch(
                     .copied()
                     .or_else(|| query_height(query, spec.plane, tile))
             };
-            apply(
-                &spec.tool,
-                (center.x, center.y),
-                spec.radius,
-                spec.shape,
-                spec.anchor,
-                spec.seed,
-                &height,
-            )
+            spec.apply_sample(*center, &height)
         };
 
         for (tile, desired) in proposed {
