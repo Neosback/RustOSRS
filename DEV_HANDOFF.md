@@ -275,56 +275,187 @@ Focused tests prove:
 8. equivalent unordered input sets produce identical canonical patches
 9. turning an object changes only its exact orientation identity
 
-### Runtime compatibility boundary
+Checkpoint 23 final documented head:
+`9c69eb2a6f807fd8139114ac9ca6cfd4119b4c3d`
 
-Checkpoint 23 intentionally does **not** change live Object behavior.
+CI `38386822954`: Tier A/B/C PASS.
 
-Still legacy at runtime:
+## Checkpoint 24 — live Object action -> authoritative semantic commit
 
-- `object_tool::edit_objects`
-- `LocSpec` as the app/worker adapter representation
-- `LocEdit::Remove/Add`
-- `EditStep.removed / EditStep.added`
-- Object undo/redo through legacy `revert`
-- object selection/reselection behavior
-- drag/gizmo preview
+Status: COMPLETE.
 
-This branch is therefore **not mergeable yet** as a completed Object subsystem.
+Implementation head:
+`085285739f0a2090b5ccafa731ecd2c937440f74`
 
-## Next checkpoint — Checkpoint 24
+Implementation CI:
+`38389419996` — Tier A/B/C PASS.
 
-Route one completed Object action through the semantic session at the commit boundary only.
+### Live transaction flow
 
-Intended flow:
+Completed Object actions now follow:
 
 ```text
-existing selected LocSpec values
-  -> exact adapter to ObjectPlacement
+keyboard / drawer / pointer drag / gizmo / floor action
+  -> existing LocSpec removed + added values
+  -> strict LocSpec -> ObjectPlacement adapter
   -> build_object_patch(EditorSession::document, removed, added)
   -> one EditorSession::commit
   -> authoritative MapDocument
-  -> project committed result through existing LocEdit worker/rebuild path
+  -> canonical patch-derived LocEdit projection
+  -> worker region rebuild
+  -> existing pending reselect resolution
 ```
 
-Checkpoint 24 scope:
+Every current Object action source converges on the existing `edit_objects` funnel:
 
-- cover the existing `edit_objects` funnel used by delete, rotate, move, floor shift, duplicate, and gizmo commits
-- add a strict `LocSpec <-> ObjectPlacement` adapter with typed validation
-- one logical Object action -> one semantic commit/revision/history entry
-- semantic no-op -> no global history entry
-- preserve existing selection/reselection and worker/render behavior
-- failure before projection must leave worker state unchanged
-- projection failure after semantic commit must attempt semantic rollback
-- add focused runtime/adapter regressions
+- delete
+- duplicate
+- quarter-turn rotation
+- one-tile drawer moves
+- free pointer drag
+- floor shift
+- gizmo translation
+- gizmo rotation
+- keyboard shortcuts
 
-Checkpoint 24 must **not** migrate Object undo/redo yet unless required for immediate coherence. If global history would become unsafe, stop and reassess rather than silently broadening the checkpoint.
+`gizmo::finish_gizmo_drag` still delegates to `move_objects` or `rotate_selected_objects`; no parallel gizmo semantic path was introduced.
 
-Expected following checkpoint, not yet authorized:
+### Strict `LocSpec` semantic adapter
 
-- Object undo/redo -> `EditorSession::undo/redo`
-- replace legacy Object before/after history with a lightweight routing marker
-- retire Object legacy history authority
-- then exact-head A/B/C, PR, squash merge, and post-merge main validation
+Added:
+
+`crates/osrs-editor/src/app/object_tool/commit.rs`
+
+The adapter validates before semantic planning:
+
+- `SourcePlane::new(spec.plane)`
+- `LocKind::new(spec.loc_type)`
+- `ObjectOrientation::new(spec.orientation)`
+
+Invalid plane, loc kind, or orientation is rejected before semantic mutation or worker projection.
+
+The adapter preserves exact:
+
+- object id
+- world tile, including negative coordinates
+- source plane
+- loc kind
+- orientation
+
+Valid `LocSpec <-> ObjectPlacement` values round-trip exactly.
+
+### Canonical worker projection
+
+The worker projection is derived from the canonical semantic `MapPatch`, not from the raw selection/request vectors.
+
+Consequences:
+
+- duplicate input requests normalized by `build_object_patch` do not leak back into worker `LocEdit`s
+- exact remove+add semantic no-ops emit no worker edits
+- canonical removal/addition ordering follows the semantic patch
+- worker state is downstream projection, never completed Object authority
+
+### One action -> one semantic commit
+
+`edit_objects` now:
+
+1. adapts and plans against `EditorSession::document()`
+2. calls `EditorSession::commit` exactly once
+3. emits canonical worker `LocEdit`s only after successful semantic commit
+4. keeps existing selection clearing/reselection behavior
+5. returns whether a non-empty semantic transaction committed
+
+A successful non-empty Object action creates one semantic history entry and one revision advance.
+
+A semantic no-op:
+
+- creates no semantic history entry
+- creates no global legacy history entry
+- emits no worker `LocEdit`
+- does not alter selection as if a mutation occurred
+
+Planner, adapter, or semantic commit rejection leaves worker projection unchanged.
+
+Floor-shift now updates `view_plane` only when the semantic Object transaction actually succeeds.
+
+Successful Object commits also mark their touched semantic regions dirty through `EditorSession`, so subsequent streaming snapshots cannot overwrite/evict those edited regions.
+
+### Adapter/runtime regression coverage
+
+Checkpoint 24 adds coverage proving:
+
+1. valid `LocSpec` semantic round-trip is exact
+2. invalid source plane is rejected
+3. invalid loc kind is rejected
+4. invalid orientation is rejected
+5. worker projection is derived from canonical patch operations
+6. duplicate raw requests collapse before worker projection
+7. exact remove+add no-op produces no worker projection
+8. one Object action commits as exactly one `EditorSession` revision/history entry
+9. authoritative `MapDocument` contains the moved placement and no longer contains the source placement after commit
+
+### Critical temporary history boundary — DO NOT MERGE
+
+Checkpoint 24 intentionally stops before Object undo/redo migration.
+
+Object commits now enter `EditorSession::history`, but global Object Ctrl/Cmd+Z and redo still use legacy `EditStep.removed / EditStep.added` through `revert`.
+
+This creates the same temporary split-history hazard previously closed for Paint and Height. For example:
+
+```text
+Paint semantic commit
+Object semantic commit
+legacy Object undo
+semantic Paint undo
+```
+
+The worker-visible Object state could move backward while the Object patch remains on top of the semantic session history, causing the global chronological stack and `EditorSession::history` to disagree.
+
+Therefore:
+
+- this branch is **not mergeable after Checkpoint 24**
+- do not ship or merge the Object subsystem in this intermediate state
+- Checkpoint 25 must close Object undo/redo authority before the subsystem integration PR
+
+The legacy Object `EditStep { removed, added }` retained in Checkpoint 24 is strictly transitional routing compatibility, not the intended long-term Object authority.
+
+### Deliberately unchanged
+
+- Paint and Height semantic commit/history behavior
+- terrain-path runtime history bridge
+- context-menu `clear_overlay_at`
+- worker `LocEdits` implementation
+- renderer invalidation architecture
+- 117HD behavior
+
+## Next checkpoint — Checkpoint 25
+
+Migrate Object undo/redo to authoritative semantic history without broadening into other subsystems.
+
+Target model:
+
+```text
+global history marker chooses chronological Object action
+  -> EditorSession::undo / redo decides semantic state
+  -> authoritative MapDocument
+  -> Object projection adapter derives inverse/current LocEdit changes
+  -> worker rebuild + reselect
+```
+
+Checkpoint 25 scope:
+
+- replace migrated Object tool's legacy before/after undo authority with a lightweight semantic Object routing marker
+- marker may retain only canonical Object identities/specs needed to project semantic state; it must not become duplicate semantic authority
+- Object undo -> `EditorSession::undo()`
+- Object redo -> `EditorSession::redo()`
+- derive worker `LocEdit` projection from authoritative semantic state / canonical transaction identity
+- preserve chronological mixed Paint + Height + Object ordering
+- keep projection failure handling symmetric and failure-safe; failed projection must attempt the inverse semantic history operation before returning the global marker to its original stack
+- preserve selection/reselection behavior after undo/redo
+- prove migrated Object markers no longer carry legacy before/after authority
+- exact-head Tier A/B/C before considering the Object subsystem complete
+
+Do not migrate terrain-path history, context-menu terrain actions, renderer invalidation, or 117HD in Checkpoint 25.
 
 ## Remaining separate migration targets
 
