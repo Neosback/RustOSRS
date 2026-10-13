@@ -109,13 +109,7 @@ mod tests {
     use crate::session::EditorSession;
     use osrs_edit::MapDocument;
 
-    fn spec(
-        object_id: u32,
-        tile: (i32, i32),
-        plane: u8,
-        loc_type: u8,
-        orientation: u8,
-    ) -> LocSpec {
+    fn spec(object_id: u32, tile: (i32, i32), plane: u8, loc_type: u8, orientation: u8) -> LocSpec {
         LocSpec {
             object_id,
             tile,
