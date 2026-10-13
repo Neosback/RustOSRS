@@ -9,7 +9,7 @@ use osrs_edit::{
 use osrs_world::{LocEdit, LocSpec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ObjectCommitError {
+pub(in crate::app) enum ObjectCommitError {
     InvalidPlane { plane: u8, tile: (i32, i32) },
     InvalidLocKind { kind: u8, tile: (i32, i32) },
     InvalidOrientation { orientation: u8, tile: (i32, i32) },
