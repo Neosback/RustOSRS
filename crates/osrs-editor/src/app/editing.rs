@@ -8,6 +8,7 @@
 use super::EditorApp;
 use super::paint_commit::{PaintCommitError, TerrainPaintIntent, build_terrain_paint_patch};
 use super::path_commit::{TerrainPathIntent, build_terrain_path_patch};
+use crate::heights::commit::{HeightStrokeSpec, build_terrain_height_patch};
 use crate::heights::{self, encode_height};
 use crate::paint::{Brush, Fill, TileValues, Tool};
 use eframe::egui;
@@ -219,6 +220,10 @@ pub struct Stroke {
     /// The exact Paint brush captured for this stroke. `None` keeps non-Paint strokes on the legacy
     /// commit path until their own migration checkpoints.
     paint_brush: Option<Brush>,
+    /// The exact Height settings captured on the first applied sample of this stroke.
+    height_spec: Option<HeightStrokeSpec>,
+    /// Ordered Height brush centers. Repeated centers are intentional for held sculpting.
+    height_centers: Vec<MapTile>,
     /// The height under the cursor when the stroke began (what Flatten levels to).
     anchor: Option<i32>,
     seed: u64,
@@ -232,6 +237,8 @@ impl Default for Stroke {
             last_tile: None,
             last_applied: Instant::now(),
             paint_brush: None,
+            height_spec: None,
+            height_centers: Vec::new(),
             anchor: None,
             seed: 0,
         }
@@ -370,9 +377,46 @@ impl EditorApp {
             .retain(|(_, before, after)| before != after);
     }
 
-    /// Finish the open stroke. Paint strokes commit exactly once to the semantic session and leave
-    /// only a lightweight routing marker in the global mixed-history stack. Other tools remain on
-    /// the existing legacy history path until their own migration checkpoints.
+    /// Reconcile the already-visible Height preview with authoritative semantic heights.
+    ///
+    /// Values are prepared before mutation so an adapter failure cannot leave a partially projected
+    /// Height stroke.
+    fn project_height_stroke(&mut self, stroke: &mut Stroke) -> Result<(), &'static str> {
+        let mut projected = Vec::with_capacity(stroke.step.changes.len());
+        for (index, (key, _, after)) in stroke.step.changes.iter().enumerate() {
+            let plane = SourcePlane::new(key.0)
+                .ok_or("a Height stroke contains an invalid source plane")?;
+            let coord = HeightVertexCoord::new(MapTile::new(key.1, key.2), plane);
+            let height = self
+                .session
+                .document()
+                .height_at(coord)
+                .ok_or("a Height preview vertex is missing from semantic state")?;
+            let mut values = *after;
+            values.height = height;
+            projected.push((index, *key, values));
+        }
+
+        let mut edits = Vec::new();
+        for (index, key, values) in projected {
+            let after = &mut stroke.step.changes[index].2;
+            if values != *after {
+                self.edited.insert(key, values);
+                edits.push(self.edit_for(key, values));
+            }
+            *after = values;
+        }
+        self.send_edits(edits);
+        stroke
+            .step
+            .changes
+            .retain(|(_, before, after)| before != after);
+        Ok(())
+    }
+
+    /// Finish the open stroke. Paint commits and Height commits enter the semantic session exactly
+    /// once. Paint already uses a semantic history routing marker; Height keeps its legacy global
+    /// undo payload until the dedicated Height undo/redo checkpoint.
     pub(super) fn end_stroke(&mut self) {
         let Some(mut stroke) = self.stroke.take() else {
             return;
@@ -430,6 +474,85 @@ impl EditorApp {
             None
         };
 
+        if paint_history.is_none()
+            && let Some(spec) = stroke.height_spec.clone()
+        {
+            let missing = stroke.step.changes.iter().find_map(|(key, _, _)| {
+                let plane = SourcePlane::new(key.0)?;
+                let coord = HeightVertexCoord::new(MapTile::new(key.1, key.2), plane);
+                self.session.document().height_at(coord).is_none().then_some(coord)
+            });
+            if let Some(coord) = missing {
+                self.revert(&stroke.step, false);
+                self.notice = Some((
+                    format!(
+                        "Height stroke was not committed: semantic height is missing at {coord:?}"
+                    ),
+                    Instant::now(),
+                ));
+                return;
+            }
+
+            let patch = match build_terrain_height_patch(
+                self.session.document(),
+                &spec,
+                &stroke.height_centers,
+            ) {
+                Ok(patch) => patch,
+                Err(error) => {
+                    self.revert(&stroke.step, false);
+                    self.notice = Some((
+                        format!("Height stroke was not committed: {error:?}"),
+                        Instant::now(),
+                    ));
+                    return;
+                }
+            };
+
+            match self.session.commit(patch) {
+                Ok(Some(_)) => {
+                    if let Err(message) = self.project_height_stroke(&mut stroke) {
+                        let rollback_succeeded = matches!(self.session.undo(), Ok(Some(_)));
+                        self.revert(&stroke.step, false);
+                        self.notice = Some((
+                            if rollback_succeeded {
+                                format!("Height commit was rolled back: {message}")
+                            } else {
+                                format!(
+                                    "Height projection failed and semantic rollback failed: {message}"
+                                )
+                            },
+                            Instant::now(),
+                        ));
+                        return;
+                    }
+                }
+                Ok(None) => {
+                    if let Err(message) = self.project_height_stroke(&mut stroke) {
+                        self.revert(&stroke.step, false);
+                        self.notice = Some((
+                            format!("Height no-op projection failed: {message}"),
+                            Instant::now(),
+                        ));
+                    } else {
+                        self.notice = Some((
+                            "Height stroke made no semantic changes".to_owned(),
+                            Instant::now(),
+                        ));
+                    }
+                    return;
+                }
+                Err(error) => {
+                    self.revert(&stroke.step, false);
+                    self.notice = Some((
+                        format!("Height stroke was rejected by the semantic session: {error:?}"),
+                        Instant::now(),
+                    ));
+                    return;
+                }
+            }
+        }
+
         if stroke.step.changes.is_empty()
             && stroke.step.added.is_empty()
             && stroke.step.removed.is_empty()
@@ -451,8 +574,8 @@ impl EditorApp {
         ));
     }
 
-    /// One finished undo step. For Paint this is only a global routing marker; Height/Object/path
-    /// actions still carry their legacy before/after data here.
+    /// One finished undo step. Paint is semantic. Height has a semantic commit from Checkpoint 21
+    /// but keeps its legacy global undo payload until the next checkpoint; Objects/path remain legacy.
     pub(super) fn push_step(&mut self, step: EditStep) {
         self.history.push(step);
         if self.history.len() > HISTORY_LIMIT {
@@ -508,18 +631,25 @@ impl EditorApp {
         if stroke.anchor.is_none() {
             stroke.anchor = self.current_tile((plane, tile.0, tile.1)).map(|v| v.height);
         }
-        let tool = self.prefs.height_tool.clone();
-        let (radius, shape) = (self.prefs.brush.radius, self.prefs.brush.footprint);
+        let source_plane = SourcePlane::new(plane)
+            .unwrap_or_else(|| unreachable!("editor view planes are always validated"));
+        let center = MapTile::new(tile.0, tile.1);
+        let spec = stroke
+            .height_spec
+            .get_or_insert_with(|| {
+                HeightStrokeSpec::new(
+                    source_plane,
+                    self.prefs.height_tool.clone(),
+                    self.prefs.brush.radius,
+                    self.prefs.brush.footprint,
+                    stroke.anchor.unwrap_or(0),
+                    stroke.seed,
+                )
+            })
+            .clone();
+        stroke.height_centers.push(center);
         let lookup = |t: (i32, i32)| self.current_tile((plane, t.0, t.1)).map(|v| v.height);
-        let changes = heights::apply(
-            &tool,
-            tile,
-            radius,
-            shape,
-            stroke.anchor.unwrap_or(0),
-            stroke.seed,
-            &lookup,
-        );
+        let changes = spec.apply_sample(center, &lookup);
         let mut edits = Vec::new();
         for (t, height) in changes {
             let key = (plane, t.0, t.1);
@@ -544,6 +674,8 @@ impl EditorApp {
             return;
         };
         let plane = self.view_plane;
+        let source_plane = SourcePlane::new(plane)
+            .unwrap_or_else(|| unreachable!("editor view planes are always validated"));
         let mut tool = self.prefs.height_tool.clone();
         tool.falloff = crate::heights::Falloff::Flat;
         // Flatten levels the whole selection to one height: the first selected tile's.
@@ -551,18 +683,21 @@ impl EditorApp {
             .first()
             .and_then(|t| self.current_tile((plane, t.0, t.1)))
             .map_or(0, |v| v.height);
+        let spec = HeightStrokeSpec::new(
+            source_plane,
+            tool,
+            0,
+            crate::paint::BrushShape::Square,
+            anchor,
+            stroke.seed,
+        );
+        stroke.height_spec = Some(spec.clone());
         let mut edits = Vec::new();
         for tile in tiles {
+            let center = MapTile::new(tile.0, tile.1);
+            stroke.height_centers.push(center);
             let lookup = |t: (i32, i32)| self.current_tile((plane, t.0, t.1)).map(|v| v.height);
-            let changes = heights::apply(
-                &tool,
-                tile,
-                0,
-                crate::paint::BrushShape::Square,
-                anchor,
-                stroke.seed,
-                &lookup,
-            );
+            let changes = spec.apply_sample(center, &lookup);
             for (t, height) in changes {
                 let key = (plane, t.0, t.1);
                 if let Some(mut after) = self.current_tile(key) {
@@ -1046,6 +1181,7 @@ impl EditorApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::heights::{Falloff, HeightOp, HeightTool};
     use crate::session::EditorSession;
 
     fn plane() -> SourcePlane {
@@ -1126,6 +1262,40 @@ mod tests {
                 TerrainTile::default()
             );
         }
+    }
+
+    #[test]
+    fn one_height_stroke_is_one_semantic_session_history_entry() {
+        let tile = (3200, 3200);
+        let map_tile = MapTile::new(tile.0, tile.1);
+        let document = MapDocument::from_parts([], [(vertex(tile), 0)], []);
+        let mut session = EditorSession::new(document);
+        let spec = HeightStrokeSpec::new(
+            plane(),
+            HeightTool {
+                op: HeightOp::Raise,
+                strength: 16,
+                falloff: Falloff::Flat,
+                flatten_to: None,
+            },
+            0,
+            crate::paint::BrushShape::Square,
+            0,
+            7,
+        );
+        let patch = build_terrain_height_patch(session.document(), &spec, &[map_tile, map_tile])
+            .unwrap_or_else(|error| unreachable!("valid Height stroke: {error:?}"));
+
+        assert_eq!(patch.len(), 1);
+        assert!(
+            session
+                .commit(patch)
+                .unwrap_or_else(|error| unreachable!("valid semantic commit: {error:?}"))
+                .is_some()
+        );
+        assert_eq!(session.revision(), 1);
+        assert!(session.can_undo());
+        assert_eq!(session.document().height_at(vertex(tile)), Some(-32));
     }
 
     #[test]
