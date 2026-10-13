@@ -169,21 +169,26 @@ Base / validated `main`:
 
 Purpose: migrate live terrain-path commit/history from the temporary semantic snapshot bridge to the persistent `EditorSession` without mixing context-menu, renderer, or 117HD work.
 
+The Path subsystem is now functionally complete on this branch. Do not start another subsystem here. The next boundary is a focused integration PR after explicit user direction.
+
 ## Checkpoint 27 — live terrain path -> persistent semantic commit
 
-Status: IMPLEMENTATION COMPLETE; **DO NOT MERGE YET**.
+Status: COMPLETE.
 
 Implementation head:
 `2245f2dc027123362e1d38869981e56b4fdc1aba`
 
-Implementation CI:
-`38412603434` — Tier A/B/C PASS, including M3-M9.
+Final documented head:
+`ac11b771c38bc0ac02ffa13fdf507cc0326ed2b1`
+
+Final CI:
+`38413087953` — Tier A/B/C PASS, including M3-M9.
 
 ### Runtime authority
 
 Before this checkpoint, `apply_terrain_path` built a temporary `MapDocument`, applied the semantic path patch there, then copied the result back into legacy tile state. The persistent `EditorSession` did not receive the path transaction.
 
-Checkpoint 27 changes the live path commit boundary to:
+Checkpoint 27 changed the live path commit boundary to:
 
 ```text
 fitted PathTile[]
@@ -207,68 +212,129 @@ When the path brush has Height armed:
 - the pure path planner still requires an explicit existing semantic height vertex on the edited plane
 - storage quantization remains consistent with existing cache representation
 
-### Failure/no-op behavior
-
-Before `EditorSession::commit`, the adapter preflights the complete worker projection and rejects if:
-
-- a required projection tile is unavailable
-- semantic terrain IDs cannot fit the transitional worker representation
-- a required semantic height is missing
-- the semantic patch cannot produce a representable worker change
-
-An empty semantic path patch creates no semantic history entry.
-
-A successful non-empty path operation creates exactly one persistent semantic commit/revision, then mirrors the final semantic result into the existing `edited` / `height_edited` / `TileEdit` worker projection.
-
 ### Anti-god/module split
 
 Path runtime responsibility moved out of `app/editing.rs` into:
 
 `crates/osrs-editor/src/app/editing/path.rs`
 
-This removes roughly another 166 lines from the editing shell instead of adding new path logic back into a growing central module. `editing/path.rs` is a focused ~290-line runtime adapter/test module and remains far below the repository hard module-size ceiling.
+This removed roughly another 166 lines from the editing shell instead of adding new path logic back into a growing central module. Path fitting remains in `terrain_path` / `spline_tool`; pure semantic path planning remains in `app/path_commit.rs`.
 
-Existing Paint/Height/input/rebuild behavior remains in `editing.rs`; path fitting remains in `terrain_path` / `spline_tool`; pure semantic path planning remains in `app/path_commit.rs`.
+Checkpoint 27 intentionally left Path undo/redo on legacy `EditStep.changes`; Checkpoint 28 closes that temporary split-history boundary.
+
+## Checkpoint 28 — terrain-path undo/redo -> semantic session
+
+Status: IMPLEMENTATION COMPLETE; final documented-head validation pending.
+
+Implementation head:
+`6c2969d368818d3ca6094a91053274483e78d588`
+
+Implementation CI:
+`38416343243` — Tier A/B/C PASS, including M3-M9.
+
+### Path history authority
+
+Path no longer stores terrain or Height before/after values in application history.
+
+The global route now carries only:
+
+```text
+SemanticPathHistory {
+  keys: Vec<TileKey>,
+  include_height: bool,
+}
+```
+
+`keys` identify every unique Path tile participating in the semantic transaction. `include_height` records whether the Path gesture changed Height and therefore whether semantic Height should also be mirrored by worker projection.
+
+The actual reversible terrain/height state exists only in `EditorSession::history`.
+
+### Undo/redo flow
+
+Path now follows the same authoritative chronology as Paint, Height, and Object:
+
+```text
+global chronological route
+  -> EditorSession::undo / redo
+  -> authoritative MapDocument
+  -> preflight complete Path TileEdit projection
+  -> worker/render mirror update
+```
+
+Undo/redo does not read legacy stored Path before/after values.
+
+`project_semantic_path_values` derives terrain channels directly from `MapQuery` / `MapDocument`. If Path Height was armed, Height is also read from semantic state; otherwise the current worker Height is deliberately preserved.
+
+### Failure safety
+
+After semantic history moves, the complete Path worker projection is prepared before any worker mutation.
+
+Projection rejects if:
+
+- a routed Path tile is no longer available to the worker adapter
+- the source plane is invalid
+- semantic terrain IDs cannot fit the transitional worker representation
+- an armed semantic Height vertex is missing
+
+If projection preparation fails after `EditorSession::undo()`, the code attempts `EditorSession::redo()` and restores the global marker to the undo stack.
+
+If projection preparation fails after `EditorSession::redo()`, the code attempts `EditorSession::undo()` and restores the global marker to the redo stack.
+
+This keeps semantic history and the global chronological router aligned before worker mutation.
+
+### Immediate commit projection versus history routing
+
+The live Path commit still computes local worker before/after values for the immediate `TileEdit` projection only. Those values are not retained as Path history authority.
+
+The semantic history route records every unique Path intent key, even if a worker mirror already happens to equal the committed semantic result and therefore needs no immediate `TileEdit`. This ensures later undo/redo still validates and projects the complete semantic transaction footprint.
 
 ### Regression coverage
 
-Checkpoint 27 adds/retains coverage that:
+Checkpoint 28 adds/retains coverage that:
 
-- upper-plane path Height requires a real semantic lower-plane base
-- one non-empty path patch is one persistent `EditorSession` revision/history entry
-- full workspace tests remain green
-- M3-M9 semantic/reference parity remains green
-- architecture/module-size guard remains green
+- the Path history marker contains no legacy tile/object before/after authority
+- semantic Path projection follows `MapDocument` across undo and redo
+- unarmed Path Height is preserved in worker projection
+- armed Path Height follows semantic state
+- consecutive Path transactions undo and redo in semantic order
+- upper-plane Height still requires a real semantic lower-plane base
+- one non-empty Path patch remains one persistent semantic revision/history entry
+- architecture/module-size guard, workspace tests, and M3-M9 parity all remain green
 
-### IMPORTANT temporary history hazard
+`editing/path.rs` is now roughly 440 lines including focused regression tests and remains well below the 1,000-line soft target and 1,600-line hard CI ceiling.
 
-Path **commit** is now authoritative in `EditorSession`, but global path **undo/redo is still legacy `EditStep.changes`** in this checkpoint.
+### Chronology after Checkpoint 28
 
-Therefore this branch is intentionally not mergeable yet. A path commit followed by legacy path undo can visually/worker-revert the path while leaving the path transaction on top of semantic history, causing the same split-history hazard previously closed for Paint, Height, and Objects.
+Paint, Height, Object, and Path now all use the same model:
 
-Do not merge Checkpoint 27 by itself.
+```text
+one user transaction
+  -> one semantic commit
+  -> one lightweight global route
+  -> one EditorSession history entry
+  -> projection-only worker mirror
+```
 
-## Next checkpoint — not started
+The Checkpoint 27 split-history hazard is closed.
 
-Checkpoint 28: terrain-path undo/redo -> semantic session.
+## Next boundary — Path integration PR
 
-Narrow target:
+Do not start this boundary without explicit user direction.
 
-1. replace path legacy before/after history authority with lightweight projection-routing metadata
-2. route path undo through `EditorSession::undo()`
-3. route path redo through `EditorSession::redo()`
-4. validate authoritative post-transition terrain/height state before worker projection
-5. roll semantic history back if projection preparation fails
-6. preserve mixed Paint + Height + Object + Path chronological ordering
-7. remove migrated path dependence on legacy `EditStep.changes`
-8. exact-head Tier A/B/C
-9. only after the full Path subsystem is green should a PR/merge be considered
+After this documented head passes exact Tier A/B/C:
 
-Do not start Checkpoint 28 without explicit user direction.
+1. verify `refactor/editor-path-session` is still 0 commits behind current `main`
+2. verify the diff remains limited to the Path/history/handoff scope
+3. open one focused Path semantic-session integration PR
+4. stop for review before merge
+5. merge only after a later explicit user continuation
+6. after merge, validate the exact integrated `main` commit and retire the branch if tooling permits
+
+Do not start context-menu cleanup, generic worker cleanup, renderer invalidation work, or 117HD work on this branch.
 
 ## Remaining separate migration targets
 
-After Path is complete and merged:
+After Path is merged:
 
 - context-menu `clear_overlay_at`
 - remaining legacy worker/projection cleanup
