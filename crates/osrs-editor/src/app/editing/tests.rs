@@ -1,7 +1,26 @@
 use super::*;
 use crate::heights::{Falloff, HeightOp, HeightTool};
 use crate::session::EditorSession;
+use osrs_edit::{MapDocument, TerrainOverlay, TerrainTile};
 use osrs_world::LocSpec;
+
+fn semantic_terrain(values: TileValues) -> Option<TerrainTile> {
+    let underlay = (values.underlay != 0).then(|| FloorUnderlayId::new(u32::from(values.underlay)));
+    let overlay = if values.overlay == 0 {
+        None
+    } else {
+        Some(TerrainOverlay {
+            id: FloorOverlayId::new(u32::from(values.overlay)),
+            shape: OverlayShape::new(values.shape)?,
+            rotation: OverlayRotation::new(values.rotation)?,
+        })
+    };
+    Some(TerrainTile {
+        underlay,
+        overlay,
+        flags: values.flags,
+    })
+}
 
 fn plane() -> SourcePlane {
     SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))
