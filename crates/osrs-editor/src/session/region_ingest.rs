@@ -49,9 +49,10 @@ impl From<RegionSnapshotError> for RegionAdaptError {
 /// conversion.
 pub fn adapt_region_map(map: &RegionMap) -> Result<MapRegionSnapshot, RegionAdaptError> {
     let region = map.locations.region();
-    let origin = world_tile(region, RegionTile::new(0, 0).unwrap_or_else(|| {
-        unreachable!("region-local origin is valid")
-    }))?;
+    let origin = world_tile(
+        region,
+        RegionTile::new(0, 0).unwrap_or_else(|| unreachable!("region-local origin is valid")),
+    )?;
     let mut grid = TerrainLoadGrid::new(REGION_TILES, REGION_TILES)
         .unwrap_or_else(|error| unreachable!("64x64 terrain grid is valid: {error:?}"));
     grid.load_region(&map.terrain, (0, 0), (origin.x, origin.y), 0);
@@ -86,7 +87,8 @@ pub fn adapt_region_map(map: &RegionMap) -> Result<MapRegionSnapshot, RegionAdap
                                     shape: source_overlay.shape,
                                 });
                             };
-                            let Some(rotation) = OverlayRotation::new(source_overlay.rotation) else {
+                            let Some(rotation) = OverlayRotation::new(source_overlay.rotation)
+                            else {
                                 return Err(RegionAdaptError::InvalidOverlayRotation {
                                     position,
                                     rotation: source_overlay.rotation,
@@ -147,10 +149,8 @@ pub fn adapt_region_map(map: &RegionMap) -> Result<MapRegionSnapshot, RegionAdap
 }
 
 fn world_tile(region: RegionCoord, tile: RegionTile) -> Result<MapTile, RegionAdaptError> {
-    MapTile::from_region(region, tile).ok_or(RegionAdaptError::WorldCoordinateOverflow {
-        region,
-        tile,
-    })
+    MapTile::from_region(region, tile)
+        .ok_or(RegionAdaptError::WorldCoordinateOverflow { region, tile })
 }
 
 #[cfg(test)]
@@ -158,7 +158,9 @@ mod tests {
     use super::*;
     use osrs_cache::decode::{DecodedLocation, DecodedLocations};
     use osrs_core::ids::ObjectId;
-    use osrs_scene::terrain_load::{RegionTerrain, RegionTerrainTile, RegionTileHeight, RegionTileOverlay};
+    use osrs_scene::terrain_load::{
+        RegionTerrain, RegionTerrainTile, RegionTileHeight, RegionTileOverlay,
+    };
 
     fn source_tile() -> RegionTerrainTile {
         RegionTerrainTile {
@@ -222,10 +224,12 @@ mod tests {
         let snapshot = adapt_region_map(&map)
             .unwrap_or_else(|error| unreachable!("valid decoded region: {error:?}"));
         assert_eq!(snapshot.region(), region);
-        assert_eq!(snapshot.height_vertex_count(), SCENE_PLANES * REGION_TILES * REGION_TILES);
+        assert_eq!(
+            snapshot.height_vertex_count(),
+            SCENE_PLANES * REGION_TILES * REGION_TILES
+        );
 
-        let document = osrs_edit::MapDocument::new();
-        let mut document = document;
+        let mut document = osrs_edit::MapDocument::new();
         assert!(document.replace_region(&snapshot));
 
         let terrain = document.terrain_at(position(3200, 3200, 0));
@@ -256,8 +260,8 @@ mod tests {
             object_id: ObjectId::new(100),
             position: position(3201, 3202, 1),
             kind: LocKind::new(10).unwrap_or_else(|| unreachable!("loc kind is valid")),
-            orientation: ObjectOrientation::new(3)
-                .unwrap_or_else(|| unreachable!("orientation is valid")),
+            orientation:
+                ObjectOrientation::new(3).unwrap_or_else(|| unreachable!("orientation is valid")),
         }));
     }
 
