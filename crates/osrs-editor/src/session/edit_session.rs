@@ -120,7 +120,14 @@ mod tests {
         assert_eq!(session.document().height_at(vertex()), Some(64));
         assert_eq!(session.revision(), 1);
         assert_eq!(commit.revision, 1);
-        assert_eq!(commit.impact, ChangeImpact::TERRAIN_GEOMETRY | ChangeImpact::NORMALS | ChangeImpact::LIGHTING | ChangeImpact::COLLISION | ChangeImpact::BOUNDS);
+        assert_eq!(
+            commit.impact,
+            ChangeImpact::TERRAIN_GEOMETRY
+                | ChangeImpact::NORMALS
+                | ChangeImpact::LIGHTING
+                | ChangeImpact::LOCATIONS
+                | ChangeImpact::BOUNDS
+        );
         assert!(session.can_undo());
         assert!(!session.can_redo());
     }
