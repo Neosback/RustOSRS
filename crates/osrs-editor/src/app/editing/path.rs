@@ -156,6 +156,7 @@ impl EditorApp {
         }
 
         let mut projected = HashSet::new();
+        let mut route_keys = Vec::new();
         let mut changes: Vec<(TileKey, TileValues, TileValues)> = Vec::new();
         for intent in &intents {
             if !projected.insert(intent.tile) {
@@ -187,17 +188,10 @@ impl EditorApp {
                 ));
                 return 0;
             };
+            route_keys.push(key);
             if after != before {
                 changes.push((key, before, after));
             }
-        }
-
-        if changes.is_empty() {
-            self.notice = Some((
-                "The path semantic patch cannot be represented as a worker change".to_owned(),
-                Instant::now(),
-            ));
-            return 0;
         }
 
         match self.session.commit(patch) {
@@ -226,10 +220,9 @@ impl EditorApp {
             self.edited.insert(*key, *after);
             edits.push(self.edit_for(*key, *after));
         }
-        let count = changes.len();
-        let keys = changes.iter().map(|(key, _, _)| *key).collect();
+        let count = route_keys.len();
         self.send_edits(edits);
-        self.push_step(EditStep::semantic_path(keys, brush.height.armed));
+        self.push_step(EditStep::semantic_path(route_keys, brush.height.armed));
         self.notice = Some((
             format!(
                 "Changed {count} path tile{}",
@@ -354,5 +347,98 @@ mod tests {
         let redone = project_semantic_path_values(session.document(), key, undone, true)
             .unwrap_or_else(|| unreachable!("semantic Path redo is projectable"));
         assert_eq!(redone, committed);
+    }
+
+    #[test]
+    fn semantic_path_history_marker_carries_no_legacy_tile_authority() {
+        let key = (0, 3200, 3200);
+        let step = EditStep::semantic_path(vec![key], true);
+
+        assert!(step.changes.is_empty());
+        assert!(step.removed.is_empty());
+        assert!(step.added.is_empty());
+        assert!(step.semantic_paint.is_none());
+        assert!(step.semantic_height.is_none());
+        assert!(step.semantic_object.is_none());
+        let path = step
+            .semantic_path
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("Path marker should be present"));
+        assert_eq!(path.keys, vec![key]);
+        assert!(path.include_height);
+    }
+
+    #[test]
+    fn consecutive_path_transactions_follow_semantic_history_order() {
+        let tile = MapTile::new(3200, 3200);
+        let coord = MapPosition::new(tile, plane(0));
+        let vertex = HeightVertexCoord::new(tile, plane(0));
+        let mut session = EditorSession::new(MapDocument::from_parts([], [(vertex, 0)], []));
+        let first = TerrainPathIntent {
+            tile: (3200, 3200),
+            overlay: Some(7),
+            shape: 1,
+            rotation: 0,
+            height: None,
+            flags: None,
+        };
+        let second = TerrainPathIntent {
+            tile: (3200, 3200),
+            overlay: Some(8),
+            shape: 2,
+            rotation: 3,
+            height: Some(-32),
+            flags: Some(5),
+        };
+
+        let first_patch = build_terrain_path_patch(session.document(), plane(0), &[first])
+            .unwrap_or_else(|error| unreachable!("valid first Path patch: {error:?}"));
+        assert!(session.commit(first_patch).is_ok());
+        let second_patch = build_terrain_path_patch(session.document(), plane(0), &[second])
+            .unwrap_or_else(|error| unreachable!("valid second Path patch: {error:?}"));
+        assert!(session.commit(second_patch).is_ok());
+        assert_eq!(
+            session
+                .document()
+                .terrain_at(coord)
+                .overlay
+                .map(|overlay| overlay.id.get()),
+            Some(8)
+        );
+        assert_eq!(session.document().height_at(vertex), Some(-32));
+
+        assert!(session.undo().is_ok());
+        assert_eq!(
+            session
+                .document()
+                .terrain_at(coord)
+                .overlay
+                .map(|overlay| overlay.id.get()),
+            Some(7)
+        );
+        assert_eq!(session.document().height_at(vertex), Some(0));
+
+        assert!(session.undo().is_ok());
+        assert_eq!(session.document().terrain_at(coord), TerrainTile::default());
+
+        assert!(session.redo().is_ok());
+        assert_eq!(
+            session
+                .document()
+                .terrain_at(coord)
+                .overlay
+                .map(|overlay| overlay.id.get()),
+            Some(7)
+        );
+        assert!(session.redo().is_ok());
+        assert_eq!(
+            session
+                .document()
+                .terrain_at(coord)
+                .overlay
+                .map(|overlay| overlay.id.get()),
+            Some(8)
+        );
+        assert_eq!(session.document().height_at(vertex), Some(-32));
     }
 }
