@@ -6,18 +6,19 @@
 //! regions whose geometry can change are rebuilt and replace the old ones when ready.
 
 use super::EditorApp;
+use super::paint_commit::{PaintCommitError, TerrainPaintIntent, build_terrain_paint_patch};
 use super::path_commit::{TerrainPathIntent, build_terrain_path_patch};
 use crate::heights::{self, encode_height};
-use crate::paint::{Brush, TileValues, Tool};
+use crate::paint::{Brush, Fill, TileValues, Tool};
 use eframe::egui;
 use osrs_core::coords::{MapTile, RegionCoord, SourcePlane};
 use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
 use osrs_edit::{
-    HeightVertexCoord, MapDocument, MapPosition, OverlayRotation, OverlayShape, TerrainOverlay,
-    TerrainTile,
+    HeightVertexCoord, MapDocument, MapPatch, MapPosition, MapQuery, OverlayRotation, OverlayShape,
+    TerrainOverlay, TerrainTile,
 };
 use osrs_world::{LocEdit, LocSpec, TileEdit};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Duration;
 use web_time::Instant;
 
@@ -77,16 +78,135 @@ fn project_semantic_terrain(values: &mut TileValues, terrain: TerrainTile) -> Op
     Some(())
 }
 
+fn paint_intent_from_brush(
+    brush: &Brush,
+    tile: (i32, i32),
+    after: TileValues,
+) -> TerrainPaintIntent {
+    let mut intent = TerrainPaintIntent::new(tile);
+    if brush.underlay.armed {
+        intent.underlay = Some(match brush.underlay.fill {
+            Fill::Clear | Fill::Set(0) => None,
+            Fill::Set(id) => Some(FloorUnderlayId::new(u32::from(id))),
+        });
+    }
+    if brush.overlay.armed {
+        intent.overlay = Some(match brush.overlay.fill {
+            Fill::Clear | Fill::Set(0) => None,
+            Fill::Set(id) => Some(FloorOverlayId::new(u32::from(id))),
+        });
+    }
+    if brush.shape.armed && after.overlay != 0 {
+        intent.overlay_shape = Some((
+            OverlayShape::new(after.shape)
+                .unwrap_or_else(|| unreachable!("Brush::apply clamps overlay shape")),
+            OverlayRotation::new(after.rotation)
+                .unwrap_or_else(|| unreachable!("Brush::apply clamps overlay rotation")),
+        ));
+    }
+    intent.height = brush.height.armed.then_some(after.height);
+    intent.flags = brush.flags.armed.then_some(after.flags);
+    intent
+}
+
+fn build_paint_stroke_patch(
+    query: &impl MapQuery,
+    brush: &Brush,
+    changes: &[(TileKey, TileValues, TileValues)],
+) -> Result<MapPatch, PaintCommitError> {
+    let mut by_plane = BTreeMap::<SourcePlane, Vec<TerrainPaintIntent>>::new();
+    for (key, _, after) in changes {
+        let plane = SourcePlane::new(key.0)
+            .unwrap_or_else(|| unreachable!("editor stroke planes are always validated"));
+        by_plane
+            .entry(plane)
+            .or_default()
+            .push(paint_intent_from_brush(brush, (key.1, key.2), *after));
+    }
+
+    let mut ops = Vec::new();
+    for (plane, intents) in by_plane {
+        let patch = build_terrain_paint_patch(query, plane, &intents)?;
+        ops.extend_from_slice(patch.ops());
+    }
+    Ok(MapPatch::new(ops))
+}
+
 /// `(plane, world x, world y)`.
 pub type TileKey = (u8, i32, i32);
 
-/// Before and after values of every tile one stroke changed.
+/// Global-history routing metadata for one semantic Paint transaction.
+///
+/// The authoritative before/after state stays in `EditorSession::history`; this stores only enough
+/// adapter information to project semantic undo/redo back into the still-legacy worker/render path.
+#[derive(Debug, Clone)]
+pub(super) struct SemanticPaintHistory {
+    brush: Brush,
+    keys: Vec<TileKey>,
+}
+
+/// Before and after values of one still-legacy action, or a routing marker for one semantic Paint
+/// action. Paint never uses `changes` as undo authority after Checkpoint 19.
 #[derive(Debug, Clone, Default)]
 pub struct EditStep {
     pub changes: Vec<(TileKey, TileValues, TileValues)>,
     /// Objects the step removed and added (one undo step covers a move: remove, add).
     pub removed: Vec<LocSpec>,
     pub added: Vec<LocSpec>,
+    pub(super) semantic_paint: Option<SemanticPaintHistory>,
+}
+
+impl EditStep {
+    fn semantic_paint(brush: Brush, keys: Vec<TileKey>) -> Self {
+        Self {
+            semantic_paint: Some(SemanticPaintHistory { brush, keys }),
+            ..Self::default()
+        }
+    }
+}
+
+fn project_paint_values(
+    query: &impl MapQuery,
+    brush: &Brush,
+    key: TileKey,
+    mut current: TileValues,
+) -> Option<TileValues> {
+    let plane = SourcePlane::new(key.0)?;
+    let tile = MapTile::new(key.1, key.2);
+    let terrain = query.terrain_at(MapPosition::new(tile, plane));
+
+    if brush.underlay.armed {
+        current.underlay = match terrain.underlay {
+            Some(id) => u16::try_from(id.get()).ok()?,
+            None => 0,
+        };
+    }
+    if brush.overlay.armed {
+        match terrain.overlay {
+            Some(overlay) => {
+                current.overlay = u16::try_from(overlay.id.get()).ok()?;
+                current.shape = overlay.shape.get();
+                current.rotation = overlay.rotation.get();
+            }
+            None => {
+                current.overlay = 0;
+                current.shape = 0;
+                current.rotation = 0;
+            }
+        }
+    } else if brush.shape.armed
+        && let Some(overlay) = terrain.overlay
+    {
+        current.shape = overlay.shape.get();
+        current.rotation = overlay.rotation.get();
+    }
+    if brush.height.armed {
+        current.height = query.height_at(HeightVertexCoord::new(tile, plane))?;
+    }
+    if brush.flags.armed {
+        current.flags = terrain.flags;
+    }
+    Some(current)
 }
 
 /// A stroke being painted.
@@ -96,6 +216,9 @@ pub struct Stroke {
     index: HashMap<TileKey, usize>,
     last_tile: Option<(i32, i32)>,
     last_applied: Instant,
+    /// The exact Paint brush captured for this stroke. `None` keeps non-Paint strokes on the legacy
+    /// commit path until their own migration checkpoints.
+    paint_brush: Option<Brush>,
     /// The height under the cursor when the stroke began (what Flatten levels to).
     anchor: Option<i32>,
     seed: u64,
@@ -108,6 +231,7 @@ impl Default for Stroke {
             index: HashMap::new(),
             last_tile: None,
             last_applied: Instant::now(),
+            paint_brush: None,
             anchor: None,
             seed: 0,
         }
@@ -222,9 +346,35 @@ impl EditorApp {
         true
     }
 
-    /// Finish the open stroke: one undo step, if it changed anything (tiles or objects).
+    /// Reconcile the already-visible Paint preview with the authoritative semantic result. Most
+    /// strokes are already identical; this mainly canonicalizes overlay shape/rotation when an
+    /// overlay is created on a semantically empty tile.
+    fn project_paint_stroke(&mut self, stroke: &mut Stroke, brush: &Brush) {
+        let mut edits = Vec::new();
+        for (key, _, after) in &mut stroke.step.changes {
+            let Some(projected) =
+                project_paint_values(self.session.document(), brush, *key, *after)
+            else {
+                continue;
+            };
+            if projected != *after {
+                self.edited.insert(*key, projected);
+                edits.push(self.edit_for(*key, projected));
+            }
+            *after = projected;
+        }
+        self.send_edits(edits);
+        stroke
+            .step
+            .changes
+            .retain(|(_, before, after)| before != after);
+    }
+
+    /// Finish the open stroke. Paint strokes commit exactly once to the semantic session and leave
+    /// only a lightweight routing marker in the global mixed-history stack. Other tools remain on
+    /// the existing legacy history path until their own migration checkpoints.
     pub(super) fn end_stroke(&mut self) {
-        let Some(stroke) = self.stroke.take() else {
+        let Some(mut stroke) = self.stroke.take() else {
             return;
         };
         if stroke.step.changes.is_empty()
@@ -233,15 +383,76 @@ impl EditorApp {
         {
             return;
         }
+
+        let paint_history = if let Some(brush) = stroke.paint_brush.clone() {
+            let patch = match build_paint_stroke_patch(
+                self.session.document(),
+                &brush,
+                &stroke.step.changes,
+            ) {
+                Ok(patch) => patch,
+                Err(error) => {
+                    self.revert(&stroke.step, false);
+                    self.notice = Some((
+                        format!("Paint stroke was not committed: {error:?}"),
+                        Instant::now(),
+                    ));
+                    return;
+                }
+            };
+
+            match self.session.commit(patch) {
+                Ok(Some(_)) => {
+                    self.project_paint_stroke(&mut stroke, &brush);
+                    Some(SemanticPaintHistory {
+                        brush,
+                        keys: stroke.step.changes.iter().map(|(key, _, _)| *key).collect(),
+                    })
+                }
+                Ok(None) => {
+                    self.project_paint_stroke(&mut stroke, &brush);
+                    self.notice = Some((
+                        "Paint stroke made no semantic changes".to_owned(),
+                        Instant::now(),
+                    ));
+                    return;
+                }
+                Err(error) => {
+                    self.revert(&stroke.step, false);
+                    self.notice = Some((
+                        format!("Paint stroke was rejected by the semantic session: {error:?}"),
+                        Instant::now(),
+                    ));
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+
+        if stroke.step.changes.is_empty()
+            && stroke.step.added.is_empty()
+            && stroke.step.removed.is_empty()
+        {
+            return;
+        }
         let count = stroke.step.changes.len();
-        self.push_step(stroke.step);
+        if let Some(paint_history) = paint_history {
+            self.push_step(EditStep::semantic_paint(
+                paint_history.brush,
+                paint_history.keys,
+            ));
+        } else {
+            self.push_step(stroke.step);
+        }
         self.notice = Some((
             format!("Changed {count} tile{}", if count == 1 { "" } else { "s" }),
             Instant::now(),
         ));
     }
 
-    /// One finished undo step (a stroke, or an object action).
+    /// One finished undo step. For Paint this is only a global routing marker; Height/Object/path
+    /// actions still carry their legacy before/after data here.
     pub(super) fn push_step(&mut self, step: EditStep) {
         self.history.push(step);
         if self.history.len() > HISTORY_LIMIT {
@@ -260,7 +471,10 @@ impl EditorApp {
             return;
         }
         stroke.last_tile = Some(tile);
-        let brush: Brush = self.prefs.brush.clone();
+        let brush = stroke
+            .paint_brush
+            .get_or_insert_with(|| self.prefs.brush.clone())
+            .clone();
         let plane = self.view_plane;
         let mut edits = Vec::new();
         for (x, y) in brush.footprint_tiles(tile) {
@@ -372,7 +586,10 @@ impl EditorApp {
         let Some(mut stroke) = self.stroke.take() else {
             return;
         };
-        let brush = self.prefs.brush.clone();
+        let brush = stroke
+            .paint_brush
+            .get_or_insert_with(|| self.prefs.brush.clone())
+            .clone();
         let plane = self.view_plane;
         let mut edits = Vec::new();
         for (x, y) in tiles {
@@ -616,6 +833,31 @@ impl EditorApp {
         }
     }
 
+    fn project_semantic_paint_history(
+        &mut self,
+        paint: &SemanticPaintHistory,
+    ) -> Result<usize, &'static str> {
+        let mut projected = Vec::with_capacity(paint.keys.len());
+        for key in &paint.keys {
+            let current = self
+                .current_tile(*key)
+                .ok_or("a painted tile is no longer available to the projection adapter")?;
+            let values = project_paint_values(self.session.document(), &paint.brush, *key, current)
+                .ok_or("semantic Paint state cannot be represented by the legacy projection")?;
+            projected.push((*key, current, values));
+        }
+
+        let mut edits = Vec::new();
+        for (key, current, values) in projected {
+            if values != current {
+                self.edited.insert(key, values);
+                edits.push(self.edit_for(key, values));
+            }
+        }
+        self.send_edits(edits);
+        Ok(paint.keys.len())
+    }
+
     /// Hand object edits to the world worker and queue the regions they sit in for a rebuild.
     pub(super) fn send_loc_edits(&mut self, edits: Vec<LocEdit>) {
         if edits.is_empty() {
@@ -634,25 +876,119 @@ impl EditorApp {
     }
 
     pub(super) fn undo(&mut self) {
-        if let Some(step) = self.history.pop() {
-            self.revert(&step, false);
-            self.notice = Some((
-                if step.changes.is_empty() {
-                    "Undid an object change".to_owned()
-                } else {
-                    format!("Undid {} tile change(s)", step.changes.len())
+        let Some(step) = self.history.pop() else {
+            return;
+        };
+        if let Some(paint) = step.semantic_paint.clone() {
+            match self.session.undo() {
+                Ok(Some(_)) => match self.project_semantic_paint_history(&paint) {
+                    Ok(count) => {
+                        self.notice = Some((
+                            format!(
+                                "Undid {count} painted tile{}",
+                                if count == 1 { "" } else { "s" }
+                            ),
+                            Instant::now(),
+                        ));
+                        self.redo_stack.push(step);
+                    }
+                    Err(message) => {
+                        let rollback = self.session.redo();
+                        self.history.push(step);
+                        self.notice = Some((
+                            if rollback.is_ok() {
+                                format!("Paint undo was rolled back: {message}")
+                            } else {
+                                format!(
+                                    "Paint undo projection failed and rollback failed: {message}"
+                                )
+                            },
+                            Instant::now(),
+                        ));
+                    }
                 },
-                Instant::now(),
-            ));
-            self.redo_stack.push(step);
+                Ok(None) => {
+                    self.history.push(step);
+                    self.notice = Some((
+                        "Paint undo history is out of sync with the semantic session".to_owned(),
+                        Instant::now(),
+                    ));
+                }
+                Err(error) => {
+                    self.history.push(step);
+                    self.notice = Some((
+                        format!("Paint undo was rejected by the semantic session: {error:?}"),
+                        Instant::now(),
+                    ));
+                }
+            }
+            return;
         }
+
+        self.revert(&step, false);
+        self.notice = Some((
+            if step.changes.is_empty() {
+                "Undid an object change".to_owned()
+            } else {
+                format!("Undid {} tile change(s)", step.changes.len())
+            },
+            Instant::now(),
+        ));
+        self.redo_stack.push(step);
     }
 
     pub(super) fn redo(&mut self) {
-        if let Some(step) = self.redo_stack.pop() {
-            self.revert(&step, true);
-            self.history.push(step);
+        let Some(step) = self.redo_stack.pop() else {
+            return;
+        };
+        if let Some(paint) = step.semantic_paint.clone() {
+            match self.session.redo() {
+                Ok(Some(_)) => match self.project_semantic_paint_history(&paint) {
+                    Ok(count) => {
+                        self.notice = Some((
+                            format!(
+                                "Redid {count} painted tile{}",
+                                if count == 1 { "" } else { "s" }
+                            ),
+                            Instant::now(),
+                        ));
+                        self.history.push(step);
+                    }
+                    Err(message) => {
+                        let rollback = self.session.undo();
+                        self.redo_stack.push(step);
+                        self.notice = Some((
+                            if rollback.is_ok() {
+                                format!("Paint redo was rolled back: {message}")
+                            } else {
+                                format!(
+                                    "Paint redo projection failed and rollback failed: {message}"
+                                )
+                            },
+                            Instant::now(),
+                        ));
+                    }
+                },
+                Ok(None) => {
+                    self.redo_stack.push(step);
+                    self.notice = Some((
+                        "Paint redo history is out of sync with the semantic session".to_owned(),
+                        Instant::now(),
+                    ));
+                }
+                Err(error) => {
+                    self.redo_stack.push(step);
+                    self.notice = Some((
+                        format!("Paint redo was rejected by the semantic session: {error:?}"),
+                        Instant::now(),
+                    ));
+                }
+            }
+            return;
         }
+
+        self.revert(&step, true);
+        self.history.push(step);
     }
 
     /// Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z.
@@ -710,6 +1046,19 @@ impl EditorApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::EditorSession;
+
+    fn plane() -> SourcePlane {
+        SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))
+    }
+
+    fn position(tile: (i32, i32)) -> MapPosition {
+        MapPosition::new(MapTile::new(tile.0, tile.1), plane())
+    }
+
+    fn vertex(tile: (i32, i32)) -> HeightVertexCoord {
+        HeightVertexCoord::new(MapTile::new(tile.0, tile.1), plane())
+    }
 
     #[test]
     fn an_interior_tile_rebuilds_only_its_own_region() {
@@ -722,5 +1071,185 @@ mod tests {
         assert_eq!(regions.len(), 4);
         assert!(regions.contains(&(49, 49)) && regions.contains(&(50, 50)));
         assert_eq!(affected_regions((3263, 3230)).len(), 2);
+    }
+
+    #[test]
+    fn one_paint_stroke_is_one_semantic_session_history_entry() {
+        let brush = Brush::default();
+        let before = TileValues::default();
+        let after = brush.apply(before);
+        let changes = vec![
+            ((0, 3200, 3200), before, after),
+            ((1, 3200, 3200), before, after),
+        ];
+        let mut session = EditorSession::new(MapDocument::new());
+        let patch = build_paint_stroke_patch(session.document(), &brush, &changes)
+            .unwrap_or_else(|error| unreachable!("valid Paint stroke: {error:?}"));
+
+        assert_eq!(patch.len(), 2);
+        assert!(
+            session
+                .commit(patch)
+                .unwrap_or_else(|error| unreachable!("valid semantic commit: {error:?}"))
+                .is_some()
+        );
+        assert_eq!(session.revision(), 1);
+        assert!(session.can_undo());
+
+        for plane in [0, 1] {
+            let source_plane =
+                SourcePlane::new(plane).unwrap_or_else(|| unreachable!("test plane is valid"));
+            let position = MapPosition::new(MapTile::new(3200, 3200), source_plane);
+            assert_eq!(
+                session
+                    .document()
+                    .terrain_at(position)
+                    .overlay
+                    .map(|overlay| overlay.id),
+                Some(FloorOverlayId::new(1))
+            );
+        }
+
+        assert!(
+            session
+                .undo()
+                .unwrap_or_else(|error| unreachable!("valid semantic undo: {error:?}"))
+                .is_some()
+        );
+        assert_eq!(session.revision(), 2);
+        for plane in [0, 1] {
+            let source_plane =
+                SourcePlane::new(plane).unwrap_or_else(|| unreachable!("test plane is valid"));
+            let position = MapPosition::new(MapTile::new(3200, 3200), source_plane);
+            assert_eq!(
+                session.document().terrain_at(position),
+                TerrainTile::default()
+            );
+        }
+    }
+
+    #[test]
+    fn semantic_paint_projection_tracks_undo_redo_and_preserves_unarmed_height() {
+        let tile = (3200, 3200);
+        let before = TileValues {
+            underlay: 4,
+            overlay: 7,
+            shape: 3,
+            rotation: 2,
+            height: -96,
+            flags: 1,
+        };
+        let brush = Brush::default();
+        let after = brush.apply(before);
+        let document = MapDocument::from_parts(
+            [(position(tile), semantic_terrain(before).unwrap_or_default())],
+            [(vertex(tile), before.height)],
+            [],
+        );
+        let mut session = EditorSession::new(document);
+        let patch = build_paint_stroke_patch(
+            session.document(),
+            &brush,
+            &[((0, tile.0, tile.1), before, after)],
+        )
+        .unwrap_or_else(|error| unreachable!("valid Paint patch: {error:?}"));
+        assert!(session.commit(patch).is_ok());
+
+        let committed =
+            project_paint_values(session.document(), &brush, (0, tile.0, tile.1), before)
+                .unwrap_or_else(|| unreachable!("semantic Paint state is projectable"));
+        assert_eq!(committed.overlay, 1);
+        assert_eq!(committed.height, before.height);
+
+        assert!(session.undo().is_ok());
+        let undone =
+            project_paint_values(session.document(), &brush, (0, tile.0, tile.1), committed)
+                .unwrap_or_else(|| unreachable!("semantic undo is projectable"));
+        assert_eq!(undone, before);
+
+        assert!(session.redo().is_ok());
+        let redone = project_paint_values(session.document(), &brush, (0, tile.0, tile.1), undone)
+            .unwrap_or_else(|| unreachable!("semantic redo is projectable"));
+        assert_eq!(redone, committed);
+    }
+
+    #[test]
+    fn semantic_paint_no_op_creates_no_history() {
+        let tile = (3200, 3200);
+        let brush = Brush::default();
+        let before = TileValues {
+            overlay: 1,
+            ..TileValues::default()
+        };
+        let after = brush.apply(before);
+        assert_eq!(after, before);
+        let document = MapDocument::from_parts(
+            [(position(tile), semantic_terrain(before).unwrap_or_default())],
+            [(vertex(tile), before.height)],
+            [],
+        );
+        let mut session = EditorSession::new(document);
+        let patch = build_paint_stroke_patch(
+            session.document(),
+            &brush,
+            &[((0, tile.0, tile.1), before, after)],
+        )
+        .unwrap_or_else(|error| unreachable!("valid no-op Paint patch: {error:?}"));
+
+        assert!(patch.is_empty());
+        assert_eq!(session.commit(patch), Ok(None));
+        assert_eq!(session.revision(), 0);
+        assert!(!session.can_undo());
+        assert!(!session.can_redo());
+    }
+
+    #[test]
+    fn new_semantic_paint_commit_invalidates_semantic_redo() {
+        let tile = (3200, 3200);
+        let before = TileValues::default();
+        let first_brush = Brush::default();
+        let first_after = first_brush.apply(before);
+        let mut session = EditorSession::new(MapDocument::new());
+        let first = build_paint_stroke_patch(
+            session.document(),
+            &first_brush,
+            &[((0, tile.0, tile.1), before, first_after)],
+        )
+        .unwrap_or_else(|error| unreachable!("valid first Paint patch: {error:?}"));
+        assert!(session.commit(first).is_ok());
+        assert!(session.undo().is_ok());
+        assert!(session.can_redo());
+
+        let mut second_brush = Brush::default();
+        second_brush.overlay.fill = Fill::Set(2);
+        let second_after = second_brush.apply(before);
+        let second = build_paint_stroke_patch(
+            session.document(),
+            &second_brush,
+            &[((0, tile.0, tile.1), before, second_after)],
+        )
+        .unwrap_or_else(|error| unreachable!("valid replacement Paint patch: {error:?}"));
+        assert!(session.commit(second).is_ok());
+
+        assert!(!session.can_redo());
+        assert_eq!(
+            session
+                .document()
+                .terrain_at(position(tile))
+                .overlay
+                .map(|overlay| overlay.id),
+            Some(FloorOverlayId::new(2))
+        );
+    }
+
+    #[test]
+    fn semantic_paint_history_marker_carries_no_legacy_tile_authority() {
+        let brush = Brush::default();
+        let step = EditStep::semantic_paint(brush, vec![(0, 3200, 3200)]);
+
+        assert!(step.changes.is_empty());
+        assert!(step.removed.is_empty());
+        assert!(step.added.is_empty());
+        assert!(step.semantic_paint.is_some());
     }
 }

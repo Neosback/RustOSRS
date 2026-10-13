@@ -15,6 +15,8 @@ mod minimap;
 pub(crate) mod modal;
 mod object_tool;
 mod overlay;
+#[allow(dead_code)]
+mod paint_commit;
 mod path_commit;
 mod plugins;
 mod script;
