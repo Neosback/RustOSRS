@@ -1,10 +1,7 @@
 use osrs_edit::{ChangeImpact, EditHistory, MapDocument, MapPatch, PatchApplyError};
 
 /// One successful semantic state transition in the editor session.
-#[expect(
-    dead_code,
-    reason = "constructed by the staged mutation API before runtime edit cutover"
-)]
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EditCommit {
     pub revision: u64,
@@ -22,10 +19,10 @@ pub struct EditorSession {
     revision: u64,
 }
 
-#[expect(
-    dead_code,
-    reason = "mutation/query methods are staged and tested before individual editor tools cut over"
-)]
+// The app owns this session now, but most mutation/query methods are intentionally staged one
+// checkpoint before individual editor tools cut over. Keep tests unsuppressed so this allowance
+// disappears naturally as the runtime begins using the API.
+#[cfg_attr(not(test), allow(dead_code))]
 impl EditorSession {
     pub fn new(document: MapDocument) -> Self {
         Self {
