@@ -665,7 +665,8 @@ impl EditorApp {
 
     /// Apply the Height tool's op to every selected tile (one undo step).
     pub(super) fn height_on_selection(&mut self) {
-        let tiles: Vec<(i32, i32)> = self.selection_tiles.iter().copied().collect();
+        let mut tiles: Vec<(i32, i32)> = self.selection_tiles.iter().copied().collect();
+        tiles.sort_unstable();
         if tiles.is_empty() {
             return;
         }
