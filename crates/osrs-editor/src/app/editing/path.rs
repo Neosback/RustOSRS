@@ -71,8 +71,8 @@ fn plan_path_projection(
 ) -> Result<PathProjection, TileKey> {
     let mut projected = Vec::with_capacity(current.len());
     for (key, before) in current {
-        let after = project_semantic_path_values(query, *key, *before, include_height)
-            .ok_or(*key)?;
+        let after =
+            project_semantic_path_values(query, *key, *before, include_height).ok_or(*key)?;
         projected.push((*key, *before, after));
     }
     Ok(projected)
