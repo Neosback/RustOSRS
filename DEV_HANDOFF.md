@@ -349,6 +349,17 @@ The Objects tool can add cache objects through the same semantic Object planner 
 
 Tile copy/paste records terrain channels and heights relative to the copied selection and pastes through one semantic `MapPatch`/history step. Objects are intentionally not copied by the tile clipboard.
 
+### Phase 8: loadable cache export (File > Export as cache copy...)
+
+`osrs-cache::encode` now carries the pieces a repacked cache needs, all verified against the real build-241 cache:
+
+- `ReferenceTable` (`reference_table.rs`): full-fidelity parse/encode of the JS5 reference table (protocol, revision, flags, name/hash/whirlpool/size columns, file lists). All 23 real tables re-encode byte-exact (`cargo run --release -p osrs-reference --example reference_table_roundtrip -- $RUSTOSRS_TARGET_CACHE_DIR`).
+- `crc32`: a group's table CRC covers its container without the trailing 2-byte version (3274 of 3274 sampled groups); table sizes are `(container length without version, decoded payload length)` (500 of 500).
+- `CacheStore` / `repack_groups` (`store.rs`, native only): append-only sector writer (8- and 10-byte headers, `.idx` entries) and a repack that appends the new container, rewrites the group's row (CRC, sizes, `version + 1`, version suffix kept) and re-appends the index's table to `idx255` with its original compression. A failed write can only leave unreferenced garbage at the end of `.dat2`; nothing is edited in place. The table `revision` is left unchanged; disk caches carry no master checksum table.
+- Fixtures: deterministic synthetic caches (no real cache needed) cross-checked against the independent vendored `runefs` reader; `repack_real_cache` example repacks a real square into a copy and verifies the edit, files 2..=4, every other index-5 group (byte-identical) and the table row.
+
+The editor's Export menu gained "Export as cache copy...": it copies the cache folder into an empty destination (a non-empty one is refused before anything is written) and repacks the edited squares into the copy. The copy is a different cache than the source by design, so `CacheRepository::open*` (which fingerprints against bundled profiles) will report it as unknown; other tools that read `.dat2`/`.idx` directly can open it. Not done: updating other indices (only map squares are repacked), writing new groups that the table does not already list, and a profile/fingerprint story for edited caches.
+
 ### Phase 7 gate: WebAssembly portability
 
 Tier A runs the WebAssembly portability checks. Native-only project/export behavior remains cfg-gated with browser stubs where required.
