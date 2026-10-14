@@ -1,15 +1,18 @@
 //! Application-level semantic edit transaction gateway.
 //!
 //! `EditorSession` remains the semantic authority. This runtime owns that session and centralizes
-//! the checkpoint -> projection -> finalize/restore policy for routes migrated to the gateway.
-//! Existing routes still reach the wrapped session through `Deref`/`DerefMut` during the staged
-//! migration; those compatibility escapes are temporary and should shrink as routes move here.
+//! the checkpoint -> projection -> finalize/restore policy for interactive semantic transactions.
+//! Read/query and source/project lifecycle operations are exposed explicitly; transaction lifecycle
+//! primitives stay private to this runtime so callers cannot bypass gateway policy accidentally.
 
-use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession};
+use crate::session::{
+    EditCheckpoint, EditCheckpointError, EditorSession, RegionSyncOutcome,
+};
 use osrs_core::coords::RegionCoord;
-use osrs_edit::{ChangeImpact, MapDocument, MapOp, MapPatch, PatchApplyError};
+use osrs_edit::{
+    ChangeImpact, MapDocument, MapOp, MapPatch, MapRegionSnapshot, PatchApplyError,
+};
 use std::collections::BTreeSet;
-use std::ops::{Deref, DerefMut};
 
 /// Application owner of the authoritative semantic edit session.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -61,6 +64,57 @@ impl EditRuntime {
     #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn new(session: EditorSession) -> Self {
         Self { session }
+    }
+
+    /// Authoritative semantic document for read-only queries and pure planning.
+    pub(super) fn document(&self) -> &MapDocument {
+        self.session.document()
+    }
+
+    /// Revision of all authoritative semantic state transitions, including streaming changes.
+    pub(super) fn revision(&self) -> u64 {
+        self.session.revision()
+    }
+
+    /// Revision of authored/project edits only; streaming hydration does not advance it.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(super) fn edit_revision(&self) -> u64 {
+        self.session.edit_revision()
+    }
+
+    /// Regions protected from source streaming because authored/project state has touched them.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(super) fn dirty_regions(&self) -> impl Iterator<Item = RegionCoord> + '_ {
+        self.session.dirty_regions()
+    }
+
+    pub(super) fn can_undo(&self) -> bool {
+        self.session.can_undo()
+    }
+
+    pub(super) fn can_redo(&self) -> bool {
+        self.session.can_redo()
+    }
+
+    /// Apply a project diff outside interactive history while preserving semantic authority.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(super) fn apply_untracked(&mut self, patch: &MapPatch) -> Result<bool, PatchApplyError> {
+        self.session.apply_untracked(patch)
+    }
+
+    /// Replace all semantic state when the backing cache/source changes.
+    pub(super) fn reset(&mut self) {
+        self.session.reset();
+    }
+
+    /// Synchronize one clean streamed region into authoritative semantic state.
+    pub(super) fn ingest_region(&mut self, snapshot: &MapRegionSnapshot) -> RegionSyncOutcome {
+        self.session.ingest_region(snapshot)
+    }
+
+    /// Remove one clean streamed region from authoritative semantic residency.
+    pub(super) fn unload_region(&mut self, region: RegionCoord) -> RegionSyncOutcome {
+        self.session.unload_region(region)
     }
 
     /// Execute one `MapPatch` as an application transaction.
@@ -157,24 +211,6 @@ impl EditRuntime {
     }
 }
 
-/// Transitional compatibility for routes not yet migrated to the contained `EditRuntime` API.
-///
-/// This prevents a flag-day rewrite while keeping exactly one owned `EditorSession`. Remove these
-/// broad escapes once remaining session access has narrow runtime methods.
-impl Deref for EditRuntime {
-    type Target = EditorSession;
-
-    fn deref(&self) -> &Self::Target {
-        &self.session
-    }
-}
-
-impl DerefMut for EditRuntime {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.session
-    }
-}
-
 fn normalize_regions(regions: Vec<RegionCoord>) -> Vec<RegionCoord> {
     regions
         .into_iter()
@@ -229,9 +265,11 @@ mod tests {
             [],
         )));
         runtime
+            .session
             .commit(height_patch(prior, 0, 32))
             .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
         runtime
+            .session
             .undo()
             .unwrap_or_else(|error| unreachable!("valid setup undo: {error:?}"));
         assert!(runtime.can_redo());
@@ -329,6 +367,7 @@ mod tests {
             [],
         )));
         runtime
+            .session
             .commit(height_patch(coord, 0, 64))
             .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
         let revision_before = runtime.revision();
@@ -367,9 +406,11 @@ mod tests {
             [],
         )));
         runtime
+            .session
             .commit(height_patch(coord, 0, 64))
             .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
         runtime
+            .session
             .undo()
             .unwrap_or_else(|error| unreachable!("valid setup Undo: {error:?}"));
         let before = runtime.clone();
