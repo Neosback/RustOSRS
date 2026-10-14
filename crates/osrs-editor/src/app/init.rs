@@ -38,7 +38,7 @@ impl EditorApp {
             export_job: None,
             project: project::ProjectState::default(),
             interaction: interaction_runtime::InteractionRuntime::new(camera),
-            session: EditorSession::default(),
+            session: edit_runtime::EditRuntime::default(),
             settings_path: None,
             saved_settings: Settings::default(),
             settings_checked: Instant::now(),
@@ -65,7 +65,7 @@ impl EditorApp {
             context_menu: None,
             keymap: Keymap::new(),
             // Smoke-test hook: open the settings window at start (`RUSTOSRS_OPEN_SETTINGS=1`).
-            settings_open: std::env::var_os("RUSTOSRS_OPEN_SETTINGS").is_some(),
+            settings_open: std::env::var_os("RUSTOSRS_OPEN_SETTINGS=1").is_some(),
             settings_search: String::new(),
             settings_focus_search: false,
             capturing_binding: None,
