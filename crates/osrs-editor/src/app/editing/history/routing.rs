@@ -10,12 +10,11 @@ use super::{
     EditStep, EditorApp, SemanticHeightHistory, SemanticPaintHistory, SemanticPathHistory, TileKey,
 };
 use crate::app::edit_runtime::{EditExecution, EditExecutionError, EditReplayDirection};
-use crate::app::object_tool::{
-    ObjectHistoryProjection, ObjectHistoryRoute, build_object_history_projection,
-};
+use crate::app::object_tool::{ObjectHistoryRoute, build_object_history_projection};
 use crate::paint::TileValues;
 use osrs_core::coords::{MapTile, RegionCoord};
 use osrs_edit::MapQuery;
+use osrs_world::{LocEdit, LocSpec};
 use std::collections::BTreeSet;
 use web_time::Instant;
 
@@ -86,7 +85,8 @@ enum PreparedProjection {
         mark_height: bool,
     },
     Object {
-        projection: ObjectHistoryProjection,
+        edits: Vec<LocEdit>,
+        reselect: Vec<LocSpec>,
         count: usize,
     },
 }
@@ -222,7 +222,8 @@ impl Route {
                     build_object_history_projection(query, object, direction == Direction::Redo)
                         .map_err(|error| format!("{error:?}"))?;
                 Ok(PreparedProjection::Object {
-                    projection,
+                    edits: projection.edits,
+                    reselect: projection.reselect,
                     count: object.object_count(),
                 })
             }
@@ -337,10 +338,14 @@ impl EditorApp {
                 self.send_edits(edits);
                 count
             }
-            PreparedProjection::Object { projection, count } => {
-                self.send_loc_edits(projection.edits);
+            PreparedProjection::Object {
+                edits,
+                reselect,
+                count,
+            } => {
+                self.send_loc_edits(edits);
                 self.clear_selection();
-                self.interaction.pending_reselect = projection.reselect;
+                self.interaction.pending_reselect = reselect;
                 count
             }
         }
