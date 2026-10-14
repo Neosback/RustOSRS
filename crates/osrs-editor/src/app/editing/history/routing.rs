@@ -281,8 +281,13 @@ impl EditorApp {
             });
 
         let notice = match execution {
-            Ok(EditExecution::Committed { projection, .. }) => {
+            Ok(EditExecution::Committed {
+                receipt,
+                projection,
+            }) => {
                 let count = self.apply_replay_projection(projection);
+                self.world
+                    .invalidate_semantic_edit(receipt.impact, &receipt.touched_regions);
                 direction.settle(&mut self.history, &mut self.redo_stack, step);
                 format!("{} {}", direction.past(), route.counted(count))
             }
@@ -318,6 +323,8 @@ impl EditorApp {
         self.notice = Some((notice, Instant::now()));
     }
 
+    /// Apply an already-validated semantic replay projection mechanically. Projection invalidation
+    /// is dispatched separately from the authoritative replay receipt after this returns.
     fn apply_replay_projection(&mut self, projection: PreparedProjection) -> usize {
         match projection {
             PreparedProjection::Tiles {
@@ -335,7 +342,7 @@ impl EditorApp {
                         edits.push(self.edit_for(key, values));
                     }
                 }
-                self.send_edits(edits);
+                self.world.project_tile_edits(edits);
                 count
             }
             PreparedProjection::Object {
@@ -343,7 +350,7 @@ impl EditorApp {
                 reselect,
                 count,
             } => {
-                self.send_loc_edits(edits);
+                self.world.project_loc_edits(edits);
                 self.clear_selection();
                 self.interaction.pending_reselect = reselect;
                 count
