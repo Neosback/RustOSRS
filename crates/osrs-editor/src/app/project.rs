@@ -109,6 +109,20 @@ fn prepare_project_replacement(
     project.saved_edit_revision = session.edit_revision();
 }
 
+/// Apply the queued semantic diff without consuming it. Projection success owns final removal.
+fn apply_pending_project_semantics(
+    project: &ProjectState,
+    session: &mut EditorSession,
+    region: RegionCoord,
+) -> Result<Option<(RegionDiff, bool)>, osrs_edit::PatchApplyError> {
+    let Some(diff) = project.pending.get(&region).cloned() else {
+        return Ok(None);
+    };
+    let patch = diff.to_patch(session.document());
+    let changed = session.apply_untracked(&patch)?;
+    Ok(Some((diff, changed)))
+}
+
 impl EditorApp {
     /// Whether edits exist that no save or project open has captured.
     fn is_unsaved(&self) -> bool {
@@ -289,20 +303,9 @@ impl EditorApp {
     /// semantic state has just been loaded. The diff remains queued until semantic application and
     /// every synchronous projection step succeeds, so failures are retryable instead of lossy.
     pub(super) fn apply_project_region(&mut self, region: RegionCoord) {
-        let Some(diff) = self.project.pending.get(&region).cloned() else {
-            return;
-        };
-        let patch = diff.to_patch(self.session.document());
         let was_saved = !self.is_unsaved();
-        match self.session.apply_untracked(&patch) {
-            Ok(false) => {}
-            Ok(true) => {
-                // Applying a project's own edits does not make the session "unsaved". Projection
-                // failure is a presentation/runtime failure, not a new semantic user edit.
-                if was_saved {
-                    self.project.saved_edit_revision = self.session.edit_revision();
-                }
-            }
+        let applied = match apply_pending_project_semantics(&self.project, &mut self.session, region) {
+            Ok(applied) => applied,
             Err(error) => {
                 self.notice = Some((
                     format!(
@@ -313,6 +316,14 @@ impl EditorApp {
                 ));
                 return;
             }
+        };
+        let Some((diff, changed)) = applied else {
+            return;
+        };
+        if changed && was_saved {
+            // Applying a project's own edits does not make the session "unsaved". Projection
+            // failure is a presentation/runtime failure, not a new semantic user edit.
+            self.project.saved_edit_revision = self.session.edit_revision();
         }
 
         // Derive projection work from the project diff, not only the just-applied patch. If a prior
