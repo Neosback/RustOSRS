@@ -367,11 +367,7 @@ mod tests {
                     .map(|overlay| overlay.id),
                 Some(FloorOverlayId::new(1))
             );
-            plan_paint_projection(
-                document,
-                &brush,
-                &[(0, invalid_key, TileValues::default())],
-            )
+            plan_paint_projection(document, &brush, &[(0, invalid_key, TileValues::default())])
         });
 
         assert_eq!(
