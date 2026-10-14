@@ -107,7 +107,8 @@ impl EditorApp {
     /// Apply an already-validated Paint projection to the visible preview and worker mirror.
     ///
     /// All fallible semantic reads happened inside `EditRuntime::execute`; from this point the
-    /// semantic transaction is finalized and projection application is mechanical.
+    /// semantic transaction is finalized and projection application is mechanical. Rebuild scope
+    /// comes separately from the finalized semantic receipt.
     fn apply_paint_projection(&mut self, stroke: &mut Stroke, projection: PaintProjection) {
         let mut edits = Vec::new();
         for (index, key, values) in projection {
@@ -118,7 +119,7 @@ impl EditorApp {
             }
             *after = values;
         }
-        self.send_edits(edits);
+        self.world.project_tile_edits(edits);
         stroke
             .step
             .changes
@@ -147,8 +148,13 @@ impl EditorApp {
             plan_paint_projection(document, &brush, &projection_input)
         });
         match execution {
-            Ok(EditExecution::Committed { projection, .. }) => {
+            Ok(EditExecution::Committed {
+                receipt,
+                projection,
+            }) => {
                 self.apply_paint_projection(stroke, projection);
+                self.world
+                    .invalidate_semantic_edit(receipt.impact, &receipt.touched_regions);
                 Some(EditStep::semantic_paint(brush, Self::touched_keys(stroke)))
             }
             Ok(EditExecution::NoChange) => {
@@ -188,7 +194,8 @@ impl EditorApp {
     /// Apply an already-validated Height projection to the visible preview and worker mirror.
     ///
     /// All fallible semantic reads happened inside `EditRuntime::execute`; from this point the
-    /// semantic transaction is finalized and projection application is mechanical.
+    /// semantic transaction is finalized and projection application is mechanical. Rebuild scope
+    /// comes separately from the finalized semantic receipt.
     fn apply_height_projection(&mut self, stroke: &mut Stroke, projection: HeightProjection) {
         let mut edits = Vec::new();
         for (index, key, values) in projection {
@@ -200,7 +207,7 @@ impl EditorApp {
             }
             *after = values;
         }
-        self.send_edits(edits);
+        self.world.project_tile_edits(edits);
         stroke
             .step
             .changes
@@ -249,8 +256,13 @@ impl EditorApp {
             plan_height_projection(document, &projection_input)
         });
         match execution {
-            Ok(EditExecution::Committed { projection, .. }) => {
+            Ok(EditExecution::Committed {
+                receipt,
+                projection,
+            }) => {
                 self.apply_height_projection(stroke, projection);
+                self.world
+                    .invalidate_semantic_edit(receipt.impact, &receipt.touched_regions);
                 Some(EditStep::semantic_height(Self::touched_keys(stroke)))
             }
             Ok(EditExecution::NoChange) => {
