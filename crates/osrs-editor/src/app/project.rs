@@ -6,12 +6,16 @@
 //! restarts that cache from its pristine source before applying each project region as it streams.
 //! This keeps Open Project replacement semantics distinct from a future explicit merge/import.
 
+mod lifecycle;
+#[cfg(test)]
+mod tests;
+
 use super::EditorApp;
 use super::editing::TileKey;
 use super::object_tool::{
     ObjectHistoryRoute, build_object_history_projection, spec_from_placement,
 };
-use crate::session::{PROJECT_FORMAT, ProjectFile, RegionDiff, diff_region};
+use crate::session::{EditorSession, PROJECT_FORMAT, ProjectFile, RegionDiff, diff_region};
 use eframe::egui;
 use osrs_cache::source::CacheSource;
 use osrs_core::coords::RegionCoord;
@@ -21,26 +25,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, TryRecvError};
 use web_time::Instant;
-
-enum LifecycleTransition {
-    Source {
-        source: CacheSource,
-        label: PathBuf,
-    },
-    Project {
-        path: PathBuf,
-        diffs: Vec<RegionDiff>,
-    },
-}
-
-impl LifecycleTransition {
-    fn description(&self) -> &'static str {
-        match self {
-            Self::Source { .. } => "open another cache",
-            Self::Project { .. } => "open another project",
-        }
-    }
-}
 
 #[derive(Default)]
 pub(super) struct ProjectState {
@@ -60,21 +44,10 @@ pub(super) struct ProjectState {
     /// The user chose to quit without saving.
     discard_confirmed: bool,
     /// A cache/project replacement waiting for Save / Discard / Cancel.
-    transition: Option<LifecycleTransition>,
+    transition: Option<lifecycle::LifecycleTransition>,
     transition_prompt: bool,
     /// Execute `transition` after the save currently requested by the transition prompt succeeds.
     transition_after_save: bool,
-}
-
-impl ProjectState {
-    /// Clear every piece of state whose meaning is tied to the current cache/source.
-    ///
-    /// Source replacement is deliberately blocked while a save is running, so dropping the
-    /// receiver here would be a lifecycle bug rather than a cancellation mechanism.
-    fn reset_for_source_change(&mut self) {
-        debug_assert!(self.save.is_none());
-        *self = Self::default();
-    }
 }
 
 /// Build the project file contents for `document`, keeping unapplied `pending` diffs for regions
@@ -121,6 +94,21 @@ fn tile_key(position: osrs_edit::MapPosition) -> TileKey {
     )
 }
 
+/// Establish a clean semantic/project state before the current source is restarted.
+fn prepare_project_replacement(
+    project: &mut ProjectState,
+    session: &mut EditorSession,
+    path: PathBuf,
+    diffs: Vec<RegionDiff>,
+) {
+    debug_assert!(project.save.is_none());
+    project.reset_for_source_change();
+    session.reset();
+    project.path = Some(path);
+    project.pending = diffs.into_iter().map(|diff| (diff.region, diff)).collect();
+    project.saved_edit_revision = session.edit_revision();
+}
+
 impl EditorApp {
     /// Whether edits exist that no save or project open has captured.
     fn is_unsaved(&self) -> bool {
@@ -129,50 +117,6 @@ impl EditorApp {
 
     fn has_project_changes(&self) -> bool {
         self.session.dirty_regions().next().is_some() || !self.project.pending.is_empty()
-    }
-
-    /// Route a cache/source replacement through the same unsaved-work lifecycle as project open.
-    pub(super) fn request_source_change(
-        &mut self,
-        source: CacheSource,
-        label: PathBuf,
-        ctx: &egui::Context,
-    ) {
-        if self.project.save.is_some() {
-            self.notice = Some((
-                "Finish the current project save before switching caches.".to_owned(),
-                Instant::now(),
-            ));
-            return;
-        }
-        self.request_transition(LifecycleTransition::Source { source, label }, ctx);
-    }
-
-    fn request_transition(&mut self, transition: LifecycleTransition, ctx: &egui::Context) {
-        if self.is_unsaved() {
-            self.project.transition = Some(transition);
-            self.project.transition_prompt = true;
-        } else {
-            self.execute_transition(transition, ctx);
-        }
-    }
-
-    fn execute_transition(&mut self, transition: LifecycleTransition, ctx: &egui::Context) {
-        match transition {
-            LifecycleTransition::Source { source, label } => {
-                self.project.reset_for_source_change();
-                self.session.reset();
-                self.open_source(source, label, ctx);
-            }
-            LifecycleTransition::Project { path, diffs } => {
-                let count = diffs.len();
-                self.activate_project(path, diffs);
-                self.notice = Some((
-                    format!("Opening project: {count} edited region{}", plural(count)),
-                    Instant::now(),
-                ));
-            }
-        }
     }
 
     /// File menu entries.
@@ -314,7 +258,7 @@ impl EditorApp {
                 return;
             }
         };
-        self.request_transition(LifecycleTransition::Project { path, diffs }, ctx);
+        self.request_transition(lifecycle::LifecycleTransition::Project { path, diffs }, ctx);
     }
 
     /// Read and validate a project against the currently open cache.
@@ -335,12 +279,7 @@ impl EditorApp {
 
     /// Replace the current editing session with `diffs` from the pristine current cache source.
     fn activate_project(&mut self, path: PathBuf, diffs: Vec<RegionDiff>) {
-        debug_assert!(self.project.save.is_none());
-        self.project.reset_for_source_change();
-        self.session.reset();
-        self.project.path = Some(path);
-        self.project.pending = diffs.into_iter().map(|diff| (diff.region, diff)).collect();
-        self.project.saved_edit_revision = self.session.edit_revision();
+        prepare_project_replacement(&mut self.project, &mut self.session, path, diffs);
         // Restarting the source clears worker-side edit projections as well as all resident legacy
         // projections. Project diffs are then applied only to fresh source regions as they arrive.
         self.restart_current_source();
@@ -433,149 +372,6 @@ impl EditorApp {
         self.project.pending.remove(&region);
     }
 
-    /// Show and resolve Save / Discard / Cancel for cache/project replacement.
-    /// Returns true while the lifecycle prompt owns the frame's modal interaction.
-    fn transition_guard(&mut self, ctx: &egui::Context) -> bool {
-        if self.project.transition_after_save && self.project.save.is_none() {
-            self.project.transition_after_save = false;
-            if !self.is_unsaved() {
-                if let Some(transition) = self.project.transition.take() {
-                    self.execute_transition(transition, ctx);
-                }
-                self.project.transition_prompt = false;
-                return false;
-            }
-            self.project.transition_prompt = true;
-        }
-
-        if !self.project.transition_prompt {
-            return false;
-        }
-        let action = self
-            .project
-            .transition
-            .as_ref()
-            .map(LifecycleTransition::description)
-            .unwrap_or("replace the current session");
-        let (choice, closed) = super::modal::Modal::new("replace-unsaved", "Unsaved changes")
-            .size(420.0, 0.0)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "Your map edits have not been saved. Save them before you {action}?"
-                ));
-                ui.add_space(8.0);
-                let mut choice = None;
-                ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
-                        choice = Some(TransitionChoice::Save);
-                    }
-                    if ui.button("Discard").clicked() {
-                        choice = Some(TransitionChoice::Discard);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        choice = Some(TransitionChoice::Cancel);
-                    }
-                });
-                choice
-            });
-        match choice {
-            Some(TransitionChoice::Save) => {
-                self.project.transition_prompt = false;
-                if self.save_project(false) {
-                    self.project.transition_after_save = true;
-                } else {
-                    self.project.transition_prompt = true;
-                }
-            }
-            Some(TransitionChoice::Discard) => {
-                self.project.transition_prompt = false;
-                if let Some(transition) = self.project.transition.take() {
-                    self.execute_transition(transition, ctx);
-                }
-            }
-            Some(TransitionChoice::Cancel) => {
-                self.project.transition_prompt = false;
-                self.project.transition_after_save = false;
-                self.project.transition = None;
-            }
-            None if closed => {
-                self.project.transition_prompt = false;
-                self.project.transition_after_save = false;
-                self.project.transition = None;
-            }
-            None => {}
-        }
-        true
-    }
-
-    /// Intercept closing the window while edits are unsaved, and finish a save-then-quit.
-    pub(super) fn quit_guard(&mut self, ctx: &egui::Context) {
-        let smoke = self.exit_after_seconds.is_some() || self.screenshot.is_some();
-        if !smoke
-            && ctx.input(|i| i.viewport().close_requested())
-            && self.is_unsaved()
-            && !self.project.discard_confirmed
-        {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            // Closing the application supersedes an in-progress source/project replacement choice.
-            self.project.transition = None;
-            self.project.transition_prompt = false;
-            self.project.transition_after_save = false;
-            self.project.quit_prompt = true;
-        }
-        if self.project.close_when_saved && self.project.save.is_none() {
-            self.project.close_when_saved = false;
-            if !self.is_unsaved() {
-                self.project.discard_confirmed = true;
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
-        }
-        if !self.project.quit_prompt && self.transition_guard(ctx) {
-            return;
-        }
-        if !self.project.quit_prompt {
-            return;
-        }
-        let (choice, closed) = super::modal::Modal::new("quit-unsaved", "Unsaved changes")
-            .size(380.0, 0.0)
-            .show(ctx, |ui| {
-                ui.label("Your map edits have not been saved to a project.");
-                ui.add_space(8.0);
-                let mut choice = None;
-                ui.horizontal(|ui| {
-                    if ui.button("Save and quit").clicked() {
-                        choice = Some(QuitChoice::Save);
-                    }
-                    if ui.button("Quit without saving").clicked() {
-                        choice = Some(QuitChoice::Discard);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        choice = Some(QuitChoice::Cancel);
-                    }
-                });
-                choice
-            });
-        match choice {
-            Some(QuitChoice::Save) => {
-                self.project.quit_prompt = false;
-                if self.cache_build.is_some()
-                    && self.project.save.is_none()
-                    && self.save_project(false)
-                {
-                    self.project.close_when_saved = true;
-                }
-            }
-            Some(QuitChoice::Discard) => {
-                self.project.quit_prompt = false;
-                self.project.discard_confirmed = true;
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
-            Some(QuitChoice::Cancel) => self.project.quit_prompt = false,
-            None if closed => self.project.quit_prompt = false,
-            None => {}
-        }
-    }
-
     /// Report a finished save once per frame.
     pub(super) fn poll_project(&mut self) {
         let Some(receiver) = &self.project.save else {
@@ -609,67 +405,6 @@ impl EditorApp {
     }
 }
 
-#[derive(Clone, Copy)]
-enum QuitChoice {
-    Save,
-    Discard,
-    Cancel,
-}
-
-#[derive(Clone, Copy)]
-enum TransitionChoice {
-    Save,
-    Discard,
-    Cancel,
-}
-
 fn plural(count: usize) -> &'static str {
     if count == 1 { "" } else { "s" }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn source_change_reset_clears_source_bound_project_state() {
-        let region = RegionCoord::new(50, 51);
-        let mut state = ProjectState::default();
-        state.pending.insert(
-            region,
-            RegionDiff {
-                region,
-                tiles: Vec::new(),
-                heights: Vec::new(),
-                objects_added: Vec::new(),
-                objects_removed: Vec::new(),
-            },
-        );
-        state.path = Some(PathBuf::from("old-project.json"));
-        state.saved_edit_revision = 7;
-        state.saving_revision = 6;
-        state.quit_prompt = true;
-        state.close_when_saved = true;
-        state.discard_confirmed = true;
-        state.transition_prompt = true;
-        state.transition_after_save = true;
-        state.transition = Some(LifecycleTransition::Project {
-            path: PathBuf::from("next-project.json"),
-            diffs: Vec::new(),
-        });
-
-        state.reset_for_source_change();
-
-        assert!(state.pending.is_empty());
-        assert!(state.path.is_none());
-        assert!(state.save.is_none());
-        assert_eq!(state.saved_edit_revision, 0);
-        assert_eq!(state.saving_revision, 0);
-        assert!(!state.quit_prompt);
-        assert!(!state.close_when_saved);
-        assert!(!state.discard_confirmed);
-        assert!(state.transition.is_none());
-        assert!(!state.transition_prompt);
-        assert!(!state.transition_after_save);
-    }
 }
