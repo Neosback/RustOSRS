@@ -304,19 +304,20 @@ impl EditorApp {
     /// every synchronous projection step succeeds, so failures are retryable instead of lossy.
     pub(super) fn apply_project_region(&mut self, region: RegionCoord) {
         let was_saved = !self.is_unsaved();
-        let applied = match apply_pending_project_semantics(&self.project, &mut self.session, region) {
-            Ok(applied) => applied,
-            Err(error) => {
-                self.notice = Some((
-                    format!(
-                        "Project region {},{} could not be applied: {error:?}",
-                        region.x, region.y
-                    ),
-                    Instant::now(),
-                ));
-                return;
-            }
-        };
+        let applied =
+            match apply_pending_project_semantics(&self.project, &mut self.session, region) {
+                Ok(applied) => applied,
+                Err(error) => {
+                    self.notice = Some((
+                        format!(
+                            "Project region {},{} could not be applied: {error:?}",
+                            region.x, region.y
+                        ),
+                        Instant::now(),
+                    ));
+                    return;
+                }
+            };
         let Some((diff, changed)) = applied else {
             return;
         };
