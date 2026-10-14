@@ -1,12 +1,14 @@
 # Edit Gateway Core Migration Plan
 
-Status: Checkpoint 3H implementation complete, pending exact-head certification
+Status: Checkpoint 3I implementation complete and certified; gateway migration sequence complete
 
 Active branch: `refactor/edit-gateway-objects`
 
 Current branch base / `main`: `90ed1f9cc17f20312b20398a2b8cbc250fb139e3`
 
-Implementation head before this documentation refresh: `2f60df89a19313f07ee5ecdcfb957ae856662e0a`
+Certified implementation head before this documentation refresh: `9d4ebb1ed1b7ce70343bbbcc5a48ce1e4707c0f8`
+
+Certification: CI run `38589143724` / run #1154 passed Tier A, Tier B, and Tier C M3-M9 on the exact implementation head.
 
 ## Authority
 
@@ -29,7 +31,7 @@ The gateway does not own renderer or world-worker algorithms. Those remain downs
 
 ## Implemented gateway contract
 
-`crates/osrs-editor/src/app/edit_runtime.rs` now owns:
+`crates/osrs-editor/src/app/edit_runtime.rs` owns:
 
 ```text
 EditRuntime {
@@ -50,6 +52,17 @@ replay(Undo | Redo, touched_regions, project)
 ```
 
 Successful transactions return an `EditReceipt` containing semantic revision, `ChangeImpact`, and normalized touched regions. Empty patches remain no-ops. Rollback and finalize invariant failures stay explicit.
+
+The production `EditRuntime` surface now also exposes only narrow non-transaction operations required by the application:
+
+- read-only semantic document access
+- revision / edit-revision queries
+- dirty-region iteration
+- untracked project application
+- source reset
+- streamed region ingest / unload
+
+It does not expose production forwarding methods for `commit`, `undo`, `redo`, checkpoint creation, checkpoint finalization, or checkpoint restore.
 
 ## Completed checkpoint sequence
 
@@ -142,9 +155,9 @@ The gateway projection validates the authoritative post-commit object state befo
 
 ### 3H: semantic Undo/Redo replay
 
-Implemented on head `2f60df89a19313f07ee5ecdcfb957ae856662e0a`; exact-head full CI certification is the remaining checkpoint gate.
+Completed and certified.
 
-Semantic Undo/Redo no longer owns checkpoint policy in `editing/history/routing.rs`. It now routes through `EditRuntime::replay`.
+Semantic Undo/Redo no longer owns checkpoint policy in `editing/history/routing.rs`. It routes through `EditRuntime::replay`.
 
 Current replay flow:
 
@@ -170,7 +183,50 @@ Failure restores both systems:
 
 Replay tests are split into `editing/history/routing/tests.rs` so the production router remains under the 500-line architecture cap.
 
-## Gateway coverage after 3H
+### 3I: compatibility-surface closure
+
+Completed and certified on exact head `9d4ebb1ed1b7ce70343bbbcc5a48ce1e4707c0f8` by CI run `38589143724` / #1154.
+
+The broad `Deref` and `DerefMut` implementations from `EditRuntime` to `EditorSession` are removed.
+
+The removal was compiler-audited rather than performed mechanically:
+
+1. remove both traits;
+2. let the workspace compiler enumerate remaining callers;
+3. classify each caller by semantic role;
+4. add only narrow explicit runtime operations for legitimate query/source/project behavior;
+5. keep interactive transaction lifecycle unavailable outside `execute` / `replay`.
+
+Production callers now use explicit operations for:
+
+- `document`
+- `revision`
+- `edit_revision`
+- `dirty_regions`
+- `apply_untracked`
+- `reset`
+- `ingest_region`
+- `unload_region`
+
+Project replacement/application helpers were migrated from `&mut EditorSession` to `&mut EditRuntime`, preserving their intentionally untracked project semantics without exposing interactive commit policy.
+
+Tests that need to construct history use test-only helpers that delegate to `execute` / `replay`; they do not recreate a production bypass. History availability queries used only by tests are also test-only.
+
+The existing `edit_runtime.rs` tests were moved to `edit_runtime/tests.rs` when the production module crossed the repository's 500-line architecture cap. This kept the architecture ratchet intact rather than expanding or allowlisting the module.
+
+Exact-head #1154 certification passed:
+
+- architecture boundaries / guard
+- reference regeneration safety
+- historical deob golden index
+- formatting
+- full workspace compile
+- strict Clippy
+- WebAssembly portability gate
+- full workspace tests
+- M3 through M9 semantic/reference parity
+
+## Gateway coverage after 3I
 
 ```text
 EditRuntime transaction policy
@@ -180,30 +236,36 @@ EditRuntime transaction policy
 ├─ Terrain Path                ✅ execute
 ├─ Objects                     ✅ execute
 └─ semantic Undo/Redo replay   ✅ replay
+
+Compatibility boundary
+├─ broad Deref                 removed ✅
+├─ broad DerefMut              removed ✅
+├─ production commit bypass    unavailable ✅
+└─ production replay bypass    unavailable ✅
 ```
 
-Interactive semantic transaction lifecycle policy is now centralized behind `EditRuntime`.
+Interactive semantic transaction lifecycle policy is centralized behind `EditRuntime`.
 
-## Transitional compatibility still present
+## Compatibility surface after 3I
 
-`EditRuntime` still implements broad `Deref` / `DerefMut` compatibility to `EditorSession` for staged migration compatibility.
+There is no broad production compatibility escape from `EditRuntime` to `EditorSession`.
 
-That escape is no longer the intended path for interactive semantic mutation. It should be removed or narrowed only in a separate checkpoint after an explicit usage audit. Do not mechanically delete it without classifying remaining callers, because source/project lifecycle, hydration, export/query access, and non-interactive session operations have different semantics from interactive edit execution.
+Read/query, source residency, and project application remain explicit because they have semantics distinct from interactive edit execution. In particular, Project open/application intentionally remains outside interactive `execute` / `replay`: it uses untracked project-application/retry semantics and stored `RegionDiff`s.
 
-## Next allowed checkpoint: 3I compatibility-surface audit
+Test-only conveniences may construct semantic history through the gateway, but production code cannot use them.
 
-Scope the next checkpoint narrowly to the `EditRuntime` compatibility surface.
+## Gateway sequence status
 
-Recommended sequence:
+The Edit Gateway Core migration sequence is complete under its original acceptance rule.
 
-1. enumerate every remaining `EditRuntime` deref/deref-mut caller;
-2. classify each as read-only query, source/residency lifecycle, project application, export/snapshot, or accidental interactive mutation bypass;
-3. add narrow explicit forwarding methods where they improve ownership clarity;
-4. remove `DerefMut` if no legitimate mutable caller remains;
-5. consider replacing read-only `Deref` with explicit query/session accessors rather than deleting it mechanically;
-6. add an architecture guard only if it can enforce the intended boundary without blocking legitimate lifecycle operations.
+Any future work should begin as a separate architecture checkpoint or branch rather than extending this migration opportunistically. Possible follow-on areas from the broader architecture contract include:
 
-Do not combine 3I with projection-invalidation redesign or runtime extraction.
+- centralized `ChangeImpact` -> projection invalidation
+- 8x8 zone/chunk invalidation
+- runtime extraction such as ProjectRuntime / UiRuntime / DiagnosticsRuntime
+- deeper InteractionRuntime behavioral encapsulation
+
+Those are not part of the Edit Gateway Core migration and should not be mixed into this branch merely because the gateway now provides a clean boundary.
 
 ## Explicit non-goals
 
@@ -218,8 +280,6 @@ This gateway sequence does not implement:
 - spline/path fitter redesign
 - a replacement semantic history system
 
-Project open/application intentionally remains outside interactive `execute`/`replay`: it uses untracked project-application/retry semantics and stored `RegionDiff`s.
-
 ## Acceptance rule
 
 The gateway work is complete only when application components no longer independently decide interactive semantic checkpoint/finalize/restore policy.
@@ -230,3 +290,5 @@ A route is considered migrated only when:
 - fallible projection is prepared from authoritative post-transition semantic state;
 - projection failure exactly restores semantic state;
 - worker/UI/global-history side effects occur only after successful gateway finalization.
+
+Checkpoint 3I closes the remaining compatibility hole: production callers can no longer obtain broad `EditorSession` behavior through implicit dereferencing, so the compiler now enforces the intended application transaction boundary.
