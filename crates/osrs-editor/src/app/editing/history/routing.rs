@@ -1,13 +1,23 @@
 //! Chronological undo and redo routing across semantic and legacy history entries.
 //!
-//! Undo and redo are the same transaction run in opposite directions: take the newest step from
-//! one stack, replay it through an exact `EditorSession` checkpoint, project the authoritative
-//! result into worker mirrors, and move the step only after the semantic checkpoint is finalized.
-//! Projection failure restores both semantic state and the mixed-history marker exactly.
+//! Semantic replay is checkpointed by `EditRuntime`. This router snapshots only the transitional
+//! worker values needed for projection, prepares the projection from the authoritative post-replay
+//! `MapDocument`, and mutates worker/UI mirrors only after gateway finalization succeeds.
 
-use super::*;
-use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession};
-use osrs_edit::PatchApplyError;
+use super::{
+    EditStep, EditorApp, SemanticHeightHistory, SemanticPaintHistory, SemanticPathHistory, TileKey,
+};
+use super::super::path::project_semantic_path_values;
+use super::super::plan::{project_height_values, project_paint_values};
+use crate::app::edit_runtime::{EditExecution, EditExecutionError, EditReplayDirection, EditRuntime};
+use crate::app::object_tool::{
+    ObjectHistoryProjection, ObjectHistoryRoute, build_object_history_projection,
+};
+use crate::paint::TileValues;
+use osrs_core::coords::{MapTile, RegionCoord};
+use osrs_edit::MapQuery;
+use std::collections::BTreeSet;
+use web_time::Instant;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Direction {
@@ -30,16 +40,11 @@ impl Direction {
         }
     }
 
-    /// Begin one semantic replay without finalizing its history transition.
-    fn replay(
-        self,
-        session: &mut EditorSession,
-    ) -> Result<Option<EditCheckpoint>, PatchApplyError> {
-        let replay = match self {
-            Self::Undo => session.undo_checkpointed(),
-            Self::Redo => session.redo_checkpointed(),
-        }?;
-        Ok(replay.map(|(_, checkpoint)| checkpoint))
+    fn gateway(self) -> EditReplayDirection {
+        match self {
+            Self::Undo => EditReplayDirection::Undo,
+            Self::Redo => EditReplayDirection::Redo,
+        }
     }
 
     /// The semantic replay succeeded: move its mixed-history marker to the opposite stack.
@@ -59,62 +64,31 @@ impl Direction {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum ReplayProjectionOutcome {
-    Success(usize),
-    ProjectionRolledBack(String),
-    RollbackFailed {
-        projection: String,
-        rollback: EditCheckpointError,
-    },
-    FinalizeFailed(EditCheckpointError),
-}
-
-/// Resolve a checkpointed semantic Undo/Redo after projection has finished.
-///
-/// The app-level mixed-history marker moves only after successful projection and checkpoint
-/// finalization. A projection failure restores the semantic checkpoint before returning the marker
-/// to its original stack, making the failed replay invisible to both history systems.
-fn finish_semantic_replay(
-    direction: Direction,
-    session: &mut EditorSession,
-    checkpoint: EditCheckpoint,
-    projection: Result<usize, String>,
-    step: EditStep,
-    history: &mut Vec<EditStep>,
-    redo_stack: &mut Vec<EditStep>,
-) -> ReplayProjectionOutcome {
-    match projection {
-        Ok(count) => match session.finalize_checkpoint(checkpoint) {
-            Ok(()) => {
-                direction.settle(history, redo_stack, step);
-                ReplayProjectionOutcome::Success(count)
-            }
-            Err(error) => {
-                direction.restore(history, redo_stack, step);
-                ReplayProjectionOutcome::FinalizeFailed(error)
-            }
-        },
-        Err(projection) => {
-            let rollback = session.restore_checkpoint(checkpoint);
-            direction.restore(history, redo_stack, step);
-            match rollback {
-                Ok(()) => ReplayProjectionOutcome::ProjectionRolledBack(projection),
-                Err(rollback) => ReplayProjectionOutcome::RollbackFailed {
-                    projection,
-                    rollback,
-                },
-            }
-        }
-    }
-}
-
 /// The semantic transaction kind a history step routes to.
 enum Route {
     Paint(SemanticPaintHistory),
     Height(SemanticHeightHistory),
     Path(SemanticPathHistory),
     Object(ObjectHistoryRoute),
+}
+
+/// Transitional worker values captured before semantic replay. Missing tiles are retained as
+/// `None` so the failure occurs inside the gateway projection boundary and triggers exact rollback.
+enum ProjectionInput {
+    Tiles(Vec<(TileKey, Option<TileValues>)>),
+    Object,
+}
+
+/// A fully validated replay projection. Applying this after gateway finalization is infallible.
+enum PreparedProjection {
+    Tiles {
+        projected: Vec<(TileKey, TileValues, TileValues)>,
+        mark_height: bool,
+    },
+    Object {
+        projection: ObjectHistoryProjection,
+        count: usize,
+    },
 }
 
 impl Route {
@@ -149,6 +123,126 @@ impl Route {
         };
         format!("{count} {noun}{}", if count == 1 { "" } else { plural })
     }
+
+    fn capture_projection_input(&self, app: &EditorApp) -> ProjectionInput {
+        let keys = match self {
+            Self::Paint(paint) => Some(&paint.keys),
+            Self::Height(height) => Some(&height.keys),
+            Self::Path(path) => Some(&path.keys),
+            Self::Object(_) => None,
+        };
+        match keys {
+            Some(keys) => ProjectionInput::Tiles(
+                keys.iter()
+                    .map(|key| (*key, app.current_tile(*key)))
+                    .collect(),
+            ),
+            None => ProjectionInput::Object,
+        }
+    }
+
+    fn touched_regions(&self) -> Vec<RegionCoord> {
+        let mut regions = BTreeSet::new();
+        match self {
+            Self::Paint(paint) => collect_tile_regions(&mut regions, &paint.keys),
+            Self::Height(height) => collect_tile_regions(&mut regions, &height.keys),
+            Self::Path(path) => collect_tile_regions(&mut regions, &path.keys),
+            Self::Object(object) => {
+                for spec in object.removed().iter().chain(object.added()) {
+                    regions.insert(MapTile::new(spec.tile.0, spec.tile.1).split_region().0);
+                }
+            }
+        }
+        regions.into_iter().collect()
+    }
+
+    fn prepare_projection(
+        &self,
+        query: &impl MapQuery,
+        direction: Direction,
+        input: ProjectionInput,
+    ) -> Result<PreparedProjection, String> {
+        match (self, input) {
+            (Self::Paint(paint), ProjectionInput::Tiles(current)) => {
+                let mut projected = Vec::with_capacity(current.len());
+                for (key, current) in current {
+                    let current = current.ok_or_else(|| {
+                        "a painted tile is no longer available to the projection adapter".to_owned()
+                    })?;
+                    let values = project_paint_values(query, &paint.brush, key, current).ok_or_else(
+                        || {
+                            "semantic Paint state cannot be represented by the legacy projection"
+                                .to_owned()
+                        },
+                    )?;
+                    projected.push((key, current, values));
+                }
+                Ok(PreparedProjection::Tiles {
+                    projected,
+                    mark_height: false,
+                })
+            }
+            (Self::Height(_), ProjectionInput::Tiles(current)) => {
+                let mut projected = Vec::with_capacity(current.len());
+                for (key, current) in current {
+                    let current = current.ok_or_else(|| {
+                        "a Height tile is no longer available to the projection adapter".to_owned()
+                    })?;
+                    let values = project_height_values(query, key, current).ok_or_else(|| {
+                        "semantic Height state cannot be represented by the legacy projection"
+                            .to_owned()
+                    })?;
+                    projected.push((key, current, values));
+                }
+                Ok(PreparedProjection::Tiles {
+                    projected,
+                    mark_height: true,
+                })
+            }
+            (Self::Path(path), ProjectionInput::Tiles(current)) => {
+                let mut projected = Vec::with_capacity(current.len());
+                for (key, current) in current {
+                    let current = current.ok_or_else(|| {
+                        "a Path tile is no longer available to the projection adapter".to_owned()
+                    })?;
+                    let values = project_semantic_path_values(
+                        query,
+                        key,
+                        current,
+                        path.include_height,
+                    )
+                    .ok_or_else(|| {
+                        "semantic Path state cannot be represented by the legacy projection"
+                            .to_owned()
+                    })?;
+                    projected.push((key, current, values));
+                }
+                Ok(PreparedProjection::Tiles {
+                    projected,
+                    mark_height: path.include_height,
+                })
+            }
+            (Self::Object(object), ProjectionInput::Object) => {
+                let projection = build_object_history_projection(
+                    query,
+                    object,
+                    direction == Direction::Redo,
+                )
+                .map_err(|error| format!("{error:?}"))?;
+                Ok(PreparedProjection::Object {
+                    projection,
+                    count: object.object_count(),
+                })
+            }
+            _ => unreachable!("projection input is captured from the same history route"),
+        }
+    }
+}
+
+fn collect_tile_regions(regions: &mut BTreeSet<RegionCoord>, keys: &[TileKey]) {
+    for key in keys {
+        regions.insert(MapTile::new(key.1, key.2).split_region().0);
+    }
 }
 
 impl EditorApp {
@@ -182,65 +276,78 @@ impl EditorApp {
         }
     }
 
-    /// Replay one semantic step in `direction`, project it, then finalize or restore atomically.
+    /// Replay one semantic step through `EditRuntime`, then apply its already-validated projection.
     fn route_semantic(&mut self, direction: Direction, step: EditStep, route: &Route) {
         let (label, word) = (route.label(), direction.word());
-        let notice = match direction.replay(&mut self.session) {
-            Ok(Some(checkpoint)) => {
-                let projection = self.project_route(route, direction);
-                match finish_semantic_replay(
-                    direction,
-                    &mut self.session,
-                    checkpoint,
-                    projection,
-                    step,
-                    &mut self.history,
-                    &mut self.redo_stack,
-                ) {
-                    ReplayProjectionOutcome::Success(count) => {
-                        format!("{} {}", direction.past(), route.counted(count))
-                    }
-                    ReplayProjectionOutcome::ProjectionRolledBack(message) => {
-                        format!("{label} {word} was rolled back: {message}")
-                    }
-                    ReplayProjectionOutcome::RollbackFailed {
-                        projection,
-                        rollback,
-                    } => format!(
-                        "{label} {word} projection failed and semantic rollback failed: \
-                         {projection} ({rollback:?})"
-                    ),
-                    ReplayProjectionOutcome::FinalizeFailed(error) => format!(
-                        "{label} {word} projection succeeded but semantic finalize failed: \
-                         {error:?}"
-                    ),
-                }
+        let input = route.capture_projection_input(self);
+        let touched_regions = route.touched_regions();
+        let execution = self.session.replay(direction.gateway(), touched_regions, |document| {
+            route.prepare_projection(document, direction, input)
+        });
+
+        let notice = match execution {
+            Ok(EditExecution::Committed { projection, .. }) => {
+                let count = self.apply_replay_projection(projection);
+                direction.settle(&mut self.history, &mut self.redo_stack, step);
+                format!("{} {}", direction.past(), route.counted(count))
             }
-            Ok(None) => {
+            Ok(EditExecution::NoChange) => {
                 direction.restore(&mut self.history, &mut self.redo_stack, step);
                 format!("{label} {word} history is out of sync with the semantic session")
             }
-            Err(error) => {
+            Err(EditExecutionError::Semantic(error)) => {
                 direction.restore(&mut self.history, &mut self.redo_stack, step);
                 format!("{label} {word} was rejected by the semantic session: {error:?}")
+            }
+            Err(EditExecutionError::Projection(message)) => {
+                direction.restore(&mut self.history, &mut self.redo_stack, step);
+                format!("{label} {word} was rolled back: {message}")
+            }
+            Err(EditExecutionError::Rollback {
+                projection,
+                rollback,
+            }) => {
+                direction.restore(&mut self.history, &mut self.redo_stack, step);
+                format!(
+                    "{label} {word} projection failed and semantic rollback failed: \
+                     {projection} ({rollback:?})"
+                )
+            }
+            Err(EditExecutionError::Finalize(error)) => {
+                direction.restore(&mut self.history, &mut self.redo_stack, step);
+                format!(
+                    "{label} {word} projection succeeded but semantic finalize failed: {error:?}"
+                )
             }
         };
         self.notice = Some((notice, Instant::now()));
     }
 
-    fn project_route(&mut self, route: &Route, direction: Direction) -> Result<usize, String> {
-        match route {
-            Route::Paint(paint) => self
-                .project_semantic_paint_history(paint)
-                .map_err(str::to_owned),
-            Route::Height(height) => self
-                .project_semantic_height_history(height)
-                .map_err(str::to_owned),
-            Route::Path(path) => self
-                .project_semantic_path_history(path)
-                .map_err(str::to_owned),
-            Route::Object(object) => {
-                self.project_semantic_object_history(object, direction == Direction::Redo)
+    fn apply_replay_projection(&mut self, projection: PreparedProjection) -> usize {
+        match projection {
+            PreparedProjection::Tiles {
+                projected,
+                mark_height,
+            } => {
+                let count = projected.len();
+                let mut edits = Vec::new();
+                for (key, current, values) in projected {
+                    if mark_height {
+                        self.height_edited.insert(key);
+                    }
+                    if values != current {
+                        self.edited.insert(key, values);
+                        edits.push(self.edit_for(key, values));
+                    }
+                }
+                self.send_edits(edits);
+                count
+            }
+            PreparedProjection::Object { projection, count } => {
+                self.send_loc_edits(projection.edits);
+                self.clear_selection();
+                self.interaction.pending_reselect = projection.reselect;
+                count
             }
         }
     }
@@ -249,7 +356,8 @@ impl EditorApp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use osrs_core::coords::{MapTile, SourcePlane};
+    use crate::session::EditorSession;
+    use osrs_core::coords::SourcePlane;
     use osrs_edit::{HeightVertexCoord, MapDocument, MapOp, MapPatch};
 
     fn plane() -> SourcePlane {
@@ -268,13 +376,17 @@ mod tests {
         }])
     }
 
-    fn applied_session() -> EditorSession {
+    fn applied_runtime() -> EditRuntime {
         let coord = coord();
-        let mut session = EditorSession::new(MapDocument::from_parts([], [(coord, 0)], []));
-        session
+        let mut runtime = EditRuntime::new(EditorSession::new(MapDocument::from_parts(
+            [],
+            [(coord, 0)],
+            [],
+        )));
+        runtime
             .commit(height_patch(coord, 0, 64))
             .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
-        session
+        runtime
     }
 
     fn marker() -> EditStep {
@@ -282,75 +394,51 @@ mod tests {
     }
 
     #[test]
-    fn failed_semantic_undo_projection_restores_session_and_history_stack() {
-        let mut session = applied_session();
-        let before = session.clone();
+    fn failed_semantic_undo_projection_restores_runtime_and_history_stack() {
+        let mut runtime = applied_runtime();
+        let before = runtime.clone();
         let mut history = vec![marker()];
         let mut redo_stack = Vec::new();
         let step = history
             .pop()
             .unwrap_or_else(|| unreachable!("Undo marker exists"));
-        let checkpoint = Direction::Undo
-            .replay(&mut session)
-            .unwrap_or_else(|error| unreachable!("valid Undo replay: {error:?}"))
-            .unwrap_or_else(|| unreachable!("Undo replay exists"));
 
-        let outcome = finish_semantic_replay(
-            Direction::Undo,
-            &mut session,
-            checkpoint,
-            Err("injected Undo projection failure".to_owned()),
-            step,
-            &mut history,
-            &mut redo_stack,
+        let result = runtime.replay(
+            EditReplayDirection::Undo,
+            vec![RegionCoord::new(50, 50)],
+            |_| Err::<(), _>("injected Undo projection failure".to_owned()),
         );
+        assert!(matches!(result, Err(EditExecutionError::Projection(_))));
+        Direction::Undo.restore(&mut history, &mut redo_stack, step);
 
-        assert_eq!(
-            outcome,
-            ReplayProjectionOutcome::ProjectionRolledBack(
-                "injected Undo projection failure".to_owned()
-            )
-        );
-        assert_eq!(session, before);
+        assert_eq!(runtime, before);
         assert_eq!(history.len(), 1);
         assert!(history[0].semantic_height.is_some());
         assert!(redo_stack.is_empty());
     }
 
     #[test]
-    fn failed_semantic_redo_projection_restores_session_and_redo_stack() {
-        let mut session = applied_session();
-        session
+    fn failed_semantic_redo_projection_restores_runtime_and_redo_stack() {
+        let mut runtime = applied_runtime();
+        runtime
             .undo()
             .unwrap_or_else(|error| unreachable!("valid setup Undo: {error:?}"));
-        let before = session.clone();
+        let before = runtime.clone();
         let mut history = Vec::new();
         let mut redo_stack = vec![marker()];
         let step = redo_stack
             .pop()
             .unwrap_or_else(|| unreachable!("Redo marker exists"));
-        let checkpoint = Direction::Redo
-            .replay(&mut session)
-            .unwrap_or_else(|error| unreachable!("valid Redo replay: {error:?}"))
-            .unwrap_or_else(|| unreachable!("Redo replay exists"));
 
-        let outcome = finish_semantic_replay(
-            Direction::Redo,
-            &mut session,
-            checkpoint,
-            Err("injected Redo projection failure".to_owned()),
-            step,
-            &mut history,
-            &mut redo_stack,
+        let result = runtime.replay(
+            EditReplayDirection::Redo,
+            vec![RegionCoord::new(50, 50)],
+            |_| Err::<(), _>("injected Redo projection failure".to_owned()),
         );
+        assert!(matches!(result, Err(EditExecutionError::Projection(_))));
+        Direction::Redo.restore(&mut history, &mut redo_stack, step);
 
-        assert_eq!(
-            outcome,
-            ReplayProjectionOutcome::ProjectionRolledBack(
-                "injected Redo projection failure".to_owned()
-            )
-        );
-        assert_eq!(session, before);
+        assert_eq!(runtime, before);
         assert!(history.is_empty());
         assert_eq!(redo_stack.len(), 1);
         assert!(redo_stack[0].semantic_height.is_some());
@@ -358,32 +446,27 @@ mod tests {
 
     #[test]
     fn successful_semantic_undo_finalizes_once_and_moves_history_marker() {
-        let mut session = applied_session();
-        let revision_before = session.revision();
+        let mut runtime = applied_runtime();
+        let revision_before = runtime.revision();
         let mut history = vec![marker()];
         let mut redo_stack = Vec::new();
         let step = history
             .pop()
             .unwrap_or_else(|| unreachable!("Undo marker exists"));
-        let checkpoint = Direction::Undo
-            .replay(&mut session)
-            .unwrap_or_else(|error| unreachable!("valid Undo replay: {error:?}"))
-            .unwrap_or_else(|| unreachable!("Undo replay exists"));
 
-        let outcome = finish_semantic_replay(
-            Direction::Undo,
-            &mut session,
-            checkpoint,
-            Ok(1),
-            step,
-            &mut history,
-            &mut redo_stack,
-        );
+        let result = runtime
+            .replay(
+                EditReplayDirection::Undo,
+                vec![RegionCoord::new(50, 50)],
+                |_| Ok::<_, String>(1),
+            )
+            .unwrap_or_else(|error| unreachable!("valid Undo replay: {error:?}"));
+        assert!(matches!(result, EditExecution::Committed { .. }));
+        Direction::Undo.settle(&mut history, &mut redo_stack, step);
 
-        assert_eq!(outcome, ReplayProjectionOutcome::Success(1));
-        assert_eq!(session.revision(), revision_before + 1);
-        assert_eq!(session.document().height_at(coord()), Some(0));
-        assert!(session.can_redo());
+        assert_eq!(runtime.revision(), revision_before + 1);
+        assert_eq!(runtime.document().height_at(coord()), Some(0));
+        assert!(runtime.can_redo());
         assert!(history.is_empty());
         assert_eq!(redo_stack.len(), 1);
         assert!(redo_stack[0].semantic_height.is_some());
@@ -391,35 +474,30 @@ mod tests {
 
     #[test]
     fn successful_semantic_redo_finalizes_once_and_moves_redo_marker() {
-        let mut session = applied_session();
-        session
+        let mut runtime = applied_runtime();
+        runtime
             .undo()
             .unwrap_or_else(|error| unreachable!("valid setup Undo: {error:?}"));
-        let revision_before = session.revision();
+        let revision_before = runtime.revision();
         let mut history = Vec::new();
         let mut redo_stack = vec![marker()];
         let step = redo_stack
             .pop()
             .unwrap_or_else(|| unreachable!("Redo marker exists"));
-        let checkpoint = Direction::Redo
-            .replay(&mut session)
-            .unwrap_or_else(|error| unreachable!("valid Redo replay: {error:?}"))
-            .unwrap_or_else(|| unreachable!("Redo replay exists"));
 
-        let outcome = finish_semantic_replay(
-            Direction::Redo,
-            &mut session,
-            checkpoint,
-            Ok(1),
-            step,
-            &mut history,
-            &mut redo_stack,
-        );
+        let result = runtime
+            .replay(
+                EditReplayDirection::Redo,
+                vec![RegionCoord::new(50, 50)],
+                |_| Ok::<_, String>(1),
+            )
+            .unwrap_or_else(|error| unreachable!("valid Redo replay: {error:?}"));
+        assert!(matches!(result, EditExecution::Committed { .. }));
+        Direction::Redo.settle(&mut history, &mut redo_stack, step);
 
-        assert_eq!(outcome, ReplayProjectionOutcome::Success(1));
-        assert_eq!(session.revision(), revision_before + 1);
-        assert_eq!(session.document().height_at(coord()), Some(64));
-        assert!(session.can_undo());
+        assert_eq!(runtime.revision(), revision_before + 1);
+        assert_eq!(runtime.document().height_at(coord()), Some(64));
+        assert!(runtime.can_undo());
         assert_eq!(history.len(), 1);
         assert!(history[0].semantic_height.is_some());
         assert!(redo_stack.is_empty());
