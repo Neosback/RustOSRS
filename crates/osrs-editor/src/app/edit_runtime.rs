@@ -5,13 +5,9 @@
 //! Read/query and source/project lifecycle operations are exposed explicitly; transaction lifecycle
 //! primitives stay private to this runtime so callers cannot bypass gateway policy accidentally.
 
-use crate::session::{
-    EditCheckpoint, EditCheckpointError, EditorSession, RegionSyncOutcome,
-};
+use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession, RegionSyncOutcome};
 use osrs_core::coords::RegionCoord;
-use osrs_edit::{
-    ChangeImpact, MapDocument, MapOp, MapPatch, MapRegionSnapshot, PatchApplyError,
-};
+use osrs_edit::{ChangeImpact, MapDocument, MapOp, MapPatch, MapRegionSnapshot, PatchApplyError};
 use std::collections::BTreeSet;
 
 /// Application owner of the authoritative semantic edit session.
