@@ -17,6 +17,7 @@ mod info;
 mod loc_edits;
 mod loc_stage;
 pub mod minimap;
+mod object_catalog;
 pub mod oracle_dump;
 mod scene_builder;
 mod source_squares;
@@ -45,6 +46,7 @@ pub use info::{
 };
 pub use loc_edits::{LocEdit, LocEdits, LocSpec};
 pub use loc_stage::{LocRenderable, LocStageOutput, LocStageStats, WorldLoc, place_window_locs};
+pub use object_catalog::{ObjectCatalog, ObjectEntry, SCENERY_LOC_TYPE, load_object_catalog};
 pub use scene_builder::{WorldScene, build_world_scene};
 pub use source_squares::{SourceSquare, SourceSquares};
 pub use streaming::{

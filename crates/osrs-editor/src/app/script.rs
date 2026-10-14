@@ -38,6 +38,7 @@ focus                  move the camera to the selection
 undo | redo | delete | turn | copy
 wait N                 pause N frames; at N waits until frame N
 sleep SECONDS          pause by the clock, whatever the frame rate
+place ID X Y [TURNS]  place an object from the catalog at a tile
 inspect X Y            log a tile's projected and document values (smoke tests)
 status TEXT
 # a comment";
@@ -332,6 +333,17 @@ impl EditorApp {
             "copy" => self.duplicate_selected_objects(),
             "wait" => {
                 self.script.wait_until = self.frames + number::<u64>(words.next(), "frames")?;
+            }
+            "place" => {
+                let id = number::<u32>(words.next(), "object id")?;
+                let x = number::<i32>(words.next(), "x")?;
+                let y = number::<i32>(words.next(), "y")?;
+                let orientation = words
+                    .next()
+                    .map_or(Ok(0), |w| number::<u8>(Some(w), "orientation"))?;
+                if !self.script_place(id, (x, y), orientation)? {
+                    return Ok(Step::Retry);
+                }
             }
             "inspect" => {
                 let x = number::<i32>(words.next(), "x")?;

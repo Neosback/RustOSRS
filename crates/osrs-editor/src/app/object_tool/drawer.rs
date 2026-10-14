@@ -55,6 +55,7 @@ impl EditorApp {
         ui.horizontal_top(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
             ui.spacing_mut().button_padding = egui::vec2(10.0, 7.0);
+            group(ui, "Place object", |ui| self.place_group(ui));
             group(ui, "Move one tile", |ui| {
                 ui.horizontal(|ui| {
                     for (icon, tip, delta) in [

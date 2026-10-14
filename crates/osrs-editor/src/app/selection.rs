@@ -142,6 +142,14 @@ impl EditorApp {
             self.interaction.marquee = None;
             return;
         }
+        // An armed object is placed by clicking; nothing else is selected or dragged meanwhile.
+        if objects_tool && self.placer.is_armed() {
+            self.interaction.marquee = None;
+            if response.clicked() {
+                self.place_armed_object();
+            }
+            return;
+        }
         // Dragging a selected object moves it (Objects tool); that drag is not a box.
         if self.object_drag_input(ctx, response) {
             self.interaction.marquee = None;

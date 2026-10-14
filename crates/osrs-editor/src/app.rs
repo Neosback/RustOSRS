@@ -81,6 +81,8 @@ const ANIMATED_KEY: (i32, i32) = (i32::MIN, i32::MIN);
 
 pub struct EditorApp {
     renderer: render_runtime::RenderRuntime,
+    /// Searchable object list and the object armed for placement.
+    placer: object_tool::PlaceState,
     /// A running File > Export, if any.
     export_job: Option<export::ExportJob>,
     /// The opened project's unapplied edits, its file, and a running save.
@@ -218,6 +220,7 @@ impl eframe::App for EditorApp {
         self.peak_resident = self.peak_resident.max(self.world.resident_regions());
 
         self.poll_palette();
+        self.poll_catalog();
         self.poll_export();
         self.poll_project();
         self.menu_bar(ui);
@@ -280,6 +283,13 @@ impl eframe::App for EditorApp {
                 }
                 self.draw_selection(ui, rect, pixels_per_point, width, height);
                 self.draw_selection_extras(
+                    &ui.painter().with_clip_rect(rect),
+                    rect,
+                    pixels_per_point,
+                    width,
+                    height,
+                );
+                self.draw_place_ghost(
                     &ui.painter().with_clip_rect(rect),
                     rect,
                     pixels_per_point,

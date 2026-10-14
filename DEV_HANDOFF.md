@@ -344,6 +344,12 @@ Edits now persist between runs. A project file (`rustosrs-project-v1` JSON, `ses
 
 Corrected `osrs-cache`'s `configured_build_241_cache_matches_pinned_source_shape`, which asserted map groups hold files `[0, 1]`; the pinned cache has `[0, 1, 2, 3, 4]`. That test is skipped without `RUSTOSRS_TARGET_CACHE_DIR`, so CI never exercised it.
 
+### Place new objects (Objects tool drawer: "Place object")
+
+The Objects tool can now add objects from the cache, not only move/duplicate/delete existing ones. `osrs-world::object_catalog` (`load_object_catalog`, `ObjectCatalog::search`) lists named objects that have models (id, name, size, available loc types; search ranks exact id, then name prefix, then contains). The editor loads it on a thread next to the floor palette (`placer.catalog`; native only, the browser shows a notice). In the drawer: search, pick a result, choose the loc type if several, rotate (button or the object-rotate key, Shift+key reverses), then click tiles; Esc or Stop disarms. A translucent footprint follows the cursor. Placement is `edit_objects(vec![], vec![spec])`: one semantic commit, one undo step, projected to the worker like every object action, and saved/exported like any other edit.
+
+Verified in the real app with the scripted `place ID X Y [TURNS]`: region object count 4726 -> 4727 on place, 4726 on undo, 4727 on redo, and a saved project restores the placed object in a fresh session. Real-cache test (`tests/object_catalog_real.rs`, skipped without the env var) checks the catalog lists >10k objects. Not done: a model preview in the result list, collision/overlap warnings, placing walls with edge snapping, and a loc-type picker for objects whose only models are wall pieces beyond the labelled types.
+
 ### Phase 7 gate: WebAssembly portability
 
 `cargo check --target wasm32-unknown-unknown` passes for every library crate and `cargo clippy --target wasm32-unknown-unknown -p osrs-editor -- -D warnings` is clean (verified locally). Native-only code is cfg-gated: `session::export` and `app/export.rs` have a stub `app/export_web.rs` on wasm. The gate is added to the Tier A CI job (`.github/workflows/ci.yml`); that workflow edit has NOT been executed on GitHub from this environment, so treat its first run as the verification.

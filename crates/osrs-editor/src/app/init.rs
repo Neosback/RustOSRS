@@ -33,6 +33,7 @@ impl EditorApp {
 
         let mut app = Self {
             renderer,
+            placer: object_tool::PlaceState::default(),
             export_job: None,
             project: project::ProjectState::default(),
             interaction: interaction_runtime::InteractionRuntime::new(camera),
@@ -122,6 +123,7 @@ impl EditorApp {
         if !script.is_empty() {
             app.run_script(&script);
         }
+        app.start_catalog_loader(initial_source.clone());
         #[cfg(not(target_arch = "wasm32"))]
         app.start_palette_loader(initial_source);
         #[cfg(target_arch = "wasm32")]

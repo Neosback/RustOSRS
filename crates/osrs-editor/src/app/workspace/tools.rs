@@ -317,6 +317,9 @@ impl EditorApp {
 
     /// Esc: back to Select; in Select it clears the selection.
     pub(in crate::app) fn escape_action(&mut self) {
+        if self.placer.disarm() {
+            return;
+        }
         if self.prefs.tool != Tool::Select {
             self.interaction.spline.points.clear();
             self.set_tool(Tool::Select);

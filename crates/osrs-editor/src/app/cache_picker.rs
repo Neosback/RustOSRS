@@ -131,6 +131,7 @@ impl EditorApp {
         self.floor_textures = None;
         self.palette = None;
         self.start_palette_loader(source.clone());
+        self.start_catalog_loader(source.clone());
 
         if matches!(source, CacheSource::Dir(_)) {
             let text = dir.to_string_lossy().into_owned();

@@ -5,6 +5,7 @@
 //! re-selects moved/new placements after the rebuild arrives.
 
 mod commit;
+mod place;
 
 mod drawer;
 
@@ -19,6 +20,7 @@ pub(super) use commit::{ObjectHistoryRoute, build_object_history_projection};
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
 use egui_phosphor::regular as ph;
 use osrs_world::{LocEdit, LocSpec};
+pub(super) use place::PlaceState;
 use web_time::Instant;
 
 /// Highest tile coordinate on the map (255 regions of 64 tiles, less one).
@@ -280,6 +282,19 @@ impl EditorApp {
 
     /// Keys: delete, turn, duplicate (with objects selected, in Select and in the Objects tool).
     pub(super) fn object_actions(&mut self, ctx: &egui::Context) {
+        if self.placer.is_armed() && self.prefs.tool == Tool::Objects && !self.keys_blocked(ctx) {
+            let (rotate, reverse) = ctx.input(|i| {
+                (
+                    self.keymap.pressed(i, "object.rotate"),
+                    i.modifiers.shift && i.key_pressed(egui::Key::R),
+                )
+            });
+            if rotate {
+                self.rotate_placement(1);
+            } else if reverse {
+                self.rotate_placement(-1);
+            }
+        }
         if self.keys_blocked(ctx)
             || self.quick_open.is_some()
             || !matches!(self.prefs.tool, Tool::Select | Tool::Objects)
