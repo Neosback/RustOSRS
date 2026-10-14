@@ -5,12 +5,13 @@
 //! worker's schedule. It never owns edited map semantics; those live in `EditorSession`.
 
 use osrs_core::coords::RegionCoord;
+use osrs_edit::ChangeImpact;
 use osrs_render::SceneGeometry;
 use osrs_world::{
     AnimatedInstance, AnimationWorker, LocEdit, LocInfo, RegionStreamer, StreamEvent,
     TerrainPresentation, TileEdit,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Duration;
 
 /// Regions being built at once.
@@ -247,6 +248,22 @@ impl WorldRuntime {
         self.streamer.edit_locs(edits);
     }
 
+    /// Translate one finalized semantic edit into region-level projection invalidation.
+    ///
+    /// Object-only changes keep the historical behavior of rebuilding the touched regions. Terrain
+    /// geometry, materials, normals, or lighting can affect derived data across a region boundary,
+    /// so the current region-level implementation conservatively rebuilds one neighboring ring.
+    /// A later zone/chunk checkpoint can tighten this without changing semantic edit metadata.
+    pub(super) fn invalidate_semantic_edit(
+        &mut self,
+        impact: ChangeImpact,
+        touched_regions: &[RegionCoord],
+    ) {
+        for region in invalidated_regions(impact, touched_regions) {
+            self.mark_dirty((region.x, region.y));
+        }
+    }
+
     /// Queue `region` for rebuild if it is resident.
     pub(super) fn mark_dirty(&mut self, region: (i32, i32)) {
         if self.loaded.contains_key(&region) {
@@ -328,6 +345,28 @@ impl WorldRuntime {
     }
 }
 
+/// Region-level projection invalidation derived only from authoritative semantic edit metadata.
+fn invalidated_regions(impact: ChangeImpact, touched_regions: &[RegionCoord]) -> Vec<RegionCoord> {
+    if impact.is_empty() || touched_regions.is_empty() {
+        return Vec::new();
+    }
+
+    let crosses_region_boundary = impact.intersects(ChangeImpact::TERRAIN_GEOMETRY)
+        || impact.intersects(ChangeImpact::TERRAIN_MATERIAL)
+        || impact.intersects(ChangeImpact::NORMALS)
+        || impact.intersects(ChangeImpact::LIGHTING);
+    let reach = if crosses_region_boundary { 1 } else { 0 };
+    let mut regions = BTreeSet::new();
+    for region in touched_regions {
+        for dx in -reach..=reach {
+            for dy in -reach..=reach {
+                regions.insert(RegionCoord::new(region.x + dx, region.y + dy));
+            }
+        }
+    }
+    regions.into_iter().collect()
+}
+
 /// Regions within `radius` of `center`, nearest first (ring distance, then Manhattan distance).
 fn wanted_regions(center: (i32, i32), radius: i32) -> Vec<(i32, i32)> {
     let (cx, cy) = center;
@@ -375,5 +414,30 @@ mod tests {
         let mut stale = stale_regions(loaded.into_iter(), (50, 50), 2);
         stale.sort_unstable();
         assert_eq!(stale, vec![(54, 50)]);
+    }
+
+    #[test]
+    fn object_only_invalidation_stays_on_touched_regions() {
+        let regions = invalidated_regions(
+            ChangeImpact::LOCATIONS | ChangeImpact::COLLISION | ChangeImpact::BOUNDS,
+            &[RegionCoord::new(50, 50), RegionCoord::new(50, 50)],
+        );
+        assert_eq!(regions, vec![RegionCoord::new(50, 50)]);
+    }
+
+    #[test]
+    fn terrain_derived_invalidation_expands_one_region_ring() {
+        let regions = invalidated_regions(
+            ChangeImpact::TERRAIN_MATERIAL | ChangeImpact::NORMALS | ChangeImpact::LIGHTING,
+            &[RegionCoord::new(50, 50)],
+        );
+        assert_eq!(regions.len(), 9);
+        assert_eq!(regions.first(), Some(&RegionCoord::new(49, 49)));
+        assert_eq!(regions.last(), Some(&RegionCoord::new(51, 51)));
+    }
+
+    #[test]
+    fn empty_impact_never_invalidates_projection_regions() {
+        assert!(invalidated_regions(ChangeImpact::NONE, &[RegionCoord::new(50, 50)]).is_empty());
     }
 }
