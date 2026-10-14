@@ -8,6 +8,7 @@ mod cache_picker;
 mod camera_ops;
 mod context_menu;
 mod drawer;
+mod edit_runtime;
 mod editing;
 #[cfg_attr(target_arch = "wasm32", path = "app/export_web.rs")]
 mod export;
@@ -55,7 +56,6 @@ use crate::interact;
 use crate::keymap::Keymap;
 use crate::pick::{self, Infos, ObjectPick, Pick};
 use crate::plugin::EditorPlugin;
-use crate::session::EditorSession;
 use crate::settings::ProfileChoice;
 use crate::settings::{self, Settings};
 use crate::style::ColorKey;
@@ -92,9 +92,9 @@ pub struct EditorApp {
     project: project::ProjectState,
     /// Camera, picking, selection, and in-progress tool gestures.
     interaction: interaction_runtime::InteractionRuntime,
-    /// Persistent authoritative semantic edit state. Legacy edit stores remain projections until
-    /// their individual migration checkpoints.
-    session: EditorSession,
+    /// Persistent authoritative semantic edit runtime. Existing callers still use the historical
+    /// `session` field name while their transaction policy migrates behind the gateway.
+    session: edit_runtime::EditRuntime,
     /// Optional tools and overlays (see `plugin.rs`).
     plugins: Vec<Box<dyn EditorPlugin>>,
     /// Guide lines per plugin, merged into the renderer's line overlay.

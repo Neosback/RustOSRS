@@ -38,7 +38,7 @@ impl EditorApp {
             export_job: None,
             project: project::ProjectState::default(),
             interaction: interaction_runtime::InteractionRuntime::new(camera),
-            session: EditorSession::default(),
+            session: edit_runtime::EditRuntime::default(),
             settings_path: None,
             saved_settings: Settings::default(),
             settings_checked: Instant::now(),

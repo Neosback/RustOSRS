@@ -1,56 +1,38 @@
 //! Copy and paste of the selected tiles (terrain channels and heights).
 //!
-//! A paste plans one Paint-style patch against the authoritative session, holds an exact semantic
-//! checkpoint while projecting the result into worker mirrors, and finalizes only after projection
-//! succeeds. It is recorded with the semantic path-history route (terrain plus heights from the
-//! document), so undo and redo reuse the existing projection.
+//! A paste plans one Paint-style patch against the authoritative session, executes it through the
+//! application edit gateway, and records chronological history only after semantic commit,
+//! projection planning, and checkpoint finalization all succeed. The resulting legacy worker
+//! projection is already validated and therefore applied infallibly after gateway success.
 
+use super::path::project_semantic_path_values;
 use super::*;
+use crate::app::edit_runtime::{EditExecution, EditExecutionError};
 use crate::app::paint_commit::build_terrain_paint_patch;
 use crate::app::tile_clipboard::TileClipboard;
-use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession};
 
-#[derive(Debug, PartialEq, Eq)]
-enum PasteProjectionError {
-    Projection(String),
-    Rollback {
-        projection: String,
-        rollback: EditCheckpointError,
-    },
-    Finalize(EditCheckpointError),
-}
+/// One already-validated Paste projection from authoritative semantic state into the transitional
+/// tile mirror.
+type PasteProjection = Vec<(TileKey, TileValues, TileValues)>;
 
-/// Resolve the semantic checkpoint only after Paste projection has finished.
+/// Prepare the complete legacy Paste projection from the authoritative post-commit document.
 ///
-/// A projection error restores the exact pre-Paste semantic state. A successful projection
-/// finalizes the history transaction, which is the point where any pre-existing redo branch is
-/// invalidated.
-fn finish_paste_projection<T, E>(
-    session: &mut EditorSession,
-    checkpoint: EditCheckpoint,
-    projection: Result<T, E>,
-) -> Result<T, PasteProjectionError>
-where
-    E: ToString,
-{
-    match projection {
-        Ok(value) => {
-            session
-                .finalize_checkpoint(checkpoint)
-                .map_err(PasteProjectionError::Finalize)?;
-            Ok(value)
-        }
-        Err(error) => {
-            let projection = error.to_string();
-            match session.restore_checkpoint(checkpoint) {
-                Ok(()) => Err(PasteProjectionError::Projection(projection)),
-                Err(rollback) => Err(PasteProjectionError::Rollback {
-                    projection,
-                    rollback,
-                }),
-            }
-        }
+/// This is deliberately pure. Any missing legacy tile or unrepresentable semantic result fails
+/// while `EditRuntime` still owns the active semantic checkpoint, so the gateway can restore the
+/// exact pre-Paste session state. Applying a successful plan later cannot fail.
+fn plan_paste_projection(
+    document: &osrs_edit::MapDocument,
+    current: &[(TileKey, Option<TileValues>)],
+) -> Result<PasteProjection, &'static str> {
+    let mut projected = Vec::with_capacity(current.len());
+    for (key, current) in current {
+        let current =
+            current.ok_or("a pasted tile is no longer available to the projection adapter")?;
+        let values = project_semantic_path_values(document, *key, current, true)
+            .ok_or("semantic Paste state cannot be represented by the legacy projection")?;
+        projected.push((*key, current, values));
     }
+    Ok(projected)
 }
 
 impl EditorApp {
@@ -132,44 +114,72 @@ impl EditorApp {
                 return;
             }
         };
-        let checkpoint = match self.session.commit_checkpointed(patch) {
-            Ok(Some((_, checkpoint))) => checkpoint,
-            Ok(None) => {
+
+        let tiles = clipboard.tiles_at(origin);
+        let keys: Vec<TileKey> = tiles.iter().map(|&(x, y)| (plane_index, x, y)).collect();
+        let current: Vec<_> = keys
+            .iter()
+            .copied()
+            .map(|key| (key, self.current_tile(key)))
+            .collect();
+
+        let execution = self
+            .session
+            .execute(patch, |document| plan_paste_projection(document, &current));
+        let projection = match execution {
+            Ok(EditExecution::NoChange) => {
                 self.notice = Some((
                     "Paste made no changes: the tiles already match".to_owned(),
                     Instant::now(),
                 ));
                 return;
             }
-            Err(error) => {
+            Ok(EditExecution::Committed { projection, .. }) => projection,
+            Err(EditExecutionError::Semantic(error)) => {
                 self.notice = Some((
                     format!("Paste was rejected by the semantic session: {error:?}"),
                     Instant::now(),
                 ));
                 return;
             }
+            Err(EditExecutionError::Projection(message)) => {
+                self.notice = Some((format!("Paste was rolled back: {message}"), Instant::now()));
+                return;
+            }
+            Err(EditExecutionError::Rollback {
+                projection,
+                rollback,
+            }) => {
+                self.notice = Some((
+                    format!(
+                        "Paste projection failed and semantic rollback failed: {projection} ({rollback:?})"
+                    ),
+                    Instant::now(),
+                ));
+                return;
+            }
+            Err(EditExecutionError::Finalize(error)) => {
+                self.notice = Some((
+                    format!("Paste projection succeeded but semantic finalize failed: {error:?}"),
+                    Instant::now(),
+                ));
+                return;
+            }
         };
-        let tiles = clipboard.tiles_at(origin);
-        let keys: Vec<TileKey> = tiles.iter().map(|&(x, y)| (plane_index, x, y)).collect();
-        let projection = self.project_document_tiles(&[], &keys);
-        if let Err(error) = finish_paste_projection(&mut self.session, checkpoint, projection) {
-            let message = match error {
-                PasteProjectionError::Projection(message) => {
-                    format!("Paste was rolled back: {message}")
-                }
-                PasteProjectionError::Rollback {
-                    projection,
-                    rollback,
-                } => format!(
-                    "Paste projection failed and semantic rollback failed: {projection} ({rollback:?})"
-                ),
-                PasteProjectionError::Finalize(error) => {
-                    format!("Paste projection succeeded but semantic finalize failed: {error:?}")
-                }
-            };
-            self.notice = Some((message, Instant::now()));
-            return;
+
+        // Projection planning was the fallible boundary. From here the semantic transaction is
+        // finalized, so only apply the already-validated mirror values and record application
+        // history. This mirrors the semantic Path projection used by Paste undo/redo.
+        let mut edits = Vec::new();
+        for (key, current, values) in projection {
+            self.height_edited.insert(key);
+            if values != current {
+                self.edited.insert(key, values);
+                edits.push(self.edit_for(key, values));
+            }
         }
+        self.send_edits(edits);
+
         let count = keys.len();
         self.push_step(EditStep::semantic_path(keys, true));
         self.interaction.selection_tiles = tiles.into_iter().collect();
@@ -183,6 +193,8 @@ impl EditorApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::edit_runtime::{EditExecution, EditExecutionError, EditRuntime};
+    use crate::session::EditorSession;
     use osrs_core::coords::{MapTile, SourcePlane};
     use osrs_edit::{HeightVertexCoord, MapDocument, MapOp, MapPatch};
 
@@ -202,60 +214,73 @@ mod tests {
         }])
     }
 
-    fn session_with_redo() -> (EditorSession, HeightVertexCoord) {
+    fn runtime_with_redo() -> (EditRuntime, HeightVertexCoord) {
         let prior = vertex((3200, 3200));
         let pasted = vertex((3264, 3200));
-        let mut session =
-            EditorSession::new(MapDocument::from_parts([], [(prior, 0), (pasted, 0)], []));
-        session
+        let mut runtime = EditRuntime::new(EditorSession::new(MapDocument::from_parts(
+            [],
+            [(prior, 0), (pasted, 0)],
+            [],
+        )));
+        runtime
             .commit(height_patch(prior, 0, 32))
             .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
-        session
+        runtime
             .undo()
             .unwrap_or_else(|error| unreachable!("valid setup undo: {error:?}"));
-        assert!(session.can_redo());
-        (session, pasted)
+        assert!(runtime.can_redo());
+        (runtime, pasted)
     }
 
     #[test]
     fn failed_paste_projection_restores_exact_pre_paste_session() {
-        let (mut session, pasted) = session_with_redo();
-        let before = session.clone();
-        let (_, checkpoint) = session
-            .commit_checkpointed(height_patch(pasted, 0, 64))
-            .unwrap_or_else(|error| unreachable!("valid Paste commit: {error:?}"))
-            .unwrap_or_else(|| unreachable!("Paste changes semantic state"));
-
-        let result = finish_paste_projection(
-            &mut session,
-            checkpoint,
-            Result::<(), _>::Err("injected Paste projection failure"),
-        );
+        let (mut runtime, pasted) = runtime_with_redo();
+        let before = runtime.clone();
+        let key = (0, pasted.corner.x, pasted.corner.y);
+        let result = runtime.execute(height_patch(pasted, 0, 64), |document| {
+            assert_eq!(document.height_at(pasted), Some(64));
+            plan_paste_projection(document, &[(key, None)])
+        });
 
         assert_eq!(
             result,
-            Err(PasteProjectionError::Projection(
-                "injected Paste projection failure".to_owned()
+            Err(EditExecutionError::Projection(
+                "a pasted tile is no longer available to the projection adapter"
             ))
         );
-        assert_eq!(session, before);
+        assert_eq!(runtime, before);
     }
 
     #[test]
-    fn successful_paste_projection_finalizes_once_and_invalidates_prior_redo() {
-        let (mut session, pasted) = session_with_redo();
-        let revision_before = session.revision();
-        let (_, checkpoint) = session
-            .commit_checkpointed(height_patch(pasted, 0, 64))
-            .unwrap_or_else(|error| unreachable!("valid Paste commit: {error:?}"))
-            .unwrap_or_else(|| unreachable!("Paste changes semantic state"));
+    fn successful_paste_projection_uses_post_commit_state_and_finalizes_once() {
+        let (mut runtime, pasted) = runtime_with_redo();
+        let revision_before = runtime.revision();
+        let key = (0, pasted.corner.x, pasted.corner.y);
+        let current = TileValues::default();
+        let result = runtime
+            .execute(height_patch(pasted, 0, 64), |document| {
+                assert_eq!(document.height_at(pasted), Some(64));
+                plan_paste_projection(document, &[(key, Some(current))])
+            })
+            .unwrap_or_else(|error| unreachable!("Paste gateway execution succeeds: {error:?}"));
 
-        finish_paste_projection(&mut session, checkpoint, Result::<(), &str>::Ok(()))
-            .unwrap_or_else(|error| unreachable!("Paste finalizes: {error:?}"));
-
-        assert_eq!(session.revision(), revision_before + 1);
-        assert_eq!(session.document().height_at(pasted), Some(64));
-        assert!(session.can_undo());
-        assert!(!session.can_redo());
+        let EditExecution::Committed { projection, .. } = result else {
+            unreachable!("non-empty Paste patch commits")
+        };
+        assert_eq!(
+            projection,
+            vec![(
+                key,
+                current,
+                TileValues {
+                    height: 64,
+                    ..current
+                }
+            )]
+        );
+        assert_eq!(runtime.revision(), revision_before + 1);
+        assert_eq!(runtime.document().height_at(pasted), Some(64));
+        assert!(runtime.can_undo());
+        assert!(!runtime.can_redo());
     }
 }

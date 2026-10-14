@@ -2,9 +2,10 @@
 //!
 //! Path fitting stays in `terrain_path` / `spline_tool`, and pure semantic patch planning stays in
 //! `app/path_commit.rs`. This module owns only the application boundary: plan against the persistent
-//! editor session, preflight the transitional worker representation, commit once, then project.
+//! editor session, commit through `EditRuntime`, then apply an already-validated worker projection.
 
 use super::{EditStep, EditorApp, PathTile, TileKey};
+use crate::app::edit_runtime::{EditExecution, EditExecutionError};
 use crate::app::path_commit::{TerrainPathIntent, build_terrain_path_patch};
 use crate::heights::{decode_height, encode_height};
 use crate::paint::TileValues;
@@ -12,6 +13,10 @@ use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::{HeightVertexCoord, MapPosition, MapQuery, TerrainTile};
 use std::collections::HashSet;
 use web_time::Instant;
+
+/// One already-validated Path projection from authoritative semantic state into the transitional
+/// preview/worker mirrors.
+type PathProjection = Vec<(TileKey, TileValues, TileValues)>;
 
 fn project_semantic_terrain(values: &mut TileValues, terrain: TerrainTile) -> Option<()> {
     values.underlay = match terrain.underlay {
@@ -54,6 +59,25 @@ pub(super) fn project_semantic_path_values(
     Some(values)
 }
 
+/// Prepare the complete Path projection from the authoritative post-commit document.
+///
+/// The caller snapshots only the legacy values needed by the adapter before entering the gateway.
+/// Any unrepresentable semantic result fails while `EditRuntime` still owns the active checkpoint,
+/// allowing exact semantic restoration without cloning the whole `MapDocument`.
+fn plan_path_projection(
+    query: &impl MapQuery,
+    current: &[(TileKey, TileValues)],
+    include_height: bool,
+) -> Result<PathProjection, TileKey> {
+    let mut projected = Vec::with_capacity(current.len());
+    for (key, before) in current {
+        let after =
+            project_semantic_path_values(query, *key, *before, include_height).ok_or(*key)?;
+        projected.push((*key, *before, after));
+    }
+    Ok(projected)
+}
+
 fn quantize_path_height(
     query: &impl MapQuery,
     plane: SourcePlane,
@@ -75,10 +99,6 @@ fn quantize_path_height(
 
 impl EditorApp {
     /// Lay one fitted terrain path as one persistent semantic transaction.
-    ///
-    /// The scratch document below is projection preflight only: it is cloned from authoritative
-    /// session state and receives the exact patch that will later be committed. It never becomes
-    /// editor authority and is discarded before worker mutation.
     pub(in crate::app) fn apply_terrain_path(&mut self, tiles: &[PathTile]) -> usize {
         if tiles.is_empty() {
             return 0;
@@ -148,22 +168,12 @@ impl EditorApp {
             return 0;
         }
 
-        // Prove every touched semantic result can be represented by the transitional TileEdit
-        // adapter before the authoritative session is mutated.
-        let mut projected_document = self.session.document().clone();
-        if let Err(error) = projected_document.apply_patch(&patch) {
-            self.notice = Some((
-                format!("The path was not laid: semantic preflight failed ({error:?})"),
-                Instant::now(),
-            ));
-            return 0;
-        }
-
-        let mut projected = HashSet::new();
-        let mut route_keys = Vec::new();
-        let mut changes: Vec<(TileKey, TileValues, TileValues)> = Vec::new();
+        // Snapshot only the transitional values required for projection. Duplicate fitted path tiles
+        // share one route key and one worker projection, matching the previous preflight behavior.
+        let mut seen = HashSet::new();
+        let mut projection_input = Vec::new();
         for intent in &intents {
-            if !projected.insert(intent.tile) {
+            if !seen.insert(intent.tile) {
                 continue;
             }
             let key = (self.interaction.view_plane, intent.tile.0, intent.tile.1);
@@ -177,44 +187,66 @@ impl EditorApp {
                 ));
                 return 0;
             };
-            let Some(after) =
-                project_semantic_path_values(&projected_document, key, before, brush.height.armed)
-            else {
-                self.notice = Some((
-                    format!(
-                        "The path was not laid: semantic state at {:?} cannot be represented by the legacy projection",
-                        intent.tile
-                    ),
-                    Instant::now(),
-                ));
-                return 0;
-            };
-            route_keys.push(key);
-            if after != before {
-                changes.push((key, before, after));
-            }
+            projection_input.push((key, before));
         }
+        let route_keys: Vec<_> = projection_input.iter().map(|(key, _)| *key).collect();
 
-        match self.session.commit(patch) {
-            Ok(Some(_)) => {}
-            Ok(None) => {
+        let execution = self.session.execute(patch, |document| {
+            plan_path_projection(document, &projection_input, brush.height.armed)
+        });
+        let projection = match execution {
+            Ok(EditExecution::Committed { projection, .. }) => projection,
+            Ok(EditExecution::NoChange) => {
                 self.notice = Some((
                     "The path made no semantic changes".to_owned(),
                     Instant::now(),
                 ));
                 return 0;
             }
-            Err(error) => {
+            Err(EditExecutionError::Semantic(error)) => {
                 self.notice = Some((
                     format!("The path was rejected by the semantic session: {error:?}"),
                     Instant::now(),
                 ));
                 return 0;
             }
-        }
+            Err(EditExecutionError::Projection(key)) => {
+                self.notice = Some((
+                    format!(
+                        "The path commit was rolled back: semantic state at ({}, {}) cannot be represented by the legacy projection",
+                        key.1, key.2
+                    ),
+                    Instant::now(),
+                ));
+                return 0;
+            }
+            Err(EditExecutionError::Rollback {
+                projection: key,
+                rollback,
+            }) => {
+                self.notice = Some((
+                    format!(
+                        "Path projection failed at ({}, {}) and semantic rollback failed: {rollback:?}",
+                        key.1, key.2
+                    ),
+                    Instant::now(),
+                ));
+                return 0;
+            }
+            Err(EditExecutionError::Finalize(error)) => {
+                self.notice = Some((
+                    format!("Path projection succeeded but semantic finalize failed: {error:?}"),
+                    Instant::now(),
+                ));
+                return 0;
+            }
+        };
 
-        let mut edits = Vec::with_capacity(changes.len());
-        for (key, before, after) in &changes {
+        let mut edits = Vec::with_capacity(projection.len());
+        for (key, before, after) in &projection {
+            if after == before {
+                continue;
+            }
             if after.height != before.height {
                 self.height_edited.insert(*key);
             }
@@ -236,210 +268,4 @@ impl EditorApp {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::session::EditorSession;
-    use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
-    use osrs_edit::{MapDocument, OverlayRotation, OverlayShape, TerrainOverlay};
-
-    fn plane(value: u8) -> SourcePlane {
-        SourcePlane::new(value).unwrap_or_else(|| unreachable!("test plane is valid"))
-    }
-
-    #[test]
-    fn upper_plane_path_height_requires_the_semantic_lower_plane_base() {
-        let tile = MapTile::new(3200, 3200);
-        let document =
-            MapDocument::from_parts([], [(HeightVertexCoord::new(tile, plane(1)), 100)], []);
-
-        assert_eq!(
-            quantize_path_height(&document, plane(1), tile, 64),
-            Err("the semantic lower-plane height is missing")
-        );
-    }
-
-    #[test]
-    fn one_path_patch_is_one_persistent_session_revision() {
-        let tile = MapTile::new(3200, 3200);
-        let coord = MapPosition::new(tile, plane(0));
-        let overlay = TerrainOverlay {
-            id: FloorOverlayId::new(7),
-            shape: OverlayShape::new(0).unwrap_or_else(|| unreachable!("shape zero is valid")),
-            rotation: OverlayRotation::new(0)
-                .unwrap_or_else(|| unreachable!("rotation zero is valid")),
-        };
-        let document =
-            MapDocument::from_parts([], [(HeightVertexCoord::new(tile, plane(0)), 0)], []);
-        let mut session = EditorSession::new(document);
-        let intent = TerrainPathIntent {
-            tile: (3200, 3200),
-            overlay: Some(7),
-            shape: 0,
-            rotation: 0,
-            height: None,
-            flags: None,
-        };
-        let patch = build_terrain_path_patch(session.document(), plane(0), &[intent])
-            .unwrap_or_else(|error| unreachable!("valid path patch: {error:?}"));
-
-        let commit = session
-            .commit(patch)
-            .unwrap_or_else(|error| unreachable!("path commit should succeed: {error:?}"))
-            .unwrap_or_else(|| unreachable!("path changes semantic terrain"));
-
-        assert_eq!(commit.revision, 1);
-        assert_eq!(session.revision(), 1);
-        assert!(session.can_undo());
-        assert_eq!(session.document().terrain_at(coord).overlay, Some(overlay));
-    }
-
-    #[test]
-    fn semantic_path_projection_tracks_undo_redo_and_optional_height() {
-        let tile = MapTile::new(3200, 3200);
-        let key = (0, 3200, 3200);
-        let coord = MapPosition::new(tile, plane(0));
-        let vertex = HeightVertexCoord::new(tile, plane(0));
-        let before_terrain = TerrainTile {
-            underlay: Some(FloorUnderlayId::new(3)),
-            overlay: None,
-            flags: 1,
-        };
-        let before = TileValues {
-            underlay: 3,
-            height: -96,
-            flags: 1,
-            ..TileValues::default()
-        };
-        let mut session = EditorSession::new(MapDocument::from_parts(
-            [(coord, before_terrain)],
-            [(vertex, -96)],
-            [],
-        ));
-        let intent = TerrainPathIntent {
-            tile: (3200, 3200),
-            overlay: Some(7),
-            shape: 4,
-            rotation: 2,
-            height: Some(-32),
-            flags: Some(5),
-        };
-        let patch = build_terrain_path_patch(session.document(), plane(0), &[intent])
-            .unwrap_or_else(|error| unreachable!("valid path patch: {error:?}"));
-        assert!(session.commit(patch).is_ok());
-
-        let terrain_only = project_semantic_path_values(session.document(), key, before, false)
-            .unwrap_or_else(|| unreachable!("semantic Path terrain is projectable"));
-        assert_eq!(terrain_only.overlay, 7);
-        assert_eq!(terrain_only.shape, 4);
-        assert_eq!(terrain_only.rotation, 2);
-        assert_eq!(terrain_only.flags, 5);
-        assert_eq!(terrain_only.height, -96);
-
-        let committed = project_semantic_path_values(session.document(), key, before, true)
-            .unwrap_or_else(|| unreachable!("semantic Path state is projectable"));
-        assert_eq!(committed.height, -32);
-
-        assert!(session.undo().is_ok());
-        let undone = project_semantic_path_values(session.document(), key, committed, true)
-            .unwrap_or_else(|| unreachable!("semantic Path undo is projectable"));
-        assert_eq!(undone, before);
-
-        assert!(session.redo().is_ok());
-        let redone = project_semantic_path_values(session.document(), key, undone, true)
-            .unwrap_or_else(|| unreachable!("semantic Path redo is projectable"));
-        assert_eq!(redone, committed);
-    }
-
-    #[test]
-    fn semantic_path_history_marker_carries_no_legacy_tile_authority() {
-        let key = (0, 3200, 3200);
-        let step = EditStep::semantic_path(vec![key], true);
-
-        assert!(step.changes.is_empty());
-        assert!(step.removed.is_empty());
-        assert!(step.added.is_empty());
-        assert!(step.semantic_paint.is_none());
-        assert!(step.semantic_height.is_none());
-        assert!(step.semantic_object.is_none());
-        let path = step
-            .semantic_path
-            .as_ref()
-            .unwrap_or_else(|| unreachable!("Path marker should be present"));
-        assert_eq!(path.keys, vec![key]);
-        assert!(path.include_height);
-    }
-
-    #[test]
-    fn consecutive_path_transactions_follow_semantic_history_order() {
-        let tile = MapTile::new(3200, 3200);
-        let coord = MapPosition::new(tile, plane(0));
-        let vertex = HeightVertexCoord::new(tile, plane(0));
-        let mut session = EditorSession::new(MapDocument::from_parts([], [(vertex, 0)], []));
-        let first = TerrainPathIntent {
-            tile: (3200, 3200),
-            overlay: Some(7),
-            shape: 1,
-            rotation: 0,
-            height: None,
-            flags: None,
-        };
-        let second = TerrainPathIntent {
-            tile: (3200, 3200),
-            overlay: Some(8),
-            shape: 2,
-            rotation: 3,
-            height: Some(-32),
-            flags: Some(5),
-        };
-
-        let first_patch = build_terrain_path_patch(session.document(), plane(0), &[first])
-            .unwrap_or_else(|error| unreachable!("valid first Path patch: {error:?}"));
-        assert!(session.commit(first_patch).is_ok());
-        let second_patch = build_terrain_path_patch(session.document(), plane(0), &[second])
-            .unwrap_or_else(|error| unreachable!("valid second Path patch: {error:?}"));
-        assert!(session.commit(second_patch).is_ok());
-        assert_eq!(
-            session
-                .document()
-                .terrain_at(coord)
-                .overlay
-                .map(|overlay| overlay.id.get()),
-            Some(8)
-        );
-        assert_eq!(session.document().height_at(vertex), Some(-32));
-
-        assert!(session.undo().is_ok());
-        assert_eq!(
-            session
-                .document()
-                .terrain_at(coord)
-                .overlay
-                .map(|overlay| overlay.id.get()),
-            Some(7)
-        );
-        assert_eq!(session.document().height_at(vertex), Some(0));
-
-        assert!(session.undo().is_ok());
-        assert_eq!(session.document().terrain_at(coord), TerrainTile::default());
-
-        assert!(session.redo().is_ok());
-        assert_eq!(
-            session
-                .document()
-                .terrain_at(coord)
-                .overlay
-                .map(|overlay| overlay.id.get()),
-            Some(7)
-        );
-        assert!(session.redo().is_ok());
-        assert_eq!(
-            session
-                .document()
-                .terrain_at(coord)
-                .overlay
-                .map(|overlay| overlay.id.get()),
-            Some(8)
-        );
-        assert_eq!(session.document().height_at(vertex), Some(-32));
-    }
-}
+mod tests;
