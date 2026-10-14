@@ -86,10 +86,12 @@ impl EditRuntime {
         self.session.dirty_regions()
     }
 
+    #[cfg(test)]
     pub(super) fn can_undo(&self) -> bool {
         self.session.can_undo()
     }
 
+    #[cfg(test)]
     pub(super) fn can_redo(&self) -> bool {
         self.session.can_redo()
     }
