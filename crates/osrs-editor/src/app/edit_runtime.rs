@@ -176,7 +176,11 @@ impl DerefMut for EditRuntime {
 }
 
 fn normalize_regions(regions: Vec<RegionCoord>) -> Vec<RegionCoord> {
-    regions.into_iter().collect::<BTreeSet<_>>().into_iter().collect()
+    regions
+        .into_iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn touched_regions(patch: &MapPatch) -> Vec<RegionCoord> {
