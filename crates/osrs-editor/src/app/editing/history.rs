@@ -11,7 +11,6 @@ use crate::app::object_tool::ObjectHistoryRoute;
 use crate::paint::{Brush, TileValues};
 use eframe::egui;
 use osrs_world::{LocEdit, LocSpec};
-use web_time::Instant;
 
 /// Most global undo steps kept by the editor shell.
 const HISTORY_LIMIT: usize = 200;
