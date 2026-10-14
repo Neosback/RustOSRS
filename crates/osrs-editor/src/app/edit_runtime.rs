@@ -117,10 +117,7 @@ impl EditRuntime {
 
     /// Test fixture convenience that still exercises the production transaction gateway.
     #[cfg(test)]
-    pub(super) fn commit(
-        &mut self,
-        patch: MapPatch,
-    ) -> Result<(), EditExecutionError<Infallible>> {
+    pub(super) fn commit(&mut self, patch: MapPatch) -> Result<(), EditExecutionError<Infallible>> {
         let _ = self.execute(patch, |_| Ok::<_, Infallible>(()))?;
         Ok(())
     }
