@@ -17,6 +17,13 @@ pub(super) struct EditRuntime {
     session: EditorSession,
 }
 
+/// Which semantic history transition the gateway should replay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum EditReplayDirection {
+    Undo,
+    Redo,
+}
+
 /// Successful application-level semantic transaction metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct EditReceipt {
@@ -25,19 +32,19 @@ pub(super) struct EditReceipt {
     pub touched_regions: Vec<RegionCoord>,
 }
 
-/// Result of executing one candidate semantic edit through the application gateway.
+/// Result of executing one semantic transition through the application gateway.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum EditExecution<T> {
-    /// The patch had no semantic operations, so no history/revision/projection work occurred.
+    /// No semantic transition occurred, so no projection/finalization work ran.
     NoChange,
     /// Semantic mutation, projection, and checkpoint finalization all succeeded.
     Committed { receipt: EditReceipt, projection: T },
 }
 
-/// Failure while executing one semantic edit through the application gateway.
+/// Failure while executing one semantic transition through the application gateway.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum EditExecutionError<E> {
-    /// The semantic patch was rejected before projection ran.
+    /// The semantic commit/replay was rejected before projection ran.
     Semantic(PatchApplyError),
     /// Projection failed and the semantic checkpoint was restored exactly.
     Projection(E),
@@ -86,6 +93,37 @@ impl EditRuntime {
         )
     }
 
+    /// Replay one semantic Undo/Redo as an application transaction.
+    ///
+    /// `touched_regions` comes from the lightweight application history route because
+    /// `EditorSession` intentionally keeps history patches opaque. The projection closure receives
+    /// only the authoritative post-replay document; worker/UI side effects belong after this method
+    /// returns `Committed`.
+    pub(super) fn replay<T, E>(
+        &mut self,
+        direction: EditReplayDirection,
+        touched_regions: Vec<RegionCoord>,
+        project: impl FnOnce(&MapDocument) -> Result<T, E>,
+    ) -> Result<EditExecution<T>, EditExecutionError<E>> {
+        let replay = match direction {
+            EditReplayDirection::Undo => self.session.undo_checkpointed(),
+            EditReplayDirection::Redo => self.session.redo_checkpointed(),
+        }
+        .map_err(EditExecutionError::Semantic)?;
+        let Some((commit, checkpoint)) = replay else {
+            return Ok(EditExecution::NoChange);
+        };
+
+        let projection = project(self.session.document());
+        self.finish_execution(
+            commit.revision,
+            commit.impact,
+            normalize_regions(touched_regions),
+            checkpoint,
+            projection,
+        )
+    }
+
     fn finish_execution<T, E>(
         &mut self,
         revision: u64,
@@ -119,10 +157,10 @@ impl EditRuntime {
     }
 }
 
-/// Transitional compatibility for routes not yet migrated to `EditRuntime::execute`.
+/// Transitional compatibility for routes not yet migrated to the contained `EditRuntime` API.
 ///
 /// This prevents a flag-day rewrite while keeping exactly one owned `EditorSession`. Remove these
-/// broad escapes as the remaining routes move behind the gateway.
+/// broad escapes once remaining session access has narrow runtime methods.
 impl Deref for EditRuntime {
     type Target = EditorSession;
 
@@ -135,6 +173,10 @@ impl DerefMut for EditRuntime {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.session
     }
+}
+
+fn normalize_regions(regions: Vec<RegionCoord>) -> Vec<RegionCoord> {
+    regions.into_iter().collect::<BTreeSet<_>>().into_iter().collect()
 }
 
 fn touched_regions(patch: &MapPatch) -> Vec<RegionCoord> {
@@ -269,6 +311,78 @@ mod tests {
             result,
             Err(EditExecutionError::Projection(
                 "injected projection failure"
+            ))
+        );
+        assert_eq!(runtime, before);
+    }
+
+    #[test]
+    fn successful_undo_replay_finalizes_once_and_returns_receipt() {
+        let coord = vertex(3200, 3200);
+        let mut runtime = EditRuntime::new(EditorSession::new(MapDocument::from_parts(
+            [],
+            [(coord, 0)],
+            [],
+        )));
+        runtime
+            .commit(height_patch(coord, 0, 64))
+            .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
+        let revision_before = runtime.revision();
+
+        let result = runtime
+            .replay(
+                EditReplayDirection::Undo,
+                vec![RegionCoord::new(50, 50), RegionCoord::new(50, 50)],
+                |document| {
+                    assert_eq!(document.height_at(coord), Some(0));
+                    Ok::<_, &'static str>("undo projected")
+                },
+            )
+            .unwrap_or_else(|error| unreachable!("gateway Undo succeeds: {error:?}"));
+
+        let EditExecution::Committed {
+            receipt,
+            projection,
+        } = result
+        else {
+            unreachable!("Undo history exists")
+        };
+        assert_eq!(projection, "undo projected");
+        assert_eq!(receipt.revision, revision_before + 1);
+        assert_eq!(receipt.touched_regions, vec![RegionCoord::new(50, 50)]);
+        assert_eq!(runtime.document().height_at(coord), Some(0));
+        assert!(runtime.can_redo());
+    }
+
+    #[test]
+    fn failed_redo_replay_projection_restores_exact_pre_transaction_state() {
+        let coord = vertex(3200, 3200);
+        let mut runtime = EditRuntime::new(EditorSession::new(MapDocument::from_parts(
+            [],
+            [(coord, 0)],
+            [],
+        )));
+        runtime
+            .commit(height_patch(coord, 0, 64))
+            .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
+        runtime
+            .undo()
+            .unwrap_or_else(|error| unreachable!("valid setup Undo: {error:?}"));
+        let before = runtime.clone();
+
+        let result = runtime.replay(
+            EditReplayDirection::Redo,
+            vec![RegionCoord::new(50, 50)],
+            |document| {
+                assert_eq!(document.height_at(coord), Some(64));
+                Err::<(), _>("injected Redo projection failure")
+            },
+        );
+
+        assert_eq!(
+            result,
+            Err(EditExecutionError::Projection(
+                "injected Redo projection failure"
             ))
         );
         assert_eq!(runtime, before);
