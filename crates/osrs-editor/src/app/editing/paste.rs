@@ -126,7 +126,7 @@ impl EditorApp {
         let execution = self
             .session
             .execute(patch, |document| plan_paste_projection(document, &current));
-        let projection = match execution {
+        let (receipt, projection) = match execution {
             Ok(EditExecution::NoChange) => {
                 self.notice = Some((
                     "Paste made no changes: the tiles already match".to_owned(),
@@ -134,7 +134,10 @@ impl EditorApp {
                 ));
                 return;
             }
-            Ok(EditExecution::Committed { projection, .. }) => projection,
+            Ok(EditExecution::Committed {
+                receipt,
+                projection,
+            }) => (receipt, projection),
             Err(EditExecutionError::Semantic(error)) => {
                 self.notice = Some((
                     format!("Paste was rejected by the semantic session: {error:?}"),
@@ -168,8 +171,8 @@ impl EditorApp {
         };
 
         // Projection planning was the fallible boundary. From here the semantic transaction is
-        // finalized, so only apply the already-validated mirror values and record application
-        // history. This mirrors the semantic Path projection used by Paste undo/redo.
+        // finalized, so only apply the already-validated mirror values. Rebuild scope comes from
+        // the authoritative semantic receipt rather than the transitional TileEdit adapter.
         let mut edits = Vec::new();
         for (key, current, values) in projection {
             self.height_edited.insert(key);
@@ -178,7 +181,9 @@ impl EditorApp {
                 edits.push(self.edit_for(key, values));
             }
         }
-        self.send_edits(edits);
+        self.world.project_tile_edits(edits);
+        self.world
+            .invalidate_semantic_edit(receipt.impact, &receipt.touched_regions);
 
         let count = keys.len();
         self.push_step(EditStep::semantic_path(keys, true));
