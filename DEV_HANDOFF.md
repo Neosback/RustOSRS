@@ -305,7 +305,7 @@ Every file on the debt allowlist is now within the 500-line / 32 KiB cap and `sc
 - `app.rs` -> `init.rs` (`EditorApp::new`) + `input.rs`
 - inline test modules of `settings.rs`, `paint.rs`, `pick.rs` -> `*/tests.rs`; `pick/describe.rs`
 
-`routing.rs`'s duplicated ~190-line `undo`/`redo` were collapsed into one direction-parameterized routine (381 -> 189 lines, same messages, verified paint/undo/redo in the real app). Known remaining smell: `commit.rs::end_stroke` ~175 lines, `row_widgets.rs::draw_row` ~365 lines. These exceed the 100-line function guideline and are the next real refactor targets. Submodules use `use super::*;`, matching the existing `app/streaming.rs` style.
+`routing.rs`'s duplicated ~190-line `undo`/`redo` were collapsed into one direction-parameterized routine (381 -> 189 lines, same messages, verified paint/undo/redo in the real app). `end_stroke` was split into `commit_paint_stroke` / `commit_height_stroke` (same notices; verified paint and height strokes with undo in the real app). Known remaining smell: `row_widgets.rs::draw_row` ~365 lines. These exceed the 100-line function guideline and are the next real refactor targets. Submodules use `use super::*;`, matching the existing `app/streaming.rs` style.
 
 ### Phase 2.3: InteractionRuntime (field ownership)
 

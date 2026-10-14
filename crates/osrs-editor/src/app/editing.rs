@@ -21,7 +21,6 @@ use crate::heights::{self, encode_height};
 use crate::paint::{Brush, TileValues, Tool};
 use eframe::egui;
 pub(super) use history::EditStep;
-use history::{SemanticHeightHistory, SemanticPaintHistory};
 use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::HeightVertexCoord;
 use osrs_world::TileEdit;
@@ -65,6 +64,13 @@ pub struct Stroke {
     /// The height under the cursor when the stroke began (what Flatten levels to).
     anchor: Option<i32>,
     seed: u64,
+}
+
+impl Stroke {
+    /// Whether the stroke changed nothing at all.
+    fn is_empty(&self) -> bool {
+        self.step.changes.is_empty() && self.step.added.is_empty() && self.step.removed.is_empty()
+    }
 }
 
 impl Default for Stroke {
