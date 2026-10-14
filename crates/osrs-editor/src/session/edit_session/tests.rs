@@ -334,11 +334,8 @@ fn edit_revision_counts_edits_but_not_streaming() {
 fn failed_post_commit_projection_must_restore_exact_pretransaction_session_state() {
     let first = vertex();
     let second = HeightVertexCoord::new(MapTile::new(3201, 3200), plane());
-    let mut session = EditorSession::new(MapDocument::from_parts(
-        [],
-        [(first, 0), (second, 0)],
-        [],
-    ));
+    let mut session =
+        EditorSession::new(MapDocument::from_parts([], [(first, 0), (second, 0)], []));
 
     // Seed an existing redo entry. A failed new transaction must not destroy it.
     let prior = MapPatch::new([MapOp::SetHeight {
