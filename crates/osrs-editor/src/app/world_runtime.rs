@@ -225,7 +225,7 @@ impl WorldRuntime {
         self.in_flight.len()
     }
 
-    /// Mirror tile edits to the worker and queue the loaded regions they touch for rebuild.
+    /// Mirror live/legacy tile edits and derive rebuild scope from their adapter coordinates.
     pub(super) fn mirror_tile_edits(
         &mut self,
         edits: Vec<TileEdit>,
@@ -236,16 +236,30 @@ impl WorldRuntime {
                 self.mark_dirty(region);
             }
         }
-        self.streamer.edit(edits);
+        self.project_tile_edits(edits);
     }
 
-    /// Mirror loc edits to the worker and queue the loaded regions they touch for rebuild.
+    /// Mirror live/legacy loc edits and derive rebuild scope from their adapter coordinates.
     pub(super) fn mirror_loc_edits(&mut self, edits: Vec<LocEdit>) {
         for edit in &edits {
             let (LocEdit::Remove(spec) | LocEdit::Add(spec)) = edit;
             self.mark_dirty(spec.region());
         }
-        self.streamer.edit_locs(edits);
+        self.project_loc_edits(edits);
+    }
+
+    /// Mirror already-finalized semantic tile edits without deriving invalidation from legacy data.
+    pub(super) fn project_tile_edits(&self, edits: Vec<TileEdit>) {
+        if !edits.is_empty() {
+            self.streamer.edit(edits);
+        }
+    }
+
+    /// Mirror already-finalized semantic loc edits without deriving invalidation from legacy data.
+    pub(super) fn project_loc_edits(&self, edits: Vec<LocEdit>) {
+        if !edits.is_empty() {
+            self.streamer.edit_locs(edits);
+        }
     }
 
     /// Translate one finalized semantic edit into region-level projection invalidation.
