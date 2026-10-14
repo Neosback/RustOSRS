@@ -1,10 +1,29 @@
 use super::*;
-use osrs_core::coords::{MapTile, SourcePlane};
-use osrs_edit::{HeightVertexCoord, MapDocument, MapOp, MapPatch};
+use osrs_core::{
+    coords::{MapTile, SourcePlane},
+    ids::FloorUnderlayId,
+};
+use osrs_edit::{
+    HeightVertexCoord, MapDocument, MapOp, MapPatch, MapPosition, TerrainTile,
+};
+
+fn plane() -> SourcePlane {
+    SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))
+}
 
 fn vertex() -> HeightVertexCoord {
-    let plane = SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"));
-    HeightVertexCoord::new(MapTile::new(3200, 3200), plane)
+    HeightVertexCoord::new(MapTile::new(3200, 3200), plane())
+}
+
+fn position() -> MapPosition {
+    MapPosition::new(MapTile::new(3200, 3200), plane())
+}
+
+fn terrain(underlay: u32) -> TerrainTile {
+    TerrainTile {
+        underlay: Some(FloorUnderlayId::new(underlay)),
+        ..TerrainTile::default()
+    }
 }
 
 fn empty_diff(region: RegionCoord) -> RegionDiff {
@@ -90,4 +109,67 @@ fn project_replacement_discards_existing_session_and_old_pending_before_queueing
     assert!(!project.pending.contains_key(&old_region));
     assert_eq!(project.pending.len(), 1);
     assert!(project.pending.contains_key(&new_region));
+}
+
+#[test]
+fn failed_project_region_application_keeps_pending_diff_retryable() {
+    let region = RegionCoord::new(50, 50);
+    let position = position();
+    let diff = RegionDiff {
+        region,
+        // Both operations capture the same original `before` value. The second therefore conflicts
+        // with the first during patch validation, giving this test a deterministic apply failure.
+        tiles: vec![(position, terrain(1)), (position, terrain(2))],
+        heights: Vec::new(),
+        objects_added: Vec::new(),
+        objects_removed: Vec::new(),
+    };
+    let mut project = ProjectState::default();
+    project.pending.insert(region, diff);
+    let mut session = EditorSession::default();
+
+    let result = apply_pending_project_semantics(&project, &mut session, region);
+
+    assert!(result.is_err());
+    assert!(project.pending.contains_key(&region));
+    assert_eq!(session.revision(), 0);
+    assert_eq!(session.edit_revision(), 0);
+    assert_eq!(session.document().terrain_at(position), TerrainTile::default());
+}
+
+#[test]
+fn unsaved_transition_is_staged_without_replacing_current_project_state() {
+    let current_region = RegionCoord::new(40, 41);
+    let next_region = RegionCoord::new(50, 51);
+    let mut project = ProjectState {
+        path: Some(PathBuf::from("current-project.json")),
+        saved_edit_revision: 3,
+        ..ProjectState::default()
+    };
+    project
+        .pending
+        .insert(current_region, empty_diff(current_region));
+
+    let execute_now = project.stage_transition(
+        lifecycle::LifecycleTransition::Project {
+            path: PathBuf::from("next-project.json"),
+            diffs: vec![empty_diff(next_region)],
+        },
+        true,
+    );
+
+    assert!(execute_now.is_none());
+    assert_eq!(project.path, Some(PathBuf::from("current-project.json")));
+    assert!(project.pending.contains_key(&current_region));
+    assert_eq!(project.pending.len(), 1);
+    assert_eq!(project.saved_edit_revision, 3);
+    assert!(project.transition_prompt);
+    match project.transition.as_ref() {
+        Some(lifecycle::LifecycleTransition::Project { path, diffs }) => {
+            assert_eq!(path, &PathBuf::from("next-project.json"));
+            assert_eq!(diffs.len(), 1);
+            assert_eq!(diffs[0].region, next_region);
+        }
+        _ => unreachable!("dirty project replacement should be staged"),
+    }
 }
