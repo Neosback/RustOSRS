@@ -9,6 +9,8 @@ use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession, RegionS
 use osrs_core::coords::RegionCoord;
 use osrs_edit::{ChangeImpact, MapDocument, MapOp, MapPatch, MapRegionSnapshot, PatchApplyError};
 use std::collections::BTreeSet;
+#[cfg(test)]
+use std::convert::Infallible;
 
 /// Application owner of the authoritative semantic edit session.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -111,6 +113,25 @@ impl EditRuntime {
     /// Remove one clean streamed region from authoritative semantic residency.
     pub(super) fn unload_region(&mut self, region: RegionCoord) -> RegionSyncOutcome {
         self.session.unload_region(region)
+    }
+
+    /// Test fixture convenience that still exercises the production transaction gateway.
+    #[cfg(test)]
+    pub(super) fn commit(
+        &mut self,
+        patch: MapPatch,
+    ) -> Result<(), EditExecutionError<Infallible>> {
+        let _ = self.execute(patch, |_| Ok::<_, Infallible>(()))?;
+        Ok(())
+    }
+
+    /// Test fixture convenience that still exercises the production replay gateway.
+    #[cfg(test)]
+    pub(super) fn undo(&mut self) -> Result<(), EditExecutionError<Infallible>> {
+        let _ = self.replay(EditReplayDirection::Undo, Vec::new(), |_| {
+            Ok::<_, Infallible>(())
+        })?;
+        Ok(())
     }
 
     /// Execute one `MapPatch` as an application transaction.
