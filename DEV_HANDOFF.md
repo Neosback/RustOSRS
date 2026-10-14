@@ -294,20 +294,15 @@ Every file on the former architecture-debt allowlist is now within the 500-line 
 
 Not done: writing into `.dat2`/`.idx`, reference-table updates, and full loadable-cache repack/version/CRC bookkeeping.
 
-## Current checkpoint: project/source lifecycle hardening
+## Merged: project/source lifecycle hardening
 
-Active branch: `fix/project-source-lifecycle`
+PR #43 regular merge commit on `main`:
+`267d2d7b54faf587304510d0d3e4012e7a17375d`
 
-Base `main`:
-`fcb80c17a00d33421fc446cc68cb78efaa1ae3ec`
+Exact post-merge CI:
+`38527889023` - Tier A/B/C PASS, including architecture guard, formatting, workspace compile, strict Clippy, WebAssembly portability, workspace tests, and M3-M9 semantic/reference parity.
 
-Certified implementation head before this handoff update:
-`2ddc6192f491f67a4bfd3919c60dc99391223505`
-
-Exact CI:
-`38524410640` - Tier A/B/C PASS, including architecture guard, formatting, workspace compile, strict Clippy, WebAssembly portability, workspace tests, and M3-M9 semantic/reference parity.
-
-Lifecycle contract established on this branch:
+Lifecycle contract:
 
 ```text
 current session
@@ -319,21 +314,21 @@ current session
   -> apply only the new project's diffs
 ```
 
-- cache switches and GUI project opens now use one lifecycle guard
+Established:
+
+- cache switches and GUI project opens use one lifecycle guard
 - a source/project replacement is blocked while an asynchronous project save is in flight
 - Save-before-transition waits for the save to finish; failed/disconnected saves reopen the transition prompt
 - cache replacement clears source-bound project state and resets the authoritative `EditorSession`
-- Open Project is replacement, not implicit merge: it resets the current semantic session and restarts the current cache from its pristine source before applying the opened project's diffs
+- Open Project is replacement, not implicit merge: it resets the current semantic session and restarts the current cache from pristine source before applying the opened project's diffs
 - scripted project open refuses to replace unsaved work and refuses to run while a save is active
-- pending project diffs are retained until semantic application and all synchronous projection steps succeed, so failures remain retryable
-- project projection retries derive work from the stored `RegionDiff`, not only from a now-empty second semantic patch
-- obsolete `EditorSession::is_loaded` and `clear_history` APIs were removed because project replacement now resets the whole session instead of pretending history-only replacement is sufficient
-- regression tests prove source-bound project reset, replacement dropping old semantic edits/pending diffs, failed project-region application retaining its pending diff, and dirty transition staging without replacement
+- pending project diffs remain queued until semantic application and all synchronous projection steps succeed, so projection failures remain retryable
+- project projection retries derive work from stored `RegionDiff`, not only from a now-empty second semantic patch
+- obsolete `EditorSession::is_loaded` and `clear_history` APIs were removed because replacement resets the whole session
 
-Known lifecycle caveats intentionally not solved on this branch:
+Remaining lifecycle caveats:
 
-- semantic rollback after projection failure is still not revision-neutral; the next focused architecture branch should solve exact transaction rollback rather than extending this lifecycle branch
-- if an opened project's pending region applies while a save snapshot is already in flight, the saved file still contains that pending diff, but the later `edit_revision` can conservatively leave the session marked dirty and require another save; this is safe but can be redundant
+- if an opened project's pending region applies while a save snapshot is already in flight, the saved file contains that pending diff, but the later `edit_revision` can conservatively leave the session marked dirty and require another save; this is safe but may be redundant
 - projects remain native-only; the WebAssembly project module is a stub, while browser cache/source replacement still resets the semantic session
 
 ### Projects: File > Open / Save project (Ctrl/Cmd+S)
@@ -343,7 +338,7 @@ A project file (`rustosrs-project-v1` JSON, `session/project_file.rs`) stores on
 - Save (`app/project.rs`) runs on a worker thread, reads pristine source squares, diffs a document snapshot, merges still-unapplied project diffs, and writes atomically using a temporary file + rename.
 - Open validates the file against the currently open cache, then routes through the lifecycle guard. Opening a project means replacement: the old semantic session/history/project state is discarded, the current source is restarted from pristine cache data, and only the newly opened project's diffs are queued.
 - Project diffs apply through `EditorSession::apply_untracked` without becoming undo steps. The region remains queued until semantic application and synchronous tile/object projection succeed.
-- Closing the application with unsaved edits still uses Save and quit / Quit without saving / Cancel. A close request supersedes a pending source/project transition choice.
+- Closing the application with unsaved edits uses Save and quit / Quit without saving / Cancel. A close request supersedes a pending source/project transition choice.
 - Export continues to share the same `RegionDiff` representation.
 
 ### Place new objects
@@ -356,7 +351,105 @@ Tile copy/paste records terrain channels and heights relative to the copied sele
 
 ### Phase 7 gate: WebAssembly portability
 
-The Tier A CI gate runs the WebAssembly portability checks and is green on the current lifecycle branch. Native-only project/export behavior remains cfg-gated with browser stubs where required.
+Tier A runs the WebAssembly portability checks. Native-only project/export behavior remains cfg-gated with browser stubs where required.
+
+## Current checkpoint: exact edit transaction rollback
+
+Active branch:
+`refactor/edit-transaction-rollback`
+
+Base `main`:
+`267d2d7b54faf587304510d0d3e4012e7a17375d`
+
+Certified implementation head before this handoff refresh:
+`76c50364b4447e76d05b6f801d617d0953e10129`
+
+Exact implementation CI:
+`38539407666` - Tier A/B/C PASS, including architecture guard, formatting, workspace compile, strict Clippy, WebAssembly portability, full workspace tests, and M3-M9 semantic/reference parity.
+
+### Exact rollback invariant
+
+For any checkpointed semantic transition, let the pre-transaction state be document `D`, semantic history `H`, revision `R`, edit revision `E`, redo state `X`, loaded-region ownership `L`, and dirty-region ownership `Y`.
+
+If downstream projection fails, restoring the checkpoint must return the session to exactly:
+
+```text
+D, H, R, E, X, L, Y
+```
+
+A failed transaction is therefore semantically invisible. It is not represented as another user Undo/Redo operation.
+
+### Reversible history/session transactions
+
+`osrs-edit::EditHistory` now supports short-lived reversible `Commit`, `Undo`, and `Redo` transactions. The opaque transaction token records operation identity and history generation, not a full map snapshot. Rollback uses the patch that just moved between the history stacks, so work remains proportional to the edit.
+
+`EditorSession` wraps those transactions with `EditCheckpoint`, preserving the session metadata needed for exact restoration:
+
+- `revision`
+- `edit_revision`
+- loaded-region identity
+- newly acquired dirty-region ownership
+- semantic history/redo shape through the underlying history transaction
+
+The compatibility `commit`, `undo`, and `redo` APIs still finalize immediately. Fallible post-semantic projection paths use `commit_checkpointed`, `undo_checkpointed`, or `redo_checkpointed`, then explicitly finalize or restore.
+
+### Migrated fallible post-semantic projection paths
+
+- **Tile Paste:** semantic commit is checkpointed. Projection failure restores the exact pre-Paste session, including any existing redo branch. Redo is invalidated only after successful projection/finalization.
+- **Height:** semantic stroke commit is checkpointed. A failed Height projection restores the exact pre-stroke session and does not consume an extra revision.
+- **Semantic Undo/Redo routing:** replay uses checkpointed Undo/Redo. Projection success finalizes once and moves the app-level mixed-history marker to the opposite stack. Projection failure restores the semantic checkpoint and returns that marker to its original stack.
+
+The former compensation patterns are removed from these production routes:
+
+```text
+commit -> projection fails -> ordinary undo
+undo -> projection fails -> ordinary redo
+redo -> projection fails -> ordinary undo
+```
+
+### Other edit paths after the rollback audit
+
+Not every semantic commit needs a checkpoint merely because it projects afterward. The relevant hazard is a semantic transition followed by a fallible projection step.
+
+- **Path:** the complete worker representation is preflighted on disposable semantic state before `EditorSession::commit`, so adapter failure occurs before authoritative mutation.
+- **Paint:** Paint's initial semantic commit is followed by a non-fallible reconciliation/mirror path. There is no post-commit `Result` that is compensated with semantic Undo.
+- **Object initial actions:** Object planning can fail before commit, but the post-commit `LocEdit` mirror send is not a fallible semantic transaction result. Object Undo/Redo goes through the checkpointed semantic history router.
+- **Project open/application:** project diffs intentionally use `EditorSession::apply_untracked`, not interactive history. A projection failure keeps the `RegionDiff` pending and retries projection from that stored diff. This is project-loading retry semantics, not a user-history rollback transaction.
+
+The closure audit found no remaining production path that performs a fallible post-semantic projection and then uses ordinary `EditorSession::undo()` or `redo()` as compensation.
+
+### Checkpoint finalization contract
+
+`EditorSession::finalize_checkpoint` first verifies that session `revision`, `edit_revision`, and loaded-region ownership still match the checkpoint's expected post-transition state. `EditHistory::finalize` then verifies the history generation.
+
+Under the current synchronous projection routes, projection helpers do not mutate `EditorSession`, and history is private to the session. A finalize failure therefore represents an invariant violation or unexpected intervening session mutation, not a normal recoverable projection outcome. Error variants remain explicit so such divergence is surfaced rather than hidden.
+
+### Regression coverage
+
+Coverage now includes:
+
+- exact rollback after failed checkpointed Commit
+- exact rollback after failed checkpointed Undo
+- exact rollback after failed checkpointed Redo
+- preservation of an existing redo branch when a candidate commit is rolled back
+- successful checkpoint finalization invalidating redo only at the correct point
+- failed Paste projection restoring the complete prior `EditorSession`
+- failed Height projection restoring the complete prior `EditorSession`
+- failed semantic Undo projection restoring both session state and the mixed-history marker
+- failed semantic Redo projection restoring both session state and the mixed-history marker
+- successful semantic Undo/Redo finalizing exactly once and moving the mixed-history marker correctly
+
+### Explicit non-goals of this branch
+
+This branch does not implement:
+
+- a central `EditRuntime` or application edit gateway
+- centralized `EditReceipt` / `ChangeImpact` projection invalidation
+- ProjectRuntime, UiRuntime, or DiagnosticsRuntime extraction
+- InteractionRuntime behavioral encapsulation
+- cache write/repack fixture expansion
+- renderer or 117HD work
+- a new project import/merge model
 
 ## Remaining migration roadmap
 
@@ -376,16 +469,19 @@ Remaining focused ownership work:
 
 Do not combine runtimes into one large refactor. Behavior remains unchanged during pure ownership extraction.
 
-### Transaction rollback before central gateway
+### Completed prerequisite: exact transaction rollback
 
-Before routing more edits through one gateway, make failed semantic-commit + projection sequences exactly revision-neutral. Required invariant after failed projection: document, history, revision, edit revision, and redo state are exactly what they were before the attempted transaction.
+Before a central gateway, failed semantic transition plus fallible projection had to become exactly revision-neutral. That prerequisite is implemented on `refactor/edit-transaction-rollback` and must be merged/certified before gateway work begins.
 
 ### Phase 3: central edit gateway
 
-- one application gateway for edit intents/patches
-- Paint, Height, Object, Path, and context-menu edits converge on one semantic commit-result path
-- remove transitional split routing when safe
-- keep `MapPatch` and `EditorSession` as semantic authority
+Provisional next architecture branch after rollback merge/certification: `refactor/edit-gateway-core`.
+
+- introduce one contained application gateway for typed edit intents/patches
+- start with one narrow route rather than migrating every tool at once
+- preserve one gesture -> one `MapPatch` -> one semantic history entry
+- make projection success/failure use the checkpoint contract established by this branch
+- do not combine projection-invalidation redesign into the first gateway checkpoint
 
 ### Phase 5: projection/invalidation service
 
@@ -412,4 +508,4 @@ Resume on separate focused branches once editor authority/projection boundaries 
 
 ## Next boundary
 
-Finish this branch through review/PR/merge only after explicit user direction. After it is merged and the new exact `main` is certified, re-read main before choosing the next branch. The current provisional next architecture branch is `refactor/edit-transaction-rollback`; central edit-gateway and projection-invalidation work should remain later, separate branches.
+Finish `refactor/edit-transaction-rollback` through review/PR/merge only after explicit user direction. Do not begin `refactor/edit-gateway-core` on this branch. After rollback is merged and the exact integrated `main` commit passes Tier A/B/C, re-read `ARCHITECTURE.md`, accepted ADRs, this handoff, and current code before creating the gateway branch. Projection invalidation remains a later separate branch.

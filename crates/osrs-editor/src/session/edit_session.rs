@@ -1,6 +1,7 @@
 use osrs_core::coords::RegionCoord;
 use osrs_edit::{
-    ChangeImpact, EditHistory, MapDocument, MapOp, MapPatch, MapRegionSnapshot, PatchApplyError,
+    ChangeImpact, EditHistory, EditHistoryTransaction, HistoryTransactionError, MapDocument, MapOp,
+    MapPatch, MapRegionSnapshot, PatchApplyError,
 };
 use std::collections::BTreeSet;
 
@@ -10,6 +11,37 @@ use std::collections::BTreeSet;
 pub struct EditCommit {
     pub revision: u64,
     pub impact: ChangeImpact,
+}
+
+/// Opaque state required to either finalize or exactly restore one semantic edit transition.
+///
+/// The checkpoint stores only history-operation identity and small session metadata. It does not
+/// clone the authoritative map document, so rollback cost remains proportional to the edit.
+#[must_use = "an edit checkpoint must be finalized or restored"]
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Debug)]
+pub struct EditCheckpoint {
+    history: EditHistoryTransaction,
+    revision_before: u64,
+    edit_revision_before: u64,
+    loaded_regions_before: BTreeSet<RegionCoord>,
+    newly_dirty_regions: BTreeSet<RegionCoord>,
+}
+
+/// Why an edit checkpoint can no longer be finalized or restored safely.
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditCheckpointError {
+    /// Session state changed after the checkpointed semantic operation was applied.
+    StaleSession,
+    /// The underlying history transaction is stale or its exact inverse no longer applies.
+    History(HistoryTransactionError),
+}
+
+impl From<HistoryTransactionError> for EditCheckpointError {
+    fn from(error: HistoryTransactionError) -> Self {
+        Self::History(error)
+    }
 }
 
 /// Result of synchronizing one streamed region with authoritative session state.
@@ -141,39 +173,158 @@ impl EditorSession {
         }
     }
 
-    /// Apply one logical semantic edit.
+    /// Apply one logical semantic edit and finalize it immediately.
     ///
-    /// Empty patches remain true no-ops: they do not advance the session revision and do not
-    /// disturb redo history. Regions touched by a successful non-empty edit become streaming-safe
-    /// dirty regions and are never replaced/evicted by later region churn.
+    /// Call [`Self::commit_checkpointed`] when downstream projection must succeed before the
+    /// semantic edit becomes final.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn commit(&mut self, patch: MapPatch) -> Result<Option<EditCommit>, PatchApplyError> {
-        let is_empty = patch.is_empty();
-        let touched_regions = (!is_empty).then(|| patch_regions(&patch));
-        let impact = self.history.commit(&mut self.document, patch)?;
-        if is_empty {
+        let Some((commit, checkpoint)) = self.commit_checkpointed(patch)? else {
             return Ok(None);
-        }
-        if let Some(regions) = touched_regions {
-            self.dirty_regions.extend(regions);
-        }
-        Ok(Some(self.record_edit(impact)))
+        };
+        self.finalize_checkpoint(checkpoint)
+            .unwrap_or_else(|error| unreachable!("fresh edit checkpoint: {error:?}"));
+        Ok(Some(commit))
     }
 
-    /// Undo the most recent semantic edit.
+    /// Apply one logical semantic edit while retaining an exact rollback checkpoint.
+    ///
+    /// Redo invalidation is deferred until [`Self::finalize_checkpoint`]. If downstream projection
+    /// fails, [`Self::restore_checkpoint`] returns the document, history, revision counters, and
+    /// dirty-region ownership to their exact pre-transaction state.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn commit_checkpointed(
+        &mut self,
+        patch: MapPatch,
+    ) -> Result<Option<(EditCommit, EditCheckpoint)>, PatchApplyError> {
+        let touched_regions = patch_regions(&patch);
+        let newly_dirty_regions = touched_regions
+            .difference(&self.dirty_regions)
+            .copied()
+            .collect();
+        let revision_before = self.revision;
+        let edit_revision_before = self.edit_revision;
+        let loaded_regions_before = self.loaded_regions.clone();
+
+        let (impact, transaction) = self.history.begin_commit(&mut self.document, patch)?;
+        let Some(history) = transaction else {
+            return Ok(None);
+        };
+
+        self.dirty_regions.extend(touched_regions);
+        let commit = self.record_edit(impact);
+        let checkpoint = EditCheckpoint {
+            history,
+            revision_before,
+            edit_revision_before,
+            loaded_regions_before,
+            newly_dirty_regions,
+        };
+        Ok(Some((commit, checkpoint)))
+    }
+
+    /// Undo the most recent semantic edit and finalize it immediately.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn undo(&mut self) -> Result<Option<EditCommit>, PatchApplyError> {
-        self.history
-            .undo(&mut self.document)
-            .map(|impact| impact.map(|impact| self.record_edit(impact)))
+        let Some((commit, checkpoint)) = self.undo_checkpointed()? else {
+            return Ok(None);
+        };
+        self.finalize_checkpoint(checkpoint)
+            .unwrap_or_else(|error| unreachable!("fresh edit checkpoint: {error:?}"));
+        Ok(Some(commit))
     }
 
-    /// Redo the most recently undone semantic edit.
+    /// Undo while retaining an exact rollback checkpoint for downstream projection.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn undo_checkpointed(
+        &mut self,
+    ) -> Result<Option<(EditCommit, EditCheckpoint)>, PatchApplyError> {
+        let revision_before = self.revision;
+        let edit_revision_before = self.edit_revision;
+        let loaded_regions_before = self.loaded_regions.clone();
+        let Some((impact, history)) = self.history.begin_undo(&mut self.document)? else {
+            return Ok(None);
+        };
+        let commit = self.record_edit(impact);
+        let checkpoint = EditCheckpoint {
+            history,
+            revision_before,
+            edit_revision_before,
+            loaded_regions_before,
+            newly_dirty_regions: BTreeSet::new(),
+        };
+        Ok(Some((commit, checkpoint)))
+    }
+
+    /// Redo the most recently undone semantic edit and finalize it immediately.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn redo(&mut self) -> Result<Option<EditCommit>, PatchApplyError> {
+        let Some((commit, checkpoint)) = self.redo_checkpointed()? else {
+            return Ok(None);
+        };
+        self.finalize_checkpoint(checkpoint)
+            .unwrap_or_else(|error| unreachable!("fresh edit checkpoint: {error:?}"));
+        Ok(Some(commit))
+    }
+
+    /// Redo while retaining an exact rollback checkpoint for downstream projection.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn redo_checkpointed(
+        &mut self,
+    ) -> Result<Option<(EditCommit, EditCheckpoint)>, PatchApplyError> {
+        let revision_before = self.revision;
+        let edit_revision_before = self.edit_revision;
+        let loaded_regions_before = self.loaded_regions.clone();
+        let Some((impact, history)) = self.history.begin_redo(&mut self.document)? else {
+            return Ok(None);
+        };
+        let commit = self.record_edit(impact);
+        let checkpoint = EditCheckpoint {
+            history,
+            revision_before,
+            edit_revision_before,
+            loaded_regions_before,
+            newly_dirty_regions: BTreeSet::new(),
+        };
+        Ok(Some((commit, checkpoint)))
+    }
+
+    /// Accept a checkpointed edit after downstream projection succeeds.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn finalize_checkpoint(
+        &mut self,
+        checkpoint: EditCheckpoint,
+    ) -> Result<(), EditCheckpointError> {
+        self.validate_checkpoint(&checkpoint)?;
+        self.history.finalize(checkpoint.history)?;
+        Ok(())
+    }
+
+    /// Make a checkpointed edit semantically invisible after downstream projection fails.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn restore_checkpoint(
+        &mut self,
+        checkpoint: EditCheckpoint,
+    ) -> Result<(), EditCheckpointError> {
+        self.validate_checkpoint(&checkpoint)?;
         self.history
-            .redo(&mut self.document)
-            .map(|impact| impact.map(|impact| self.record_edit(impact)))
+            .rollback(&mut self.document, checkpoint.history)?;
+        self.revision = checkpoint.revision_before;
+        self.edit_revision = checkpoint.edit_revision_before;
+        for region in checkpoint.newly_dirty_regions {
+            self.dirty_regions.remove(&region);
+        }
+        Ok(())
+    }
+
+    fn validate_checkpoint(&self, checkpoint: &EditCheckpoint) -> Result<(), EditCheckpointError> {
+        if self.revision != checkpoint.revision_before + 1
+            || self.edit_revision != checkpoint.edit_revision_before + 1
+            || self.loaded_regions != checkpoint.loaded_regions_before
+        {
+            return Err(EditCheckpointError::StaleSession);
+        }
+        Ok(())
     }
 
     fn record_edit(&mut self, impact: ChangeImpact) -> EditCommit {
