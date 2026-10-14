@@ -1,13 +1,57 @@
 //! Copy and paste of the selected tiles (terrain channels and heights).
 //!
-//! A paste plans one Paint-style patch against the authoritative session, commits it once, then
-//! projects the authoritative result into the worker mirrors. It is recorded with the semantic
-//! path-history route (terrain plus heights from the document), so undo and redo reuse the
-//! existing projection.
+//! A paste plans one Paint-style patch against the authoritative session, holds an exact semantic
+//! checkpoint while projecting the result into worker mirrors, and finalizes only after projection
+//! succeeds. It is recorded with the semantic path-history route (terrain plus heights from the
+//! document), so undo and redo reuse the existing projection.
 
 use super::*;
 use crate::app::paint_commit::build_terrain_paint_patch;
 use crate::app::tile_clipboard::TileClipboard;
+use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession};
+
+#[derive(Debug, PartialEq, Eq)]
+enum PasteProjectionError {
+    Projection(String),
+    Rollback {
+        projection: String,
+        rollback: EditCheckpointError,
+    },
+    Finalize(EditCheckpointError),
+}
+
+/// Resolve the semantic checkpoint only after Paste projection has finished.
+///
+/// A projection error restores the exact pre-Paste semantic state. A successful projection
+/// finalizes the history transaction, which is the point where any pre-existing redo branch is
+/// invalidated.
+fn finish_paste_projection<T, E>(
+    session: &mut EditorSession,
+    checkpoint: EditCheckpoint,
+    projection: Result<T, E>,
+) -> Result<T, PasteProjectionError>
+where
+    E: ToString,
+{
+    match projection {
+        Ok(value) => {
+            session
+                .finalize_checkpoint(checkpoint)
+                .map_err(PasteProjectionError::Finalize)?;
+            Ok(value)
+        }
+        Err(error) => {
+            let projection = error.to_string();
+            match session.restore_checkpoint(checkpoint) {
+                Ok(()) => Err(PasteProjectionError::Projection(projection)),
+                Err(rollback) => Err(PasteProjectionError::Rollback {
+                    projection,
+                    rollback,
+                }),
+            }
+        }
+    }
+}
 
 impl EditorApp {
     /// Cmd/Ctrl+C and Cmd/Ctrl+V.
@@ -88,8 +132,8 @@ impl EditorApp {
                 return;
             }
         };
-        match self.session.commit(patch) {
-            Ok(Some(_)) => {}
+        let checkpoint = match self.session.commit_checkpointed(patch) {
+            Ok(Some((_, checkpoint))) => checkpoint,
             Ok(None) => {
                 self.notice = Some((
                     "Paste made no changes: the tiles already match".to_owned(),
@@ -104,19 +148,26 @@ impl EditorApp {
                 ));
                 return;
             }
-        }
+        };
         let tiles = clipboard.tiles_at(origin);
         let keys: Vec<TileKey> = tiles.iter().map(|&(x, y)| (plane_index, x, y)).collect();
-        if let Err(message) = self.project_document_tiles(&[], &keys) {
-            let rolled_back = matches!(self.session.undo(), Ok(Some(_)));
-            self.notice = Some((
-                if rolled_back {
+        let projection = self.project_document_tiles(&[], &keys);
+        if let Err(error) = finish_paste_projection(&mut self.session, checkpoint, projection) {
+            let message = match error {
+                PasteProjectionError::Projection(message) => {
                     format!("Paste was rolled back: {message}")
-                } else {
-                    format!("Paste projection failed and rollback failed: {message}")
-                },
-                Instant::now(),
-            ));
+                }
+                PasteProjectionError::Rollback {
+                    projection,
+                    rollback,
+                } => format!(
+                    "Paste projection failed and semantic rollback failed: {projection} ({rollback:?})"
+                ),
+                PasteProjectionError::Finalize(error) => {
+                    format!("Paste projection succeeded but semantic finalize failed: {error:?}")
+                }
+            };
+            self.notice = Some((message, Instant::now()));
             return;
         }
         let count = keys.len();
@@ -126,5 +177,88 @@ impl EditorApp {
             format!("Pasted {count} tile{}", if count == 1 { "" } else { "s" }),
             Instant::now(),
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use osrs_core::coords::{MapTile, SourcePlane};
+    use osrs_edit::{HeightVertexCoord, MapDocument, MapOp, MapPatch};
+
+    fn plane() -> SourcePlane {
+        SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))
+    }
+
+    fn vertex(tile: (i32, i32)) -> HeightVertexCoord {
+        HeightVertexCoord::new(MapTile::new(tile.0, tile.1), plane())
+    }
+
+    fn height_patch(coord: HeightVertexCoord, before: i32, after: i32) -> MapPatch {
+        MapPatch::new([MapOp::SetHeight {
+            coord,
+            before,
+            after,
+        }])
+    }
+
+    fn session_with_redo() -> (EditorSession, HeightVertexCoord) {
+        let prior = vertex((3200, 3200));
+        let pasted = vertex((3264, 3200));
+        let mut session = EditorSession::new(MapDocument::from_parts(
+            [],
+            [(prior, 0), (pasted, 0)],
+            [],
+        ));
+        session
+            .commit(height_patch(prior, 0, 32))
+            .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
+        session
+            .undo()
+            .unwrap_or_else(|error| unreachable!("valid setup undo: {error:?}"));
+        assert!(session.can_redo());
+        (session, pasted)
+    }
+
+    #[test]
+    fn failed_paste_projection_restores_exact_pre_paste_session() {
+        let (mut session, pasted) = session_with_redo();
+        let before = session.clone();
+        let (_, checkpoint) = session
+            .commit_checkpointed(height_patch(pasted, 0, 64))
+            .unwrap_or_else(|error| unreachable!("valid Paste commit: {error:?}"))
+            .unwrap_or_else(|| unreachable!("Paste changes semantic state"));
+
+        let result = finish_paste_projection(
+            &mut session,
+            checkpoint,
+            Result::<(), _>::Err("injected Paste projection failure"),
+        );
+
+        assert_eq!(
+            result,
+            Err(PasteProjectionError::Projection(
+                "injected Paste projection failure".to_owned()
+            ))
+        );
+        assert_eq!(session, before);
+    }
+
+    #[test]
+    fn successful_paste_projection_finalizes_once_and_invalidates_prior_redo() {
+        let (mut session, pasted) = session_with_redo();
+        let revision_before = session.revision();
+        let (_, checkpoint) = session
+            .commit_checkpointed(height_patch(pasted, 0, 64))
+            .unwrap_or_else(|error| unreachable!("valid Paste commit: {error:?}"))
+            .unwrap_or_else(|| unreachable!("Paste changes semantic state"));
+
+        finish_paste_projection(&mut session, checkpoint, Result::<(), &str>::Ok(()))
+            .unwrap_or_else(|error| unreachable!("Paste finalizes: {error:?}"));
+
+        assert_eq!(session.revision(), revision_before + 1);
+        assert_eq!(session.document().height_at(pasted), Some(64));
+        assert!(session.can_undo());
+        assert!(!session.can_redo());
     }
 }
