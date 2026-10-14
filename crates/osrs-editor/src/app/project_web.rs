@@ -18,6 +18,8 @@ impl EditorApp {
 
     pub(super) fn project_actions(&mut self, _ctx: &egui::Context) {}
 
+    pub(super) fn quit_guard(&mut self, _ctx: &egui::Context) {}
+
     pub(super) fn poll_project(&mut self) {
         // Keep the field uniform across targets; nothing ever starts a project job here.
         self.project = ProjectState::default();

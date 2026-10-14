@@ -197,6 +197,7 @@ impl eframe::App for EditorApp {
         if self.prefs.tool == crate::paint::Tool::Spline {
             self.spline_update();
         }
+        self.quit_guard(&ctx);
         self.editor_actions(&ctx);
         self.plugin_actions(&ctx);
         if let Some((vx, vz)) = self.autofly {

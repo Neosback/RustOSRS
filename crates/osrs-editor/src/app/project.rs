@@ -29,6 +29,16 @@ pub(super) struct ProjectState {
     /// The file Save writes to.
     path: Option<PathBuf>,
     save: Option<Receiver<Result<(PathBuf, usize), String>>>,
+    /// `EditorSession::edit_revision` as of the last successful save or project open.
+    saved_edit_revision: u64,
+    /// The edit revision the running save snapshotted.
+    saving_revision: u64,
+    /// The unsaved-changes dialog is showing.
+    quit_prompt: bool,
+    /// Close the window once the running save finishes.
+    close_when_saved: bool,
+    /// The user chose to quit without saving.
+    discard_confirmed: bool,
 }
 
 /// Build the project file contents for `document`, keeping unapplied `pending` diffs for regions
@@ -76,6 +86,11 @@ fn tile_key(position: osrs_edit::MapPosition) -> TileKey {
 }
 
 impl EditorApp {
+    /// Whether edits exist that no save or project open has captured.
+    fn is_unsaved(&self) -> bool {
+        self.session.edit_revision() != self.project.saved_edit_revision
+    }
+
     fn has_project_changes(&self) -> bool {
         self.session.dirty_regions().next().is_some() || !self.project.pending.is_empty()
     }
@@ -153,6 +168,7 @@ impl EditorApp {
 
     fn start_save(&mut self, path: PathBuf) {
         self.project.path = Some(path.clone());
+        self.project.saving_revision = self.session.edit_revision();
         let source = osrs_cache::source::CacheSource::Dir(self.cache_dir.clone());
         let document = self.session.document().clone();
         let dirty: Vec<RegionCoord> = self.session.dirty_regions().collect();
@@ -235,6 +251,7 @@ impl EditorApp {
         for region in resident {
             self.apply_project_region(region);
         }
+        self.project.saved_edit_revision = self.session.edit_revision();
         Ok(count)
     }
 
@@ -245,9 +262,15 @@ impl EditorApp {
             return;
         };
         let patch = diff.to_patch(self.session.document());
+        let was_saved = !self.is_unsaved();
         match self.session.apply_untracked(&patch) {
             Ok(false) => return,
-            Ok(true) => {}
+            Ok(true) => {
+                // Applying a project's own edits does not make the session "unsaved".
+                if was_saved {
+                    self.project.saved_edit_revision = self.session.edit_revision();
+                }
+            }
             Err(error) => {
                 self.notice = Some((
                     format!(
@@ -297,24 +320,96 @@ impl EditorApp {
         }
     }
 
+    /// Intercept closing the window while edits are unsaved, and finish a save-then-quit.
+    pub(super) fn quit_guard(&mut self, ctx: &egui::Context) {
+        let smoke = self.exit_after_seconds.is_some() || self.screenshot.is_some();
+        if !smoke
+            && ctx.input(|i| i.viewport().close_requested())
+            && self.is_unsaved()
+            && !self.project.discard_confirmed
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.project.quit_prompt = true;
+        }
+        if self.project.close_when_saved && self.project.save.is_none() {
+            self.project.close_when_saved = false;
+            if !self.is_unsaved() {
+                self.project.discard_confirmed = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+        if !self.project.quit_prompt {
+            return;
+        }
+        let (choice, closed) = super::modal::Modal::new("quit-unsaved", "Unsaved changes")
+            .size(380.0, 0.0)
+            .show(ctx, |ui| {
+                ui.label("Your map edits have not been saved to a project.");
+                ui.add_space(8.0);
+                let mut choice = None;
+                ui.horizontal(|ui| {
+                    if ui.button("Save and quit").clicked() {
+                        choice = Some(QuitChoice::Save);
+                    }
+                    if ui.button("Quit without saving").clicked() {
+                        choice = Some(QuitChoice::Discard);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        choice = Some(QuitChoice::Cancel);
+                    }
+                });
+                choice
+            });
+        match choice {
+            Some(QuitChoice::Save) => {
+                self.project.quit_prompt = false;
+                if self.cache_build.is_some() && self.project.save.is_none() {
+                    self.project.close_when_saved = true;
+                    self.save_project(false);
+                }
+            }
+            Some(QuitChoice::Discard) => {
+                self.project.quit_prompt = false;
+                self.project.discard_confirmed = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Some(QuitChoice::Cancel) => self.project.quit_prompt = false,
+            None if closed => self.project.quit_prompt = false,
+            None => {}
+        }
+    }
+
     /// Report a finished save once per frame.
     pub(super) fn poll_project(&mut self) {
         let Some(receiver) = &self.project.save else {
             return;
         };
         let message = match receiver.try_recv() {
-            Ok(Ok((path, count))) => format!(
-                "Saved project: {count} edited region{} to {}",
-                plural(count),
-                path.display()
-            ),
-            Ok(Err(error)) => format!("Save failed: {error}"),
+            Ok(Ok((path, count))) => {
+                self.project.saved_edit_revision = self.project.saving_revision;
+                format!(
+                    "Saved project: {count} edited region{} to {}",
+                    plural(count),
+                    path.display()
+                )
+            }
+            Ok(Err(error)) => {
+                self.project.close_when_saved = false;
+                format!("Save failed: {error}")
+            }
             Err(TryRecvError::Empty) => return,
             Err(TryRecvError::Disconnected) => "Save stopped unexpectedly".to_owned(),
         };
         self.project.save = None;
         self.notice = Some((message, Instant::now()));
     }
+}
+
+#[derive(Clone, Copy)]
+enum QuitChoice {
+    Save,
+    Discard,
+    Cancel,
 }
 
 fn plural(count: usize) -> &'static str {

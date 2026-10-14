@@ -34,6 +34,8 @@ pub struct EditorSession {
     document: MapDocument,
     history: EditHistory,
     revision: u64,
+    /// Advances only on real edits (commit, undo, redo, applied projects), never on streaming.
+    edit_revision: u64,
     loaded_regions: BTreeSet<RegionCoord>,
     dirty_regions: BTreeSet<RegionCoord>,
 }
@@ -45,6 +47,7 @@ impl EditorSession {
             document,
             history: EditHistory::new(),
             revision: 0,
+            edit_revision: 0,
             loaded_regions: BTreeSet::new(),
             dirty_regions: BTreeSet::new(),
         }
@@ -54,6 +57,12 @@ impl EditorSession {
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub fn dirty_regions(&self) -> impl Iterator<Item = RegionCoord> + '_ {
         self.dirty_regions.iter().copied()
+    }
+
+    /// Counts real edits only; compare with a saved value to know whether work is unsaved.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub fn edit_revision(&self) -> u64 {
+        self.edit_revision
     }
 
     /// Whether the region's semantic state is currently in the document.
@@ -78,6 +87,7 @@ impl EditorSession {
         }
         self.document.apply_patch(patch)?;
         self.dirty_regions.extend(patch_regions(patch));
+        self.edit_revision += 1;
         self.advance_revision();
         Ok(true)
     }
@@ -179,6 +189,7 @@ impl EditorSession {
     }
 
     fn record_edit(&mut self, impact: ChangeImpact) -> EditCommit {
+        self.edit_revision += 1;
         self.advance_revision();
         EditCommit {
             revision: self.revision,

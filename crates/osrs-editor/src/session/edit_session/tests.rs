@@ -321,3 +321,37 @@ fn clearing_history_forgets_undo_but_not_the_document() {
         Some(FloorUnderlayId::new(9))
     );
 }
+
+#[test]
+fn edit_revision_counts_edits_but_not_streaming() {
+    let mut session = session(0);
+    session.ingest_region(&snapshot(0, 3));
+    assert_eq!(
+        session.edit_revision(),
+        0,
+        "loading a region is not an edit"
+    );
+
+    let patch = MapPatch::new(vec![MapOp::SetTerrain {
+        coord: position(),
+        before: session.document().terrain_at(position()),
+        after: TerrainTile {
+            underlay: Some(FloorUnderlayId::new(9)),
+            ..TerrainTile::default()
+        },
+    }]);
+    session
+        .commit(patch)
+        .unwrap_or_else(|e| unreachable!("{e:?}"));
+    assert_eq!(session.edit_revision(), 1);
+    session.undo().unwrap_or_else(|e| unreachable!("{e:?}"));
+    session.redo().unwrap_or_else(|e| unreachable!("{e:?}"));
+    assert_eq!(session.edit_revision(), 3);
+
+    session.ingest_region(&snapshot(5, 4));
+    assert_eq!(
+        session.edit_revision(),
+        3,
+        "streaming never dirties the session"
+    );
+}
