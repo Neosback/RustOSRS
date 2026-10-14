@@ -5,7 +5,9 @@ use osrs_core::{
     coords::{MapTile, SourcePlane},
     ids::ObjectId,
 };
-use osrs_edit::{LocKind, MapDocument, MapOp, MapPatch, MapPosition, ObjectOrientation, ObjectPlacement};
+use osrs_edit::{
+    LocKind, MapDocument, MapOp, MapPatch, MapPosition, ObjectOrientation, ObjectPlacement,
+};
 
 fn spec(object_id: u32, tile: (i32, i32)) -> LocSpec {
     LocSpec {
