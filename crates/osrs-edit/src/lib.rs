@@ -16,7 +16,7 @@ mod region;
 mod terrain;
 
 pub use document::{MapDocument, PatchApplyError};
-pub use history::EditHistory;
+pub use history::{EditHistory, EditHistoryTransaction, HistoryTransactionError};
 pub use object::{LocKind, ObjectOrientation, ObjectPlacement};
 pub use object_edit::{ObjectEditError, build_object_patch};
 pub use patch::{ChangeImpact, MapOp, MapPatch};
