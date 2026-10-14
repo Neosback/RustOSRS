@@ -329,3 +329,73 @@ fn edit_revision_counts_edits_but_not_streaming() {
         "streaming never dirties the session"
     );
 }
+
+#[test]
+fn failed_post_commit_projection_must_restore_exact_pretransaction_session_state() {
+    let first = vertex();
+    let second = HeightVertexCoord::new(MapTile::new(3201, 3200), plane());
+    let mut session = EditorSession::new(MapDocument::from_parts(
+        [],
+        [(first, 0), (second, 0)],
+        [],
+    ));
+
+    // Seed an existing redo entry. A failed new transaction must not destroy it.
+    let prior = MapPatch::new([MapOp::SetHeight {
+        coord: first,
+        before: 0,
+        after: 32,
+    }]);
+    assert!(session.commit(prior).is_ok());
+    assert!(session.undo().is_ok());
+    assert!(session.can_redo());
+    let before = session.clone();
+
+    // This is the current Height/Paste failure pattern: commit succeeds, downstream projection
+    // fails, and ordinary undo is used as rollback.
+    let candidate = MapPatch::new([MapOp::SetHeight {
+        coord: second,
+        before: 0,
+        after: 64,
+    }]);
+    assert!(session.commit(candidate).is_ok());
+    assert!(session.undo().is_ok());
+
+    assert_eq!(
+        session, before,
+        "a failed transaction must be semantically invisible: document, history, revisions, redo, and dirty ownership must all match the pre-transaction state"
+    );
+}
+
+#[test]
+fn failed_undo_projection_must_restore_exact_pre_replay_session_state() {
+    let mut session = session(0);
+    assert!(session.commit(height_patch(0, 64)).is_ok());
+    let before = session.clone();
+
+    // This mirrors history routing today: undo applies, projection fails, redo is used as rollback.
+    assert!(session.undo().is_ok());
+    assert!(session.redo().is_ok());
+
+    assert_eq!(
+        session, before,
+        "rolling back a failed undo projection must not consume two additional revisions"
+    );
+}
+
+#[test]
+fn failed_redo_projection_must_restore_exact_pre_replay_session_state() {
+    let mut session = session(0);
+    assert!(session.commit(height_patch(0, 64)).is_ok());
+    assert!(session.undo().is_ok());
+    let before = session.clone();
+
+    // Symmetric case: redo applies, projection fails, undo is used as rollback.
+    assert!(session.redo().is_ok());
+    assert!(session.undo().is_ok());
+
+    assert_eq!(
+        session, before,
+        "rolling back a failed redo projection must not consume two additional revisions"
+    );
+}
