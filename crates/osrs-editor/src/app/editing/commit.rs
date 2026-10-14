@@ -1,10 +1,44 @@
 //! Finishing a stroke: plan, commit once to the semantic session, and project.
 
 use super::*;
+use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession};
 
 /// A committed stroke's routing marker for the global history stack, or `None` when there is
 /// nothing to record (rejected or no-op; the notice is already set).
 type StrokeOutcome = Option<EditStep>;
+
+#[derive(Debug, PartialEq, Eq)]
+enum HeightProjectionError {
+    Projection(&'static str),
+    Rollback {
+        projection: &'static str,
+        rollback: EditCheckpointError,
+    },
+    Finalize(EditCheckpointError),
+}
+
+/// Resolve one Height semantic checkpoint only after worker projection finishes.
+///
+/// Projection failure restores the exact pre-stroke semantic state. Projection success finalizes
+/// the transaction, which is the point where any pre-existing redo branch is invalidated.
+fn finish_height_projection(
+    session: &mut EditorSession,
+    checkpoint: EditCheckpoint,
+    projection: Result<(), &'static str>,
+) -> Result<(), HeightProjectionError> {
+    match projection {
+        Ok(()) => session
+            .finalize_checkpoint(checkpoint)
+            .map_err(HeightProjectionError::Finalize),
+        Err(projection) => match session.restore_checkpoint(checkpoint) {
+            Ok(()) => Err(HeightProjectionError::Projection(projection)),
+            Err(rollback) => Err(HeightProjectionError::Rollback {
+                projection,
+                rollback,
+            }),
+        },
+    }
+}
 
 impl EditorApp {
     /// Finish the open stroke. Paint and Height commit exactly once to the semantic session and
@@ -120,14 +154,25 @@ impl EditorApp {
                     );
                 }
             };
-        match self.session.commit(patch) {
-            Ok(Some(_)) => {
-                if let Err(message) = self.project_height_stroke(stroke) {
-                    let rolled_back = matches!(self.session.undo(), Ok(Some(_)));
-                    let text = if rolled_back {
-                        format!("Height commit was rolled back: {message}")
-                    } else {
-                        format!("Height projection failed and semantic rollback failed: {message}")
+        match self.session.commit_checkpointed(patch) {
+            Ok(Some((_, checkpoint))) => {
+                let projection = self.project_height_stroke(stroke);
+                if let Err(error) =
+                    finish_height_projection(&mut self.session, checkpoint, projection)
+                {
+                    let text = match error {
+                        HeightProjectionError::Projection(message) => {
+                            format!("Height commit was rolled back: {message}")
+                        }
+                        HeightProjectionError::Rollback {
+                            projection,
+                            rollback,
+                        } => format!(
+                            "Height projection failed and semantic rollback failed: {projection} ({rollback:?})"
+                        ),
+                        HeightProjectionError::Finalize(error) => format!(
+                            "Height projection succeeded but semantic finalize failed: {error:?}"
+                        ),
                     };
                     return self.abandon_stroke(stroke, text);
                 }
@@ -151,5 +196,85 @@ impl EditorApp {
                 format!("Height stroke was rejected by the semantic session: {error:?}"),
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use osrs_core::coords::{MapTile, SourcePlane};
+    use osrs_edit::{HeightVertexCoord, MapDocument, MapOp, MapPatch};
+
+    fn plane() -> SourcePlane {
+        SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))
+    }
+
+    fn vertex(tile: (i32, i32)) -> HeightVertexCoord {
+        HeightVertexCoord::new(MapTile::new(tile.0, tile.1), plane())
+    }
+
+    fn height_patch(coord: HeightVertexCoord, before: i32, after: i32) -> MapPatch {
+        MapPatch::new([MapOp::SetHeight {
+            coord,
+            before,
+            after,
+        }])
+    }
+
+    fn session_with_redo() -> (EditorSession, HeightVertexCoord) {
+        let prior = vertex((3200, 3200));
+        let edited = vertex((3264, 3200));
+        let mut session =
+            EditorSession::new(MapDocument::from_parts([], [(prior, 0), (edited, 0)], []));
+        session
+            .commit(height_patch(prior, 0, 32))
+            .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
+        session
+            .undo()
+            .unwrap_or_else(|error| unreachable!("valid setup undo: {error:?}"));
+        assert!(session.can_redo());
+        (session, edited)
+    }
+
+    #[test]
+    fn failed_height_projection_restores_exact_pre_stroke_session() {
+        let (mut session, edited) = session_with_redo();
+        let before = session.clone();
+        let (_, checkpoint) = session
+            .commit_checkpointed(height_patch(edited, 0, 64))
+            .unwrap_or_else(|error| unreachable!("valid Height commit: {error:?}"))
+            .unwrap_or_else(|| unreachable!("Height changes semantic state"));
+
+        let result = finish_height_projection(
+            &mut session,
+            checkpoint,
+            Err("injected Height projection failure"),
+        );
+
+        assert_eq!(
+            result,
+            Err(HeightProjectionError::Projection(
+                "injected Height projection failure"
+            ))
+        );
+        assert_eq!(session, before);
+    }
+
+    #[test]
+    fn successful_height_projection_finalizes_once_and_invalidates_prior_redo() {
+        let (mut session, edited) = session_with_redo();
+        let revision_before = session.revision();
+        let (_, checkpoint) = session
+            .commit_checkpointed(height_patch(edited, 0, 64))
+            .unwrap_or_else(|error| unreachable!("valid Height commit: {error:?}"))
+            .unwrap_or_else(|| unreachable!("Height changes semantic state"));
+
+        finish_height_projection(&mut session, checkpoint, Ok(()))
+            .unwrap_or_else(|error| unreachable!("Height finalizes: {error:?}"));
+
+        assert_eq!(session.revision(), revision_before + 1);
+        assert_eq!(session.document().height_at(edited), Some(64));
+        assert!(session.can_undo());
+        assert!(!session.can_redo());
     }
 }
