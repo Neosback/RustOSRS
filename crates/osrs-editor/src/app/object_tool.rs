@@ -128,9 +128,7 @@ impl EditorApp {
             }
             Err(EditExecutionError::Finalize(error)) => {
                 self.notice = Some((
-                    format!(
-                        "Object projection succeeded but semantic finalize failed: {error:?}"
-                    ),
+                    format!("Object projection succeeded but semantic finalize failed: {error:?}"),
                     Instant::now(),
                 ));
                 return false;
