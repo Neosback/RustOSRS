@@ -1,4 +1,6 @@
 use super::*;
+use crate::app::edit_runtime::EditRuntime;
+use crate::session::EditorSession;
 use osrs_core::{
     coords::{MapTile, SourcePlane},
     ids::FloorUnderlayId,
@@ -70,7 +72,11 @@ fn source_change_reset_clears_source_bound_project_state() {
 #[test]
 fn project_replacement_discards_existing_session_and_old_pending_before_queueing_new_diffs() {
     let vertex = vertex();
-    let mut session = EditorSession::new(MapDocument::from_parts([], [(vertex, 0)], []));
+    let mut session = EditRuntime::new(EditorSession::new(MapDocument::from_parts(
+        [],
+        [(vertex, 0)],
+        [],
+    )));
     session
         .commit(MapPatch::new([MapOp::SetHeight {
             coord: vertex,
@@ -124,7 +130,7 @@ fn failed_project_region_application_keeps_pending_diff_retryable() {
     };
     let mut project = ProjectState::default();
     project.pending.insert(region, diff);
-    let mut session = EditorSession::default();
+    let mut session = EditRuntime::default();
 
     let result = apply_pending_project_semantics(&project, &mut session, region);
 
