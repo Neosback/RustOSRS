@@ -31,7 +31,10 @@ impl Direction {
     }
 
     /// Begin one semantic replay without finalizing its history transition.
-    fn replay(self, session: &mut EditorSession) -> Result<Option<EditCheckpoint>, PatchApplyError> {
+    fn replay(
+        self,
+        session: &mut EditorSession,
+    ) -> Result<Option<EditCheckpoint>, PatchApplyError> {
         let replay = match self {
             Self::Undo => session.undo_checkpointed(),
             Self::Redo => session.redo_checkpointed(),
