@@ -7,9 +7,32 @@ use crate::app::edit_runtime::{EditExecution, EditExecutionError};
 /// nothing to record (rejected or no-op; the notice is already set).
 type StrokeOutcome = Option<EditStep>;
 
+/// One already-validated Paint projection from authoritative semantic state into the transitional
+/// preview/worker mirrors.
+type PaintProjection = Vec<(usize, TileKey, TileValues)>;
+
 /// One already-validated Height projection from authoritative semantic state into the transitional
 /// preview/worker mirrors.
 type HeightProjection = Vec<(usize, TileKey, TileValues)>;
+
+/// Prepare the complete Paint projection from the authoritative post-commit document.
+///
+/// This is deliberately pure. Any unprojectable semantic value fails while `EditRuntime` still owns
+/// the active checkpoint, so the gateway can restore the exact pre-stroke semantic state. Applying
+/// a successful plan later cannot fail.
+fn plan_paint_projection(
+    document: &osrs_edit::MapDocument,
+    brush: &Brush,
+    current: &[(usize, TileKey, TileValues)],
+) -> Result<PaintProjection, &'static str> {
+    let mut projected = Vec::with_capacity(current.len());
+    for (index, key, after) in current {
+        let values = project_paint_values(document, brush, *key, *after)
+            .ok_or("a Paint preview tile could not be projected from semantic state")?;
+        projected.push((*index, *key, values));
+    }
+    Ok(projected)
+}
 
 /// Prepare the complete Height projection from the authoritative post-commit document.
 ///
@@ -81,6 +104,27 @@ impl EditorApp {
         stroke.step.changes.iter().map(|(key, _, _)| *key).collect()
     }
 
+    /// Apply an already-validated Paint projection to the visible preview and worker mirror.
+    ///
+    /// All fallible semantic reads happened inside `EditRuntime::execute`; from this point the
+    /// semantic transaction is finalized and projection application is mechanical.
+    fn apply_paint_projection(&mut self, stroke: &mut Stroke, projection: PaintProjection) {
+        let mut edits = Vec::new();
+        for (index, key, values) in projection {
+            let after = &mut stroke.step.changes[index].2;
+            if values != *after {
+                self.edited.insert(key, values);
+                edits.push(self.edit_for(key, values));
+            }
+            *after = values;
+        }
+        self.send_edits(edits);
+        stroke
+            .step
+            .changes
+            .retain(|(_, before, after)| before != after);
+    }
+
     fn commit_paint_stroke(&mut self, stroke: &mut Stroke, brush: Brush) -> StrokeOutcome {
         let patch =
             match build_paint_stroke_patch(self.session.document(), &brush, &stroke.step.changes) {
@@ -92,12 +136,24 @@ impl EditorApp {
                     );
                 }
             };
-        match self.session.commit(patch) {
-            Ok(Some(_)) => {
-                self.project_paint_stroke(stroke, &brush);
+        let projection_input: Vec<_> = stroke
+            .step
+            .changes
+            .iter()
+            .enumerate()
+            .map(|(index, (key, _, after))| (index, *key, *after))
+            .collect();
+        let execution = self.session.execute(patch, |document| {
+            plan_paint_projection(document, &brush, &projection_input)
+        });
+        match execution {
+            Ok(EditExecution::Committed { projection, .. }) => {
+                self.apply_paint_projection(stroke, projection);
                 Some(EditStep::semantic_paint(brush, Self::touched_keys(stroke)))
             }
-            Ok(None) => {
+            Ok(EditExecution::NoChange) => {
+                // The gateway intentionally skips projection for an empty patch. There is no
+                // semantic checkpoint to protect here, so preserve the existing preview adapter.
                 self.project_paint_stroke(stroke, &brush);
                 self.notice = Some((
                     "Paint stroke made no semantic changes".to_owned(),
@@ -105,9 +161,26 @@ impl EditorApp {
                 ));
                 None
             }
-            Err(error) => self.abandon_stroke(
+            Err(EditExecutionError::Semantic(error)) => self.abandon_stroke(
                 stroke,
                 format!("Paint stroke was rejected by the semantic session: {error:?}"),
+            ),
+            Err(EditExecutionError::Projection(message)) => self.abandon_stroke(
+                stroke,
+                format!("Paint commit was rolled back: {message}"),
+            ),
+            Err(EditExecutionError::Rollback {
+                projection,
+                rollback,
+            }) => self.abandon_stroke(
+                stroke,
+                format!(
+                    "Paint projection failed and semantic rollback failed: {projection} ({rollback:?})"
+                ),
+            ),
+            Err(EditExecutionError::Finalize(error)) => self.abandon_stroke(
+                stroke,
+                format!("Paint projection succeeded but semantic finalize failed: {error:?}"),
             ),
         }
     }
@@ -226,7 +299,8 @@ mod tests {
     use crate::app::edit_runtime::{EditExecution, EditExecutionError, EditRuntime};
     use crate::session::EditorSession;
     use osrs_core::coords::{MapTile, SourcePlane};
-    use osrs_edit::{HeightVertexCoord, MapDocument, MapOp, MapPatch};
+    use osrs_core::ids::FloorOverlayId;
+    use osrs_edit::{HeightVertexCoord, MapDocument, MapOp, MapPatch, MapPosition};
 
     fn plane() -> SourcePlane {
         SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))
@@ -234,6 +308,10 @@ mod tests {
 
     fn vertex(tile: (i32, i32)) -> HeightVertexCoord {
         HeightVertexCoord::new(MapTile::new(tile.0, tile.1), plane())
+    }
+
+    fn position(tile: (i32, i32)) -> MapPosition {
+        MapPosition::new(MapTile::new(tile.0, tile.1), plane())
     }
 
     fn height_patch(coord: HeightVertexCoord, before: i32, after: i32) -> MapPatch {
@@ -260,6 +338,97 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("valid setup undo: {error:?}"));
         assert!(runtime.can_redo());
         (runtime, edited)
+    }
+
+    fn paint_patch(runtime: &EditRuntime, tile: (i32, i32), brush: &Brush) -> MapPatch {
+        let before = TileValues::default();
+        let after = brush.apply(before);
+        build_paint_stroke_patch(
+            runtime.document(),
+            brush,
+            &[((0, tile.0, tile.1), before, after)],
+        )
+        .unwrap_or_else(|error| unreachable!("valid Paint patch: {error:?}"))
+    }
+
+    #[test]
+    fn failed_paint_projection_restores_exact_pre_stroke_session() {
+        let (mut runtime, edited) = runtime_with_redo();
+        let before = runtime.clone();
+        let tile = (edited.corner.x, edited.corner.y);
+        let brush = Brush::default();
+        let patch = paint_patch(&runtime, tile, &brush);
+        let invalid_key = (u8::MAX, tile.0, tile.1);
+        let result = runtime.execute(patch, |document| {
+            assert_eq!(
+                document
+                    .terrain_at(position(tile))
+                    .overlay
+                    .map(|overlay| overlay.id),
+                Some(FloorOverlayId::new(1))
+            );
+            plan_paint_projection(
+                document,
+                &brush,
+                &[(0, invalid_key, TileValues::default())],
+            )
+        });
+
+        assert_eq!(
+            result,
+            Err(EditExecutionError::Projection(
+                "a Paint preview tile could not be projected from semantic state"
+            ))
+        );
+        assert_eq!(runtime, before);
+    }
+
+    #[test]
+    fn successful_paint_projection_uses_post_commit_state_and_finalizes_once() {
+        let (mut runtime, edited) = runtime_with_redo();
+        let revision_before = runtime.revision();
+        let tile = (edited.corner.x, edited.corner.y);
+        let key = (0, tile.0, tile.1);
+        let brush = Brush::default();
+        let patch = paint_patch(&runtime, tile, &brush);
+        let result = runtime
+            .execute(patch, |document| {
+                assert_eq!(
+                    document
+                        .terrain_at(position(tile))
+                        .overlay
+                        .map(|overlay| overlay.id),
+                    Some(FloorOverlayId::new(1))
+                );
+                plan_paint_projection(document, &brush, &[(0, key, TileValues::default())])
+            })
+            .unwrap_or_else(|error| unreachable!("Paint gateway execution succeeds: {error:?}"));
+
+        let EditExecution::Committed { projection, .. } = result else {
+            unreachable!("non-empty Paint patch commits")
+        };
+        assert_eq!(
+            projection,
+            vec![(
+                0,
+                key,
+                TileValues {
+                    overlay: 1,
+                    ..TileValues::default()
+                }
+            )]
+        );
+        assert_eq!(runtime.revision(), revision_before + 1);
+        assert_eq!(
+            runtime
+                .document()
+                .terrain_at(position(tile))
+                .overlay
+                .map(|overlay| overlay.id),
+            Some(FloorOverlayId::new(1))
+        );
+        assert!(runtime.can_undo());
+        assert!(!runtime.can_redo());
     }
 
     #[test]
