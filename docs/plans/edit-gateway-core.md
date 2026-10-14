@@ -1,10 +1,12 @@
 # Edit Gateway Core Migration Plan
 
-Status: Checkpoint 3A architecture audit and branch baseline
+Status: Checkpoint 3H implementation complete, pending exact-head certification
 
-Branch: `refactor/edit-gateway-core`
+Active branch: `refactor/edit-gateway-objects`
 
-Base / certified main: `fa474c9ae9f660b3cf9ef187f79ac05979b4cbe2`
+Current branch base / `main`: `90ed1f9cc17f20312b20398a2b8cbc250fb139e3`
+
+Implementation head before this documentation refresh: `2f60df89a19313f07ee5ecdcfb957ae856662e0a`
 
 ## Authority
 
@@ -17,188 +19,214 @@ This plan is subordinate to:
 
 It does not replace the architecture contract.
 
-## Why this branch exists
+## Goal
 
-The rollback prerequisite is merged. `EditorSession` and `EditHistory` now support exact checkpointed commit/undo/redo transitions, so a failed downstream projection can restore the exact pre-transaction semantic state instead of consuming another user history operation.
+Centralize the application policy for interactive semantic edits without creating a second semantic authority.
 
-The next architecture problem is application-level orchestration. Semantic edits are authoritative in one `EditorSession`, but the application still has several separate orchestration paths that each decide for themselves how to:
+`MapDocument`, `MapPatch`, `EditHistory`, and `EditorSession` remain the semantic model. `EditRuntime` owns the one `EditorSession` and owns the checkpoint -> projection -> finalize/restore lifecycle for migrated interactive routes.
 
-- plan or obtain a `MapPatch`
-- commit or checkpoint it
-- project the authoritative result
-- finalize or roll back the semantic checkpoint
-- record lightweight application history/routing metadata
-- report success/failure to the caller
+The gateway does not own renderer or world-worker algorithms. Those remain downstream projections.
 
-That duplication is the next source of drift risk.
+## Implemented gateway contract
 
-## Audit findings at 3A
-
-### Existing authority is correct
-
-Do not replace these types or create parallel equivalents:
-
-- `MapDocument` remains authoritative edited map state.
-- `MapPatch` remains the semantic transaction primitive.
-- `EditHistory` remains the semantic undo/redo authority.
-- `EditorSession` remains the persistent semantic session and exact rollback boundary.
-- worker tile/location edit stores remain projections only.
-
-### Current application orchestration is distributed
-
-The main routes currently coordinate semantic mutation independently:
-
-- Paint stroke commit in `app/editing/commit.rs`
-- Height stroke commit in `app/editing/commit.rs`
-- Tile Paste in `app/editing/paste.rs`
-- Terrain Path in `app/editing/path.rs`
-- Object actions in `app/object_tool.rs`
-- semantic Undo/Redo routing in `app/editing/history/routing.rs`
-
-They already share semantic authority, but they do not yet share one application dispatcher.
-
-### A cosmetic forwarding wrapper would be wrong
-
-The gateway must not be a second `EditRuntime` that simply exposes the same `EditorSession` methods while callers continue to own transaction policy.
-
-The application gateway must own the policy boundary for a semantic transaction:
+`crates/osrs-editor/src/app/edit_runtime.rs` now owns:
 
 ```text
-MapPatch
-  -> checkpoint semantic mutation when projection can fail
-  -> expose authoritative post-commit state to projection
-  -> projection success: finalize checkpoint
-  -> projection failure: exact restore
-  -> return one typed application result
-```
-
-The gateway does not own renderer/worker projection algorithms. Those remain downstream adapters supplied by the application until the separate projection-invalidation branch.
-
-## First gateway contract
-
-Checkpoint 3B should introduce the smallest contained application gateway that can prove the policy boundary without migrating every tool.
-
-Recommended shape, names subject to implementation evidence:
-
-```rust
-pub struct EditRuntime {
-    session: EditorSession,
+EditRuntime {
+  EditorSession
 }
 
-pub struct EditReceipt {
-    pub revision: u64,
-    pub impact: ChangeImpact,
-    pub touched_regions: Vec<RegionCoord>,
-}
+execute(MapPatch, project)
+  -> checkpointed semantic commit
+  -> project from authoritative post-commit MapDocument
+  -> success: finalize once
+  -> failure: exact restore
 
-pub enum EditExecutionError<E> {
-    Semantic(PatchApplyError),
-    Projection(E),
-    Rollback {
-        projection: E,
-        rollback: EditCheckpointError,
-    },
-    Finalize(EditCheckpointError),
-}
+replay(Undo | Redo, touched_regions, project)
+  -> checkpointed semantic Undo/Redo
+  -> project from authoritative post-replay MapDocument
+  -> success: finalize once
+  -> failure: exact restore
 ```
 
-The exact generic/error surface may be simplified during implementation. The architectural requirements are:
+Successful transactions return an `EditReceipt` containing semantic revision, `ChangeImpact`, and normalized touched regions. Empty patches remain no-ops. Rollback and finalize invariant failures stay explicit.
 
-1. the runtime owns the authoritative `EditorSession`, rather than introducing a second semantic store;
-2. callers cannot finalize/restore a checkpoint themselves once routed through the gateway;
-3. a successful non-empty execution returns an application receipt derived from the semantic commit;
-4. a no-op remains a no-op and does not destroy redo;
-5. projection failure restores the exact pre-transaction session state;
-6. finalize/rollback invariant failures remain explicit and are never silently converted into normal projection errors;
-7. project `apply_untracked` remains outside the interactive edit gateway because project application has separate retry semantics;
-8. projection invalidation redesign is not part of this branch.
-
-## First migration target: Tile Paste
-
-Tile Paste is the best proof route because it already has:
-
-- a pure patch planner (`build_terrain_paint_patch`)
-- one `MapPatch`
-- exact `commit_checkpointed` rollback
-- a synchronous fallible projection boundary (`project_document_tiles`)
-- lightweight mixed-history metadata recorded only after success
-- focused success/failure regression tests
-
-Target flow for Paste in 3B/3C:
-
-```text
-Paste input
-  -> pure planner -> MapPatch
-  -> EditRuntime::execute(...)
-       -> EditorSession checkpointed commit
-       -> caller-supplied projection adapter reads authoritative state
-       -> success: finalize
-       -> failure: exact restore
-       -> EditReceipt
-  -> only after success: push application history marker / selection / notice
-```
-
-The first migration must preserve current Paste behavior exactly:
-
-- one gesture -> one semantic history entry
-- failed projection leaves document/history/revisions/dirty ownership/redo unchanged
-- successful commit invalidates prior redo only after projection succeeds
-- application mixed-history marker is not pushed on failure
-- no project-open behavior changes
-
-## Deferred routes
-
-Do not migrate these in the same first gateway checkpoint:
-
-- Height
-- Paint
-- Path
-- Object actions
-- Undo/Redo routing
-
-They should move in small follow-up checkpoints after the gateway contract is proven by Paste.
-
-## Non-goals
-
-This branch does not yet implement:
-
-- centralized projection invalidation from `ChangeImpact`
-- 8x8 zone/chunk invalidation
-- ProjectRuntime, UiRuntime, DiagnosticsRuntime extraction
-- InteractionRuntime behavior encapsulation
-- cache write fixture expansion
-- 117HD work
-- spline/path fitter redesign
-- a second command hierarchy or replacement history system
-
-## Checkpoint sequence
+## Completed checkpoint sequence
 
 ### 3A: audit and contract
 
-- create branch from exact certified main
-- re-read architecture contract and accepted ADRs
-- audit current semantic mutation routes
-- define the gateway policy boundary
-- choose Tile Paste as the first route
-- no production mutation route changes
+Completed.
 
-### 3B: gateway core only
+- audited all interactive semantic mutation routes
+- established one application transaction-policy boundary
+- retained existing semantic authority and crate ownership
 
-- introduce contained `EditRuntime` / execution result types
-- move `EditorSession` ownership behind that runtime with narrow accessors needed by existing code
-- implement checkpoint/finalize/restore execution policy
-- add headless unit tests for success, no-op, semantic failure, projection failure, rollback invariant failure where injectable
-- do not migrate Paste yet if doing so would enlarge the checkpoint beyond the core boundary
+### 3B: gateway core
 
-### 3C: migrate Tile Paste only
+Completed.
 
-- route Paste through the gateway
-- preserve existing projection adapter and application history marker behavior
-- remove Paste-local checkpoint policy duplication
-- add app-level regression coverage
+- introduced `EditRuntime`
+- moved the authoritative `EditorSession` behind it
+- implemented checkpoint/finalize/restore policy
+- added success, no-op, semantic rejection, projection rollback, rollback-failure, and finalize-failure coverage
 
-Later checkpoints migrate one route family at a time.
+### 3C: Tile Paste
+
+Completed.
+
+- Paste commits through `EditRuntime::execute`
+- projection reads authoritative post-commit state
+- failed projection restores exact pre-transaction semantic state
+- worker/history/UI side effects occur only after gateway success
+
+### 3D: Height
+
+Completed.
+
+- Height semantic commit routes through `EditRuntime::execute`
+- failed post-commit projection is revision/history neutral
+- prior redo survives failed projection and is invalidated only by successful finalization
+
+### 3E: Paint
+
+Completed.
+
+- Paint stroke commit routes through the same gateway
+- semantic state remains authoritative
+- reconciliation/worker mutation occurs only after gateway success
+
+### 3F: Terrain Path
+
+Completed.
+
+The former Path flow cloned the complete `MapDocument` solely to preflight legacy projection. That scratch semantic document is gone.
+
+Current Path flow:
+
+```text
+build semantic patch
+  -> snapshot only required legacy TileValues
+  -> EditRuntime::execute
+       -> checkpoint semantic commit
+       -> prepare projection from real post-commit MapDocument
+       -> success: finalize
+       -> failure: exact restore
+  -> apply already-validated worker projection
+  -> push lightweight semantic Path marker
+```
+
+Repeated fitted Path tiles are deduplicated for projection/history routing. Height quantization and lower-plane safety behavior are preserved.
+
+### 3G: Objects
+
+Completed.
+
+All normal Object actions funnel through the semantic planner and `EditRuntime::execute`, including:
+
+- add / placement
+- delete
+- move / drag
+- rotate
+- duplicate
+- floor shift
+- scripted placement
+
+`build_object_commit_plan` remains the canonical planner. Worker `LocEdit`s are derived from canonical semantic operations, not raw UI intent.
+
+The gateway projection validates the authoritative post-commit object state before finalization. On projection failure:
+
+- semantic state is restored exactly
+- no worker `LocEdit` is emitted
+- no mixed-history marker is pushed
+- selection/reselect state is not mutated
+
+### 3H: semantic Undo/Redo replay
+
+Implemented on head `2f60df89a19313f07ee5ecdcfb957ae856662e0a`; exact-head full CI certification is the remaining checkpoint gate.
+
+Semantic Undo/Redo no longer owns checkpoint policy in `editing/history/routing.rs`. It now routes through `EditRuntime::replay`.
+
+Current replay flow:
+
+```text
+pop mixed-history marker
+  -> snapshot only transitional projection inputs
+  -> EditRuntime::replay(Undo | Redo)
+       -> checkpoint semantic history transition
+       -> prepare projection from authoritative post-replay MapDocument
+       -> success: finalize
+       -> failure: exact restore
+  -> after success only:
+       apply worker/UI projection
+       move mixed-history marker to opposite stack
+```
+
+Projection preparation is pure with respect to `EditorSession`, worker state, selection, and global history. Tile/Object worker mutations occur only after gateway finalization.
+
+Failure restores both systems:
+
+- exact semantic session state, including history/redo/revisions/ownership metadata
+- the application mixed-history marker to the stack it came from
+
+Replay tests are split into `editing/history/routing/tests.rs` so the production router remains under the 500-line architecture cap.
+
+## Gateway coverage after 3H
+
+```text
+EditRuntime transaction policy
+├─ Tile Paste                  ✅ execute
+├─ Height                      ✅ execute
+├─ Paint                       ✅ execute
+├─ Terrain Path                ✅ execute
+├─ Objects                     ✅ execute
+└─ semantic Undo/Redo replay   ✅ replay
+```
+
+Interactive semantic transaction lifecycle policy is now centralized behind `EditRuntime`.
+
+## Transitional compatibility still present
+
+`EditRuntime` still implements broad `Deref` / `DerefMut` compatibility to `EditorSession` for staged migration compatibility.
+
+That escape is no longer the intended path for interactive semantic mutation. It should be removed or narrowed only in a separate checkpoint after an explicit usage audit. Do not mechanically delete it without classifying remaining callers, because source/project lifecycle, hydration, export/query access, and non-interactive session operations have different semantics from interactive edit execution.
+
+## Next allowed checkpoint: 3I compatibility-surface audit
+
+Scope the next checkpoint narrowly to the `EditRuntime` compatibility surface.
+
+Recommended sequence:
+
+1. enumerate every remaining `EditRuntime` deref/deref-mut caller;
+2. classify each as read-only query, source/residency lifecycle, project application, export/snapshot, or accidental interactive mutation bypass;
+3. add narrow explicit forwarding methods where they improve ownership clarity;
+4. remove `DerefMut` if no legitimate mutable caller remains;
+5. consider replacing read-only `Deref` with explicit query/session accessors rather than deleting it mechanically;
+6. add an architecture guard only if it can enforce the intended boundary without blocking legitimate lifecycle operations.
+
+Do not combine 3I with projection-invalidation redesign or runtime extraction.
+
+## Explicit non-goals
+
+This gateway sequence does not implement:
+
+- centralized `ChangeImpact` -> projection invalidation service
+- 8x8 zone/chunk invalidation
+- ProjectRuntime, UiRuntime, or DiagnosticsRuntime extraction
+- InteractionRuntime behavioral encapsulation
+- cache codec/repack redesign
+- renderer or 117HD work
+- spline/path fitter redesign
+- a replacement semantic history system
+
+Project open/application intentionally remains outside interactive `execute`/`replay`: it uses untracked project-application/retry semantics and stored `RegionDiff`s.
 
 ## Acceptance rule
 
-A gateway checkpoint is successful only if it reduces the number of application components allowed to decide semantic transaction lifecycle policy. Adding another forwarding layer while leaving checkpoint/finalize/restore policy in every caller does not count as progress.
+The gateway work is complete only when application components no longer independently decide interactive semantic checkpoint/finalize/restore policy.
+
+A route is considered migrated only when:
+
+- semantic transition occurs through `EditRuntime`;
+- fallible projection is prepared from authoritative post-transition semantic state;
+- projection failure exactly restores semantic state;
+- worker/UI/global-history side effects occur only after successful gateway finalization.
