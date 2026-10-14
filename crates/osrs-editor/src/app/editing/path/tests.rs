@@ -28,11 +28,7 @@ fn runtime_with_redo() -> (EditRuntime, MapTile) {
         [],
     )));
     runtime
-        .commit(height_patch(
-            HeightVertexCoord::new(prior, plane(0)),
-            0,
-            32,
-        ))
+        .commit(height_patch(HeightVertexCoord::new(prior, plane(0)), 0, 32))
         .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
     runtime
         .undo()
@@ -141,8 +137,7 @@ fn one_path_patch_is_one_persistent_session_revision() {
     let overlay = TerrainOverlay {
         id: FloorOverlayId::new(7),
         shape: OverlayShape::new(0).unwrap_or_else(|| unreachable!("shape zero is valid")),
-        rotation: OverlayRotation::new(0)
-            .unwrap_or_else(|| unreachable!("rotation zero is valid")),
+        rotation: OverlayRotation::new(0).unwrap_or_else(|| unreachable!("rotation zero is valid")),
     };
     let document = MapDocument::from_parts([], [(HeightVertexCoord::new(tile, plane(0)), 0)], []);
     let mut session = EditorSession::new(document);
