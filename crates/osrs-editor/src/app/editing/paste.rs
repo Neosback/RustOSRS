@@ -5,8 +5,8 @@
 //! projection planning, and checkpoint finalization all succeed. The resulting legacy worker
 //! projection is already validated and therefore applied infallibly after gateway success.
 
-use super::*;
 use super::path::project_semantic_path_values;
+use super::*;
 use crate::app::edit_runtime::{EditExecution, EditExecutionError};
 use crate::app::paint_commit::build_terrain_paint_patch;
 use crate::app::tile_clipboard::TileClipboard;
@@ -26,7 +26,8 @@ fn plan_paste_projection(
 ) -> Result<PasteProjection, &'static str> {
     let mut projected = Vec::with_capacity(current.len());
     for (key, current) in current {
-        let current = current.ok_or("a pasted tile is no longer available to the projection adapter")?;
+        let current =
+            current.ok_or("a pasted tile is no longer available to the projection adapter")?;
         let values = project_semantic_path_values(document, *key, current, true)
             .ok_or("semantic Paste state cannot be represented by the legacy projection")?;
         projected.push((*key, current, values));
@@ -142,10 +143,7 @@ impl EditorApp {
                 return;
             }
             Err(EditExecutionError::Projection(message)) => {
-                self.notice = Some((
-                    format!("Paste was rolled back: {message}"),
-                    Instant::now(),
-                ));
+                self.notice = Some((format!("Paste was rolled back: {message}"), Instant::now()));
                 return;
             }
             Err(EditExecutionError::Rollback {
@@ -269,7 +267,17 @@ mod tests {
         let EditExecution::Committed { projection, .. } = result else {
             unreachable!("non-empty Paste patch commits")
         };
-        assert_eq!(projection, vec![(key, current, TileValues { height: 64, ..current })]);
+        assert_eq!(
+            projection,
+            vec![(
+                key,
+                current,
+                TileValues {
+                    height: 64,
+                    ..current
+                }
+            )]
+        );
         assert_eq!(runtime.revision(), revision_before + 1);
         assert_eq!(runtime.document().height_at(pasted), Some(64));
         assert!(runtime.can_undo());
