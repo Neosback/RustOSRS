@@ -112,27 +112,28 @@ impl EditorApp {
             .as_ref()
             .map(LifecycleTransition::description)
             .unwrap_or("replace the current session");
-        let (choice, closed) = super::super::modal::Modal::new("replace-unsaved", "Unsaved changes")
-            .size(420.0, 0.0)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "Your map edits have not been saved. Save them before you {action}?"
-                ));
-                ui.add_space(8.0);
-                let mut choice = None;
-                ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
-                        choice = Some(TransitionChoice::Save);
-                    }
-                    if ui.button("Discard").clicked() {
-                        choice = Some(TransitionChoice::Discard);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        choice = Some(TransitionChoice::Cancel);
-                    }
+        let (choice, closed) =
+            super::super::modal::Modal::new("replace-unsaved", "Unsaved changes")
+                .size(420.0, 0.0)
+                .show(ctx, |ui| {
+                    ui.label(format!(
+                        "Your map edits have not been saved. Save them before you {action}?"
+                    ));
+                    ui.add_space(8.0);
+                    let mut choice = None;
+                    ui.horizontal(|ui| {
+                        if ui.button("Save").clicked() {
+                            choice = Some(TransitionChoice::Save);
+                        }
+                        if ui.button("Discard").clicked() {
+                            choice = Some(TransitionChoice::Discard);
+                        }
+                        if ui.button("Cancel").clicked() {
+                            choice = Some(TransitionChoice::Cancel);
+                        }
+                    });
+                    choice
                 });
-                choice
-            });
         match choice {
             Some(TransitionChoice::Save) => {
                 self.project.transition_prompt = false;
