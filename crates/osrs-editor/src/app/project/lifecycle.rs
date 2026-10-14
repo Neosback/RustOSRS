@@ -37,6 +37,21 @@ impl ProjectState {
         debug_assert!(self.save.is_none());
         *self = Self::default();
     }
+
+    /// Stage a replacement when unsaved work exists; otherwise return it for immediate execution.
+    pub(super) fn stage_transition(
+        &mut self,
+        transition: LifecycleTransition,
+        unsaved: bool,
+    ) -> Option<LifecycleTransition> {
+        if unsaved {
+            self.transition = Some(transition);
+            self.transition_prompt = true;
+            None
+        } else {
+            Some(transition)
+        }
+    }
 }
 
 impl EditorApp {
@@ -62,10 +77,8 @@ impl EditorApp {
         transition: LifecycleTransition,
         ctx: &egui::Context,
     ) {
-        if self.is_unsaved() {
-            self.project.transition = Some(transition);
-            self.project.transition_prompt = true;
-        } else {
+        let unsaved = self.is_unsaved();
+        if let Some(transition) = self.project.stage_transition(transition, unsaved) {
             self.execute_transition(transition, ctx);
         }
     }
