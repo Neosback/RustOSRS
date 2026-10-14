@@ -3,9 +3,7 @@ use osrs_core::{
     coords::{MapTile, SourcePlane},
     ids::FloorUnderlayId,
 };
-use osrs_edit::{
-    HeightVertexCoord, MapDocument, MapOp, MapPatch, MapPosition, TerrainTile,
-};
+use osrs_edit::{HeightVertexCoord, MapDocument, MapOp, MapPatch, MapPosition, TerrainTile};
 
 fn plane() -> SourcePlane {
     SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))
@@ -134,7 +132,10 @@ fn failed_project_region_application_keeps_pending_diff_retryable() {
     assert!(project.pending.contains_key(&region));
     assert_eq!(session.revision(), 0);
     assert_eq!(session.edit_revision(), 0);
-    assert_eq!(session.document().terrain_at(position), TerrainTile::default());
+    assert_eq!(
+        session.document().terrain_at(position),
+        TerrainTile::default()
+    );
 }
 
 #[test]
