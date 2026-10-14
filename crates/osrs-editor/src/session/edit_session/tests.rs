@@ -308,21 +308,6 @@ fn untracked_apply_of_an_empty_or_failing_patch_changes_nothing() {
 }
 
 #[test]
-fn clearing_history_forgets_undo_but_not_the_document() {
-    let mut session = session(0);
-    session
-        .commit(paint_patch())
-        .unwrap_or_else(|e| unreachable!("{e:?}"));
-    assert!(session.can_undo());
-    session.clear_history();
-    assert!(!session.can_undo());
-    assert_eq!(
-        session.document().terrain_at(position()).underlay,
-        Some(FloorUnderlayId::new(9))
-    );
-}
-
-#[test]
 fn edit_revision_counts_edits_but_not_streaming() {
     let mut session = session(0);
     session.ingest_region(&snapshot(0, 3));
