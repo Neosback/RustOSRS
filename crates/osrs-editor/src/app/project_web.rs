@@ -2,7 +2,9 @@
 
 use super::EditorApp;
 use eframe::egui;
+use osrs_cache::source::CacheSource;
 use osrs_core::coords::RegionCoord;
+use std::path::PathBuf;
 
 #[derive(Default)]
 pub(super) struct ProjectState {
@@ -10,6 +12,18 @@ pub(super) struct ProjectState {
 }
 
 impl EditorApp {
+    /// Browser project persistence is unavailable, so there is no project dirty-state lifecycle to
+    /// guard. Keep cache/source replacement routed through the same call site as native builds.
+    pub(super) fn request_source_change(
+        &mut self,
+        source: CacheSource,
+        label: PathBuf,
+        ctx: &egui::Context,
+    ) {
+        self.session.reset();
+        self.open_source(source, label, ctx);
+    }
+
     pub(super) fn script_project(&mut self, _action: &str, _path: &str) -> Result<String, String> {
         Err("projects are not available in the browser".to_owned())
     }
