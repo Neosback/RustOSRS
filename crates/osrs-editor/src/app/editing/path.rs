@@ -194,8 +194,11 @@ impl EditorApp {
         let execution = self.session.execute(patch, |document| {
             plan_path_projection(document, &projection_input, brush.height.armed)
         });
-        let projection = match execution {
-            Ok(EditExecution::Committed { projection, .. }) => projection,
+        let (receipt, projection) = match execution {
+            Ok(EditExecution::Committed {
+                receipt,
+                projection,
+            }) => (receipt, projection),
             Ok(EditExecution::NoChange) => {
                 self.notice = Some((
                     "The path made no semantic changes".to_owned(),
@@ -254,7 +257,9 @@ impl EditorApp {
             edits.push(self.edit_for(*key, *after));
         }
         let count = route_keys.len();
-        self.send_edits(edits);
+        self.world.project_tile_edits(edits);
+        self.world
+            .invalidate_semantic_edit(receipt.impact, &receipt.touched_regions);
         self.push_step(EditStep::semantic_path(route_keys, brush.height.armed));
         self.notice = Some((
             format!(
