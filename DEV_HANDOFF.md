@@ -305,7 +305,7 @@ Every file on the debt allowlist is now within the 500-line / 32 KiB cap and `sc
 - `app.rs` -> `init.rs` (`EditorApp::new`) + `input.rs`
 - inline test modules of `settings.rs`, `paint.rs`, `pick.rs` -> `*/tests.rs`; `pick/describe.rs`
 
-`routing.rs`'s duplicated ~190-line `undo`/`redo` were collapsed into one direction-parameterized routine (381 -> 189 lines, same messages, verified paint/undo/redo in the real app). `end_stroke` was split into `commit_paint_stroke` / `commit_height_stroke` (same notices; verified paint and height strokes with undo in the real app). Known remaining smell: `row_widgets.rs::draw_row` ~365 lines. These exceed the 100-line function guideline and are the next real refactor targets. Submodules use `use super::*;`, matching the existing `app/streaming.rs` style.
+`routing.rs`'s duplicated ~190-line `undo`/`redo` were collapsed into one direction-parameterized routine (381 -> 189 lines, same messages, verified paint/undo/redo in the real app). `end_stroke` was split into `commit_paint_stroke` / `commit_height_stroke` (same notices; verified paint and height strokes with undo in the real app). `draw_row` was split into four page-group functions that each report whether they handled the row (`draw_interface_row`, `draw_world_row`, `draw_reference_row`, `draw_hd_row`); a test checks every catalog row has a widget arm. No known long-function smell from the debt-retirement list remains (the group functions are declarative `match`es of ~100 lines). These exceed the 100-line function guideline and are the next real refactor targets. Submodules use `use super::*;`, matching the existing `app/streaming.rs` style.
 
 ### Phase 2.3: InteractionRuntime (field ownership)
 

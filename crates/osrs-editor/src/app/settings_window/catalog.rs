@@ -16,7 +16,7 @@ pub(super) enum Applies {
 }
 
 /// One setting.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Row {
     Theme,
     SidePanel,

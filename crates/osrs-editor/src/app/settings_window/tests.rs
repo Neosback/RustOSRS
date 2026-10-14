@@ -100,3 +100,14 @@ fn hd_only_rows_are_not_offered_on_the_reference_pages() {
         }
     }
 }
+
+/// Every declared row needs a widget arm in `row_widgets.rs` (the group functions fall through
+/// to the next one, so a missing arm would only show up as a debug assertion at runtime).
+#[test]
+fn every_declared_row_has_a_widget() {
+    let widgets = include_str!("row_widgets.rs");
+    for def in ROWS {
+        let arm = format!("Row::{:?}", def.row);
+        assert!(widgets.contains(&arm), "{} has no widget arm", def.label);
+    }
+}

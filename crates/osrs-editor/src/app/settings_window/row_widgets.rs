@@ -12,8 +12,17 @@ use osrs_hd::{
 
 impl EditorApp {
     /// The widget of one row. This is the only place a setting's control exists.
-    #[allow(clippy::too_many_lines)]
     pub(super) fn draw_row(&mut self, ui: &mut egui::Ui, row: Row) {
+        let handled = self.draw_interface_row(ui, row)
+            || self.draw_world_row(ui, row)
+            || self.draw_reference_row(ui, row)
+            || self.draw_hd_row(ui, row);
+        debug_assert!(handled, "a settings row has no widget");
+    }
+
+    /// Appearance, panels, menus, and hints.
+    #[allow(clippy::too_many_lines)]
+    fn draw_interface_row(&mut self, ui: &mut egui::Ui, row: Row) -> bool {
         let prefs: &mut Settings = &mut self.prefs;
         match row {
             Row::Theme => {
@@ -100,6 +109,16 @@ impl EditorApp {
                     "Arrows and a turn ring on selected objects",
                 );
             }
+            _ => return false,
+        }
+        true
+    }
+
+    /// Camera, world streaming, and shared graphics.
+    #[allow(clippy::too_many_lines)]
+    fn draw_world_row(&mut self, ui: &mut egui::Ui, row: Row) -> bool {
+        let prefs: &mut Settings = &mut self.prefs;
+        match row {
             Row::RenderScale => {
                 ui.add(
                     egui::Slider::new(&mut prefs.render_scale, 0.5..=2.0)
@@ -165,6 +184,16 @@ impl EditorApp {
                     ui.weak("Reference profile; HD: Default sky > Editor sky colour");
                 });
             }
+            _ => return false,
+        }
+        true
+    }
+
+    /// The Reference profile's graphics and colour options.
+    #[allow(clippy::too_many_lines)]
+    fn draw_reference_row(&mut self, ui: &mut egui::Ui, row: Row) -> bool {
+        let prefs: &mut Settings = &mut self.prefs;
+        match row {
             Row::Profile => {
                 egui::ComboBox::from_id_salt("setting_profile")
                     .selected_text(prefs.render_profile.label())
@@ -209,6 +238,16 @@ impl EditorApp {
                     0.0..=100.0,
                 ));
             }
+            _ => return false,
+        }
+        true
+    }
+
+    /// The 117 HD profile's sky, lighting, shadows, and water.
+    #[allow(clippy::too_many_lines)]
+    fn draw_hd_row(&mut self, ui: &mut egui::Ui, row: Row) -> bool {
+        let prefs: &mut Settings = &mut self.prefs;
+        match row {
             Row::HdBrightness => {
                 ui.add(egui::Slider::new(&mut prefs.hd_brightness, 25.0..=400.0).suffix(" %"))
                     .on_hover_text("A gamma on the finished image; 100 % = as authored.");
@@ -376,6 +415,8 @@ impl EditorApp {
             Row::Vignette => {
                 ui.add(egui::Slider::new(&mut prefs.hd_vignette, 0.0..=1.0));
             }
+            _ => return false,
         }
+        true
     }
 }
