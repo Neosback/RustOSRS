@@ -205,11 +205,8 @@ mod tests {
     fn session_with_redo() -> (EditorSession, HeightVertexCoord) {
         let prior = vertex((3200, 3200));
         let pasted = vertex((3264, 3200));
-        let mut session = EditorSession::new(MapDocument::from_parts(
-            [],
-            [(prior, 0), (pasted, 0)],
-            [],
-        ));
+        let mut session =
+            EditorSession::new(MapDocument::from_parts([], [(prior, 0), (pasted, 0)], []));
         session
             .commit(height_patch(prior, 0, 32))
             .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
