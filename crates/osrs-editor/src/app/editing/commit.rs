@@ -172,9 +172,9 @@ impl EditorApp {
             .enumerate()
             .map(|(index, (key, _, after))| (index, *key, *after))
             .collect();
-        let execution = self
-            .session
-            .execute(patch, |document| plan_height_projection(document, &projection_input));
+        let execution = self.session.execute(patch, |document| {
+            plan_height_projection(document, &projection_input)
+        });
         match execution {
             Ok(EditExecution::Committed { projection, .. }) => {
                 self.apply_height_projection(stroke, projection);
@@ -182,26 +182,18 @@ impl EditorApp {
             }
             Ok(EditExecution::NoChange) => {
                 // The gateway intentionally skips projection for an empty patch. There is no
-                // semantic checkpoint to protect here, but the already-visible Height preview still
-                // needs reconciliation against the unchanged authoritative document.
-                let projection = match plan_height_projection(
-                    self.session.document(),
-                    &projection_input,
-                ) {
-                    Ok(projection) => projection,
-                    Err(message) => {
-                        return self.abandon_stroke(
-                            stroke,
-                            format!("Height no-op projection failed: {message}"),
-                        );
+                // semantic checkpoint to protect here, so preserve the existing preview adapter.
+                let text = match self.project_height_stroke(stroke) {
+                    Ok(()) => {
+                        self.notice = Some((
+                            "Height stroke made no semantic changes".to_owned(),
+                            Instant::now(),
+                        ));
+                        return None;
                     }
+                    Err(message) => format!("Height no-op projection failed: {message}"),
                 };
-                self.apply_height_projection(stroke, projection);
-                self.notice = Some((
-                    "Height stroke made no semantic changes".to_owned(),
-                    Instant::now(),
-                ));
-                None
+                self.abandon_stroke(stroke, text)
             }
             Err(EditExecutionError::Semantic(error)) => self.abandon_stroke(
                 stroke,
