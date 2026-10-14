@@ -1,7 +1,11 @@
+use super::plan::build_paint_stroke_patch;
 use super::*;
 use crate::heights::{Falloff, HeightOp, HeightTool};
+use crate::paint::Fill;
 use crate::session::EditorSession;
+use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
 use osrs_edit::{MapDocument, TerrainOverlay, TerrainTile};
+use osrs_edit::{MapPosition, OverlayRotation, OverlayShape};
 use osrs_world::LocSpec;
 
 fn semantic_terrain(values: TileValues) -> Option<TerrainTile> {
@@ -414,4 +418,77 @@ fn semantic_object_history_marker_carries_no_legacy_object_authority() {
         .unwrap_or_else(|| unreachable!("Object marker should be present"));
     assert_eq!(object.removed(), &[removed]);
     assert_eq!(object.added(), &[added]);
+}
+
+#[test]
+fn clearing_an_overlay_is_one_semantic_session_history_entry() {
+    let tile = (3200, 3200);
+    let painted = TerrainTile {
+        underlay: Some(FloorUnderlayId::new(3)),
+        overlay: Some(TerrainOverlay {
+            id: FloorOverlayId::new(5),
+            shape: OverlayShape::new(2).unwrap_or_else(|| unreachable!("valid shape")),
+            rotation: OverlayRotation::new(1).unwrap_or_else(|| unreachable!("valid rotation")),
+        }),
+        flags: 1,
+    };
+    let mut session =
+        EditorSession::new(MapDocument::from_parts([(position(tile), painted)], [], []));
+    let brush = overlay_clear_brush();
+    let before = TileValues {
+        underlay: 3,
+        overlay: 5,
+        shape: 2,
+        rotation: 1,
+        flags: 1,
+        ..TileValues::default()
+    };
+    let after = brush.apply(before);
+    assert_eq!((after.overlay, after.shape, after.rotation), (0, 0, 0));
+
+    let patch = build_paint_stroke_patch(
+        session.document(),
+        &brush,
+        &[((0, tile.0, tile.1), before, after)],
+    )
+    .unwrap_or_else(|error| unreachable!("valid clear stroke: {error:?}"));
+    assert_eq!(patch.len(), 1);
+    session
+        .commit(patch)
+        .unwrap_or_else(|error| unreachable!("valid commit: {error:?}"));
+
+    let cleared = session.document().terrain_at(position(tile));
+    assert_eq!(cleared.overlay, None);
+    assert_eq!(
+        cleared.underlay, painted.underlay,
+        "unarmed channels are untouched"
+    );
+    assert_eq!(cleared.flags, painted.flags);
+    assert_eq!(session.revision(), 1);
+
+    session
+        .undo()
+        .unwrap_or_else(|error| unreachable!("valid undo: {error:?}"));
+    assert_eq!(session.document().terrain_at(position(tile)), painted);
+}
+
+#[test]
+fn clearing_an_empty_overlay_makes_no_semantic_history() {
+    let tile = (3200, 3200);
+    let mut session = EditorSession::new(MapDocument::new());
+    let brush = overlay_clear_brush();
+    let values = TileValues::default();
+    let patch = build_paint_stroke_patch(
+        session.document(),
+        &brush,
+        &[((0, tile.0, tile.1), values, brush.apply(values))],
+    )
+    .unwrap_or_else(|error| unreachable!("valid clear stroke: {error:?}"));
+    assert!(
+        session
+            .commit(patch)
+            .unwrap_or_else(|error| unreachable!("valid commit: {error:?}"))
+            .is_none()
+    );
+    assert!(!session.can_undo());
 }

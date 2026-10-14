@@ -21,6 +21,8 @@ jobs:
 
       - name: Install pinned Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          target: wasm32-unknown-unknown
 
       - name: Check architecture boundaries
         run: python3 scripts/check_architecture.py
@@ -42,6 +44,12 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: WebAssembly portability gate
+        run: |
+          cargo check --locked --target wasm32-unknown-unknown \
+            -p osrs-core -p osrs-edit -p osrs-cache -p osrs-scene -p osrs-hd -p osrs-render -p osrs-world
+          cargo clippy --locked --target wasm32-unknown-unknown -p osrs-editor -- -D warnings
 
   tier-b:
     name: Tier B - fast tests

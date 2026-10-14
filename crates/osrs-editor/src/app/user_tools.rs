@@ -28,7 +28,8 @@ impl EditorApp {
                 self.teleport_to(Destination::Tile { x, y, plane });
             }
             UserToolKind::Link { url } => {
-                let url = user_tools::fill_link(&url, self.camera_tile(), self.view_plane);
+                let url =
+                    user_tools::fill_link(&url, self.camera_tile(), self.interaction.view_plane);
                 if let Err(error) = crate::platform::open_url(&url) {
                     self.status = Some(format!("could not open {url}: {error}"));
                 }
@@ -112,7 +113,7 @@ impl EditorApp {
         let mut save = false;
         let mut cancel = false;
         let current_tile = self.camera_tile();
-        let current_plane = self.view_plane;
+        let current_plane = self.interaction.view_plane;
         let (tool_now, brush_now, spline_now) = (
             self.prefs.tool,
             self.prefs.brush.clone(),

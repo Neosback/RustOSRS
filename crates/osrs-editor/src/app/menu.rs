@@ -11,6 +11,8 @@ impl EditorApp {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     self.cache_menu(ui);
+                    self.project_menu(ui);
+                    self.export_menu(ui);
                     ui.separator();
                     if ui.button("Quit").clicked() {
                         ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -45,6 +47,33 @@ impl EditorApp {
                     }
                     ui.separator();
                     if ui
+                        .add_enabled(
+                            !self.interaction.selection_tiles.is_empty(),
+                            egui::Button::new(format!(
+                                "Copy tiles   {}",
+                                self.keymap.describe("edit.copy_tiles")
+                            )),
+                        )
+                        .clicked()
+                    {
+                        self.copy_tile_selection();
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.clipboard.is_some(),
+                            egui::Button::new(format!(
+                                "Paste tiles   {}",
+                                self.keymap.describe("edit.paste_tiles")
+                            )),
+                        )
+                        .clicked()
+                    {
+                        self.paste_tiles();
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui
                         .button(format!(
                             "{} Settings...   {}",
                             icons::SETTINGS,
@@ -74,7 +103,11 @@ impl EditorApp {
                     ui.separator();
                     ui.label("Plane");
                     for plane in 0..4_u8 {
-                        ui.radio_value(&mut self.view_plane, plane, format!("z = {plane}"));
+                        ui.radio_value(
+                            &mut self.interaction.view_plane,
+                            plane,
+                            format!("z = {plane}"),
+                        );
                     }
                     ui.separator();
                     if ui
@@ -122,7 +155,15 @@ impl EditorApp {
 
     /// Fly / orbit camera choice.
     pub(super) fn camera_mode_picker(&mut self, ui: &mut egui::Ui) {
-        ui.radio_value(&mut self.camera.mode, CameraMode::Fly, "Fly   C");
-        ui.radio_value(&mut self.camera.mode, CameraMode::Orbit, "Orbit   C");
+        ui.radio_value(
+            &mut self.interaction.camera.mode,
+            CameraMode::Fly,
+            "Fly   C",
+        );
+        ui.radio_value(
+            &mut self.interaction.camera.mode,
+            CameraMode::Orbit,
+            "Orbit   C",
+        );
     }
 }

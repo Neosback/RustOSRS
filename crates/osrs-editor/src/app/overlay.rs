@@ -64,7 +64,7 @@ impl EditorApp {
                                 text,
                                 format!(
                                     "camera {tile_x}, {tile_y}, {}   region {region_x}, {region_y} (id {})",
-                                    self.view_plane,
+                                    self.interaction.view_plane,
                                     hud::region_id(region_x, region_y)
                                 ),
                             );

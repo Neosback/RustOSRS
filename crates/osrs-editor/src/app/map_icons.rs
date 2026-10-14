@@ -26,7 +26,7 @@ impl EditorApp {
         let Some(catalog) = self.assets.catalog.clone() else {
             return;
         };
-        let plane = self.view_plane;
+        let plane = self.interaction.view_plane;
         let (rx, ry) = self.camera_region();
         let (camera_x, camera_y) = self.camera_tile();
         // Collect first: asking for a region may request it from the worker.

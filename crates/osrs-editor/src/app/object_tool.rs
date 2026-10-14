@@ -5,16 +5,22 @@
 //! re-selects moved/new placements after the rebuild arrives.
 
 mod commit;
+mod place;
+
+mod drawer;
 
 use super::EditorApp;
 use super::editing::EditStep;
 use crate::icons;
 use crate::paint::Tool;
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) use commit::spec_from_placement;
 use commit::{ObjectCommitPlan, build_object_commit_plan};
 pub(super) use commit::{ObjectHistoryRoute, build_object_history_projection};
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
 use egui_phosphor::regular as ph;
 use osrs_world::{LocEdit, LocSpec};
+pub(super) use place::PlaceState;
 use web_time::Instant;
 
 /// Highest tile coordinate on the map (255 regions of 64 tiles, less one).
@@ -34,8 +40,8 @@ pub struct ObjectDrag {
 impl EditorApp {
     /// What the map file says about each selected object.
     pub(super) fn selected_specs(&self) -> Vec<LocSpec> {
-        let mut objects = self.selection_objects.clone();
-        if let Some(selected) = &self.selected
+        let mut objects = self.interaction.selection_objects.clone();
+        if let Some(selected) = &self.interaction.selected
             && !objects
                 .iter()
                 .any(|o| o.region == selected.region && o.index == selected.index)
@@ -102,7 +108,7 @@ impl EditorApp {
         self.send_loc_edits(edits);
         self.push_step(EditStep::semantic_object(removed, added.clone()));
         self.clear_selection();
-        self.pending_reselect = added;
+        self.interaction.pending_reselect = added;
         self.notice = Some((label.to_owned(), Instant::now()));
         true
     }
@@ -193,7 +199,7 @@ impl EditorApp {
                 if planes > 0 { "up" } else { "down" }
             ),
         ) {
-            self.view_plane = target;
+            self.interaction.view_plane = target;
         }
     }
 
@@ -245,11 +251,11 @@ impl EditorApp {
 
     /// Select the placements an edit made, once the rebuilt regions are in.
     pub(super) fn resolve_reselect(&mut self) {
-        if self.pending_reselect.is_empty() {
+        if self.interaction.pending_reselect.is_empty() {
             return;
         }
         let mut found = Vec::new();
-        for spec in &self.pending_reselect {
+        for spec in &self.interaction.pending_reselect {
             let Some(info) = self.infos.get(&spec.region()) else {
                 continue;
             };
@@ -267,19 +273,33 @@ impl EditorApp {
                 });
             }
         }
-        if found.len() == self.pending_reselect.len() {
-            self.selected = found.last().cloned();
-            self.selection_objects = found;
-            self.pending_reselect.clear();
+        if found.len() == self.interaction.pending_reselect.len() {
+            self.interaction.selected = found.last().cloned();
+            self.interaction.selection_objects = found;
+            self.interaction.pending_reselect.clear();
         }
     }
 
     /// Keys: delete, turn, duplicate (with objects selected, in Select and in the Objects tool).
     pub(super) fn object_actions(&mut self, ctx: &egui::Context) {
+        if self.placer.is_armed() && self.prefs.tool == Tool::Objects && !self.keys_blocked(ctx) {
+            let (rotate, reverse) = ctx.input(|i| {
+                (
+                    self.keymap.pressed(i, "object.rotate"),
+                    i.modifiers.shift && i.key_pressed(egui::Key::R),
+                )
+            });
+            if rotate {
+                self.rotate_placement(1);
+            } else if reverse {
+                self.rotate_placement(-1);
+            }
+        }
         if self.keys_blocked(ctx)
             || self.quick_open.is_some()
             || !matches!(self.prefs.tool, Tool::Select | Tool::Objects)
-            || (self.selection_objects.is_empty() && self.selected.is_none())
+            || (self.interaction.selection_objects.is_empty()
+                && self.interaction.selected.is_none())
         {
             return;
         }
@@ -310,32 +330,33 @@ impl EditorApp {
         response: &egui::Response,
     ) -> bool {
         if self.prefs.tool != Tool::Objects {
-            self.object_drag = None;
+            self.interaction.object_drag = None;
             return false;
         }
         let primary = egui::PointerButton::Primary;
         if response.drag_started_by(primary)
-            && let Some(object) = &self.hover.object
-            && let Some(tile) = self.hover.tile.map(|p| p.tile)
+            && let Some(object) = &self.interaction.hover.object
+            && let Some(tile) = self.interaction.hover.tile.map(|p| p.tile)
             && self
+                .interaction
                 .selection_objects
                 .iter()
                 .any(|o| o.region == object.region && o.index == object.index)
         {
-            self.object_drag = Some(ObjectDrag {
+            self.interaction.object_drag = Some(ObjectDrag {
                 anchor: tile,
                 specs: self.selected_specs(),
                 delta: (0, 0),
             });
         }
-        let Some(drag) = &mut self.object_drag else {
+        let Some(drag) = &mut self.interaction.object_drag else {
             return false;
         };
-        if let Some(tile) = self.hover.tile.map(|p| p.tile) {
+        if let Some(tile) = self.interaction.hover.tile.map(|p| p.tile) {
             drag.delta = (tile.0 - drag.anchor.0, tile.1 - drag.anchor.1);
         }
         if response.drag_stopped_by(primary) || !ctx.input(|i| i.pointer.primary_down()) {
-            let drag = self.object_drag.take();
+            let drag = self.interaction.object_drag.take();
             if let Some(drag) = drag {
                 self.move_objects(drag.specs, drag.delta);
             }
@@ -353,7 +374,7 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
-        let Some(drag) = &self.object_drag else {
+        let Some(drag) = &self.interaction.object_drag else {
             return;
         };
         let colors = &self.prefs.colors;
@@ -368,7 +389,8 @@ impl EditorApp {
         }
         for spec in &drag.specs {
             let target = (spec.tile.0 + drag.delta.0, spec.tile.1 + drag.delta.1);
-            let Some(corners) = crate::interact::tile_corners(&self.infos, target, self.view_plane)
+            let Some(corners) =
+                crate::interact::tile_corners(&self.infos, target, self.interaction.view_plane)
             else {
                 continue;
             };
@@ -385,166 +407,4 @@ impl EditorApp {
             }
         }
     }
-
-    /// The Objects tool's drawer: what it can do to the selected objects, in groups.
-    pub(super) fn object_drawer(&mut self, ui: &mut egui::Ui) {
-        let count = self
-            .selection_objects
-            .len()
-            .max(usize::from(self.selected.is_some()));
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Objects").strong().size(15.0));
-            ui.label(match count {
-                0 => "Click an object (Shift adds, drag a box for several)".to_owned(),
-                1 => "1 selected. Drag its arrows to move it, its ring to turn it.".to_owned(),
-                n => format!("{n} selected. Drag the arrows to move them all."),
-            });
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                self.drawer_collapse(ui);
-            });
-        });
-        ui.add_space(6.0);
-        let any = count > 0;
-        let key = |action: &str| {
-            self.keymap
-                .binding(action)
-                .map(|b| b.describe())
-                .unwrap_or_default()
-        };
-        let (rotate_key, duplicate_key, delete_key) = (
-            key("object.rotate"),
-            key("object.duplicate"),
-            key("object.delete"),
-        );
-        let mut step = None;
-        let mut floor = 0;
-        let mut turn = 0;
-        let (mut copy, mut delete) = (false, false);
-        ui.horizontal_top(|ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
-            ui.spacing_mut().button_padding = egui::vec2(10.0, 7.0);
-            group(ui, "Move one tile", |ui| {
-                ui.horizontal(|ui| {
-                    for (icon, tip, delta) in [
-                        (ph::ARROW_LEFT, "West", (-1, 0)),
-                        (ph::ARROW_UP, "North", (0, 1)),
-                        (ph::ARROW_DOWN, "South", (0, -1)),
-                        (ph::ARROW_RIGHT, "East", (1, 0)),
-                    ] {
-                        if ui
-                            .add_enabled(any, egui::Button::new(icon))
-                            .on_hover_text(format!("Move one tile {tip}"))
-                            .clicked()
-                        {
-                            step = Some(delta);
-                        }
-                    }
-                });
-            });
-            group(ui, "Floor", |ui| {
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(any, egui::Button::new(format!("{}  Up", ph::ARROW_LINE_UP)))
-                        .on_hover_text("Move up one floor (the one above, z + 1)")
-                        .clicked()
-                    {
-                        floor = 1;
-                    }
-                    if ui
-                        .add_enabled(
-                            any,
-                            egui::Button::new(format!("{}  Down", ph::ARROW_LINE_DOWN)),
-                        )
-                        .on_hover_text("Move down one floor (z - 1)")
-                        .clicked()
-                    {
-                        floor = -1;
-                    }
-                });
-            });
-            group(ui, "Turn", |ui| {
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(any, egui::Button::new(ph::ARROW_COUNTER_CLOCKWISE))
-                        .on_hover_text("Quarter turn anticlockwise (Shift + the turn key)")
-                        .clicked()
-                    {
-                        turn = -1;
-                    }
-                    if ui
-                        .add_enabled(any, egui::Button::new(icons::ROTATE))
-                        .on_hover_text(format!("Quarter turn clockwise ({rotate_key})"))
-                        .clicked()
-                    {
-                        turn = 1;
-                    }
-                });
-            });
-            group(ui, "Edit", |ui| {
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(
-                            any,
-                            egui::Button::new(format!("{}  Copy", icons::DUPLICATE)),
-                        )
-                        .on_hover_text(format!(
-                            "Copy one tile east ({duplicate_key}); then drag the copy"
-                        ))
-                        .clicked()
-                    {
-                        copy = true;
-                    }
-                    let danger = ui.visuals().error_fg_color;
-                    if ui
-                        .add_enabled(
-                            any,
-                            egui::Button::new(
-                                egui::RichText::new(format!("{}  Delete", icons::DELETE))
-                                    .color(danger),
-                            ),
-                        )
-                        .on_hover_text(format!("Delete ({delete_key})"))
-                        .clicked()
-                    {
-                        delete = true;
-                    }
-                });
-            });
-        });
-        ui.add_space(2.0);
-        ui.weak(
-            "Objects only move across the ground (the green square on the gizmo) and between \
-             floors; the map has no height setting for them. Ctrl+Z undoes any of these.",
-        );
-        if let Some(delta) = step {
-            let specs = self.selected_specs();
-            self.move_objects(specs, delta);
-        }
-        if floor != 0 {
-            self.shift_floor(floor);
-        }
-        if turn != 0 {
-            self.rotate_selected_objects(turn);
-        }
-        if copy {
-            self.duplicate_selected_objects();
-        }
-        if delete {
-            self.delete_selected_objects();
-        }
-    }
-}
-
-/// A captioned cluster of drawer controls.
-fn group(ui: &mut egui::Ui, caption: &str, add: impl FnOnce(&mut egui::Ui)) {
-    ui.vertical(|ui| {
-        ui.label(
-            egui::RichText::new(caption.to_uppercase())
-                .size(10.5)
-                .strong()
-                .color(ui.visuals().weak_text_color()),
-        );
-        add(ui);
-    });
-    ui.add_space(10.0);
 }

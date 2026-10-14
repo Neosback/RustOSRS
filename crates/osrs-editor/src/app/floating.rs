@@ -93,7 +93,7 @@ impl EditorApp {
                         {
                             self.prefs.select_mode = mode;
                             if !selecting {
-                                self.spline.points.clear();
+                                self.interaction.spline.points.clear();
                                 self.set_tool(Tool::Select);
                             }
                         }

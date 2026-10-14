@@ -7,6 +7,7 @@
 pub mod build_format;
 pub mod capability;
 pub mod decode;
+pub mod encode;
 pub mod model_repository;
 pub mod object_model;
 pub mod profile;

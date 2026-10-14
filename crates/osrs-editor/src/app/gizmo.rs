@@ -10,7 +10,7 @@ use eframe::egui::{self, Rect};
 use osrs_world::LocSpec;
 use transform_gizmo_egui::math::{DQuat, DVec3, Transform};
 use transform_gizmo_egui::{
-    Gizmo, GizmoConfig, GizmoInteraction, GizmoMode, GizmoOrientation, GizmoResult,
+    GizmoConfig, GizmoInteraction, GizmoMode, GizmoOrientation, GizmoResult,
 };
 
 /// A gizmo drag in progress.
@@ -110,17 +110,17 @@ impl EditorApp {
             || self.context_menu.is_some()
             || self.modal_open()
         {
-            self.gizmo_drag = None;
-            self.gizmo_busy = false;
+            self.interaction.gizmo_drag = None;
+            self.interaction.gizmo_busy = false;
             return;
         }
         let Some(origin) = self.gizmo_origin(&specs) else {
-            self.gizmo_drag = None;
-            self.gizmo_busy = false;
+            self.interaction.gizmo_drag = None;
+            self.interaction.gizmo_busy = false;
             return;
         };
-        let (view_matrix, projection_matrix) = gizmo_matrices(&self.camera, viewport);
-        self.gizmo.update_config(GizmoConfig {
+        let (view_matrix, projection_matrix) = gizmo_matrices(&self.interaction.camera, viewport);
+        self.interaction.gizmo.update_config(GizmoConfig {
             view_matrix,
             projection_matrix,
             viewport,
@@ -132,9 +132,9 @@ impl EditorApp {
             snapping: true,
             snap_distance: 128.0,
             snap_angle: std::f32::consts::FRAC_PI_2,
-            ..*self.gizmo.config()
+            ..*self.interaction.gizmo.config()
         });
-        let target = self.gizmo_drag.as_ref().map_or_else(
+        let target = self.interaction.gizmo_drag.as_ref().map_or_else(
             || Transform::from_scale_rotation_translation(DVec3::ONE, DQuat::IDENTITY, origin),
             |drag| drag.current,
         );
@@ -142,11 +142,14 @@ impl EditorApp {
         if let Some((_, transforms)) = result
             && let Some(moved) = transforms.first()
         {
-            let drag = self.gizmo_drag.get_or_insert_with(|| GizmoDrag {
-                start: target,
-                current: target,
-                specs: specs.clone(),
-            });
+            let drag = self
+                .interaction
+                .gizmo_drag
+                .get_or_insert_with(|| GizmoDrag {
+                    start: target,
+                    current: target,
+                    specs: specs.clone(),
+                });
             drag.current = *moved;
             // Whole tiles moved so far, for the footprints.
             let from = DVec3::from(drag.start.translation);
@@ -155,14 +158,15 @@ impl EditorApp {
                 ((to.x - from.x) / 128.0).round() as i32,
                 ((to.z - from.z) / 128.0).round() as i32,
             );
-            self.object_drag = Some(ObjectDrag {
+            self.interaction.object_drag = Some(ObjectDrag {
                 anchor: (0, 0),
                 specs: drag.specs.clone(),
                 delta,
             });
         }
-        self.gizmo_busy = self.gizmo.is_focused() || self.gizmo_drag.is_some();
-        if self.gizmo_drag.is_some() && !ui.input(|i| i.pointer.primary_down()) {
+        self.interaction.gizmo_busy =
+            self.interaction.gizmo.is_focused() || self.interaction.gizmo_drag.is_some();
+        if self.interaction.gizmo_drag.is_some() && !ui.input(|i| i.pointer.primary_down()) {
             self.finish_gizmo_drag();
         }
     }
@@ -177,10 +181,10 @@ impl EditorApp {
         targets: &[Transform],
     ) -> Option<(GizmoResult, Vec<Transform>)> {
         let ctx = ui.ctx();
-        self.gizmo.update_config(GizmoConfig {
+        self.interaction.gizmo.update_config(GizmoConfig {
             viewport,
             pixels_per_point: ctx.pixels_per_point(),
-            ..*self.gizmo.config()
+            ..*self.interaction.gizmo.config()
         });
         let cursor = ctx.input(|i| i.pointer.hover_pos()).unwrap_or_default();
         // Only the primary button works the gizmo; the camera's buttons pass through it.
@@ -190,7 +194,7 @@ impl EditorApp {
                 i.pointer.button_down(egui::PointerButton::Primary),
             )
         });
-        let result = self.gizmo.update(
+        let result = self.interaction.gizmo.update(
             GizmoInteraction {
                 cursor_pos: (cursor.x, cursor.y),
                 hovered: response.hovered() || response.dragged(),
@@ -199,7 +203,7 @@ impl EditorApp {
             },
             targets,
         );
-        let draw = self.gizmo.draw();
+        let draw = self.interaction.gizmo.draw();
         egui::Painter::new(ctx.clone(), ui.layer_id(), viewport).add(egui::Mesh {
             indices: draw.indices,
             vertices: draw
@@ -219,9 +223,9 @@ impl EditorApp {
 
     /// The button went up: commit the move, or the turn, as one undo step.
     fn finish_gizmo_drag(&mut self) {
-        self.object_drag = None;
-        self.gizmo_busy = false;
-        let Some(drag) = self.gizmo_drag.take() else {
+        self.interaction.object_drag = None;
+        self.interaction.gizmo_busy = false;
+        let Some(drag) = self.interaction.gizmo_drag.take() else {
             return;
         };
         let from = DVec3::from(drag.start.translation);
@@ -236,13 +240,9 @@ impl EditorApp {
         if delta != (0, 0) {
             self.move_objects(drag.specs, delta);
         } else if quarters.rem_euclid(4) != 0 {
-            self.selection_objects.clear();
+            self.interaction.selection_objects.clear();
             self.rotate_selected_objects(quarters.rem_euclid(4) as i8);
         }
-    }
-
-    pub(super) fn new_gizmo() -> Gizmo {
-        Gizmo::default()
     }
 }
 

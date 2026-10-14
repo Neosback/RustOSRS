@@ -6,25 +6,27 @@
 //! accumulate another god module.
 
 mod history;
+mod paste;
 mod path;
+mod plan;
 #[cfg(test)]
 mod tests;
 
+mod actions;
+mod commit;
+
 use super::EditorApp;
-use super::paint_commit::{PaintCommitError, TerrainPaintIntent, build_terrain_paint_patch};
+use super::paint_commit::overlay_clear_brush;
 use crate::heights::commit::{HeightStrokeSpec, build_terrain_height_patch};
 use crate::heights::{self, encode_height};
-use crate::paint::{Brush, Fill, TileValues, Tool};
+use crate::paint::{Brush, TileValues, Tool};
 use eframe::egui;
 pub(super) use history::EditStep;
-use history::{SemanticHeightHistory, SemanticPaintHistory};
-use osrs_core::coords::{MapTile, RegionCoord, SourcePlane};
-use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
-use osrs_edit::{
-    HeightVertexCoord, MapPatch, MapPosition, MapQuery, OverlayRotation, OverlayShape,
-};
+use osrs_core::coords::{MapTile, SourcePlane};
+use osrs_edit::HeightVertexCoord;
 use osrs_world::TileEdit;
-use std::collections::{BTreeMap, HashMap};
+use plan::{build_paint_stroke_patch, project_height_values, project_paint_values};
+use std::collections::HashMap;
 use std::time::Duration;
 use web_time::Instant;
 
@@ -43,117 +45,8 @@ pub struct PathTile {
     pub rotation: u8,
 }
 
-fn paint_intent_from_brush(
-    brush: &Brush,
-    tile: (i32, i32),
-    after: TileValues,
-) -> TerrainPaintIntent {
-    let mut intent = TerrainPaintIntent::new(tile);
-    if brush.underlay.armed {
-        intent.underlay = Some(match brush.underlay.fill {
-            Fill::Clear | Fill::Set(0) => None,
-            Fill::Set(id) => Some(FloorUnderlayId::new(u32::from(id))),
-        });
-    }
-    if brush.overlay.armed {
-        intent.overlay = Some(match brush.overlay.fill {
-            Fill::Clear | Fill::Set(0) => None,
-            Fill::Set(id) => Some(FloorOverlayId::new(u32::from(id))),
-        });
-    }
-    if brush.shape.armed && after.overlay != 0 {
-        intent.overlay_shape = Some((
-            OverlayShape::new(after.shape)
-                .unwrap_or_else(|| unreachable!("Brush::apply clamps overlay shape")),
-            OverlayRotation::new(after.rotation)
-                .unwrap_or_else(|| unreachable!("Brush::apply clamps overlay rotation")),
-        ));
-    }
-    intent.height = brush.height.armed.then_some(after.height);
-    intent.flags = brush.flags.armed.then_some(after.flags);
-    intent
-}
-
-fn build_paint_stroke_patch(
-    query: &impl MapQuery,
-    brush: &Brush,
-    changes: &[(TileKey, TileValues, TileValues)],
-) -> Result<MapPatch, PaintCommitError> {
-    let mut by_plane = BTreeMap::<SourcePlane, Vec<TerrainPaintIntent>>::new();
-    for (key, _, after) in changes {
-        let plane = SourcePlane::new(key.0)
-            .unwrap_or_else(|| unreachable!("editor stroke planes are always validated"));
-        by_plane
-            .entry(plane)
-            .or_default()
-            .push(paint_intent_from_brush(brush, (key.1, key.2), *after));
-    }
-
-    let mut ops = Vec::new();
-    for (plane, intents) in by_plane {
-        let patch = build_terrain_paint_patch(query, plane, &intents)?;
-        ops.extend_from_slice(patch.ops());
-    }
-    Ok(MapPatch::new(ops))
-}
-
 /// `(plane, world x, world y)`.
 pub type TileKey = (u8, i32, i32);
-
-fn project_paint_values(
-    query: &impl MapQuery,
-    brush: &Brush,
-    key: TileKey,
-    mut current: TileValues,
-) -> Option<TileValues> {
-    let plane = SourcePlane::new(key.0)?;
-    let tile = MapTile::new(key.1, key.2);
-    let terrain = query.terrain_at(MapPosition::new(tile, plane));
-
-    if brush.underlay.armed {
-        current.underlay = match terrain.underlay {
-            Some(id) => u16::try_from(id.get()).ok()?,
-            None => 0,
-        };
-    }
-    if brush.overlay.armed {
-        match terrain.overlay {
-            Some(overlay) => {
-                current.overlay = u16::try_from(overlay.id.get()).ok()?;
-                current.shape = overlay.shape.get();
-                current.rotation = overlay.rotation.get();
-            }
-            None => {
-                current.overlay = 0;
-                current.shape = 0;
-                current.rotation = 0;
-            }
-        }
-    } else if brush.shape.armed
-        && let Some(overlay) = terrain.overlay
-    {
-        current.shape = overlay.shape.get();
-        current.rotation = overlay.rotation.get();
-    }
-    if brush.height.armed {
-        current.height = query.height_at(HeightVertexCoord::new(tile, plane))?;
-    }
-    if brush.flags.armed {
-        current.flags = terrain.flags;
-    }
-    Some(current)
-}
-
-fn project_height_values(
-    query: &impl MapQuery,
-    key: TileKey,
-    mut current: TileValues,
-) -> Option<TileValues> {
-    let plane = SourcePlane::new(key.0)?;
-    let tile = MapTile::new(key.1, key.2);
-    current.height = query.height_at(HeightVertexCoord::new(tile, plane))?;
-    Some(current)
-}
 
 /// A stroke being painted.
 #[derive(Debug)]
@@ -172,6 +65,13 @@ pub struct Stroke {
     /// The height under the cursor when the stroke began (what Flatten levels to).
     anchor: Option<i32>,
     seed: u64,
+}
+
+impl Stroke {
+    /// Whether the stroke changed nothing at all.
+    fn is_empty(&self) -> bool {
+        self.step.changes.is_empty() && self.step.added.is_empty() && self.step.removed.is_empty()
+    }
 }
 
 impl Default for Stroke {
@@ -212,7 +112,7 @@ pub fn affected_regions(tile: (i32, i32)) -> Vec<(i32, i32)> {
 impl EditorApp {
     /// The tile on the viewed plane as the map has it now: the editor's value if edited, else the picker's.
     pub(super) fn tile_now(&self, tile: (i32, i32)) -> Option<TileValues> {
-        self.current_tile((self.view_plane, tile.0, tile.1))
+        self.current_tile((self.interaction.view_plane, tile.0, tile.1))
     }
 
     fn current_tile(&self, key: TileKey) -> Option<TileValues> {
@@ -352,176 +252,6 @@ impl EditorApp {
         Ok(())
     }
 
-    /// Finish the open stroke. Paint and Height commit exactly once to the semantic session and
-    /// leave only lightweight routing markers in the global mixed-history stack. Terrain paths
-    /// commit separately in `editing/path.rs`; remaining legacy actions stay on the fallback path.
-    pub(super) fn end_stroke(&mut self) {
-        let Some(mut stroke) = self.stroke.take() else {
-            return;
-        };
-        if stroke.step.changes.is_empty()
-            && stroke.step.added.is_empty()
-            && stroke.step.removed.is_empty()
-        {
-            return;
-        }
-
-        let paint_history = if let Some(brush) = stroke.paint_brush.clone() {
-            let patch = match build_paint_stroke_patch(
-                self.session.document(),
-                &brush,
-                &stroke.step.changes,
-            ) {
-                Ok(patch) => patch,
-                Err(error) => {
-                    self.revert(&stroke.step, false);
-                    self.notice = Some((
-                        format!("Paint stroke was not committed: {error:?}"),
-                        Instant::now(),
-                    ));
-                    return;
-                }
-            };
-
-            match self.session.commit(patch) {
-                Ok(Some(_)) => {
-                    self.project_paint_stroke(&mut stroke, &brush);
-                    Some(SemanticPaintHistory {
-                        brush,
-                        keys: stroke.step.changes.iter().map(|(key, _, _)| *key).collect(),
-                    })
-                }
-                Ok(None) => {
-                    self.project_paint_stroke(&mut stroke, &brush);
-                    self.notice = Some((
-                        "Paint stroke made no semantic changes".to_owned(),
-                        Instant::now(),
-                    ));
-                    return;
-                }
-                Err(error) => {
-                    self.revert(&stroke.step, false);
-                    self.notice = Some((
-                        format!("Paint stroke was rejected by the semantic session: {error:?}"),
-                        Instant::now(),
-                    ));
-                    return;
-                }
-            }
-        } else {
-            None
-        };
-
-        let mut height_history = None;
-        if paint_history.is_none()
-            && let Some(spec) = stroke.height_spec.clone()
-        {
-            let missing = stroke.step.changes.iter().find_map(|(key, _, _)| {
-                let plane = SourcePlane::new(key.0)?;
-                let coord = HeightVertexCoord::new(MapTile::new(key.1, key.2), plane);
-                self.session
-                    .document()
-                    .height_at(coord)
-                    .is_none()
-                    .then_some(coord)
-            });
-            if let Some(coord) = missing {
-                self.revert(&stroke.step, false);
-                self.notice = Some((
-                    format!(
-                        "Height stroke was not committed: semantic height is missing at {coord:?}"
-                    ),
-                    Instant::now(),
-                ));
-                return;
-            }
-
-            let patch = match build_terrain_height_patch(
-                self.session.document(),
-                &spec,
-                &stroke.height_centers,
-            ) {
-                Ok(patch) => patch,
-                Err(error) => {
-                    self.revert(&stroke.step, false);
-                    self.notice = Some((
-                        format!("Height stroke was not committed: {error:?}"),
-                        Instant::now(),
-                    ));
-                    return;
-                }
-            };
-
-            match self.session.commit(patch) {
-                Ok(Some(_)) => {
-                    if let Err(message) = self.project_height_stroke(&mut stroke) {
-                        let rollback_succeeded = matches!(self.session.undo(), Ok(Some(_)));
-                        self.revert(&stroke.step, false);
-                        self.notice = Some((
-                            if rollback_succeeded {
-                                format!("Height commit was rolled back: {message}")
-                            } else {
-                                format!(
-                                    "Height projection failed and semantic rollback failed: {message}"
-                                )
-                            },
-                            Instant::now(),
-                        ));
-                        return;
-                    }
-                    height_history = Some(SemanticHeightHistory {
-                        keys: stroke.step.changes.iter().map(|(key, _, _)| *key).collect(),
-                    });
-                }
-                Ok(None) => {
-                    if let Err(message) = self.project_height_stroke(&mut stroke) {
-                        self.revert(&stroke.step, false);
-                        self.notice = Some((
-                            format!("Height no-op projection failed: {message}"),
-                            Instant::now(),
-                        ));
-                    } else {
-                        self.notice = Some((
-                            "Height stroke made no semantic changes".to_owned(),
-                            Instant::now(),
-                        ));
-                    }
-                    return;
-                }
-                Err(error) => {
-                    self.revert(&stroke.step, false);
-                    self.notice = Some((
-                        format!("Height stroke was rejected by the semantic session: {error:?}"),
-                        Instant::now(),
-                    ));
-                    return;
-                }
-            }
-        }
-
-        if stroke.step.changes.is_empty()
-            && stroke.step.added.is_empty()
-            && stroke.step.removed.is_empty()
-        {
-            return;
-        }
-        let count = stroke.step.changes.len();
-        if let Some(paint_history) = paint_history {
-            self.push_step(EditStep::semantic_paint(
-                paint_history.brush,
-                paint_history.keys,
-            ));
-        } else if let Some(height_history) = height_history {
-            self.push_step(EditStep::semantic_height(height_history.keys));
-        } else {
-            self.push_step(stroke.step);
-        }
-        self.notice = Some((
-            format!("Changed {count} tile{}", if count == 1 { "" } else { "s" }),
-            Instant::now(),
-        ));
-    }
-
     /// Paint the brush footprint around `tile` into the open stroke.
     pub(super) fn paint_at(&mut self, tile: (i32, i32)) {
         let Some(mut stroke) = self.stroke.take() else {
@@ -536,7 +266,7 @@ impl EditorApp {
             .paint_brush
             .get_or_insert_with(|| self.prefs.brush.clone())
             .clone();
-        let plane = self.view_plane;
+        let plane = self.interaction.view_plane;
         let mut edits = Vec::new();
         for (x, y) in brush.footprint_tiles(tile) {
             let key = (plane, x, y);
@@ -565,7 +295,7 @@ impl EditorApp {
         }
         stroke.last_tile = Some(tile);
         stroke.last_applied = Instant::now();
-        let plane = self.view_plane;
+        let plane = self.interaction.view_plane;
         if stroke.anchor.is_none() {
             stroke.anchor = self.current_tile((plane, tile.0, tile.1)).map(|v| v.height);
         }
@@ -597,158 +327,14 @@ impl EditorApp {
         self.stroke = Some(stroke);
     }
 
-    /// Apply the Height tool's op to every selected tile (one undo step).
-    pub(super) fn height_on_selection(&mut self) {
-        let mut tiles: Vec<(i32, i32)> = self.selection_tiles.iter().copied().collect();
-        tiles.sort_unstable();
-        if tiles.is_empty() {
-            return;
-        }
-        self.begin_stroke();
-        let Some(mut stroke) = self.stroke.take() else {
-            return;
-        };
-        let plane = self.view_plane;
-        let source_plane = SourcePlane::new(plane)
-            .unwrap_or_else(|| unreachable!("editor view planes are always validated"));
-        let mut tool = self.prefs.height_tool.clone();
-        tool.falloff = crate::heights::Falloff::Flat;
-        // Flatten levels the whole selection to one height: the first selected tile's.
-        let anchor = tiles
-            .first()
-            .and_then(|t| self.current_tile((plane, t.0, t.1)))
-            .map_or(0, |v| v.height);
-        let spec = HeightStrokeSpec::new(
-            source_plane,
-            tool,
-            0,
-            crate::paint::BrushShape::Square,
-            anchor,
-            stroke.seed,
-        );
-        stroke.height_spec = Some(spec.clone());
-        let mut edits = Vec::new();
-        for tile in tiles {
-            let center = MapTile::new(tile.0, tile.1);
-            stroke.height_centers.push(center);
-            let lookup = |t: (i32, i32)| self.current_tile((plane, t.0, t.1)).map(|v| v.height);
-            let changes = spec.apply_sample(center, &lookup);
-            for (t, height) in changes {
-                let key = (plane, t.0, t.1);
-                if let Some(mut after) = self.current_tile(key) {
-                    after.height = height;
-                    self.record(&mut stroke, key, after, &mut edits);
-                }
-            }
-        }
-        self.send_edits(edits);
-        self.stroke = Some(stroke);
-        self.end_stroke();
-    }
-
-    /// Apply the brush to every selected tile (one undo step).
-    pub(super) fn fill_selection(&mut self) {
-        let tiles: Vec<(i32, i32)> = self.selection_tiles.iter().copied().collect();
-        if tiles.is_empty() || self.prefs.brush.is_empty() {
-            return;
-        }
-        self.begin_stroke();
-        let Some(mut stroke) = self.stroke.take() else {
-            return;
-        };
-        let brush = stroke
-            .paint_brush
-            .get_or_insert_with(|| self.prefs.brush.clone())
-            .clone();
-        let plane = self.view_plane;
-        let mut edits = Vec::new();
-        for (x, y) in tiles {
-            let key = (plane, x, y);
-            if let Some(before) = self.current_tile(key) {
-                let after = brush.apply(before);
-                self.record(&mut stroke, key, after, &mut edits);
-            }
-        }
-        self.send_edits(edits);
-        self.stroke = Some(stroke);
-        self.end_stroke();
-    }
-
-    /// Remove a tile's overlay (its shape and rotation with it): one undo step.
-    pub(super) fn clear_overlay_at(&mut self, tile: (i32, i32)) {
-        let key = (self.view_plane, tile.0, tile.1);
-        let Some(before) = self.current_tile(key) else {
-            return;
-        };
-        let mut after = before;
-        after.overlay = 0;
-        after.shape = 0;
-        after.rotation = 0;
-        self.begin_stroke();
-        let Some(mut stroke) = self.stroke.take() else {
-            return;
-        };
-        let mut edits = Vec::new();
-        self.record(&mut stroke, key, after, &mut edits);
-        self.send_edits(edits);
-        self.stroke = Some(stroke);
-        self.end_stroke();
-    }
-
-    /// One click without a drag (the context menu's "paint here" and "sculpt here").
-    pub(super) fn apply_brush_at(&mut self, tile: (i32, i32)) {
-        match self.prefs.tool {
-            Tool::Paint => {
-                if self.prefs.brush.is_empty() {
-                    self.notice = Some((
-                        "Nothing armed: tick a channel in the drawer".to_owned(),
-                        Instant::now(),
-                    ));
-                    return;
-                }
-                self.begin_stroke();
-                self.paint_at(tile);
-                self.end_stroke();
-            }
-            Tool::Height => {
-                self.begin_stroke();
-                self.sculpt_at(tile);
-                self.end_stroke();
-            }
-            Tool::Spline | Tool::Select | Tool::Objects => {}
-        }
-    }
-
     // ----------------------------------------------------------------- rebuilds
 
     fn send_edits(&mut self, edits: Vec<TileEdit>) {
         if edits.is_empty() {
             return;
         }
-        for edit in &edits {
-            for region in affected_regions(edit.tile) {
-                if self.loaded.contains_key(&region) {
-                    self.dirty_regions.insert(region);
-                }
-            }
-        }
-        self.streamer.edit(edits);
-    }
-
-    /// Request a rebuild of every dirty region that is not already being built; the old geometry
-    /// stays on screen until the new one arrives.
-    pub(super) fn flush_dirty_regions(&mut self) {
-        let ready: Vec<(i32, i32)> = self
-            .dirty_regions
-            .iter()
-            .copied()
-            .filter(|key| !self.in_flight.contains(key))
-            .collect();
-        for key in ready {
-            self.dirty_regions.remove(&key);
-            self.in_flight.insert(key);
-            self.streamer.request(RegionCoord::new(key.0, key.1));
-        }
+        self.world
+            .mirror_tile_edits(edits, |edit| affected_regions(edit.tile));
     }
 
     // -------------------------------------------------------------------- input
@@ -770,7 +356,7 @@ impl EditorApp {
         if !response.is_pointer_button_down_on() {
             return;
         }
-        let Some(tile) = self.hover.tile.map(|pick| pick.tile) else {
+        let Some(tile) = self.interaction.hover.tile.map(|pick| pick.tile) else {
             return;
         };
         if alt {

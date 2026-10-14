@@ -193,6 +193,39 @@ pub const CORE_ACTIONS: &[ActionDef] = &[
         Binding::key(Key::Escape),
     ),
     ActionDef::new(
+        "project.save",
+        "Save project",
+        "File",
+        Binding {
+            key: Key::S,
+            command: true,
+            shift: false,
+            alt: false,
+        },
+    ),
+    ActionDef::new(
+        "edit.copy_tiles",
+        "Copy selected tiles",
+        "Edit",
+        Binding {
+            key: Key::C,
+            command: true,
+            shift: false,
+            alt: false,
+        },
+    ),
+    ActionDef::new(
+        "edit.paste_tiles",
+        "Paste tiles at the cursor",
+        "Edit",
+        Binding {
+            key: Key::V,
+            command: true,
+            shift: false,
+            alt: false,
+        },
+    ),
+    ActionDef::new(
         "edit.undo",
         "Undo",
         "Edit",

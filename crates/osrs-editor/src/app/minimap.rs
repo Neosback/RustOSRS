@@ -71,10 +71,10 @@ impl EditorApp {
             egui::vec2(sprites.frame.width as f32, sprites.frame.height as f32) * scale;
         let origin = egui::pos2(rect.right() - frame_size.x - 10.0, rect.top() + 10.0);
         let at = |x: f32, y: f32| origin + egui::vec2(x, y) * scale;
-        let yaw = self.camera.yaw;
+        let yaw = self.interaction.camera.yaw;
         let (camera_x, camera_z) = self.world_position();
         let (tile_x, tile_y) = (camera_x / 128.0, camera_z / 128.0);
-        let plane = self.view_plane;
+        let plane = self.interaction.view_plane;
 
         // Scene image.
         let regions = self.minimap_regions(tile_x, tile_y, plane);
@@ -172,7 +172,7 @@ impl EditorApp {
             egui::Sense::click(),
         );
         if compass_response.on_hover_text("Face north").clicked() {
-            self.camera.yaw = 0.0;
+            self.interaction.camera.yaw = 0.0;
         }
         let map_response =
             ui.interact(map_rect, egui::Id::new("minimap_map"), egui::Sense::click());

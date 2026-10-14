@@ -177,7 +177,7 @@ fn placement_from_spec(spec: LocSpec) -> Result<ObjectPlacement, ObjectCommitErr
     })
 }
 
-fn spec_from_placement(placement: ObjectPlacement) -> LocSpec {
+pub(in crate::app) fn spec_from_placement(placement: ObjectPlacement) -> LocSpec {
     LocSpec {
         object_id: placement.object_id.get(),
         tile: (placement.position.tile.x, placement.position.tile.y),

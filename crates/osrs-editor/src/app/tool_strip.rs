@@ -49,7 +49,7 @@ impl EditorApp {
                             .clicked()
                         {
                             if active {
-                                self.spline.points.clear();
+                                self.interaction.spline.points.clear();
                                 self.set_tool(Tool::Select);
                             } else {
                                 self.set_tool(tool);

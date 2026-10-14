@@ -42,7 +42,7 @@ impl EditorApp {
                     .as_ref()
                     .is_some_and(|(_, shown)| shown.elapsed().as_secs_f32() < 6.0);
                 let wide = width >= if notice_up { 1900.0 } else { 1500.0 };
-                for (key, action) in match self.camera.mode {
+                for (key, action) in match self.interaction.camera.mode {
                     crate::camera::CameraMode::Fly => FLY_HINTS,
                     crate::camera::CameraMode::Orbit => ORBIT_HINTS,
                 } {
@@ -55,21 +55,16 @@ impl EditorApp {
                     ui.colored_label(egui::Color32::LIGHT_RED, status);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let resident: usize = self
-                        .loaded
-                        .values()
-                        .flatten()
-                        .map(|stats| stats.vertices)
-                        .sum();
-                    let regions = self.loaded.values().flatten().count();
+                    let resident = self.world.resident_vertices();
+                    let regions = self.world.resident_regions();
                     ui.weak(format!(
                         "{} region{}{}  \u{b7}  {:.1}M vertices  \u{b7}  {} zones",
                         regions,
                         if regions == 1 { "" } else { "s" },
-                        if self.in_flight.is_empty() {
+                        if self.world.in_flight_count() == 0 {
                             String::new()
                         } else {
-                            format!(" (+{} loading)", self.in_flight.len())
+                            format!(" (+{} loading)", self.world.in_flight_count())
                         },
                         resident as f32 / 1.0e6,
                         self.renderer.resident_zone_count()
