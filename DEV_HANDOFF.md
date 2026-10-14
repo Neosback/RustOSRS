@@ -350,6 +350,10 @@ The Objects tool can now add objects from the cache, not only move/duplicate/del
 
 Verified in the real app with the scripted `place ID X Y [TURNS]`: region object count 4726 -> 4727 on place, 4726 on undo, 4727 on redo, and a saved project restores the placed object in a fresh session. Real-cache test (`tests/object_catalog_real.rs`, skipped without the env var) checks the catalog lists >10k objects. Not done: a model preview in the result list, collision/overlap warnings, placing walls with edge snapping, and a loc-type picker for objects whose only models are wall pieces beyond the labelled types.
 
+### Copy / paste tiles (Edit menu, Cmd/Ctrl+C and Cmd/Ctrl+V)
+
+With tiles selected (Select tool, tile mode) Cmd/Ctrl+C copies their terrain channels and heights (`app/tile_clipboard.rs`, pure data relative to the selection's south-west corner); Cmd/Ctrl+V pastes with that corner on the hovered tile of the viewed plane. A paste is one Paint-style `MapPatch` (every channel set, heights through the target tile's quantizer), one `EditorSession` commit, and one undo step recorded with the semantic path-history route (terrain + heights from the document), so undo/redo reuse the existing projection. Pasted tiles become the selection. Objects are not copied (use the Objects tool's Copy / Place). Verified in the real app via scripted `tcopy` / `tpaste X Y`: target tile took the source values, tiles outside the area were untouched, undo restored and redo reapplied.
+
 ### Phase 7 gate: WebAssembly portability
 
 `cargo check --target wasm32-unknown-unknown` passes for every library crate and `cargo clippy --target wasm32-unknown-unknown -p osrs-editor -- -D warnings` is clean (verified locally). Native-only code is cfg-gated: `session::export` and `app/export.rs` have a stub `app/export_web.rs` on wasm. The gate is added to the Tier A CI job (`.github/workflows/ci.yml`); that workflow edit has NOT been executed on GitHub from this environment, so treat its first run as the verification.

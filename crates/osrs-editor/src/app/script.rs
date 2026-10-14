@@ -38,6 +38,7 @@ focus                  move the camera to the selection
 undo | redo | delete | turn | copy
 wait N                 pause N frames; at N waits until frame N
 sleep SECONDS          pause by the clock, whatever the frame rate
+tcopy | tpaste X Y     copy the selected tiles / paste them with their corner at a tile
 place ID X Y [TURNS]  place an object from the catalog at a tile
 inspect X Y            log a tile's projected and document values (smoke tests)
 status TEXT
@@ -333,6 +334,12 @@ impl EditorApp {
             "copy" => self.duplicate_selected_objects(),
             "wait" => {
                 self.script.wait_until = self.frames + number::<u64>(words.next(), "frames")?;
+            }
+            "tcopy" => self.copy_tile_selection(),
+            "tpaste" => {
+                let x = number::<i32>(words.next(), "x")?;
+                let y = number::<i32>(words.next(), "y")?;
+                self.paste_tiles_at((x, y));
             }
             "place" => {
                 let id = number::<u32>(words.next(), "object id")?;

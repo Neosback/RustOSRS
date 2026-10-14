@@ -36,6 +36,7 @@ mod shelf;
 mod spline_tool;
 mod status;
 mod streaming;
+mod tile_clipboard;
 mod tool_strip;
 mod toolbar;
 mod user_tools;
@@ -81,6 +82,8 @@ const ANIMATED_KEY: (i32, i32) = (i32::MIN, i32::MIN);
 
 pub struct EditorApp {
     renderer: render_runtime::RenderRuntime,
+    /// Tiles copied with Cmd/Ctrl+C, ready to paste.
+    clipboard: Option<tile_clipboard::TileClipboard>,
     /// Searchable object list and the object armed for placement.
     placer: object_tool::PlaceState,
     /// A running File > Export, if any.

@@ -6,6 +6,7 @@
 //! accumulate another god module.
 
 mod history;
+mod paste;
 mod path;
 mod plan;
 #[cfg(test)]

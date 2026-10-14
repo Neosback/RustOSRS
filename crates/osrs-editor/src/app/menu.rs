@@ -47,6 +47,33 @@ impl EditorApp {
                     }
                     ui.separator();
                     if ui
+                        .add_enabled(
+                            !self.interaction.selection_tiles.is_empty(),
+                            egui::Button::new(format!(
+                                "Copy tiles   {}",
+                                self.keymap.describe("edit.copy_tiles")
+                            )),
+                        )
+                        .clicked()
+                    {
+                        self.copy_tile_selection();
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.clipboard.is_some(),
+                            egui::Button::new(format!(
+                                "Paste tiles   {}",
+                                self.keymap.describe("edit.paste_tiles")
+                            )),
+                        )
+                        .clicked()
+                    {
+                        self.paste_tiles();
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui
                         .button(format!(
                             "{} Settings...   {}",
                             icons::SETTINGS,

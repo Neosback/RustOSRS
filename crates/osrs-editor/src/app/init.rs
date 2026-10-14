@@ -33,6 +33,7 @@ impl EditorApp {
 
         let mut app = Self {
             renderer,
+            clipboard: None,
             placer: object_tool::PlaceState::default(),
             export_job: None,
             project: project::ProjectState::default(),
