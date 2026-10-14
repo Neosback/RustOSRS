@@ -1,8 +1,8 @@
 //! Editing objects: move, turn, copy and delete the selected placements.
 //!
 //! Completed object actions commit through the authoritative semantic editor session. The existing
-//! world-worker `LocEdit` layer remains a downstream projection that rebuilds affected regions and
-//! re-selects moved/new placements after the rebuild arrives.
+//! world-worker `LocEdit` layer remains a downstream projection; rebuild scope comes from the
+//! finalized semantic receipt and re-selection happens after the rebuilt regions arrive.
 
 mod commit;
 mod place;
@@ -91,8 +91,11 @@ impl EditorApp {
         let execution = self.session.execute(patch, |document| {
             build_object_history_projection(document, &route, true)
         });
-        let projection = match execution {
-            Ok(EditExecution::Committed { projection, .. }) => projection,
+        let (receipt, projection) = match execution {
+            Ok(EditExecution::Committed {
+                receipt,
+                projection,
+            }) => (receipt, projection),
             Ok(EditExecution::NoChange) => {
                 self.notice = Some((
                     "Object action made no semantic changes".to_owned(),
@@ -135,7 +138,9 @@ impl EditorApp {
             }
         };
 
-        self.send_loc_edits(projection.edits);
+        self.world.project_loc_edits(projection.edits);
+        self.world
+            .invalidate_semantic_edit(receipt.impact, &receipt.touched_regions);
         self.push_step(EditStep::semantic_object(removed, added));
         self.clear_selection();
         self.interaction.pending_reselect = projection.reselect;
