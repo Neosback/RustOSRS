@@ -245,17 +245,6 @@ fn failed_undo_does_not_advance_revision_or_corrupt_history() {
     assert!(!session.can_redo());
 }
 
-fn paint_patch() -> MapPatch {
-    MapPatch::new(vec![MapOp::SetTerrain {
-        coord: position(),
-        before: TerrainTile::default(),
-        after: TerrainTile {
-            underlay: Some(FloorUnderlayId::new(9)),
-            ..TerrainTile::default()
-        },
-    }])
-}
-
 #[test]
 fn untracked_apply_changes_the_document_without_history_and_protects_the_region() {
     let mut session = session(0);
