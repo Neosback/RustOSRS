@@ -245,17 +245,6 @@ fn failed_undo_does_not_advance_revision_or_corrupt_history() {
     assert!(!session.can_redo());
 }
 
-fn paint_patch() -> MapPatch {
-    MapPatch::new(vec![MapOp::SetTerrain {
-        coord: position(),
-        before: TerrainTile::default(),
-        after: TerrainTile {
-            underlay: Some(FloorUnderlayId::new(9)),
-            ..TerrainTile::default()
-        },
-    }])
-}
-
 #[test]
 fn untracked_apply_changes_the_document_without_history_and_protects_the_region() {
     let mut session = session(0);
@@ -305,21 +294,6 @@ fn untracked_apply_of_an_empty_or_failing_patch_changes_nothing() {
     assert!(session.apply_untracked(&stale).is_err());
     assert_eq!(session.revision(), 0);
     assert_eq!(session.dirty_regions().count(), 0);
-}
-
-#[test]
-fn clearing_history_forgets_undo_but_not_the_document() {
-    let mut session = session(0);
-    session
-        .commit(paint_patch())
-        .unwrap_or_else(|e| unreachable!("{e:?}"));
-    assert!(session.can_undo());
-    session.clear_history();
-    assert!(!session.can_undo());
-    assert_eq!(
-        session.document().terrain_at(position()).underlay,
-        Some(FloorUnderlayId::new(9))
-    );
 }
 
 #[test]

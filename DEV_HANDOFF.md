@@ -1,6 +1,6 @@
 # RustOSRS Map Editor Architecture Handoff
 
-Last updated: 2026-10-13
+Last updated: 2026-10-14
 
 `ARCHITECTURE.md` is the authoritative architecture contract. This handoff records current implementation state, exact SHAs, completed checkpoints, transitional hazards, validation, and the next allowed boundary.
 
@@ -265,113 +265,120 @@ Height ingestion stores source-owned 64x64 final height samples per plane. Do no
 
 Transitional caveat: `WorldDefinitions::region()` can still include legacy worker edits until remaining editing/projection routes are migrated.
 
-## Completed: Phase 2.1 RenderRuntime ownership extraction
+## Completed: runtime ownership and architecture debt work
 
-Merged as PR #42 (`adb80da2`). `RenderRuntime` (`app/render_runtime.rs`) owns the eframe WGPU render state, the sole `SceneRenderer`, viewport targets, HD GPU install, and frame submission. No behavior change.
+`RenderRuntime` (`app/render_runtime.rs`) owns the eframe WGPU render state, the sole `SceneRenderer`, viewport targets, HD GPU install, and frame submission.
 
-## Current checkpoint: Phase 2.2 WorldRuntime ownership extraction
+`WorldRuntime` (`app/world_runtime.rs`) owns the disposable world-side projection state: the `RegionStreamer` and `AnimationWorker`, presentation generation/HD flag, resident/in-flight/dirty region sets, animation schedule, worker-readiness flag, and mirroring of tile/loc edits to the worker. `EditorSession` remains authoritative.
 
-Branch: `refactor/editor-world-runtime` (cut from `main` `adb80da2`).
+`InteractionRuntime` (`app/interaction_runtime.rs`) owns camera, view plane, hover/context picks, selection, marquee, spline state, tool peek, object drag, and gizmo state. It remains field ownership only; behavior encapsulation is still pending.
 
-`WorldRuntime` (`app/world_runtime.rs`) now owns the disposable world-side projection state that previously lived directly on `EditorApp`:
-
-- the `RegionStreamer` and `AnimationWorker`
-- presentation generation / HD flag (stale-build rejection via `is_current_generation`)
-- resident (`loaded`), `in_flight`, and edit-`dirty` region sets, with the stream-window policy (`wanted_regions`, `stale_regions`) as pure, unit-tested functions
-- the animation schedule (smoothing, frozen, cycle, centre, dirty)
-- worker-readiness flag
-- mirroring of tile/loc edits to the worker (`mirror_tile_edits`, `mirror_loc_edits`) - still projection only; `EditorSession` stays authoritative
-
-`EditorApp` keeps orchestration of stream events (`app/streaming.rs`): it asks `WorldRuntime` for bookkeeping and applies the render/inspection/semantic-session consequences itself. The write-only `last_build_ms` field was deleted.
-
-Validation (local; no CI access from this environment): `cargo fmt`, `cargo clippy --workspace --all-targets --all-features -D warnings`, `cargo test -p osrs-editor`, architecture guard, and a 25 s release smoke run against the pinned b241 cache (9 regions streamed, animation upload live, ~60 fps).
-
-Debt baselines tightened: `app.rs` 738 -> 665 lines, `app/editing.rs` 792 -> 670, `app/editing/history.rs` 641 -> 632.
+Every file on the former architecture-debt allowlist is now within the 500-line / 32 KiB cap and `scripts/architecture_debt.json` is empty. The guard still rejects new or growing exceptions.
 
 ### Phase 4 closed: context-menu overlay clear is semantic
 
-`clear_overlay_at` previously fell through `end_stroke` to the legacy `push_step(stroke.step)` path, so it was the last terrain mutation outside `EditorSession`. It now arms `overlay_clear_brush()` (overlay channel `Fill::Clear`, nothing else) and commits through the same Paint planner as every other stroke. The legacy fallback in `end_stroke` is removed: a stroke without a Paint brush or Height spec is reverted with a notice (and trips a `debug_assert!`), so the invariant "every terrain mutation enters through `EditorSession`" is enforced in code, not just by convention. Pure Paint/Height planning and projection helpers moved to `app/editing/plan.rs`. Regression tests cover the clear commit/undo and the no-op case.
-
-### Phase 6: architecture debt retired
-
-Every file on the debt allowlist is now within the 500-line / 32 KiB cap and `scripts/architecture_debt.json` is empty (the guard still rejects any growth or new exception). Pure moves, no behavior change, verified by tests, the architecture guard, and release smoke runs/screenshots:
-
-- `settings_window.rs` (1569) -> `settings_window/{mod,catalog,rows,row_widgets,pages,tests}.rs`
-- `drawer.rs` (951) -> `drawer/{mod,palettes,channels,tabs}.rs`
-- `workspace.rs` (755) -> `workspace/{mod,dock,tools}.rs`
-- `context_menu.rs` (647) -> `context_menu/{mod,editor_menu,game_menu,effects}.rs`
-- `worldmap.rs`, `spline_tool.rs`, `object_tool.rs` -> `canvas`/`key`, `input`/`overlay`, `drawer` submodules
-- `editing/history.rs` -> `history/routing.rs` (undo/redo); `editing.rs` -> `commit.rs` + `actions.rs`
-- `app.rs` -> `init.rs` (`EditorApp::new`) + `input.rs`
-- inline test modules of `settings.rs`, `paint.rs`, `pick.rs` -> `*/tests.rs`; `pick/describe.rs`
-
-`routing.rs`'s duplicated ~190-line `undo`/`redo` were collapsed into one direction-parameterized routine (381 -> 189 lines, same messages, verified paint/undo/redo in the real app). `end_stroke` was split into `commit_paint_stroke` / `commit_height_stroke` (same notices; verified paint and height strokes with undo in the real app). `draw_row` was split into four page-group functions that each report whether they handled the row (`draw_interface_row`, `draw_world_row`, `draw_reference_row`, `draw_hd_row`); a test checks every catalog row has a widget arm. No known long-function smell from the debt-retirement list remains (the group functions are declarative `match`es of ~100 lines). These exceed the 100-line function guideline and are the next real refactor targets. Submodules use `use super::*;`, matching the existing `app/streaming.rs` style.
-
-### Phase 2.3: InteractionRuntime (field ownership)
-
-`InteractionRuntime` (`app/interaction_runtime.rs`) now owns camera, view plane, hover/context picks, selection (objects, tiles, pending reselect), marquee, spline state, tool peek, object drag, and gizmo state. It was first tried before the size debt was retired and rejected because the ~300 call-site renames pushed frozen files over their baselines; with the debt gone it landed as a field-ownership move only. It is still a plain-fields struct: encapsulating selection behind methods is the follow-up that would make it more than a rename. `EditorApp` is down to 58 direct fields (target: roughly 8-12 subsystem fields).
+`clear_overlay_at` now commits through the same Paint planner as every other stroke. The legacy terrain-mutation fallback is gone, so the invariant "every terrain mutation enters through `EditorSession`" is enforced in code.
 
 ### Phase 8 started: map-stream encoders (`osrs-cache::encode`)
 
-`encode_terrain` / `encode_locations` are strict inverses of `decode_terrain` / `decode_locations`, with typed `MapEncodeError`s for unrepresentable values (no silent truncation). Measured against every decodable square of the pinned build-241 cache with `cargo run --release -p osrs-reference --example map_encode_roundtrip -- $RUSTOSRS_TARGET_CACHE_DIR`:
+`encode_terrain` / `encode_locations` are strict inverses of `decode_terrain` / `decode_locations`, with typed `MapEncodeError`s for unrepresentable values (no silent truncation). Measured against every decodable square of the pinned build-241 cache:
 
 - locations: 2936 / 2936 byte-exact
-- terrain: 2935 / 2936 byte-exact; the one exception carries the client-discarded second tile block (flags bit 0), which the decoder does not retain, so the encoder cannot reproduce it
-- 1 square is undecodable without XTEA keys (the profile has none)
-- every re-encoded terrain stream decodes back to identical tiles
+- terrain: 2935 / 2936 byte-exact; the one exception carries client-discarded data that the semantic decoder does not retain
+- every re-encoded terrain stream decodes back to identical retained semantics
+- repacking all five files of every real group is byte-exact: 2936 / 2936
 
-Canonical form: per tile `overlay, settings, underlay, height`, then a trailing flags byte `0` (build-241 files always end with it). Map groups hold five files (0 terrain, 1 locations, 2..=4 other); `pack_group`/`split_group`/`encode_container`/`decode_container` reproduce them, and repacking all five files of every real group is byte-exact (2936 / 2936). Every real map container uses gzip.
+### Phase 8: export of edited regions
 
-### Phase 8: export of edited regions (File > Export edited regions...)
+`session::export` diffs the authoritative document against pristine source semantics, rewrites only changed terrain/location streams, preserves untouched group files, and verifies the result by decoding. The source cache is never modified.
 
-- `session::export::export_region(original terrain, original locations, MapDocument)` diffs the authoritative document against the semantic baseline of the same decoded square and patches only differences into the original tiles/locations: channels (underlay, overlay id+shape+rotation, flags; raw id bit 15 preserved when the semantic id is unchanged), heights (re-stored plane by plane because explicit heights are relative to the plane below; unstorable heights are an error, never silently rounded), and objects. It returns `None` for an unedited square (untouched archives are never rewritten) and `RegionNotLoaded` when the document holds no state for the square (instead of reading as a mass deletion).
-- `osrs-world::SourceSquares` reads pristine squares (no worker edit layer) plus all group files.
-- `app/export.rs` runs the export on a worker thread over a document snapshot and writes `5/<group>.dat` (gzip container of the original group with files 0 and 1 replaced, files 2..=4 preserved) and `manifest.json` (profile, cache fingerprint, per-region change counts). The source cache is never modified. Native only; the menu entry is a no-op on wasm.
-- Validation: unit tests plus real-cache tests (skipped without `RUSTOSRS_TARGET_CACHE_DIR`): every sampled real square exports as `None` when unedited, real edits survive export and reload, and the full file-writing path decodes back to the edit with files 2..=4 byte-identical.
+Not done: writing into `.dat2`/`.idx`, reference-table updates, and full loadable-cache repack/version/CRC bookkeeping.
 
-Not done: writing into `.dat2`/`.idx` and updating the reference table (a loadable repacked cache), version/CRC bookkeeping in exported containers. Placement note: `session::export` lives in `osrs-editor` because it needs `adapt_region_map`; move it down with that adapter if another consumer appears.
+## Current checkpoint: project/source lifecycle hardening
+
+Active branch: `fix/project-source-lifecycle`
+
+Base `main`:
+`fcb80c17a00d33421fc446cc68cb78efaa1ae3ec`
+
+Certified implementation head before this handoff update:
+`2ddc6192f491f67a4bfd3919c60dc99391223505`
+
+Exact CI:
+`38524410640` - Tier A/B/C PASS, including architecture guard, formatting, workspace compile, strict Clippy, WebAssembly portability, workspace tests, and M3-M9 semantic/reference parity.
+
+Lifecycle contract established on this branch:
+
+```text
+current session
+  -> source/project transition request
+  -> if dirty: Save / Discard / Cancel
+  -> transition permitted
+  -> reset source-bound project + semantic state
+  -> load/restart pristine source
+  -> apply only the new project's diffs
+```
+
+- cache switches and GUI project opens now use one lifecycle guard
+- a source/project replacement is blocked while an asynchronous project save is in flight
+- Save-before-transition waits for the save to finish; failed/disconnected saves reopen the transition prompt
+- cache replacement clears source-bound project state and resets the authoritative `EditorSession`
+- Open Project is replacement, not implicit merge: it resets the current semantic session and restarts the current cache from its pristine source before applying the opened project's diffs
+- scripted project open refuses to replace unsaved work and refuses to run while a save is active
+- pending project diffs are retained until semantic application and all synchronous projection steps succeed, so failures remain retryable
+- project projection retries derive work from the stored `RegionDiff`, not only from a now-empty second semantic patch
+- obsolete `EditorSession::is_loaded` and `clear_history` APIs were removed because project replacement now resets the whole session instead of pretending history-only replacement is sufficient
+- regression tests prove source-bound project reset, replacement dropping old semantic edits/pending diffs, failed project-region application retaining its pending diff, and dirty transition staging without replacement
+
+Known lifecycle caveats intentionally not solved on this branch:
+
+- semantic rollback after projection failure is still not revision-neutral; the next focused architecture branch should solve exact transaction rollback rather than extending this lifecycle branch
+- if an opened project's pending region applies while a save snapshot is already in flight, the saved file still contains that pending diff, but the later `edit_revision` can conservatively leave the session marked dirty and require another save; this is safe but can be redundant
+- projects remain native-only; the WebAssembly project module is a stub, while browser cache/source replacement still resets the semantic session
 
 ### Projects: File > Open / Save project (Ctrl/Cmd+S)
 
-Edits now persist between runs. A project file (`rustosrs-project-v1` JSON, `session/project_file.rs`) stores only per-region `RegionDiff`s (`session/region_diff.rs`: document vs the semantic baseline of the stored square: changed tiles, absolute final heights, object adds/removes) plus the bundled cache profile id (bound to the cache fingerprint). Decoding validates every value through the semantic constructors; unknown formats and out-of-range values are rejected, never clamped.
+A project file (`rustosrs-project-v1` JSON, `session/project_file.rs`) stores only per-region `RegionDiff`s plus the bundled cache profile id. Decoding validates semantic values and rejects unknown formats/out-of-range values rather than clamping them.
 
-- Save (`app/project.rs`) runs on a worker thread: reads pristine source squares, diffs against a document snapshot, merges still-unapplied diffs of an opened project, and writes atomically (temp file + rename).
-- Open validates the profile against the open cache, clears undo history (opened edits are not undo steps), then applies each region's diff the moment that region's semantic state is loaded (resident regions immediately, others when they stream in). `EditorSession::apply_untracked` applies without a history entry and marks the region dirty (streaming-safe); projection into the worker/picker mirrors reuses the Path primitives (`project_document_tiles`, `build_object_history_projection`).
-- Export now shares the same `RegionDiff` (`session::export` = diff + encode).
-- Verified in the real app with scripted runs (`project save|open PATH`, `inspect X Y`, `sleep SECONDS` were added to the script language for this): a fresh start shows overlay 10 at a tile, opening a saved project shows overlay 5 in both the semantic document and the projected view, tiles outside the brush are untouched. Screenshots stopped working in this environment mid-session (capture never fires), so the rendered result of an opened project was not eyeballed; the geometry rebuild path is the same dirty-region flush every interactive edit uses.
-- Closing the window (including File > Quit) with unsaved edits shows a Save and quit / Quit without saving / Cancel dialog (`quit_guard`). "Unsaved" means `EditorSession::edit_revision` (counts commits/undo/redo/applied projects, never streaming) differs from the value at the last successful save or project open. Smoke runs (`RUSTOSRS_EXIT_AFTER_SECONDS` / screenshot hook) bypass the dialog so scripted runs still exit.
-- Known limits: opening a project overrides conflicting current edits in loaded regions (no merge UI); projects are native-only (stub on wasm).
+- Save (`app/project.rs`) runs on a worker thread, reads pristine source squares, diffs a document snapshot, merges still-unapplied project diffs, and writes atomically using a temporary file + rename.
+- Open validates the file against the currently open cache, then routes through the lifecycle guard. Opening a project means replacement: the old semantic session/history/project state is discarded, the current source is restarted from pristine cache data, and only the newly opened project's diffs are queued.
+- Project diffs apply through `EditorSession::apply_untracked` without becoming undo steps. The region remains queued until semantic application and synchronous tile/object projection succeed.
+- Closing the application with unsaved edits still uses Save and quit / Quit without saving / Cancel. A close request supersedes a pending source/project transition choice.
+- Export continues to share the same `RegionDiff` representation.
 
-Corrected `osrs-cache`'s `configured_build_241_cache_matches_pinned_source_shape`, which asserted map groups hold files `[0, 1]`; the pinned cache has `[0, 1, 2, 3, 4]`. That test is skipped without `RUSTOSRS_TARGET_CACHE_DIR`, so CI never exercised it.
+### Place new objects
 
-### Place new objects (Objects tool drawer: "Place object")
+The Objects tool can add cache objects through the same semantic Object planner and `EditorSession` authority used for move/duplicate/delete. Placement remains one semantic commit and one undo step.
 
-The Objects tool can now add objects from the cache, not only move/duplicate/delete existing ones. `osrs-world::object_catalog` (`load_object_catalog`, `ObjectCatalog::search`) lists named objects that have models (id, name, size, available loc types; search ranks exact id, then name prefix, then contains). The editor loads it on a thread next to the floor palette (`placer.catalog`; native only, the browser shows a notice). In the drawer: search, pick a result, choose the loc type if several, rotate (button or the object-rotate key, Shift+key reverses), then click tiles; Esc or Stop disarms. A translucent footprint follows the cursor. Placement is `edit_objects(vec![], vec![spec])`: one semantic commit, one undo step, projected to the worker like every object action, and saved/exported like any other edit.
+### Copy / paste tiles
 
-Verified in the real app with the scripted `place ID X Y [TURNS]`: region object count 4726 -> 4727 on place, 4726 on undo, 4727 on redo, and a saved project restores the placed object in a fresh session. Real-cache test (`tests/object_catalog_real.rs`, skipped without the env var) checks the catalog lists >10k objects. Not done: a model preview in the result list, collision/overlap warnings, placing walls with edge snapping, and a loc-type picker for objects whose only models are wall pieces beyond the labelled types.
-
-### Copy / paste tiles (Edit menu, Cmd/Ctrl+C and Cmd/Ctrl+V)
-
-With tiles selected (Select tool, tile mode) Cmd/Ctrl+C copies their terrain channels and heights (`app/tile_clipboard.rs`, pure data relative to the selection's south-west corner); Cmd/Ctrl+V pastes with that corner on the hovered tile of the viewed plane. A paste is one Paint-style `MapPatch` (every channel set, heights through the target tile's quantizer), one `EditorSession` commit, and one undo step recorded with the semantic path-history route (terrain + heights from the document), so undo/redo reuse the existing projection. Pasted tiles become the selection. Objects are not copied (use the Objects tool's Copy / Place). Verified in the real app via scripted `tcopy` / `tpaste X Y`: target tile took the source values, tiles outside the area were untouched, undo restored and redo reapplied.
+Tile copy/paste records terrain channels and heights relative to the copied selection and pastes through one semantic `MapPatch`/history step. Objects are intentionally not copied by the tile clipboard.
 
 ### Phase 7 gate: WebAssembly portability
 
-`cargo check --target wasm32-unknown-unknown` passes for every library crate and `cargo clippy --target wasm32-unknown-unknown -p osrs-editor -- -D warnings` is clean (verified locally). Native-only code is cfg-gated: `session::export` and `app/export.rs` have a stub `app/export_web.rs` on wasm. The gate is added to the Tier A CI job (`.github/workflows/ci.yml`); that workflow edit has NOT been executed on GitHub from this environment, so treat its first run as the verification.
+The Tier A CI gate runs the WebAssembly portability checks and is green on the current lifecycle branch. Native-only project/export behavior remains cfg-gated with browser stubs where required.
 
 ## Remaining migration roadmap
 
 ### Phase 2: decompose EditorApp state ownership
 
-Extract one coherent runtime at a time:
+Completed ownership extractions:
 
-1. `RenderRuntime` - done (PR #42)
-2. `WorldRuntime` - done (this branch)
-3. `InteractionRuntime` - done (field ownership; behavior encapsulation pending)
+1. `RenderRuntime` - done
+2. `WorldRuntime` - done
+3. `InteractionRuntime` - field ownership done; behavior encapsulation pending
+
+Remaining focused ownership work:
+
 4. `ProjectRuntime`
 5. `UiRuntime`
 6. `DiagnosticsRuntime`
 
 Do not combine runtimes into one large refactor. Behavior remains unchanged during pure ownership extraction.
+
+### Transaction rollback before central gateway
+
+Before routing more edits through one gateway, make failed semantic-commit + projection sequences exactly revision-neutral. Required invariant after failed projection: document, history, revision, edit revision, and redo state are exactly what they were before the attempted transaction.
 
 ### Phase 3: central edit gateway
 
@@ -380,11 +387,6 @@ Do not combine runtimes into one large refactor. Behavior remains unchanged duri
 - remove transitional split routing when safe
 - keep `MapPatch` and `EditorSession` as semantic authority
 
-### Phase 4: context-menu semantic migration
-
-- migrate `clear_overlay_at`
-- prove all semantic map mutations enter through the transaction boundary
-
 ### Phase 5: projection/invalidation service
 
 - centralize semantic receipt/change impact -> invalidation
@@ -392,22 +394,11 @@ Do not combine runtimes into one large refactor. Behavior remains unchanged duri
 - revision/generation-check every async install
 - add 8x8 projection granularity only after profiling and edge-rule tests justify it
 
-### Phase 6: large UI debt
-
-Refactor allowlisted UI/application modules one responsibility at a time. Do not merely move broad `impl EditorApp` blocks.
-
-### Phase 7: platform ports + WebAssembly gate
-
-- concentrate native/web differences
-- add WASM compile gate
-- harden browser storage/project abstractions
-
 ### Phase 8: cache writing/round-trip guarantees
 
-- encoder guarantee definitions
-- semantic and byte-exact roundtrip tests where promised
-- untouched archive preservation
-- transactional save/repack design
+- add small deterministic checked-in write/repack fixtures that do not require a real cache environment
+- retain the real-cache full-sweep tests as extended validation
+- complete transactional loadable-cache repack only after fixture guarantees are strong
 
 ### Phase 9: renderer/projection optimization
 
@@ -421,4 +412,4 @@ Resume on separate focused branches once editor authority/projection boundaries 
 
 ## Next boundary
 
-Next candidates: encapsulate selection behind `InteractionRuntime` methods, `ProjectRuntime`/`UiRuntime` field extractions, break up the long functions listed above, Phase 3 central edit gateway, Phase 5 projection service, Phase 7 WASM gate.
+Finish this branch through review/PR/merge only after explicit user direction. After it is merged and the new exact `main` is certified, re-read main before choosing the next branch. The current provisional next architecture branch is `refactor/edit-transaction-rollback`; central edit-gateway and projection-invalidation work should remain later, separate branches.

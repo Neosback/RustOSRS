@@ -65,18 +65,6 @@ impl EditorSession {
         self.edit_revision
     }
 
-    /// Whether the region's semantic state is currently in the document.
-    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-    pub fn is_loaded(&self, region: RegionCoord) -> bool {
-        self.loaded_regions.contains(&region)
-    }
-
-    /// Forget all undo/redo entries (opening a project starts from a clean history).
-    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-    pub fn clear_history(&mut self) {
-        self.history = EditHistory::new();
-    }
-
     /// Apply a patch that is not an interactive edit (a project being opened): no history entry,
     /// but the touched regions become streaming-safe dirty regions and the revision advances.
     /// An empty patch is a no-op that returns `Ok(false)`.

@@ -2,20 +2,24 @@
 //!
 //! A project file stores only the differences against the source cache (see
 //! `session::project_file`). Saving diffs the authoritative document against freshly read source
-//! squares on a worker thread. Opening validates the file against the open cache's profile, clears
-//! undo history, and applies each region's diff to the session the moment that region is loaded
-//! (immediately for resident regions, on streaming arrival for the rest), projecting the result
-//! into the worker/picker mirrors exactly like an interactive edit would.
+//! squares on a worker thread. Opening validates the file against the open cache's profile, then
+//! restarts that cache from its pristine source before applying each project region as it streams.
+//! This keeps Open Project replacement semantics distinct from a future explicit merge/import.
+
+mod lifecycle;
+#[cfg(test)]
+mod tests;
 
 use super::EditorApp;
 use super::editing::TileKey;
 use super::object_tool::{
     ObjectHistoryRoute, build_object_history_projection, spec_from_placement,
 };
-use crate::session::{PROJECT_FORMAT, ProjectFile, RegionDiff, diff_region};
+use crate::session::{EditorSession, PROJECT_FORMAT, ProjectFile, RegionDiff, diff_region};
 use eframe::egui;
+use osrs_cache::source::CacheSource;
 use osrs_core::coords::RegionCoord;
-use osrs_edit::{MapDocument, MapOp};
+use osrs_edit::MapDocument;
 use osrs_world::SourceSquares;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -24,27 +28,32 @@ use web_time::Instant;
 
 #[derive(Default)]
 pub(super) struct ProjectState {
-    /// Diffs from an opened project whose region has not been applied yet.
+    /// Diffs from an opened project whose region has not been applied and projected yet.
     pending: BTreeMap<RegionCoord, RegionDiff>,
     /// The file Save writes to.
     path: Option<PathBuf>,
     save: Option<Receiver<Result<(PathBuf, usize), String>>>,
-    /// `EditorSession::edit_revision` as of the last successful save or project open.
+    /// `EditorSession::edit_revision` as of the last successful save or project application.
     saved_edit_revision: u64,
     /// The edit revision the running save snapshotted.
     saving_revision: u64,
-    /// The unsaved-changes dialog is showing.
+    /// The unsaved-changes dialog is showing for application close.
     quit_prompt: bool,
     /// Close the window once the running save finishes.
     close_when_saved: bool,
     /// The user chose to quit without saving.
     discard_confirmed: bool,
+    /// A cache/project replacement waiting for Save / Discard / Cancel.
+    transition: Option<lifecycle::LifecycleTransition>,
+    transition_prompt: bool,
+    /// Execute `transition` after the save currently requested by the transition prompt succeeds.
+    transition_after_save: bool,
 }
 
 /// Build the project file contents for `document`, keeping unapplied `pending` diffs for regions
 /// that are not being re-diffed. Pure apart from reading the source cache.
 fn build_project(
-    source: osrs_cache::source::CacheSource,
+    source: CacheSource,
     document: &MapDocument,
     dirty: &[RegionCoord],
     pending: &[RegionDiff],
@@ -85,6 +94,35 @@ fn tile_key(position: osrs_edit::MapPosition) -> TileKey {
     )
 }
 
+/// Establish a clean semantic/project state before the current source is restarted.
+fn prepare_project_replacement(
+    project: &mut ProjectState,
+    session: &mut EditorSession,
+    path: PathBuf,
+    diffs: Vec<RegionDiff>,
+) {
+    debug_assert!(project.save.is_none());
+    project.reset_for_source_change();
+    session.reset();
+    project.path = Some(path);
+    project.pending = diffs.into_iter().map(|diff| (diff.region, diff)).collect();
+    project.saved_edit_revision = session.edit_revision();
+}
+
+/// Apply the queued semantic diff without consuming it. Projection success owns final removal.
+fn apply_pending_project_semantics(
+    project: &ProjectState,
+    session: &mut EditorSession,
+    region: RegionCoord,
+) -> Result<Option<(RegionDiff, bool)>, osrs_edit::PatchApplyError> {
+    let Some(diff) = project.pending.get(&region).cloned() else {
+        return Ok(None);
+    };
+    let patch = diff.to_patch(session.document());
+    let changed = session.apply_untracked(&patch)?;
+    Ok(Some((diff, changed)))
+}
+
 impl EditorApp {
     /// Whether edits exist that no save or project open has captured.
     fn is_unsaved(&self) -> bool {
@@ -101,7 +139,7 @@ impl EditorApp {
         let idle = self.project.save.is_none();
         if ui
             .add_enabled(
-                cache_open,
+                cache_open && idle,
                 egui::Button::new(format!(
                     "{}  Open project...",
                     egui_phosphor::regular::FOLDER_OPEN
@@ -110,7 +148,8 @@ impl EditorApp {
             .clicked()
         {
             ui.close();
-            self.open_project();
+            let ctx = ui.ctx().clone();
+            self.open_project(&ctx);
         }
         let can_save = cache_open && idle && self.has_project_changes();
         if ui
@@ -126,14 +165,14 @@ impl EditorApp {
             .clicked()
         {
             ui.close();
-            self.save_project(false);
+            let _ = self.save_project(false);
         }
         if ui
             .add_enabled(can_save, egui::Button::new("Save project as..."))
             .clicked()
         {
             ui.close();
-            self.save_project(true);
+            let _ = self.save_project(true);
         }
     }
 
@@ -144,11 +183,12 @@ impl EditorApp {
             && self.project.save.is_none()
             && self.has_project_changes()
         {
-            self.save_project(false);
+            let _ = self.save_project(false);
         }
     }
 
-    fn save_project(&mut self, ask: bool) {
+    /// Returns whether a save job was actually started (the user may cancel the file dialog).
+    fn save_project(&mut self, ask: bool) -> bool {
         let path = match (&self.project.path, ask) {
             (Some(path), false) => path.clone(),
             _ => {
@@ -158,18 +198,19 @@ impl EditorApp {
                     .set_file_name("map-edits.rustosrs.json")
                     .save_file()
                 else {
-                    return;
+                    return false;
                 };
                 path
             }
         };
         self.start_save(path);
+        true
     }
 
     fn start_save(&mut self, path: PathBuf) {
         self.project.path = Some(path.clone());
         self.project.saving_revision = self.session.edit_revision();
-        let source = osrs_cache::source::CacheSource::Dir(self.cache_dir.clone());
+        let source = CacheSource::Dir(self.cache_dir.clone());
         let document = self.session.document().clone();
         let dirty: Vec<RegionCoord> = self.session.dirty_regions().collect();
         let pending: Vec<RegionDiff> = self.project.pending.values().cloned().collect();
@@ -196,14 +237,27 @@ impl EditorApp {
                 Ok(format!("Saving project to {path}"))
             }
             "save" => Err("a save is already running".to_owned()),
-            "open" => self
-                .begin_project(Path::new(path))
-                .map(|count| format!("Opened project: {count} edited region{}", plural(count))),
+            "open" if self.project.save.is_some() => {
+                Err("finish the current project save before opening another project".to_owned())
+            }
+            "open" if self.is_unsaved() => Err(
+                "unsaved changes exist; save or discard them before scripted project open"
+                    .to_owned(),
+            ),
+            "open" => {
+                let diffs = self.load_project(Path::new(path))?;
+                let count = diffs.len();
+                self.activate_project(PathBuf::from(path), diffs);
+                Ok(format!(
+                    "Opening project: {count} edited region{}",
+                    plural(count)
+                ))
+            }
             other => Err(format!("unknown project action '{other}'")),
         }
     }
 
-    fn open_project(&mut self) {
+    fn open_project(&mut self, ctx: &egui::Context) {
         let Some(path) = rfd::FileDialog::new()
             .set_title("Open project")
             .add_filter("RustOSRS project", &["json"])
@@ -211,18 +265,18 @@ impl EditorApp {
         else {
             return;
         };
-        let message = match self.begin_project(&path) {
-            Ok(count) => {
-                self.project.path = Some(path);
-                format!("Opened project: {count} edited region{}", plural(count))
+        let diffs = match self.load_project(&path) {
+            Ok(diffs) => diffs,
+            Err(error) => {
+                self.notice = Some((format!("Could not open project: {error}"), Instant::now()));
+                return;
             }
-            Err(error) => format!("Could not open project: {error}"),
         };
-        self.notice = Some((message, Instant::now()));
+        self.request_transition(lifecycle::LifecycleTransition::Project { path, diffs }, ctx);
     }
 
-    /// Validate `path` against the open cache and queue its regions. Returns the region count.
-    fn begin_project(&mut self, path: &Path) -> Result<usize, String> {
+    /// Read and validate a project against the currently open cache.
+    fn load_project(&self, path: &Path) -> Result<Vec<RegionDiff>, String> {
         let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
         let file = ProjectFile::from_json(&text).map_err(|error| format!("{error:?}"))?;
         let profile = self.cache_build.as_ref().map(|(_, id)| id.clone());
@@ -234,79 +288,80 @@ impl EditorApp {
             ));
         }
         debug_assert_eq!(file.format, PROJECT_FORMAT);
-        let diffs = file.into_diffs().map_err(|error| format!("{error:?}"))?;
-        let count = diffs.len();
-        // The opened project replaces the undo history: its edits are not undoable steps.
-        self.session.clear_history();
-        self.history.clear();
-        self.redo_stack.clear();
-        self.project.pending = diffs.into_iter().map(|diff| (diff.region, diff)).collect();
-        let resident: Vec<RegionCoord> = self
-            .project
-            .pending
-            .keys()
-            .copied()
-            .filter(|region| self.session.is_loaded(*region))
-            .collect();
-        for region in resident {
-            self.apply_project_region(region);
-        }
-        self.project.saved_edit_revision = self.session.edit_revision();
-        Ok(count)
+        file.into_diffs().map_err(|error| format!("{error:?}"))
+    }
+
+    /// Replace the current editing session with `diffs` from the pristine current cache source.
+    fn activate_project(&mut self, path: PathBuf, diffs: Vec<RegionDiff>) {
+        prepare_project_replacement(&mut self.project, &mut self.session, path, diffs);
+        // Restarting the source clears worker-side edit projections as well as all resident legacy
+        // projections. Project diffs are then applied only to fresh source regions as they arrive.
+        self.restart_current_source();
     }
 
     /// Apply the opened project's diff for `region` if one is waiting. Called whenever a region's
-    /// semantic state has just been loaded (and right after opening for resident regions).
+    /// semantic state has just been loaded. The diff remains queued until semantic application and
+    /// every synchronous projection step succeeds, so failures are retryable instead of lossy.
     pub(super) fn apply_project_region(&mut self, region: RegionCoord) {
-        let Some(diff) = self.project.pending.remove(&region) else {
+        let was_saved = !self.is_unsaved();
+        let applied =
+            match apply_pending_project_semantics(&self.project, &mut self.session, region) {
+                Ok(applied) => applied,
+                Err(error) => {
+                    self.notice = Some((
+                        format!(
+                            "Project region {},{} could not be applied: {error:?}",
+                            region.x, region.y
+                        ),
+                        Instant::now(),
+                    ));
+                    return;
+                }
+            };
+        let Some((diff, changed)) = applied else {
             return;
         };
-        let patch = diff.to_patch(self.session.document());
-        let was_saved = !self.is_unsaved();
-        match self.session.apply_untracked(&patch) {
-            Ok(false) => return,
-            Ok(true) => {
-                // Applying a project's own edits does not make the session "unsaved".
-                if was_saved {
-                    self.project.saved_edit_revision = self.session.edit_revision();
-                }
-            }
-            Err(error) => {
-                self.notice = Some((
-                    format!(
-                        "Project region {},{} could not be applied: {error:?}",
-                        region.x, region.y
-                    ),
-                    Instant::now(),
-                ));
-                return;
-            }
+        if changed && was_saved {
+            // Applying a project's own edits does not make the session "unsaved". Projection
+            // failure is a presentation/runtime failure, not a new semantic user edit.
+            self.project.saved_edit_revision = self.session.edit_revision();
         }
-        let (mut terrain_keys, mut height_keys) = (Vec::new(), Vec::new());
-        let (mut removed, mut added) = (Vec::new(), Vec::new());
-        for op in patch.ops() {
-            match op {
-                MapOp::SetTerrain { coord, .. } => terrain_keys.push(tile_key(*coord)),
-                MapOp::SetHeight { coord, .. } => {
-                    height_keys.push((coord.plane.index().get(), coord.corner.x, coord.corner.y));
-                }
-                MapOp::RemoveObject { placement } => {
-                    removed.push(spec_from_placement(*placement));
-                }
-                MapOp::AddObject { placement } => {
-                    added.push(spec_from_placement(*placement));
-                }
-            }
-        }
+
+        // Derive projection work from the project diff, not only the just-applied patch. If a prior
+        // projection attempt failed after semantic application, the next retry still re-projects the
+        // desired state even though `to_patch` is now empty.
+        let mut terrain_keys: Vec<TileKey> = diff
+            .tiles
+            .iter()
+            .map(|(position, _)| tile_key(*position))
+            .collect();
+        let height_keys: Vec<TileKey> = diff
+            .heights
+            .iter()
+            .map(|(coord, _)| (coord.plane.index().get(), coord.corner.x, coord.corner.y))
+            .collect();
         terrain_keys.retain(|key| !height_keys.contains(key));
         if let Err(error) = self.project_document_tiles(&terrain_keys, &height_keys) {
             self.notice = Some((
                 format!("Project tiles could not be projected: {error}"),
                 Instant::now(),
             ));
+            return;
         }
-        if !removed.is_empty() || !added.is_empty() {
-            let route = ObjectHistoryRoute::new(removed, added);
+
+        if !diff.objects_removed.is_empty() || !diff.objects_added.is_empty() {
+            let route = ObjectHistoryRoute::new(
+                diff.objects_removed
+                    .iter()
+                    .copied()
+                    .map(spec_from_placement)
+                    .collect(),
+                diff.objects_added
+                    .iter()
+                    .copied()
+                    .map(spec_from_placement)
+                    .collect(),
+            );
             match build_object_history_projection(self.session.document(), &route, true) {
                 Ok(projection) => self.send_loc_edits(projection.edits),
                 Err(error) => {
@@ -314,69 +369,13 @@ impl EditorApp {
                         format!("Project objects could not be projected: {error:?}"),
                         Instant::now(),
                     ));
+                    return;
                 }
             }
             self.clear_selection();
         }
-    }
 
-    /// Intercept closing the window while edits are unsaved, and finish a save-then-quit.
-    pub(super) fn quit_guard(&mut self, ctx: &egui::Context) {
-        let smoke = self.exit_after_seconds.is_some() || self.screenshot.is_some();
-        if !smoke
-            && ctx.input(|i| i.viewport().close_requested())
-            && self.is_unsaved()
-            && !self.project.discard_confirmed
-        {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.project.quit_prompt = true;
-        }
-        if self.project.close_when_saved && self.project.save.is_none() {
-            self.project.close_when_saved = false;
-            if !self.is_unsaved() {
-                self.project.discard_confirmed = true;
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
-        }
-        if !self.project.quit_prompt {
-            return;
-        }
-        let (choice, closed) = super::modal::Modal::new("quit-unsaved", "Unsaved changes")
-            .size(380.0, 0.0)
-            .show(ctx, |ui| {
-                ui.label("Your map edits have not been saved to a project.");
-                ui.add_space(8.0);
-                let mut choice = None;
-                ui.horizontal(|ui| {
-                    if ui.button("Save and quit").clicked() {
-                        choice = Some(QuitChoice::Save);
-                    }
-                    if ui.button("Quit without saving").clicked() {
-                        choice = Some(QuitChoice::Discard);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        choice = Some(QuitChoice::Cancel);
-                    }
-                });
-                choice
-            });
-        match choice {
-            Some(QuitChoice::Save) => {
-                self.project.quit_prompt = false;
-                if self.cache_build.is_some() && self.project.save.is_none() {
-                    self.project.close_when_saved = true;
-                    self.save_project(false);
-                }
-            }
-            Some(QuitChoice::Discard) => {
-                self.project.quit_prompt = false;
-                self.project.discard_confirmed = true;
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
-            Some(QuitChoice::Cancel) => self.project.quit_prompt = false,
-            None if closed => self.project.quit_prompt = false,
-            None => {}
-        }
+        self.project.pending.remove(&region);
     }
 
     /// Report a finished save once per frame.
@@ -395,21 +394,21 @@ impl EditorApp {
             }
             Ok(Err(error)) => {
                 self.project.close_when_saved = false;
+                self.project.transition_after_save = false;
+                self.project.transition_prompt = self.project.transition.is_some();
                 format!("Save failed: {error}")
             }
             Err(TryRecvError::Empty) => return,
-            Err(TryRecvError::Disconnected) => "Save stopped unexpectedly".to_owned(),
+            Err(TryRecvError::Disconnected) => {
+                self.project.close_when_saved = false;
+                self.project.transition_after_save = false;
+                self.project.transition_prompt = self.project.transition.is_some();
+                "Save stopped unexpectedly".to_owned()
+            }
         };
         self.project.save = None;
         self.notice = Some((message, Instant::now()));
     }
-}
-
-#[derive(Clone, Copy)]
-enum QuitChoice {
-    Save,
-    Discard,
-    Cancel,
 }
 
 fn plural(count: usize) -> &'static str {

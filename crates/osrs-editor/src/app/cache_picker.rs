@@ -67,7 +67,7 @@ impl EditorApp {
         match done {
             Ok(picked) => {
                 let source = CacheSource::Memory(std::sync::Arc::new(picked.files));
-                self.open_source(source, PathBuf::from(picked.name), ctx);
+                self.request_source_change(source, PathBuf::from(picked.name), ctx);
             }
             Err(error) if error.is_empty() => {}
             Err(error) => self.cache_error = Some(error),
@@ -86,7 +86,7 @@ impl EditorApp {
         }
     }
 
-    /// Switch to the cache in `dir`: a new streamer and asset worker, every loaded region dropped.
+    /// Switch to the cache in `dir`, after the project lifecycle guard has protected unsaved work.
     pub(super) fn open_cache(&mut self, dir: PathBuf, ctx: &egui::Context) {
         if !looks_like_cache(&dir) {
             self.cache_error = Some(format!(
@@ -95,11 +95,27 @@ impl EditorApp {
             ));
             return;
         }
-        self.open_source(CacheSource::Dir(dir.clone()), dir, ctx);
+        self.request_source_change(CacheSource::Dir(dir.clone()), dir, ctx);
     }
 
-    /// Switch to `source`; `label` names it in the title and the recent list.
+    /// Restart the current native cache from disk. Project open uses this to discard the current
+    /// semantic/projection working set and rebuild from the pristine source before applying diffs.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) fn restart_current_source(&mut self) {
+        let dir = self.cache_dir.clone();
+        self.replace_source(CacheSource::Dir(dir.clone()), dir);
+    }
+
+    /// Switch to `source`; lifecycle callers must already have resolved unsaved work.
     pub(super) fn open_source(&mut self, source: CacheSource, label: PathBuf, ctx: &egui::Context) {
+        self.replace_source(source, label);
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(
+            "RustOSRS: opening cache...".to_owned(),
+        ));
+    }
+
+    /// Replace streamer/assets and clear every resident projection tied to the previous source.
+    fn replace_source(&mut self, source: CacheSource, label: PathBuf) {
         let dir = label;
         self.cache_error = None;
         self.cache_build = None;
@@ -141,9 +157,6 @@ impl EditorApp {
             self.prefs.recent_caches.truncate(RECENT_LIMIT);
         }
         self.cache_dir = dir;
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(
-            "RustOSRS: opening cache...".to_owned(),
-        ));
     }
 
     /// The matched build arrived from the streamer.
