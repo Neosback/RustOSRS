@@ -169,12 +169,11 @@ impl Route {
                     let current = current.ok_or_else(|| {
                         "a painted tile is no longer available to the projection adapter".to_owned()
                     })?;
-                    let values = project_paint_values(query, &paint.brush, key, current).ok_or_else(
-                        || {
+                    let values = project_paint_values(query, &paint.brush, key, current)
+                        .ok_or_else(|| {
                             "semantic Paint state cannot be represented by the legacy projection"
                                 .to_owned()
-                        },
-                    )?;
+                        })?;
                     projected.push((key, current, values));
                 }
                 Ok(PreparedProjection::Tiles {
@@ -205,16 +204,12 @@ impl Route {
                     let current = current.ok_or_else(|| {
                         "a Path tile is no longer available to the projection adapter".to_owned()
                     })?;
-                    let values = project_semantic_path_values(
-                        query,
-                        key,
-                        current,
-                        path.include_height,
-                    )
-                    .ok_or_else(|| {
-                        "semantic Path state cannot be represented by the legacy projection"
-                            .to_owned()
-                    })?;
+                    let values =
+                        project_semantic_path_values(query, key, current, path.include_height)
+                            .ok_or_else(|| {
+                                "semantic Path state cannot be represented by the legacy projection"
+                                    .to_owned()
+                            })?;
                     projected.push((key, current, values));
                 }
                 Ok(PreparedProjection::Tiles {
@@ -223,12 +218,9 @@ impl Route {
                 })
             }
             (Self::Object(object), ProjectionInput::Object) => {
-                let projection = build_object_history_projection(
-                    query,
-                    object,
-                    direction == Direction::Redo,
-                )
-                .map_err(|error| format!("{error:?}"))?;
+                let projection =
+                    build_object_history_projection(query, object, direction == Direction::Redo)
+                        .map_err(|error| format!("{error:?}"))?;
                 Ok(PreparedProjection::Object {
                     projection,
                     count: object.object_count(),
@@ -281,9 +273,11 @@ impl EditorApp {
         let (label, word) = (route.label(), direction.word());
         let input = route.capture_projection_input(self);
         let touched_regions = route.touched_regions();
-        let execution = self.session.replay(direction.gateway(), touched_regions, |document| {
-            route.prepare_projection(document, direction, input)
-        });
+        let execution = self
+            .session
+            .replay(direction.gateway(), touched_regions, |document| {
+                route.prepare_projection(document, direction, input)
+            });
 
         let notice = match execution {
             Ok(EditExecution::Committed { projection, .. }) => {
