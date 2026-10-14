@@ -348,15 +348,18 @@ fn failed_post_commit_projection_must_restore_exact_pretransaction_session_state
     assert!(session.can_redo());
     let before = session.clone();
 
-    // This is the current Height/Paste failure pattern: commit succeeds, downstream projection
-    // fails, and ordinary undo is used as rollback.
     let candidate = MapPatch::new([MapOp::SetHeight {
         coord: second,
         before: 0,
         after: 64,
     }]);
-    assert!(session.commit(candidate).is_ok());
-    assert!(session.undo().is_ok());
+    let (_, checkpoint) = session
+        .commit_checkpointed(candidate)
+        .unwrap_or_else(|error| unreachable!("valid checkpointed commit: {error:?}"))
+        .unwrap_or_else(|| unreachable!("non-empty patch creates a checkpoint"));
+    session
+        .restore_checkpoint(checkpoint)
+        .unwrap_or_else(|error| unreachable!("fresh checkpoint restores exactly: {error:?}"));
 
     assert_eq!(
         session, before,
@@ -370,9 +373,13 @@ fn failed_undo_projection_must_restore_exact_pre_replay_session_state() {
     assert!(session.commit(height_patch(0, 64)).is_ok());
     let before = session.clone();
 
-    // This mirrors history routing today: undo applies, projection fails, redo is used as rollback.
-    assert!(session.undo().is_ok());
-    assert!(session.redo().is_ok());
+    let (_, checkpoint) = session
+        .undo_checkpointed()
+        .unwrap_or_else(|error| unreachable!("valid checkpointed undo: {error:?}"))
+        .unwrap_or_else(|| unreachable!("undo entry exists"));
+    session
+        .restore_checkpoint(checkpoint)
+        .unwrap_or_else(|error| unreachable!("fresh checkpoint restores exactly: {error:?}"));
 
     assert_eq!(
         session, before,
@@ -387,9 +394,13 @@ fn failed_redo_projection_must_restore_exact_pre_replay_session_state() {
     assert!(session.undo().is_ok());
     let before = session.clone();
 
-    // Symmetric case: redo applies, projection fails, undo is used as rollback.
-    assert!(session.redo().is_ok());
-    assert!(session.undo().is_ok());
+    let (_, checkpoint) = session
+        .redo_checkpointed()
+        .unwrap_or_else(|error| unreachable!("valid checkpointed redo: {error:?}"))
+        .unwrap_or_else(|| unreachable!("redo entry exists"));
+    session
+        .restore_checkpoint(checkpoint)
+        .unwrap_or_else(|error| unreachable!("fresh checkpoint restores exactly: {error:?}"));
 
     assert_eq!(
         session, before,
