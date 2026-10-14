@@ -326,13 +326,7 @@ impl EditorApp {
         let height_keys: Vec<TileKey> = diff
             .heights
             .iter()
-            .map(|(coord, _)| {
-                (
-                    coord.plane.index().get(),
-                    coord.corner.x,
-                    coord.corner.y,
-                )
-            })
+            .map(|(coord, _)| (coord.plane.index().get(), coord.corner.x, coord.corner.y))
             .collect();
         terrain_keys.retain(|key| !height_keys.contains(key));
         if let Err(error) = self.project_document_tiles(&terrain_keys, &height_keys) {
