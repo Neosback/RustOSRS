@@ -51,7 +51,7 @@ fn source_change_reset_clears_source_bound_project_state() {
 }
 
 #[test]
-fn project_replacement_discards_existing_semantic_session_before_queueing_diffs() {
+fn project_replacement_discards_existing_session_and_old_pending_before_queueing_new_diffs() {
     let vertex = vertex();
     let mut session = EditorSession::new(MapDocument::from_parts([], [(vertex, 0)], []));
     session
@@ -64,18 +64,20 @@ fn project_replacement_discards_existing_semantic_session_before_queueing_diffs(
     assert_eq!(session.edit_revision(), 1);
     assert_eq!(session.document().height_at(vertex), Some(64));
 
-    let region = RegionCoord::new(50, 51);
+    let old_region = RegionCoord::new(40, 41);
+    let new_region = RegionCoord::new(50, 51);
     let mut project = ProjectState {
         path: Some(PathBuf::from("old-project.json")),
         saved_edit_revision: 1,
         ..ProjectState::default()
     };
+    project.pending.insert(old_region, empty_diff(old_region));
 
     prepare_project_replacement(
         &mut project,
         &mut session,
         PathBuf::from("opened-project.json"),
-        vec![empty_diff(region)],
+        vec![empty_diff(new_region)],
     );
 
     assert_eq!(session.revision(), 0);
@@ -85,5 +87,7 @@ fn project_replacement_discards_existing_semantic_session_before_queueing_diffs(
     assert!(!session.can_redo());
     assert_eq!(project.path, Some(PathBuf::from("opened-project.json")));
     assert_eq!(project.saved_edit_revision, 0);
-    assert!(project.pending.contains_key(&region));
+    assert!(!project.pending.contains_key(&old_region));
+    assert_eq!(project.pending.len(), 1);
+    assert!(project.pending.contains_key(&new_region));
 }
