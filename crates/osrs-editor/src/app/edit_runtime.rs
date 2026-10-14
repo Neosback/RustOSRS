@@ -31,10 +31,7 @@ pub(super) enum EditExecution<T> {
     /// The patch had no semantic operations, so no history/revision/projection work occurred.
     NoChange,
     /// Semantic mutation, projection, and checkpoint finalization all succeeded.
-    Committed {
-        receipt: EditReceipt,
-        projection: T,
-    },
+    Committed { receipt: EditReceipt, projection: T },
 }
 
 /// Failure while executing one semantic edit through the application gateway.
