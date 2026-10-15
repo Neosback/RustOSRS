@@ -365,7 +365,7 @@ impl EditorApp {
         response: &egui::Response,
     ) -> bool {
         if self.prefs.tool != Tool::Objects {
-            self.interaction.object_drag = None;
+            self.interaction.cancel_object_drag();
             return false;
         }
         let primary = egui::PointerButton::Primary;
@@ -378,26 +378,19 @@ impl EditorApp {
                 .iter()
                 .any(|o| o.region == object.region && o.index == object.index)
         {
-            self.interaction.object_drag = Some(ObjectDrag {
-                anchor: tile,
-                specs: self.selected_specs(),
-                delta: (0, 0),
-            });
+            let specs = self.selected_specs();
+            self.interaction.begin_object_drag(tile, specs);
         }
-        let Some(drag) = &mut self.interaction.object_drag else {
-            return false;
-        };
         if let Some(tile) = self.interaction.hover.tile.map(|p| p.tile) {
-            drag.delta = (tile.0 - drag.anchor.0, tile.1 - drag.anchor.1);
+            self.interaction.update_object_drag(tile);
         }
         if response.drag_stopped_by(primary) || !ctx.input(|i| i.pointer.primary_down()) {
-            let drag = self.interaction.object_drag.take();
-            if let Some(drag) = drag {
+            if let Some(drag) = self.interaction.finish_object_drag() {
                 self.move_objects(drag.specs, drag.delta);
             }
             return false;
         }
-        true
+        self.interaction.object_drag().is_some()
     }
 
     /// The footprints the dragged objects would land on.
@@ -409,7 +402,7 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
-        let Some(drag) = &self.interaction.object_drag else {
+        let Some(drag) = self.interaction.object_drag() else {
             return;
         };
         let colors = &self.prefs.colors;
