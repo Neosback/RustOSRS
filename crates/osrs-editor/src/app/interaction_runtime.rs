@@ -328,10 +328,6 @@ impl InteractionRuntime {
     pub(super) fn update_gizmo_busy(&mut self, focused: bool) {
         self.gizmo_busy = focused || self.gizmo_drag.is_some();
     }
-
-    pub(super) fn gizmo_busy(&self) -> bool {
-        self.gizmo_busy
-    }
 }
 
 #[cfg(test)]
