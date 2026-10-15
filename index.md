@@ -2,21 +2,33 @@
 
 Start here.
 
-RustOSRS now has a canonical blueprint/specification system. The older root-level `RUNELITE_*.md` files remain useful research, but they are **not implementation authority**.
+RustOSRS has a canonical blueprint/specification system plus a current operational status layer. The older root-level `RUNELITE_*.md` files remain useful research, but they are **not implementation authority**.
+
+## Current implementation status
+
+Before starting implementation work, read:
+
+1. `DEV_HANDOFF.md` for the latest exact branch/SHA/CI boundary;
+2. `docs/PROJECT-STATUS.md` for the current completion audit and remaining work;
+3. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` for dependency/order and milestone reconciliation.
+
+The project is no longer at the blueprint/M0 entry point. M0-M16 have substantial or complete production implementation; the remaining program is concentrated in architecture extraction, Reference parity/certification closure, 117HD completion, export generalization, and project lifecycle/recovery work.
 
 ## Canonical reading order
 
 For implementation work, read in this order:
 
-1. `docs/blueprint/04-PROJECT-CHARTER.md`
-2. `docs/blueprint/05-SYSTEM-ARCHITECTURE.md`
-3. `docs/blueprint/06-CRATE-ARCHITECTURE.md`
-4. `docs/blueprint/08-PARITY-MODEL.md`
-5. `docs/specs/README.md`
-6. the owning semantic spec(s) under `docs/specs/`
-7. the relevant accepted ADR(s) under `docs/adr/`
-8. `docs/verification/PARITY-MATRIX.md`
-9. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md`
+1. `DEV_HANDOFF.md`
+2. `docs/PROJECT-STATUS.md`
+3. `docs/blueprint/04-PROJECT-CHARTER.md`
+4. `docs/blueprint/05-SYSTEM-ARCHITECTURE.md`
+5. `docs/blueprint/06-CRATE-ARCHITECTURE.md`
+6. `docs/blueprint/08-PARITY-MODEL.md`
+7. `docs/specs/README.md`
+8. the owning semantic spec(s) under `docs/specs/`
+9. the relevant accepted ADR(s) under `docs/adr/`
+10. `docs/verification/PARITY-MATRIX.md`
+11. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md`
 
 The canonical blueprint registry is `docs/blueprint/README.md`.
 
@@ -24,6 +36,8 @@ The canonical blueprint registry is `docs/blueprint/README.md`.
 
 | Question | Canonical authority |
 |---|---|
+| What is the exact current branch/CI/subsystem boundary? | `DEV_HANDOFF.md` |
+| What is implemented and what remains? | `docs/PROJECT-STATUS.md` |
 | What OSRS semantic behavior must be reproduced? | `docs/specs/` |
 | What RustOSRS architecture/product decision is accepted? | `docs/adr/` + owning blueprint document |
 | What source/revision proves a claim? | `docs/verification/SOURCE-PINS.md` + spec evidence |
@@ -31,7 +45,7 @@ The canonical blueprint registry is `docs/blueprint/README.md`.
 | What should be built, and in what order? | `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` |
 | What old claims are superseded or unsafe? | `docs/research/README.md` + `docs/blueprint/02-CONTRADICTION-REGISTER.md` |
 
-A root research document cannot override a canonical spec or accepted ADR.
+A root research document cannot override a canonical spec or accepted ADR. A historical milestone note cannot override current implementation/evidence status.
 
 ## Canonical blueprint
 
@@ -56,7 +70,7 @@ See `docs/blueprint/README.md` for the complete registry and checkpoint status.
 
 ## Canonical semantic specifications
 
-`docs/specs/` currently defines 35 atomic semantic contracts spanning:
+`docs/specs/` defines atomic semantic contracts spanning:
 
 - loc placement and wall/decor behavior;
 - model selection, mirroring, winding, transforms, and ownership;
@@ -73,17 +87,7 @@ Each spec carries evidence status, source pins, required behavior, invariants, f
 
 `docs/adr/` records project-owned choices separately from OSRS semantics.
 
-Accepted decisions currently cover:
-
-- reusable `osrs-*` crate boundaries;
-- native-first editor policy;
-- semantic/renderer/editor ownership boundaries;
-- reverse-Z and raster conventions;
-- 8x8 zone-compiled hybrid rendering;
-- Reference vs Enhanced render profiles;
-- eframe/egui editor shell;
-- semantic command/transaction history;
-- separation of project save, autosave/recovery, and target export.
+Accepted decisions cover reusable `osrs-*` crate boundaries, native-first editor policy, semantic/renderer/editor ownership, reverse-Z/raster conventions, 8x8 zone rendering, Reference vs enhanced profiles, eframe/egui, semantic command history, and distinct project-save/recovery/export workflows.
 
 ## Verification
 
@@ -91,76 +95,57 @@ Accepted decisions currently cover:
 
 Key files:
 
-- `SOURCE-PINS.md` — reproducible source identities and unresolved provenance gates;
-- `PARITY-MATRIX.md` — every semantic spec mapped to required verification and current coverage;
-- `REFERENCE-FIXTURES.md` — fixture provenance/format/regeneration rules;
-- `GOLDEN-SCENES.md` — composed semantic/render test scenes;
-- `CI-FUZZ-BENCHMARKS.md` — CI tiers, property tests, fuzzing, failure injection, and benchmark policy.
+- `SOURCE-PINS.md` - reproducible source identities and provenance gates;
+- `PARITY-MATRIX.md` - semantic/render contracts mapped to evidence and current proof state;
+- `REFERENCE-FIXTURES.md` - fixture provenance/format/regeneration rules;
+- `GOLDEN-SCENES.md` - composed semantic/render test scenes;
+- `CI-FUZZ-BENCHMARKS.md` - CI tiers, property tests, fuzzing, failure injection, and benchmark policy.
 
-Exact semantic tests own P0-P2 correctness. Screenshot tolerance begins only at P3 reference visual parity.
+Exact semantic tests own P0-P2 correctness. Screenshot tolerance begins only at P3 visual parity. Internal RustOSRS screenshots are regression evidence, not an independent external oracle.
 
 ## Implementation roadmap
 
-`docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` defines milestones M0-M18.
+`docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` defines the historical M0-M18 dependency model and reconciles it with the current implementation.
 
-Important sequencing rule: the first meaningful wgpu viewport is deliberately delayed until exact cache/model/scene/normal/lighting semantics and differential fixtures exist.
+Important current facts:
 
-The roadmap also keeps unresolved behavior such as `TERRAIN-004` explicitly gated rather than scheduling a guessed implementation as parity-complete.
+- `TERRAIN-004` is implemented and differential-tested against the pinned client;
+- a headless/reference wgpu renderer and editor viewport exist;
+- editor semantic authoring and verified export exist;
+- Reference parity closure and external visual proof remain incomplete;
+- M17 and M18 remain active completion umbrellas rather than the earlier M10 entry state.
 
 ## Legacy research corpus
 
-The following files predate the canonical blueprint and are retained for source discovery and historical reasoning only:
+Root `RUNELITE_*.md` files predate the canonical blueprint and are retained for source discovery and historical reasoning only. Before using any statement from them, read `docs/research/README.md`.
 
-- `RUNELITE_RENDER_SOURCES.md`
-- `RUNELITE_GPU_PIPELINE.md`
-- `RUNELITE_SCENE_AND_MATERIALS.md`
-- `RUNELITE_RUNTIME_RULES.md`
-- `RUNELITE_DEOB_READING_GUIDE.md`
-- `RUNELITE_RUST_PORT_NOTES.md`
-- `RUNELITE_HARDEST_PARTS.md`
-- `RUNELITE_CACHE_STACK.md`
-
-Before using any statement from them, read `docs/research/README.md`.
-
-Known superseded legacy claims include, among others:
-
-- no cross-model normal merging;
-- `editor_core`/`editor_render` as canonical crate names;
-- mandatory wasm support;
-- one universal bridge-adjusted plane;
-- generic floor-decoration height lifting;
-- `TEXTURE_COUNT = 256` as semantic truth;
-- stale `class470` terrain-builder attribution;
-- “FileStore is the spec”;
-- the old `rs-cache` hybrid recommendation as an already accepted dependency decision.
+Known superseded legacy claims include no cross-model normal merging, one universal bridge-adjusted plane, generic floor-decoration lifting, `TEXTURE_COUNT = 256` as semantic truth, stale terrain-builder attribution, and older dependency/crate proposals.
 
 ## Imported/reference material
 
 These are evidence/tooling inputs, not automatically normative contracts:
 
-- `runelite-master/`
-- `OpenRune-FileStore-main/`
-- `rs-cache-master/`
-- `docs/api/`
-- `reference-shaders/`
-- `reference-fixtures/`
-- `tools/runelite-mcp/`
-- `tools/deob-harness/`
+- `runelite-master/`;
+- `OpenRune-FileStore-main/`;
+- `rs-cache-master/`;
+- `docs/api/`;
+- `reference-shaders/`;
+- `reference-fixtures/`;
+- `tools/runelite-mcp/`;
+- `tools/deob-harness/`.
 
-Their authority and provenance are classified in:
-
-- `docs/blueprint/03-SOURCE-GROUP-INVENTORY.md`
-- `docs/verification/SOURCE-PINS.md`
+Their authority and provenance are classified in `docs/blueprint/03-SOURCE-GROUP-INVENTORY.md` and `docs/verification/SOURCE-PINS.md`.
 
 ## How to resolve a disagreement
 
 If two documents disagree:
 
 1. identify the owning domain;
-2. prefer the canonical semantic spec for OSRS behavior;
-3. prefer the accepted ADR for project-owned design;
-4. check exact source/fixture provenance;
-5. check the contradiction register for known unresolved revision issues;
-6. if still unresolved, classify it as research/revision-sensitive and do not implement by intuition.
+2. use `DEV_HANDOFF.md`/`PROJECT-STATUS.md` for current repository state;
+3. prefer the canonical semantic spec for OSRS behavior;
+4. prefer the accepted ADR for project-owned design;
+5. check exact source/fixture provenance;
+6. check the contradiction register for unresolved revision issues;
+7. if still unresolved, classify it as research/revision-sensitive and do not implement by intuition.
 
 Do not repair an earlier-layer correctness failure with a renderer or editor workaround.
