@@ -61,7 +61,7 @@ pub(super) struct InteractionRuntime {
     /// The Objects tool's transform gizmo plus its transient drag/capture lifecycle.
     pub(super) gizmo: transform_gizmo_egui::Gizmo,
     gizmo_drag: Option<gizmo::GizmoDrag>,
-    gizmo_busy: bool,
+    pub(super) gizmo_busy: bool,
 }
 
 impl InteractionRuntime {
