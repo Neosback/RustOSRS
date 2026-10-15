@@ -57,7 +57,7 @@ pub(super) struct InteractionRuntime {
     /// A held tool key and the tool to return to if the hold becomes a peek.
     peek: Option<ToolPeek>,
     /// The selected objects being dragged by the Objects tool.
-    pub(super) object_drag: Option<object_tool::ObjectDrag>,
+    object_drag: Option<object_tool::ObjectDrag>,
     /// The Objects tool's transform gizmo, its drag in progress, and whether it has the pointer.
     pub(super) gizmo: transform_gizmo_egui::Gizmo,
     pub(super) gizmo_drag: Option<gizmo::GizmoDrag>,
@@ -266,6 +266,37 @@ impl InteractionRuntime {
         self.peek = None;
         (now.duration_since(peek.since) > peek_after).then_some(peek.return_tool)
     }
+
+    pub(super) fn begin_object_drag(
+        &mut self,
+        anchor: (i32, i32),
+        specs: Vec<osrs_world::LocSpec>,
+    ) {
+        self.object_drag = Some(object_tool::ObjectDrag {
+            anchor,
+            specs,
+            delta: (0, 0),
+        });
+    }
+
+    pub(super) fn update_object_drag(&mut self, tile: (i32, i32)) {
+        let Some(drag) = &mut self.object_drag else {
+            return;
+        };
+        drag.delta = (tile.0 - drag.anchor.0, tile.1 - drag.anchor.1);
+    }
+
+    pub(super) fn cancel_object_drag(&mut self) {
+        self.object_drag = None;
+    }
+
+    pub(super) fn finish_object_drag(&mut self) -> Option<object_tool::ObjectDrag> {
+        self.object_drag.take()
+    }
+
+    pub(super) fn object_drag(&self) -> Option<&object_tool::ObjectDrag> {
+        self.object_drag.as_ref()
+    }
 }
 
 #[cfg(test)]
@@ -275,6 +306,7 @@ mod tests {
     use crate::paint::Tool;
     use crate::pick::{ObjectPick, Pick, TilePick};
     use eframe::egui::{Key, Pos2, Rect};
+    use osrs_world::LocSpec;
     use std::time::Duration;
     use web_time::Instant;
 
@@ -284,6 +316,16 @@ mod tests {
 
     fn object(region: (i32, i32), index: usize) -> ObjectPick {
         ObjectPick { region, index }
+    }
+
+    fn loc(tile: (i32, i32)) -> LocSpec {
+        LocSpec {
+            object_id: 1,
+            tile,
+            plane: 0,
+            loc_type: 10,
+            orientation: 0,
+        }
     }
 
     #[test]
@@ -486,5 +528,36 @@ mod tests {
             None
         );
         assert_eq!(interaction.peek_key(), None);
+    }
+
+    #[test]
+    fn object_drag_lifecycle_tracks_delta_and_finishes_once() {
+        let mut interaction = runtime();
+        interaction.begin_object_drag((10, 20), vec![loc((10, 20)), loc((11, 20))]);
+
+        interaction.update_object_drag((14, 17));
+        let active = interaction
+            .object_drag()
+            .map(|drag| (drag.anchor, drag.delta, drag.specs.len()));
+        assert_eq!(active, Some(((10, 20), (4, -3), 2)));
+
+        let finished = interaction
+            .finish_object_drag()
+            .map(|drag| (drag.anchor, drag.delta, drag.specs.len()));
+        assert_eq!(finished, Some(((10, 20), (4, -3), 2)));
+        assert!(interaction.object_drag().is_none());
+        assert!(interaction.finish_object_drag().is_none());
+    }
+
+    #[test]
+    fn cancel_object_drag_discards_in_progress_gesture() {
+        let mut interaction = runtime();
+        interaction.begin_object_drag((5, 6), vec![loc((5, 6))]);
+        interaction.update_object_drag((8, 9));
+
+        interaction.cancel_object_drag();
+
+        assert!(interaction.object_drag().is_none());
+        assert!(interaction.finish_object_drag().is_none());
     }
 }
