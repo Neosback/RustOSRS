@@ -9,9 +9,9 @@ use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession, RegionS
 use osrs_core::coords::{MapTile, RegionCoord};
 use osrs_edit::{ChangeImpact, MapDocument, MapOp, MapPatch, MapRegionSnapshot, PatchApplyError};
 use std::collections::BTreeSet;
-use std::ops::Deref;
 #[cfg(test)]
 use std::convert::Infallible;
+use std::ops::Deref;
 
 /// Application owner of the authoritative semantic edit session.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -311,7 +311,11 @@ impl EditRuntime {
 }
 
 fn normalize_tiles(tiles: impl IntoIterator<Item = MapTile>) -> Vec<MapTile> {
-    tiles.into_iter().collect::<BTreeSet<_>>().into_iter().collect()
+    tiles
+        .into_iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 #[cfg(test)]
