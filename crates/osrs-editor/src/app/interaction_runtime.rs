@@ -168,12 +168,7 @@ impl InteractionRuntime {
         (self.selection_objects.len(), self.selection_tiles.len())
     }
 
-    pub(super) fn begin_marquee(
-        &mut self,
-        position: egui::Pos2,
-        additive: bool,
-        toggle: bool,
-    ) {
+    pub(super) fn begin_marquee(&mut self, position: egui::Pos2, additive: bool, toggle: bool) {
         self.marquee = Some(Marquee {
             start: position,
             current: position,
