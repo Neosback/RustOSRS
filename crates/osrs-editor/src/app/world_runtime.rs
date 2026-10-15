@@ -11,15 +11,10 @@ mod stats;
 
 use self::{
     builds::BuildTracker,
-    height_dependencies::{
-        HeightDependencyCollection, HeightDependencyLookup, HeightDependencyStamp,
-    },
-    invalidation::{ProjectionInvalidation, projection_invalidation, zone_region},
+    height_dependencies::{HeightDependencyStamp, HeightDependencyStore},
     stats::RegionStats,
 };
-use super::edit_runtime::EditTouches;
 use osrs_core::coords::RegionCoord;
-use osrs_edit::{ChangeImpact, HeightVertexCoord};
 use osrs_render::SceneGeometry;
 use osrs_world::{
     AnimatedInstance, AnimationWorker, HeightDependencySnapshot, LocEdit, LocInfo, RegionStreamer,
@@ -69,7 +64,7 @@ pub(super) struct WorldRuntime {
     /// Regions resident on the GPU (`None` = the cache has no map data there).
     loaded: HashMap<RegionKey, Option<RegionStats>>,
     /// Projection-only Height dependency data installed from accepted current worker builds.
-    height_dependencies: HashMap<RegionKey, HeightDependencyCollection>,
+    height_dependencies: HeightDependencyStore,
     /// FIFO request identity and per-region projection epochs for stale-result rejection.
     builds: BuildTracker,
     /// Regions waiting for a conservative full rebuild after an edit.
@@ -93,7 +88,7 @@ impl WorldRuntime {
             presentation_generation: 1,
             presentation_hd: false,
             loaded: HashMap::new(),
-            height_dependencies: HashMap::new(),
+            height_dependencies: HeightDependencyStore::default(),
             builds: BuildTracker::default(),
             dirty_regions: HashSet::new(),
             dirty_zones: HashMap::new(),
@@ -199,7 +194,11 @@ impl WorldRuntime {
         animations: Vec<AnimatedInstance>,
     ) {
         self.animations.insert_region(key, animations);
-        self.install_height_dependencies(key, dependencies);
+        let stamp = HeightDependencyStamp::new(
+            self.builds.projection_epoch(key),
+            self.presentation_generation,
+        );
+        let _ = self.height_dependencies.install(key, stamp, dependencies);
         self.animation.dirty = true;
         match scope {
             RegionBuildScope::Full => {
@@ -217,38 +216,12 @@ impl WorldRuntime {
         }
     }
 
-    fn install_height_dependencies(
-        &mut self,
-        key: RegionKey,
-        snapshot: &HeightDependencySnapshot,
-    ) {
-        let producer = RegionCoord::new(key.0, key.1);
-        let stamp = HeightDependencyStamp::new(
-            self.builds.projection_epoch(key),
-            self.presentation_generation,
-        );
-        let mut dependencies = HeightDependencyCollection::new(producer, stamp);
-        for (source, zones) in &snapshot.by_source {
-            let source = HeightVertexCoord::new(source.corner, source.plane);
-            for &zone in zones {
-                if dependencies.record(source, zone).is_err() {
-                    self.height_dependencies.remove(&key);
-                    return;
-                }
-            }
-        }
-        if snapshot.complete {
-            dependencies.mark_complete();
-        }
-        self.height_dependencies.insert(key, dependencies);
-    }
-
     /// Mark a current build as absent. Stale completions are filtered by [`Self::build_finished`]
     /// before this method is called, so they cannot overwrite newer residency state.
     pub(super) fn region_absent(&mut self, key: RegionKey, scope: &RegionBuildScope) {
         if matches!(scope, RegionBuildScope::Full) {
             self.loaded.insert(key, None);
-            self.height_dependencies.remove(&key);
+            self.height_dependencies.remove(key);
         }
     }
 
@@ -281,7 +254,7 @@ impl WorldRuntime {
         let stale = stale_regions(self.loaded.keys().copied(), center, radius);
         for &key in &stale {
             self.loaded.remove(&key);
-            self.height_dependencies.remove(&key);
+            self.height_dependencies.remove(key);
             self.builds.cancel(key);
             self.dirty_regions.remove(&key);
             self.dirty_zones.remove(&key);
@@ -349,94 +322,6 @@ impl WorldRuntime {
         if !edits.is_empty() {
             self.streamer.edit_locs(edits);
         }
-    }
-
-    /// Translate one finalized semantic touch set into projection invalidation.
-    ///
-    /// Height edits use exact world zones only when every resident non-empty producer region has a
-    /// current, complete dependency snapshot. Missing, stale, or incomplete metadata fails closed
-    /// to the previous region policy. Object edits remain region-conservative until their separate
-    /// dependency subsystem exists.
-    pub(super) fn invalidate_semantic_edit(
-        &mut self,
-        impact: ChangeImpact,
-        touched_regions: &EditTouches,
-    ) {
-        let proven_height_zones = if touched_regions.footprint.height_vertices.is_empty() {
-            None
-        } else {
-            self.proven_height_zones(&touched_regions.footprint.height_vertices)
-        };
-        match projection_invalidation(
-            impact,
-            touched_regions,
-            &touched_regions.footprint,
-            proven_height_zones.as_ref(),
-        ) {
-            ProjectionInvalidation::None => {}
-            ProjectionInvalidation::Regions(regions) => {
-                for region in regions {
-                    self.mark_dirty((region.x, region.y));
-                }
-            }
-            ProjectionInvalidation::Zones(zones) => {
-                for zone in zones {
-                    self.mark_zone_dirty(zone);
-                }
-            }
-        }
-    }
-
-    /// Resolve source Height vertices through every resident producer. Any producer without a
-    /// current complete read-set makes the whole transaction fall back to region invalidation.
-    fn proven_height_zones(
-        &self,
-        sources: &[HeightVertexCoord],
-    ) -> Option<BTreeSet<ZoneKey>> {
-        let mut zones = BTreeSet::new();
-        for (&key, stats) in &self.loaded {
-            if stats.is_none() {
-                continue;
-            }
-            let dependencies = self.height_dependencies.get(&key)?;
-            let current = HeightDependencyStamp::new(
-                self.builds.projection_epoch(key),
-                self.presentation_generation,
-            );
-            for &source in sources {
-                match dependencies.lookup(source, current) {
-                    HeightDependencyLookup::Current(Some(found)) => {
-                        zones.extend(found.iter().copied());
-                    }
-                    HeightDependencyLookup::Current(None) => {}
-                    HeightDependencyLookup::Stale | HeightDependencyLookup::Incomplete => {
-                        return None;
-                    }
-                }
-            }
-        }
-        Some(zones)
-    }
-
-    /// Queue a full `region` rebuild if it is resident. Full invalidation subsumes queued zones.
-    pub(super) fn mark_dirty(&mut self, region: RegionKey) {
-        if self.loaded.contains_key(&region) {
-            self.builds.invalidate(region);
-            self.dirty_zones.remove(&region);
-            self.dirty_regions.insert(region);
-        }
-    }
-
-    /// Queue one world 8x8 zone when its owning region is resident and no full rebuild supersedes it.
-    fn mark_zone_dirty(&mut self, zone: ZoneKey) {
-        let region = zone_region(zone);
-        if self.dirty_regions.contains(&region)
-            || !matches!(self.loaded.get(&region), Some(Some(_)))
-        {
-            return;
-        }
-        self.builds.invalidate(region);
-        self.dirty_zones.entry(region).or_default().insert(zone);
     }
 
     /// Request rebuild work that is not already in flight. Full refreshes request the whole static
@@ -523,7 +408,6 @@ impl WorldRuntime {
             .abs()
             .max((camera_tile.1 - self.animation.center.1).abs())
             >= ANIMATION_RECENTRE_TILES;
-        // Smoothing blends inside a frame, so it needs every game cycle.
         let stride = if self.animation.smoothing {
             1
         } else {
