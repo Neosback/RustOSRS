@@ -41,10 +41,11 @@ impl RegionStats {
 
     fn replace_all(&mut self, geometry: &SceneGeometry) {
         self.zone_vertices.clear();
-        self.zone_vertices.extend(geometry.zones.iter().filter_map(|zone| {
-            let vertices = zone.vertex_count();
-            (vertices != 0).then_some(((zone.zone_x, zone.zone_z), vertices))
-        }));
+        self.zone_vertices
+            .extend(geometry.zones.iter().filter_map(|zone| {
+                let vertices = zone.vertex_count();
+                (vertices != 0).then_some(((zone.zone_x, zone.zone_z), vertices))
+            }));
     }
 }
 
@@ -81,10 +82,7 @@ mod tests {
         let mut stats = RegionStats::from_geometry(&geometry(&[((400, 400), 3), ((401, 400), 6)]));
         assert_eq!(stats.vertices(), 9);
 
-        stats.refresh(
-            &RegionBuildScope::Full,
-            &geometry(&[((400, 400), 12)]),
-        );
+        stats.refresh(&RegionBuildScope::Full, &geometry(&[((400, 400), 12)]));
         assert_eq!(stats.vertices(), 12);
     }
 
