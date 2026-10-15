@@ -312,12 +312,8 @@ mod tests {
     fn object_output_current_complete_state_returns_exact_changed_zones() {
         let key = (0, 0);
         let stamp = ObjectOutputStamp::new(2, 9);
-        let state = ObjectOutputState::new(
-            key,
-            stamp,
-            full(key, &[((0, 0), 0), ((1, 0), 0)]),
-        )
-        .unwrap_or_else(|error| unreachable!("valid state: {error:?}"));
+        let state = ObjectOutputState::new(key, stamp, full(key, &[((0, 0), 0), ((1, 0), 0)]))
+            .unwrap_or_else(|error| unreachable!("valid state: {error:?}"));
         let candidate = full(key, &[((1, 0), 2), ((2, 0), 0)]);
 
         assert_eq!(
