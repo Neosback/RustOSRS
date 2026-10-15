@@ -90,8 +90,12 @@ impl EditorApp {
                     }
                     self.infos.insert(key, region.info);
                     self.infos_version += 1;
-                    self.world
-                        .region_installed(key, &region.geometry, region.animations);
+                    self.world.region_installed(
+                        key,
+                        &scope,
+                        &region.geometry,
+                        region.animations,
+                    );
                     if matches!(scope, world_runtime::RegionBuildScope::Full) {
                         self.apply_project_region(RegionCoord::new(key.0, key.1));
                     }
@@ -105,11 +109,13 @@ impl EditorApp {
                 }
                 StreamEvent::Empty(region) => {
                     let key = (region.x, region.y);
-                    let _ = self.session.unload_region(region);
-                    self.world.region_absent(key);
+                    let scope = self.world.region_absent(key);
+                    if matches!(scope, world_runtime::RegionBuildScope::Full) {
+                        let _ = self.session.unload_region(region);
+                    }
                 }
                 StreamEvent::Failed(region, error) => {
-                    self.world.region_absent((region.x, region.y));
+                    let _ = self.world.region_absent((region.x, region.y));
                     self.status = Some(format!("region {},{} failed: {error}", region.x, region.y));
                 }
                 StreamEvent::InitFailed(_) if self.cache_dir.as_os_str().is_empty() => {}
