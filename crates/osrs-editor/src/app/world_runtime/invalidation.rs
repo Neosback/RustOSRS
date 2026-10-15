@@ -1,3 +1,7 @@
+#[allow(dead_code)]
+#[path = "height_dependencies.rs"]
+mod height_dependencies;
+
 use super::ZoneKey;
 use crate::app::edit_runtime::EditFootprint;
 use osrs_core::coords::{MapTile, RegionCoord};
