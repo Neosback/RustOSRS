@@ -147,9 +147,7 @@ fn adapt_specs(specs: &[LocSpec]) -> Result<Vec<ObjectPlacement>, ObjectCommitEr
     specs.iter().copied().map(placement_from_spec).collect()
 }
 
-pub(in crate::app) fn placement_from_spec(
-    spec: LocSpec,
-) -> Result<ObjectPlacement, ObjectCommitError> {
+fn placement_from_spec(spec: LocSpec) -> Result<ObjectPlacement, ObjectCommitError> {
     let Some(plane) = SourcePlane::new(spec.plane) else {
         return Err(ObjectCommitError::InvalidPlane {
             plane: spec.plane,
