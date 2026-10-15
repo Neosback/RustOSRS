@@ -316,6 +316,7 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("valid state: {error:?}"));
         let candidate = full(key, &[((1, 0), 2), ((2, 0), 0)]);
 
+        assert_eq!(state.snapshot().producer_region(), RegionCoord::new(0, 0));
         assert_eq!(
             state.compare(stamp, &candidate),
             Ok(ObjectOutputLookup::Current(BTreeSet::from([
@@ -370,6 +371,14 @@ mod tests {
             state.compare(next, &full(key, &[((0, 0), 3), ((1, 0), 0)])),
             Ok(ObjectOutputLookup::Current(BTreeSet::new()))
         );
+
+        let replacement = full(key, &[((2, 0), 1)]);
+        let replacement_stamp = ObjectOutputStamp::new(6, 2);
+        state
+            .replace(replacement_stamp, replacement.clone())
+            .unwrap_or_else(|error| unreachable!("accepted replacement: {error:?}"));
+        assert_eq!(state.stamp(), replacement_stamp);
+        assert_eq!(state.snapshot(), &replacement);
     }
 
     #[test]
