@@ -61,7 +61,10 @@ fn object_history_footprint_reverses_exact_mutation_polarity_for_undo() {
     let redo = route.footprint(Direction::Redo);
     assert_eq!(redo.object_removed.len(), 1);
     assert_eq!(redo.object_added.len(), 1);
-    assert_eq!(redo.object_removed[0].position.tile, MapTile::new(3200, 3200));
+    assert_eq!(
+        redo.object_removed[0].position.tile,
+        MapTile::new(3200, 3200)
+    );
     assert_eq!(redo.object_removed[0].position.plane.index().get(), 2);
     assert_eq!(redo.object_removed[0].object_id.get(), 100);
     assert_eq!(redo.object_removed[0].kind.get(), 10);
