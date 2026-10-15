@@ -21,28 +21,28 @@ impl EditorApp {
         self.minimap_hud(ui, rect);
         self.run_plugins(|plugin, cx| plugin.overlay(&ctx, rect, cx));
 
-        let tile_lines = if self.prefs.tile_info_hud {
+        let tile_lines = if self.settings.prefs.tile_info_hud {
             self.tile_info_lines()
         } else {
             None
         };
         let (background, text, label) = (
-            self.prefs.colors.get(ColorKey::HudBackground),
-            self.prefs.colors.get(ColorKey::HudText),
-            self.prefs.colors.get(ColorKey::HudLabel),
+            self.settings.prefs.colors.get(ColorKey::HudBackground),
+            self.settings.prefs.colors.get(ColorKey::HudText),
+            self.settings.prefs.colors.get(ColorKey::HudLabel),
         );
         // The HUDs sit in the viewport's corner, to the right of the picker rail when the rail is
         // parked there (they are drawn beneath it, never over it).
-        let left = match self.rail_rect {
+        let left = match self.ui.rail_rect {
             Some(rail) if rail.left() < rect.min.x + 160.0 => rail.right() + OVERLAY_MARGIN,
             _ => rect.min.x + OVERLAY_MARGIN,
         };
         let mut hide_tile_hud = false;
-        self.hud_rect = None;
-        if self.prefs.stats_overlay || tile_lines.is_some() {
+        self.ui.hud_rect = None;
+        if self.settings.prefs.stats_overlay || tile_lines.is_some() {
             let (region_x, region_y) = self.camera_region();
             let (tile_x, tile_y) = self.camera_tile();
-            let stats = self.prefs.stats_overlay;
+            let stats = self.settings.prefs.stats_overlay;
             let hud = egui::Area::new(egui::Id::new("stats_overlay"))
                 .order(egui::Order::Background)
                 .fixed_pos(egui::pos2(left, rect.min.y + OVERLAY_MARGIN))
@@ -54,17 +54,17 @@ impl EditorApp {
                             ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
                             ui.style_mut().override_font_id = Some(egui::FontId::monospace(12.0));
                             ui.spacing_mut().item_spacing.y = 2.0;
-                            ui.colored_label(text, self.stats.fps_text());
+                            ui.colored_label(text, self.diagnostics.stats().fps_text());
                             // A narrow viewport keeps only the frame rate and the camera tile.
                             if rect.width() >= 760.0 {
-                                ui.colored_label(text, self.stats.timing_text());
-                                ui.colored_label(text, self.stats.phases_text());
+                                ui.colored_label(text, self.diagnostics.stats().timing_text());
+                                ui.colored_label(text, self.diagnostics.stats().phases_text());
                             }
                             ui.colored_label(
                                 text,
                                 format!(
                                     "camera {tile_x}, {tile_y}, {}   region {region_x}, {region_y} (id {})",
-                                    self.interaction.view_plane,
+                                    self.interaction.view_plane(),
                                     hud::region_id(region_x, region_y)
                                 ),
                             );
@@ -107,9 +107,9 @@ impl EditorApp {
                         });
                     }
                 });
-            self.hud_rect = Some(hud.response.rect);
+            self.ui.hud_rect = Some(hud.response.rect);
             if hide_tile_hud {
-                self.prefs.tile_info_hud = false;
+                self.settings.prefs.tile_info_hud = false;
             }
         }
     }

@@ -22,7 +22,6 @@ use osrs_edit::{
     HeightVertexCoord, LocKind, MapPosition, MapQuery, ObjectOrientation, ObjectPlacement,
 };
 use osrs_world::{LocEdit, LocSpec};
-use web_time::Instant;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Direction {
@@ -165,7 +164,7 @@ impl Route {
                 })
                 .collect::<Vec<_>>()
         };
-        match self {
+        let footprint = match self {
             Self::Paint(paint) => EditFootprint::new(map_tiles(&paint.keys), [], []),
             Self::Height(height) => EditFootprint::new([], height_vertices(&height.keys), []),
             Self::Path(path) if path.include_height => {
@@ -184,7 +183,18 @@ impl Route {
                     added.iter().copied().map(history_object_placement),
                 )
             }
-        }
+        };
+        let keys: &[TileKey] = match self {
+            Self::Paint(paint) => &paint.keys,
+            Self::Path(path) => &path.keys,
+            _ => &[],
+        };
+        footprint.with_terrain_positions(keys.iter().map(|&(plane, x, y)| {
+            MapPosition::new(
+                MapTile::new(x, y),
+                SourcePlane::new(plane).unwrap_or_else(|| unreachable!("validated history plane")),
+            )
+        }))
     }
 
     fn prepare_projection(
@@ -280,31 +290,29 @@ fn history_object_placement(spec: LocSpec) -> ObjectPlacement {
 
 impl EditorApp {
     pub(in crate::app) fn undo(&mut self) {
-        let Some(step) = self.history.pop() else {
+        let Some(step) = self.terrain.history.pop() else {
             return;
         };
         match Route::of(&step) {
             Some(route) => self.route_semantic(Direction::Undo, step, &route),
             None => {
                 self.revert(&step, false);
-                self.notice = Some((
-                    format!("Undid {} tile change(s)", step.changes.len()),
-                    Instant::now(),
-                ));
-                self.redo_stack.push(step);
+                self.ui
+                    .notify(format!("Undid {} tile change(s)", step.changes.len()));
+                self.terrain.redo_stack.push(step);
             }
         }
     }
 
     pub(in crate::app) fn redo(&mut self) {
-        let Some(step) = self.redo_stack.pop() else {
+        let Some(step) = self.terrain.redo_stack.pop() else {
             return;
         };
         match Route::of(&step) {
             Some(route) => self.route_semantic(Direction::Redo, step, &route),
             None => {
                 self.revert(&step, true);
-                self.history.push(step);
+                self.terrain.history.push(step);
             }
         }
     }
@@ -326,41 +334,64 @@ impl EditorApp {
                 projection,
             }) => {
                 let count = self.apply_replay_projection(projection);
-                self.world
-                    .invalidate_semantic_edit(receipt.impact, &receipt.touched_regions);
-                direction.settle(&mut self.history, &mut self.redo_stack, step);
+                self.world.invalidate_semantic_edit(&receipt);
+                direction.settle(
+                    &mut self.terrain.history,
+                    &mut self.terrain.redo_stack,
+                    step,
+                );
                 format!("{} {}", direction.past(), route.counted(count))
             }
             Ok(EditExecution::NoChange) => {
-                direction.restore(&mut self.history, &mut self.redo_stack, step);
+                direction.restore(
+                    &mut self.terrain.history,
+                    &mut self.terrain.redo_stack,
+                    step,
+                );
                 format!("{label} {word} history is out of sync with the semantic session")
             }
             Err(EditExecutionError::Semantic(error)) => {
-                direction.restore(&mut self.history, &mut self.redo_stack, step);
+                direction.restore(
+                    &mut self.terrain.history,
+                    &mut self.terrain.redo_stack,
+                    step,
+                );
                 format!("{label} {word} was rejected by the semantic session: {error:?}")
             }
             Err(EditExecutionError::Projection(message)) => {
-                direction.restore(&mut self.history, &mut self.redo_stack, step);
+                direction.restore(
+                    &mut self.terrain.history,
+                    &mut self.terrain.redo_stack,
+                    step,
+                );
                 format!("{label} {word} was rolled back: {message}")
             }
             Err(EditExecutionError::Rollback {
                 projection,
                 rollback,
             }) => {
-                direction.restore(&mut self.history, &mut self.redo_stack, step);
+                direction.restore(
+                    &mut self.terrain.history,
+                    &mut self.terrain.redo_stack,
+                    step,
+                );
                 format!(
                     "{label} {word} projection failed and semantic rollback failed: \
                      {projection} ({rollback:?})"
                 )
             }
             Err(EditExecutionError::Finalize(error)) => {
-                direction.restore(&mut self.history, &mut self.redo_stack, step);
+                direction.restore(
+                    &mut self.terrain.history,
+                    &mut self.terrain.redo_stack,
+                    step,
+                );
                 format!(
                     "{label} {word} projection succeeded but semantic finalize failed: {error:?}"
                 )
             }
         };
-        self.notice = Some((notice, Instant::now()));
+        self.ui.notify(notice);
     }
 
     /// Apply an already-validated semantic replay projection mechanically. Projection invalidation
@@ -375,10 +406,10 @@ impl EditorApp {
                 let mut edits = Vec::new();
                 for (key, current, values) in projected {
                     if mark_height {
-                        self.height_edited.insert(key);
+                        self.terrain.height_edited.insert(key);
                     }
                     if values != current {
-                        self.edited.insert(key, values);
+                        self.terrain.edited.insert(key, values);
                         edits.push(self.edit_for(key, values));
                     }
                 }

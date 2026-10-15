@@ -2406,6 +2406,7 @@ name = "osrs-edit"
 version = "0.0.0"
 dependencies = [
  "osrs-core",
+ "serde",
 ]
 
 [[package]]

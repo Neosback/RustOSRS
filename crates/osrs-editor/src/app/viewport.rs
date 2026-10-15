@@ -21,7 +21,7 @@ impl EditorApp {
         // world under the HUD keeps being picked.
         let over_hud = || {
             let pointer = response.ctx.input(|i| i.pointer.latest_pos())?;
-            self.hud_rect.filter(|hud| hud.contains(pointer))?;
+            self.ui.hud_rect.filter(|hud| hud.contains(pointer))?;
             Some(pointer)
         };
         let Some(position) = response.hover_pos().or_else(over_hud) else {
@@ -34,21 +34,22 @@ impl EditorApp {
             return;
         };
         let ray = pick::ray_through_pixel(
-            &self.interaction.camera,
+            self.interaction.camera(),
             self.renderer.render_origin(),
             width as f32,
             height as f32,
             (position.x - rect.min.x) * pixels_per_point,
             (position.y - rect.min.y) * pixels_per_point,
         );
-        let mut hover = pick::pick(&self.infos, &ray, self.interaction.view_plane);
+        let mut hover = pick::pick(self.world.infos(), &ray, self.interaction.view_plane());
         // Selecting tools read the tile an object stands on, not the ground the ray reaches behind it.
         if matches!(
-            self.prefs.tool,
+            self.settings.prefs.tool,
             crate::paint::Tool::Select | crate::paint::Tool::Objects
         ) && let Some(object) = &hover.object
             && let Some(loc) = self
-                .infos
+                .world
+                .infos()
                 .get(&object.region)
                 .and_then(|info| info.locs.get(object.index))
         {
@@ -71,29 +72,19 @@ impl EditorApp {
         );
         if response.secondary_clicked() && response.ctx.input(|i| i.modifiers.shift) {
             self.interaction.capture_context_pick();
-            self.context_menu = response.interact_pointer_pos();
+            self.ui.context_menu = response.interact_pointer_pos();
         }
         let wanted: Vec<ObjectPick> = [
-            self.interaction.hover.object.clone(),
-            self.interaction.selected.clone(),
-            self.interaction.context_pick.object.clone(),
+            self.interaction.hover().object.clone(),
+            self.interaction.selected().clone(),
+            self.interaction.context_pick().object.clone(),
         ]
         .into_iter()
         .flatten()
         .collect();
         for object in wanted {
             let key = (object.region, object.index);
-            if self.outlines.contains_key(&key) || !self.outline_requested.insert(key) {
-                continue;
-            }
-            if let Some(loc) = self
-                .infos
-                .get(&object.region)
-                .and_then(|info| info.locs.get(object.index))
-            {
-                self.world
-                    .request_outline(object.region, object.index, loc.clone());
-            }
+            self.world.queue_outline(key);
         }
     }
 
@@ -107,12 +98,12 @@ impl EditorApp {
     ) {
         let painter = ui.painter().with_clip_rect(rect);
         let outline = |object: &ObjectPick, fill: egui::Color32, edge: egui::Color32| {
-            let Some(triangles) = self.outlines.get(&(object.region, object.index)) else {
+            let Some(triangles) = self.world.outline(&(object.region, object.index)) else {
                 return;
             };
             let to_screen = |point: [i32; 3]| {
                 pick::project(
-                    &self.interaction.camera,
+                    self.interaction.camera(),
                     self.renderer.render_origin(),
                     width as f32,
                     height as f32,
@@ -153,15 +144,15 @@ impl EditorApp {
             }
             painter.add(egui::Shape::mesh(mesh));
         };
-        let colors = &self.prefs.colors;
-        if let Some(object) = &self.interaction.hover.object {
+        let colors = &self.settings.prefs.colors;
+        if let Some(object) = self.interaction.hover().object.as_ref() {
             outline(
                 object,
                 colors.get(ColorKey::ObjectHoverFill),
                 colors.get(ColorKey::ObjectHoverOutline),
             );
         }
-        if let Some(object) = &self.interaction.selected {
+        if let Some(object) = &self.interaction.selected() {
             outline(
                 object,
                 colors.get(ColorKey::SelectionFill),
@@ -170,12 +161,12 @@ impl EditorApp {
         }
         // The hovered tile, outlined like RuneLite's tile indicator; with a brush tool, the tiles
         // the brush would paint (orange), or grey when nothing is armed.
-        if self.prefs.hover_tile
-            && let Some(tile) = &self.interaction.hover.tile
+        if self.settings.prefs.hover_tile
+            && let Some(tile) = self.interaction.hover().tile
         {
-            let brushing = self.prefs.tool != crate::paint::Tool::Select;
+            let brushing = self.settings.prefs.tool != crate::paint::Tool::Select;
             let tiles = if brushing {
-                self.prefs.brush.footprint_tiles(tile.tile)
+                self.settings.prefs.brush.footprint_tiles(tile.tile)
             } else {
                 vec![tile.tile]
             };
@@ -184,7 +175,7 @@ impl EditorApp {
                     colors.get(ColorKey::HoverTileFill),
                     colors.get(ColorKey::HoverTileOutline),
                 )
-            } else if self.prefs.brush.is_empty() {
+            } else if self.settings.prefs.brush.is_empty() {
                 (
                     colors.get(ColorKey::BrushEmptyFill),
                     colors.get(ColorKey::BrushEmptyOutline),
@@ -197,7 +188,7 @@ impl EditorApp {
             };
             for tile in tiles {
                 let Some(corners) =
-                    interact::tile_corners(&self.infos, tile, self.interaction.view_plane)
+                    interact::tile_corners(self.world.infos(), tile, self.interaction.view_plane())
                 else {
                     continue;
                 };
@@ -205,7 +196,7 @@ impl EditorApp {
                     .iter()
                     .filter_map(|corner| {
                         pick::project(
-                            &self.interaction.camera,
+                            self.interaction.camera(),
                             self.renderer.render_origin(),
                             width as f32,
                             height as f32,
@@ -229,14 +220,14 @@ impl EditorApp {
             }
         }
         // The in-game action text next to the cursor (RuneLite's mouse tooltips).
-        if self.prefs.mouse_tooltips
-            && self.prefs.tool == crate::paint::Tool::Select
-            && self.context_menu.is_none()
+        if self.settings.prefs.mouse_tooltips
+            && self.settings.prefs.tool == crate::paint::Tool::Select
+            && self.ui.context_menu.is_none()
             && let Some(pointer) = ui.input(|i| i.pointer.hover_pos())
             && rect.contains(pointer)
             && !ui.input(|i| i.pointer.any_down())
         {
-            let entries = interact::entries(&self.infos, &self.interaction.hover);
+            let entries = interact::entries(self.world.infos(), self.interaction.hover());
             if let Some(top) = entries.first() {
                 // Menu entries plus the always-present Cancel.
                 let extra = interact::more_options(entries.len() + 1);
@@ -261,7 +252,7 @@ impl EditorApp {
                 painter.galley(at + egui::vec2(6.0, 3.0), galley, egui::Color32::WHITE);
             }
         }
-        let text = pick::summary(&self.infos, &self.interaction.hover);
+        let text = pick::summary(self.world.infos(), self.interaction.hover());
         if !text.is_empty() {
             painter.text(
                 rect.left_bottom() + egui::vec2(8.0, -8.0),
@@ -284,28 +275,28 @@ impl EditorApp {
         use osrs_render::gpu::FrameParams;
         if self.world.is_ready() {
             self.ensure_targets(width, height);
-            if self.prefs.render_profile == ProfileChoice::Hd {
+            if self.settings.prefs.render_profile == ProfileChoice::Hd {
                 self.update_hd_lighting();
             }
             let phase = Instant::now();
-            self.renderer.set_hd_params(self.prefs.hd_params());
+            self.renderer.set_hd_params(self.settings.prefs.hd_params());
             if let Some(frame) = self.renderer.encode_viewport(FrameParams {
-                camera: self.interaction.camera.reference(width as f32),
-                view_plane: self.interaction.view_plane,
+                camera: self.interaction.camera().reference(width as f32),
+                view_plane: self.interaction.view_plane(),
                 // The client's `gameCycle & 127`, at 50 cycles per second.
                 tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
-                brightness: self.prefs.brightness,
-                remove_color_banding: self.prefs.remove_color_banding,
-                bright_textures: self.prefs.bright_textures,
-                fog: self.prefs.fog(),
-                colorblind: self.prefs.colorblind(),
-                clear_color: self.prefs.sky_color.map(f64::from),
-                profile: self.prefs.render_profile.render_profile(),
+                brightness: self.settings.prefs.brightness,
+                remove_color_banding: self.settings.prefs.remove_color_banding,
+                bright_textures: self.settings.prefs.bright_textures,
+                fog: self.settings.prefs.fog(),
+                colorblind: self.settings.prefs.colorblind(),
+                clear_color: self.settings.prefs.sky_color.map(f64::from),
+                profile: self.settings.prefs.render_profile.render_profile(),
             }) {
-                self.stats.phase("encode", phase);
+                self.diagnostics.phase("encode", phase);
                 let gpu_scene_ms = self.renderer.submit_viewport(frame.command_buffer);
-                self.stats.set_gpu_scene_ms(gpu_scene_ms);
-                let probe = self.stats.gpu_probe();
+                self.diagnostics.set_gpu_scene_ms(gpu_scene_ms);
+                let probe = self.diagnostics.stats().gpu_probe();
                 self.renderer.on_submitted_work_done(probe);
                 ui.painter().image(
                     frame.texture_id,

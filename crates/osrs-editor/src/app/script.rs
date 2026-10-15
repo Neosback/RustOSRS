@@ -109,7 +109,9 @@ impl EditorApp {
             }
             self.script.sleep_until = None;
         }
-        while self.frames >= self.script.wait_until && self.script.sleep_until.is_none() {
+        while self.diagnostics.frames() >= self.script.wait_until
+            && self.script.sleep_until.is_none()
+        {
             let Some(line) = self.script.queue.pop_front() else {
                 return;
             };
@@ -122,7 +124,7 @@ impl EditorApp {
                         let message = format!("{line}: still waiting after {RETRY_LIMIT} frames");
                         eprintln!("smoke: script: {message}");
                         self.script.log.push(message.clone());
-                        self.status = Some(format!("script: {message}"));
+                        self.ui.set_status(format!("script: {message}"));
                     } else {
                         self.script.queue.push_front(line);
                         return;
@@ -132,7 +134,7 @@ impl EditorApp {
                     self.script.retries = 0;
                     eprintln!("smoke: script: {line}: {error}");
                     self.script.log.push(format!("{line}: {error}"));
-                    self.status = Some(format!("script: {line}: {error}"));
+                    self.ui.set_status(format!("script: {line}: {error}"));
                 }
             }
         }
@@ -153,15 +155,19 @@ impl EditorApp {
                 };
                 self.set_tool(tool);
             }
-            "plane" => self.interaction.view_plane = number::<u8>(words.next(), "plane")?.min(3),
+            "plane" => self
+                .interaction
+                .set_view_plane(number::<u8>(words.next(), "plane")?),
             "teleport" => {
                 let x = number(words.next(), "x")?;
                 let y = number(words.next(), "y")?;
-                let plane = words.next().map_or(Ok(self.interaction.view_plane), |p| {
-                    p.parse::<u8>()
-                        .map(|p| p.min(3))
-                        .map_err(|_| "plane is not a number".to_owned())
-                })?;
+                let plane = words
+                    .next()
+                    .map_or(Ok(self.interaction.view_plane()), |p| {
+                        p.parse::<u8>()
+                            .map(|p| p.min(3))
+                            .map_err(|_| "plane is not a number".to_owned())
+                    })?;
                 self.teleport_to(Destination::Tile { x, y, plane });
             }
             "overlay" | "underlay" => {
@@ -170,29 +176,31 @@ impl EditorApp {
                     other => Fill::Set(number(other, "id")?),
                 };
                 let channel = if command == "overlay" {
-                    &mut self.prefs.brush.overlay
+                    &mut self.settings.prefs.brush.overlay
                 } else {
-                    &mut self.prefs.brush.underlay
+                    &mut self.settings.prefs.brush.underlay
                 };
                 channel.fill = fill;
                 channel.armed = true;
             }
             "shape" => {
-                self.prefs.brush.shape.shape =
+                self.settings.prefs.brush.shape.shape =
                     number::<u8>(words.next(), "shape")?.min(crate::paint::MAX_SHAPE);
                 if let Some(rotation) = words.next() {
-                    self.prefs.brush.shape.rotation = rotation
+                    self.settings.prefs.brush.shape.rotation = rotation
                         .parse::<u8>()
                         .map_err(|_| "rotation is not a number".to_owned())?
                         & 3;
                 }
-                self.prefs.brush.shape.armed = true;
+                self.settings.prefs.brush.shape.armed = true;
             }
-            "radius" => self.prefs.brush.radius = number::<u8>(words.next(), "radius")?.min(16),
+            "radius" => {
+                self.settings.prefs.brush.radius = number::<u8>(words.next(), "radius")?.min(16)
+            }
             "arm" => {
                 let channel = words.next().ok_or("which channel?")?;
                 let on = on_off(words.next(), true)?;
-                let brush = &mut self.prefs.brush;
+                let brush = &mut self.settings.prefs.brush;
                 match channel {
                     "overlay" => brush.overlay.armed = on,
                     "underlay" => brush.underlay.armed = on,
@@ -205,8 +213,12 @@ impl EditorApp {
             "paint" => {
                 let x = number(words.next(), "x")?;
                 let y = number(words.next(), "y")?;
-                if crate::pick::tile_values(&self.infos, (x, y), self.interaction.view_plane)
-                    .is_none()
+                if crate::pick::tile_values(
+                    self.world.infos(),
+                    (x, y),
+                    self.interaction.view_plane(),
+                )
+                .is_none()
                 {
                     return Ok(Step::Retry);
                 }
@@ -214,7 +226,7 @@ impl EditorApp {
             }
             "hud" => {
                 let which = words.next().ok_or("which hud?")?;
-                let prefs = &mut self.prefs;
+                let prefs = &mut self.settings.prefs;
                 let slot = match which {
                     "tile" => &mut prefs.tile_info_hud,
                     "stats" => &mut prefs.stats_overlay,
@@ -228,11 +240,9 @@ impl EditorApp {
             "focus" => self.focus_selection(),
             "window" => {
                 let which = words.next();
-                self.settings_open = which == Some("settings");
-                self.plugins_open = which == Some("plugins");
-                self.script_open = which == Some("script");
-                self.world_map.open = which == Some("map");
-                self.teleport.open = which == Some("teleport");
+                self.ui.open_only(which);
+                self.ui.world_map.open = which == Some("map");
+                self.ui.teleport.open = which == Some("teleport");
                 if !matches!(
                     which,
                     Some("settings" | "plugins" | "script" | "map" | "teleport" | "none")
@@ -241,11 +251,12 @@ impl EditorApp {
                 }
             }
             "camera" => {
-                self.interaction.camera.mode = match words.next() {
+                let mode = match words.next() {
                     Some("fly") => crate::camera::CameraMode::Fly,
                     Some("orbit") => crate::camera::CameraMode::Orbit,
                     other => return Err(format!("unknown camera {other:?}")),
                 };
+                self.interaction.set_camera_mode(mode);
             }
             "spline" => {
                 let mut points = Vec::new();
@@ -256,10 +267,10 @@ impl EditorApp {
                         number::<f32>(Some(y), "y")? + 0.5,
                     ));
                 }
-                self.interaction.spline.points = points;
+                self.interaction.replace_spline_points(points);
             }
             "lay" => {
-                if self.interaction.spline.points.is_empty() {
+                if self.interaction.spline_points().is_empty() {
                     return Err("no path points".to_owned());
                 }
                 self.commit_spline();
@@ -281,34 +292,35 @@ impl EditorApp {
                     let y1: i32 = number(words.next(), "y1")?;
                     for x in x0.min(x1)..=x0.max(x1) {
                         for y in y0.min(y1)..=y0.max(y1) {
-                            self.interaction.selection_tiles.insert((x, y));
+                            self.interaction.add_tile((x, y));
                         }
                     }
                 }
                 other => return Err(format!("select object or tiles, not {other:?}")),
             },
             "menu" => {
-                let Some(object) = self.interaction.selected.clone() else {
+                let Some(object) = self.interaction.selected().clone() else {
                     return Ok(Step::Retry);
                 };
                 let anchor = self
-                    .infos
+                    .world
+                    .infos()
                     .get(&object.region)
                     .and_then(|info| info.locs.get(object.index))
                     .map(|loc| crate::pick::TilePick {
                         tile: loc.tile,
                         at: (loc.tile.0 as f32 + 0.5, loc.tile.1 as f32 + 0.5),
                     });
-                self.interaction.context_pick = crate::pick::Pick {
+                self.interaction.set_context_pick(crate::pick::Pick {
                     object: Some(object),
                     tile: anchor,
-                };
-                self.context_menu = Some(egui::pos2(400.0, 300.0));
+                });
+                self.ui.context_menu = Some(egui::pos2(400.0, 300.0));
             }
             "move" => {
                 let dx: i32 = number(words.next(), "dx")?;
                 let dy: i32 = number(words.next(), "dy")?;
-                if self.interaction.selected.is_none() {
+                if self.interaction.selected().is_none() {
                     return Ok(Step::Retry);
                 }
                 let specs = self.selected_specs();
@@ -316,9 +328,13 @@ impl EditorApp {
             }
             "count" => {
                 let region = self.camera_region();
-                let n = self.infos.get(&region).map_or(0, |info| info.locs.len());
+                let n = self
+                    .world
+                    .infos()
+                    .get(&region)
+                    .map_or(0, |info| info.locs.len());
                 eprintln!("smoke: region {region:?} has {n} objects");
-                self.notice = Some((format!("region {region:?}: {n} objects"), Instant::now()));
+                self.ui.notify(format!("region {region:?}: {n} objects"));
             }
             "undo" => {
                 if !self.can_undo() {
@@ -327,14 +343,15 @@ impl EditorApp {
                 self.undo();
             }
             "redo" => self.redo(),
-            "delete" | "turn" | "copy" if self.interaction.selected.is_none() => {
+            "delete" | "turn" | "copy" if self.interaction.selected().is_none() => {
                 return Ok(Step::Retry);
             }
             "delete" => self.delete_selected_objects(),
             "turn" => self.rotate_selected_objects(1),
             "copy" => self.duplicate_selected_objects(),
             "wait" => {
-                self.script.wait_until = self.frames + number::<u64>(words.next(), "frames")?;
+                self.script.wait_until =
+                    self.diagnostics.frames() + number::<u64>(words.next(), "frames")?;
             }
             "tcopy" => self.copy_tile_selection(),
             "tpaste" => {
@@ -356,7 +373,7 @@ impl EditorApp {
             "inspect" => {
                 let x = number::<i32>(words.next(), "x")?;
                 let y = number::<i32>(words.next(), "y")?;
-                let plane = self.interaction.view_plane;
+                let plane = self.interaction.view_plane();
                 let semantic = osrs_core::coords::SourcePlane::new(plane).map(|plane| {
                     self.session
                         .document()
@@ -382,7 +399,7 @@ impl EditorApp {
                 let action = words.next().unwrap_or_default();
                 let path: Vec<&str> = words.collect();
                 let message = self.script_project(action, &path.join(" "))?;
-                self.notice = Some((message, Instant::now()));
+                self.ui.notify(message);
             }
             "export" => {
                 let action = words.next().unwrap_or_default();
@@ -393,7 +410,7 @@ impl EditorApp {
             }
             "status" => {
                 let text: Vec<&str> = words.collect();
-                self.notice = Some((text.join(" "), Instant::now()));
+                self.ui.notify(text.join(" "));
             }
             other => return Err(format!("unknown command '{other}'")),
         }
@@ -404,7 +421,8 @@ impl EditorApp {
     /// Select the named object nearest `tile` (within 4 tiles); `false` while none is loaded yet.
     fn select_nearest_object(&mut self, tile: (i32, i32)) -> bool {
         let found = self
-            .infos
+            .world
+            .infos()
             .iter()
             .flat_map(|(region, info)| {
                 info.locs

@@ -10,7 +10,7 @@ impl EditorApp {
         position: egui::Pos2,
         pick: &Pick,
     ) -> Outcome {
-        let entries = interact::entries(&self.infos, pick);
+        let entries = interact::entries(self.world.infos(), pick);
         let mut outcome = Outcome::default();
         let brown = egui::Color32::from_rgb(93, 84, 71);
         let header = egui::Color32::from_rgb(38, 34, 28);

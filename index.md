@@ -8,9 +8,11 @@ RustOSRS has a canonical blueprint/specification system plus a current operation
 
 Before starting implementation work, read:
 
-1. `DEV_HANDOFF.md` for the latest exact branch/SHA/CI boundary;
-2. `docs/PROJECT-STATUS.md` for the current completion audit and remaining work;
-3. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` for dependency/order and milestone reconciliation.
+1. `AGENTS.md` and `ARCHITECTURE.md` for contributor navigation and the current ownership contract;
+2. `DEV_HANDOFF.md` for the latest exact branch/SHA/CI boundary;
+3. `docs/PROJECT-STATUS.md` for the current completion audit and remaining work;
+4. `docs/architecture/FEATURE-MAP.md` for existing tool implementations and tests;
+5. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` for dependency/order and milestone reconciliation.
 
 The project is no longer at the blueprint/M0 entry point. M0-M16 have substantial or complete production implementation; the remaining program is concentrated in architecture extraction, Reference parity/certification closure, 117HD completion, export generalization, and project lifecycle/recovery work.
 
@@ -18,17 +20,18 @@ The project is no longer at the blueprint/M0 entry point. M0-M16 have substantia
 
 For implementation work, read in this order:
 
-1. `DEV_HANDOFF.md`
-2. `docs/PROJECT-STATUS.md`
-3. `docs/blueprint/04-PROJECT-CHARTER.md`
-4. `docs/blueprint/05-SYSTEM-ARCHITECTURE.md`
-5. `docs/blueprint/06-CRATE-ARCHITECTURE.md`
-6. `docs/blueprint/08-PARITY-MODEL.md`
-7. `docs/specs/README.md`
-8. the owning semantic spec(s) under `docs/specs/`
-9. the relevant accepted ADR(s) under `docs/adr/`
-10. `docs/verification/PARITY-MATRIX.md`
-11. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md`
+1. `ARCHITECTURE.md` and `AGENTS.md`
+2. `DEV_HANDOFF.md`
+3. `docs/PROJECT-STATUS.md`
+4. `docs/blueprint/04-PROJECT-CHARTER.md`
+5. `docs/blueprint/05-SYSTEM-ARCHITECTURE.md`
+6. `docs/blueprint/06-CRATE-ARCHITECTURE.md`
+7. `docs/blueprint/08-PARITY-MODEL.md`
+8. `docs/specs/README.md`
+9. the owning semantic spec(s) under `docs/specs/`
+10. the relevant accepted ADR(s) under `docs/adr/`
+11. `docs/verification/PARITY-MATRIX.md`
+12. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md`
 
 The canonical blueprint registry is `docs/blueprint/README.md`.
 
@@ -36,10 +39,12 @@ The canonical blueprint registry is `docs/blueprint/README.md`.
 
 | Question | Canonical authority |
 |---|---|
-| What is the exact current branch/CI/subsystem boundary? | `DEV_HANDOFF.md` |
+| What is the exact current branch/CI/subsystem boundary? | Live Git state, reconciled with `DEV_HANDOFF.md`; only reported CI evidence certifies CI |
 | What is implemented and what remains? | `docs/PROJECT-STATUS.md` |
 | What OSRS semantic behavior must be reproduced? | `docs/specs/` |
-| What RustOSRS architecture/product decision is accepted? | `docs/adr/` + owning blueprint document |
+| What are the current repository ownership/coding boundaries? | `ARCHITECTURE.md` |
+| Why was a RustOSRS architecture/product decision accepted? | Accepted `docs/adr/` records; blueprint documents supply target/background context |
+| Where are a tool's controller, planner, gateway and tests? | `scripts/editor_features.json` + `docs/architecture/FEATURE-MAP.md` |
 | What source/revision proves a claim? | `docs/verification/SOURCE-PINS.md` + spec evidence |
 | What tests/fixtures prove implementation correctness? | `docs/verification/PARITY-MATRIX.md`, `REFERENCE-FIXTURES.md`, `GOLDEN-SCENES.md` |
 | What should be built, and in what order? | `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` |
@@ -141,9 +146,9 @@ Their authority and provenance are classified in `docs/blueprint/03-SOURCE-GROUP
 If two documents disagree:
 
 1. identify the owning domain;
-2. use `DEV_HANDOFF.md`/`PROJECT-STATUS.md` for current repository state;
+2. verify live Git state and reconcile `DEV_HANDOFF.md`/`PROJECT-STATUS.md` before relying on operational notes;
 3. prefer the canonical semantic spec for OSRS behavior;
-4. prefer the accepted ADR for project-owned design;
+4. use `ARCHITECTURE.md` for current ownership/coding constraints and the accepted ADR for its rationale;
 5. check exact source/fixture provenance;
 6. check the contradiction register for unresolved revision issues;
 7. if still unresolved, classify it as research/revision-sensitive and do not implement by intuition.

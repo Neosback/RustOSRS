@@ -57,35 +57,35 @@ impl EditorApp {
 
         // The focal point: the orbit pivot, or the camera itself when flying.
         let origin = self.renderer.render_origin();
-        let (x, z) = match self.interaction.camera.mode {
+        let (x, z) = match self.interaction.camera().mode {
             CameraMode::Orbit => {
-                let pivot = self.interaction.camera.pivot();
+                let pivot = self.interaction.camera().pivot();
                 (pivot[0], pivot[2])
             }
-            CameraMode::Fly => (self.interaction.camera.x, self.interaction.camera.z),
+            CameraMode::Fly => (self.interaction.camera().x, self.interaction.camera().z),
         };
         let focal = [
             ((f64::from(origin.0) + f64::from(x)) / 128.0).floor() as i32,
             ((f64::from(origin.1) + f64::from(z)) / 128.0).floor() as i32,
-            i32::from(self.interaction.view_plane),
+            i32::from(self.interaction.view_plane()),
         ];
-        let mut settings = self.prefs.hd_environment;
-        settings.host_sky = self.prefs.sky_color;
+        let mut settings = self.settings.prefs.hd_environment;
+        settings.host_sky = self.settings.prefs.sky_color;
         let elapsed = now.duration_since(self.hd.started).as_secs_f64();
         self.hd
             .state
             .update(&set, &settings, focal, &NoVariables, elapsed, delta);
-        self.renderer.set_hd_shadows(self.prefs.hd_shadows);
+        self.renderer.set_hd_shadows(self.settings.prefs.hd_shadows);
         self.renderer.set_hd_lighting(HdLighting {
             lighting: self.hd.state.lighting(
                 &set,
                 &settings,
-                self.prefs.draw_distance_tiles as f32,
+                self.settings.prefs.draw_distance_tiles as f32,
             ),
-            normal_mapping: self.prefs.hd_normal_mapping,
-            parallax_mapping: self.prefs.hd_parallax_mapping,
-            underwater_caustics: self.prefs.hd_underwater_caustics,
-            gamma: 100.0 / self.prefs.hd_brightness.max(1.0),
+            normal_mapping: self.settings.prefs.hd_normal_mapping,
+            parallax_mapping: self.settings.prefs.hd_parallax_mapping,
+            underwater_caustics: self.settings.prefs.hd_underwater_caustics,
+            gamma: 100.0 / self.settings.prefs.hd_brightness.max(1.0),
             elapsed_seconds: (elapsed % 4096.0) as f32,
             debug_view: 0,
         });

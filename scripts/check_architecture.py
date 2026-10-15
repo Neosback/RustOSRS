@@ -7,13 +7,14 @@ import json
 import sys
 import tomllib
 from pathlib import Path
+from editor_architecture import check_editor_contracts
 
 ROOT = Path(__file__).resolve().parents[1]
 CRATES = ROOT / "crates"
 EDITOR_SOURCE = CRATES / "osrs-editor" / "src"
 ARCHITECTURE_DEBT_FILE = ROOT / "scripts" / "architecture_debt.json"
 
-# Architecture Contract v2 normal limits. Dedicated test modules receive the larger test-only cap.
+# Architecture Contract v3 normal limits. Dedicated test modules receive the larger test-only cap.
 # Existing production modules above a normal limit must be listed in architecture_debt.json at an
 # exact measured baseline and may never grow beyond that baseline.
 EDITOR_MAX_RUST_LINES = 500
@@ -61,6 +62,11 @@ CORE_FORBIDDEN = {
     "egui",
     "eframe",
     "rs-cache",
+}
+
+EDIT_FORBIDDEN = {
+    "wgpu", "egui", "eframe", "winit", "rfd", "web-sys", "js-sys",
+    "wasm-bindgen", "tokio", "reqwest", "rune-fs", "rs-cache",
 }
 
 EditorDebt = dict[str, dict[str, int]]
@@ -117,6 +123,11 @@ def check_workspace(crates_root: Path = CRATES) -> list[str]:
 
         if crate != "osrs-reference" and "osrs-reference" in dependencies:
             errors.append(f"{crate}: production crates must never depend on osrs-reference")
+
+        if crate == "osrs-edit":
+            forbidden = sorted(dependencies & EDIT_FORBIDDEN)
+            if forbidden:
+                errors.append("osrs-edit: UI/GPU/platform dependency leakage: " + ", ".join(forbidden))
 
         if crate == "osrs-core":
             forbidden = sorted(dependencies & CORE_FORBIDDEN)
@@ -273,6 +284,7 @@ def check_editor_module_sizes(
 def main() -> int:
     errors = check_workspace()
     errors.extend(check_editor_module_sizes())
+    errors.extend(check_editor_contracts(ROOT))
     if errors:
         print("Architecture check failed:", file=sys.stderr)
         for error in errors:

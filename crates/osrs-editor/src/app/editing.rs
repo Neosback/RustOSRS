@@ -5,6 +5,8 @@
 //! chronological undo/redo routing lives in `editing/history.rs` so the editor shell does not
 //! accumulate another god module.
 
+#[cfg(test)]
+mod controller_tests;
 mod history;
 mod paste;
 mod path;
@@ -26,7 +28,7 @@ use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::HeightVertexCoord;
 use osrs_world::TileEdit;
 use plan::{build_paint_stroke_patch, project_height_values, project_paint_values};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use web_time::Instant;
 
@@ -55,8 +57,7 @@ pub struct Stroke {
     index: HashMap<TileKey, usize>,
     last_tile: Option<(i32, i32)>,
     last_applied: Instant,
-    /// The exact Paint brush captured for this stroke. `None` keeps non-Paint strokes on the legacy
-    /// commit path until their own migration checkpoints.
+    /// Paint settings latched at the gesture's first sample; Height gestures use height_spec.
     paint_brush: Option<Brush>,
     /// The exact Height settings captured on the first applied sample of this stroke.
     height_spec: Option<HeightStrokeSpec>,
@@ -65,6 +66,7 @@ pub struct Stroke {
     /// The height under the cursor when the stroke began (what Flatten levels to).
     anchor: Option<i32>,
     seed: u64,
+    newly_explicit_heights: HashSet<TileKey>,
 }
 
 impl Stroke {
@@ -86,6 +88,7 @@ impl Default for Stroke {
             height_centers: Vec::new(),
             anchor: None,
             seed: 0,
+            newly_explicit_heights: HashSet::new(),
         }
     }
 }
@@ -109,40 +112,68 @@ pub fn affected_regions(tile: (i32, i32)) -> Vec<(i32, i32)> {
     regions
 }
 
-impl EditorApp {
-    /// The tile on the viewed plane as the map has it now: the editor's value if edited, else the picker's.
-    pub(super) fn tile_now(&self, tile: (i32, i32)) -> Option<TileValues> {
-        self.current_tile((self.interaction.view_plane, tile.0, tile.1))
-    }
+/// Transitional terrain preview and chronological history-routing metadata. The authoritative
+/// before/after values for committed edits live only in `EditorSession`. Remove this adapter when
+/// workers consume semantic snapshots and session history supplies projection footprints directly.
+#[derive(Default)]
+pub(super) struct TerrainController {
+    edited: HashMap<TileKey, TileValues>,
+    height_edited: HashSet<TileKey>,
+    stroke: Option<Stroke>,
+    stroke_counter: u64,
+    history: Vec<EditStep>,
+    redo_stack: Vec<EditStep>,
+}
 
-    fn current_tile(&self, key: TileKey) -> Option<TileValues> {
+impl TerrainController {
+    pub(in crate::app) fn reset(&mut self) {
+        *self = Self::default();
+    }
+    pub(in crate::app) fn cancel_stroke(&mut self, infos: &crate::pick::Infos) -> Vec<TileEdit> {
+        let Some(stroke) = self.stroke.take() else {
+            return Vec::new();
+        };
+        for key in &stroke.newly_explicit_heights {
+            self.height_edited.remove(key);
+        }
+        for (key, before, _) in &stroke.step.changes {
+            self.edited.insert(*key, *before);
+        }
+        stroke
+            .step
+            .changes
+            .into_iter()
+            .map(|(key, before, _)| self.edit_for(infos, key, before))
+            .collect()
+    }
+    fn current_tile(&self, infos: &crate::pick::Infos, key: TileKey) -> Option<TileValues> {
         self.edited
             .get(&key)
             .copied()
-            .or_else(|| crate::pick::tile_values(&self.infos, (key.1, key.2), key.0))
+            .or_else(|| crate::pick::tile_values(infos, (key.1, key.2), key.0))
     }
 
     /// The height heights are stored relative to: nothing on plane 0, the plane below above it.
-    fn base_height(&self, key: TileKey) -> i32 {
+    fn base_height(&self, infos: &crate::pick::Infos, key: TileKey) -> i32 {
         if key.0 == 0 {
             0
         } else {
-            self.current_tile((key.0 - 1, key.1, key.2))
+            self.current_tile(infos, (key.0 - 1, key.1, key.2))
                 .map_or(0, |below| below.height)
         }
     }
 
     /// The nearest height the map file can store at this tile.
-    fn quantize_height(&self, key: TileKey, desired: i32) -> i32 {
-        let base = self.base_height(key);
+    fn quantize_height(&self, infos: &crate::pick::Infos, key: TileKey, desired: i32) -> i32 {
+        let base = self.base_height(infos, key);
         heights::decode_height(base, encode_height(base, desired))
     }
 
-    fn edit_for(&self, key: TileKey, values: TileValues) -> TileEdit {
+    fn edit_for(&self, infos: &crate::pick::Infos, key: TileKey, values: TileValues) -> TileEdit {
         let height = self
             .height_edited
             .contains(&key)
-            .then(|| encode_height(self.base_height(key), values.height));
+            .then(|| encode_height(self.base_height(infos, key), values.height));
         TileEdit {
             plane: key.0,
             tile: (key.1, key.2),
@@ -171,17 +202,20 @@ impl EditorApp {
     /// changed.
     fn record(
         &mut self,
+        infos: &crate::pick::Infos,
         stroke: &mut Stroke,
         key: TileKey,
         mut after: TileValues,
         edits: &mut Vec<TileEdit>,
     ) -> bool {
-        let Some(current) = self.current_tile(key) else {
+        let Some(current) = self.current_tile(infos, key) else {
             return false;
         };
         if after.height != current.height {
-            after.height = self.quantize_height(key, after.height);
-            self.height_edited.insert(key);
+            after.height = self.quantize_height(infos, key, after.height);
+            if self.height_edited.insert(key) {
+                stroke.newly_explicit_heights.insert(key);
+            }
         }
         if after == current {
             return false;
@@ -194,10 +228,30 @@ impl EditorApp {
             }
         }
         self.edited.insert(key, after);
-        edits.push(self.edit_for(key, after));
+        edits.push(self.edit_for(infos, key, after));
         true
     }
+}
 
+impl EditorApp {
+    /// Preview queries are for presentation only; planners read the authoritative `MapQuery`.
+    pub(super) fn tile_now(&self, tile: (i32, i32)) -> Option<TileValues> {
+        self.current_tile((self.interaction.view_plane(), tile.0, tile.1))
+    }
+    fn current_tile(&self, key: TileKey) -> Option<TileValues> {
+        self.terrain.current_tile(self.world.infos(), key)
+    }
+    fn quantize_height(&self, key: TileKey, desired: i32) -> i32 {
+        self.terrain
+            .quantize_height(self.world.infos(), key, desired)
+    }
+    fn edit_for(&self, key: TileKey, values: TileValues) -> TileEdit {
+        self.terrain.edit_for(self.world.infos(), key, values)
+    }
+    pub(in crate::app) fn cancel_stroke(&mut self) {
+        let edits = self.terrain.cancel_stroke(self.world.infos());
+        self.send_edits(edits);
+    }
     /// Reconcile the already-visible Paint preview with the authoritative semantic result. Most
     /// strokes are already identical; this mainly canonicalizes overlay shape/rotation when an
     /// overlay is created on a semantically empty tile.
@@ -210,7 +264,7 @@ impl EditorApp {
                 continue;
             };
             if projected != *after {
-                self.edited.insert(*key, projected);
+                self.terrain.edited.insert(*key, projected);
                 edits.push(self.edit_for(*key, projected));
             }
             *after = projected;
@@ -237,9 +291,9 @@ impl EditorApp {
         let mut edits = Vec::new();
         for (index, key, values) in projected {
             let after = &mut stroke.step.changes[index].2;
-            self.height_edited.insert(key);
+            self.terrain.height_edited.insert(key);
             if values != *after {
-                self.edited.insert(key, values);
+                self.terrain.edited.insert(key, values);
                 edits.push(self.edit_for(key, values));
             }
             *after = values;
@@ -254,19 +308,19 @@ impl EditorApp {
 
     /// Paint the brush footprint around `tile` into the open stroke.
     pub(super) fn paint_at(&mut self, tile: (i32, i32)) {
-        let Some(mut stroke) = self.stroke.take() else {
+        let Some(mut stroke) = self.terrain.stroke.take() else {
             return;
         };
         if stroke.last_tile == Some(tile) {
-            self.stroke = Some(stroke);
+            self.terrain.stroke = Some(stroke);
             return;
         }
         stroke.last_tile = Some(tile);
         let brush = stroke
             .paint_brush
-            .get_or_insert_with(|| self.prefs.brush.clone())
+            .get_or_insert_with(|| self.settings.prefs.brush.clone())
             .clone();
-        let plane = self.interaction.view_plane;
+        let plane = self.interaction.view_plane();
         let mut edits = Vec::new();
         for (x, y) in brush.footprint_tiles(tile) {
             let key = (plane, x, y);
@@ -277,25 +331,26 @@ impl EditorApp {
                 continue;
             };
             let after = brush.apply(before);
-            self.record(&mut stroke, key, after, &mut edits);
+            self.terrain
+                .record(self.world.infos(), &mut stroke, key, after, &mut edits);
         }
         self.send_edits(edits);
-        self.stroke = Some(stroke);
+        self.terrain.stroke = Some(stroke);
     }
 
     /// One application of the Height tool around `tile`.
     pub(super) fn sculpt_at(&mut self, tile: (i32, i32)) {
-        let Some(mut stroke) = self.stroke.take() else {
+        let Some(mut stroke) = self.terrain.stroke.take() else {
             return;
         };
         let moved = stroke.last_tile != Some(tile);
         if !moved && stroke.last_applied.elapsed() < SCULPT_REPEAT {
-            self.stroke = Some(stroke);
+            self.terrain.stroke = Some(stroke);
             return;
         }
         stroke.last_tile = Some(tile);
         stroke.last_applied = Instant::now();
-        let plane = self.interaction.view_plane;
+        let plane = self.interaction.view_plane();
         if stroke.anchor.is_none() {
             stroke.anchor = self.current_tile((plane, tile.0, tile.1)).map(|v| v.height);
         }
@@ -304,9 +359,9 @@ impl EditorApp {
         let center = MapTile::new(tile.0, tile.1);
         let captured_spec = HeightStrokeSpec::new(
             source_plane,
-            self.prefs.height_tool.clone(),
-            self.prefs.brush.radius,
-            self.prefs.brush.footprint,
+            self.settings.prefs.height_tool.clone(),
+            self.settings.prefs.brush.radius,
+            self.settings.prefs.brush.footprint,
             stroke.anchor.unwrap_or(0),
             stroke.seed,
         );
@@ -321,10 +376,11 @@ impl EditorApp {
                 continue;
             };
             after.height = height;
-            self.record(&mut stroke, key, after, &mut edits);
+            self.terrain
+                .record(self.world.infos(), &mut stroke, key, after, &mut edits);
         }
         self.send_edits(edits);
-        self.stroke = Some(stroke);
+        self.terrain.stroke = Some(stroke);
     }
 
     // ----------------------------------------------------------------- rebuilds
@@ -342,8 +398,8 @@ impl EditorApp {
     /// Paint or sculpt with the left button while a brush tool is active (called once per frame with
     /// the viewport's response, after the cursor's tile has been picked).
     pub(super) fn brush_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
-        let tool = self.prefs.tool;
-        if !tool.uses_brush() || self.quick_open.is_some() || self.context_menu.is_some() {
+        let tool = self.settings.prefs.tool;
+        if !tool.uses_brush() || self.ui.quick_open.is_some() || self.ui.context_menu.is_some() {
             self.end_stroke();
             return;
         }
@@ -356,19 +412,19 @@ impl EditorApp {
         if !response.is_pointer_button_down_on() {
             return;
         }
-        let Some(tile) = self.interaction.hover.tile.map(|pick| pick.tile) else {
+        let Some(tile) = self.interaction.hover().tile.map(|pick| pick.tile) else {
             return;
         };
         if alt {
             // Alt + click samples instead of painting.
-            if self.stroke.is_none()
+            if self.terrain.stroke.is_none()
                 && let Some(values) = self.tile_now(tile)
             {
                 self.eyedrop(values);
             }
             return;
         }
-        self.begin_stroke();
+        self.terrain.begin_stroke();
         match tool {
             Tool::Paint => self.paint_at(tile),
             Tool::Height => self.sculpt_at(tile),

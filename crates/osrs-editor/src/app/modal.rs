@@ -99,19 +99,16 @@ impl Modal {
 impl EditorApp {
     /// Whether a modal window is up (the editor behind it takes no keys or tools).
     pub(super) fn modal_open(&self) -> bool {
-        self.settings_open
-            || self.export_modal_open()
-            || self.script_open
-            || self.plugins_open
-            || self.tool_draft.is_some()
-            || self.teleport.open
-            || self.world_map.open
-            || self.cache_error.is_some()
+        self.ui
+            .modal_open(self.export_modal_open() || self.project.cache_error().is_some())
     }
 
     /// Whether the editor's own key bindings should stay quiet: a text field has focus, a binding
     /// is being captured or a modal is up.
     pub(super) fn keys_blocked(&self, ctx: &egui::Context) -> bool {
-        ctx.egui_wants_keyboard_input() || self.capturing_binding.is_some() || self.modal_open()
+        self.ui.keys_blocked(
+            ctx.egui_wants_keyboard_input(),
+            self.export_modal_open() || self.project.cache_error().is_some(),
+        )
     }
 }

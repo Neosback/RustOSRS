@@ -97,26 +97,26 @@ impl EditorApp {
     /// One finished undo step. Semantic tools carry only projection-routing metadata; remaining
     /// legacy actions still carry their before/after values here.
     pub(in crate::app) fn push_step(&mut self, step: EditStep) {
-        self.history.push(step);
-        if self.history.len() > HISTORY_LIMIT {
-            self.history.remove(0);
+        self.terrain.history.push(step);
+        if self.terrain.history.len() > HISTORY_LIMIT {
+            self.terrain.history.remove(0);
         }
-        self.redo_stack.clear();
+        self.terrain.redo_stack.clear();
     }
 
     pub(in crate::app) fn can_undo(&self) -> bool {
-        !self.history.is_empty()
+        !self.terrain.history.is_empty()
     }
 
     pub(in crate::app) fn can_redo(&self) -> bool {
-        !self.redo_stack.is_empty()
+        !self.terrain.redo_stack.is_empty()
     }
 
     pub(super) fn revert(&mut self, step: &EditStep, forward: bool) {
         let mut edits = Vec::new();
         for (key, before, after) in &step.changes {
             let values = if forward { *after } else { *before };
-            self.edited.insert(*key, values);
+            self.terrain.edited.insert(*key, values);
             edits.push(self.edit_for(*key, values));
         }
         self.send_edits(edits);
@@ -144,8 +144,8 @@ impl EditorApp {
 
     /// Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z.
     pub(in crate::app) fn edit_actions(&mut self, ctx: &egui::Context) {
-        let undo = ctx.input(|i| self.keymap.pressed(i, "edit.undo"));
-        let redo = ctx.input(|i| self.keymap.pressed(i, "edit.redo"));
+        let undo = ctx.input(|i| self.settings.keymap.pressed(i, "edit.undo"));
+        let redo = ctx.input(|i| self.settings.keymap.pressed(i, "edit.redo"));
         if undo {
             self.undo();
         }

@@ -11,7 +11,7 @@ use eframe::egui;
 impl EditorApp {
     /// Press a user tool's button.
     pub(super) fn run_user_tool(&mut self, index: usize) {
-        let Some(tool) = self.prefs.user_tools.get(index).cloned() else {
+        let Some(tool) = self.settings.prefs.user_tools.get(index).cloned() else {
             return;
         };
         match tool.kind {
@@ -20,8 +20,8 @@ impl EditorApp {
                 brush,
                 spline,
             } => {
-                self.prefs.brush = brush;
-                self.prefs.spline = spline;
+                self.settings.prefs.brush = brush;
+                self.settings.prefs.spline = spline;
                 self.set_tool(tool);
             }
             UserToolKind::Bookmark { x, y, plane } => {
@@ -29,9 +29,9 @@ impl EditorApp {
             }
             UserToolKind::Link { url } => {
                 let url =
-                    user_tools::fill_link(&url, self.camera_tile(), self.interaction.view_plane);
+                    user_tools::fill_link(&url, self.camera_tile(), self.interaction.view_plane());
                 if let Err(error) = crate::platform::open_url(&url) {
-                    self.status = Some(format!("could not open {url}: {error}"));
+                    self.ui.set_status(format!("could not open {url}: {error}"));
                 }
             }
             UserToolKind::Script { text } => self.run_script(&text),
@@ -44,7 +44,7 @@ impl EditorApp {
         let mut run = None;
         let mut edit = None;
         let mut delete = None;
-        for (index, tool) in self.prefs.user_tools.iter().enumerate() {
+        for (index, tool) in self.settings.prefs.user_tools.iter().enumerate() {
             let response = super::floating::picker_button(
                 ui,
                 user_tools::glyph(&tool.icon),
@@ -73,33 +73,33 @@ impl EditorApp {
         )
         .clicked()
         {
-            self.tool_draft = Some(self.new_draft());
+            self.ui.tool_draft = Some(self.new_draft());
         }
         if let Some(index) = run {
             // The tool acts on the map, so the window gets out of the way first.
-            self.plugins_open = false;
+            self.ui.plugins_open = false;
             self.run_user_tool(index);
         }
         if let Some(index) = edit {
-            self.tool_draft = Some(ToolDraft {
+            self.ui.tool_draft = Some(ToolDraft {
                 index: Some(index),
-                tool: self.prefs.user_tools[index].clone(),
+                tool: self.settings.prefs.user_tools[index].clone(),
             });
         }
         if let Some(index) = delete {
-            self.prefs.user_tools.remove(index);
+            self.settings.prefs.user_tools.remove(index);
         }
     }
 
     /// A new tool, starting as the current brush as a preset when a brush tool is active.
     fn new_draft(&self) -> ToolDraft {
         let mut draft = ToolDraft::new_script();
-        if self.prefs.tool != Tool::Select {
-            draft.tool.name = format!("{} preset", self.prefs.tool.label());
+        if self.settings.prefs.tool != Tool::Select {
+            draft.tool.name = format!("{} preset", self.settings.prefs.tool.label());
             draft.tool.kind = UserToolKind::Preset {
-                tool: self.prefs.tool,
-                brush: self.prefs.brush.clone(),
-                spline: self.prefs.spline.clone(),
+                tool: self.settings.prefs.tool,
+                brush: self.settings.prefs.brush.clone(),
+                spline: self.settings.prefs.spline.clone(),
             };
         }
         draft
@@ -107,17 +107,17 @@ impl EditorApp {
 
     /// The Add tool / Edit tool window.
     pub(super) fn tool_draft_window(&mut self, ctx: &egui::Context) {
-        let Some(mut draft) = self.tool_draft.take() else {
+        let Some(mut draft) = self.ui.tool_draft.take() else {
             return;
         };
         let mut save = false;
         let mut cancel = false;
         let current_tile = self.camera_tile();
-        let current_plane = self.interaction.view_plane;
+        let current_plane = self.interaction.view_plane();
         let (tool_now, brush_now, spline_now) = (
-            self.prefs.tool,
-            self.prefs.brush.clone(),
-            self.prefs.spline.clone(),
+            self.settings.prefs.tool,
+            self.settings.prefs.brush.clone(),
+            self.settings.prefs.spline.clone(),
         );
         let title = if draft.index.is_some() {
             "Edit tool"
@@ -231,26 +231,26 @@ impl EditorApp {
         if save {
             let tool: UserTool = draft.tool;
             match draft.index {
-                Some(index) if index < self.prefs.user_tools.len() => {
-                    self.prefs.user_tools[index] = tool;
+                Some(index) if index < self.settings.prefs.user_tools.len() => {
+                    self.settings.prefs.user_tools[index] = tool;
                 }
-                _ => self.prefs.user_tools.push(tool),
+                _ => self.settings.prefs.user_tools.push(tool),
             }
         } else if !closed && !cancel {
-            self.tool_draft = Some(draft);
+            self.ui.tool_draft = Some(draft);
         }
     }
 
     /// The Plugins window's "My tools" section: the same tools as a list.
     pub(super) fn user_tool_list(&mut self, ui: &mut egui::Ui) {
         crate::theme::section_heading(ui, "My tools");
-        if self.prefs.user_tools.is_empty() {
+        if self.settings.prefs.user_tools.is_empty() {
             ui.weak("None yet. Use the + on the picker rail to add a brush preset, bookmark, link or script.");
         }
         let mut run = None;
         let mut edit = None;
         let mut delete = None;
-        for (index, tool) in self.prefs.user_tools.iter().enumerate() {
+        for (index, tool) in self.settings.prefs.user_tools.iter().enumerate() {
             ui.horizontal(|ui| {
                 if ui
                     .button(format!("{}  {}", user_tools::glyph(&tool.icon), tool.name))
@@ -280,7 +280,7 @@ impl EditorApp {
             )))
             .clicked()
         {
-            self.tool_draft = Some(self.new_draft());
+            self.ui.tool_draft = Some(self.new_draft());
         }
         if ui
             .add(crate::theme::outline_button(format!(
@@ -289,19 +289,19 @@ impl EditorApp {
             )))
             .clicked()
         {
-            self.script_open = true;
+            self.ui.script_open = true;
         }
         if let Some(index) = run {
             self.run_user_tool(index);
         }
         if let Some(index) = edit {
-            self.tool_draft = Some(ToolDraft {
+            self.ui.tool_draft = Some(ToolDraft {
                 index: Some(index),
-                tool: self.prefs.user_tools[index].clone(),
+                tool: self.settings.prefs.user_tools[index].clone(),
             });
         }
         if let Some(index) = delete {
-            self.prefs.user_tools.remove(index);
+            self.settings.prefs.user_tools.remove(index);
         }
     }
 }

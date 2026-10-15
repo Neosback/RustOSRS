@@ -6,13 +6,12 @@
 
 use super::{EditStep, EditorApp, PathTile, TileKey};
 use crate::app::edit_runtime::{EditExecution, EditExecutionError};
-use crate::app::path_commit::{TerrainPathIntent, build_terrain_path_patch};
+use crate::app::path_commit::{build_terrain_path_patch, path_intent};
 use crate::heights::{decode_height, encode_height};
 use crate::paint::TileValues;
 use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::{HeightVertexCoord, MapPosition, MapQuery, TerrainTile};
 use std::collections::HashSet;
-use web_time::Instant;
 
 /// One already-validated Path projection from authoritative semantic state into the transitional
 /// preview/worker mirrors.
@@ -103,19 +102,17 @@ impl EditorApp {
         if tiles.is_empty() {
             return 0;
         }
-        let Some(plane) = SourcePlane::new(self.interaction.view_plane) else {
-            self.notice = Some((
-                "The path uses an invalid source plane".to_owned(),
-                Instant::now(),
-            ));
+        let Some(plane) = SourcePlane::new(self.interaction.view_plane()) else {
+            self.ui
+                .notify("The path uses an invalid source plane".to_owned());
             return 0;
         };
 
-        let brush = self.prefs.brush.clone();
+        let brush = self.settings.prefs.brush.clone();
         let mut intents = Vec::new();
         for path_tile in tiles {
             let key = (
-                self.interaction.view_plane,
+                self.interaction.view_plane(),
                 path_tile.tile.0,
                 path_tile.tile.1,
             );
@@ -132,9 +129,9 @@ impl EditorApp {
                 ) {
                     Ok(height) => Some(height),
                     Err(message) => {
-                        self.notice = Some((
-                            format!("The path was not laid at {:?}: {message}", path_tile.tile),
-                            Instant::now(),
+                        self.ui.notify(format!(
+                            "The path was not laid at {:?}: {message}",
+                            path_tile.tile
                         ));
                         return 0;
                     }
@@ -143,7 +140,7 @@ impl EditorApp {
                 None
             };
             let flags = brush.flags.armed.then_some(brush.flags.bits);
-            intents.push(TerrainPathIntent::from_path_tile(*path_tile, height, flags));
+            intents.push(path_intent(*path_tile, height, flags));
         }
 
         if intents.is_empty() {
@@ -153,18 +150,15 @@ impl EditorApp {
         let patch = match build_terrain_path_patch(self.session.document(), plane, &intents) {
             Ok(patch) => patch,
             Err(error) => {
-                self.notice = Some((
-                    format!("The path was not laid: invalid semantic commit data ({error:?})"),
-                    Instant::now(),
+                self.ui.notify(format!(
+                    "The path was not laid: invalid semantic commit data ({error:?})"
                 ));
                 return 0;
             }
         };
         if patch.is_empty() {
-            self.notice = Some((
-                "The path made no semantic changes".to_owned(),
-                Instant::now(),
-            ));
+            self.ui
+                .notify("The path made no semantic changes".to_owned());
             return 0;
         }
 
@@ -176,14 +170,11 @@ impl EditorApp {
             if !seen.insert(intent.tile) {
                 continue;
             }
-            let key = (self.interaction.view_plane, intent.tile.0, intent.tile.1);
+            let key = (self.interaction.view_plane(), intent.tile.x, intent.tile.y);
             let Some(before) = self.current_tile(key) else {
-                self.notice = Some((
-                    format!(
-                        "The path was not laid: tile {:?} disappeared before projection",
-                        intent.tile
-                    ),
-                    Instant::now(),
+                self.ui.notify(format!(
+                    "The path was not laid: tile {:?} disappeared before projection",
+                    intent.tile
                 ));
                 return 0;
             };
@@ -191,7 +182,7 @@ impl EditorApp {
         }
         let route_keys: Vec<_> = projection_input.iter().map(|(key, _)| *key).collect();
 
-        let execution = self.session.execute(patch, |document| {
+        let execution = self.session.execute_named("path", patch, |document| {
             plan_path_projection(document, &projection_input, brush.height.armed)
         });
         let (receipt, projection) = match execution {
@@ -200,46 +191,37 @@ impl EditorApp {
                 projection,
             }) => (receipt, projection),
             Ok(EditExecution::NoChange) => {
-                self.notice = Some((
-                    "The path made no semantic changes".to_owned(),
-                    Instant::now(),
-                ));
+                self.ui
+                    .notify("The path made no semantic changes".to_owned());
                 return 0;
             }
             Err(EditExecutionError::Semantic(error)) => {
-                self.notice = Some((
-                    format!("The path was rejected by the semantic session: {error:?}"),
-                    Instant::now(),
+                self.ui.notify(format!(
+                    "The path was rejected by the semantic session: {error:?}"
                 ));
                 return 0;
             }
             Err(EditExecutionError::Projection(key)) => {
-                self.notice = Some((
+                self.ui.notify(
                     format!(
                         "The path commit was rolled back: semantic state at ({}, {}) cannot be represented by the legacy projection",
                         key.1, key.2
-                    ),
-                    Instant::now(),
-                ));
+                    ));
                 return 0;
             }
             Err(EditExecutionError::Rollback {
                 projection: key,
                 rollback,
             }) => {
-                self.notice = Some((
-                    format!(
-                        "Path projection failed at ({}, {}) and semantic rollback failed: {rollback:?}",
-                        key.1, key.2
-                    ),
-                    Instant::now(),
+                self.ui.notify(format!(
+                    "Path projection failed at ({}, {}) and semantic rollback failed: {rollback:?}",
+                    key.1, key.2
                 ));
                 return 0;
             }
             Err(EditExecutionError::Finalize(error)) => {
-                self.notice = Some((
-                    format!("Path projection succeeded but semantic finalize failed: {error:?}"),
-                    Instant::now(),
+                self.ui.notify(format!(
+                    "Path projection succeeded but semantic finalize failed: {error:?}"
                 ));
                 return 0;
             }
@@ -251,22 +233,18 @@ impl EditorApp {
                 continue;
             }
             if after.height != before.height {
-                self.height_edited.insert(*key);
+                self.terrain.height_edited.insert(*key);
             }
-            self.edited.insert(*key, *after);
+            self.terrain.edited.insert(*key, *after);
             edits.push(self.edit_for(*key, *after));
         }
         let count = route_keys.len();
         self.world.project_tile_edits(edits);
-        self.world
-            .invalidate_semantic_edit(receipt.impact, &receipt.touched_regions);
+        self.world.invalidate_semantic_edit(&receipt);
         self.push_step(EditStep::semantic_path(route_keys, brush.height.armed));
-        self.notice = Some((
-            format!(
-                "Changed {count} path tile{}",
-                if count == 1 { "" } else { "s" }
-            ),
-            Instant::now(),
+        self.ui.notify(format!(
+            "Changed {count} path tile{}",
+            if count == 1 { "" } else { "s" }
         ));
         count
     }

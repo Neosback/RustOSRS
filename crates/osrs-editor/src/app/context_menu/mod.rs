@@ -22,7 +22,6 @@ use crate::interact;
 use crate::pick::{self, ObjectPick, Pick};
 use crate::settings::ContextMenuStyle;
 use eframe::egui;
-use web_time::Instant;
 
 /// What an editor-menu entry does.
 #[derive(Debug, Clone)]
@@ -61,16 +60,16 @@ enum ObjectOp {
 impl EditorApp {
     /// Draw the open context menu in the chosen style.
     pub(super) fn context_menu(&mut self, ctx: &egui::Context) {
-        let Some(position) = self.context_menu else {
+        let Some(position) = self.ui.context_menu else {
             return;
         };
-        let pick = self.interaction.context_pick.clone();
-        let outcome = match self.prefs.context_menu {
+        let pick = self.interaction.context_pick().clone();
+        let outcome = match self.settings.prefs.context_menu {
             ContextMenuStyle::Game => self.game_menu(ctx, position, &pick),
             ContextMenuStyle::Editor => self.editor_menu(ctx, position, &pick),
         };
         if outcome.close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            self.context_menu = None;
+            self.ui.context_menu = None;
         }
         if let Some(effect) = outcome.effect {
             self.apply_effect(effect);
@@ -90,25 +89,24 @@ impl EditorApp {
             MenuAction::SetTool(tool) => self.set_tool(tool),
             MenuAction::Eyedrop(tile) => {
                 if let Some(values) =
-                    pick::tile_values(&self.infos, tile, self.interaction.view_plane)
+                    pick::tile_values(self.world.infos(), tile, self.interaction.view_plane())
                 {
                     self.eyedrop(values);
                 }
             }
             MenuAction::ApplyBrush(tile) => self.apply_brush_at(tile),
             MenuAction::SelectTile(tile) => {
-                self.interaction.selection_tiles.insert(tile);
+                self.interaction.add_tile(tile);
             }
             MenuAction::FillSelection => self.fill_selection(),
             MenuAction::HeightSelection => self.height_on_selection(),
             MenuAction::AddPathPoint(tile) => {
                 self.interaction
-                    .spline
-                    .points
-                    .push((tile.0 as f32 + 0.5, tile.1 as f32 + 0.5));
+                    .append_spline_point_and_drag((tile.0 as f32 + 0.5, tile.1 as f32 + 0.5));
+                self.interaction.finish_spline_drag();
             }
             MenuAction::LayPath => self.commit_spline(),
-            MenuAction::ClearPath => self.interaction.spline.points.clear(),
+            MenuAction::ClearPath => self.interaction.clear_spline_points(),
             MenuAction::ClearSelection => self.clear_selection(),
             MenuAction::ObjectOp(object, op) => {
                 self.select_only(object);
@@ -122,7 +120,8 @@ impl EditorApp {
             MenuAction::SelectSimilar(id) => self.select_similar(id),
             MenuAction::Wiki(object) => {
                 if let Some(loc) = self
-                    .infos
+                    .world
+                    .infos()
                     .get(&object.region)
                     .and_then(|info| info.locs.get(object.index))
                 {
@@ -133,15 +132,16 @@ impl EditorApp {
                         loc.plane,
                     );
                     if let Err(error) = crate::platform::open_url(&url) {
-                        self.status = Some(format!("could not open the wiki: {error}"));
+                        self.ui
+                            .set_status(format!("could not open the wiki: {error}"));
                     }
                 }
             }
             MenuAction::ClearOverlay(tile) => self.clear_overlay_at(tile),
             MenuAction::TeleportHere((x, y)) => {
-                let plane = self.interaction.view_plane;
+                let plane = self.interaction.view_plane();
                 self.teleport_to(Destination::Tile { x, y, plane });
-                self.notice = Some((format!("Teleported to {x}, {y}"), Instant::now()));
+                self.ui.notify(format!("Teleported to {x}, {y}"));
             }
         }
     }

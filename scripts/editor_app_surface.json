@@ -1,0 +1,412 @@
+{
+  "version": 1,
+  "fields": [
+    "assets",
+    "diagnostics",
+    "exports",
+    "hd",
+    "interaction",
+    "palettes",
+    "placer",
+    "plugins",
+    "project",
+    "renderer",
+    "script",
+    "session",
+    "settings",
+    "started",
+    "terrain",
+    "ui",
+    "web_pick",
+    "world"
+  ],
+  "methods": {
+    "app/cache_picker.rs": [
+      "cache_menu",
+      "cache_opened",
+      "cache_welcome",
+      "initial_cache_dir",
+      "open_cache",
+      "open_source",
+      "pick_cache_folder",
+      "pick_cache_folder",
+      "pick_cache_url",
+      "poll_web_pick",
+      "replace_source",
+      "restart_current_source"
+    ],
+    "app/camera_ops.rs": [
+      "camera_region",
+      "camera_tile",
+      "focus_selection",
+      "open_teleport",
+      "rebase_if_needed",
+      "teleport_to",
+      "world_position"
+    ],
+    "app/context_menu/editor_menu.rs": [
+      "editor_menu"
+    ],
+    "app/context_menu/effects.rs": [
+      "apply_effect",
+      "copy_menu"
+    ],
+    "app/context_menu/game_menu.rs": [
+      "game_menu"
+    ],
+    "app/context_menu/mod.rs": [
+      "apply_menu_action",
+      "context_menu"
+    ],
+    "app/drawer/channels.rs": [
+      "flag_options",
+      "height_channel",
+      "height_tool_options",
+      "shape_picker"
+    ],
+    "app/drawer/mod.rs": [
+      "drawer",
+      "drawer_collapse",
+      "drawer_preview",
+      "height_drawer",
+      "paint_drawer",
+      "spline_drawer",
+      "tool_drawer"
+    ],
+    "app/drawer/palettes.rs": [
+      "overlay_fill",
+      "overlay_palette",
+      "overlay_swatch",
+      "palette_header",
+      "palette_loading",
+      "underlay_color",
+      "underlay_palette"
+    ],
+    "app/editing/actions.rs": [
+      "apply_brush_at",
+      "clear_overlay_at",
+      "fill_selection",
+      "height_on_selection",
+      "project_document_tiles"
+    ],
+    "app/editing/commit.rs": [
+      "abandon_stroke",
+      "apply_height_projection",
+      "apply_paint_projection",
+      "commit_height_stroke",
+      "commit_paint_stroke",
+      "end_stroke",
+      "touched_keys"
+    ],
+    "app/editing/history/routing.rs": [
+      "apply_replay_projection",
+      "redo",
+      "route_semantic",
+      "undo"
+    ],
+    "app/editing/history.rs": [
+      "can_redo",
+      "can_undo",
+      "edit_actions",
+      "push_step",
+      "revert",
+      "send_loc_edits"
+    ],
+    "app/editing/paste.rs": [
+      "clipboard_actions",
+      "copy_tile_selection",
+      "paste_tiles",
+      "paste_tiles_at"
+    ],
+    "app/editing/path.rs": [
+      "apply_terrain_path"
+    ],
+    "app/editing.rs": [
+      "brush_input",
+      "cancel_stroke",
+      "current_tile",
+      "edit_for",
+      "paint_at",
+      "project_height_stroke",
+      "project_paint_stroke",
+      "quantize_height",
+      "sculpt_at",
+      "send_edits",
+      "tile_now"
+    ],
+    "app/export/inspection.rs": [
+      "export_inspection_ui"
+    ],
+    "app/export/review.rs": [
+      "export_modal_open",
+      "export_window"
+    ],
+    "app/export.rs": [
+      "export_menu",
+      "inspect_export",
+      "poll_export",
+      "prepare_export",
+      "publish_export",
+      "publish_export_to",
+      "script_export"
+    ],
+    "app/export_web.rs": [
+      "export_menu",
+      "export_modal_open",
+      "export_window",
+      "poll_export",
+      "script_export"
+    ],
+    "app/floating.rs": [
+      "floating_toolbar"
+    ],
+    "app/gizmo.rs": [
+      "finish_gizmo_drag",
+      "gizmo_origin",
+      "interact_gizmo",
+      "object_gizmo"
+    ],
+    "app/hd.rs": [
+      "update_hd_lighting"
+    ],
+    "app/init.rs": [
+      "from_source",
+      "new"
+    ],
+    "app/input.rs": [
+      "editor_actions",
+      "handle_input"
+    ],
+    "app/inspector.rs": [
+      "draw_inspector",
+      "inspection_inspector",
+      "inspector",
+      "object_card",
+      "tile_card",
+      "tile_fills"
+    ],
+    "app/map_icons.rs": [
+      "draw_map_icons_3d"
+    ],
+    "app/menu.rs": [
+      "camera_mode_picker",
+      "menu_bar"
+    ],
+    "app/minimap.rs": [
+      "draw_minimap_icons",
+      "minimap_hud",
+      "minimap_regions"
+    ],
+    "app/modal.rs": [
+      "keys_blocked",
+      "modal_open"
+    ],
+    "app/object_tool/drawer.rs": [
+      "object_drawer"
+    ],
+    "app/object_tool/place.rs": [
+      "draw_place_ghost",
+      "place_armed_object",
+      "place_group",
+      "place_object",
+      "place_target_controls",
+      "poll_catalog",
+      "rotate_placement",
+      "script_place",
+      "start_catalog_loader",
+      "start_catalog_loader"
+    ],
+    "app/object_tool.rs": [
+      "delete_selected_objects",
+      "draw_object_drag",
+      "duplicate_selected_objects",
+      "edit_objects",
+      "move_blocked",
+      "move_objects",
+      "object_actions",
+      "object_drag_input",
+      "resolve_reselect",
+      "rotate_selected_objects",
+      "selected_specs",
+      "shift_floor"
+    ],
+    "app/overlay.rs": [
+      "viewport_overlays"
+    ],
+    "app/plugins.rs": [
+      "apply_commands",
+      "plugin_action",
+      "plugin_actions",
+      "plugin_enabled",
+      "plugins_window",
+      "run_plugins",
+      "set_plugin_enabled"
+    ],
+    "app/project/lifecycle.rs": [
+      "execute_transition",
+      "quit_guard",
+      "request_source_change",
+      "request_transition",
+      "transition_guard"
+    ],
+    "app/project.rs": [
+      "activate_project",
+      "apply_project_region",
+      "has_project_changes",
+      "is_unsaved",
+      "load_project",
+      "open_project",
+      "poll_project",
+      "project_actions",
+      "project_menu",
+      "save_project",
+      "script_project",
+      "start_save"
+    ],
+    "app/project_web.rs": [
+      "apply_project_region",
+      "poll_project",
+      "project_actions",
+      "project_menu",
+      "quit_guard",
+      "request_source_change",
+      "script_project"
+    ],
+    "app/script/window.rs": [
+      "env_script"
+    ],
+    "app/script.rs": [
+      "run_script",
+      "script_command",
+      "script_frame",
+      "select_nearest_object"
+    ],
+    "app/selection.rs": [
+      "add_object",
+      "clear_selection",
+      "click_select",
+      "draw_selection_extras",
+      "marquee_select",
+      "object_tile",
+      "screen_point",
+      "select_only",
+      "select_similar",
+      "selection_input",
+      "toggle_object"
+    ],
+    "app/settings_io.rs": [
+      "apply_settings",
+      "autosave_settings",
+      "init_settings",
+      "settings_snapshot"
+    ],
+    "app/settings_window/mod.rs": [
+      "draw_labelled_row",
+      "open_settings",
+      "page_ui",
+      "quick_settings_ui",
+      "row_visible",
+      "rows_ui_for_page",
+      "search_ui",
+      "settings_window"
+    ],
+    "app/settings_window/pages.rs": [
+      "advanced_page",
+      "colors_page",
+      "controls_page",
+      "plugin_options_page"
+    ],
+    "app/settings_window/row_widgets.rs": [
+      "draw_hd_row",
+      "draw_interface_row",
+      "draw_reference_row",
+      "draw_row",
+      "draw_world_row"
+    ],
+    "app/shelf.rs": [
+      "brush_section",
+      "floating_shelf",
+      "path_section",
+      "sculpt_section",
+      "shelf_contents",
+      "tool_shelf"
+    ],
+    "app/spline_tool/input.rs": [
+      "commit_spline",
+      "spline_input"
+    ],
+    "app/spline_tool/overlay.rs": [
+      "draw_spline"
+    ],
+    "app/spline_tool.rs": [
+      "laying_overlay",
+      "spline_plan_now",
+      "spline_report",
+      "spline_tile_count",
+      "spline_update"
+    ],
+    "app/status.rs": [
+      "status_bar"
+    ],
+    "app/streaming.rs": [
+      "rebuild_all",
+      "stream",
+      "update_animations"
+    ],
+    "app/tool_strip.rs": [
+      "tool_strip"
+    ],
+    "app/toolbar.rs": [
+      "toolbar"
+    ],
+    "app/user_tools.rs": [
+      "new_draft",
+      "run_user_tool",
+      "tool_draft_window",
+      "user_tool_buttons",
+      "user_tool_list"
+    ],
+    "app/viewport.rs": [
+      "draw_selection",
+      "ensure_targets",
+      "render_viewport_image",
+      "update_picking"
+    ],
+    "app/workspace/dock.rs": [
+      "dock",
+      "dock_contents",
+      "floating_dock",
+      "overlays_tab",
+      "rail_button"
+    ],
+    "app/workspace/mod.rs": [
+      "tile_info_lines"
+    ],
+    "app/workspace/tools.rs": [
+      "brush_controls",
+      "escape_action",
+      "eyedrop",
+      "quick_tool_options",
+      "quick_tools_hud",
+      "set_tool",
+      "tool_actions",
+      "tool_release"
+    ],
+    "app/worldmap/canvas.rs": [
+      "draw_map_icons",
+      "world_map_canvas"
+    ],
+    "app/worldmap/key.rs": [
+      "world_map_key"
+    ],
+    "app/worldmap.rs": [
+      "toggle_world_map",
+      "world_map_toolbar",
+      "world_map_window"
+    ],
+    "app.rs": [
+      "on_exit",
+      "ui"
+    ]
+  }
+}

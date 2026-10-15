@@ -1,0 +1,133 @@
+{
+  "Select": {
+    "mutates_document": false,
+    "controller": {
+      "file": "crates/osrs-editor/src/app/interaction_runtime.rs",
+      "symbol": "begin_marquee"
+    }
+  },
+  "Paint": {
+    "mutates_document": true,
+    "controller": {
+      "file": "crates/osrs-editor/src/app/editing.rs",
+      "symbol": "paint_at"
+    },
+    "planner": {
+      "file": "crates/osrs-edit/src/paint.rs",
+      "symbol": "build_terrain_paint_patch"
+    },
+    "gateway": {
+      "file": "crates/osrs-editor/src/app/editing/commit.rs",
+      "symbol": "commit_paint_stroke"
+    },
+    "planning_test": {
+      "file": "crates/osrs-edit/src/paint.rs",
+      "symbol": "repeated_samples_fold_to_one_final_operation_per_channel"
+    },
+    "cancellation_test": {
+      "file": "crates/osrs-editor/src/app/editing/controller_tests.rs",
+      "symbol": "cancelling_paint_preview_restores_channels_without_consuming_redo"
+    },
+    "commit_test": {
+      "file": "crates/osrs-editor/src/app/editing/tests.rs",
+      "symbol": "one_paint_stroke_is_one_semantic_session_history_entry"
+    },
+    "undo_test": {
+      "file": "crates/osrs-editor/src/app/editing/tests.rs",
+      "symbol": "semantic_paint_projection_tracks_undo_redo_and_preserves_unarmed_height"
+    }
+  },
+  "Height": {
+    "mutates_document": true,
+    "controller": {
+      "file": "crates/osrs-editor/src/app/editing.rs",
+      "symbol": "sculpt_at"
+    },
+    "planner": {
+      "file": "crates/osrs-edit/src/height/commit.rs",
+      "symbol": "build_terrain_height_patch"
+    },
+    "gateway": {
+      "file": "crates/osrs-editor/src/app/editing/commit.rs",
+      "symbol": "commit_height_stroke"
+    },
+    "planning_test": {
+      "file": "crates/osrs-edit/src/height/commit.rs",
+      "symbol": "repeated_samples_fold_into_one_final_height_operation"
+    },
+    "cancellation_test": {
+      "file": "crates/osrs-editor/src/app/editing/controller_tests.rs",
+      "symbol": "cancelling_height_preview_restores_source_height_encoding_and_existing_overrides"
+    },
+    "commit_test": {
+      "file": "crates/osrs-editor/src/app/editing/tests.rs",
+      "symbol": "one_height_stroke_is_one_semantic_session_history_entry"
+    },
+    "undo_test": {
+      "file": "crates/osrs-editor/src/app/editing/tests.rs",
+      "symbol": "semantic_height_projection_tracks_undo_redo_and_preserves_other_channels"
+    }
+  },
+  "Spline": {
+    "mutates_document": true,
+    "controller": {
+      "file": "crates/osrs-editor/src/app/spline_tool/input.rs",
+      "symbol": "spline_input"
+    },
+    "planner": {
+      "file": "crates/osrs-edit/src/path.rs",
+      "symbol": "build_terrain_path_patch"
+    },
+    "gateway": {
+      "file": "crates/osrs-editor/src/app/editing/path.rs",
+      "symbol": "apply_terrain_path"
+    },
+    "planning_test": {
+      "file": "crates/osrs-edit/src/path.rs",
+      "symbol": "duplicate_tile_intents_collapse_to_one_final_terrain_op"
+    },
+    "cancellation_test": {
+      "file": "crates/osrs-editor/src/app/interaction_runtime/spline/tests.rs",
+      "symbol": "spline_remove_pop_and_clear_mutate_points_through_runtime"
+    },
+    "commit_test": {
+      "file": "crates/osrs-editor/src/app/editing/path/tests.rs",
+      "symbol": "one_path_patch_is_one_persistent_session_revision"
+    },
+    "undo_test": {
+      "file": "crates/osrs-editor/src/app/editing/path/tests.rs",
+      "symbol": "semantic_path_projection_tracks_undo_redo_and_optional_height"
+    }
+  },
+  "Objects": {
+    "mutates_document": true,
+    "controller": {
+      "file": "crates/osrs-editor/src/app/object_tool.rs",
+      "symbol": "object_actions"
+    },
+    "planner": {
+      "file": "crates/osrs-edit/src/object_edit.rs",
+      "symbol": "build_object_patch"
+    },
+    "gateway": {
+      "file": "crates/osrs-editor/src/app/object_tool.rs",
+      "symbol": "edit_objects"
+    },
+    "planning_test": {
+      "file": "crates/osrs-edit/src/object_edit.rs",
+      "symbol": "move_is_remove_then_add_in_one_patch"
+    },
+    "cancellation_test": {
+      "file": "crates/osrs-editor/src/app/interaction_runtime/tests.rs",
+      "symbol": "cancel_object_drag_discards_in_progress_gesture"
+    },
+    "commit_test": {
+      "file": "crates/osrs-editor/src/app/object_tool/gateway_tests.rs",
+      "symbol": "successful_object_gateway_projection_uses_post_commit_state_and_finalizes_once"
+    },
+    "undo_test": {
+      "file": "crates/osrs-editor/src/app/object_tool/commit.rs",
+      "symbol": "semantic_object_undo_projection_is_validated_from_session_state"
+    }
+  }
+}

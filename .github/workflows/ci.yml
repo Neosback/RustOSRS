@@ -30,6 +30,9 @@ jobs:
       - name: Test architecture guard
         run: python3 scripts/test_check_architecture.py
 
+      - name: Test editor ownership and feature contracts
+        run: python3 scripts/test_editor_architecture.py
+
       - name: Test reference regeneration safety
         run: python3 scripts/test_reference_regeneration.py
 

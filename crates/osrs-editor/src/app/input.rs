@@ -10,7 +10,7 @@ impl EditorApp {
         if self.keys_blocked(ctx) {
             return;
         }
-        let pressed = |id: &str| ctx.input(|i| self.keymap.pressed(i, id));
+        let pressed = |id: &str| ctx.input(|i| self.settings.keymap.pressed(i, id));
         let mut open_teleport = false;
         let mut toggle_panel = false;
         let mut toggle_camera = false;
@@ -49,10 +49,10 @@ impl EditorApp {
         }
         if open_settings {
             self.open_settings(None);
-            self.settings_focus_search = true;
+            self.ui.settings_focus_search = true;
         }
         if switch_menu {
-            self.prefs.context_menu = match self.prefs.context_menu {
+            self.settings.prefs.context_menu = match self.settings.prefs.context_menu {
                 crate::settings::ContextMenuStyle::Editor => {
                     crate::settings::ContextMenuStyle::Game
                 }
@@ -60,22 +60,19 @@ impl EditorApp {
                     crate::settings::ContextMenuStyle::Editor
                 }
             };
-            self.notice = Some((
-                format!("Context menu: {}", self.prefs.context_menu.label()),
-                Instant::now(),
+            self.ui.notify(format!(
+                "Context menu: {}",
+                self.settings.prefs.context_menu.label()
             ));
         }
         if open_teleport {
             self.open_teleport();
         }
         if toggle_panel {
-            self.prefs.properties_panel = !self.prefs.properties_panel;
+            self.settings.prefs.properties_panel = !self.settings.prefs.properties_panel;
         }
         if toggle_camera {
-            self.interaction.camera.mode = match self.interaction.camera.mode {
-                CameraMode::Fly => CameraMode::Orbit,
-                CameraMode::Orbit => CameraMode::Fly,
-            };
+            self.interaction.toggle_camera_mode();
         }
         if focus {
             self.focus_selection();
@@ -84,7 +81,7 @@ impl EditorApp {
             self.escape_action();
         }
         if let Some(plane) = plane {
-            self.interaction.view_plane = plane;
+            self.interaction.set_view_plane(plane);
         }
         self.tool_actions(ctx);
         self.edit_actions(ctx);
@@ -99,58 +96,40 @@ impl EditorApp {
         let dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
         let delta = response.drag_delta();
         let shift = ctx.input(|i| i.modifiers.shift);
-        // Right drag moves the view in both modes; the left button is left to selection and tools.
-        match self.interaction.camera.mode {
-            CameraMode::Fly => {
-                if response.dragged_by(egui::PointerButton::Secondary) && !shift {
-                    self.interaction.camera.look(delta.x, delta.y);
-                }
-                if response.dragged_by(egui::PointerButton::Middle)
-                    || (response.dragged_by(egui::PointerButton::Secondary) && shift)
-                {
-                    self.interaction.camera.pan(delta.x, delta.y);
-                }
-            }
-            CameraMode::Orbit => {
-                if response.dragged_by(egui::PointerButton::Middle)
-                    || (response.dragged_by(egui::PointerButton::Secondary) && shift)
-                {
-                    self.interaction.camera.pan(delta.x, delta.y);
-                } else if response.dragged_by(egui::PointerButton::Secondary) {
-                    self.interaction.camera.orbit(delta.x, delta.y);
-                }
-            }
-        }
-        if response.hovered() {
-            let scroll = ctx.input(|i| i.smooth_scroll_delta.y);
-            match self.interaction.camera.mode {
-                CameraMode::Fly => {
-                    if scroll != 0.0 {
-                        self.interaction.camera.speed = (self.interaction.camera.speed
-                            * (1.0 + scroll * 0.002))
-                            .clamp(50.0, 20_000.0);
-                    }
-                }
-                CameraMode::Orbit => {
-                    let pinch = ctx.input(|i| i.zoom_delta());
-                    self.interaction.camera.zoom(scroll + (pinch - 1.0) * 500.0);
-                }
-            }
-        }
-        if self.keys_blocked(ctx) {
-            return;
-        }
-        ctx.input(|i| {
-            let axis = |plus: &str, minus: &str| {
-                f32::from(self.keymap.held(i, plus)) - f32::from(self.keymap.held(i, minus))
-            };
-            let boost = if i.modifiers.shift { 4.0 } else { 1.0 };
-            let forward = axis("camera.forward", "camera.back") * boost;
-            let right = axis("camera.right", "camera.left") * boost;
-            let up = axis("camera.up", "camera.down") * boost;
-            if forward != 0.0 || right != 0.0 || up != 0.0 {
-                self.interaction.camera.translate(forward, right, up, dt);
-            }
-        });
+        let pan = response.dragged_by(egui::PointerButton::Middle)
+            || (response.dragged_by(egui::PointerButton::Secondary) && shift);
+        let (scroll, pinch) = if response.hovered() {
+            ctx.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta() - 1.0))
+        } else {
+            (0.0, 0.0)
+        };
+        let movement = if self.keys_blocked(ctx) {
+            [0.0; 3]
+        } else {
+            ctx.input(|i| {
+                let axis = |plus: &str, minus: &str| {
+                    f32::from(self.settings.keymap.held(i, plus))
+                        - f32::from(self.settings.keymap.held(i, minus))
+                };
+                let boost = if i.modifiers.shift { 4.0 } else { 1.0 };
+                [
+                    axis("camera.forward", "camera.back") * boost,
+                    axis("camera.right", "camera.left") * boost,
+                    axis("camera.up", "camera.down") * boost,
+                ]
+            })
+        };
+        self.interaction
+            .apply_camera_input(interaction_runtime::CameraInput {
+                delta: [delta.x, delta.y],
+                pan,
+                secondary_drag: response.dragged_by(egui::PointerButton::Secondary),
+                shift,
+                scroll,
+                pinch,
+                hovered: response.hovered(),
+                movement,
+                dt,
+            });
     }
 }

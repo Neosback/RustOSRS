@@ -25,11 +25,10 @@ impl ExportInspection {
             tile.1 - 64,
             false,
         )?;
-        viewer.prefs = parent.prefs.clone();
-        viewer.prefs.tool = Tool::Select;
-        viewer.prefs.inspector_follow = false;
-        viewer.interaction.camera = parent.interaction.camera;
-        viewer.interaction.view_plane = parent.interaction.view_plane;
+        viewer.settings.prefs = parent.settings.prefs.clone();
+        viewer.settings.prefs.tool = Tool::Select;
+        viewer.settings.prefs.inspector_follow = false;
+        viewer.interaction.copy_view_from(&parent.interaction);
         viewer
             .renderer
             .set_render_origin(parent.renderer.render_origin());
@@ -63,10 +62,13 @@ impl ExportInspection {
                 ui.label("Plane");
                 for plane in 0..4 {
                     if ui
-                        .selectable_label(viewer.interaction.view_plane == plane, plane.to_string())
+                        .selectable_label(
+                            viewer.interaction.view_plane() == plane,
+                            plane.to_string(),
+                        )
                         .clicked()
                     {
-                        viewer.interaction.view_plane = plane;
+                        viewer.interaction.set_view_plane(plane);
                         viewer.clear_selection();
                         viewer.world.mark_animation_dirty();
                     }
@@ -84,16 +86,16 @@ impl ExportInspection {
         viewer.rebase_if_needed();
         viewer.stream(&ctx);
         viewer.update_animations();
-        viewer.poll_palette();
+        viewer.palettes.poll();
         viewer.poll_catalog();
         viewer.assets.poll(&ctx);
         egui::Panel::right("export-inspector")
             .default_size(300.0)
             .show(ui, |ui| {
-                if let Some(error) = &viewer.cache_error {
+                if let Some(error) = &viewer.project.cache_error() {
                     ui.colored_label(ui.visuals().error_fg_color, error);
                 }
-                if let Some(status) = &viewer.status {
+                if let Some(status) = viewer.ui.status() {
                     ui.label(status);
                 }
                 viewer.inspection_inspector(ui);
@@ -103,7 +105,7 @@ impl ExportInspection {
             .show(ui, |ui| {
                 let (rect, response) =
                     ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
-                let density = ctx.pixels_per_point() * viewer.prefs.render_scale;
+                let density = ctx.pixels_per_point() * viewer.settings.prefs.render_scale;
                 let width = (rect.width() * density).max(16.0) as u32;
                 let height = (rect.height() * density).max(16.0) as u32;
                 // Only camera navigation is dispatched. No authoring shortcuts, scripts, tools,
@@ -111,42 +113,33 @@ impl ExportInspection {
                 viewer.handle_input(&ctx, &response);
                 if let Some(pointer) = response.hover_pos() {
                     let ray = pick::ray_through_pixel(
-                        &viewer.interaction.camera,
+                        viewer.interaction.camera(),
                         viewer.renderer.render_origin(),
                         width as f32,
                         height as f32,
                         (pointer.x - rect.min.x) * density,
                         (pointer.y - rect.min.y) * density,
                     );
-                    viewer.interaction.hover =
-                        pick::pick(&viewer.infos, &ray, viewer.interaction.view_plane);
-                    if let Some(tile) = viewer.interaction.hover.tile {
-                        viewer.interaction.last_hover_tile = Some(tile.tile);
-                    }
+                    viewer.interaction.set_hover(pick::pick(
+                        viewer.world.infos(),
+                        &ray,
+                        viewer.interaction.view_plane(),
+                    ));
                     if response.clicked() {
                         viewer.clear_selection();
-                        viewer.interaction.inspect_tile =
-                            viewer.interaction.hover.tile.map(|p| p.tile);
-                        if let Some(object) = viewer.interaction.hover.object.clone() {
+                        viewer
+                            .interaction
+                            .inspect(viewer.interaction.hover().tile.map(|p| p.tile));
+                        if let Some(object) = viewer.interaction.hover().object.clone() {
                             viewer.select_only(object);
                         }
                     }
                 } else {
-                    viewer.interaction.hover = pick::Pick::default();
+                    viewer.interaction.clear_hover();
                 }
-                if let Some(object) = viewer.interaction.selected.clone() {
+                if let Some(object) = viewer.interaction.selected().clone() {
                     let key = (object.region, object.index);
-                    if !viewer.outlines.contains_key(&key)
-                        && viewer.outline_requested.insert(key)
-                        && let Some(loc) = viewer
-                            .infos
-                            .get(&object.region)
-                            .and_then(|i| i.locs.get(object.index))
-                    {
-                        viewer
-                            .world
-                            .request_outline(object.region, object.index, loc.clone());
-                    }
+                    viewer.world.queue_outline(key);
                 }
                 viewer.render_viewport_image(ui, rect, width, height);
                 viewer.draw_selection(ui, rect, density, width, height);
@@ -182,7 +175,8 @@ impl EditorApp {
             self.exports.inspection = None;
             self.exports.open = true;
             let build = self
-                .cache_build
+                .project
+                .cache_build()
                 .as_ref()
                 .map(|(build, _)| *build)
                 .unwrap_or(241);

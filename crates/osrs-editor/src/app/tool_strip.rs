@@ -31,8 +31,12 @@ impl EditorApp {
                         } else {
                             format!("{}  {}", tool_icon(tool), tool.label())
                         };
-                        let key = self.keymap.binding(tool.action()).map(|b| b.describe());
-                        let active = self.prefs.tool == tool;
+                        let key = self
+                            .settings
+                            .keymap
+                            .binding(tool.action())
+                            .map(|b| b.describe());
+                        let active = self.settings.prefs.tool == tool;
                         let tip = match (&key, active) {
                             (Some(key), true) => format!(
                                 "{} ({key}): click to stop and go back to selecting",
@@ -49,7 +53,7 @@ impl EditorApp {
                             .clicked()
                         {
                             if active {
-                                self.interaction.spline.points.clear();
+                                self.interaction.clear_spline_points();
                                 self.set_tool(Tool::Select);
                             } else {
                                 self.set_tool(tool);
@@ -58,7 +62,7 @@ impl EditorApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if !compact {
-                            let hint = if self.prefs.tool == Tool::Select {
+                            let hint = if self.settings.prefs.tool == Tool::Select {
                                 "Click or drag to select \u{b7} pick a tool to edit"
                             } else {
                                 "Esc goes back to selecting"

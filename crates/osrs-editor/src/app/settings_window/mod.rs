@@ -29,15 +29,15 @@ impl EditorApp {
     /// Open the settings window on `page`.
     pub(super) fn open_settings(&mut self, page: Option<SettingsPage>) {
         if let Some(page) = page {
-            self.prefs.settings_page = page;
+            self.settings.prefs.settings_page = page;
         }
-        self.settings_open = true;
+        self.ui.open_settings();
     }
 
     /// The side panel's Settings tab: the frequently used rows, stacked (label over control) to
     /// fit a narrow panel. They are drawn by [`Self::draw_row`], like the window's.
     pub(super) fn quick_settings_ui(&mut self, ui: &mut egui::Ui, groups: &[&str]) {
-        let hd = self.prefs.render_profile == ProfileChoice::Hd;
+        let hd = self.settings.prefs.render_profile == ProfileChoice::Hd;
         // Leave room for the value box ("3x3 regions"); the cap stops a wide value from growing the panel.
         ui.spacing_mut().slider_width = (ui.available_width() - 120.0).clamp(80.0, 300.0);
         for (group, rows) in QUICK {
@@ -60,9 +60,9 @@ impl EditorApp {
             crate::theme::section_heading(ui, group);
             for def in shown {
                 let toggle = match def.row {
-                    Row::AnimateObjects => Some(&mut self.prefs.animate_objects),
-                    Row::ShowMinimap => Some(&mut self.prefs.show_minimap),
-                    Row::StatsOverlay => Some(&mut self.prefs.stats_overlay),
+                    Row::AnimateObjects => Some(&mut self.settings.prefs.animate_objects),
+                    Row::ShowMinimap => Some(&mut self.settings.prefs.show_minimap),
+                    Row::StatsOverlay => Some(&mut self.settings.prefs.stats_overlay),
                     _ => None,
                 };
                 if let Some(value) = toggle {
@@ -81,22 +81,24 @@ impl EditorApp {
             .clicked()
         {
             self.open_settings(None);
-            self.settings_focus_search = true;
+            self.ui.settings_focus_search = true;
         }
     }
 
     /// Whether a row is shown at all (some only make sense next to another setting).
     fn row_visible(&self, row: Row) -> bool {
         match row {
-            Row::StaticFogDepth => self.prefs.hd_environment.fog_depth_mode == FogDepthMode::Static,
+            Row::StaticFogDepth => {
+                self.settings.prefs.hd_environment.fog_depth_mode == FogDepthMode::Static
+            }
             Row::ShadowQuality
             | Row::ShadowFiltering
             | Row::ShadowDistance
             | Row::ShadowTransparency
             | Row::TerrainShadows
-            | Row::RoofShadows => self.prefs.hd_shadows.enabled(),
+            | Row::RoofShadows => self.settings.prefs.hd_shadows.enabled(),
             Row::ShadowMemory => {
-                self.prefs.hd_shadows.enabled() && self.renderer.hd_shadow_map_bytes() > 0
+                self.settings.prefs.hd_shadows.enabled() && self.renderer.hd_shadow_map_bytes() > 0
             }
             _ => true,
         }
@@ -104,20 +106,20 @@ impl EditorApp {
 
     /// The window. Called every frame; draws nothing while closed.
     pub(super) fn settings_window(&mut self, ctx: &egui::Context) {
-        if !self.settings_open {
-            self.capturing_binding = None;
+        if !self.ui.settings_open {
+            self.ui.capturing_binding = None;
             return;
         }
         // A binding waiting for a key press: the first key pressed becomes the binding.
-        if let Some(id) = self.capturing_binding {
+        if let Some(id) = self.ui.capturing_binding {
             if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-                self.capturing_binding = None;
+                self.ui.capturing_binding = None;
             } else if let Some(binding) = ctx.input(Binding::capture) {
-                self.keymap.set(id, binding);
-                self.capturing_binding = None;
+                self.settings.keymap.set(id, binding);
+                self.ui.capturing_binding = None;
             }
         }
-        let esc = self.capturing_binding.is_none();
+        let esc = self.ui.capturing_binding.is_none();
         let ((), close) =
             super::modal::Modal::new("settings_window", format!("{} Settings", ph::GEAR))
                 .size(780.0, 520.0)
@@ -126,16 +128,17 @@ impl EditorApp {
                     ui.horizontal(|ui| {
                         ui.label(ph::MAGNIFYING_GLASS);
                         let search = ui.add(
-                            egui::TextEdit::singleline(&mut self.settings_search)
+                            egui::TextEdit::singleline(&mut self.ui.settings_search)
                                 .hint_text("Search settings")
                                 .desired_width(260.0),
                         );
-                        if self.settings_focus_search {
+                        if self.ui.settings_focus_search {
                             search.request_focus();
-                            self.settings_focus_search = false;
+                            self.ui.settings_focus_search = false;
                         }
-                        if !self.settings_search.is_empty() && ui.small_button("clear").clicked() {
-                            self.settings_search.clear();
+                        if !self.ui.settings_search.is_empty() && ui.small_button("clear").clicked()
+                        {
+                            self.ui.settings_search.clear();
                         }
                     });
                     ui.separator();
@@ -145,11 +148,11 @@ impl EditorApp {
                             ui.spacing_mut().item_spacing.y = 3.0;
                             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                             for (page, icon, title) in PAGES {
-                                let selected = self.settings_search.is_empty()
-                                    && self.prefs.settings_page == *page;
+                                let selected = self.ui.settings_search.is_empty()
+                                    && self.settings.prefs.settings_page == *page;
                                 if nav_item(ui, selected, icon, title).clicked() {
-                                    self.prefs.settings_page = *page;
-                                    self.settings_search.clear();
+                                    self.settings.prefs.settings_page = *page;
+                                    self.ui.settings_search.clear();
                                 }
                             }
                         });
@@ -158,8 +161,8 @@ impl EditorApp {
                             egui::ScrollArea::vertical()
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| {
-                                    if self.settings_search.trim().is_empty() {
-                                        self.page_ui(ui, self.prefs.settings_page);
+                                    if self.ui.settings_search.trim().is_empty() {
+                                        self.page_ui(ui, self.settings.prefs.settings_page);
                                     } else {
                                         self.search_ui(ui);
                                     }
@@ -168,7 +171,7 @@ impl EditorApp {
                     });
                 });
         if close {
-            self.settings_open = false;
+            self.ui.settings_open = false;
         }
     }
 
@@ -190,7 +193,7 @@ impl EditorApp {
             }
             _ => {
                 if matches!(page, HdLighting | HdShadowsWater)
-                    && self.prefs.render_profile != ProfileChoice::Hd
+                    && self.settings.prefs.render_profile != ProfileChoice::Hd
                 {
                     ui.horizontal(|ui| {
                         ui.colored_label(
@@ -198,7 +201,7 @@ impl EditorApp {
                             "These options act on the HD profile.",
                         );
                         if ui.button("Switch to HD").clicked() {
-                            self.prefs.render_profile = ProfileChoice::Hd;
+                            self.settings.prefs.render_profile = ProfileChoice::Hd;
                         }
                     });
                     ui.add_space(4.0);
@@ -210,7 +213,7 @@ impl EditorApp {
 
     /// Search results across every page, with the page named on each section.
     fn search_ui(&mut self, ui: &mut egui::Ui) {
-        let query = self.settings_search.trim().to_lowercase();
+        let query = self.ui.settings_search.trim().to_lowercase();
         let found = ROWS
             .iter()
             .filter(|def| matches(def, &query) && self.row_visible(def.row))
@@ -264,7 +267,7 @@ impl EditorApp {
 
     /// A label and its widget, greyed out when the setting acts on the other render profile.
     fn draw_labelled_row(&mut self, ui: &mut egui::Ui, def: &RowDef) {
-        let profile_hd = self.prefs.render_profile == ProfileChoice::Hd;
+        let profile_hd = self.settings.prefs.render_profile == ProfileChoice::Hd;
         let enabled = match def.applies {
             Any => true,
             Reference => !profile_hd,

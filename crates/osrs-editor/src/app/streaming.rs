@@ -6,14 +6,15 @@ use osrs_world::StreamEvent;
 impl EditorApp {
     /// Rebuild every resident region (after a presentation change).
     pub(super) fn rebuild_all(&mut self) {
-        let hd = self.prefs.render_profile == ProfileChoice::Hd;
-        for key in self.world.begin_rebuild_all(self.prefs.smooth_terrain, hd) {
+        let hd = self.settings.prefs.render_profile == ProfileChoice::Hd;
+        for key in self
+            .world
+            .begin_rebuild_all(self.settings.prefs.smooth_terrain, hd)
+        {
             self.renderer.remove_region(key);
-            self.infos.remove(&key);
-            self.infos_version += 1;
+            self.world.remove_info(key);
         }
-        self.outlines.clear();
-        self.outline_requested.clear();
+        self.world.clear_outlines();
         self.clear_selection();
     }
 
@@ -22,14 +23,14 @@ impl EditorApp {
         // The HD profile needs geometry with the HD vertex stream: rebuild when it is switched.
         if self
             .world
-            .hd_mismatch(self.prefs.render_profile == ProfileChoice::Hd)
+            .hd_mismatch(self.settings.prefs.render_profile == ProfileChoice::Hd)
         {
             self.rebuild_all();
         }
         #[cfg(target_arch = "wasm32")]
         {
             self.poll_web_pick(ctx);
-            self.run_palette_job();
+            self.palettes.run_job(self.world.is_ready());
         }
         // Browser: no worker threads, so run the streamer's queue for a slice of this frame.
         self.world.pump(std::time::Duration::from_millis(8));
@@ -38,11 +39,12 @@ impl EditorApp {
                 StreamEvent::HdMaterials(data) => {
                     self.hd.set_environments(Arc::clone(&data.environments));
                     if let Err(error) = self.renderer.install_hd_materials(*data) {
-                        self.status = Some(format!("HD materials failed: {error}"));
+                        self.ui.set_status(format!("HD materials failed: {error}"));
                     }
                 }
                 StreamEvent::HdFailed(error) => {
-                    self.status = Some(format!("117 HD data failed to load: {error}"));
+                    self.ui
+                        .set_status(format!("117 HD data failed to load: {error}"));
                 }
                 StreamEvent::Ready {
                     textures,
@@ -55,7 +57,7 @@ impl EditorApp {
                     self.session.reset();
                     self.cache_opened(ctx, profile_id, build);
                     self.renderer.set_textures(&textures);
-                    self.floor_textures = Some(textures);
+                    self.palettes.set_textures(textures);
                     self.world.mark_ready();
                 }
                 StreamEvent::Region(region) => {
@@ -81,16 +83,12 @@ impl EditorApp {
                             let _ = self.session.ingest_region(&snapshot);
                         }
                         Err(error) => {
-                            self.status = Some(format!(
+                            self.ui.set_status(format!(
                                 "semantic region {},{} failed: {error:?}",
                                 region.region.x, region.region.y
                             ));
                         }
                     }
-                    // Object indices in a rebuilt region are new (an edit shifts them), so what was
-                    // outlined for the old ones is gone: the selection's highlight is made afresh.
-                    self.outlines.retain(|(r, _), _| *r != key);
-                    self.outline_requested.retain(|(r, _)| *r != key);
                     match &scope {
                         world_runtime::RegionBuildScope::Full => {
                             self.renderer.upload_region(key, &region.geometry);
@@ -100,8 +98,8 @@ impl EditorApp {
                                 .upload_region_zones(key, &region.geometry, zones);
                         }
                     }
-                    self.infos.insert(key, region.info);
-                    self.infos_version += 1;
+                    // Installing new picker data also invalidates outline indices from the old build.
+                    self.world.install_info(key, region.info);
                     self.world.region_installed(
                         key,
                         &scope,
@@ -118,7 +116,7 @@ impl EditorApp {
                     index,
                     triangles,
                 } => {
-                    self.outlines.insert((region, index), Arc::new(triangles));
+                    self.world.install_outline((region, index), triangles);
                 }
                 StreamEvent::Empty(region) => {
                     let key = (region.x, region.y);
@@ -136,12 +134,14 @@ impl EditorApp {
                         continue;
                     };
                     self.world.region_absent(key, &scope);
-                    self.status = Some(format!("region {},{} failed: {error}", region.x, region.y));
+                    self.ui
+                        .set_status(format!("region {},{} failed: {error}", region.x, region.y));
                 }
-                StreamEvent::InitFailed(_) if self.cache_dir.as_os_str().is_empty() => {}
+                StreamEvent::InitFailed(_) if self.project.cache_label().as_os_str().is_empty() => {
+                }
                 StreamEvent::InitFailed(error) => {
                     // The card explains it; the status bar stays quiet.
-                    self.cache_error = Some(if error.contains("No such file") {
+                    self.project.set_cache_error(if error.contains("No such file") {
                         "The cache files could not be read. Is this the folder that holds main_file_cache.dat2?".to_owned()
                     } else {
                         error
@@ -152,16 +152,16 @@ impl EditorApp {
         if !self.world.is_ready() {
             return;
         }
+        self.world.set_semantic_revision(self.session.revision());
         self.world.flush_dirty_regions();
 
         let center = self.camera_region();
-        let radius = self.prefs.load_radius;
+        let radius = self.settings.prefs.load_radius;
         self.world.request_missing(center, radius);
         for key in self.world.unload_stale(center, radius) {
             let _ = self.session.unload_region(RegionCoord::new(key.0, key.1));
             self.renderer.remove_region(key);
-            self.infos.remove(&key);
-            self.infos_version += 1;
+            self.world.remove_info(key);
         }
     }
 
@@ -171,11 +171,11 @@ impl EditorApp {
         if let Some(geometry) = self.world.poll_animation_geometry() {
             let phase = Instant::now();
             self.renderer.upload_transient(ANIMATED_KEY, &geometry);
-            self.stats.phase("anim-upload", phase);
+            self.diagnostics.phase("anim-upload", phase);
         }
         let (world_x, world_z) = self.world_position();
         self.world.schedule_animation(
-            self.prefs.animate_objects,
+            self.settings.prefs.animate_objects,
             self.started.elapsed().as_secs_f32(),
             ((world_x / 128.0) as i32, (world_z / 128.0) as i32),
         );

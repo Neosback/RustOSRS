@@ -24,3 +24,13 @@ pub use position::{HeightVertexCoord, MapPosition};
 pub use query::MapQuery;
 pub use region::{MapRegionSnapshot, RegionSnapshotError};
 pub use terrain::{OverlayRotation, OverlayShape, TerrainOverlay, TerrainTile};
+
+mod brush;
+pub mod height;
+mod paint;
+mod path;
+
+pub use brush::{BrushShape, footprint};
+pub use height::{HeightCommitError, HeightStrokeSpec, build_terrain_height_patch};
+pub use paint::{PaintCommitError, TerrainPaintIntent, build_terrain_paint_patch};
+pub use path::{PathCommitError, TerrainPathIntent, build_terrain_path_patch};

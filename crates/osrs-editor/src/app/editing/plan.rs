@@ -17,7 +17,7 @@ pub(super) fn paint_intent_from_brush(
     tile: (i32, i32),
     after: TileValues,
 ) -> TerrainPaintIntent {
-    let mut intent = TerrainPaintIntent::new(tile);
+    let mut intent = TerrainPaintIntent::new(osrs_core::coords::MapTile::new(tile.0, tile.1));
     if brush.underlay.armed {
         intent.underlay = Some(match brush.underlay.fill {
             Fill::Clear | Fill::Set(0) => None,

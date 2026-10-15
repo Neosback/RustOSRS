@@ -5,141 +5,35 @@
 //! Read/query and source/project lifecycle operations are exposed explicitly; transaction lifecycle
 //! primitives stay private to this runtime so callers cannot bypass gateway policy accidentally.
 
+mod footprint;
+pub(super) use footprint::{EditFootprint, EditTouches};
+
+use super::diagnostics::{DiagnosticSink, TraceEvent};
 use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession, RegionSyncOutcome};
-use osrs_core::coords::{MapTile, RegionCoord};
-use osrs_edit::{
-    ChangeImpact, HeightVertexCoord, MapDocument, MapOp, MapPatch, MapRegionSnapshot,
-    ObjectPlacement, PatchApplyError,
-};
-use std::collections::BTreeSet;
+use osrs_core::coords::RegionCoord;
+use osrs_edit::{ChangeImpact, MapDocument, MapPatch, MapRegionSnapshot, PatchApplyError};
 #[cfg(test)]
 use std::convert::Infallible;
-use std::ops::Deref;
 
 /// Application owner of the authoritative semantic edit session.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Default)]
 pub(super) struct EditRuntime {
     session: EditorSession,
+    diagnostics: DiagnosticSink,
 }
+
+impl PartialEq for EditRuntime {
+    fn eq(&self, other: &Self) -> bool {
+        self.session == other.session
+    }
+}
+impl Eq for EditRuntime {}
 
 /// Which semantic history transition the gateway should replay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum EditReplayDirection {
     Undo,
     Redo,
-}
-
-/// Exact semantic coordinates touched by one application transaction.
-///
-/// This remains renderer-independent. The world projection decides how far each class of source
-/// mutation can propagate into disposable derived geometry. `object_tiles` is a derived compatibility
-/// summary for conservative projection routing; `object_removed` and `object_added` retain the full
-/// canonical semantic Object mutation identities required by later dependency proofs.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(super) struct EditFootprint {
-    pub terrain_tiles: Vec<MapTile>,
-    pub height_vertices: Vec<HeightVertexCoord>,
-    pub object_tiles: Vec<MapTile>,
-    pub object_removed: Vec<ObjectPlacement>,
-    pub object_added: Vec<ObjectPlacement>,
-}
-
-impl EditFootprint {
-    pub(super) fn new(
-        terrain_tiles: impl IntoIterator<Item = MapTile>,
-        height_vertices: impl IntoIterator<Item = HeightVertexCoord>,
-        object_tiles: impl IntoIterator<Item = MapTile>,
-    ) -> Self {
-        Self {
-            terrain_tiles: normalize_tiles(terrain_tiles),
-            height_vertices: normalize_height_vertices(height_vertices),
-            object_tiles: normalize_tiles(object_tiles),
-            object_removed: Vec::new(),
-            object_added: Vec::new(),
-        }
-    }
-
-    /// Build a footprint that retains exact Object mutation identity and derives anchor-tile routing
-    /// from those placements. Removed and added sets remain separate so Undo/Redo can reverse
-    /// mutation polarity without losing object id, source plane, loc kind, or orientation.
-    pub(super) fn with_object_mutations(
-        terrain_tiles: impl IntoIterator<Item = MapTile>,
-        height_vertices: impl IntoIterator<Item = HeightVertexCoord>,
-        object_removed: impl IntoIterator<Item = ObjectPlacement>,
-        object_added: impl IntoIterator<Item = ObjectPlacement>,
-    ) -> Self {
-        let object_removed = normalize_object_placements(object_removed);
-        let object_added = normalize_object_placements(object_added);
-        let object_tiles = normalize_tiles(
-            object_removed
-                .iter()
-                .chain(&object_added)
-                .map(|placement| placement.position.tile),
-        );
-        Self {
-            terrain_tiles: normalize_tiles(terrain_tiles),
-            height_vertices: normalize_height_vertices(height_vertices),
-            object_tiles,
-            object_removed,
-            object_added,
-        }
-    }
-
-    fn from_patch(patch: &MapPatch) -> Self {
-        let mut terrain_tiles = Vec::new();
-        let mut height_vertices = Vec::new();
-        let mut object_removed = Vec::new();
-        let mut object_added = Vec::new();
-        for op in patch.ops() {
-            match op {
-                MapOp::SetTerrain { coord, .. } => terrain_tiles.push(coord.tile),
-                MapOp::SetHeight { coord, .. } => height_vertices.push(*coord),
-                MapOp::RemoveObject { placement } => object_removed.push(*placement),
-                MapOp::AddObject { placement } => object_added.push(*placement),
-            }
-        }
-        Self::with_object_mutations(terrain_tiles, height_vertices, object_removed, object_added)
-    }
-
-    fn into_touches(self) -> EditTouches {
-        let mut regions = BTreeSet::new();
-        regions.extend(self.terrain_tiles.iter().map(|tile| tile.split_region().0));
-        regions.extend(
-            self.height_vertices
-                .iter()
-                .map(|coord| coord.corner.split_region().0),
-        );
-        regions.extend(self.object_tiles.iter().map(|tile| tile.split_region().0));
-        EditTouches {
-            regions: regions.into_iter().collect(),
-            footprint: self,
-        }
-    }
-}
-
-/// Region summary plus the exact coordinate footprint that produced it.
-///
-/// Dereferencing preserves the historical `&[RegionCoord]` view for callers that only need region
-/// membership, while projection invalidation can inspect the richer footprint without a parallel
-/// side channel.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(super) struct EditTouches {
-    regions: Vec<RegionCoord>,
-    pub footprint: EditFootprint,
-}
-
-impl Deref for EditTouches {
-    type Target = [RegionCoord];
-
-    fn deref(&self) -> &Self::Target {
-        &self.regions
-    }
-}
-
-impl PartialEq<Vec<RegionCoord>> for EditTouches {
-    fn eq(&self, other: &Vec<RegionCoord>) -> bool {
-        self.regions == *other
-    }
 }
 
 /// Successful application-level semantic transaction metadata.
@@ -176,9 +70,16 @@ pub(super) enum EditExecutionError<E> {
 }
 
 impl EditRuntime {
+    pub(super) fn set_diagnostics(&mut self, sink: DiagnosticSink) {
+        self.diagnostics = sink;
+    }
+
     #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn new(session: EditorSession) -> Self {
-        Self { session }
+        Self {
+            session,
+            diagnostics: DiagnosticSink::default(),
+        }
     }
 
     /// Authoritative semantic document for read-only queries and pure planning.
@@ -261,23 +162,42 @@ impl EditRuntime {
         patch: MapPatch,
         project: impl FnOnce(&MapDocument) -> Result<T, E>,
     ) -> Result<EditExecution<T>, EditExecutionError<E>> {
-        let touches = EditFootprint::from_patch(&patch).into_touches();
-        let Some((commit, checkpoint)) = self
-            .session
-            .commit_checkpointed(patch)
-            .map_err(EditExecutionError::Semantic)?
-        else {
-            return Ok(EditExecution::NoChange);
-        };
+        self.execute_named("edit", patch, project)
+    }
 
-        let projection = project(self.session.document());
-        self.finish_execution(
-            commit.revision,
-            commit.impact,
-            touches,
-            checkpoint,
-            projection,
-        )
+    pub(super) fn execute_named<T, E>(
+        &mut self,
+        operation: &'static str,
+        patch: MapPatch,
+        project: impl FnOnce(&MapDocument) -> Result<T, E>,
+    ) -> Result<EditExecution<T>, EditExecutionError<E>> {
+        let before = self.revision();
+        let touches = EditFootprint::from_patch(&patch).into_touches();
+        let footprint = if self.diagnostics.is_enabled() {
+            touches.footprint.clone()
+        } else {
+            EditFootprint::default()
+        };
+        let result = (|| {
+            let Some((commit, checkpoint)) = self
+                .session
+                .commit_checkpointed(patch)
+                .map_err(EditExecutionError::Semantic)?
+            else {
+                return Ok(EditExecution::NoChange);
+            };
+
+            let projection = project(self.session.document());
+            self.finish_execution(
+                commit.revision,
+                commit.impact,
+                touches,
+                checkpoint,
+                projection,
+            )
+        })();
+        self.observe_execution(operation, before, footprint, &result);
+        result
     }
 
     /// Replay one semantic Undo/Redo as an application transaction.
@@ -292,23 +212,66 @@ impl EditRuntime {
         footprint: EditFootprint,
         project: impl FnOnce(&MapDocument) -> Result<T, E>,
     ) -> Result<EditExecution<T>, EditExecutionError<E>> {
-        let replay = match direction {
-            EditReplayDirection::Undo => self.session.undo_checkpointed(),
-            EditReplayDirection::Redo => self.session.redo_checkpointed(),
-        }
-        .map_err(EditExecutionError::Semantic)?;
-        let Some((commit, checkpoint)) = replay else {
-            return Ok(EditExecution::NoChange);
+        let before = self.revision();
+        let observed = if self.diagnostics.is_enabled() {
+            footprint.clone()
+        } else {
+            EditFootprint::default()
         };
+        let result = (|| {
+            let replay = match direction {
+                EditReplayDirection::Undo => self.session.undo_checkpointed(),
+                EditReplayDirection::Redo => self.session.redo_checkpointed(),
+            }
+            .map_err(EditExecutionError::Semantic)?;
+            let Some((commit, checkpoint)) = replay else {
+                return Ok(EditExecution::NoChange);
+            };
 
-        let projection = project(self.session.document());
-        self.finish_execution(
-            commit.revision,
-            commit.impact,
-            footprint.into_touches(),
-            checkpoint,
-            projection,
-        )
+            let projection = project(self.session.document());
+            self.finish_execution(
+                commit.revision,
+                commit.impact,
+                footprint.into_touches(),
+                checkpoint,
+                projection,
+            )
+        })();
+        let operation = match direction {
+            EditReplayDirection::Undo => "undo",
+            EditReplayDirection::Redo => "redo",
+        };
+        self.observe_execution(operation, before, observed, &result);
+        result
+    }
+
+    fn observe_execution<T, E>(
+        &self,
+        operation: &'static str,
+        before: u64,
+        footprint: EditFootprint,
+        result: &Result<EditExecution<T>, EditExecutionError<E>>,
+    ) {
+        self.diagnostics.record(|| {
+            let (outcome, impact) = match result {
+                Ok(EditExecution::Committed { receipt, .. }) => ("committed", receipt.impact),
+                Ok(EditExecution::NoChange) => ("no change", ChangeImpact::NONE),
+                Err(EditExecutionError::Semantic(_)) => ("semantic rejection", ChangeImpact::NONE),
+                Err(EditExecutionError::Projection(_)) => {
+                    ("projection rejected; rolled back", ChangeImpact::NONE)
+                }
+                Err(EditExecutionError::Rollback { .. }) => ("rollback failed", ChangeImpact::NONE),
+                Err(EditExecutionError::Finalize(_)) => ("finalization failed", ChangeImpact::NONE),
+            };
+            TraceEvent::Edit {
+                operation,
+                before,
+                after: self.revision(),
+                outcome,
+                impact,
+                footprint,
+            }
+        });
     }
 
     fn finish_execution<T, E>(
@@ -342,44 +305,6 @@ impl EditRuntime {
             },
         }
     }
-}
-
-fn normalize_tiles(tiles: impl IntoIterator<Item = MapTile>) -> Vec<MapTile> {
-    tiles
-        .into_iter()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect()
-}
-
-fn normalize_height_vertices(
-    vertices: impl IntoIterator<Item = HeightVertexCoord>,
-) -> Vec<HeightVertexCoord> {
-    vertices
-        .into_iter()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect()
-}
-
-fn normalize_object_placements(
-    placements: impl IntoIterator<Item = ObjectPlacement>,
-) -> Vec<ObjectPlacement> {
-    let mut placements = placements.into_iter().collect::<Vec<_>>();
-    placements.sort_unstable_by_key(object_placement_key);
-    placements.dedup();
-    placements
-}
-
-fn object_placement_key(placement: &ObjectPlacement) -> (u8, i32, i32, u32, u8, u8) {
-    (
-        placement.position.plane.index().get(),
-        placement.position.tile.x,
-        placement.position.tile.y,
-        placement.object_id.get(),
-        placement.kind.get(),
-        placement.orientation.get(),
-    )
 }
 
 #[cfg(test)]

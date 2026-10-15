@@ -276,12 +276,7 @@ pub const FLAG_BITS: [(u8, &str, &str); 4] = [
 /// Highest elevation the map can store (a byte of 8-unit steps).
 pub const MAX_ELEVATION: i32 = 255 * 8;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum BrushShape {
-    #[default]
-    Square,
-    Circle,
-}
+pub use osrs_edit::{BrushShape, footprint};
 
 /// Everything the brush is set to, persisted with the settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -418,25 +413,6 @@ impl Brush {
     pub fn footprint_tiles(&self, center: (i32, i32)) -> Vec<(i32, i32)> {
         footprint(self.radius, self.footprint, center)
     }
-}
-
-/// The tiles of a square or round footprint, nearest to `center` first.
-pub fn footprint(radius: u8, shape: BrushShape, center: (i32, i32)) -> Vec<(i32, i32)> {
-    let radius = i32::from(radius);
-    let mut tiles = Vec::new();
-    for dy in -radius..=radius {
-        for dx in -radius..=radius {
-            let inside = match shape {
-                BrushShape::Square => true,
-                BrushShape::Circle => dx * dx + dy * dy <= radius * radius + radius / 2,
-            };
-            if inside {
-                tiles.push((center.0 + dx, center.1 + dy));
-            }
-        }
-    }
-    tiles.sort_by_key(|(x, y)| (x - center.0).pow(2) + (y - center.1).pow(2));
-    tiles
 }
 
 /// Client height (up is negative) to the elevation people think in (up is positive).

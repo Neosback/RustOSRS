@@ -26,7 +26,7 @@ impl EditorApp {
     pub(super) fn pick_cache_folder(&mut self, ctx: &egui::Context) {
         let mut dialog = rfd::FileDialog::new()
             .set_title("Choose the OSRS cache folder (it contains main_file_cache.dat2)");
-        if let Some(parent) = self.cache_dir.parent() {
+        if let Some(parent) = self.project.cache_label().parent() {
             dialog = dialog.set_directory(parent);
         }
         if let Some(folder) = dialog.pick_folder() {
@@ -70,26 +70,14 @@ impl EditorApp {
                 self.request_source_change(source, PathBuf::from(picked.name), ctx);
             }
             Err(error) if error.is_empty() => {}
-            Err(error) => self.cache_error = Some(error),
-        }
-    }
-
-    /// Run the palette loader (no thread in the browser): once the streamer has opened the cache,
-    /// so the fingerprint is already known.
-    #[cfg(target_arch = "wasm32")]
-    pub(super) fn run_palette_job(&mut self) {
-        if !self.world.is_ready() {
-            return;
-        }
-        if let Some((sender, source)) = self.palette_job.take() {
-            let _ = sender.send(osrs_world::load_floor_palette(source));
+            Err(error) => self.project.set_cache_error(error),
         }
     }
 
     /// Switch to the cache in `dir`, after the project lifecycle guard has protected unsaved work.
     pub(super) fn open_cache(&mut self, dir: PathBuf, ctx: &egui::Context) {
         if !looks_like_cache(&dir) {
-            self.cache_error = Some(format!(
+            self.project.set_cache_error(format!(
                 "{} has no {DATA_FILE}. Choose the folder that contains it.",
                 dir.display()
             ));
@@ -102,7 +90,7 @@ impl EditorApp {
     /// semantic/projection working set and rebuild from the pristine source before applying diffs.
     #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn restart_current_source(&mut self) {
-        let dir = self.cache_dir.clone();
+        let dir = self.project.cache_label().clone();
         self.replace_source(CacheSource::Dir(dir.clone()), dir);
     }
 
@@ -118,8 +106,7 @@ impl EditorApp {
     fn replace_source(&mut self, source: CacheSource, label: PathBuf) {
         self.exports.reset_source();
         let dir = label;
-        self.cache_error = None;
-        self.cache_build = None;
+        self.project.replace_source(source.clone(), dir.clone());
         // The old workers finish their current job before stopping; do not wait for them here.
         let old_streamer = self
             .world
@@ -136,28 +123,23 @@ impl EditorApp {
             drop(old_assets);
         }
         self.rebuild_all();
-        self.infos.clear();
-        self.infos_version += 1;
-        self.edited.clear();
-        self.history.clear();
-        self.redo_stack.clear();
-        self.height_edited.clear();
-        self.stroke = None;
-        self.interaction.spline.points.clear();
-        self.texture_handles.clear();
-        self.floor_textures = None;
-        self.palette = None;
-        self.start_palette_loader(source.clone());
+        self.world.clear_inspection();
+        self.terrain.reset();
+        self.interaction.clear_spline_points();
+        self.palettes.reset();
+        self.palettes.load(source.clone());
         self.start_catalog_loader(source.clone());
 
         if matches!(source, CacheSource::Dir(_)) {
             let text = dir.to_string_lossy().into_owned();
-            self.prefs.cache_dir = Some(text.clone());
-            self.prefs.recent_caches.retain(|recent| *recent != text);
-            self.prefs.recent_caches.insert(0, text);
-            self.prefs.recent_caches.truncate(RECENT_LIMIT);
+            self.settings.prefs.cache_dir = Some(text.clone());
+            self.settings
+                .prefs
+                .recent_caches
+                .retain(|recent| *recent != text);
+            self.settings.prefs.recent_caches.insert(0, text);
+            self.settings.prefs.recent_caches.truncate(RECENT_LIMIT);
         }
-        self.cache_dir = dir;
     }
 
     /// The matched build arrived from the streamer.
@@ -165,25 +147,9 @@ impl EditorApp {
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
             "RustOSRS: build {build}"
         )));
-        self.notice = Some((
-            format!("Opened cache build {build} ({profile_id})"),
-            web_time::Instant::now(),
-        ));
-        self.cache_build = Some((build, profile_id));
-    }
-
-    /// Load the floor palette for the drawer: on a thread, or (browser) when the cache is open.
-    pub(super) fn start_palette_loader(&mut self, source: CacheSource) {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        self.palette_rx = Some(receiver);
-        #[cfg(not(target_arch = "wasm32"))]
-        std::thread::spawn(move || {
-            let _ = sender.send(osrs_world::load_floor_palette(source));
-        });
-        #[cfg(target_arch = "wasm32")]
-        {
-            self.palette_job = Some((sender, source));
-        }
+        self.ui
+            .notify(format!("Opened cache build {build} ({profile_id})"));
+        self.project.source_opened(build, profile_id);
     }
 
     /// File menu entries: open, and the recent caches.
@@ -200,6 +166,7 @@ impl EditorApp {
             self.pick_cache_folder(&ctx);
         }
         let recent: Vec<String> = self
+            .settings
             .prefs
             .recent_caches
             .iter()
@@ -209,7 +176,7 @@ impl EditorApp {
         if !recent.is_empty() {
             ui.menu_button("Recent caches", |ui| {
                 for path in recent {
-                    let current = Path::new(&path) == self.cache_dir;
+                    let current = Path::new(&path) == self.project.cache_label().as_path();
                     if ui.selectable_label(current, &path).clicked() {
                         ui.close();
                         let ctx = ui.ctx().clone();
@@ -218,7 +185,7 @@ impl EditorApp {
                 }
             });
         }
-        if let Some((build, profile)) = &self.cache_build {
+        if let Some((build, profile)) = &self.project.cache_build() {
             ui.separator();
             ui.weak(format!("Build {build}"));
             ui.weak(profile.as_str());
@@ -227,7 +194,7 @@ impl EditorApp {
 
     /// The first-run / failure card: shown while no cache is open.
     pub(super) fn cache_welcome(&mut self, ctx: &egui::Context) {
-        let Some(error) = self.cache_error.clone() else {
+        let Some(error) = self.project.cache_error().clone() else {
             return;
         };
         super::modal::Modal::new("cache_welcome", "OSRS cache")
@@ -266,6 +233,7 @@ impl EditorApp {
                     self.pick_cache_folder(ctx);
                 }
                 let recent: Vec<String> = self
+                    .settings
                     .prefs
                     .recent_caches
                     .iter()

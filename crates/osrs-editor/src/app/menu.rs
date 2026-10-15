@@ -24,7 +24,7 @@ impl EditorApp {
                             self.can_undo(),
                             egui::Button::new(format!(
                                 "Undo   {}",
-                                self.keymap.describe("edit.undo")
+                                self.settings.keymap.describe("edit.undo")
                             )),
                         )
                         .clicked()
@@ -37,7 +37,7 @@ impl EditorApp {
                             self.can_redo(),
                             egui::Button::new(format!(
                                 "Redo   {}",
-                                self.keymap.describe("edit.redo")
+                                self.settings.keymap.describe("edit.redo")
                             )),
                         )
                         .clicked()
@@ -48,10 +48,10 @@ impl EditorApp {
                     ui.separator();
                     if ui
                         .add_enabled(
-                            !self.interaction.selection_tiles.is_empty(),
+                            !self.interaction.selection_tiles().is_empty(),
                             egui::Button::new(format!(
                                 "Copy tiles   {}",
-                                self.keymap.describe("edit.copy_tiles")
+                                self.settings.keymap.describe("edit.copy_tiles")
                             )),
                         )
                         .clicked()
@@ -61,10 +61,10 @@ impl EditorApp {
                     }
                     if ui
                         .add_enabled(
-                            self.clipboard.is_some(),
+                            self.interaction.clipboard().is_some(),
                             egui::Button::new(format!(
                                 "Paste tiles   {}",
-                                self.keymap.describe("edit.paste_tiles")
+                                self.settings.keymap.describe("edit.paste_tiles")
                             )),
                         )
                         .clicked()
@@ -77,12 +77,12 @@ impl EditorApp {
                         .button(format!(
                             "{} Settings...   {}",
                             icons::SETTINGS,
-                            self.keymap.describe("settings.open")
+                            self.settings.keymap.describe("settings.open")
                         ))
                         .clicked()
                     {
                         self.open_settings(None);
-                        self.settings_focus_search = true;
+                        self.ui.settings_focus_search = true;
                         ui.close();
                     }
                     if ui.button("Keyboard shortcuts...").clicked() {
@@ -91,9 +91,9 @@ impl EditorApp {
                     }
                 });
                 ui.menu_button("View", |ui| {
-                    ui.checkbox(&mut self.prefs.properties_panel, "Side panel");
-                    ui.checkbox(&mut self.prefs.stats_overlay, "Statistics overlay");
-                    ui.checkbox(&mut self.prefs.show_minimap, "Minimap");
+                    ui.checkbox(&mut self.settings.prefs.properties_panel, "Side panel");
+                    ui.checkbox(&mut self.settings.prefs.stats_overlay, "Statistics overlay");
+                    ui.checkbox(&mut self.settings.prefs.show_minimap, "Minimap");
                     ui.menu_button("Camera", |ui| self.camera_mode_picker(ui));
                     self.run_plugins(|plugin, cx| {
                         if plugin.has_menu() {
@@ -103,11 +103,15 @@ impl EditorApp {
                     ui.separator();
                     ui.label("Plane");
                     for plane in 0..4_u8 {
-                        ui.radio_value(
-                            &mut self.interaction.view_plane,
-                            plane,
-                            format!("z = {plane}"),
-                        );
+                        if ui
+                            .radio(
+                                self.interaction.view_plane() == plane,
+                                format!("z = {plane}"),
+                            )
+                            .clicked()
+                        {
+                            self.interaction.set_view_plane(plane);
+                        }
                     }
                     ui.separator();
                     if ui
@@ -115,7 +119,7 @@ impl EditorApp {
                         .on_hover_text("Run editor commands from text")
                         .clicked()
                     {
-                        self.script_open = true;
+                        self.ui.script_open = true;
                         ui.close();
                     }
                     if ui
@@ -131,7 +135,7 @@ impl EditorApp {
                     .on_hover_text("Switch plugins on and off, and your own tools")
                     .clicked()
                 {
-                    self.plugins_open = true;
+                    self.ui.plugins_open = true;
                 }
                 ui.menu_button("Go", |ui| {
                     if ui.button("World map...").clicked() {
@@ -155,15 +159,9 @@ impl EditorApp {
 
     /// Fly / orbit camera choice.
     pub(super) fn camera_mode_picker(&mut self, ui: &mut egui::Ui) {
-        ui.radio_value(
-            &mut self.interaction.camera.mode,
-            CameraMode::Fly,
-            "Fly   C",
-        );
-        ui.radio_value(
-            &mut self.interaction.camera.mode,
-            CameraMode::Orbit,
-            "Orbit   C",
-        );
+        let mut mode = self.interaction.camera().mode;
+        ui.radio_value(&mut mode, CameraMode::Fly, "Fly   C");
+        ui.radio_value(&mut mode, CameraMode::Orbit, "Orbit   C");
+        self.interaction.set_camera_mode(mode);
     }
 }

@@ -126,11 +126,11 @@ fn argb(colour: u32) -> egui::Color32 {
 
 impl EditorApp {
     pub(super) fn toggle_world_map(&mut self) {
-        self.world_map.open = !self.world_map.open;
+        self.ui.world_map.open = !self.ui.world_map.open;
     }
 
     pub(super) fn world_map_window(&mut self, ctx: &egui::Context) {
-        if !self.world_map.open {
+        if !self.ui.world_map.open {
             return;
         }
         let Some(catalog) = self.assets.catalog.clone() else {
@@ -151,26 +151,26 @@ impl EditorApp {
                 });
             });
             if close {
-                self.world_map.open = false;
+                self.ui.world_map.open = false;
             }
             return;
         };
-        if !self.world_map.initialised {
-            self.world_map.initialised = true;
+        if !self.ui.world_map.initialised {
+            self.ui.world_map.initialised = true;
             // Open on the camera's position when the main map shows it.
             let main = catalog.main_area();
-            self.world_map.open_area(&catalog, main);
+            self.ui.world_map.open_area(&catalog, main);
             let (x, z) = self.world_position();
             let (tx, ty) = ((x / 128.0).floor() as i32, (z / 128.0).floor() as i32);
-            let plane = i32::from(self.interaction.view_plane);
+            let plane = i32::from(self.interaction.view_plane());
             let area = &catalog.areas[main];
-            self.world_map.jump_to_world(area, plane, tx, ty);
+            self.ui.world_map.jump_to_world(area, plane, tx, ty);
         }
 
         let dt = ctx.input(|input| input.stable_dt).min(0.1);
         // The client eases the zoom by 1/30 per 20 ms tick.
         let ease = (1.0 + 1.0 / 30.0_f32).powf(dt * 50.0);
-        let map = &mut self.world_map;
+        let map = &mut self.ui.world_map;
         if map.zoom < map.zoom_target {
             map.zoom = (map.zoom * ease).min(map.zoom_target);
             ctx.request_repaint();
@@ -188,7 +188,7 @@ impl EditorApp {
         .show(ctx, |ui| {
             self.world_map_toolbar(ui, &catalog);
             ui.add_space(4.0);
-            if self.world_map.key_open {
+            if self.ui.world_map.key_open {
                 egui::Panel::right("world_map_key")
                     .resizable(false)
                     .default_size(210.0)
@@ -197,7 +197,7 @@ impl EditorApp {
             teleport = self.world_map_canvas(ui, &catalog);
         });
         if close {
-            self.world_map.open = false;
+            self.ui.world_map.open = false;
         }
         if let Some((x, y, plane)) = teleport {
             self.teleport_to(Destination::Tile {
@@ -210,7 +210,7 @@ impl EditorApp {
 
     fn world_map_toolbar(&mut self, ui: &mut egui::Ui, catalog: &Catalog) {
         ui.horizontal(|ui| {
-            let current = self.world_map.area;
+            let current = self.ui.world_map.area;
             let mut chosen = None;
             egui::ComboBox::from_id_salt("world_map_area")
                 .width(220.0)
@@ -226,10 +226,10 @@ impl EditorApp {
                     }
                 });
             if let Some(index) = chosen {
-                self.world_map.open_area(catalog, index);
+                self.ui.world_map.open_area(catalog, index);
             }
             ui.add(
-                egui::TextEdit::singleline(&mut self.world_map.search)
+                egui::TextEdit::singleline(&mut self.ui.world_map.search)
                     .hint_text(format!("{} Search the map", icons::SEARCH))
                     .desired_width(180.0),
             );
@@ -239,11 +239,11 @@ impl EditorApp {
                 .on_hover_text("Zoom out")
                 .clicked()
             {
-                self.world_map.step_zoom(-1);
+                self.ui.world_map.step_zoom(-1);
             }
-            ui.label(format!("{}%", self.world_map.zoom_percent()));
+            ui.label(format!("{}%", self.ui.world_map.zoom_percent()));
             if ui.button(icons::ZOOM_IN).on_hover_text("Zoom in").clicked() {
-                self.world_map.step_zoom(1);
+                self.ui.world_map.step_zoom(1);
             }
             ui.separator();
             if ui
@@ -253,9 +253,10 @@ impl EditorApp {
             {
                 let (x, z) = self.world_position();
                 let (tx, ty) = ((x / 128.0).floor() as i32, (z / 128.0).floor() as i32);
-                let plane = i32::from(self.interaction.view_plane);
-                let main = self.world_map.area;
+                let plane = i32::from(self.interaction.view_plane());
+                let main = self.ui.world_map.area;
                 if !self
+                    .ui
                     .world_map
                     .jump_to_world(&catalog.areas[main], plane, tx, ty)
                 {
@@ -265,13 +266,13 @@ impl EditorApp {
                         .iter()
                         .position(|area| area.contains_world(plane, tx, ty))
                     {
-                        self.world_map.open_area(catalog, index);
+                        self.ui.world_map.open_area(catalog, index);
                         let area = &catalog.areas[index];
-                        self.world_map.jump_to_world(area, plane, tx, ty);
+                        self.ui.world_map.jump_to_world(area, plane, tx, ty);
                     }
                 }
             }
-            ui.toggle_value(&mut self.world_map.key_open, "Key");
+            ui.toggle_value(&mut self.ui.world_map.key_open, "Key");
         });
     }
 }

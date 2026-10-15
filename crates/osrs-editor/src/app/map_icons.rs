@@ -20,13 +20,13 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
-        if !self.prefs.map_icons_3d {
+        if !self.settings.prefs.map_icons_3d {
             return;
         }
         let Some(catalog) = self.assets.catalog.clone() else {
             return;
         };
-        let plane = self.interaction.view_plane;
+        let plane = self.interaction.view_plane();
         let (rx, ry) = self.camera_region();
         let (camera_x, camera_y) = self.camera_tile();
         // Collect first: asking for a region may request it from the worker.
@@ -57,7 +57,7 @@ impl EditorApp {
                 if element.sprite < 0 {
                     continue;
                 }
-                let Some(corners) = interact::tile_corners(&self.infos, tile, plane) else {
+                let Some(corners) = interact::tile_corners(self.world.infos(), tile, plane) else {
                     continue;
                 };
                 let ground = corners.iter().map(|c| c[1]).sum::<f64>() / 4.0;

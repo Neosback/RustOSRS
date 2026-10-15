@@ -1,4 +1,5 @@
 //! Tool switching, the quick tools HUD, and brush controls.
+use web_time::Instant;
 
 use super::*;
 
@@ -71,42 +72,39 @@ pub(super) fn quick_tool_button(
 impl EditorApp {
     /// Fill the brush from a tile (`I`, Alt + click, or the tile's context menu).
     pub(in crate::app) fn eyedrop(&mut self, values: TileValues) {
-        self.prefs.brush.sample(values);
-        if self.prefs.tool == Tool::Select {
+        self.settings.prefs.brush.sample(values);
+        if self.settings.prefs.tool == Tool::Select {
             self.set_tool(Tool::Paint);
         }
-        self.notice = Some((
-            format!(
-                "Brush: overlay {}, underlay {}",
-                values.overlay, values.underlay
-            ),
-            Instant::now(),
+        self.ui.notify(format!(
+            "Brush: overlay {}, underlay {}",
+            values.overlay, values.underlay
         ));
     }
 
     pub(in crate::app) fn set_tool(&mut self, tool: Tool) {
-        if self.prefs.tool == tool {
+        if self.settings.prefs.tool == tool {
             return;
         }
-        self.stroke = None;
+        self.cancel_stroke();
         self.interaction.cancel_marquee();
-        self.prefs.tool = tool;
+        self.settings.prefs.tool = tool;
         if tool == Tool::Objects {
             // The Objects tool works on objects: its picker is the object picker.
-            self.prefs.select_mode = crate::paint::SelectMode::Objects;
+            self.settings.prefs.select_mode = crate::paint::SelectMode::Objects;
         }
         let tabs = tool.tabs();
         if let Some(first) = tabs.first() {
-            if !tabs.contains(&self.prefs.drawer_tab) {
-                self.prefs.drawer_tab = *first;
+            if !tabs.contains(&self.settings.prefs.drawer_tab) {
+                self.settings.prefs.drawer_tab = *first;
             }
-            self.prefs.drawer_open = true;
+            self.settings.prefs.drawer_open = true;
         }
     }
 
     /// Space: a small panel at the cursor with what the active tool can use.
     pub(in crate::app) fn quick_tools_hud(&mut self, ctx: &egui::Context) {
-        let Some(origin) = self.quick_open else {
+        let Some(origin) = self.ui.quick_open else {
             return;
         };
         let screen = ctx.content_rect();
@@ -138,9 +136,18 @@ impl EditorApp {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 6.0;
                             for tool in Tool::ALL {
-                                let key = self.keymap.binding(tool.action()).map(|b| b.describe());
-                                if quick_tool_button(ui, tool, self.prefs.tool == tool, key)
-                                    .clicked()
+                                let key = self
+                                    .settings
+                                    .keymap
+                                    .binding(tool.action())
+                                    .map(|b| b.describe());
+                                if quick_tool_button(
+                                    ui,
+                                    tool,
+                                    self.settings.prefs.tool == tool,
+                                    key,
+                                )
+                                .clicked()
                                 {
                                     self.set_tool(tool);
                                     close = true;
@@ -150,25 +157,25 @@ impl EditorApp {
                         self.quick_tool_options(ui);
                         crate::theme::section_heading(ui, "View");
                         ui.horizontal(|ui| {
+                            let mut view_plane = self.interaction.view_plane();
+                            let mut camera_mode = self.interaction.camera().mode;
                             ui.weak("Plane");
                             for plane in 0..4_u8 {
-                                ui.selectable_value(
-                                    &mut self.interaction.view_plane,
-                                    plane,
-                                    plane.to_string(),
-                                );
+                                ui.selectable_value(&mut view_plane, plane, plane.to_string());
                             }
                             ui.separator();
                             ui.selectable_value(
-                                &mut self.interaction.camera.mode,
+                                &mut camera_mode,
                                 crate::camera::CameraMode::Fly,
                                 "Fly",
                             );
                             ui.selectable_value(
-                                &mut self.interaction.camera.mode,
+                                &mut camera_mode,
                                 crate::camera::CameraMode::Orbit,
                                 "Orbit",
                             );
+                            self.interaction.set_camera_mode(camera_mode);
+                            self.interaction.set_view_plane(view_plane);
                         });
                     });
             });
@@ -180,19 +187,19 @@ impl EditorApp {
             close = true;
         }
         if close {
-            self.quick_open = None;
+            self.ui.quick_open = None;
         }
     }
 
     /// The quick HUD's section for the active tool.
     pub(super) fn quick_tool_options(&mut self, ui: &mut egui::Ui) {
-        match self.prefs.tool {
+        match self.settings.prefs.tool {
             Tool::Select => {
                 crate::theme::section_heading(ui, "Select");
                 ui.horizontal(|ui| {
                     for mode in SelectMode::ALL {
                         let text = format!("{}  {}", select_mode_icon(mode), mode.label());
-                        ui.selectable_value(&mut self.prefs.select_mode, mode, text);
+                        ui.selectable_value(&mut self.settings.prefs.select_mode, mode, text);
                     }
                 });
             }
@@ -200,9 +207,9 @@ impl EditorApp {
                 crate::theme::section_heading(ui, "Brush paints");
                 ui.horizontal_wrapped(|ui| {
                     for tab in Tool::Paint.tabs() {
-                        let mut armed = self.prefs.brush.is_armed(*tab);
+                        let mut armed = self.settings.prefs.brush.is_armed(*tab);
                         if ui.toggle_value(&mut armed, tab.label()).changed() {
-                            self.prefs.brush.set_armed(*tab, armed);
+                            self.settings.prefs.brush.set_armed(*tab, armed);
                         }
                     }
                 });
@@ -216,14 +223,14 @@ impl EditorApp {
                 ui.horizontal(|ui| {
                     ui.weak("Width");
                     ui.add(
-                        egui::DragValue::new(&mut self.prefs.spline.width)
+                        egui::DragValue::new(&mut self.settings.prefs.spline.width)
                             .range(0.5..=24.0)
                             .speed(0.1)
                             .suffix(" tiles"),
                     );
                     ui.weak("Edge");
                     ui.add(
-                        egui::DragValue::new(&mut self.prefs.spline.edge_weight)
+                        egui::DragValue::new(&mut self.settings.prefs.spline.edge_weight)
                             .range(0.0..=2.0)
                             .speed(0.05),
                     );
@@ -231,13 +238,13 @@ impl EditorApp {
             }
             Tool::Height => {
                 crate::theme::section_heading(ui, "Height");
-                let current = self.prefs.height_tool.op;
+                let current = self.settings.prefs.height_tool.op;
                 let options: Vec<_> = crate::heights::HeightOp::ALL
                     .iter()
                     .map(|op| (*op, op.label()))
                     .collect();
                 if let Some(op) = crate::app::widgets::chips(ui, current, &options) {
-                    self.prefs.height_tool.op = op;
+                    self.settings.prefs.height_tool.op = op;
                 }
                 ui.horizontal(|ui| {
                     ui.weak("Brush");
@@ -271,7 +278,7 @@ impl EditorApp {
     /// A tool key *taps* (switches and stays; pressing the same key again returns to Select) or
     /// *holds* (peeks at the tool and returns to the previous one on release).
     pub(in crate::app) fn tool_actions(&mut self, ctx: &egui::Context) {
-        let pressed = |id: &str| ctx.input(|i| self.keymap.pressed(i, id));
+        let pressed = |id: &str| ctx.input(|i| self.settings.keymap.pressed(i, id));
         let tool = Tool::ALL.into_iter().find(|tool| pressed(tool.action()));
         let quick = pressed("quick.tools");
         let drawer = pressed("drawer.toggle");
@@ -279,14 +286,17 @@ impl EditorApp {
         let bigger = pressed("brush.bigger");
         let eyedrop = pressed("tool.eyedrop");
         if let Some(tool) = tool {
-            let key = self.keymap.binding(tool.action()).map(|b| b.key);
-            let target =
-                self.interaction
-                    .press_tool_key(self.prefs.tool, tool, key, Instant::now());
+            let key = self.settings.keymap.binding(tool.action()).map(|b| b.key);
+            let target = self.interaction.press_tool_key(
+                self.settings.prefs.tool,
+                tool,
+                key,
+                Instant::now(),
+            );
             self.set_tool(target);
         }
         if quick {
-            self.quick_open = match self.quick_open {
+            self.ui.quick_open = match self.ui.quick_open {
                 Some(_) => None,
                 None => Some(
                     ctx.input(|i| i.pointer.hover_pos())
@@ -294,17 +304,17 @@ impl EditorApp {
                 ),
             };
         }
-        if drawer && self.prefs.tool.has_drawer() {
-            self.prefs.drawer_open = !self.prefs.drawer_open;
+        if drawer && self.settings.prefs.tool.has_drawer() {
+            self.settings.prefs.drawer_open = !self.settings.prefs.drawer_open;
         }
         if smaller {
-            self.prefs.brush.radius = self.prefs.brush.radius.saturating_sub(1);
+            self.settings.prefs.brush.radius = self.settings.prefs.brush.radius.saturating_sub(1);
         }
         if bigger {
-            self.prefs.brush.radius = (self.prefs.brush.radius + 1).min(16);
+            self.settings.prefs.brush.radius = (self.settings.prefs.brush.radius + 1).min(16);
         }
         if eyedrop
-            && let Some(tile) = self.interaction.hover.tile.map(|pick| pick.tile)
+            && let Some(tile) = self.interaction.hover().tile.map(|pick| pick.tile)
             && let Some(values) = self.tile_now(tile)
         {
             self.eyedrop(values);
@@ -316,8 +326,8 @@ impl EditorApp {
         if self.placer.disarm() {
             return;
         }
-        if self.prefs.tool != Tool::Select {
-            self.interaction.spline.points.clear();
+        if self.settings.prefs.tool != Tool::Select {
+            self.interaction.clear_spline_points();
             self.set_tool(Tool::Select);
         } else {
             self.clear_selection();
@@ -354,7 +364,7 @@ impl EditorApp {
         if right_to_left {
             pieces.reverse();
         }
-        let brush = &mut self.prefs.brush;
+        let brush = &mut self.settings.prefs.brush;
         for piece in pieces {
             match piece {
                 Piece::Label => {

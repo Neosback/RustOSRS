@@ -25,7 +25,7 @@ pub(super) fn channel_tab(
 ) -> (bool, Rect) {
     let visuals = ui.visuals().clone();
     let accent = visuals.selection.stroke.color;
-    let armed = app.prefs.brush.is_armed(tab);
+    let armed = app.settings.prefs.brush.is_armed(tab);
     let galley = ui.painter().layout_no_wrap(
         tab.label().to_owned(),
         egui::TextStyle::Body.resolve(ui.style()),
@@ -130,7 +130,7 @@ pub(super) fn channel_tab(
     });
     let mut tab_clicked = false;
     if tick.clicked() {
-        app.prefs.brush.set_armed(tab, !armed);
+        app.settings.prefs.brush.set_armed(tab, !armed);
     } else if response.clicked() && !on_tick {
         tab_clicked = true;
     }

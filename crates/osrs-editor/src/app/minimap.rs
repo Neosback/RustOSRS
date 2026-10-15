@@ -48,10 +48,10 @@ struct Sprites {
 impl EditorApp {
     /// The minimap assembly in the viewport's top-right corner.
     pub(super) fn minimap_hud(&mut self, ui: &egui::Ui, rect: egui::Rect) {
-        if !self.prefs.show_minimap {
+        if !self.settings.prefs.show_minimap {
             return;
         }
-        let scale = self.prefs.minimap_size.scale();
+        let scale = self.settings.prefs.minimap_size.scale();
         let (Some(frame), Some(map_mask), Some(compass_mask), Some(compass)) = (
             self.assets.sprite_image(ids::FRAME),
             self.assets.sprite_image(ids::MAP_MASK),
@@ -71,15 +71,15 @@ impl EditorApp {
             egui::vec2(sprites.frame.width as f32, sprites.frame.height as f32) * scale;
         let origin = egui::pos2(rect.right() - frame_size.x - 10.0, rect.top() + 10.0);
         let at = |x: f32, y: f32| origin + egui::vec2(x, y) * scale;
-        let yaw = self.interaction.camera.yaw;
+        let yaw = self.interaction.camera().yaw;
         let (camera_x, camera_z) = self.world_position();
         let (tile_x, tile_y) = (camera_x / 128.0, camera_z / 128.0);
-        let plane = self.interaction.view_plane;
+        let plane = self.interaction.view_plane();
 
         // Scene image.
         let regions = self.minimap_regions(tile_x, tile_y, plane);
         let map_image = compose_map(&sprites.map_mask, &regions, (tile_x, tile_y), yaw);
-        let map_texture = match &mut self.minimap_hud.map {
+        let map_texture = match &mut self.ui.minimap_hud.map {
             Some(texture) => {
                 texture.set(map_image, egui::TextureOptions::NEAREST);
                 texture.clone()
@@ -111,7 +111,7 @@ impl EditorApp {
 
         // Compass: the sprite turned by the camera yaw, cut by its mask.
         let compass_image = compose_compass(&sprites.compass, &sprites.compass_mask, yaw);
-        let compass_texture = match &mut self.minimap_hud.compass {
+        let compass_texture = match &mut self.ui.minimap_hud.compass {
             Some(texture) => {
                 texture.set(compass_image, egui::TextureOptions::NEAREST);
                 texture.clone()
@@ -172,7 +172,7 @@ impl EditorApp {
             egui::Sense::click(),
         );
         if compass_response.on_hover_text("Face north").clicked() {
-            self.interaction.camera.yaw = 0.0;
+            self.interaction.face_north();
         }
         let map_response =
             ui.interact(map_rect, egui::Id::new("minimap_map"), egui::Sense::click());

@@ -1,74 +1,16 @@
-//! Spline tool pointer input and commit.
-
+//! Spline tool pointer input and semantic commit routing.
 use super::*;
-use crate::app::interaction_runtime::InteractionRuntime;
-
-impl InteractionRuntime {
-    pub(super) fn spline_points(&self) -> &[(f32, f32)] {
-        &self.spline.points
-    }
-
-    pub(super) fn begin_spline_drag(&mut self, index: usize) {
-        if index < self.spline.points.len() {
-            self.spline.drag = Some(index);
-        }
-    }
-
-    pub(super) fn append_spline_point_and_drag(&mut self, point: (f32, f32)) {
-        self.spline.points.push(point);
-        self.spline.drag = Some(self.spline.points.len() - 1);
-    }
-
-    pub(super) fn insert_spline_point_and_drag(&mut self, index: usize, point: (f32, f32)) {
-        let index = index.min(self.spline.points.len());
-        self.spline.points.insert(index, point);
-        self.spline.drag = Some(index);
-    }
-
-    pub(super) fn update_spline_drag(&mut self, point: (f32, f32)) {
-        if let Some(index) = self.spline.drag
-            && let Some(current) = self.spline.points.get_mut(index)
-        {
-            *current = point;
-        }
-    }
-
-    pub(super) fn finish_spline_drag(&mut self) {
-        self.spline.drag = None;
-    }
-
-    pub(super) fn cancel_spline_drag(&mut self) {
-        self.spline.drag = None;
-    }
-
-    pub(super) fn remove_spline_point(&mut self, index: usize) {
-        if index < self.spline.points.len() {
-            self.spline.points.remove(index);
-        }
-    }
-
-    pub(super) fn pop_spline_point(&mut self) {
-        self.spline.points.pop();
-    }
-
-    pub(super) fn clear_spline_points(&mut self) {
-        self.spline.points.clear();
-    }
-}
 
 impl EditorApp {
     /// Add, move, insert and remove control points; Enter lays the path.
     pub(in crate::app) fn spline_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
-        self.interaction
-            .spline
-            .ctx
-            .get_or_insert_with(|| ctx.clone());
-        if self.prefs.tool != Tool::Spline {
+        self.interaction.register_spline_repaint(ctx);
+        if self.settings.prefs.tool != Tool::Spline {
             self.interaction.cancel_spline_drag();
             return;
         }
         self.spline_update();
-        if self.quick_open.is_some() || self.context_menu.is_some() {
+        if self.ui.quick_open.is_some() || self.ui.context_menu.is_some() {
             return;
         }
         if !self.keys_blocked(ctx) {
@@ -79,13 +21,13 @@ impl EditorApp {
                 self.interaction.pop_spline_point();
             }
         }
-        let Some(hit) = self.interaction.hover.tile else {
+        let Some(hit) = self.interaction.hover().tile else {
             if !ctx.input(|i| i.pointer.primary_down()) {
                 self.interaction.finish_spline_drag();
             }
             return;
         };
-        let at = if self.prefs.spline.snap_points {
+        let at = if self.settings.prefs.spline.snap_points {
             (hit.tile.0 as f32 + 0.5, hit.tile.1 as f32 + 0.5)
         } else {
             hit.at
@@ -141,22 +83,17 @@ impl EditorApp {
     /// Lay the previewed fitted path as one semantic patch / one undo step.
     pub(in crate::app) fn commit_spline(&mut self) {
         if self.laying_overlay().is_none() {
-            self.notice = Some((
-                "Choose an overlay to lay the path with".to_owned(),
-                web_time::Instant::now(),
-            ));
+            self.ui
+                .notify("Choose an overlay to lay the path with".to_owned());
             return;
         }
         self.spline_plan_now();
-        let Some(preview) = self.interaction.spline.preview.take() else {
+        let Some(preview) = self.interaction.current_spline_preview().cloned() else {
             return;
         };
         if preview.paints.is_empty() {
-            self.interaction.spline.preview = Some(preview);
-            self.notice = Some((
-                "The fitted path has no overlay tiles".to_owned(),
-                web_time::Instant::now(),
-            ));
+            self.ui
+                .notify("The fitted path has no overlay tiles".to_owned());
             return;
         }
         let tiles: Vec<PathTile> = preview
@@ -171,76 +108,7 @@ impl EditorApp {
             .collect();
         let changed = self.apply_terrain_path(&tiles);
         self.interaction.clear_spline_points();
-        self.notice = Some((
-            format!("Laid a fitted path over {changed} tiles"),
-            web_time::Instant::now(),
-        ));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::camera::FlyCamera;
-
-    fn interaction() -> InteractionRuntime {
-        InteractionRuntime::new(FlyCamera::new(0.0, 0.0, 0.0))
-    }
-
-    #[test]
-    fn spline_point_lifecycle_appends_inserts_and_updates_only_active_point() {
-        let mut interaction = interaction();
-        interaction.append_spline_point_and_drag((1.0, 2.0));
-        assert_eq!(interaction.spline_points(), &[(1.0, 2.0)]);
-        assert_eq!(interaction.spline.drag, Some(0));
-
-        interaction.finish_spline_drag();
-        interaction.append_spline_point_and_drag((5.0, 6.0));
-        interaction.finish_spline_drag();
-        interaction.insert_spline_point_and_drag(1, (3.0, 4.0));
-        assert_eq!(
-            interaction.spline_points(),
-            &[(1.0, 2.0), (3.0, 4.0), (5.0, 6.0)]
-        );
-        assert_eq!(interaction.spline.drag, Some(1));
-
-        interaction.update_spline_drag((3.5, 4.5));
-        assert_eq!(
-            interaction.spline_points(),
-            &[(1.0, 2.0), (3.5, 4.5), (5.0, 6.0)]
-        );
-    }
-
-    #[test]
-    fn spline_drag_finish_and_cancel_clear_capture_without_changing_points() {
-        let mut interaction = interaction();
-        interaction.append_spline_point_and_drag((1.0, 2.0));
-        interaction.finish_spline_drag();
-        assert_eq!(interaction.spline.drag, None);
-        assert_eq!(interaction.spline_points(), &[(1.0, 2.0)]);
-
-        interaction.begin_spline_drag(0);
-        interaction.cancel_spline_drag();
-        interaction.update_spline_drag((9.0, 9.0));
-        assert_eq!(interaction.spline.drag, None);
-        assert_eq!(interaction.spline_points(), &[(1.0, 2.0)]);
-    }
-
-    #[test]
-    fn spline_remove_pop_and_clear_mutate_points_through_runtime() {
-        let mut interaction = interaction();
-        interaction.append_spline_point_and_drag((1.0, 1.0));
-        interaction.finish_spline_drag();
-        interaction.append_spline_point_and_drag((2.0, 2.0));
-        interaction.finish_spline_drag();
-        interaction.append_spline_point_and_drag((3.0, 3.0));
-        interaction.finish_spline_drag();
-
-        interaction.remove_spline_point(1);
-        assert_eq!(interaction.spline_points(), &[(1.0, 1.0), (3.0, 3.0)]);
-        interaction.pop_spline_point();
-        assert_eq!(interaction.spline_points(), &[(1.0, 1.0)]);
-        interaction.clear_spline_points();
-        assert!(interaction.spline_points().is_empty());
+        self.ui
+            .notify(format!("Laid a fitted path over {changed} tiles"));
     }
 }

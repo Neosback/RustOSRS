@@ -31,7 +31,7 @@ impl EditorApp {
     /// Select every loaded object with definition `id`.
     pub(super) fn select_similar(&mut self, id: u32) {
         let mut found = Vec::new();
-        for (region, info) in &self.infos {
+        for (region, info) in self.world.infos() {
             for (index, loc) in info.locs.iter().enumerate() {
                 if loc.definition.identity.id.get() == id {
                     found.push(ObjectPick {
@@ -43,12 +43,9 @@ impl EditorApp {
         }
         let count = found.len();
         self.interaction.replace_objects(found);
-        self.notice = Some((
-            format!(
-                "Selected {count} object{} (id {id})",
-                if count == 1 { "" } else { "s" }
-            ),
-            web_time::Instant::now(),
+        self.ui.notify(format!(
+            "Selected {count} object{} (id {id})",
+            if count == 1 { "" } else { "s" }
         ));
     }
 
@@ -64,7 +61,8 @@ impl EditorApp {
 
     /// The Inspector's tile for an object selection (its anchor).
     fn object_tile(&self, object: &ObjectPick) -> Option<(i32, i32)> {
-        self.infos
+        self.world
+            .infos()
             .get(&object.region)
             .and_then(|info| info.locs.get(object.index))
             .map(|loc| loc.tile)
@@ -80,11 +78,11 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
-        let objects_tool = self.prefs.tool == crate::paint::Tool::Objects;
-        if !(self.prefs.tool == crate::paint::Tool::Select || objects_tool)
-            || self.quick_open.is_some()
-            || self.context_menu.is_some()
-            || self.interaction.gizmo_busy
+        let objects_tool = self.settings.prefs.tool == crate::paint::Tool::Objects;
+        if !(self.settings.prefs.tool == crate::paint::Tool::Select || objects_tool)
+            || self.ui.quick_open.is_some()
+            || self.ui.context_menu.is_some()
+            || self.interaction.gizmo_busy()
         {
             self.interaction.cancel_marquee();
             return;
@@ -132,13 +130,13 @@ impl EditorApp {
     }
 
     fn click_select(&mut self, additive: bool, toggle: bool) {
-        let mode = if self.prefs.tool == crate::paint::Tool::Objects {
+        let mode = if self.settings.prefs.tool == crate::paint::Tool::Objects {
             SelectMode::Objects
         } else {
-            self.prefs.select_mode
+            self.settings.prefs.select_mode
         };
-        let object = self.interaction.hover.object.clone();
-        let tile = self.interaction.hover.tile.map(|pick| pick.tile);
+        let object = self.interaction.hover().object.clone();
+        let tile = self.interaction.hover().tile.map(|pick| pick.tile);
         if !additive && !toggle {
             if mode.objects() {
                 self.interaction.clear_objects();
@@ -159,7 +157,7 @@ impl EditorApp {
         if mode.tiles()
             && let Some(tile) = tile
             // In Both mode an object under the cursor wins the click; the tile follows with Shift.
-            && (mode == SelectMode::Tiles || self.interaction.selected.is_none() || additive || toggle)
+            && (mode == SelectMode::Tiles || self.interaction.selected().is_none() || additive || toggle)
         {
             if toggle {
                 self.interaction.toggle_tile(tile);
@@ -178,15 +176,15 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
-        let mode = if self.prefs.tool == crate::paint::Tool::Objects {
+        let mode = if self.settings.prefs.tool == crate::paint::Tool::Objects {
             SelectMode::Objects
         } else {
-            self.prefs.select_mode
+            self.settings.prefs.select_mode
         };
-        let plane = self.interaction.view_plane;
+        let plane = self.interaction.view_plane();
         let to_screen = |app: &Self, point: [f64; 3]| -> Option<Pos2> {
             pick::project(
-                &app.interaction.camera,
+                app.interaction.camera(),
                 app.renderer.render_origin(),
                 width as f32,
                 height as f32,
@@ -201,12 +199,13 @@ impl EditorApp {
         };
         let mut tiles: HashSet<(i32, i32)> = HashSet::new();
         let mut objects: Vec<ObjectPick> = Vec::new();
-        for (region, info) in &self.infos {
+        for (region, info) in self.world.infos() {
             if mode.tiles() {
                 for lx in 0..64 {
                     for ly in 0..64 {
                         let tile = (region.0 * 64 + lx, region.1 * 64 + ly);
-                        let Some(corners) = interact::tile_corners(&self.infos, tile, plane) else {
+                        let Some(corners) = interact::tile_corners(self.world.infos(), tile, plane)
+                        else {
                             continue;
                         };
                         let centre = [
@@ -227,7 +226,8 @@ impl EditorApp {
                     if loc.plane != plane {
                         continue;
                     }
-                    let Some(corners) = interact::tile_corners(&self.infos, loc.tile, plane) else {
+                    let Some(corners) = interact::tile_corners(self.world.infos(), loc.tile, plane)
+                    else {
                         continue;
                     };
                     let centre = [
@@ -269,13 +269,10 @@ impl EditorApp {
             }
         }
         let (objects, tiles) = self.interaction.selection_counts();
-        self.notice = Some((
-            format!(
-                "Selected {objects} object{} and {tiles} tile{}",
-                if objects == 1 { "" } else { "s" },
-                if tiles == 1 { "" } else { "s" }
-            ),
-            web_time::Instant::now(),
+        self.ui.notify(format!(
+            "Selected {objects} object{} and {tiles} tile{}",
+            if objects == 1 { "" } else { "s" },
+            if tiles == 1 { "" } else { "s" }
         ));
     }
 
@@ -289,7 +286,7 @@ impl EditorApp {
         height: u32,
     ) -> Option<Pos2> {
         pick::project(
-            &self.interaction.camera,
+            self.interaction.camera(),
             self.renderer.render_origin(),
             width as f32,
             height as f32,
@@ -312,7 +309,7 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
-        let plane = self.interaction.view_plane;
+        let plane = self.interaction.view_plane();
         let quad = |corners: [[f64; 3]; 4]| -> Option<Vec<Pos2>> {
             let points: Vec<Pos2> = corners
                 .iter()
@@ -322,26 +319,33 @@ impl EditorApp {
         };
         for tile in self
             .interaction
-            .selection_tiles
+            .selection_tiles()
             .iter()
             .take(MAX_DRAWN_TILES)
         {
-            if let Some(corners) = interact::tile_corners(&self.infos, *tile, plane)
+            if let Some(corners) = interact::tile_corners(self.world.infos(), *tile, plane)
                 && let Some(points) = quad(corners)
             {
                 painter.add(egui::Shape::convex_polygon(
                     points,
-                    self.prefs.colors.get(ColorKey::TileSelectionFill),
-                    Stroke::new(1.0, self.prefs.colors.get(ColorKey::TileSelectionOutline)),
+                    self.settings.prefs.colors.get(ColorKey::TileSelectionFill),
+                    Stroke::new(
+                        1.0,
+                        self.settings
+                            .prefs
+                            .colors
+                            .get(ColorKey::TileSelectionOutline),
+                    ),
                 ));
             }
         }
-        for object in &self.interaction.selection_objects {
+        for object in self.interaction.selection_objects() {
             if self.interaction.is_primary_object(object) {
                 continue;
             }
             let Some(loc) = self
-                .infos
+                .world
+                .infos()
                 .get(&object.region)
                 .and_then(|info| info.locs.get(object.index))
             else {
@@ -354,7 +358,7 @@ impl EditorApp {
             if loc.orientation & 1 == 1 {
                 std::mem::swap(&mut size_x, &mut size_y);
             }
-            let Some(base) = interact::tile_corners(&self.infos, loc.tile, plane) else {
+            let Some(base) = interact::tile_corners(self.world.infos(), loc.tile, plane) else {
                 continue;
             };
             let y = base[0][1];
@@ -363,13 +367,20 @@ impl EditorApp {
             if let Some(points) = quad([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]]) {
                 painter.add(egui::Shape::convex_polygon(
                     points,
-                    self.prefs.colors.get(ColorKey::SelectionFill),
-                    Stroke::new(1.5, self.prefs.colors.get(ColorKey::SelectionOutline)),
+                    self.settings.prefs.colors.get(ColorKey::SelectionFill),
+                    Stroke::new(
+                        1.5,
+                        self.settings.prefs.colors.get(ColorKey::SelectionOutline),
+                    ),
                 ));
             }
         }
         if let Some(marquee) = self.interaction.marquee() {
-            let accent = self.prefs.colors.get(ColorKey::TileSelectionOutline);
+            let accent = self
+                .settings
+                .prefs
+                .colors
+                .get(ColorKey::TileSelectionOutline);
             painter.rect(
                 marquee.rect(),
                 2.0,

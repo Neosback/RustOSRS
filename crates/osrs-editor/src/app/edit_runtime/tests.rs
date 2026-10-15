@@ -6,6 +6,7 @@ use osrs_core::{
 use osrs_edit::{
     HeightVertexCoord, LocKind, MapDocument, MapOp, MapPosition, ObjectOrientation, ObjectPlacement,
 };
+use std::collections::BTreeSet;
 
 fn plane() -> SourcePlane {
     SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))

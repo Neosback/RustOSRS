@@ -21,7 +21,6 @@ use crate::paint::{SelectMode, TileValues, Tool};
 use crate::settings::{RailTab, ViewTab};
 use eframe::egui::{self, Pos2, Rect, Sense, Stroke, Vec2};
 use std::time::Duration;
-use web_time::Instant;
 
 /// Window width (points) under which labels collapse to icons and the dock narrows.
 pub const COMPACT_WIDTH: f32 = 1100.0;
@@ -43,17 +42,19 @@ impl EditorApp {
         // With nothing under the cursor the last tile stays, so the HUD does not blink out.
         let tile = self
             .interaction
-            .hover
+            .hover()
             .tile
             .map(|pick| pick.tile)
-            .or(self.interaction.last_hover_tile)?;
+            .or(self.interaction.last_hover_tile())?;
         let values = self.tile_now(tile)?;
         let mut lines = vec![
             (
                 "Tile".to_owned(),
                 format!(
                     "{}, {}  \u{b7}  plane {}",
-                    tile.0, tile.1, self.interaction.view_plane
+                    tile.0,
+                    tile.1,
+                    self.interaction.view_plane()
                 ),
             ),
             (
@@ -88,9 +89,10 @@ impl EditorApp {
                 ),
             ),
         ];
-        if let Some(object) = &self.interaction.hover.object
+        if let Some(object) = self.interaction.hover().object.as_ref()
             && let Some(loc) = self
-                .infos
+                .world
+                .infos()
                 .get(&object.region)
                 .and_then(|info| info.locs.get(object.index))
         {

@@ -63,50 +63,6 @@ pub(super) fn paint_overlay_swatch(
 }
 
 impl EditorApp {
-    /// The egui texture of a floor texture (made on first use), with its scroll animation.
-    pub(super) fn floor_texture(
-        &mut self,
-        ctx: &egui::Context,
-        texture: u32,
-    ) -> Option<(egui::TextureId, TextureAnimationVector)> {
-        if let Some((handle, vector)) = self.texture_handles.get(&texture) {
-            return Some((handle.id(), *vector));
-        }
-        let layer = self
-            .floor_textures
-            .as_ref()?
-            .get(texture as usize)?
-            .as_ref()?;
-        let pixels: Vec<Color32> = layer
-            .rgba
-            .iter()
-            .map(|p| Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]))
-            .collect();
-        let size = (layer.rgba.len() as f64).sqrt() as usize;
-        let image = egui::ColorImage {
-            size: [size, size],
-            source_size: Vec2::new(size as f32, size as f32),
-            pixels,
-        };
-        let handle = ctx.load_texture(
-            format!("floor-texture-{texture}"),
-            image,
-            egui::TextureOptions {
-                magnification: egui::TextureFilter::Linear,
-                minification: egui::TextureFilter::Linear,
-                wrap_mode: egui::TextureWrapMode::Repeat,
-                mipmap_mode: None,
-            },
-        );
-        let vector = TextureAnimationVector::from_direction_speed(
-            layer.animation_direction,
-            layer.animation_speed,
-        );
-        let id = handle.id();
-        self.texture_handles.insert(texture, (handle, vector));
-        Some((id, vector))
-    }
-
     /// How an overlay swatch is filled: its texture (scrolling when animated), else its colour.
     pub(in crate::app) fn overlay_fill(
         &mut self,
@@ -114,7 +70,7 @@ impl EditorApp {
         swatch: &OverlaySwatch,
     ) -> OverlayFill {
         if let Some(texture) = swatch.texture
-            && let Some((id, vector)) = self.floor_texture(ctx, texture)
+            && let Some((id, vector)) = self.palettes.floor_texture(ctx, texture)
         {
             let tick = (self.started.elapsed().as_secs_f32() * 50.0) as u32;
             let (u, v) = vector.uv_offset_at_tick(tick);
@@ -125,15 +81,23 @@ impl EditorApp {
         }
         if swatch.rgb == [255, 0, 255] && swatch.texture.is_none() {
             return OverlayFill::Transparent {
-                light: self.prefs.colors.get(crate::style::ColorKey::CheckerLight),
-                dark: self.prefs.colors.get(crate::style::ColorKey::CheckerDark),
+                light: self
+                    .settings
+                    .prefs
+                    .colors
+                    .get(crate::style::ColorKey::CheckerLight),
+                dark: self
+                    .settings
+                    .prefs
+                    .colors
+                    .get(crate::style::ColorKey::CheckerDark),
             };
         }
         OverlayFill::Color(color(swatch.rgb))
     }
 
     pub(in crate::app) fn overlay_swatch(&self, id: u16) -> Option<OverlaySwatch> {
-        let palette = self.palette.as_ref()?;
+        let palette = self.palettes.palette().as_ref()?;
         let index = palette
             .overlays
             .binary_search_by_key(&id, |swatch| swatch.id)
@@ -142,7 +106,7 @@ impl EditorApp {
     }
 
     pub(in crate::app) fn underlay_color(&self, id: u16) -> Option<Color32> {
-        let palette = self.palette.as_ref()?;
+        let palette = self.palettes.palette().as_ref()?;
         let index = palette
             .underlays
             .binary_search_by_key(&id, |swatch| swatch.id)
@@ -151,11 +115,11 @@ impl EditorApp {
     }
 
     pub(super) fn palette_loading(&self, ui: &mut egui::Ui) -> bool {
-        if self.palette.is_some() {
+        if self.palettes.palette().is_some() {
             return false;
         }
         ui.horizontal(|ui| {
-            if self.palette_rx.is_some() {
+            if self.palettes.loading() {
                 ui.spinner();
                 ui.weak("Loading floor colours...");
             } else {
@@ -178,7 +142,7 @@ impl EditorApp {
                     continue;
                 }
                 if ui
-                    .selectable_label(self.prefs.palette_filter == filter, filter.label())
+                    .selectable_label(self.settings.prefs.palette_filter == filter, filter.label())
                     .on_hover_text(match filter {
                         PaletteFilter::Common => "Floors that many tiles of the real map use",
                         PaletteFilter::AllUsed => "Every floor any tile of the real map uses",
@@ -186,12 +150,12 @@ impl EditorApp {
                     })
                     .clicked()
                 {
-                    self.prefs.palette_filter = filter;
+                    self.settings.prefs.palette_filter = filter;
                 }
             }
             ui.add_space(6.0);
             ui.add(
-                egui::TextEdit::singleline(&mut self.palette_search)
+                egui::TextEdit::singleline(&mut self.ui.palette_search)
                     .hint_text("id")
                     .desired_width(54.0),
             );
@@ -203,28 +167,28 @@ impl EditorApp {
                     (0, "S", "Small swatches"),
                 ] {
                     if ui
-                        .selectable_label(self.prefs.swatch_size == level, label)
+                        .selectable_label(self.settings.prefs.swatch_size == level, label)
                         .on_hover_text(tip)
                         .clicked()
                     {
-                        self.prefs.swatch_size = level;
+                        self.settings.prefs.swatch_size = level;
                     }
                 }
             });
         });
-        self.palette_search.trim().to_owned()
+        self.ui.palette_search.trim().to_owned()
     }
 
     pub(super) fn overlay_palette(&mut self, ui: &mut egui::Ui, popup: bool) {
         if self.palette_loading(ui) {
             return;
         }
-        let Some(palette) = self.palette.clone() else {
+        let Some(palette) = self.palettes.palette().clone() else {
             return;
         };
-        let size = SWATCH_SIZES[usize::from(self.prefs.swatch_size).min(2)];
-        let filter = self.prefs.palette_filter;
-        let search = self.palette_search.trim().to_owned();
+        let size = SWATCH_SIZES[usize::from(self.settings.prefs.swatch_size).min(2)];
+        let filter = self.settings.prefs.palette_filter;
+        let search = self.ui.palette_search.trim().to_owned();
         // Placeholder overlays (pure magenta, no texture) are the map's "draw nothing" marker; only
         // "All used" lists them.
         let placeholder = |s: &OverlaySwatch| s.rgb == [255, 0, 255] && s.texture.is_none();
@@ -238,7 +202,7 @@ impl EditorApp {
             .collect();
         swatches.sort_by_key(|s| (std::cmp::Reverse(s.uses), s.id));
         self.palette_header(ui, swatches.len(), true);
-        let current = self.prefs.brush.overlay.fill;
+        let current = self.settings.prefs.brush.overlay.fill;
         let mut picked = None;
         let ctx = ui.ctx().clone();
         egui::ScrollArea::vertical()
@@ -272,8 +236,8 @@ impl EditorApp {
             ui.close();
         }
         if let Some(fill) = picked {
-            self.prefs.brush.overlay.fill = fill;
-            self.prefs.brush.overlay.armed = true;
+            self.settings.prefs.brush.overlay.fill = fill;
+            self.settings.prefs.brush.overlay.armed = true;
         }
     }
 
@@ -281,15 +245,15 @@ impl EditorApp {
         if self.palette_loading(ui) {
             return;
         }
-        let Some(palette) = self.palette.clone() else {
+        let Some(palette) = self.palettes.palette().clone() else {
             return;
         };
-        let filter = match self.prefs.palette_filter {
+        let filter = match self.settings.prefs.palette_filter {
             PaletteFilter::Textured => PaletteFilter::AllUsed,
             other => other,
         };
-        let size = SWATCH_SIZES[usize::from(self.prefs.swatch_size).min(2)];
-        let search = self.palette_search.trim().to_owned();
+        let size = SWATCH_SIZES[usize::from(self.settings.prefs.swatch_size).min(2)];
+        let search = self.ui.palette_search.trim().to_owned();
         let mut swatches: Vec<UnderlaySwatch> = palette
             .underlays
             .iter()
@@ -299,7 +263,7 @@ impl EditorApp {
             .collect();
         swatches.sort_by_key(|s| (std::cmp::Reverse(s.uses), s.id));
         self.palette_header(ui, swatches.len(), false);
-        let current = self.prefs.brush.underlay.fill;
+        let current = self.settings.prefs.brush.underlay.fill;
         let mut picked = None;
         egui::ScrollArea::vertical()
             .max_height(if popup { 300.0 } else { f32::INFINITY })
@@ -329,8 +293,8 @@ impl EditorApp {
             ui.close();
         }
         if let Some(fill) = picked {
-            self.prefs.brush.underlay.fill = fill;
-            self.prefs.brush.underlay.armed = true;
+            self.settings.prefs.brush.underlay.fill = fill;
+            self.settings.prefs.brush.underlay.armed = true;
         }
     }
 }

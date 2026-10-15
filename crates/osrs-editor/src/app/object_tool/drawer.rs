@@ -21,9 +21,9 @@ impl EditorApp {
     pub(in crate::app) fn object_drawer(&mut self, ui: &mut egui::Ui) {
         let count = self
             .interaction
-            .selection_objects
+            .selection_objects()
             .len()
-            .max(usize::from(self.interaction.selected.is_some()));
+            .max(usize::from(self.interaction.selected().is_some()));
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Objects").strong().size(15.0));
             ui.label(match count {
@@ -38,7 +38,8 @@ impl EditorApp {
         ui.add_space(6.0);
         let any = count > 0;
         let key = |action: &str| {
-            self.keymap
+            self.settings
+                .keymap
                 .binding(action)
                 .map(|b| b.describe())
                 .unwrap_or_default()

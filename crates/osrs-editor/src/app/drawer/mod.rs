@@ -23,7 +23,6 @@ use crate::paint::{
     height_for_elevation,
 };
 use eframe::egui::{self, Color32, CornerRadius, Rect, Sense, Stroke, StrokeKind, Vec2};
-use osrs_render::TextureAnimationVector;
 use osrs_world::{OverlaySwatch, UnderlaySwatch};
 
 /// Palette swatch sizes (small, medium, large) and the preview tile beside them.
@@ -42,8 +41,8 @@ impl EditorApp {
     /// The drawer panel above the tool strip (none while selecting). Each tool keeps its own height:
     /// the painter wants room for palettes, the spline and height tools only a row or two.
     pub(super) fn tool_drawer(&mut self, ui: &mut egui::Ui) {
-        let tool = self.prefs.tool;
-        if !(tool.has_drawer() && self.prefs.drawer_open) {
+        let tool = self.settings.prefs.tool;
+        if !(tool.has_drawer() && self.settings.prefs.drawer_open) {
             return;
         }
         let line = ui.visuals().widgets.noninteractive.bg_stroke.color;
@@ -70,7 +69,7 @@ impl EditorApp {
     }
 
     fn drawer(&mut self, ui: &mut egui::Ui) {
-        match self.prefs.tool {
+        match self.settings.prefs.tool {
             Tool::Paint => self.paint_drawer(ui),
             Tool::Spline => self.spline_drawer(ui),
             Tool::Height => self.height_drawer(ui),
@@ -86,17 +85,17 @@ impl EditorApp {
             .on_hover_text("Hide the drawer (Tab)")
             .clicked()
         {
-            self.prefs.drawer_open = false;
+            self.settings.prefs.drawer_open = false;
         }
     }
 
     /// The tile painter: one tab per channel, a checkbox arming each, palettes below.
     fn paint_drawer(&mut self, ui: &mut egui::Ui) {
         let tabs = Tool::Paint.tabs();
-        if !tabs.contains(&self.prefs.drawer_tab)
+        if !tabs.contains(&self.settings.prefs.drawer_tab)
             && let Some(first) = tabs.first()
         {
-            self.prefs.drawer_tab = *first;
+            self.settings.prefs.drawer_tab = *first;
         }
         let line = ui.visuals().widgets.noninteractive.bg_stroke.color;
         let content_fill = ui.visuals().widgets.inactive.bg_fill;
@@ -104,19 +103,19 @@ impl EditorApp {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 3.0;
             for tab in tabs {
-                let selected = self.prefs.drawer_tab == *tab;
+                let selected = self.settings.prefs.drawer_tab == *tab;
                 let (clicked, rect) = channel_tab(ui, selected, *tab, self);
                 if selected {
                     selected_tab = Some(rect);
                 }
                 if clicked {
-                    self.prefs.drawer_tab = *tab;
+                    self.settings.prefs.drawer_tab = *tab;
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 self.drawer_collapse(ui);
-                let selected = self.interaction.selection_tiles.len();
-                if selected > 0 && !self.prefs.brush.is_empty() {
+                let selected = self.interaction.selection_tiles().len();
+                if selected > 0 && !self.settings.prefs.brush.is_empty() {
                     ui.add_space(8.0);
                     if ui
                         .button(format!("{}  Fill {selected} selected", icons::SELECT_TILES))
@@ -146,7 +145,7 @@ impl EditorApp {
                     ui.separator();
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width().max(200.0));
-                        match self.prefs.drawer_tab {
+                        match self.settings.prefs.drawer_tab {
                             DrawerTab::Overlay => self.overlay_palette(ui, false),
                             DrawerTab::Underlay => self.underlay_palette(ui, false),
                             DrawerTab::Shape => self.shape_picker(ui),
@@ -196,7 +195,7 @@ impl EditorApp {
             ui.spacing_mut().item_spacing.x = 8.0;
             // Overlay: the swatch opens the palette.
             ui.weak("Overlay");
-            let overlay = match self.prefs.brush.overlay.fill {
+            let overlay = match self.settings.prefs.brush.overlay.fill {
                 Fill::Set(id) => self
                     .overlay_swatch(id)
                     .map(|swatch| self.overlay_fill(&ctx, &swatch)),
@@ -219,11 +218,11 @@ impl EditorApp {
                     ui.set_min_width(560.0);
                     self.overlay_palette(ui, true);
                 });
-            if let Fill::Set(id) = self.prefs.brush.overlay.fill {
+            if let Fill::Set(id) = self.settings.prefs.brush.overlay.fill {
                 ui.weak(format!("#{id}"));
             }
             ui.separator();
-            let points = self.interaction.spline.points.len();
+            let points = self.interaction.spline_points().len();
             ui.weak(format!(
                 "{points} point{}  \u{b7}  {} tiles",
                 if points == 1 { "" } else { "s" },
@@ -241,7 +240,7 @@ impl EditorApp {
                 .on_hover_text("Esc")
                 .clicked()
             {
-                self.interaction.spline.points.clear();
+                self.interaction.clear_spline_points();
             }
             if ui
                 .add_enabled(points >= 1, egui::Button::new("Copy"))
@@ -252,10 +251,7 @@ impl EditorApp {
             {
                 let text = self.spline_report();
                 ui.ctx().copy_text(text);
-                self.notice = Some((
-                    "Copied the path details".to_owned(),
-                    web_time::Instant::now(),
-                ));
+                self.ui.notify("Copied the path details".to_owned());
             }
         });
         ui.add_space(4.0);
@@ -264,12 +260,12 @@ impl EditorApp {
 
     /// What one painted tile will look like.
     fn drawer_preview(&mut self, ui: &mut egui::Ui) {
-        let brush = self.prefs.brush.clone();
+        let brush = self.settings.prefs.brush.clone();
         let underlay = match (brush.underlay.armed, brush.underlay.fill) {
             (true, Fill::Set(id)) => self.underlay_color(id),
             _ => None,
         };
-        let (shape, rotation) = if brush.shape.armed && self.prefs.tool == Tool::Paint {
+        let (shape, rotation) = if brush.shape.armed && self.settings.prefs.tool == Tool::Paint {
             (brush.shape.shape, brush.shape.rotation)
         } else {
             (0, 0)

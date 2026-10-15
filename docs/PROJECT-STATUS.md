@@ -1,6 +1,6 @@
 # RustOSRS Current Project Status
 
-Status: **Current completion audit**  
+Status: **Completion audit with completed ownership implementation**
 Audit baseline: `c2f55192ea08435a6ca2df82a84a032f0493b30f`  
 Audit date: 2026-10-15
 
@@ -115,26 +115,17 @@ Substantial 117HD functionality is already implemented:
 
 The 117HD port is advanced, but it is not complete. See section 4.
 
-## 3. Architecture work still incomplete
+## 3. Current ownership implementation
 
-The editor has working runtime boundaries, but ownership extraction is not finished.
+The user-authorized ownership refinement is implemented on `Neosback/editor-ownership`, based on main merge `d7db98cd179fe8d64b2e743f74d8aefa9a955449`. The user has authorized commit and merge; see `DEV_HANDOFF.md` for current integration and exact validation status. This updates the earlier audit's architecture assessment; it does not recertify its historical branch/CI metadata.
 
-Completed runtime boundaries:
+- Paint/Height/Path planners and their tests live in the headless edit crate.
+- `InteractionRuntime` has private state and explicit lifecycle operations, including camera and spline preview behavior.
+- `ProjectRuntime`, `UiRuntime`, `DiagnosticsRuntime`, and dedicated settings/plugin/palette owners are established.
+- World-owned CPU picking/outline projections and the explicit terrain preview/history-routing adapter reduce unrelated application state.
+- Compiler privacy and CI guards enforce dependency, application-surface and feature/test navigation contracts.
 
-- `EditRuntime`;
-- `RenderRuntime`;
-- `WorldRuntime`;
-- `InteractionRuntime` field ownership.
-
-Remaining architecture work:
-
-1. move remaining interaction behavior behind `InteractionRuntime` rather than only storing its fields there;
-2. extract `ProjectRuntime` ownership for project lifecycle/state;
-3. extract `UiRuntime` ownership for UI-only state and orchestration;
-4. extract `DiagnosticsRuntime` ownership for diagnostics/profiling/debug state;
-5. keep `EditorApp` as composition/orchestration rather than allowing it to re-accumulate subsystem behavior.
-
-These are maintainability/ownership tasks. They should not change semantic edit authority or projection correctness.
+The existing terrain preview/history-routing adapter remains temporary. The app still coordinates cross-owner effects through enumerated orchestration methods; future extractions lower the guard baseline. These known adapters are documented in `docs/architecture/FEATURE-MAP.md`. Renderer parity, HD completeness and export limitations below are unaffected.
 
 ## 4. Functional work still incomplete
 
@@ -230,16 +221,15 @@ A milestone being implemented does not imply every originally imagined polish it
 
 The safest next sequence is:
 
-1. **InteractionRuntime behavioral encapsulation** so new product work does not deepen `EditorApp` coupling.
-2. **ProjectRuntime ownership extraction**, especially before autosave/recovery is added.
-3. **UiRuntime and DiagnosticsRuntime extraction**.
-4. **Reference parity closure + external visual oracle**, including exact raster/alpha/plane/shadow/sampler edge gates.
-5. **M10+ CI certification expansion** so later systems have permanent named gates comparable to M3-M9.
-6. **117HD dynamic/placed lights**.
-7. **117HD sky/day-night/reflection/post/settings completion**.
-8. **Cache/export generalization** for new groups and broader reference-table/index cases.
-9. **Autosave/recovery, project/browser lifecycle polish, and future import/merge workflows**.
-10. **Release acceptance** on the pinned real cache plus final documentation/parity audit.
+Ownership extraction for interaction, project, UI and diagnostics is implemented (section 3). After its merge closeout, continue with:
+
+1. **Reference parity closure + external visual oracle**, including exact raster/alpha/plane/shadow/sampler edge gates.
+2. **M10+ CI certification expansion** so later systems have permanent named gates comparable to M3-M9.
+3. **117HD dynamic/placed lights**.
+4. **117HD sky/day-night/reflection/post/settings completion**.
+5. **Cache/export generalization** for new groups and broader reference-table/index cases.
+6. **Autosave/recovery, project/browser lifecycle polish, and future import/merge workflows**.
+7. **Release acceptance** on the pinned real cache plus final documentation/parity audit.
 
 Do not mix these into one branch. Follow the one-active-subsystem rule in `DEV_HANDOFF.md`.
 

@@ -28,7 +28,8 @@ fn settlement_creation_save_reopen_export_and_inspection_preserve_the_captured_m
     let painted: Vec<_> = [(3263, 3204), (3264, 3204)]
         .into_iter()
         .map(|tile| {
-            let mut intent = TerrainPaintIntent::new(tile);
+            let mut intent =
+                TerrainPaintIntent::new(osrs_core::coords::MapTile::new(tile.0, tile.1));
             intent.underlay = Some(Some(FloorUnderlayId::new(5)));
             intent
         })
@@ -57,7 +58,7 @@ fn settlement_creation_save_reopen_export_and_inspection_preserve_the_captured_m
     let intents: Vec<_> = fitted
         .iter()
         .map(|t| TerrainPathIntent {
-            tile: (t.tile_x, t.tile_y),
+            tile: osrs_core::coords::MapTile::new(t.tile_x, t.tile_y),
             overlay: Some(2),
             shape: t.shape,
             rotation: t.orientation,

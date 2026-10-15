@@ -130,7 +130,7 @@ impl EditorApp {
     pub(super) fn export_menu(&mut self, ui: &mut egui::Ui) {
         let changed =
             self.session.dirty_regions().next().is_some() || self.project.has_pending_exports();
-        let enabled = changed && self.exports.job.is_none() && self.cache_build.is_some();
+        let enabled = changed && self.exports.job.is_none() && self.project.cache_build().is_some();
         for (label, mode) in [
             ("Export edited regions...", ExportMode::Loose),
             ("Export as cache copy...", ExportMode::CacheCopy),
@@ -152,7 +152,7 @@ impl EditorApp {
         }
         if ui
             .add_enabled(
-                self.cache_build.is_some() && self.exports.job.is_none(),
+                self.project.cache_build().is_some() && self.exports.job.is_none(),
                 egui::Button::new("Inspect exported cache..."),
             )
             .clicked()
@@ -168,7 +168,7 @@ impl EditorApp {
     }
 
     fn prepare_export(&mut self, mode: ExportMode) {
-        let Some((_, profile)) = &self.cache_build else {
+        let Some((_, profile)) = &self.project.cache_build() else {
             return;
         };
         let profile = profile.clone();
@@ -176,7 +176,7 @@ impl EditorApp {
         let snapshot = ExportSnapshot {
             stamp,
             profile,
-            source: CacheSource::Dir(self.cache_dir.clone()),
+            source: CacheSource::Dir(self.project.cache_label().clone()),
             document: self.session.document().clone(),
             authored: self.session.dirty_regions().collect(),
             pending: self.project.export_pending(),
@@ -232,7 +232,7 @@ impl EditorApp {
     }
 
     fn inspect_export(&mut self, path: PathBuf) {
-        let original = self.cache_dir.clone();
+        let original = self.project.cache_label().clone();
         let stamp = self.exports.stamp(self.session.edit_revision());
         self.exports.failure = None;
         self.exports.open = true;
@@ -264,7 +264,7 @@ impl EditorApp {
 
     /// Recorded UI operations for repeatable native export smoke tests.
     pub(super) fn script_export(&mut self, action: &str, path: &str) -> Result<bool, String> {
-        if self.exports.job.is_some() || self.cache_build.is_none() {
+        if self.exports.job.is_some() || self.project.cache_build().is_none() {
             return Ok(false);
         }
         if let Some(error) = &self.exports.failure {
