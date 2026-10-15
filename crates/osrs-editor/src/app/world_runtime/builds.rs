@@ -114,7 +114,7 @@ impl BuildTracker {
         self.projection_epochs.clear();
     }
 
-    fn projection_epoch(&self, key: RegionKey) -> u64 {
+    pub(super) fn projection_epoch(&self, key: RegionKey) -> u64 {
         self.projection_epochs.get(&key).copied().unwrap_or(0)
     }
 }
