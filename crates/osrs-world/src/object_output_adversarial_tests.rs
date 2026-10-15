@@ -1,6 +1,4 @@
-use crate::{
-    ObjectOutputComparison, ObjectOutputCompleteness, ObjectOutputSnapshot,
-};
+use crate::{ObjectOutputComparison, ObjectOutputCompleteness, ObjectOutputSnapshot};
 use osrs_core::coords::RegionCoord;
 use osrs_render::{SceneGeometry, ZoneGeometry, ZoneGroup};
 use std::collections::BTreeSet;
@@ -57,8 +55,14 @@ fn object_output_change_can_span_a_sixty_four_tile_region_boundary() {
     let right_before = full(right, &[((8, 0), 1)]);
     let right_after = full(right, &[((8, 0), 3)]);
 
-    assert_eq!(exact(&left_before, &left_after), BTreeSet::from([(7, 0)]));
-    assert_eq!(exact(&right_before, &right_after), BTreeSet::from([(8, 0)]));
+    assert_eq!(
+        exact(&left_before, &left_after),
+        BTreeSet::from([(7, 0)])
+    );
+    assert_eq!(
+        exact(&right_before, &right_after),
+        BTreeSet::from([(8, 0)])
+    );
 }
 
 #[test]
@@ -131,14 +135,13 @@ fn model_data_normal_reconciliation_can_change_neighbor_object_output() {
 fn dynamic_morphed_or_omitted_case_fails_closed_without_complete_candidate_output() {
     let region = RegionCoord::new(0, 0);
     let before = full(region, &[((1, 1), 1)]);
-    let incomplete = ObjectOutputSnapshot::scoped(
-        region,
-        [(1, 1)],
-        &geometry(&[((1, 1), 1)]),
-    )
-    .unwrap_or_else(|error| unreachable!("valid scoped candidate: {error:?}"));
+    let incomplete = ObjectOutputSnapshot::scoped(region, [(1, 1)], &geometry(&[((1, 1), 1)]))
+        .unwrap_or_else(|error| unreachable!("valid scoped candidate: {error:?}"));
 
-    assert_eq!(incomplete.completeness(), ObjectOutputCompleteness::Incomplete);
+    assert_eq!(
+        incomplete.completeness(),
+        ObjectOutputCompleteness::Incomplete
+    );
     assert_eq!(
         before
             .compare(&incomplete)
