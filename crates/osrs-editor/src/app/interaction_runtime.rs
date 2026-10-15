@@ -63,4 +63,188 @@ impl InteractionRuntime {
             gizmo_busy: false,
         }
     }
+
+    fn same_object(a: &ObjectPick, b: &ObjectPick) -> bool {
+        a.region == b.region && a.index == b.index
+    }
+
+    pub(super) fn is_primary_object(&self, object: &ObjectPick) -> bool {
+        self.selected
+            .as_ref()
+            .is_some_and(|selected| Self::same_object(selected, object))
+    }
+
+    pub(super) fn clear_selection(&mut self) {
+        self.selected = None;
+        self.selection_objects.clear();
+        self.selection_tiles.clear();
+        self.inspect_tile = None;
+    }
+
+    pub(super) fn clear_objects(&mut self) {
+        self.selected = None;
+        self.selection_objects.clear();
+    }
+
+    pub(super) fn clear_tiles(&mut self) {
+        self.selection_tiles.clear();
+    }
+
+    pub(super) fn select_only_object(
+        &mut self,
+        object: ObjectPick,
+        inspect_tile: Option<(i32, i32)>,
+    ) {
+        if let Some(tile) = inspect_tile {
+            self.inspect_tile = Some(tile);
+        }
+        self.selection_objects = vec![object.clone()];
+        self.selected = Some(object);
+    }
+
+    pub(super) fn replace_objects(&mut self, objects: Vec<ObjectPick>) {
+        self.selected = objects.last().cloned();
+        self.selection_objects = objects;
+    }
+
+    pub(super) fn add_object(
+        &mut self,
+        object: ObjectPick,
+        inspect_tile: Option<(i32, i32)>,
+    ) {
+        if let Some(tile) = inspect_tile {
+            self.inspect_tile = Some(tile);
+        }
+        if !self
+            .selection_objects
+            .iter()
+            .any(|selected| Self::same_object(selected, &object))
+        {
+            self.selection_objects.push(object.clone());
+        }
+        self.selected = Some(object);
+    }
+
+    pub(super) fn toggle_object(
+        &mut self,
+        object: ObjectPick,
+        inspect_tile: Option<(i32, i32)>,
+    ) {
+        if let Some(index) = self
+            .selection_objects
+            .iter()
+            .position(|selected| Self::same_object(selected, &object))
+        {
+            self.selection_objects.remove(index);
+            self.selected = self.selection_objects.last().cloned();
+        } else {
+            self.add_object(object, inspect_tile);
+        }
+    }
+
+    pub(super) fn add_tile(&mut self, tile: (i32, i32)) {
+        self.selection_tiles.insert(tile);
+    }
+
+    pub(super) fn select_tile(&mut self, tile: (i32, i32)) {
+        self.selection_tiles.insert(tile);
+        self.inspect_tile = Some(tile);
+    }
+
+    pub(super) fn toggle_tile(&mut self, tile: (i32, i32)) {
+        if !self.selection_tiles.remove(&tile) {
+            self.select_tile(tile);
+        }
+    }
+
+    pub(super) fn selection_counts(&self) -> (usize, usize) {
+        (self.selection_objects.len(), self.selection_tiles.len())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InteractionRuntime;
+    use crate::camera::FlyCamera;
+    use crate::pick::ObjectPick;
+
+    fn runtime() -> InteractionRuntime {
+        InteractionRuntime::new(FlyCamera::new(0.0, 0.0, 0.0))
+    }
+
+    fn object(region: (i32, i32), index: usize) -> ObjectPick {
+        ObjectPick { region, index }
+    }
+
+    #[test]
+    fn object_selection_transitions_keep_last_selected_primary() {
+        let mut interaction = runtime();
+        let first = object((1, 2), 3);
+        let second = object((4, 5), 6);
+
+        interaction.add_object(first.clone(), Some((10, 11)));
+        interaction.add_object(first.clone(), Some((10, 11)));
+        assert_eq!(interaction.selection_objects.len(), 1);
+        assert!(interaction.is_primary_object(&first));
+
+        interaction.add_object(second.clone(), Some((12, 13)));
+        assert_eq!(interaction.selection_objects.len(), 2);
+        assert!(interaction.is_primary_object(&second));
+        assert_eq!(interaction.inspect_tile, Some((12, 13)));
+
+        interaction.toggle_object(second.clone(), Some((99, 99)));
+        assert_eq!(interaction.selection_objects.len(), 1);
+        assert!(interaction.is_primary_object(&first));
+        assert_eq!(interaction.inspect_tile, Some((12, 13)));
+
+        interaction.toggle_object(second.clone(), Some((14, 15)));
+        assert_eq!(interaction.selection_objects.len(), 2);
+        assert!(interaction.is_primary_object(&second));
+        assert_eq!(interaction.inspect_tile, Some((14, 15)));
+    }
+
+    #[test]
+    fn replacing_objects_tracks_the_last_object_without_changing_inspector() {
+        let mut interaction = runtime();
+        interaction.inspect_tile = Some((7, 8));
+        let first = object((1, 1), 1);
+        let second = object((2, 2), 2);
+
+        interaction.replace_objects(vec![first, second.clone()]);
+
+        assert!(interaction.is_primary_object(&second));
+        assert_eq!(interaction.inspect_tile, Some((7, 8)));
+    }
+
+    #[test]
+    fn tile_selection_updates_inspector_only_when_a_tile_is_added_as_focus() {
+        let mut interaction = runtime();
+        interaction.add_tile((1, 2));
+        assert_eq!(interaction.inspect_tile, None);
+
+        interaction.select_tile((3, 4));
+        assert_eq!(interaction.inspect_tile, Some((3, 4)));
+
+        interaction.toggle_tile((3, 4));
+        assert!(!interaction.selection_tiles.contains(&(3, 4)));
+        assert_eq!(interaction.inspect_tile, Some((3, 4)));
+
+        interaction.toggle_tile((5, 6));
+        assert!(interaction.selection_tiles.contains(&(5, 6)));
+        assert_eq!(interaction.inspect_tile, Some((5, 6)));
+    }
+
+    #[test]
+    fn clear_selection_clears_all_selection_and_inspector_state() {
+        let mut interaction = runtime();
+        interaction.add_object(object((1, 2), 3), Some((10, 11)));
+        interaction.add_tile((12, 13));
+
+        interaction.clear_selection();
+
+        assert!(interaction.selected.is_none());
+        assert!(interaction.selection_objects.is_empty());
+        assert!(interaction.selection_tiles.is_empty());
+        assert!(interaction.inspect_tile.is_none());
+    }
 }
