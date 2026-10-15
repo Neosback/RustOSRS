@@ -83,6 +83,21 @@ impl InteractionRuntime {
         a.region == b.region && a.index == b.index
     }
 
+    pub(super) fn set_hover(&mut self, hover: Pick) {
+        if let Some(tile) = hover.tile {
+            self.last_hover_tile = Some(tile.tile);
+        }
+        self.hover = hover;
+    }
+
+    pub(super) fn clear_hover(&mut self) {
+        self.hover = Pick::default();
+    }
+
+    pub(super) fn capture_context_pick(&mut self) {
+        self.context_pick = self.hover.clone();
+    }
+
     pub(super) fn is_primary_object(&self, object: &ObjectPick) -> bool {
         self.selected
             .as_ref()
@@ -211,7 +226,7 @@ impl InteractionRuntime {
 mod tests {
     use super::InteractionRuntime;
     use crate::camera::FlyCamera;
-    use crate::pick::ObjectPick;
+    use crate::pick::{ObjectPick, Pick, TilePick};
     use eframe::egui::{Pos2, Rect};
 
     fn runtime() -> InteractionRuntime {
@@ -220,6 +235,60 @@ mod tests {
 
     fn object(region: (i32, i32), index: usize) -> ObjectPick {
         ObjectPick { region, index }
+    }
+
+    #[test]
+    fn hover_bookkeeping_latches_last_tile_and_clear_preserves_it() {
+        let mut interaction = runtime();
+        interaction.set_hover(Pick {
+            object: Some(object((1, 2), 3)),
+            tile: Some(TilePick {
+                tile: (10, 11),
+                at: (10.5, 11.5),
+            }),
+        });
+
+        assert_eq!(interaction.last_hover_tile, Some((10, 11)));
+        assert_eq!(interaction.hover.tile.map(|pick| pick.tile), Some((10, 11)));
+
+        interaction.clear_hover();
+
+        assert!(interaction.hover.object.is_none());
+        assert!(interaction.hover.tile.is_none());
+        assert_eq!(interaction.last_hover_tile, Some((10, 11)));
+    }
+
+    #[test]
+    fn context_pick_captures_hover_snapshot() {
+        let mut interaction = runtime();
+        interaction.set_hover(Pick {
+            object: Some(object((1, 2), 3)),
+            tile: Some(TilePick {
+                tile: (10, 11),
+                at: (10.5, 11.5),
+            }),
+        });
+        interaction.capture_context_pick();
+        interaction.set_hover(Pick {
+            object: Some(object((4, 5), 6)),
+            tile: Some(TilePick {
+                tile: (12, 13),
+                at: (12.5, 13.5),
+            }),
+        });
+
+        assert_eq!(
+            interaction
+                .context_pick
+                .object
+                .as_ref()
+                .map(|object| (object.region, object.index)),
+            Some(((1, 2), 3))
+        );
+        assert_eq!(
+            interaction.context_pick.tile.map(|pick| pick.tile),
+            Some((10, 11))
+        );
     }
 
     #[test]
