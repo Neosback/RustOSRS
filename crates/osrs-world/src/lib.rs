@@ -19,6 +19,8 @@ mod loc_edits;
 mod loc_stage;
 pub mod minimap;
 mod object_catalog;
+#[cfg(test)]
+mod object_output_adversarial_tests;
 mod object_output_proof;
 pub mod oracle_dump;
 mod scene_builder;
