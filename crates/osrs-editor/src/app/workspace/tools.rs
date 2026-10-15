@@ -39,8 +39,6 @@ pub(super) fn quick_tool_button(
     ui.painter().rect_filled(rect, 8.0, fill);
     let tint = if selected {
         visuals.selection.stroke.color
-    } else if response.hovered() {
-        visuals.text_color()
     } else {
         visuals.text_color()
     };
