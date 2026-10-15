@@ -4,7 +4,7 @@
 //! toolbar. Tiles are selected on the viewed plane; objects are those placed on it. The selection is
 //! what other tools act on ("apply to the selected tiles").
 
-use super::{interaction_runtime::Marquee, EditorApp};
+use super::{EditorApp, interaction_runtime::Marquee};
 use crate::interact;
 use crate::paint::SelectMode;
 use crate::pick::{self, ObjectPick};
@@ -109,8 +109,7 @@ impl EditorApp {
             && !modifiers.alt
             && let Some(position) = ctx.input(|i| i.pointer.interact_pos())
         {
-            self.interaction
-                .begin_marquee(position, additive, toggle);
+            self.interaction.begin_marquee(position, additive, toggle);
         }
         self.interaction.update_marquee(
             ctx.input(|i| i.pointer.interact_pos()),
