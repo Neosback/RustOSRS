@@ -2,6 +2,7 @@ use super::*;
 use crate::app::edit_runtime::{EditExecution, EditExecutionError, EditRuntime};
 use crate::session::EditorSession;
 use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
+use osrs_edit::TerrainPathIntent;
 use osrs_edit::{MapDocument, MapOp, MapPatch, OverlayRotation, OverlayShape, TerrainOverlay};
 
 fn plane(value: u8) -> SourcePlane {
@@ -39,7 +40,7 @@ fn runtime_with_redo() -> (EditRuntime, MapTile) {
 
 fn path_patch(runtime: &EditRuntime, tile: MapTile) -> MapPatch {
     let intent = TerrainPathIntent {
-        tile: (tile.x, tile.y),
+        tile,
         overlay: Some(7),
         shape: 0,
         rotation: 0,
@@ -142,7 +143,7 @@ fn one_path_patch_is_one_persistent_session_revision() {
     let document = MapDocument::from_parts([], [(HeightVertexCoord::new(tile, plane(0)), 0)], []);
     let mut session = EditorSession::new(document);
     let intent = TerrainPathIntent {
-        tile: (3200, 3200),
+        tile: osrs_core::coords::MapTile::new(3200, 3200),
         overlay: Some(7),
         shape: 0,
         rotation: 0,
@@ -186,7 +187,7 @@ fn semantic_path_projection_tracks_undo_redo_and_optional_height() {
         [],
     ));
     let intent = TerrainPathIntent {
-        tile: (3200, 3200),
+        tile: osrs_core::coords::MapTile::new(3200, 3200),
         overlay: Some(7),
         shape: 4,
         rotation: 2,
@@ -246,7 +247,7 @@ fn consecutive_path_transactions_follow_semantic_history_order() {
     let vertex = HeightVertexCoord::new(tile, plane(0));
     let mut session = EditorSession::new(MapDocument::from_parts([], [(vertex, 0)], []));
     let first = TerrainPathIntent {
-        tile: (3200, 3200),
+        tile: osrs_core::coords::MapTile::new(3200, 3200),
         overlay: Some(7),
         shape: 1,
         rotation: 0,
@@ -254,7 +255,7 @@ fn consecutive_path_transactions_follow_semantic_history_order() {
         flags: None,
     };
     let second = TerrainPathIntent {
-        tile: (3200, 3200),
+        tile: osrs_core::coords::MapTile::new(3200, 3200),
         overlay: Some(8),
         shape: 2,
         rotation: 3,

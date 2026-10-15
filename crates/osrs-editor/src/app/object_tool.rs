@@ -22,7 +22,6 @@ use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
 use egui_phosphor::regular as ph;
 use osrs_world::LocSpec;
 pub(super) use place::PlaceState;
-use web_time::Instant;
 
 /// Highest tile coordinate on the map (255 regions of 64 tiles, less one).
 const MAP_LIMIT: i32 = 16383;
@@ -41,8 +40,8 @@ pub struct ObjectDrag {
 impl EditorApp {
     /// What the map file says about each selected object.
     pub(super) fn selected_specs(&self) -> Vec<LocSpec> {
-        let mut objects = self.interaction.selection_objects.clone();
-        if let Some(selected) = &self.interaction.selected
+        let mut objects = self.interaction.selection_objects().to_vec();
+        if let Some(selected) = &self.interaction.selected()
             && !objects
                 .iter()
                 .any(|o| o.region == selected.region && o.index == selected.index)
@@ -52,7 +51,12 @@ impl EditorApp {
         objects
             .iter()
             .filter_map(|object| {
-                let loc = self.infos.get(&object.region)?.locs.get(object.index)?;
+                let loc = self
+                    .world
+                    .infos()
+                    .get(&object.region)?
+                    .locs
+                    .get(object.index)?;
                 Some(LocSpec {
                     object_id: loc.definition.identity.id.get(),
                     tile: loc.tile,
@@ -79,16 +83,14 @@ impl EditorApp {
         } = match build_object_commit_plan(self.session.document(), &removed, &added) {
             Ok(plan) => plan,
             Err(error) => {
-                self.notice = Some((
-                    format!("Object action was not committed: {error:?}"),
-                    Instant::now(),
-                ));
+                self.ui
+                    .notify(format!("Object action was not committed: {error:?}"));
                 return false;
             }
         };
 
         let route = ObjectHistoryRoute::new(removed.clone(), added.clone());
-        let execution = self.session.execute(patch, |document| {
+        let execution = self.session.execute_named("objects", patch, |document| {
             build_object_history_projection(document, &route, true)
         });
         let (receipt, projection) = match execution {
@@ -97,54 +99,45 @@ impl EditorApp {
                 projection,
             }) => (receipt, projection),
             Ok(EditExecution::NoChange) => {
-                self.notice = Some((
-                    "Object action made no semantic changes".to_owned(),
-                    Instant::now(),
-                ));
+                self.ui
+                    .notify("Object action made no semantic changes".to_owned());
                 return false;
             }
             Err(EditExecutionError::Semantic(error)) => {
-                self.notice = Some((
-                    format!("Object action was rejected by the semantic session: {error:?}"),
-                    Instant::now(),
+                self.ui.notify(format!(
+                    "Object action was rejected by the semantic session: {error:?}"
                 ));
                 return false;
             }
             Err(EditExecutionError::Projection(error)) => {
-                self.notice = Some((
-                    format!("Object action was rolled back: {error:?}"),
-                    Instant::now(),
-                ));
+                self.ui
+                    .notify(format!("Object action was rolled back: {error:?}"));
                 return false;
             }
             Err(EditExecutionError::Rollback {
                 projection,
                 rollback,
             }) => {
-                self.notice = Some((
+                self.ui.notify(
                     format!(
                         "Object projection failed and semantic rollback failed: {projection:?} ({rollback:?})"
-                    ),
-                    Instant::now(),
-                ));
+                    ));
                 return false;
             }
             Err(EditExecutionError::Finalize(error)) => {
-                self.notice = Some((
-                    format!("Object projection succeeded but semantic finalize failed: {error:?}"),
-                    Instant::now(),
+                self.ui.notify(format!(
+                    "Object projection succeeded but semantic finalize failed: {error:?}"
                 ));
                 return false;
             }
         };
 
         self.world.project_loc_edits(projection.edits);
-        self.world
-            .invalidate_semantic_edit(receipt.impact, &receipt.touched_regions);
+        self.world.invalidate_semantic_edit(&receipt);
         self.push_step(EditStep::semantic_object(removed, added));
         self.clear_selection();
         self.interaction.set_pending_reselect(projection.reselect);
-        self.notice = Some((label.to_owned(), Instant::now()));
+        self.ui.notify(label.to_owned());
         true
     }
 
@@ -197,7 +190,8 @@ impl EditorApp {
                 return Some("there is no floor there");
             }
             if !self
-                .infos
+                .world
+                .infos()
                 .contains_key(&(tile.0.div_euclid(64), tile.1.div_euclid(64)))
             {
                 return Some("the cache has no map there");
@@ -213,7 +207,7 @@ impl EditorApp {
             return;
         }
         if let Some(why) = self.move_blocked(&specs, (0, 0), planes) {
-            self.notice = Some((format!("Can't move them: {why}"), Instant::now()));
+            self.ui.notify(format!("Can't move them: {why}"));
             return;
         }
         let moved: Vec<LocSpec> = specs
@@ -234,7 +228,7 @@ impl EditorApp {
                 if planes > 0 { "up" } else { "down" }
             ),
         ) {
-            self.interaction.view_plane = target;
+            self.interaction.set_view_plane(target);
         }
     }
 
@@ -244,7 +238,7 @@ impl EditorApp {
             return;
         }
         if let Some(why) = self.move_blocked(&specs, delta, 0) {
-            self.notice = Some((format!("Can't move them: {why}"), Instant::now()));
+            self.ui.notify(format!("Can't move them: {why}"));
             return;
         }
         let moved: Vec<LocSpec> = specs
@@ -266,7 +260,7 @@ impl EditorApp {
     pub(super) fn duplicate_selected_objects(&mut self) {
         let specs = self.selected_specs();
         if let Some(why) = self.move_blocked(&specs, (1, 0), 0) {
-            self.notice = Some((format!("Can't copy them: {why}"), Instant::now()));
+            self.ui.notify(format!("Can't copy them: {why}"));
             return;
         }
         let copies: Vec<LocSpec> = specs
@@ -291,7 +285,7 @@ impl EditorApp {
         }
         let mut found = Vec::new();
         for spec in self.interaction.pending_reselect() {
-            let Some(info) = self.infos.get(&spec.region()) else {
+            let Some(info) = self.world.infos().get(&spec.region()) else {
                 continue;
             };
             let position = info.locs.iter().position(|loc| {
@@ -313,10 +307,13 @@ impl EditorApp {
 
     /// Keys: delete, turn, duplicate (with objects selected, in Select and in the Objects tool).
     pub(super) fn object_actions(&mut self, ctx: &egui::Context) {
-        if self.placer.is_armed() && self.prefs.tool == Tool::Objects && !self.keys_blocked(ctx) {
+        if self.placer.is_armed()
+            && self.settings.prefs.tool == Tool::Objects
+            && !self.keys_blocked(ctx)
+        {
             let (rotate, reverse) = ctx.input(|i| {
                 (
-                    self.keymap.pressed(i, "object.rotate"),
+                    self.settings.keymap.pressed(i, "object.rotate"),
                     i.modifiers.shift && i.key_pressed(egui::Key::R),
                 )
             });
@@ -327,18 +324,19 @@ impl EditorApp {
             }
         }
         if self.keys_blocked(ctx)
-            || self.quick_open.is_some()
-            || !matches!(self.prefs.tool, Tool::Select | Tool::Objects)
-            || (self.interaction.selection_objects.is_empty()
-                && self.interaction.selected.is_none())
+            || self.ui.quick_open.is_some()
+            || !matches!(self.settings.prefs.tool, Tool::Select | Tool::Objects)
+            || (self.interaction.selection_objects().is_empty()
+                && self.interaction.selected().is_none())
         {
             return;
         }
         let (delete, rotate, duplicate, reverse) = ctx.input(|i| {
             (
-                self.keymap.pressed(i, "object.delete") || i.key_pressed(egui::Key::Backspace),
-                self.keymap.pressed(i, "object.rotate"),
-                self.keymap.pressed(i, "object.duplicate"),
+                self.settings.keymap.pressed(i, "object.delete")
+                    || i.key_pressed(egui::Key::Backspace),
+                self.settings.keymap.pressed(i, "object.rotate"),
+                self.settings.keymap.pressed(i, "object.duplicate"),
                 i.modifiers.shift && i.key_pressed(egui::Key::R),
             )
         });
@@ -360,24 +358,24 @@ impl EditorApp {
         ctx: &egui::Context,
         response: &egui::Response,
     ) -> bool {
-        if self.prefs.tool != Tool::Objects {
+        if self.settings.prefs.tool != Tool::Objects {
             self.interaction.cancel_object_drag();
             return false;
         }
         let primary = egui::PointerButton::Primary;
         if response.drag_started_by(primary)
-            && let Some(object) = &self.interaction.hover.object
-            && let Some(tile) = self.interaction.hover.tile.map(|p| p.tile)
+            && let Some(object) = self.interaction.hover().object.as_ref()
+            && let Some(tile) = self.interaction.hover().tile.map(|p| p.tile)
             && self
                 .interaction
-                .selection_objects
+                .selection_objects()
                 .iter()
                 .any(|o| o.region == object.region && o.index == object.index)
         {
             let specs = self.selected_specs();
             self.interaction.begin_object_drag(tile, specs);
         }
-        if let Some(tile) = self.interaction.hover.tile.map(|p| p.tile) {
+        if let Some(tile) = self.interaction.hover().tile.map(|p| p.tile) {
             self.interaction.update_object_drag(tile);
         }
         if response.drag_stopped_by(primary) || !ctx.input(|i| i.pointer.primary_down()) {
@@ -401,7 +399,7 @@ impl EditorApp {
         let Some(drag) = self.interaction.object_drag() else {
             return;
         };
-        let colors = &self.prefs.colors;
+        let colors = &self.settings.prefs.colors;
         let (mut fill, mut edge) = (
             colors.get(crate::style::ColorKey::HoverTileFill),
             colors.get(crate::style::ColorKey::HoverTileOutline),
@@ -413,9 +411,11 @@ impl EditorApp {
         }
         for spec in &drag.specs {
             let target = (spec.tile.0 + drag.delta.0, spec.tile.1 + drag.delta.1);
-            let Some(corners) =
-                crate::interact::tile_corners(&self.infos, target, self.interaction.view_plane)
-            else {
+            let Some(corners) = crate::interact::tile_corners(
+                self.world.infos(),
+                target,
+                self.interaction.view_plane(),
+            ) else {
                 continue;
             };
             let points: Vec<Pos2> = corners

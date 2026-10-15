@@ -5,7 +5,7 @@ use super::*;
 impl EditorApp {
     /// The key: every kind of icon in this area with a switch, plus search results.
     pub(super) fn world_map_key(&mut self, ui: &mut egui::Ui, catalog: &Catalog) {
-        let area = self.world_map.area;
+        let area = self.ui.world_map.area;
         let Some(icons_in_area) = self.assets.icons(area) else {
             ui.horizontal(|ui| {
                 ui.spinner();
@@ -30,7 +30,7 @@ impl EditorApp {
         }
         kinds.sort_by(|a, b| a.1.cmp(&b.1));
 
-        let query = self.world_map.search.trim().to_lowercase();
+        let query = self.ui.world_map.search.trim().to_lowercase();
         let mut jump = None;
         if !query.is_empty() {
             ui.strong("Search results");
@@ -58,7 +58,7 @@ impl EditorApp {
         }
         if let Some(name) = jump {
             // Nearest icon of that name to the view centre.
-            let center = self.world_map.center;
+            let center = self.ui.world_map.center;
             let best = icons_in_area
                 .iter()
                 .filter(|icon| {
@@ -72,8 +72,8 @@ impl EditorApp {
                     da.total_cmp(&db)
                 });
             if let Some(icon) = best {
-                self.world_map.center = (f64::from(icon.x), f64::from(icon.y));
-                self.world_map.zoom_target = 4.0;
+                self.ui.world_map.center = (f64::from(icon.x), f64::from(icon.y));
+                self.ui.world_map.zoom_target = 4.0;
             }
         }
 
@@ -81,12 +81,12 @@ impl EditorApp {
         egui::ScrollArea::vertical().show(ui, |ui| {
             for (id, name, sprite) in kinds {
                 ui.horizontal(|ui| {
-                    let mut shown = !self.world_map.hidden.contains(&id);
+                    let mut shown = !self.ui.world_map.hidden.contains(&id);
                     if ui.checkbox(&mut shown, "").changed() {
                         if shown {
-                            self.world_map.hidden.remove(&id);
+                            self.ui.world_map.hidden.remove(&id);
                         } else {
-                            self.world_map.hidden.insert(id);
+                            self.ui.world_map.hidden.insert(id);
                         }
                     }
                     if sprite >= 0

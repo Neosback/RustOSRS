@@ -31,7 +31,7 @@ impl EditorApp {
         );
         ui.add_space(4.0);
         if ui.button("Reset all colours").clicked() {
-            self.prefs.colors.reset_all();
+            self.settings.prefs.colors.reset_all();
         }
         for group in ColorGroup::ALL {
             crate::theme::section_heading(ui, group.label());
@@ -41,21 +41,21 @@ impl EditorApp {
                 .show(ui, |ui| {
                     for key in ColorKey::ALL.iter().filter(|k| k.group() == group) {
                         ui.label(key.label());
-                        let [r, g, b, a] = self.prefs.colors.rgba(*key);
+                        let [r, g, b, a] = self.settings.prefs.colors.rgba(*key);
                         let mut color = egui::Color32::from_rgba_unmultiplied(r, g, b, a);
                         if ui.color_edit_button_srgba(&mut color).changed() {
                             let [r, g, b, a] = color.to_srgba_unmultiplied();
-                            self.prefs.colors.set(*key, [r, g, b, a]);
+                            self.settings.prefs.colors.set(*key, [r, g, b, a]);
                         }
                         if ui
                             .add_enabled(
-                                !self.prefs.colors.is_default(*key),
+                                !self.settings.prefs.colors.is_default(*key),
                                 egui::Button::new(ph::ARROW_COUNTER_CLOCKWISE).small(),
                             )
                             .on_hover_text("Back to the default")
                             .clicked()
                         {
-                            self.prefs.colors.reset(*key);
+                            self.settings.prefs.colors.reset(*key);
                         }
                         ui.end_row();
                     }
@@ -82,12 +82,12 @@ impl EditorApp {
             ui.weak("Click a shortcut, then press the new keys. Esc cancels.");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Reset all").clicked() {
-                    self.keymap.reset_all();
+                    self.settings.keymap.reset_all();
                 }
             });
         });
         ui.add_space(4.0);
-        let actions: Vec<_> = self.keymap.actions().to_vec();
+        let actions: Vec<_> = self.settings.keymap.actions().to_vec();
         let mut categories: Vec<&str> = Vec::new();
         for action in &actions {
             if !categories.contains(&action.category) {
@@ -104,11 +104,12 @@ impl EditorApp {
                 .show(ui, |ui| {
                     for action in actions.iter().filter(|a| a.category == category) {
                         ui.weak(action.label);
-                        let waiting = self.capturing_binding == Some(action.id);
+                        let waiting = self.ui.capturing_binding == Some(action.id);
                         let text = if waiting {
                             "Press keys...".to_owned()
                         } else {
-                            self.keymap
+                            self.settings
+                                .keymap
                                 .binding(action.id)
                                 .map_or_else(|| "Unbound".to_owned(), |b| b.describe())
                         };
@@ -120,16 +121,16 @@ impl EditorApp {
                             )
                             .clicked()
                         {
-                            self.capturing_binding = Some(action.id);
+                            self.ui.capturing_binding = Some(action.id);
                         }
                         ui.horizontal(|ui| {
-                            if self.keymap.is_overridden(action.id)
+                            if self.settings.keymap.is_overridden(action.id)
                                 && ui.small_button("Reset").clicked()
                             {
-                                self.keymap.reset(action.id);
+                                self.settings.keymap.reset(action.id);
                             }
-                            if let Some(binding) = self.keymap.binding(action.id) {
-                                let conflicts = self.keymap.conflicts(action.id, binding);
+                            if let Some(binding) = self.settings.keymap.binding(action.id) {
+                                let conflicts = self.settings.keymap.conflicts(action.id, binding);
                                 if !conflicts.is_empty() {
                                     ui.colored_label(
                                         ui.visuals().warn_fg_color,
@@ -154,12 +155,12 @@ impl EditorApp {
                 .clicked()
             {
                 let defaults = Settings::default();
-                self.prefs.properties_panel = defaults.properties_panel;
-                self.prefs.dock_right = defaults.dock_right;
-                self.prefs.stats_overlay = defaults.stats_overlay;
-                self.prefs.show_minimap = defaults.show_minimap;
-                self.prefs.minimap_size = defaults.minimap_size;
-                self.prefs.rail_tab = defaults.rail_tab;
+                self.settings.prefs.properties_panel = defaults.properties_panel;
+                self.settings.prefs.dock_right = defaults.dock_right;
+                self.settings.prefs.stats_overlay = defaults.stats_overlay;
+                self.settings.prefs.show_minimap = defaults.show_minimap;
+                self.settings.prefs.minimap_size = defaults.minimap_size;
+                self.settings.prefs.rail_tab = defaults.rail_tab;
             }
             if ui
                 .button("Reset the HD options")
@@ -169,14 +170,14 @@ impl EditorApp {
                 .clicked()
             {
                 let defaults = Settings::default();
-                self.prefs.hd_brightness = defaults.hd_brightness;
-                self.prefs.hd_exposure = defaults.hd_exposure;
-                self.prefs.hd_vignette = defaults.hd_vignette;
-                self.prefs.hd_normal_mapping = defaults.hd_normal_mapping;
-                self.prefs.hd_parallax_mapping = defaults.hd_parallax_mapping;
-                self.prefs.hd_underwater_caustics = defaults.hd_underwater_caustics;
-                self.prefs.hd_environment = defaults.hd_environment;
-                self.prefs.hd_shadows = defaults.hd_shadows;
+                self.settings.prefs.hd_brightness = defaults.hd_brightness;
+                self.settings.prefs.hd_exposure = defaults.hd_exposure;
+                self.settings.prefs.hd_vignette = defaults.hd_vignette;
+                self.settings.prefs.hd_normal_mapping = defaults.hd_normal_mapping;
+                self.settings.prefs.hd_parallax_mapping = defaults.hd_parallax_mapping;
+                self.settings.prefs.hd_underwater_caustics = defaults.hd_underwater_caustics;
+                self.settings.prefs.hd_environment = defaults.hd_environment;
+                self.settings.prefs.hd_shadows = defaults.hd_shadows;
             }
         });
         ui.add_space(6.0);

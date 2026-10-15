@@ -77,7 +77,7 @@ impl EditorApp {
                 ui.separator();
                 ui.horizontal(|ui| {
                     let idle = self.exports.job.is_none();
-                    if ui.add_enabled(idle && self.cache_build.is_some(), egui::Button::new("Validate current map")).clicked() { action = Some(ReviewAction::Refresh); }
+                    if ui.add_enabled(idle && self.project.cache_build().is_some(), egui::Button::new("Validate current map")).clicked() { action = Some(ReviewAction::Refresh); }
                     let ready = idle && self.exports.prepared.as_ref().is_some_and(|p| p.can_publish() && p.stamp.edit_revision == revision);
                     if ui.add_enabled(ready, egui::Button::new(format!("Export {}...", self.exports.mode.name()))).clicked() { action = Some(ReviewAction::Publish); }
                 });

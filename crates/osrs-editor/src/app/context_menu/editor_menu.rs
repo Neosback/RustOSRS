@@ -11,10 +11,13 @@ impl EditorApp {
         pick: &Pick,
     ) -> Outcome {
         let mut outcome = Outcome::default();
-        let loc = pick
-            .object
-            .as_ref()
-            .and_then(|object| self.infos.get(&object.region)?.locs.get(object.index));
+        let loc = pick.object.as_ref().and_then(|object| {
+            self.world
+                .infos()
+                .get(&object.region)?
+                .locs
+                .get(object.index)
+        });
         let area = egui::Area::new(egui::Id::new("viewport_context_menu"))
             .order(egui::Order::Foreground)
             .fixed_pos(position)
@@ -28,7 +31,7 @@ impl EditorApp {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 3.0;
                             for tool in crate::paint::Tool::ALL {
-                                let active = self.prefs.tool == tool;
+                                let active = self.settings.prefs.tool == tool;
                                 if ui
                                     .selectable_label(
                                         active,
@@ -41,7 +44,7 @@ impl EditorApp {
                                     outcome.close = true;
                                 }
                             }
-                            ui.weak(self.prefs.tool.label());
+                            ui.weak(self.settings.prefs.tool.label());
                         });
                         ui.separator();
                         // What the menu is about.
@@ -61,7 +64,7 @@ impl EditorApp {
                                 loc.plane
                             ));
                             ui.separator();
-                            let already = self.interaction.selected.as_ref().is_some_and(|s| {
+                            let already = self.interaction.selected().as_ref().is_some_and(|s| {
                                 s.region == object.region && s.index == object.index
                             });
                             if ui
@@ -169,10 +172,10 @@ impl EditorApp {
                             }
                         } else if let Some(tile) = &pick.tile {
                             ui.strong(format!("Tile {}, {}", tile.tile.0, tile.tile.1));
-                            ui.weak(format!("plane {}", self.interaction.view_plane));
+                            ui.weak(format!("plane {}", self.interaction.view_plane()));
                             ui.separator();
                         }
-                        let tool = self.prefs.tool;
+                        let tool = self.settings.prefs.tool;
                         if let Some(tile) = pick.tile.map(|p| p.tile) {
                             let item = |ui: &mut egui::Ui, text: String, tip: &str| {
                                 ui.button(text).on_hover_text(tip).clicked()
@@ -207,7 +210,7 @@ impl EditorApp {
                                     }
                                 }
                                 crate::paint::Tool::Paint => {
-                                    let empty = self.prefs.brush.is_empty();
+                                    let empty = self.settings.prefs.brush.is_empty();
                                     if ui
                                         .add_enabled(
                                             !empty,
@@ -224,7 +227,7 @@ impl EditorApp {
                                         outcome.action = Some(MenuAction::ApplyBrush(tile));
                                         outcome.close = true;
                                     }
-                                    let selected = self.interaction.selection_tiles.len();
+                                    let selected = self.interaction.selection_tiles().len();
                                     if selected > 0
                                         && !empty
                                         && item(
@@ -252,7 +255,7 @@ impl EditorApp {
                                         outcome.action = Some(MenuAction::AddPathPoint(tile));
                                         outcome.close = true;
                                     }
-                                    if !self.interaction.spline.points.is_empty() {
+                                    if !self.interaction.spline_points().is_empty() {
                                         if item(
                                             ui,
                                             "Lay path (Enter)".to_owned(),
@@ -278,21 +281,21 @@ impl EditorApp {
                                         format!(
                                             "{}  {} here",
                                             crate::app::workspace::tool_icon(tool),
-                                            self.prefs.height_tool.op.label()
+                                            self.settings.prefs.height_tool.op.label()
                                         ),
                                         "Apply the height brush once at the tile under the cursor",
                                     ) {
                                         outcome.action = Some(MenuAction::ApplyBrush(tile));
                                         outcome.close = true;
                                     }
-                                    let selected = self.interaction.selection_tiles.len();
+                                    let selected = self.interaction.selection_tiles().len();
                                     if selected > 0
                                         && item(
                                             ui,
                                             format!(
                                                 "{}  {} {selected} selected tiles",
                                                 icons::SELECT_TILES,
-                                                self.prefs.height_tool.op.label()
+                                                self.settings.prefs.height_tool.op.label()
                                             ),
                                             "Apply the height tool to every selected tile",
                                         )
@@ -314,8 +317,8 @@ impl EditorApp {
                             }
                         }
                         if tool == crate::paint::Tool::Select
-                            && (!self.interaction.selection_objects.is_empty()
-                                || !self.interaction.selection_tiles.is_empty())
+                            && (!self.interaction.selection_objects().is_empty()
+                                || !self.interaction.selection_tiles().is_empty())
                             && ui.button("Clear selection").clicked()
                         {
                             outcome.action = Some(MenuAction::ClearSelection);

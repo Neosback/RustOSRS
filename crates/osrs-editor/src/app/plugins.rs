@@ -5,39 +5,21 @@ use crate::plugin::{EditorCommand, EditorPlugin, EditorView, PluginContext};
 use eframe::egui;
 
 impl EditorApp {
-    fn editor_view(&self) -> EditorView<'_> {
-        EditorView {
+    /// Run `f` for every plugin, then apply the commands they issued.
+    pub(super) fn run_plugins(&mut self, f: impl FnMut(&mut dyn EditorPlugin, &mut PluginContext)) {
+        let view = EditorView {
             camera_tile: self.camera_tile(),
             camera_region: self.camera_region(),
-            view_plane: self.interaction.view_plane,
+            view_plane: self.interaction.view_plane(),
             render_origin: self.renderer.render_origin(),
-            infos: &self.infos,
-            infos_version: self.infos_version,
-            colors: &self.prefs.colors,
-            selected: self.interaction.selected.as_ref(),
-        }
-    }
-
-    /// Run `f` for every plugin, then apply the commands they issued.
-    pub(super) fn run_plugins(
-        &mut self,
-        mut f: impl FnMut(&mut dyn EditorPlugin, &mut PluginContext),
-    ) {
-        let mut plugins = std::mem::take(&mut self.plugins);
-        let mut commands = Vec::new();
-        for plugin in &mut plugins {
-            if self
-                .prefs
-                .disabled_plugins
-                .iter()
-                .any(|n| n == plugin.name())
-            {
-                continue;
-            }
-            let mut cx = PluginContext::new(self.editor_view(), &mut commands, plugin.name());
-            f(plugin.as_mut(), &mut cx);
-        }
-        self.plugins = plugins;
+            infos: self.world.infos(),
+            infos_version: self.world.infos_version(),
+            colors: &self.settings.prefs.colors,
+            selected: self.interaction.selected().as_ref(),
+        };
+        let commands = self
+            .plugins
+            .run(view, &self.settings.prefs.disabled_plugins, f);
         self.apply_commands(commands);
     }
 
@@ -52,35 +34,38 @@ impl EditorApp {
 
     /// Whether a plugin is switched on.
     pub(super) fn plugin_enabled(&self, name: &str) -> bool {
-        !self.prefs.disabled_plugins.iter().any(|n| n == name)
+        !self
+            .settings
+            .prefs
+            .disabled_plugins
+            .iter()
+            .any(|n| n == name)
     }
 
     /// Switch a plugin on or off: off, it is not run anywhere and what it drew is gone.
     pub(super) fn set_plugin_enabled(&mut self, name: &str, enabled: bool) {
-        self.prefs.disabled_plugins.retain(|n| n != name);
+        self.settings.prefs.disabled_plugins.retain(|n| n != name);
         if !enabled {
-            self.prefs.disabled_plugins.push(name.to_owned());
+            self.settings.prefs.disabled_plugins.push(name.to_owned());
         }
-        let mut plugins = std::mem::take(&mut self.plugins);
-        let mut commands = Vec::new();
-        for plugin in &mut plugins {
-            if plugin.name() != name || plugin.core() {
-                continue;
-            }
-            let mut cx = PluginContext::new(self.editor_view(), &mut commands, plugin.name());
-            plugin.set_enabled(enabled, &mut cx);
-            if !enabled {
-                commands.push((plugin.name(), EditorCommand::SetLines(Vec::new())));
-            }
-        }
-        self.plugins = plugins;
+        let view = EditorView {
+            camera_tile: self.camera_tile(),
+            camera_region: self.camera_region(),
+            view_plane: self.interaction.view_plane(),
+            render_origin: self.renderer.render_origin(),
+            infos: self.world.infos(),
+            infos_version: self.world.infos_version(),
+            colors: &self.settings.prefs.colors,
+            selected: self.interaction.selected().as_ref(),
+        };
+        let commands = self.plugins.change_enabled(view, name, enabled);
         self.apply_commands(commands);
     }
 
     /// The Plugins window (menu bar): the user's own tools, and the plugins with a switch each.
     /// Switching a plugin off removes it everywhere; core plugins have no switch.
     pub(super) fn plugins_window(&mut self, ctx: &egui::Context) {
-        if !self.plugins_open {
+        if !self.ui.plugins_open {
             return;
         }
         let ((), close) = super::modal::Modal::new("plugins_window", "Plugins")
@@ -92,6 +77,7 @@ impl EditorApp {
                         crate::theme::section_heading(ui, "Plugins");
                         let rows: Vec<(&'static str, &'static str, &'static str, bool)> = self
                             .plugins
+                            .plugins()
                             .iter()
                             .map(|p| (p.name(), p.title(), p.description(), p.core()))
                             .collect();
@@ -116,7 +102,7 @@ impl EditorApp {
                     });
             });
         if close {
-            self.plugins_open = false;
+            self.ui.plugins_open = false;
         }
     }
 
@@ -125,11 +111,12 @@ impl EditorApp {
         if self.keys_blocked(ctx) {
             return;
         }
-        let keymap = &self.keymap;
+        let keymap = &self.settings.keymap;
         let mut fired: Vec<&'static str> = Vec::new();
         ctx.input(|input| {
-            for plugin in &self.plugins {
+            for plugin in self.plugins.plugins() {
                 if self
+                    .settings
                     .prefs
                     .disabled_plugins
                     .iter()
@@ -157,23 +144,20 @@ impl EditorApp {
     }
 
     fn apply_commands(&mut self, commands: Vec<(&'static str, EditorCommand)>) {
-        let mut lines_changed = false;
         for (plugin, command) in commands {
             match command {
                 EditorCommand::Teleport(destination) => self.teleport_to(destination),
-                EditorCommand::SetPlane(plane) => self.interaction.view_plane = plane.min(3),
+                EditorCommand::SetPlane(plane) => self.interaction.set_view_plane(plane),
                 EditorCommand::SetLines(lines) => {
-                    self.plugin_lines.insert(plugin, lines);
-                    lines_changed = true;
+                    self.plugins.set_lines(plugin, lines);
                 }
-                EditorCommand::Status(message) => self.status = Some(message),
+                EditorCommand::Status(message) => self.ui.set_status(message),
                 EditorCommand::SetAnimationSmoothing(enabled) => {
                     self.world.set_animation_smoothing(enabled);
                 }
             }
         }
-        if lines_changed {
-            let merged: Vec<_> = self.plugin_lines.values().flatten().copied().collect();
+        if let Some(merged) = self.plugins.take_lines_update() {
             self.renderer.set_overlay_lines(&merged);
         }
     }

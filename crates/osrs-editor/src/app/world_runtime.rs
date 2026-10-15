@@ -6,6 +6,7 @@
 
 mod builds;
 mod height_dependencies;
+mod inspection;
 mod invalidation;
 mod object_output_store;
 mod stats;
@@ -58,6 +59,7 @@ struct AnimationSchedule {
 }
 
 pub(super) struct WorldRuntime {
+    inspection: inspection::InspectionProjection,
     streamer: RegionStreamer,
     animations: AnimationWorker,
     animation: AnimationSchedule,
@@ -80,9 +82,14 @@ pub(super) struct WorldRuntime {
 }
 
 impl WorldRuntime {
+    pub(super) fn set_diagnostics(&mut self, sink: super::diagnostics::DiagnosticSink) {
+        self.builds.set_diagnostics(sink);
+    }
+
     pub(super) fn new(streamer: RegionStreamer) -> Self {
         streamer.set_presentation(Self::presentation(false, false), 1);
         Self {
+            inspection: inspection::InspectionProjection::default(),
             streamer,
             animations: AnimationWorker::spawn(),
             animation: AnimationSchedule {

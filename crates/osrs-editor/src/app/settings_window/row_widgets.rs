@@ -23,7 +23,7 @@ impl EditorApp {
     /// Appearance, panels, menus, and hints.
     #[allow(clippy::too_many_lines)]
     fn draw_interface_row(&mut self, ui: &mut egui::Ui, row: Row) -> bool {
-        let prefs: &mut Settings = &mut self.prefs;
+        let prefs: &mut Settings = &mut self.settings.prefs;
         match row {
             Row::Theme => {
                 egui::ComboBox::from_id_salt("setting_theme")
@@ -117,7 +117,7 @@ impl EditorApp {
     /// Camera, world streaming, and shared graphics.
     #[allow(clippy::too_many_lines)]
     fn draw_world_row(&mut self, ui: &mut egui::Ui, row: Row) -> bool {
-        let prefs: &mut Settings = &mut self.prefs;
+        let prefs: &mut Settings = &mut self.settings.prefs;
         match row {
             Row::RenderScale => {
                 ui.add(
@@ -131,27 +131,37 @@ impl EditorApp {
                 .on_hover_text("Above 100% renders more pixels than the window has and smooths edges; below saves GPU time");
             }
             Row::CameraMode => {
-                let mut at = usize::from(self.interaction.camera.mode == CameraMode::Orbit);
+                let mut at = usize::from(self.interaction.camera().mode == CameraMode::Orbit);
                 if crate::theme::segmented(ui, "camera_mode", &mut at, &["Fly", "Orbit"]) {
-                    self.interaction.camera.mode = if at == 0 {
+                    let mode = if at == 0 {
                         CameraMode::Fly
                     } else {
                         CameraMode::Orbit
                     };
+                    self.interaction.set_camera_mode(mode);
                 }
             }
             Row::FieldOfView => {
-                ui.add(
-                    egui::Slider::new(&mut self.interaction.camera.fov_degrees, 30.0..=100.0)
-                        .suffix("°"),
+                let mut value = self.interaction.camera().fov_degrees;
+                ui.add(egui::Slider::new(&mut value, 30.0..=100.0).suffix("°"));
+                self.interaction.set_camera_settings(
+                    value,
+                    self.interaction.camera().speed,
+                    self.interaction.camera().mode,
                 );
             }
             Row::FlySpeed => {
+                let mut value = self.interaction.camera().speed;
                 ui.add(
-                    egui::Slider::new(&mut self.interaction.camera.speed, 50.0..=20_000.0)
+                    egui::Slider::new(&mut value, 50.0..=20_000.0)
                         .logarithmic(true)
                         .fixed_decimals(0)
                         .suffix(" u/s"),
+                );
+                self.interaction.set_camera_settings(
+                    self.interaction.camera().fov_degrees,
+                    value,
+                    self.interaction.camera().mode,
                 );
             }
             Row::LoadRadius => {
@@ -192,7 +202,7 @@ impl EditorApp {
     /// The Reference profile's graphics and colour options.
     #[allow(clippy::too_many_lines)]
     fn draw_reference_row(&mut self, ui: &mut egui::Ui, row: Row) -> bool {
-        let prefs: &mut Settings = &mut self.prefs;
+        let prefs: &mut Settings = &mut self.settings.prefs;
         match row {
             Row::Profile => {
                 egui::ComboBox::from_id_salt("setting_profile")
@@ -246,7 +256,7 @@ impl EditorApp {
     /// The 117 HD profile's sky, lighting, shadows, and water.
     #[allow(clippy::too_many_lines)]
     fn draw_hd_row(&mut self, ui: &mut egui::Ui, row: Row) -> bool {
-        let prefs: &mut Settings = &mut self.prefs;
+        let prefs: &mut Settings = &mut self.settings.prefs;
         match row {
             Row::HdBrightness => {
                 ui.add(egui::Slider::new(&mut prefs.hd_brightness, 25.0..=400.0).suffix(" %"))

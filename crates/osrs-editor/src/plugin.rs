@@ -19,6 +19,7 @@ use osrs_render::gpu::LineVertex;
     dead_code,
     reason = "plugin API surface; fields are for tools that are not written yet"
 )]
+#[derive(Clone, Copy)]
 pub struct EditorView<'a> {
     /// World tile under the camera.
     pub camera_tile: (i32, i32),

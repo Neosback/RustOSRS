@@ -8,5 +8,7 @@ publish = false
 [dependencies]
 osrs-core = { path = "../osrs-core" }
 
+serde.workspace = true
+
 [lints]
 workspace = true

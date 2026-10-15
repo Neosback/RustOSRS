@@ -15,16 +15,16 @@ const SHELF_WIDTH: f32 = 196.0;
 
 impl EditorApp {
     pub(super) fn tool_shelf(&mut self, ui: &mut egui::Ui) {
-        let tool = self.prefs.tool;
+        let tool = self.settings.prefs.tool;
         if !tool.has_shelf() {
             return;
         }
-        if self.prefs.shelf_floating {
+        if self.settings.prefs.shelf_floating {
             self.floating_shelf(ui.ctx(), tool);
             return;
         }
         let line = ui.visuals().widgets.noninteractive.bg_stroke.color;
-        let panel = if self.prefs.shelf_right {
+        let panel = if self.settings.prefs.shelf_right {
             egui::Panel::right("tool_shelf")
         } else {
             egui::Panel::left("tool_shelf")
@@ -43,7 +43,7 @@ impl EditorApp {
 
     /// The shelf as a window you can drag anywhere over the viewport (its position is kept).
     fn floating_shelf(&mut self, ctx: &egui::Context, tool: Tool) {
-        let [x, y] = self.prefs.shelf_pos;
+        let [x, y] = self.settings.prefs.shelf_pos;
         let response = egui::Window::new(tool.label())
             .id(egui::Id::new("shelf_window"))
             .title_bar(false)
@@ -56,7 +56,7 @@ impl EditorApp {
             .show(ctx, |ui| self.shelf_contents(ui, tool));
         if let Some(response) = response {
             let min = response.response.rect.min;
-            self.prefs.shelf_pos = [min.x, min.y];
+            self.settings.prefs.shelf_pos = [min.x, min.y];
         }
     }
 
@@ -70,7 +70,7 @@ impl EditorApp {
             );
             ui.label(egui::RichText::new(tool.label()).strong().size(15.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let (icon, tip) = if self.prefs.shelf_floating {
+                let (icon, tip) = if self.settings.prefs.shelf_floating {
                     (icons::DOCK_IN, "Dock the shelf back to the edge")
                 } else {
                     (
@@ -83,21 +83,21 @@ impl EditorApp {
                     .on_hover_text(tip)
                     .clicked()
                 {
-                    self.prefs.shelf_floating = !self.prefs.shelf_floating;
+                    self.settings.prefs.shelf_floating = !self.settings.prefs.shelf_floating;
                 }
-                if !self.prefs.shelf_floating
+                if !self.settings.prefs.shelf_floating
                     && ui
                         .add(egui::Button::new(icons::SWAP_SIDE).small().frame(false))
                         .on_hover_text("Move the shelf to the other side")
                         .clicked()
                 {
-                    self.prefs.shelf_right = !self.prefs.shelf_right;
+                    self.settings.prefs.shelf_right = !self.settings.prefs.shelf_right;
                 }
             });
         });
         ui.add_space(2.0);
         egui::ScrollArea::vertical()
-            .auto_shrink([false, self.prefs.shelf_floating])
+            .auto_shrink([false, self.settings.prefs.shelf_floating])
             .show(ui, |ui| match tool {
                 Tool::Paint => self.brush_section(ui),
                 Tool::Height => {
@@ -119,18 +119,18 @@ impl EditorApp {
             ] {
                 if ui
                     .selectable_label(
-                        self.prefs.brush.footprint == shape,
+                        self.settings.prefs.brush.footprint == shape,
                         format!("{icon}  {label}"),
                     )
                     .clicked()
                 {
-                    self.prefs.brush.footprint = shape;
+                    self.settings.prefs.brush.footprint = shape;
                 }
             }
         });
         ui.add_space(4.0);
         ui.label(egui::RichText::new("Size").weak());
-        let mut radius = i32::from(self.prefs.brush.radius);
+        let mut radius = i32::from(self.settings.prefs.brush.radius);
         ui.spacing_mut().slider_width = ui.available_width() - 70.0;
         if ui
             .add(
@@ -141,7 +141,7 @@ impl EditorApp {
             )
             .changed()
         {
-            self.prefs.brush.radius = radius as u8;
+            self.settings.prefs.brush.radius = radius as u8;
         }
         ui.add_space(2.0);
         ui.weak("[ and ] resize");
@@ -150,7 +150,7 @@ impl EditorApp {
     /// Strength and falloff of the Height tool.
     fn sculpt_section(&mut self, ui: &mut egui::Ui) {
         crate::theme::section_heading(ui, "Strength");
-        let tool = &mut self.prefs.height_tool;
+        let tool = &mut self.settings.prefs.height_tool;
         ui.spacing_mut().slider_width = ui.available_width() - 56.0;
         ui.add(egui::Slider::new(&mut tool.strength, 8..=128).step_by(8.0));
         ui.add_space(4.0);
@@ -164,7 +164,7 @@ impl EditorApp {
     /// Deterministic width/shape fitting controls used by the Spline tool.
     fn path_section(&mut self, ui: &mut egui::Ui) {
         crate::theme::section_heading(ui, "Path");
-        let spline = &mut self.prefs.spline;
+        let spline = &mut self.settings.prefs.spline;
         ui.checkbox(&mut spline.snap_points, "Snap points to tile centres")
             .on_hover_text(
                 "Place control points at tile centres instead of the exact cursor position",

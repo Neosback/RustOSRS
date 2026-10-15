@@ -39,15 +39,18 @@ impl EditorApp {
     /// Cmd/Ctrl+C and Cmd/Ctrl+V.
     pub(in crate::app) fn clipboard_actions(&mut self, ctx: &egui::Context) {
         if self.keys_blocked(ctx)
-            || self.quick_open.is_some()
-            || !matches!(self.prefs.tool, Tool::Select | Tool::Paint | Tool::Height)
+            || self.ui.quick_open.is_some()
+            || !matches!(
+                self.settings.prefs.tool,
+                Tool::Select | Tool::Paint | Tool::Height
+            )
         {
             return;
         }
         let (copy, paste) = ctx.input(|i| {
             (
-                self.keymap.pressed(i, "edit.copy_tiles"),
-                self.keymap.pressed(i, "edit.paste_tiles"),
+                self.settings.keymap.pressed(i, "edit.copy_tiles"),
+                self.settings.keymap.pressed(i, "edit.paste_tiles"),
             )
         });
         if copy {
@@ -59,45 +62,43 @@ impl EditorApp {
 
     /// Remember the selected tiles of the viewed plane.
     pub(in crate::app) fn copy_tile_selection(&mut self) {
-        let plane = self.interaction.view_plane;
+        let plane = self.interaction.view_plane();
         let tiles: Vec<_> = self
             .interaction
-            .selection_tiles
+            .selection_tiles()
             .iter()
             .filter_map(|&tile| Some((tile, self.current_tile((plane, tile.0, tile.1))?)))
             .collect();
         match TileClipboard::from_tiles(tiles) {
             Some(clipboard) => {
                 let count = clipboard.len();
-                self.clipboard = Some(clipboard);
-                self.notice = Some((
-                    format!("Copied {count} tile{}", if count == 1 { "" } else { "s" }),
-                    Instant::now(),
+                self.interaction.copy_tiles(clipboard);
+                self.ui.notify(format!(
+                    "Copied {count} tile{}",
+                    if count == 1 { "" } else { "s" }
                 ));
             }
             None => {
-                self.notice = Some((
-                    "Select tiles first (Select tool, tile mode) to copy them".to_owned(),
-                    Instant::now(),
-                ));
+                self.ui
+                    .notify("Select tiles first (Select tool, tile mode) to copy them".to_owned());
             }
         }
     }
 
     /// Paste the copied tiles with their south-west corner on the hovered tile.
     pub(in crate::app) fn paste_tiles(&mut self) {
-        if let Some(origin) = self.interaction.hover.tile.map(|pick| pick.tile) {
+        if let Some(origin) = self.interaction.hover().tile.map(|pick| pick.tile) {
             self.paste_tiles_at(origin);
         }
     }
 
     /// Paste the copied tiles with their south-west corner on `origin`.
     pub(in crate::app) fn paste_tiles_at(&mut self, origin: (i32, i32)) {
-        let Some(clipboard) = self.clipboard.clone() else {
-            self.notice = Some(("Nothing copied yet".to_owned(), Instant::now()));
+        let Some(clipboard) = self.interaction.clipboard().clone() else {
+            self.ui.notify("Nothing copied yet".to_owned());
             return;
         };
-        let plane_index = self.interaction.view_plane;
+        let plane_index = self.interaction.view_plane();
         let source_plane = SourcePlane::new(plane_index)
             .unwrap_or_else(|| unreachable!("editor view planes are always validated"));
         let intents = clipboard.intents_at(origin, |tile, height| {
@@ -107,10 +108,8 @@ impl EditorApp {
         {
             Ok(patch) => patch,
             Err(error) => {
-                self.notice = Some((
-                    format!("Paste was not committed: {error:?}"),
-                    Instant::now(),
-                ));
+                self.ui
+                    .notify(format!("Paste was not committed: {error:?}"));
                 return;
             }
         };
@@ -123,15 +122,13 @@ impl EditorApp {
             .map(|key| (key, self.current_tile(key)))
             .collect();
 
-        let execution = self
-            .session
-            .execute(patch, |document| plan_paste_projection(document, &current));
+        let execution = self.session.execute_named("paste", patch, |document| {
+            plan_paste_projection(document, &current)
+        });
         let (receipt, projection) = match execution {
             Ok(EditExecution::NoChange) => {
-                self.notice = Some((
-                    "Paste made no changes: the tiles already match".to_owned(),
-                    Instant::now(),
-                ));
+                self.ui
+                    .notify("Paste made no changes: the tiles already match".to_owned());
                 return;
             }
             Ok(EditExecution::Committed {
@@ -139,32 +136,28 @@ impl EditorApp {
                 projection,
             }) => (receipt, projection),
             Err(EditExecutionError::Semantic(error)) => {
-                self.notice = Some((
-                    format!("Paste was rejected by the semantic session: {error:?}"),
-                    Instant::now(),
+                self.ui.notify(format!(
+                    "Paste was rejected by the semantic session: {error:?}"
                 ));
                 return;
             }
             Err(EditExecutionError::Projection(message)) => {
-                self.notice = Some((format!("Paste was rolled back: {message}"), Instant::now()));
+                self.ui.notify(format!("Paste was rolled back: {message}"));
                 return;
             }
             Err(EditExecutionError::Rollback {
                 projection,
                 rollback,
             }) => {
-                self.notice = Some((
+                self.ui.notify(
                     format!(
                         "Paste projection failed and semantic rollback failed: {projection} ({rollback:?})"
-                    ),
-                    Instant::now(),
-                ));
+                    ));
                 return;
             }
             Err(EditExecutionError::Finalize(error)) => {
-                self.notice = Some((
-                    format!("Paste projection succeeded but semantic finalize failed: {error:?}"),
-                    Instant::now(),
+                self.ui.notify(format!(
+                    "Paste projection succeeded but semantic finalize failed: {error:?}"
                 ));
                 return;
             }
@@ -175,22 +168,21 @@ impl EditorApp {
         // the authoritative semantic receipt rather than the transitional TileEdit adapter.
         let mut edits = Vec::new();
         for (key, current, values) in projection {
-            self.height_edited.insert(key);
+            self.terrain.height_edited.insert(key);
             if values != current {
-                self.edited.insert(key, values);
+                self.terrain.edited.insert(key, values);
                 edits.push(self.edit_for(key, values));
             }
         }
         self.world.project_tile_edits(edits);
-        self.world
-            .invalidate_semantic_edit(receipt.impact, &receipt.touched_regions);
+        self.world.invalidate_semantic_edit(&receipt);
 
         let count = keys.len();
         self.push_step(EditStep::semantic_path(keys, true));
-        self.interaction.selection_tiles = tiles.into_iter().collect();
-        self.notice = Some((
-            format!("Pasted {count} tile{}", if count == 1 { "" } else { "s" }),
-            Instant::now(),
+        self.interaction.replace_tiles(tiles);
+        self.ui.notify(format!(
+            "Pasted {count} tile{}",
+            if count == 1 { "" } else { "s" }
         ));
     }
 }

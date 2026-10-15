@@ -12,28 +12,28 @@ impl EditorApp {
         let available = ui.available_size();
         let (rect, response) = ui.allocate_exact_size(available, egui::Sense::click_and_drag());
         let painter = ui.painter_at(rect);
-        let area_index = self.world_map.area;
+        let area_index = self.ui.world_map.area;
         let area = &catalog.areas[area_index];
         painter.rect_filled(rect, 0.0, argb(area.background));
 
         // Pan and zoom.
-        let zoom = self.world_map.zoom;
+        let zoom = self.ui.world_map.zoom;
         if response.dragged() {
             let delta = response.drag_delta();
-            self.world_map.center.0 -= f64::from(delta.x / zoom);
-            self.world_map.center.1 += f64::from(delta.y / zoom);
+            self.ui.world_map.center.0 -= f64::from(delta.x / zoom);
+            self.ui.world_map.center.1 += f64::from(delta.y / zoom);
         }
         if response.hovered() {
             let scroll = ui.input(|input| input.smooth_scroll_delta.y);
             let pinch = ui.input(|input| input.zoom_delta());
             if scroll > 0.5 || pinch > 1.01 {
-                self.world_map.step_zoom(1);
+                self.ui.world_map.step_zoom(1);
             } else if scroll < -0.5 || pinch < 0.99 {
-                self.world_map.step_zoom(-1);
+                self.ui.world_map.step_zoom(-1);
             }
         }
-        let zoom = self.world_map.zoom;
-        let center = self.world_map.center;
+        let zoom = self.ui.world_map.zoom;
+        let center = self.ui.world_map.center;
         let to_screen = |x: f64, y: f64| {
             egui::pos2(
                 rect.center().x + ((x - center.0) as f32) * zoom,
@@ -49,8 +49,8 @@ impl EditorApp {
 
         // New view settings drop the queued region work.
         let ppt = pixels_per_tile(zoom);
-        if self.world_map.queued_for != Some((area_index, ppt)) {
-            self.world_map.queued_for = Some((area_index, ppt));
+        if self.ui.world_map.queued_for != Some((area_index, ppt)) {
+            self.ui.world_map.queued_for = Some((area_index, ppt));
             self.assets.new_map_view();
         }
 
@@ -121,11 +121,11 @@ impl EditorApp {
         let (cx, cz) = self.world_position();
         let (tile_x, tile_y) = ((cx / 128.0).floor() as i32, (cz / 128.0).floor() as i32);
         if let Some((mx, my)) =
-            area.position(i32::from(self.interaction.view_plane), tile_x, tile_y)
+            area.position(i32::from(self.interaction.view_plane()), tile_x, tile_y)
         {
             let marker = to_screen(f64::from(mx) + 0.5, f64::from(my) + 0.5);
             if rect.contains(marker) {
-                let yaw = self.interaction.camera.yaw;
+                let yaw = self.interaction.camera().yaw;
                 let tip = marker + egui::vec2(-yaw.sin(), -yaw.cos()) * 16.0;
                 let gold = egui::Color32::from_rgb(255, 204, 0);
                 painter.line_segment([marker, tip], egui::Stroke::new(2.0, gold));
@@ -196,7 +196,7 @@ impl EditorApp {
             let Some(element) = catalog.elements.get(&icon.element) else {
                 continue;
             };
-            if self.world_map.hidden.contains(&element.category) {
+            if self.ui.world_map.hidden.contains(&element.category) {
                 continue;
             }
             // Scenery icons sit half a tile left of their tile, vertically centred; fixed

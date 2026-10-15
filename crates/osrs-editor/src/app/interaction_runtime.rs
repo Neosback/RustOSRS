@@ -3,10 +3,14 @@
 //! `InteractionRuntime` owns transient input-side state. It emits edit intents that the
 //! application routes to `EditorSession`; it never commits map mutations itself.
 
-use super::{gizmo, object_tool, spline_tool};
+mod camera;
+mod spline;
+
+use super::{gizmo, object_tool};
 use crate::camera::FlyCamera;
 use crate::paint::Tool;
 use crate::pick::{ObjectPick, Pick};
+pub(super) use camera::CameraInput;
 use eframe::egui;
 use std::{collections::HashSet, time::Duration};
 use web_time::Instant;
@@ -34,40 +38,42 @@ struct ToolPeek {
 }
 
 pub(super) struct InteractionRuntime {
-    pub(super) camera: FlyCamera,
-    pub(super) view_plane: u8,
+    clipboard: Option<super::tile_clipboard::TileClipboard>,
+    camera: FlyCamera,
+    view_plane: u8,
     /// What the cursor is over, and what the viewport context menu was opened on.
-    pub(super) hover: Pick,
-    pub(super) context_pick: Pick,
+    hover: Pick,
+    context_pick: Pick,
     /// The last tile the cursor was over (the Tile tab keeps showing it after the cursor leaves).
-    pub(super) last_hover_tile: Option<(i32, i32)>,
+    last_hover_tile: Option<(i32, i32)>,
     /// The tile the Inspector shows when it is not following the cursor: the last one selected
     /// (or the tile under the last object selected).
-    pub(super) inspect_tile: Option<(i32, i32)>,
+    inspect_tile: Option<(i32, i32)>,
     /// Every selected object (the last added is `selected`) and every selected tile.
-    pub(super) selected: Option<ObjectPick>,
-    pub(super) selection_objects: Vec<ObjectPick>,
-    pub(super) selection_tiles: HashSet<(i32, i32)>,
+    selected: Option<ObjectPick>,
+    selection_objects: Vec<ObjectPick>,
+    selection_tiles: HashSet<(i32, i32)>,
     /// Placements to select once their rebuilt region arrives (after an object edit).
     pending_reselect: Vec<osrs_world::LocSpec>,
     /// The box being dragged with the Select tool.
     marquee: Option<Marquee>,
     /// The spline tool's control points and preview.
-    pub(super) spline: spline_tool::SplineState,
+    spline: spline::SplineState,
     /// A held tool key and the tool to return to if the hold becomes a peek.
     peek: Option<ToolPeek>,
     /// The selected objects being dragged by the Objects tool.
     object_drag: Option<object_tool::ObjectDrag>,
     /// The Objects tool's transform gizmo plus its transient drag/capture lifecycle.
-    pub(super) gizmo: transform_gizmo_egui::Gizmo,
+    gizmo: transform_gizmo_egui::Gizmo,
     gizmo_drag: Option<gizmo::GizmoDrag>,
-    pub(super) gizmo_busy: bool,
+    gizmo_busy: bool,
 }
 
 impl InteractionRuntime {
     pub(super) fn new(camera: FlyCamera) -> Self {
         Self {
             camera,
+            clipboard: None,
             view_plane: 0,
             hover: Pick::default(),
             context_pick: Pick::default(),
@@ -78,13 +84,85 @@ impl InteractionRuntime {
             selection_tiles: HashSet::new(),
             pending_reselect: Vec::new(),
             marquee: None,
-            spline: spline_tool::SplineState::default(),
+            spline: spline::SplineState::default(),
             peek: None,
             object_drag: None,
             gizmo: transform_gizmo_egui::Gizmo::default(),
             gizmo_drag: None,
             gizmo_busy: false,
         }
+    }
+
+    pub(super) fn hover(&self) -> &Pick {
+        &self.hover
+    }
+    pub(super) fn context_pick(&self) -> &Pick {
+        &self.context_pick
+    }
+    pub(super) fn set_context_pick(&mut self, pick: Pick) {
+        self.context_pick = pick;
+    }
+    pub(super) fn last_hover_tile(&self) -> Option<(i32, i32)> {
+        self.last_hover_tile
+    }
+    pub(super) fn inspect_tile(&self) -> Option<(i32, i32)> {
+        self.inspect_tile
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) fn inspect(&mut self, tile: Option<(i32, i32)>) {
+        self.inspect_tile = tile;
+    }
+    pub(super) fn selected(&self) -> &Option<ObjectPick> {
+        &self.selected
+    }
+    pub(super) fn selection_objects(&self) -> &[ObjectPick] {
+        &self.selection_objects
+    }
+    pub(super) fn selection_tiles(&self) -> &HashSet<(i32, i32)> {
+        &self.selection_tiles
+    }
+    pub(super) fn replace_tiles(&mut self, tiles: impl IntoIterator<Item = (i32, i32)>) {
+        self.selection_tiles = tiles.into_iter().collect();
+    }
+    /// Retain the inspector's primary object while returning to a single-object selection.
+    pub(super) fn retain_primary_object(&mut self) {
+        self.selection_objects.clear();
+    }
+    pub(super) fn set_primary_object(&mut self, object: Option<ObjectPick>) {
+        self.selected = object;
+    }
+    pub(super) fn view_plane(&self) -> u8 {
+        self.view_plane
+    }
+    pub(super) fn set_view_plane(&mut self, plane: u8) {
+        self.view_plane = plane.min(3);
+    }
+    pub(super) fn gizmo_busy(&self) -> bool {
+        self.gizmo_busy
+    }
+
+    pub(super) fn gizmo(&self) -> &transform_gizmo_egui::Gizmo {
+        &self.gizmo
+    }
+    pub(super) fn configure_gizmo(&mut self, config: transform_gizmo_egui::GizmoConfig) {
+        self.gizmo.update_config(config);
+    }
+    pub(super) fn sample_gizmo(
+        &mut self,
+        input: transform_gizmo_egui::GizmoInteraction,
+        targets: &[transform_gizmo_egui::math::Transform],
+    ) -> Option<(
+        transform_gizmo_egui::GizmoResult,
+        Vec<transform_gizmo_egui::math::Transform>,
+    )> {
+        self.gizmo.update(input, targets)
+    }
+
+    pub(super) fn clipboard(&self) -> &Option<super::tile_clipboard::TileClipboard> {
+        &self.clipboard
+    }
+    pub(super) fn copy_tiles(&mut self, clipboard: super::tile_clipboard::TileClipboard) {
+        self.clipboard = Some(clipboard);
     }
 
     fn same_object(a: &ObjectPick, b: &ObjectPick) -> bool {

@@ -202,7 +202,7 @@ impl EditorApp {
         let Some(target) = &self.placer.target else {
             return;
         };
-        let Some(pick) = self.interaction.hover.tile else {
+        let Some(pick) = self.interaction.hover().tile else {
             return;
         };
         let (entry, loc_type, orientation) =
@@ -221,7 +221,7 @@ impl EditorApp {
         let spec = LocSpec {
             object_id: entry.id,
             tile,
-            plane: self.interaction.view_plane,
+            plane: self.interaction.view_plane(),
             loc_type,
             orientation,
         };
@@ -258,17 +258,18 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
-        let (Some(target), Some(pick)) = (&self.placer.target, self.interaction.hover.tile) else {
+        let (Some(target), Some(pick)) = (&self.placer.target, self.interaction.hover().tile)
+        else {
             return;
         };
-        let plane = self.interaction.view_plane;
+        let plane = self.interaction.view_plane();
         let (size_x, size_y) = target.entry.footprint(target.orientation);
         let fill = Color32::from_rgba_unmultiplied(120, 220, 140, 70);
         let outline = Stroke::new(1.5, Color32::from_rgb(120, 220, 140));
         for dx in 0..i32::from(size_x) {
             for dy in 0..i32::from(size_y) {
                 let tile = (pick.tile.0 + dx, pick.tile.1 + dy);
-                let Some(corners) = interact::tile_corners(&self.infos, tile, plane) else {
+                let Some(corners) = interact::tile_corners(self.world.infos(), tile, plane) else {
                     continue;
                 };
                 let points: Vec<egui::Pos2> = corners

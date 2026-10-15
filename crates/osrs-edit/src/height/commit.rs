@@ -1,19 +1,16 @@
 //! Pure semantic planning for Height-tool strokes.
 //!
-//! The live editor still previews Height changes through the legacy worker path. This module defines
-//! the headless transaction boundary that a completed Height stroke will use in the next runtime
-//! checkpoint: ordered brush samples are evaluated against authoritative semantic heights, storage
+//! Completed Height strokes use this headless transaction boundary: ordered brush samples are evaluated against authoritative semantic heights, storage
 //! quantization is applied exactly, and the final result is emitted as one reversible `MapPatch`.
 
 use super::{HeightTool, apply as apply_height, decode_height, encode_height};
-use crate::paint::BrushShape;
+use crate::brush::BrushShape;
+use crate::{HeightVertexCoord, MapOp, MapPatch, MapQuery};
 use osrs_core::coords::{MapTile, SourcePlane};
-use osrs_edit::{HeightVertexCoord, MapOp, MapPatch, MapQuery};
 use std::collections::BTreeMap;
 
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HeightCommitError {
+pub enum HeightCommitError {
     /// A non-zero source plane cannot be encoded without the explicit height directly below it.
     MissingBaseHeight { coord: HeightVertexCoord },
 }
@@ -22,9 +19,8 @@ pub(crate) enum HeightCommitError {
 ///
 /// Capturing this once prevents UI changes during an open stroke from silently changing the
 /// operation that will eventually be committed to the semantic session.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct HeightStrokeSpec {
+pub struct HeightStrokeSpec {
     plane: SourcePlane,
     tool: HeightTool,
     radius: u8,
@@ -33,9 +29,8 @@ pub(crate) struct HeightStrokeSpec {
     seed: u64,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 impl HeightStrokeSpec {
-    pub(crate) const fn new(
+    pub const fn new(
         plane: SourcePlane,
         tool: HeightTool,
         radius: u8,
@@ -54,7 +49,7 @@ impl HeightStrokeSpec {
     }
 
     /// Evaluate one preview/planner sample using the exact settings captured for this stroke.
-    pub(crate) fn apply_sample(
+    pub fn apply_sample(
         &self,
         center: MapTile,
         height: &dyn Fn((i32, i32)) -> Option<i32>,
@@ -103,8 +98,7 @@ fn quantize_height(
 /// Missing target heights are skipped rather than treated as numeric zero. On planes above zero,
 /// an edited vertex requires an explicit height on the plane below so cache encoding never invents
 /// a base height.
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn build_terrain_height_patch(
+pub fn build_terrain_height_patch(
     query: &impl MapQuery,
     spec: &HeightStrokeSpec,
     centers: &[MapTile],
@@ -163,8 +157,8 @@ pub(crate) fn build_terrain_height_patch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::heights::{Falloff, HeightOp};
-    use osrs_edit::MapDocument;
+    use crate::MapDocument;
+    use crate::height::{Falloff, HeightOp};
 
     fn plane(value: u8) -> SourcePlane {
         SourcePlane::new(value).unwrap_or_else(|| unreachable!("test plane is valid"))

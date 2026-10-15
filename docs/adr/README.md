@@ -65,3 +65,4 @@ Numbers are monotonic and never reused.
 | `ADR-0008-command-transaction-history.md` | semantic command transactions, exact undo/redo, and snapshot-based background work |
 | `ADR-0009-project-save-export-separation.md` | editor project persistence/autosave are distinct from target map/cache export |
 | `ADR-0010-rune-fs-private-cache-transport.md` | `rune-fs` is a private read-only transport dependency; RustOSRS owns revision-aware decoders |
+| [ADR-0011-editor-ownership-and-feature-contracts.md](ADR-0011-editor-ownership-and-feature-contracts.md) | runtime ownership, headless tool planners, optional traces and executable feature navigation |

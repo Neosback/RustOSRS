@@ -14,9 +14,12 @@ const BUTTON: f32 = 34.0;
 
 impl EditorApp {
     pub(super) fn floating_toolbar(&mut self, ctx: &egui::Context, viewport: Rect) {
-        let default_pos =
-            viewport.min + Vec2::new(self.prefs.picker_pos[0], self.prefs.picker_pos[1]);
-        let selecting = self.prefs.tool == Tool::Select;
+        let default_pos = viewport.min
+            + Vec2::new(
+                self.settings.prefs.picker_pos[0],
+                self.settings.prefs.picker_pos[1],
+            );
+        let selecting = self.settings.prefs.tool == Tool::Select;
         let frame = egui::Frame::new()
             .fill(
                 ctx.global_style()
@@ -63,7 +66,7 @@ impl EditorApp {
                             );
                         }
                         response.on_hover_text("Drag to move the picker rail");
-                        let (icon, tip) = if self.prefs.picker_collapsed {
+                        let (icon, tip) = if self.settings.prefs.picker_collapsed {
                             (egui_phosphor::regular::CARET_DOWN, "Expand")
                         } else {
                             (egui_phosphor::regular::CARET_UP, "Collapse")
@@ -73,16 +76,17 @@ impl EditorApp {
                             .on_hover_text(tip)
                             .clicked()
                         {
-                            self.prefs.picker_collapsed = !self.prefs.picker_collapsed;
+                            self.settings.prefs.picker_collapsed =
+                                !self.settings.prefs.picker_collapsed;
                         }
                     });
-                    let modes: Vec<SelectMode> = if self.prefs.picker_collapsed {
-                        vec![self.prefs.select_mode]
+                    let modes: Vec<SelectMode> = if self.settings.prefs.picker_collapsed {
+                        vec![self.settings.prefs.select_mode]
                     } else {
                         SelectMode::ALL.to_vec()
                     };
                     for mode in modes {
-                        let active = selecting && self.prefs.select_mode == mode;
+                        let active = selecting && self.settings.prefs.select_mode == mode;
                         if picker_button(
                             ui,
                             select_mode_icon(mode),
@@ -91,24 +95,24 @@ impl EditorApp {
                         )
                         .clicked()
                         {
-                            self.prefs.select_mode = mode;
+                            self.settings.prefs.select_mode = mode;
                             if !selecting {
-                                self.interaction.spline.points.clear();
+                                self.interaction.clear_spline_points();
                                 self.set_tool(Tool::Select);
                             }
                         }
                     }
-                    if !self.prefs.picker_collapsed {
+                    if !self.settings.prefs.picker_collapsed {
                         self.user_tool_buttons(ui);
                     }
                 });
             });
-        self.rail_rect = Some(area.response.rect);
+        self.ui.rail_rect = Some(area.response.rect);
         let offset = area.response.rect.min - viewport.min;
-        if (offset.x - self.prefs.picker_pos[0]).abs() > 0.5
-            || (offset.y - self.prefs.picker_pos[1]).abs() > 0.5
+        if (offset.x - self.settings.prefs.picker_pos[0]).abs() > 0.5
+            || (offset.y - self.settings.prefs.picker_pos[1]).abs() > 0.5
         {
-            self.prefs.picker_pos = [offset.x, offset.y];
+            self.settings.prefs.picker_pos = [offset.x, offset.y];
         }
     }
 }

@@ -58,7 +58,8 @@ impl TileClipboard {
             .iter()
             .map(|((dx, dy), values)| {
                 let tile = (origin.0 + dx, origin.1 + dy);
-                let mut intent = TerrainPaintIntent::new(tile);
+                let mut intent =
+                    TerrainPaintIntent::new(osrs_core::coords::MapTile::new(tile.0, tile.1));
                 intent.underlay = Some(
                     (values.underlay != 0)
                         .then(|| FloorUnderlayId::new(u32::from(values.underlay))),

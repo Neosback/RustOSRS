@@ -1,8 +1,10 @@
-# RustOSRS Editor Architecture Contract v2
+# RustOSRS Editor Architecture Contract v3
 
-Status: Adopted architecture baseline after terrain-path semantic-session integration.
+Status: Adopted ownership baseline with headless tool planners, encapsulated runtimes, and enforceable feature navigation.
 
-This document is the authoritative repository-level architecture contract for the RustOSRS editor. `DEV_HANDOFF.md` records the current implementation checkpoint, live branch, exact SHAs, validation state, and next boundary. Repository documentation, not chat history or model memory, is the source of truth for implementation decisions.
+This document is the authoritative repository-level architecture contract for the RustOSRS editor. `DEV_HANDOFF.md` records the current implementation checkpoint, live branch, exact SHAs, validation state, and next boundary. Repository documentation, not chat history or model memory, is the source of truth for implementation decisions. User instructions control authorized task scope. Live Git state controls branch/SHA facts; reconcile stale operational notes rather than treating them as current repository state.
+
+Start with `AGENTS.md`. `index.md` uses this same authority order: semantic specifications for OSRS behavior; this contract for repository ownership and coding boundaries; accepted ADRs for decision rationale; current handoff/status for operational checkpoints; blueprint/plans for target work and historical sequencing. A disagreement between authorities must be reconciled explicitly, never resolved by silently creating another implementation.
 
 ## 1. Architectural decision
 
@@ -694,7 +696,7 @@ Do not create a checkpoint called "rewrite the editor architecture".
 
 ### Stop after every checkpoint
 
-After completing a checkpoint:
+Unless the user has explicitly authorized a sequence of checkpoints, after completing a checkpoint:
 
 1. update tests
 2. update `DEV_HANDOFF.md` when architecture/state changed
@@ -704,7 +706,7 @@ After completing a checkpoint:
 6. report what remains
 7. stop
 
-Do not automatically begin the next checkpoint. Wait for explicit user direction such as `continue` or `go ahead`.
+Do not expand into another checkpoint without authorization. An explicit request to implement a multi-checkpoint plan authorizes that sequence; validate/report checkpoints while continuing the authorized work. Merging and publishing remain separately authorized actions.
 
 ### No silent scope expansion
 
@@ -1041,3 +1043,19 @@ When a clever abstraction conflicts with simple deterministic data flow, choose 
 When making one checkpoint larger conflicts with preserving single semantic authority, preserve single authority and explicitly redefine the checkpoint rather than hiding duplicate authority.
 
 The repository must be understandable from the repository itself. Chat history and model memory are never architectural dependencies.
+
+## 23. Implemented ownership and contributor contracts
+
+ADR-0011 records the current ownership refinement. `docs/architecture/FEATURE-MAP.md` explains the flow and adapters; `scripts/editor_features.json` is the executable controller/planner/gateway/test index.
+
+- Paint, Height and Path patch planning now live in `osrs-edit`; its only current production dependencies are `osrs-core` and serde for canonical persisted setting values. UI/GPU/platform dependencies are explicitly forbidden by the manifest guard, including renamed and target-specific dependencies.
+- Domain Paint/Path intent coordinates use `MapTile`. Existing application DTO conversion stays at the editor boundary.
+- Interaction fields are private. Camera operations, selection/hover, clipboard, marquee, tool-key, object/gizmo gesture lifecycle and spline preview admission use narrow methods. Pointer polling, world queries, gizmo widget configuration and semantic commit effects remain application orchestration.
+- `ProjectRuntime` owns source identity and native persistence/replacement policy. Native I/O and browser support terminate at platform adapters. Pending project diffs survive failed projections until explicit completion.
+- UI-local state, notices and window/modal policy live in `UiRuntime`; Script drawing returns text to execute after the widget callback. Preferences/key bindings and persistence cadence live in `SettingsRuntime`.
+- Diagnostics own performance/smoke hooks and an optional 256-event trace. Structured events correlate semantic transitions, source-plane footprints, invalidation reasons and FIFO build identities. They are observations, not acceptance predicates. Native and WASM use the same main-thread observer boundary.
+- Plugins, floor palettes and CPU picking/outline projections have dedicated owners. `TerrainController` remains an explicitly temporary, non-authoritative preview/history-routing adapter with a documented removal condition.
+
+`scripts/editor_app_surface.json` records existing broad application methods and composition fields. New feature behavior must go on its owner. Removed methods require pruning their entries, so the baseline can only ratchet down during routine extraction. Deliberate composition/API changes require explicit ownership review rather than automatic baseline regeneration. The ratchet complements Rust privacy and behavioral tests; it cannot prove cohesion or detect all possible alternate implementations.
+
+Every new mutating Tool variant must register actual planning, cancellation, commit and undo tests. Existing parity fixtures and dependency-proof invalidation are retained.

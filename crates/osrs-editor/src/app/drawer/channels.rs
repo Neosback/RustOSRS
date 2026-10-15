@@ -8,8 +8,8 @@ impl EditorApp {
         let under = Color32::from_rgb(58, 98, 66);
         let over = OverlayFill::Color(Color32::from_rgb(214, 196, 150));
         let (mut shape, mut rotation) = (
-            self.prefs.brush.shape.shape,
-            self.prefs.brush.shape.rotation,
+            self.settings.prefs.brush.shape.shape,
+            self.settings.prefs.brush.shape.rotation,
         );
         let mut picked = false;
         egui::ScrollArea::horizontal()
@@ -77,16 +77,16 @@ impl EditorApp {
                     });
                 });
             });
-        self.prefs.brush.shape.shape = shape;
-        self.prefs.brush.shape.rotation = rotation;
+        self.settings.prefs.brush.shape.shape = shape;
+        self.settings.prefs.brush.shape.rotation = rotation;
         if picked {
-            self.prefs.brush.shape.armed = true;
+            self.settings.prefs.brush.shape.armed = true;
         }
     }
 
     /// The Paint tool's height channel: one height for every tile the brush paints.
     pub(super) fn height_channel(&mut self, ui: &mut egui::Ui) {
-        let channel = &mut self.prefs.brush.height;
+        let channel = &mut self.settings.prefs.brush.height;
         let mut value = elevation(channel.value);
         ui.add_space(6.0);
         ui.horizontal(|ui| {
@@ -116,7 +116,7 @@ impl EditorApp {
 
     /// The Paint tool's mask channel: the flags every painted tile gets.
     pub(super) fn flag_options(&mut self, ui: &mut egui::Ui) {
-        let flags = &mut self.prefs.brush.flags;
+        let flags = &mut self.settings.prefs.brush.flags;
         ui.add_space(6.0);
         ui.horizontal_wrapped(|ui| {
             for (bit, name, tip) in FLAG_BITS {
@@ -137,7 +137,7 @@ impl EditorApp {
 
     /// The Height tool's options.
     pub(super) fn height_tool_options(&mut self, ui: &mut egui::Ui) {
-        let mut tool = self.prefs.height_tool.clone();
+        let mut tool = self.settings.prefs.height_tool.clone();
         ui.add_space(2.0);
         ui.horizontal(|ui| {
             for op in HeightOp::ALL {
@@ -182,8 +182,8 @@ impl EditorApp {
             });
         }
         let op = tool.op;
-        self.prefs.height_tool = tool;
-        let selected = self.interaction.selection_tiles.len();
+        self.settings.prefs.height_tool = tool;
+        let selected = self.interaction.selection_tiles().len();
         ui.horizontal(|ui| {
             ui.weak(op.hint());
             if selected > 0

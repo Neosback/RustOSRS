@@ -49,7 +49,7 @@ fn intents_set_every_channel_at_the_target_offset() {
 
     assert_eq!(intents.len(), 2);
     let first = &intents[0];
-    assert_eq!(first.tile, (3200, 3300));
+    assert_eq!(first.tile, osrs_core::coords::MapTile::new(3200, 3300));
     assert_eq!(first.underlay, Some(Some(FloorUnderlayId::new(7))));
     assert_eq!(first.overlay, Some(Some(FloorOverlayId::new(12))));
     assert_eq!(
@@ -65,7 +65,7 @@ fn intents_set_every_channel_at_the_target_offset() {
 
     // A tile without an overlay clears the target's overlay and carries no shape.
     let second = &intents[1];
-    assert_eq!(second.tile, (3201, 3300));
+    assert_eq!(second.tile, osrs_core::coords::MapTile::new(3201, 3300));
     assert_eq!(second.underlay, Some(None));
     assert_eq!(second.overlay, Some(None));
     assert_eq!(second.overlay_shape, None);

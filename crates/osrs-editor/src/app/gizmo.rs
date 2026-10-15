@@ -107,7 +107,7 @@ impl EditorApp {
         }
         let (mut x, mut y, mut z) = (0.0, 0.0, 0.0);
         for spec in specs {
-            let corners = crate::interact::tile_corners(&self.infos, spec.tile, spec.plane)?;
+            let corners = crate::interact::tile_corners(self.world.infos(), spec.tile, spec.plane)?;
             x += f64::from(spec.tile.0) * 128.0 + 64.0;
             z += f64::from(spec.tile.1) * 128.0 + 64.0;
             y += corners.iter().map(|c| c[1]).sum::<f64>() / 4.0;
@@ -130,10 +130,10 @@ impl EditorApp {
         response: &egui::Response,
     ) {
         let specs = self.selected_specs();
-        if self.prefs.tool != Tool::Objects
-            || !self.prefs.object_gizmo
+        if self.settings.prefs.tool != Tool::Objects
+            || !self.settings.prefs.object_gizmo
             || specs.is_empty()
-            || self.context_menu.is_some()
+            || self.ui.context_menu.is_some()
             || self.modal_open()
         {
             self.interaction.cancel_gizmo_drag();
@@ -143,8 +143,8 @@ impl EditorApp {
             self.interaction.cancel_gizmo_drag();
             return;
         };
-        let (view_matrix, projection_matrix) = gizmo_matrices(&self.interaction.camera, viewport);
-        self.interaction.gizmo.update_config(GizmoConfig {
+        let (view_matrix, projection_matrix) = gizmo_matrices(self.interaction.camera(), viewport);
+        self.interaction.configure_gizmo(GizmoConfig {
             view_matrix,
             projection_matrix,
             viewport,
@@ -156,7 +156,7 @@ impl EditorApp {
             snapping: true,
             snap_distance: 128.0,
             snap_angle: std::f32::consts::FRAC_PI_2,
-            ..*self.interaction.gizmo.config()
+            ..*self.interaction.gizmo().config()
         });
         let target = self.interaction.gizmo_drag().map_or_else(
             || Transform::from_scale_rotation_translation(DVec3::ONE, DQuat::IDENTITY, origin),
@@ -180,7 +180,7 @@ impl EditorApp {
                 .begin_object_drag((0, 0), drag.specs().to_vec());
             self.interaction.update_object_drag(delta);
         }
-        let focused = self.interaction.gizmo.is_focused();
+        let focused = self.interaction.gizmo().is_focused();
         self.interaction.update_gizmo_busy(focused);
         if self.interaction.gizmo_drag().is_some() && !ui.input(|i| i.pointer.primary_down()) {
             self.finish_gizmo_drag();
@@ -197,10 +197,10 @@ impl EditorApp {
         targets: &[Transform],
     ) -> Option<(GizmoResult, Vec<Transform>)> {
         let ctx = ui.ctx();
-        self.interaction.gizmo.update_config(GizmoConfig {
+        self.interaction.configure_gizmo(GizmoConfig {
             viewport,
             pixels_per_point: ctx.pixels_per_point(),
-            ..*self.interaction.gizmo.config()
+            ..*self.interaction.gizmo().config()
         });
         let cursor = ctx.input(|i| i.pointer.hover_pos()).unwrap_or_default();
         // Only the primary button works the gizmo; the camera's buttons pass through it.
@@ -210,7 +210,7 @@ impl EditorApp {
                 i.pointer.button_down(egui::PointerButton::Primary),
             )
         });
-        let result = self.interaction.gizmo.update(
+        let result = self.interaction.sample_gizmo(
             GizmoInteraction {
                 cursor_pos: (cursor.x, cursor.y),
                 hovered: response.hovered() || response.dragged(),
@@ -219,7 +219,7 @@ impl EditorApp {
             },
             targets,
         );
-        let draw = self.interaction.gizmo.draw();
+        let draw = self.interaction.gizmo().draw();
         egui::Painter::new(ctx.clone(), ui.layer_id(), viewport).add(egui::Mesh {
             indices: draw.indices,
             vertices: draw
@@ -255,7 +255,7 @@ impl EditorApp {
         if delta != (0, 0) {
             self.move_objects(drag.specs().to_vec(), delta);
         } else if quarters.rem_euclid(4) != 0 {
-            self.interaction.selection_objects.clear();
+            self.interaction.retain_primary_object();
             self.rotate_selected_objects(quarters.rem_euclid(4) as i8);
         }
     }
