@@ -4,10 +4,12 @@
 //! which builds are in flight, which regions or zones wait for a rebuild after an edit, and the
 //! animation worker's schedule. It never owns edited map semantics; those live in `EditorSession`.
 
+mod builds;
 mod invalidation;
 mod stats;
 
 use self::{
+    builds::BuildTracker,
     invalidation::{ProjectionInvalidation, projection_invalidation, zone_region},
     stats::RegionStats,
 };
@@ -62,8 +64,8 @@ pub(super) struct WorldRuntime {
     presentation_hd: bool,
     /// Regions resident on the GPU (`None` = the cache has no map data there).
     loaded: HashMap<RegionKey, Option<RegionStats>>,
-    /// At most one build per region is in flight; its scope controls extraction and installation.
-    in_flight: HashMap<RegionKey, RegionBuildScope>,
+    /// FIFO request identity and per-region projection epochs for stale-result rejection.
+    builds: BuildTracker,
     /// Regions waiting for a conservative full rebuild after an edit.
     dirty_regions: HashSet<RegionKey>,
     /// Fine-grained terrain zones waiting for refresh, grouped by their owning region.
@@ -85,7 +87,7 @@ impl WorldRuntime {
             presentation_generation: 1,
             presentation_hd: false,
             loaded: HashMap::new(),
-            in_flight: HashMap::new(),
+            builds: BuildTracker::default(),
             dirty_regions: HashSet::new(),
             dirty_zones: HashMap::new(),
             ready: false,
@@ -123,7 +125,7 @@ impl WorldRuntime {
     pub(super) fn replace_streamer(&mut self, streamer: RegionStreamer) -> RegionStreamer {
         self.dirty_regions.clear();
         self.dirty_zones.clear();
-        self.in_flight.clear();
+        self.builds.reset_source();
         self.ready = false;
         std::mem::replace(&mut self.streamer, streamer)
     }
@@ -169,7 +171,7 @@ impl WorldRuntime {
             self.animations.remove_region(key);
         }
         self.loaded.clear();
-        self.in_flight.clear();
+        self.builds.cancel_all();
         self.dirty_regions.clear();
         self.dirty_zones.clear();
         self.animation.dirty = true;
@@ -203,35 +205,32 @@ impl WorldRuntime {
         }
     }
 
-    /// The cache has no map data at `key` (or the build failed). A failed zone refresh leaves the
-    /// previously resident region intact because its static GPU projection was never replaced.
-    pub(super) fn region_absent(&mut self, key: RegionKey) -> RegionBuildScope {
-        let scope = self
-            .in_flight
-            .remove(&key)
-            .unwrap_or(RegionBuildScope::Full);
+    /// Mark a current build as absent. Stale completions are filtered by [`Self::build_finished`]
+    /// before this method is called, so they cannot overwrite newer residency state.
+    pub(super) fn region_absent(&mut self, key: RegionKey, scope: &RegionBuildScope) {
         if matches!(scope, RegionBuildScope::Full) {
             self.loaded.insert(key, None);
         }
-        scope
     }
 
-    /// Finish one build and return the scope that should be installed from its result.
-    pub(super) fn build_finished(&mut self, key: RegionKey) -> RegionBuildScope {
-        self.in_flight
-            .remove(&key)
-            .unwrap_or(RegionBuildScope::Full)
+    /// Match one FIFO Region/Empty/Failed event to its editor-side build ticket.
+    ///
+    /// Returns `None` when the request was cancelled/replaced, a newer edit advanced the region's
+    /// projection epoch, or the request belongs to an older presentation generation.
+    pub(super) fn build_finished(&mut self, key: RegionKey) -> Option<RegionBuildScope> {
+        self.builds.finish(key, self.presentation_generation)
     }
 
     /// Request the nearest regions around `center` that are neither resident nor in flight.
     pub(super) fn request_missing(&mut self, center: RegionKey, radius: i32) {
         let wanted = wanted_regions(center, radius);
         for key in wanted {
-            if self.in_flight.len() >= MAX_IN_FLIGHT {
+            if self.builds.len() >= MAX_IN_FLIGHT {
                 break;
             }
-            if !self.loaded.contains_key(&key) && !self.in_flight.contains_key(&key) {
-                self.in_flight.insert(key, RegionBuildScope::Full);
+            if !self.loaded.contains_key(&key) && !self.builds.contains(&key) {
+                self.builds
+                    .request(key, RegionBuildScope::Full, self.presentation_generation);
                 self.streamer.request(RegionCoord::new(key.0, key.1));
             }
         }
@@ -243,7 +242,7 @@ impl WorldRuntime {
         let stale = stale_regions(self.loaded.keys().copied(), center, radius);
         for &key in &stale {
             self.loaded.remove(&key);
-            self.in_flight.remove(&key);
+            self.builds.cancel(key);
             self.dirty_regions.remove(&key);
             self.dirty_zones.remove(&key);
             self.animations.remove_region(key);
@@ -272,7 +271,7 @@ impl WorldRuntime {
     }
 
     pub(super) fn in_flight_count(&self) -> usize {
-        self.in_flight.len()
+        self.builds.len()
     }
 
     /// Mirror live/legacy tile edits and derive rebuild scope from their adapter coordinates.
@@ -341,6 +340,7 @@ impl WorldRuntime {
     /// Queue a full `region` rebuild if it is resident. Full invalidation subsumes queued zones.
     pub(super) fn mark_dirty(&mut self, region: RegionKey) {
         if self.loaded.contains_key(&region) {
+            self.builds.invalidate(region);
             self.dirty_zones.remove(&region);
             self.dirty_regions.insert(region);
         }
@@ -354,6 +354,7 @@ impl WorldRuntime {
         {
             return;
         }
+        self.builds.invalidate(region);
         self.dirty_zones.entry(region).or_default().insert(zone);
     }
 
@@ -364,15 +365,16 @@ impl WorldRuntime {
             .dirty_regions
             .iter()
             .copied()
-            .filter(|key| !self.in_flight.contains_key(key))
+            .filter(|key| !self.builds.contains(key))
             .collect();
         for key in full_ready {
-            if self.in_flight.len() >= MAX_IN_FLIGHT {
+            if self.builds.len() >= MAX_IN_FLIGHT {
                 break;
             }
             self.dirty_regions.remove(&key);
             self.dirty_zones.remove(&key);
-            self.in_flight.insert(key, RegionBuildScope::Full);
+            self.builds
+                .request(key, RegionBuildScope::Full, self.presentation_generation);
             self.streamer.request(RegionCoord::new(key.0, key.1));
         }
 
@@ -380,10 +382,10 @@ impl WorldRuntime {
             .dirty_zones
             .keys()
             .copied()
-            .filter(|key| !self.dirty_regions.contains(key) && !self.in_flight.contains_key(key))
+            .filter(|key| !self.dirty_regions.contains(key) && !self.builds.contains(key))
             .collect();
         for key in zone_ready {
-            if self.in_flight.len() >= MAX_IN_FLIGHT {
+            if self.builds.len() >= MAX_IN_FLIGHT {
                 break;
             }
             let Some(zones) = self.dirty_zones.remove(&key) else {
@@ -393,7 +395,11 @@ impl WorldRuntime {
                 continue;
             }
             let requested = zones.clone();
-            self.in_flight.insert(key, RegionBuildScope::Zones(zones));
+            self.builds.request(
+                key,
+                RegionBuildScope::Zones(zones),
+                self.presentation_generation,
+            );
             self.streamer
                 .request_zones(RegionCoord::new(key.0, key.1), requested);
         }
