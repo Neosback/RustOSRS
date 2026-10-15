@@ -4,28 +4,13 @@
 //! toolbar. Tiles are selected on the viewed plane; objects are those placed on it. The selection is
 //! what other tools act on ("apply to the selected tiles").
 
-use super::EditorApp;
+use super::{interaction_runtime::Marquee, EditorApp};
 use crate::interact;
 use crate::paint::SelectMode;
 use crate::pick::{self, ObjectPick};
 use crate::style::ColorKey;
 use eframe::egui::{self, Pos2, Rect, Stroke};
 use std::collections::HashSet;
-
-/// A box being dragged out with the left button.
-#[derive(Debug, Clone, Copy)]
-pub struct Marquee {
-    pub start: Pos2,
-    pub current: Pos2,
-    pub additive: bool,
-    pub toggle: bool,
-}
-
-impl Marquee {
-    pub fn rect(&self) -> Rect {
-        Rect::from_two_pos(self.start, self.current)
-    }
-}
 
 /// Most tiles drawn as selected at once (a box over a whole region is thousands).
 const MAX_DRAWN_TILES: usize = 6000;
@@ -101,12 +86,12 @@ impl EditorApp {
             || self.context_menu.is_some()
             || self.interaction.gizmo_busy
         {
-            self.interaction.marquee = None;
+            self.interaction.cancel_marquee();
             return;
         }
         // An armed object is placed by clicking; nothing else is selected or dragged meanwhile.
         if objects_tool && self.placer.is_armed() {
-            self.interaction.marquee = None;
+            self.interaction.cancel_marquee();
             if response.clicked() {
                 self.place_armed_object();
             }
@@ -114,7 +99,7 @@ impl EditorApp {
         }
         // Dragging a selected object moves it (Objects tool); that drag is not a box.
         if self.object_drag_input(ctx, response) {
-            self.interaction.marquee = None;
+            self.interaction.cancel_marquee();
             return;
         }
         let modifiers = ctx.input(|i| i.modifiers);
@@ -124,22 +109,17 @@ impl EditorApp {
             && !modifiers.alt
             && let Some(position) = ctx.input(|i| i.pointer.interact_pos())
         {
-            self.interaction.marquee = Some(Marquee {
-                start: position,
-                current: position,
-                additive,
-                toggle,
-            });
+            self.interaction
+                .begin_marquee(position, additive, toggle);
         }
-        if let Some(marquee) = &mut self.interaction.marquee {
-            if let Some(position) = ctx.input(|i| i.pointer.interact_pos()) {
-                marquee.current = position.clamp(rect.min, rect.max);
-            }
-            marquee.additive |= additive;
-            marquee.toggle |= toggle;
-        }
+        self.interaction.update_marquee(
+            ctx.input(|i| i.pointer.interact_pos()),
+            rect,
+            additive,
+            toggle,
+        );
         if response.drag_stopped_by(primary)
-            && let Some(marquee) = self.interaction.marquee.take()
+            && let Some(marquee) = self.interaction.finish_marquee()
         {
             let area = marquee.rect();
             if area.width() >= MIN_BOX || area.height() >= MIN_BOX {
@@ -389,7 +369,7 @@ impl EditorApp {
                 ));
             }
         }
-        if let Some(marquee) = &self.interaction.marquee {
+        if let Some(marquee) = self.interaction.marquee() {
             let accent = self.prefs.colors.get(ColorKey::TileSelectionOutline);
             painter.rect(
                 marquee.rect(),
