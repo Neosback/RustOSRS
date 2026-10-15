@@ -60,6 +60,9 @@ fn successful_execution_finalizes_once_and_returns_receipt() {
     assert_eq!(receipt.revision, revision_before + 1);
     assert!(receipt.impact.contains(ChangeImpact::TERRAIN_GEOMETRY));
     assert_eq!(receipt.touched_regions, vec![RegionCoord::new(51, 50)]);
+    assert_eq!(receipt.footprint.terrain_tiles, Vec::<MapTile>::new());
+    assert_eq!(receipt.footprint.height_vertices, vec![edited.corner]);
+    assert_eq!(receipt.footprint.object_tiles, Vec::<MapTile>::new());
     assert_eq!(runtime.document().height_at(edited), Some(64));
     assert!(runtime.can_undo());
     assert!(!runtime.can_redo());
@@ -133,16 +136,13 @@ fn successful_undo_replay_finalizes_once_and_returns_receipt() {
         .commit(height_patch(coord, 0, 64))
         .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
     let revision_before = runtime.revision();
+    let footprint = EditFootprint::new([], [coord.corner], []);
 
     let result = runtime
-        .replay(
-            EditReplayDirection::Undo,
-            vec![RegionCoord::new(50, 50), RegionCoord::new(50, 50)],
-            |document| {
-                assert_eq!(document.height_at(coord), Some(0));
-                Ok::<_, &'static str>("undo projected")
-            },
-        )
+        .replay(EditReplayDirection::Undo, footprint.clone(), |document| {
+            assert_eq!(document.height_at(coord), Some(0));
+            Ok::<_, &'static str>("undo projected")
+        })
         .unwrap_or_else(|error| unreachable!("gateway Undo succeeds: {error:?}"));
 
     let EditExecution::Committed {
@@ -155,6 +155,7 @@ fn successful_undo_replay_finalizes_once_and_returns_receipt() {
     assert_eq!(projection, "undo projected");
     assert_eq!(receipt.revision, revision_before + 1);
     assert_eq!(receipt.touched_regions, vec![RegionCoord::new(50, 50)]);
+    assert_eq!(receipt.footprint, footprint);
     assert_eq!(runtime.document().height_at(coord), Some(0));
     assert!(runtime.can_redo());
 }
@@ -179,7 +180,7 @@ fn failed_redo_replay_projection_restores_exact_pre_transaction_state() {
 
     let result = runtime.replay(
         EditReplayDirection::Redo,
-        vec![RegionCoord::new(50, 50)],
+        EditFootprint::new([], [coord.corner], []),
         |document| {
             assert_eq!(document.height_at(coord), Some(64));
             Err::<(), _>("injected Redo projection failure")
@@ -218,6 +219,7 @@ fn rollback_invariant_failure_is_explicit() {
         commit.revision,
         commit.impact,
         vec![RegionCoord::new(50, 50)],
+        EditFootprint::new([], [first.corner], []),
         checkpoint,
         Err::<(), _>("projection failed after intervening mutation"),
     );
@@ -254,6 +256,7 @@ fn finalize_invariant_failure_is_explicit() {
         commit.revision,
         commit.impact,
         vec![RegionCoord::new(50, 50)],
+        EditFootprint::new([], [first.corner], []),
         checkpoint,
         Ok::<_, &'static str>(()),
     );
