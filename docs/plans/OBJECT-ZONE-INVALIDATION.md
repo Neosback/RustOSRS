@@ -1,6 +1,6 @@
 # Object Zone Invalidation Plan
 
-Status: O1 dependency audit and conservative fallback hardening complete; exact-head certification pending.
+Status: O1 certified; O2 canonical Object mutation footprint complete and code-certified. Final handoff-bearing O2 head certification pending.
 
 Branch: `refactor/object-zone-invalidation`
 
@@ -33,7 +33,7 @@ If the proof is absent, stale, incomplete, unsupported, or cannot represent muta
 
 ## O1 audit findings
 
-### 1. The current semantic footprint is too lossy
+### 1. The O1 semantic footprint was too lossy
 
 `MapOp::AddObject` and `MapOp::RemoveObject` already carry exact `ObjectPlacement` identity:
 
@@ -43,11 +43,9 @@ If the proof is absent, stale, incomplete, unsupported, or cannot represent muta
 - loc kind
 - orientation
 
-However, `EditFootprint` currently collapses Object mutations to anchor `MapTile` values. It also loses mutation polarity: removed versus added.
+At the O1 baseline, `EditFootprint` collapsed Object mutations to anchor `MapTile` values and lost mutation polarity: removed versus added.
 
-That was enough for region routing, but it cannot support exact Object dependency lookup.
-
-O2 must preserve canonical full placement identity and mutation polarity through commit receipts and semantic Undo/Redo replay.
+O2 now preserves canonical full placement identity and mutation polarity through commit receipts and semantic Undo/Redo replay.
 
 ### 2. Renderer ownership is anchor-zone based, but scene dependencies are not
 
@@ -117,11 +115,11 @@ Before O1, Object-only semantic impact (`LOCATIONS | COLLISION | BOUNDS`) caused
 
 O1 hardens the fallback to the complete 3x3 producer-region ring around every touched Object region. This matches the set of neighboring region producers whose contextual windows can include anchors from the touched region under the current streaming architecture.
 
-No 8x8 Object narrowing is enabled by O1.
+No 8x8 Object narrowing is enabled by O1 or O2.
 
 ## O1 production change
 
-`projection_invalidation` now treats any Object footprint as requiring `expand_regions(touched_regions, 1)`.
+`projection_invalidation` treats any Object footprint as requiring `expand_regions(touched_regions, 1)`.
 
 This means:
 
@@ -130,7 +128,73 @@ This means:
 - Height-only and Paint-only behavior is unchanged
 - no Object dependency metadata is trusted yet
 
-Focused tests assert that Object receipts now resolve to the 3x3 ring and continue to override Height zone proofs.
+Focused tests assert that Object receipts resolve to the 3x3 ring and continue to override Height zone proofs.
+
+O1 exact-head certification:
+
+- head: `643f760a7f318d5519fc9897a588d732afe0c293`
+- CI: `38699017109` / #1264 - SUCCESS
+- Tier A/B/C all green
+
+## O2 canonical Object mutation footprint
+
+O2 upgrades finalized semantic footprints without changing Object projection invalidation behavior.
+
+`EditFootprint` now retains two canonical semantic sets:
+
+- `object_removed: Vec<ObjectPlacement>`
+- `object_added: Vec<ObjectPlacement>`
+
+Each placement retains exact:
+
+- object id
+- source plane
+- world anchor tile
+- loc kind
+- orientation
+
+`object_tiles` remains only as a derived compatibility summary for the existing O1 region fallback. It is no longer the only retained Object mutation identity.
+
+Canonical Object placement sets are ordered deterministically by:
+
+`(source plane, x, y, object id, loc kind, orientation)`
+
+Exact duplicate placements are deduplicated independently inside the removed and added sets.
+
+`EditFootprint::from_patch` preserves semantic patch polarity directly:
+
+- `RemoveObject` -> `object_removed`
+- `AddObject` -> `object_added`
+
+Semantic history replay reconstructs the same exact placements from the canonical Object history route:
+
+- Redo preserves the original removed/added polarity
+- Undo swaps the original added/removed sets
+
+Touched-region derivation continues to use the derived anchor-tile summary, so O1's 3x3 producer-region fallback remains unchanged.
+
+Worker Object projection and replay validation remain unchanged. O2 does not move semantic authority and does not enable 8x8 Object zone narrowing.
+
+Focused coverage now verifies:
+
+- exact placement identity survives finalized Object footprints
+- canonical ordering is deterministic
+- exact duplicate placements collapse
+- removed and added polarity remains separate
+- Undo reverses mutation polarity
+- Redo preserves original polarity
+- source plane, kind, orientation, object id, and anchor survive replay footprint reconstruction
+- legacy anchor-tile region routing remains derived from those canonical placements
+
+O2 code-head certification:
+
+- code head: `fed985ea59db7737067b6d19d53844d2d4e9429a`
+- CI: `38700886057` / #1275 - SUCCESS
+- Tier A architecture/format/workspace/Clippy/WASM green
+- Tier B full workspace tests green
+- Tier C M3-M9 semantic/reference parity green
+
+The final documentation-bearing O2 branch head must be certified separately before O3 starts.
 
 ## Required Object dependency contract
 
@@ -158,12 +222,12 @@ A producer snapshot that cannot represent one of these effects must mark the rel
 
 ## Candidate proof strategies
 
-Two implementation families remain valid after O1:
+Two implementation families remain valid after O1/O2:
 
 1. **Causal dependency graph**: instrument scene construction so each input Object placement records the output zones and later placement decisions causally dependent on it, including suppressed/rejected/replaced candidates.
 2. **Producer output comparison**: retain enough accepted producer state/hash information to rebuild full contextual producer output and prove which 8x8 zones changed before narrowing installation.
 
-O2/O3 should choose the smallest architecture that can prove additions and removals without duplicating semantic authority.
+O3 should choose the smallest architecture that can prove additions and removals without duplicating semantic authority.
 
 Do not implement a simple `ObjectPlacement -> current output zones` table and call it complete; O1 proves that contract is insufficient for removals and placement-order effects.
 
@@ -171,11 +235,11 @@ Do not implement a simple `ObjectPlacement -> current output zones` table and ca
 
 ### O1 - dependency audit and conservative fallback hardening
 
-Status: COMPLETE; certification pending.
+Status: COMPLETE and CERTIFIED.
 
 Delivered:
 
-- audited semantic Object identity and current receipt lossiness
+- audited semantic Object identity and O1 receipt lossiness
 - audited replay ordering and game-object capacity behavior
 - audited fixed-slot replacement
 - audited wall-decoration host/displacement effects
@@ -186,18 +250,26 @@ Delivered:
 - hardened Object fallback to the 3x3 producer-region ring
 - retained zero Object zone narrowing
 
+Certification: `643f760a7f318d5519fc9897a588d732afe0c293`, CI #1264 / `38699017109`, SUCCESS.
+
 ### O2 - canonical Object mutation footprint
 
-Status: NOT STARTED.
+Status: COMPLETE; final documentation-bearing exact-head certification pending.
 
-Planned boundary:
+Delivered:
 
-- replace plane-less Object anchor tiles in finalized footprints with full canonical `ObjectPlacement` identity
-- preserve mutation polarity as exact removed and added placement sets
-- preserve deterministic canonical ordering/deduplication
-- reconstruct the same canonical mutation footprint for semantic Undo/Redo with polarity reversed correctly
-- retain the O1 3x3 region fallback
-- do not introduce Object zone narrowing yet
+- full canonical `ObjectPlacement` identity retained in finalized Object footprints
+- exact removed and added placement sets retained separately
+- deterministic canonical ordering and exact deduplication
+- patch execution preserves original mutation polarity
+- semantic Undo swaps mutation polarity exactly
+- semantic Redo preserves original mutation polarity
+- derived `object_tiles` compatibility summary retained only for existing region routing
+- O1 3x3 region fallback unchanged
+- no Object zone narrowing introduced
+- focused commit/replay footprint tests added
+
+Code certification: `fed985ea59db7737067b6d19d53844d2d4e9429a`, CI #1275 / `38700886057`, SUCCESS across Tier A/B/C.
 
 ### O3 - dependency/proof contract
 
