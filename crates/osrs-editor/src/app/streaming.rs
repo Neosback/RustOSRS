@@ -70,6 +70,12 @@ impl EditorApp {
                     let Some(scope) = scope else {
                         continue;
                     };
+                    // Accepted Object proof builds are full contextual/static worker results. Only
+                    // after the existing request/generation gates pass do we compare them with the
+                    // retained pre-edit producer output and possibly narrow the static install.
+                    let scope = self
+                        .world
+                        .resolve_install_scope(key, scope, &region.geometry);
                     match crate::session::adapt_region_map(&region.source) {
                         Ok(snapshot) => {
                             let _ = self.session.ingest_region(&snapshot);

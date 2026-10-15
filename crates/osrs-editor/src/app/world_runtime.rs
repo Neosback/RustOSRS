@@ -7,11 +7,13 @@
 mod builds;
 mod height_dependencies;
 mod invalidation;
+mod object_output_store;
 mod stats;
 
 use self::{
-    builds::BuildTracker,
+    builds::{BuildTracker, ObjectOutputStamp},
     height_dependencies::{HeightDependencyStamp, HeightDependencyStore},
+    object_output_store::ObjectOutputStore,
     stats::RegionStats,
 };
 use osrs_core::coords::RegionCoord;
@@ -38,7 +40,7 @@ pub(super) type ZoneKey = (i32, i32);
 /// What part of a resident region the current worker build is intended to refresh.
 ///
 /// The worker always assembles the full contextual scene. `Zones` narrows static extraction and GPU
-/// installation while source, picker, animation, and Height-dependency projections remain complete.
+/// installation while source, picker, animation, and dependency projections remain complete.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum RegionBuildScope {
     Full,
@@ -65,6 +67,8 @@ pub(super) struct WorldRuntime {
     loaded: HashMap<RegionKey, Option<RegionStats>>,
     /// Projection-only Height dependency data installed from accepted current worker builds.
     height_dependencies: HeightDependencyStore,
+    /// Accepted Object producer output plus pending pre/post comparison state.
+    object_outputs: ObjectOutputStore,
     /// FIFO request identity and per-region projection epochs for stale-result rejection.
     builds: BuildTracker,
     /// Regions waiting for a conservative full rebuild after an edit.
@@ -89,6 +93,7 @@ impl WorldRuntime {
             presentation_hd: false,
             loaded: HashMap::new(),
             height_dependencies: HeightDependencyStore::default(),
+            object_outputs: ObjectOutputStore::default(),
             builds: BuildTracker::default(),
             dirty_regions: HashSet::new(),
             dirty_zones: HashMap::new(),
@@ -128,6 +133,7 @@ impl WorldRuntime {
         self.dirty_regions.clear();
         self.dirty_zones.clear();
         self.height_dependencies.clear();
+        self.object_outputs.clear();
         self.builds.reset_source();
         self.ready = false;
         std::mem::replace(&mut self.streamer, streamer)
@@ -175,6 +181,7 @@ impl WorldRuntime {
         }
         self.loaded.clear();
         self.height_dependencies.clear();
+        self.object_outputs.clear();
         self.builds.cancel_all();
         self.dirty_regions.clear();
         self.dirty_zones.clear();
@@ -182,9 +189,9 @@ impl WorldRuntime {
         keys
     }
 
-    /// One accepted current region build finished; static status accounting follows the same
-    /// full/zone scope used by the renderer while animation and Height dependency state are replaced
-    /// from the complete contextual worker result.
+    /// One accepted current region build finished; static status accounting follows the resolved
+    /// full/zone install scope while animation and dependency state are updated from the accepted
+    /// contextual worker result.
     pub(super) fn region_installed(
         &mut self,
         key: RegionKey,
@@ -194,11 +201,18 @@ impl WorldRuntime {
         animations: Vec<AnimatedInstance>,
     ) {
         self.animations.insert_region(key, animations);
-        let stamp = HeightDependencyStamp::new(
-            self.builds.projection_epoch(key),
-            self.presentation_generation,
+        let projection_epoch = self.builds.projection_epoch(key);
+        let height_stamp =
+            HeightDependencyStamp::new(projection_epoch, self.presentation_generation);
+        let _ = self
+            .height_dependencies
+            .install(key, height_stamp, dependencies);
+        self.object_outputs.install(
+            key,
+            ObjectOutputStamp::new(projection_epoch, self.presentation_generation),
+            scope,
+            geometry,
         );
-        let _ = self.height_dependencies.install(key, stamp, dependencies);
         self.animation.dirty = true;
         match scope {
             RegionBuildScope::Full => {
@@ -222,6 +236,7 @@ impl WorldRuntime {
         if matches!(scope, RegionBuildScope::Full) {
             self.loaded.insert(key, None);
             self.height_dependencies.remove(key);
+            self.object_outputs.remove(key);
         }
     }
 
@@ -231,6 +246,18 @@ impl WorldRuntime {
     /// projection epoch, or the request belongs to an older presentation generation.
     pub(super) fn build_finished(&mut self, key: RegionKey) -> Option<RegionBuildScope> {
         self.builds.finish(key, self.presentation_generation)
+    }
+
+    /// Resolve one accepted worker result into the static install scope. Normal builds keep their
+    /// requested scope; a full build queued as an Object proof narrows to the exact changed zones
+    /// only when the retained pre-edit baseline is still exact and complete.
+    pub(super) fn resolve_install_scope(
+        &mut self,
+        key: RegionKey,
+        requested: RegionBuildScope,
+        geometry: &SceneGeometry,
+    ) -> RegionBuildScope {
+        self.object_outputs.resolve_scope(key, requested, geometry)
     }
 
     /// Request the nearest regions around `center` that are neither resident nor in flight.
@@ -255,6 +282,7 @@ impl WorldRuntime {
         for &key in &stale {
             self.loaded.remove(&key);
             self.height_dependencies.remove(key);
+            self.object_outputs.remove(key);
             self.builds.cancel(key);
             self.dirty_regions.remove(&key);
             self.dirty_zones.remove(&key);

@@ -3,6 +3,7 @@ use crate::app::edit_runtime::{EditFootprint, EditRuntime};
 use crate::session::EditorSession;
 use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::{HeightVertexCoord, MapDocument, MapOp, MapPatch};
+use osrs_world::LocSpec;
 
 fn plane() -> SourcePlane {
     SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))
@@ -10,6 +11,16 @@ fn plane() -> SourcePlane {
 
 fn coord() -> HeightVertexCoord {
     HeightVertexCoord::new(MapTile::new(3200, 3200), plane())
+}
+
+fn spec(object_id: u32, tile: (i32, i32), plane: u8, loc_type: u8, orientation: u8) -> LocSpec {
+    LocSpec {
+        object_id,
+        tile,
+        plane,
+        loc_type,
+        orientation,
+    }
 }
 
 fn height_patch(coord: HeightVertexCoord, before: i32, after: i32) -> MapPatch {
@@ -39,6 +50,37 @@ fn applied_runtime() -> EditRuntime {
 
 fn marker() -> EditStep {
     EditStep::semantic_height(vec![(0, 3200, 3200)])
+}
+
+#[test]
+fn object_history_footprint_reverses_exact_mutation_polarity_for_undo() {
+    let source = spec(100, (3200, 3200), 2, 10, 1);
+    let moved = spec(100, (3264, 3201), 3, 10, 2);
+    let route = Route::Object(ObjectHistoryRoute::new(vec![source], vec![moved]));
+
+    let redo = route.footprint(Direction::Redo);
+    assert_eq!(redo.object_removed.len(), 1);
+    assert_eq!(redo.object_added.len(), 1);
+    assert_eq!(
+        redo.object_removed[0].position.tile,
+        MapTile::new(3200, 3200)
+    );
+    assert_eq!(redo.object_removed[0].position.plane.index().get(), 2);
+    assert_eq!(redo.object_removed[0].object_id.get(), 100);
+    assert_eq!(redo.object_removed[0].kind.get(), 10);
+    assert_eq!(redo.object_removed[0].orientation.get(), 1);
+    assert_eq!(redo.object_added[0].position.tile, MapTile::new(3264, 3201));
+    assert_eq!(redo.object_added[0].position.plane.index().get(), 3);
+    assert_eq!(redo.object_added[0].orientation.get(), 2);
+    assert_eq!(
+        redo.object_tiles,
+        vec![MapTile::new(3200, 3200), MapTile::new(3264, 3201)]
+    );
+
+    let undo = route.footprint(Direction::Undo);
+    assert_eq!(undo.object_removed, redo.object_added);
+    assert_eq!(undo.object_added, redo.object_removed);
+    assert_eq!(undo.object_tiles, redo.object_tiles);
 }
 
 #[test]

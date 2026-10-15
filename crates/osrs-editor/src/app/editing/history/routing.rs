@@ -14,8 +14,13 @@ use crate::app::edit_runtime::{
 };
 use crate::app::object_tool::{ObjectHistoryRoute, build_object_history_projection};
 use crate::paint::TileValues;
-use osrs_core::coords::{MapTile, SourcePlane};
-use osrs_edit::{HeightVertexCoord, MapQuery};
+use osrs_core::{
+    coords::{MapTile, SourcePlane},
+    ids::ObjectId,
+};
+use osrs_edit::{
+    HeightVertexCoord, LocKind, MapPosition, MapQuery, ObjectOrientation, ObjectPlacement,
+};
 use osrs_world::{LocEdit, LocSpec};
 use web_time::Instant;
 
@@ -142,8 +147,10 @@ impl Route {
         }
     }
 
-    /// Reconstruct the semantic coordinate classes of the opaque session-history patch.
-    fn footprint(&self) -> EditFootprint {
+    /// Reconstruct the semantic coordinate classes of the opaque session-history patch. Object
+    /// replay retains exact placement identity and reports the mutation polarity of the replay that
+    /// is about to occur: Undo swaps the original removed/added sets, while Redo preserves them.
+    fn footprint(&self, direction: Direction) -> EditFootprint {
         let map_tiles = |keys: &[TileKey]| {
             keys.iter()
                 .map(|key| MapTile::new(key.1, key.2))
@@ -165,15 +172,18 @@ impl Route {
                 EditFootprint::new(map_tiles(&path.keys), height_vertices(&path.keys), [])
             }
             Self::Path(path) => EditFootprint::new(map_tiles(&path.keys), [], []),
-            Self::Object(object) => EditFootprint::new(
-                [],
-                [],
-                object
-                    .removed()
-                    .iter()
-                    .chain(object.added())
-                    .map(|spec| MapTile::new(spec.tile.0, spec.tile.1)),
-            ),
+            Self::Object(object) => {
+                let (removed, added) = match direction {
+                    Direction::Undo => (object.added(), object.removed()),
+                    Direction::Redo => (object.removed(), object.added()),
+                };
+                EditFootprint::with_object_mutations(
+                    [],
+                    [],
+                    removed.iter().copied().map(history_object_placement),
+                    added.iter().copied().map(history_object_placement),
+                )
+            }
         }
     }
 
@@ -253,6 +263,21 @@ impl Route {
     }
 }
 
+fn history_object_placement(spec: LocSpec) -> ObjectPlacement {
+    let plane = SourcePlane::new(spec.plane)
+        .unwrap_or_else(|| unreachable!("semantic Object history plane is canonical"));
+    let kind = LocKind::new(spec.loc_type)
+        .unwrap_or_else(|| unreachable!("semantic Object history loc kind is canonical"));
+    let orientation = ObjectOrientation::new(spec.orientation)
+        .unwrap_or_else(|| unreachable!("semantic Object history orientation is canonical"));
+    ObjectPlacement {
+        object_id: ObjectId::new(spec.object_id),
+        position: MapPosition::new(MapTile::new(spec.tile.0, spec.tile.1), plane),
+        kind,
+        orientation,
+    }
+}
+
 impl EditorApp {
     pub(in crate::app) fn undo(&mut self) {
         let Some(step) = self.history.pop() else {
@@ -288,7 +313,7 @@ impl EditorApp {
     fn route_semantic(&mut self, direction: Direction, step: EditStep, route: &Route) {
         let (label, word) = (route.label(), direction.word());
         let input = route.capture_projection_input(self);
-        let footprint = route.footprint();
+        let footprint = route.footprint(direction);
         let execution = self
             .session
             .replay(direction.gateway(), footprint, |document| {

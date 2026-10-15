@@ -1,6 +1,11 @@
 use super::*;
-use osrs_core::coords::{MapTile, SourcePlane};
-use osrs_edit::{HeightVertexCoord, MapDocument, MapOp};
+use osrs_core::{
+    coords::{MapTile, SourcePlane},
+    ids::ObjectId,
+};
+use osrs_edit::{
+    HeightVertexCoord, LocKind, MapDocument, MapOp, MapPosition, ObjectOrientation, ObjectPlacement,
+};
 
 fn plane() -> SourcePlane {
     SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))
@@ -8,6 +13,25 @@ fn plane() -> SourcePlane {
 
 fn vertex(x: i32, y: i32) -> HeightVertexCoord {
     HeightVertexCoord::new(MapTile::new(x, y), plane())
+}
+
+fn object(
+    object_id: u32,
+    x: i32,
+    y: i32,
+    plane_value: u8,
+    kind: u8,
+    orientation: u8,
+) -> ObjectPlacement {
+    let source_plane =
+        SourcePlane::new(plane_value).unwrap_or_else(|| unreachable!("test source plane is valid"));
+    ObjectPlacement {
+        object_id: ObjectId::new(object_id),
+        position: MapPosition::new(MapTile::new(x, y), source_plane),
+        kind: LocKind::new(kind).unwrap_or_else(|| unreachable!("test loc kind is valid")),
+        orientation: ObjectOrientation::new(orientation)
+            .unwrap_or_else(|| unreachable!("test orientation is valid")),
+    }
 }
 
 fn height_patch(coord: HeightVertexCoord, before: i32, after: i32) -> MapPatch {
@@ -72,9 +96,71 @@ fn successful_execution_finalizes_once_and_returns_receipt() {
         receipt.touched_regions.footprint.object_tiles,
         Vec::<MapTile>::new()
     );
+    assert!(receipt.touched_regions.footprint.object_removed.is_empty());
+    assert!(receipt.touched_regions.footprint.object_added.is_empty());
     assert_eq!(runtime.document().height_at(edited), Some(64));
     assert!(runtime.can_undo());
     assert!(!runtime.can_redo());
+}
+
+#[test]
+fn object_patch_footprint_preserves_exact_polarity_and_canonical_order() {
+    let removed_a = object(300, 64, -1, 2, 10, 3);
+    let removed_b = object(100, -64, 128, 0, 22, 1);
+    let added_a = object(300, 65, -1, 2, 10, 3);
+    let added_b = object(100, -63, 128, 0, 22, 1);
+    let patch = MapPatch::new([
+        MapOp::RemoveObject {
+            placement: removed_a,
+        },
+        MapOp::AddObject { placement: added_a },
+        MapOp::RemoveObject {
+            placement: removed_b,
+        },
+        MapOp::AddObject { placement: added_b },
+    ]);
+
+    let footprint = EditFootprint::from_patch(&patch);
+
+    assert_eq!(footprint.object_removed, vec![removed_b, removed_a]);
+    assert_eq!(footprint.object_added, vec![added_b, added_a]);
+    assert_eq!(
+        footprint.object_tiles,
+        vec![
+            MapTile::new(-64, 128),
+            MapTile::new(-63, 128),
+            MapTile::new(64, -1),
+            MapTile::new(65, -1),
+        ]
+    );
+    assert_eq!(
+        footprint.clone().into_touches().regions,
+        vec![
+            MapTile::new(-64, 128).split_region().0,
+            MapTile::new(-63, 128).split_region().0,
+            MapTile::new(64, -1).split_region().0,
+            MapTile::new(65, -1).split_region().0,
+        ]
+        .into_iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn object_mutation_constructor_deduplicates_exact_placements_without_losing_polarity() {
+    let removed = object(100, 3200, 3200, 0, 10, 1);
+    let added = object(100, 3201, 3200, 0, 10, 1);
+    let footprint =
+        EditFootprint::with_object_mutations([], [], [removed, removed], [added, added]);
+
+    assert_eq!(footprint.object_removed, vec![removed]);
+    assert_eq!(footprint.object_added, vec![added]);
+    assert_eq!(
+        footprint.object_tiles,
+        vec![MapTile::new(3200, 3200), MapTile::new(3201, 3200)]
+    );
 }
 
 #[test]

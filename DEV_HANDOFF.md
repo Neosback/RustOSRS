@@ -2,246 +2,251 @@
 
 Last updated: 2026-10-15
 
-`ARCHITECTURE.md` is the authoritative architecture contract. This file records the current integrated baseline, branch discipline, validation state, known hazards, and next allowed boundary.
+`ARCHITECTURE.md` is the authoritative architecture contract. This file records the current integrated baseline, active subsystem, exact validation state, hazards, and next allowed boundary.
 
 ## Project invariant
 
-`MapDocument` / `EditorSession` is authoritative edited map state. World-worker edits, rendered geometry, GPU resources, picker data, previews, and UI state are projections only.
+`MapDocument` / `EditorSession` is authoritative edited map state. World-worker edits, rendered geometry, GPU resources, picker data, previews, animation instances, dependency/proof snapshots, and UI state are projections only.
 
 If every projection vanished, the complete edited map must still exist correctly in the semantic session.
 
 ## Mandatory development protocol
 
-These rules apply to all continuing development unless the user explicitly changes them.
-
 1. Keep exactly one active development branch/system at a time.
 2. Do not start a second feature/refactor branch while the current branch is active.
-3. Break each subsystem into small, reviewable checkpoints.
-4. Stop after checkpoints unless the user explicitly directs continuation or completion/merge.
-5. Update `DEV_HANDOFF.md` as checkpoints close so repository state, exact SHAs, validation, hazards, and the next boundary stay current.
-6. Keep a subsystem on the same branch across checkpoints unless there is a concrete reason to close it.
-7. Do not mix unrelated architecture, renderer/117HD, cache, or UI work into the active subsystem branch.
-8. Before merging a completed subsystem, validate the exact final branch head with Tier A/B/C CI.
-9. **Merge the current subsystem into `main` before opening any new development branch.**
-10. After merge, validate exact integrated `main`, record the result here, and certify the final handoff-bearing `main` head if the documentation update itself advances `main`.
-11. Do not create the next branch until the prior subsystem is merged, final `main` is green, and the user explicitly directs the next subsystem.
-12. One logical user gesture produces at most one logical semantic transaction/history entry.
-13. Failed projection preparation must not leave semantic authority and visible projection knowingly divergent.
-14. Exact SHA matters. A green run certifies only the SHA it tested.
-15. New or fully refactored production Rust files remain under architecture guard limits. Do not introduce debt exceptions for convenience.
+3. Break each subsystem into reviewable checkpoints.
+4. Update this handoff at completed checkpoints with exact SHAs and validation.
+5. Keep one subsystem on the same branch until it is complete.
+6. Do not mix unrelated architecture, renderer/117HD, cache, or UI work into the active branch.
+7. Before merge, validate the exact final branch head with required Tier A/B/C CI.
+8. **Merge the current subsystem into `main` before opening any new development branch.**
+9. After merge, validate exact integrated `main`, update this handoff, and certify the final handoff-bearing `main` head if docs advance it.
+10. Exact SHA matters. A green run certifies only the SHA it tested.
+11. One logical user gesture produces at most one logical semantic transaction/history entry.
+12. Failed projection preparation must not knowingly leave semantic authority and visible projection divergent.
+13. Do not introduce architecture-guard debt exceptions for convenience.
 
-The user explicitly reinforced rule 9 on 2026-10-15 after noticing multiple refs while `main` had not advanced. Treat merge-before-new-branch as a hard operating rule.
+## Certified integrated baseline before current branch
 
-## Current integrated baseline
-
-Latest integrated subsystem:
+Latest merged subsystem before Object work:
 PR #51 - `refactor(editor): zone-scope certified Height invalidation`
 
-Certified final Height branch head:
-`55de16566a1a46337b678239ab8d9b352d5348f2`
-
-Branch CI:
-`38696356751` / #1256 - SUCCESS.
-
-Integrated Height merge commit on `main`:
+Height merge commit on `main`:
 `fb2fd2874b18d11bef689fa1954751bcdc64273b`
 
-Post-merge integrated `main` CI:
+Post-merge integrated-main CI:
 `38696859752` / #1258 - SUCCESS.
 
-That post-merge run passed:
+Final handoff-bearing `main` head before Object work:
+`a7b9fb47835ab00b25db7c02e1aa3ca3157a054b`
 
-- Tier A architecture boundaries and architecture guard
-- reference regeneration safety
-- historical deob golden index
-- rustfmt
-- workspace compile
-- strict Clippy
-- WebAssembly portability
-- Tier B full workspace tests
-- Tier C M3 checked-in decode fixtures and deterministic fuzz
-- M4 fixture inventory, exact model construction, and fuzz
-- M5 normalized fixture runner
-- M6 semantic scene suite
-- M7 normals/lighting/finalization
-- M8 morph/contour/animation/replacement
-- M9 semantic closure and golden hashes
+Final baseline CI:
+`38697404691` / #1260 - SUCCESS across Tier A/B/C.
 
-After the merge certification, `docs/plans/HEIGHT-ZONE-INVALIDATION.md` was updated on `main` in docs-only commit:
-`5e266b104fd471725bbfa027c90d92d6f0f20a8a`
+## Current active subsystem
 
-This handoff refresh itself creates the final docs-only `main` head. That exact resulting SHA must receive a final CI pass before another development branch is allowed. Do not make another documentation commit merely to self-record that SHA; report it externally after CI.
+Branch: `refactor/object-zone-invalidation`
 
-## Repository branch/PR state
+Base `main`: `a7b9fb47835ab00b25db7c02e1aa3ca3157a054b`
 
-- PR #51 is merged.
-- There are no open PRs.
-- No new development branch has been created after the Height merge.
-- `tmp-noop-should-not-create` points to old H2 snapshot `0fbd4d907004e9b6b0353842f9bec9f9ff963c2b`.
-- Comparison `tmp-noop-should-not-create...main` showed the temporary ref is **0 commits ahead and 27 commits behind** integrated `main` before the docs refresh.
-- Therefore the temporary ref contains no unmerged work and is not an active subsystem.
+Plan: `docs/plans/OBJECT-ZONE-INVALIDATION.md`
 
-If branch-deletion capability becomes available, `tmp-noop-should-not-create` may be deleted as cleanup. Its existence must never be treated as permission to develop on it.
+Goal: exact Object 8x8 static installation only when every required producer is proven from accepted output, with conservative fail-closed behavior otherwise.
 
-## Completed Height zone invalidation subsystem
+Object checkpoints O1-O5 are complete and code-certified. O6 final documentation-bearing branch certification, PR/merge, integrated-main validation, and final handoff certification is next.
 
-Goal achieved:
-Height edits can now use exact 8x8 projection-zone invalidation when dependency metadata proves every affected output, while preserving conservative region fallback whenever correctness cannot be proven.
+No second development branch may be created during O6.
 
-### H1 - dependency audit
+## O1 - conservative Object fallback hardening
 
-COMPLETE AND CERTIFIED.
+Status: COMPLETE and CERTIFIED.
 
-Head:
-`73694a9d97fd2845c8ed818400430709d6c704c5`
+Head: `643f760a7f318d5519fc9897a588d732afe0c293`
+CI: `38699017109` / #1264 - SUCCESS across Tier A/B/C.
 
-CI:
-`38688385096` / #1221 - SUCCESS.
+O1 established that Object invalidation is not safely reducible to an anchor radius or a current-visible-placement map because of:
 
-Conclusion: a universal fixed Height radius was not proven safe across placement, contouring, dynamic models, and downstream scene relationships.
+- five-per-tile game-object capacity and order dependence
+- fixed-slot replacement/reveal
+- wall-decoration host/displacement effects
+- loc shadow effects on terrain lighting
+- ModelData normal reconciliation
+- dynamic/morphed/omitted/rejected placement behavior
+- 104x104 producer context around owned 64x64 output
 
-### H2 - dependency metadata contract
+O1 corrected the old Object-only under-invalidation by making any unproven Object footprint rebuild the complete 3x3 producer-region ring around touched Object regions.
 
-COMPLETE AND CERTIFIED.
+That 3x3 policy remains the mandatory fail-closed fallback.
 
-Head:
-`c59eea2cadffbc5861f6ecf8c138a9a0b6b11f99`
+## O2 - canonical Object mutation footprint
 
-CI:
-`38689828881` / #1227 - SUCCESS.
+Status: COMPLETE and CERTIFIED.
 
-Delivered canonical Height source identity, deterministic source-to-zone mapping, freshness stamps, explicit complete/incomplete state, producer-region validation, and fail-closed lookup/merge semantics.
+Code head: `fed985ea59db7737067b6d19d53844d2d4e9429a`
+Code CI: `38700886057` / #1275 - SUCCESS.
 
-### H3 - runtime integration and planner
+Final O2 documentation-bearing head: `d61d9169d271c1dde9009707ff59d73cb8001716`
+Final O2 CI: `38701473420` / #1277 - SUCCESS across Tier A/B/C.
 
-COMPLETE.
+`EditFootprint` retains exact removed and added `ObjectPlacement` identities with object id, source plane, anchor tile, loc kind, and orientation. Ordering/deduplication is deterministic.
 
-Delivered:
+Semantic history behavior is exact:
 
-- canonical `HeightVertexCoord` in finalized footprints, including `SourcePlane`
-- canonical Height identity through semantic Undo/Redo replay
-- worker-produced `HeightDependencySnapshot` from full contextual scenes
-- terrain corner and slope-light dependency capture
-- rotated loc placement midpoint dependency capture
-- static lit-model contour dependency capture using actual final model X/Z radius
-- dependency installation only from accepted/current worker results
-- freshness tied to projection epoch and presentation generation
-- exact-zone planning only when every required resident non-empty producer is complete/current
-- mandatory region fallback for absent, stale, incomplete, unsupported, Object-mixed, or otherwise unproven cases
-- full contextual scene assembly unchanged
-- semantic authority retained in `EditorSession`
+- Undo swaps removed/added mutation polarity
+- Redo preserves original polarity
 
-### H4 - adversarial coverage
+The derived anchor-tile summary remains only for compatibility/routing.
 
-COMPLETE.
+## O3 - producer-output proof contract
 
-Coverage includes:
+Status: COMPLETE and CERTIFIED.
 
-- 8x8 zone edges
-- 64x64 region edges
-- negative Euclidean zone ownership
-- rotated/multi-tile placement midpoint sampling
-- contour sample expansion/clamping
-- deterministic dependency deduplication
-- missing/stale/incomplete metadata fallback
-- semantic Undo/Redo canonical Height footprints
-- stale in-flight build rejection
-- cancelled older result not consuming a newer request
+Head: `a555e07796a938676ddb3c4f7d0320dd480041aa`
+CI: `38703366564` / #1285 - SUCCESS across Tier A/B/C.
 
-`ModelData` normal-reconciliation and posed animated/dynamic contour cases intentionally remain fail-closed. They do not receive false exact-zone certification.
+O3 chose producer-output comparison instead of a guessed dependency radius.
 
-### H5 - exact-head certification and merge
+`ObjectOutputSnapshot` records producer region, explicit 8x8 coverage, exact per-zone `SceneGeometry`, and complete/incomplete state. Full snapshots explicitly cover all 64 owned zones, including empty zones.
 
-COMPLETE.
+Editor-side proof state is stamped with producer region, projection epoch, and presentation generation and exposes stale/incomplete/current lookup semantics.
 
-Final branch head:
-`55de16566a1a46337b678239ab8d9b352d5348f2`
+## O4 - accepted-build Object proof runtime
 
-Branch CI:
-`38696356751` / #1256 - SUCCESS.
+Status: COMPLETE and CERTIFIED.
 
-PR #51 merged as:
-`fb2fd2874b18d11bef689fa1954751bcdc64273b`
+Code head: `52eadc6284e71d9bc00de878d89cc67a0f0c7628`
+Code CI: `38705182639` / #1294 - SUCCESS across Tier A/B/C.
 
-Post-merge CI:
-`38696859752` / #1258 - SUCCESS.
+Documentation-bearing O4 head: `55f42228003770c3adc5ef5500a32052ebf1ff2a`
+Documentation-bearing O4 CI: `38705932458` / #1296 - SUCCESS across Tier A/B/C.
 
-## Integrated projection/edit architecture
+For Object edits the runtime now:
 
-`main` now includes:
+1. derives the O1 3x3 producer universe
+2. requires current, complete accepted pre-edit output for every required resident non-empty producer
+3. falls back to O1 full-region rebuilding if any producer is untrusted
+4. otherwise queues full contextual candidate producer builds
+5. accepts candidates only through the existing request identity, projection epoch, and presentation-generation gates
+6. compares accepted post-edit output with retained pre-edit output
+7. installs only exact changed static 8x8 zones when comparison is current and complete
+8. falls back to full producer installation for invalid proof state
 
-- central semantic `EditRuntime` execute/replay gateway
-- Paint, Height, Paste, Path, Objects, semantic Undo, and semantic Redo through the gateway
-- receipt-driven projection invalidation
-- pure terrain 8x8 zone invalidation
-- Height exact 8x8 zone invalidation when complete/current dependency proof exists
-- conservative Height region fallback for unproven cases
-- full contextual scene assembly with zone-scoped final static geometry emission
-- stale asynchronous region build rejection by request identity, projection epoch, and presentation generation
-- accepted-build Height dependency freshness tied to the same projection identity
+Full contextual scene assembly, region-complete inspection/picker state, animations, and Height dependencies remain intact.
 
-## Remaining major roadmap
+Later semantic invalidation cancels pending Object proof state and/or invalidates older candidates through the projection epoch.
 
-Each item below is a separate future subsystem and therefore a separate future branch. The current subsystem must always be merged before the next one starts.
+## O5 - adversarial coverage
 
-1. Object dependency footprint and zone invalidation.
-2. `InteractionRuntime` behavioral encapsulation.
-3. `ProjectRuntime` ownership extraction.
-4. `UiRuntime` ownership extraction.
-5. `DiagnosticsRuntime` ownership extraction.
-6. Reference renderer parity gates and external visual oracle work.
-7. 117HD dynamic/placed lights.
-8. 117HD sky/day-night/reflection systems and remaining effects.
-9. Edited-cache fingerprint/profile strategy, new-group support, and broader index repack when justified.
-10. Project/browser lifecycle polish and future import/merge product work.
+Status: COMPLETE and CERTIFIED.
+
+Certified O5 code head:
+`398545757f67b56cfb4bdb9b19864b620b1c822a`
+
+O5 CI:
+`38707609239` / #1300 - SUCCESS across Tier A/B/C.
+
+O5 added a test-only producer-output adversarial suite covering:
+
+- 8x8 zone-boundary changes
+- 64x64 producer-region boundary changes
+- fixed-slot replacement/reveal
+- wall-decoration host/displacement output changes
+- five-per-tile capacity reveal
+- overlapping capacity chains changing multiple output zones
+- clipped-wall shadow changing neighboring terrain output
+- type-10/11 footprint shadow changing terrain across a zone edge
+- ModelData normal-reconciliation changes in neighboring object output
+- incomplete dynamic/morphed/omitted candidate state failing closed
+- complete dynamic-only static no-op producing an exact empty diff
+
+Existing focused tests in the full Tier B workspace gate also cover:
+
+- semantic Undo/Redo exact mutation polarity
+- stale projection epoch rejection
+- stale presentation-generation rejection
+- old completion not consuming a newer request
+- missing/stale/incomplete Object proof fallback
+
+O5 changes no production behavior.
+
+## Object subsystem behavior at O5 closure
+
+The active branch now combines:
+
+- central semantic `EditRuntime` authority
+- exact canonical Object mutation footprints
+- full contextual producer CPU builds
+- accepted-output Object proof snapshots
+- exact changed-zone static GPU installation when proven
+- O1 3x3 region fallback for every untrusted proof state
+- stale async result rejection through request identity, projection epoch, and presentation generation
+- unchanged region-complete picker/inspection, animation, and Height dependency refresh behavior
+
+The proof answers the postcondition question "which producer-owned static zones actually changed?" rather than duplicating capacity, replacement, shadow, or normal-reconciliation dependency logic in the planner.
+
+## O6 - next allowed boundary
+
+Status: READY.
+
+The user explicitly authorized continuing and merging to `main` when the Object subsystem reaches a good stopping point. O1-O5 are complete, so O6 is authorized without another confirmation.
+
+O6 procedure:
+
+1. certify the exact final documentation-bearing Object branch head with Tier A/B/C
+2. confirm branch comparison to `main` has no unexpected divergence and remains Object-only plus plan/handoff documentation
+3. open one PR from `refactor/object-zone-invalidation` to `main`
+4. merge the PR before creating any new branch
+5. validate exact integrated `main` with Tier A/B/C
+6. update this handoff on `main` with final branch SHA, PR number, merge commit, and integrated-main CI
+7. certify the final handoff-bearing `main` head if the handoff commit advances `main`
+8. stop with no active next-subsystem branch
+
+Do not create another development branch during or immediately after O6.
+
+## Remaining major roadmap after Object merge
+
+Each item is a separate future subsystem/branch after final Object integrated `main` is certified and the user explicitly directs continuation:
+
+1. `InteractionRuntime` behavioral encapsulation
+2. `ProjectRuntime` ownership extraction
+3. `UiRuntime` ownership extraction
+4. `DiagnosticsRuntime` ownership extraction
+5. Reference renderer parity gates and external visual oracle
+6. 117HD dynamic/placed lights
+7. 117HD sky/day-night/reflection systems and remaining effects
+8. edited-cache fingerprint/profile strategy, new-group support, and broader index repack when justified
+9. project/browser lifecycle polish and future import/merge product work
 
 ## Cache/export current state
 
-Map stream encoding and existing map-group cache-copy repacking are implemented. Known limitations remain:
+Implemented:
+
+- locations exact 2936/2936
+- terrain 2935/2936 retained semantics
+- five-file repack exact
+- map stream encoding and cache-copy repack for existing map groups
+
+Known limitations:
 
 - only existing map-square groups are repacked
 - new groups absent from the reference table are not created
 - other indices are not generally rewritten by the editor export path
-- an edited cache copy intentionally no longer matches the bundled pristine-cache fingerprint/profile
+- edited cache copies intentionally no longer match the pristine-cache fingerprint/profile
 
-## Runtime ownership current state
-
-Completed ownership boundaries:
-
-- `EditRuntime`
-- `RenderRuntime`
-- `WorldRuntime`
-- `InteractionRuntime` field ownership
-
-Future behavioral/ownership extraction remains separate work.
-
-## 117HD current high-level state
+## 117HD high-level state
 
 Already substantially implemented:
 
 - render-profile/HDR foundation
-- HD data layer/material tables
+- HD data/material tables
 - HD terrain/model extraction
 - material replacement
-- ground blending and normals
+- ground blending/normals
 - environments/fog/directional lighting
-- directional shadows and filtering
+- directional shadows/filtering
 - water surfaces, flow/normal maps, foam, Fresnel, underwater tint/caustics
 - animated-loc HD material routing
 - material flow maps
 - parallax/displacement and displaced shadow position
 
-Large remaining systems include dynamic/placed point lights, full sky/day-night/reflection systems, remaining post-processing/settings parity, and remaining model/material edge cases.
-
-## Next allowed boundary
-
-**STOPPED AFTER HEIGHT SUBSYSTEM MERGE.**
-
-Before any new development branch may be created:
-
-1. certify the exact handoff-bearing `main` head created by this documentation refresh
-2. confirm no open PRs and no unmerged work on temporary refs
-3. report the integrated state to the user
-4. wait for explicit user direction naming or authorizing the next subsystem
-
-The likely next architecture item is Object dependency footprint and zone invalidation, but do not create that branch until the user explicitly directs it after this final `main` certification.
+Large remaining systems include dynamic/placed point lights, sky/day-night/reflection systems, remaining post-processing/settings parity, and remaining model/material edge cases.
