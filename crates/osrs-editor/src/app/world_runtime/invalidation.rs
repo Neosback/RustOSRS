@@ -105,6 +105,7 @@ pub(super) fn projection_invalidation(
         terrain_tiles,
         height_vertices,
         object_tiles,
+        ..
     } = footprint;
 
     // Every producer region builds a 104x104 contextual scene around its owned 64x64 output. An
