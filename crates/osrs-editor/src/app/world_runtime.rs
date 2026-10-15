@@ -6,6 +6,7 @@
 
 mod invalidation;
 mod stats;
+
 use self::{
     invalidation::{ProjectionInvalidation, projection_invalidation, zone_region},
     stats::RegionStats,
@@ -20,6 +21,7 @@ use osrs_world::{
 };
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Duration;
+
 /// Regions being built at once.
 const MAX_IN_FLIGHT: usize = 2;
 /// Animated locs farther than this many tiles from the camera are not drawn.
@@ -28,8 +30,10 @@ const ANIMATION_RADIUS_TILES: i32 = 80;
 const ANIMATION_STRIDE_CYCLES: u64 = 2;
 /// How far (tiles) the camera moves before the animated set is re-centred.
 const ANIMATION_RECENTRE_TILES: i32 = 8;
+
 type RegionKey = (i32, i32);
 pub(super) type ZoneKey = (i32, i32);
+
 /// What part of a resident region the current worker build is intended to refresh.
 ///
 /// The worker always assembles the full contextual scene. `Zones` narrows static extraction and GPU
@@ -39,6 +43,7 @@ pub(super) enum RegionBuildScope {
     Full,
     Zones(BTreeSet<ZoneKey>),
 }
+
 /// When animated geometry was last requested, and what forces another request.
 #[derive(Default)]
 struct AnimationSchedule {
@@ -259,7 +264,11 @@ impl WorldRuntime {
     }
 
     pub(super) fn resident_vertices(&self) -> usize {
-        self.loaded.values().flatten().map(RegionStats::vertices).sum()
+        self.loaded
+            .values()
+            .flatten()
+            .map(RegionStats::vertices)
+            .sum()
     }
 
     pub(super) fn in_flight_count(&self) -> usize {
@@ -477,23 +486,4 @@ fn stale_regions(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn wanted_regions_start_at_the_camera_region() {
-        let wanted = wanted_regions((50, 50), 2);
-        assert_eq!(wanted.len(), 25);
-        assert_eq!(wanted[0], (50, 50));
-        let ring = |&(x, y): &RegionKey| (x - 50).abs().max((y - 50).abs());
-        assert!(wanted.windows(2).all(|w| ring(&w[0]) <= ring(&w[1])));
-    }
-
-    #[test]
-    fn stale_regions_keep_one_ring_of_hysteresis() {
-        let loaded = [(50, 50), (53, 50), (54, 50), (50, 47)];
-        let mut stale = stale_regions(loaded.into_iter(), (50, 50), 2);
-        stale.sort_unstable();
-        assert_eq!(stale, vec![(54, 50)]);
-    }
-}
+mod tests;
