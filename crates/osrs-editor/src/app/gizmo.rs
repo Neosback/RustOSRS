@@ -141,24 +141,26 @@ impl EditorApp {
         if let Some((_, transforms)) = result
             && let Some(moved) = transforms.first()
         {
-            let drag = self
-                .interaction
-                .gizmo_drag
-                .get_or_insert_with(|| GizmoDrag {
-                    start: target,
-                    current: target,
-                    specs: specs.clone(),
-                });
-            drag.current = *moved;
-            // Whole tiles moved so far, for the footprints.
-            let from = DVec3::from(drag.start.translation);
-            let to = DVec3::from(drag.current.translation);
-            let delta = (
-                ((to.x - from.x) / 128.0).round() as i32,
-                ((to.z - from.z) / 128.0).round() as i32,
-            );
-            self.interaction
-                .begin_object_drag((0, 0), drag.specs.clone());
+            let (drag_specs, delta) = {
+                let drag = self
+                    .interaction
+                    .gizmo_drag
+                    .get_or_insert_with(|| GizmoDrag {
+                        start: target,
+                        current: target,
+                        specs: specs.clone(),
+                    });
+                drag.current = *moved;
+                // Whole tiles moved so far, for the footprints.
+                let from = DVec3::from(drag.start.translation);
+                let to = DVec3::from(drag.current.translation);
+                let delta = (
+                    ((to.x - from.x) / 128.0).round() as i32,
+                    ((to.z - from.z) / 128.0).round() as i32,
+                );
+                (drag.specs.clone(), delta)
+            };
+            self.interaction.begin_object_drag((0, 0), drag_specs);
             self.interaction.update_object_drag(delta);
         }
         self.interaction.gizmo_busy =
