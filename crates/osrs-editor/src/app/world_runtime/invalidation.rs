@@ -22,7 +22,7 @@ impl WorldRuntime {
     /// Height edits use exact zones only when every resident non-empty producer has a current,
     /// complete dependency snapshot. Any missing, stale, or incomplete producer fails closed to the
     /// previous region policy. Object edits remain region-conservative on their separate roadmap.
-    pub(super) fn invalidate_semantic_edit(
+    pub(in crate::app) fn invalidate_semantic_edit(
         &mut self,
         impact: ChangeImpact,
         touched_regions: &EditTouches,
