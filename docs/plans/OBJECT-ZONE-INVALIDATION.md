@@ -1,6 +1,6 @@
 # Object Zone Invalidation Plan
 
-Status: O1 certified; O2 canonical Object mutation footprint complete and code-certified. Final handoff-bearing O2 head certification pending.
+Status: O1-O4 complete and certified; O5 adversarial coverage next.
 
 Branch: `refactor/object-zone-invalidation`
 
@@ -115,20 +115,18 @@ Before O1, Object-only semantic impact (`LOCATIONS | COLLISION | BOUNDS`) caused
 
 O1 hardens the fallback to the complete 3x3 producer-region ring around every touched Object region. This matches the set of neighboring region producers whose contextual windows can include anchors from the touched region under the current streaming architecture.
 
-No 8x8 Object narrowing is enabled by O1 or O2.
-
 ## O1 production change
 
-`projection_invalidation` treats any Object footprint as requiring `expand_regions(touched_regions, 1)`.
+`projection_invalidation` treats any unproven Object footprint as requiring `expand_regions(touched_regions, 1)`.
 
 This means:
 
-- Object-only edits rebuild the touched region and all eight neighboring producer regions when resident
-- mixed Object + Height/Paint edits also fail closed to the same producer ring
+- Object-only edits rebuild the touched region and all eight neighboring producer regions when proof cannot be established
+- mixed Object + Height/Paint edits also fail closed to the same producer ring when Object proof cannot be established
 - Height-only and Paint-only behavior is unchanged
-- no Object dependency metadata is trusted yet
+- the O1 ring remains the mandatory fallback after O4 runtime narrowing was added
 
-Focused tests assert that Object receipts resolve to the 3x3 ring and continue to override Height zone proofs.
+Focused tests assert that unproven Object receipts resolve to the 3x3 ring and continue to override Height zone proofs.
 
 O1 exact-head certification:
 
@@ -175,7 +173,7 @@ Touched-region derivation continues to use the derived anchor-tile summary, so O
 
 Worker Object projection and replay validation remain unchanged. O2 does not move semantic authority and does not enable 8x8 Object zone narrowing.
 
-Focused coverage now verifies:
+Focused coverage verifies:
 
 - exact placement identity survives finalized Object footprints
 - canonical ordering is deterministic
@@ -194,42 +192,129 @@ O2 code-head certification:
 - Tier B full workspace tests green
 - Tier C M3-M9 semantic/reference parity green
 
-The final documentation-bearing O2 branch head must be certified separately before O3 starts.
+O2 final documentation-bearing certification:
 
-## Required Object dependency contract
+- final O2 head: `d61d9169d271c1dde9009707ff59d73cb8001716`
+- CI: `38701473420` / #1277 - SUCCESS
+- Tier A/B/C all green
 
-The future narrowing mechanism must prove **mutation effects**, not merely current render ownership.
+## O3 producer-output proof contract
 
-At minimum the proof must be able to account for:
+O3 selected **producer output comparison** rather than a guessed causal radius or a current-placement dependency table.
 
-- exact removed placements
-- exact added placements
-- source plane
-- kind and orientation
-- storage footprint/capacity dependencies
-- fixed-slot replacement dependencies
-- wall-decoration host/displacement dependencies
-- terrain shadow/light dependencies
-- ModelData normal-reconciliation dependencies
-- affected static output zones
-- affected region-complete animation/inspection projections where relevant
+The contract compares exact static producer output generated after full contextual scene assembly. This makes the proof sensitive to the actual consequences of:
+
+- placement-order capacity changes
+- fixed-slot replacement/reveal
+- wall-decoration host effects
+- terrain shadow/lighting changes
+- ModelData normal reconciliation
+- additions, removals, and counterfactual reveal/rejection behavior
+
+`ObjectOutputSnapshot` records one producer region, explicit 8x8 zone coverage, and exact per-zone `SceneGeometry` output. A complete full snapshot covers all 64 owned output zones of the producer's 64x64 region, including explicitly covered empty zones.
+
+Scoped snapshots carry explicit coverage and are incomplete unless the retained accepted state already proves the uncovered zones. Missing coverage is never interpreted as unchanged output.
+
+The proof contract provides:
+
+- deterministic full/scoped snapshot construction
+- same-producer validation
+- explicit complete/incomplete state
+- exact per-zone output comparison using the existing structural `Eq` representation
+- exact detection of added, removed, and changed output zones
+- scoped merge into retained accepted state
+
+Editor-side `ObjectOutputState` binds one accepted snapshot to:
+
 - producer region
 - projection epoch
 - presentation generation
-- explicit completeness
 
-A producer snapshot that cannot represent one of these effects must mark the relevant proof incomplete and force the region fallback.
+Lookup is explicitly one of:
 
-## Candidate proof strategies
+- stale
+- incomplete
+- current with exact changed zones
 
-Two implementation families remain valid after O1/O2:
+O3 itself did not enable runtime Object zone narrowing; it established the proof and freshness contract used by O4.
 
-1. **Causal dependency graph**: instrument scene construction so each input Object placement records the output zones and later placement decisions causally dependent on it, including suppressed/rejected/replaced candidates.
-2. **Producer output comparison**: retain enough accepted producer state/hash information to rebuild full contextual producer output and prove which 8x8 zones changed before narrowing installation.
+O3 exact-head certification:
 
-O3 should choose the smallest architecture that can prove additions and removals without duplicating semantic authority.
+- head: `a555e07796a938676ddb3c4f7d0320dd480041aa`
+- CI: `38703366564` / #1285 - SUCCESS
+- Tier A/B/C all green
 
-Do not implement a simple `ObjectPlacement -> current output zones` table and call it complete; O1 proves that contract is insufficient for removals and placement-order effects.
+## O4 accepted-build runtime integration and planner
+
+O4 wires the O3 proof into the accepted worker-result path without changing semantic authority or contextual scene construction.
+
+`ObjectOutputStore` retains only disposable accepted producer output plus pending pre-edit proof stamps. Trusted Object output state is installed only after the existing worker result gates accept the request identity, projection epoch, and presentation generation.
+
+Trusted state is cleared or removed at projection lifecycle boundaries:
+
+- source/streamer replacement
+- full presentation rebuild
+- region unload
+- accepted full absent-region result
+- invalid snapshot/store update
+
+For one finalized Object edit, runtime planning now:
+
+1. derives the same O1 conservative 3x3 producer-region universe around the touched Object regions
+2. considers every resident non-empty producer in that universe
+3. requires a current, complete accepted pre-edit snapshot for every such producer
+4. if any required producer is missing, stale, or incomplete, abandons proof planning and uses the O1 full-region fallback
+5. otherwise queues one **full producer build** for each required producer, preserving the full 104x104 contextual scene
+6. retains the exact pre-edit accepted stamp while the normal invalidation path advances the producer projection epoch
+7. accepts the candidate only if the existing `BuildTracker` request/epoch and presentation-generation gates still pass
+8. compares the accepted full post-edit static output against the retained pre-edit snapshot
+9. installs only the exact changed 8x8 zones when comparison is current and complete
+10. falls back to a full producer install on missing, stale, incomplete, mismatched, or invalid proof state
+
+A later semantic invalidation cancels pending Object proof state and/or advances the projection epoch, so an already-running candidate build cannot be trusted after the world has advanced.
+
+An exact empty static diff is valid: static GPU upload becomes a no-op while region-complete picker/inspection, animation, Height dependency, and Object proof freshness state still advances from the accepted worker result.
+
+O4 intentionally does **not** narrow:
+
+- contextual scene assembly
+- worker source replay
+- region-complete picker/inspection replacement
+- animation projection replacement
+- Height dependency replacement
+
+No worker protocol change was required. The worker still builds the complete contextual producer result; narrowing is selected only after the accepted result is compared with the current trusted baseline.
+
+O4 exact code-head certification:
+
+- head: `52eadc6284e71d9bc00de878d89cc67a0f0c7628`
+- CI: `38705182639` / #1294 - SUCCESS
+- Tier A architecture/guard/reference/format/workspace/Clippy/WASM green
+- Tier B full workspace tests green
+- Tier C M3-M9 semantic/reference parity green
+
+## Required Object dependency contract
+
+The implemented narrowing mechanism proves **mutation effects** through exact producer-output comparison rather than relying on current render ownership.
+
+The semantic footprint still retains exact removed/added placement identity for history, routing, diagnostics, and future validation, while the runtime proof asks the stronger question: did any static output zone produced from the complete contextual scene actually change?
+
+The proof remains fail-closed unless:
+
+- the producer region matches
+- accepted baseline coverage is complete
+- projection epoch is current
+- presentation generation is current
+- the full candidate worker result passes normal stale-build gates
+- exact output comparison succeeds
+
+## Chosen proof strategy
+
+O3 chose the previously documented **producer output comparison** strategy.
+
+This was selected over a causal dependency graph because the existing producer build already computes the complete contextual consequences of capacity, replacement, host, shadow, lighting, and normal-reconciliation behavior. Exact structural zone comparison therefore proves changed static output without duplicating those scene semantics in an editor-side dependency graph.
+
+The important tradeoff is deliberate: Object edits still perform full contextual CPU producer builds for the conservative producer universe, but exact comparison can narrow final static GPU installation to changed 8x8 zones. O5 must adversarially validate that this boundary remains sound.
 
 ## Checkpoints
 
@@ -248,13 +333,13 @@ Delivered:
 - audited Reference/HD anchor-zone emission versus full-scene context
 - identified cross-region under-invalidation in the previous Object-only fallback
 - hardened Object fallback to the 3x3 producer-region ring
-- retained zero Object zone narrowing
+- retained zero Object zone narrowing at O1
 
 Certification: `643f760a7f318d5519fc9897a588d732afe0c293`, CI #1264 / `38699017109`, SUCCESS.
 
 ### O2 - canonical Object mutation footprint
 
-Status: COMPLETE; final documentation-bearing exact-head certification pending.
+Status: COMPLETE and CERTIFIED.
 
 Delivered:
 
@@ -266,35 +351,49 @@ Delivered:
 - semantic Redo preserves original mutation polarity
 - derived `object_tiles` compatibility summary retained only for existing region routing
 - O1 3x3 region fallback unchanged
-- no Object zone narrowing introduced
 - focused commit/replay footprint tests added
 
-Code certification: `fed985ea59db7737067b6d19d53844d2d4e9429a`, CI #1275 / `38700886057`, SUCCESS across Tier A/B/C.
+Final certification: `d61d9169d271c1dde9009707ff59d73cb8001716`, CI #1277 / `38701473420`, SUCCESS across Tier A/B/C.
 
 ### O3 - dependency/proof contract
 
-Status: NOT STARTED.
+Status: COMPLETE and CERTIFIED.
 
-Planned boundary:
+Delivered:
 
-- choose and implement a proof representation that is sound for additions and removals
-- tie proof state to producer region, projection epoch, and presentation generation
-- make completeness explicit and fail-closed
-- prove or reject capacity/replacement/normal/shadow dependency coverage
-- no runtime narrowing until the contract can represent the required mutation effects
+- producer-output comparison chosen as the Object proof strategy
+- exact full/scoped producer output snapshots
+- explicit 64-zone complete coverage for full producer state
+- scoped coverage that never treats missing zones as unchanged
+- exact added/removed/changed output-zone comparison
+- same-producer validation
+- projection-epoch and presentation-generation freshness stamp
+- stale/incomplete/current lookup contract
+- scoped accepted-state merge and full replacement
+- no runtime narrowing enabled by O3 alone
+
+Certification: `a555e07796a938676ddb3c4f7d0320dd480041aa`, CI #1285 / `38703366564`, SUCCESS across Tier A/B/C.
 
 ### O4 - accepted-build runtime integration and planner
 
-Status: NOT STARTED.
+Status: COMPLETE and CERTIFIED.
 
-Planned boundary:
+Delivered:
 
-- install Object proof state only from accepted/current worker results
-- reject stale request identity, projection epoch, and presentation generation
-- query every producer in the O1 conservative universe
-- use exact zones only when every required producer proof is current and complete
-- otherwise rebuild the O1 region ring
-- preserve full contextual scene assembly
+- accepted Object output store installed only from current worker results
+- lifecycle clearing on source/presentation/unload/absence boundaries
+- all-or-nothing proof eligibility across every resident non-empty producer in the O1 3x3 universe
+- full contextual post-edit candidate builds
+- exact accepted pre/post zone comparison
+- exact changed-zone static installation
+- exact empty-diff handling
+- fail-closed full-region install/fallback for missing, stale, incomplete, mismatched, or invalid proof
+- pending proof cancellation on later invalidation
+- stale in-flight candidate rejection through existing projection epoch/request identity gate
+- region-complete picker, animation, and dependency projections preserved
+- no worker protocol or contextual scene assembly narrowing
+
+Code certification: `52eadc6284e71d9bc00de878d89cc67a0f0c7628`, CI #1294 / `38705182639`, SUCCESS across Tier A/B/C.
 
 ### O5 - adversarial coverage
 
@@ -314,6 +413,8 @@ Required cases include:
 - dynamic/morphed/omitted cases remaining fail-closed unless proven
 - semantic Undo/Redo exact mutation polarity
 - stale/in-flight worker result rejection
+
+O5 should prefer end-to-end producer-output assertions over duplicating scene dependency rules in planner tests. It must prove both that changed zones are not missed and that stale/incomplete proof state falls back safely.
 
 ### O6 - exact-head certification, merge, integrated-main certification
 
