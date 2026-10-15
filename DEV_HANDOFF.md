@@ -129,11 +129,36 @@ The ordering of the hover commit is intentional: Select/Objects first normalize 
 
 The first validation attempt (`38731844878` / #1356 on `6520304fed358cf09f882b95def1c1923a974e54`) passed architecture guards and formatting but failed the warnings-denied workspace check because moving pick construction removed the final use of the root-level `Pick` import. The stale import was removed in `11a6ab2901c20003a6d0718da0a46a0324b37b68`; the full replacement run then passed Tier A/B/C.
 
+### Checkpoint 4 - temporary tool-key / peek lifecycle ownership
+
+**CLOSED.**
+
+Validated code head:
+
+`1b98b78c148c6c6c0b5a8ed475484804da656a80`
+
+CI:
+
+`38734432620` / #1369 - SUCCESS across Tier A/B/C.
+
+Checkpoint 4 changes:
+
+- temporary tool-key / peek state is now private to `InteractionRuntime` through a dedicated `ToolPeek` record;
+- tool-key press transitions route through `InteractionRuntime::press_tool_key`, which preserves tap-to-switch, same-tool return-to-Select, and the previous tool needed for a held peek;
+- release transitions route through `InteractionRuntime::release_tool_key`, which clears the peek on release and returns the previous tool only after the existing `PEEK_AFTER` threshold;
+- `peek_key()` exposes only the key needed for egui key-state collection, so egui event collection remains outside the runtime;
+- `EditorApp::tool_actions` still owns keymap lookup and actual tool application through `set_tool`;
+- `EditorApp::tool_release` still owns egui polling and applies any returned tool through `set_tool`;
+- UI composition, drawer behavior, spline cleanup, semantic edits, world lookup, and projection ownership remain outside `InteractionRuntime`;
+- focused unit coverage proves return-tool latching, same-tool peek cancellation, held-key persistence, threshold-triggered return, and tap persistence.
+
+The live branch already contained the Checkpoint 4 implementation when this checkpoint was reconciled, so that work was audited and preserved instead of duplicated. The pre-certification head `7709f2e9ccad87ecb9fa49289757614fb75b6964` passed architecture guards but failed only `cargo fmt --all --check` in `workspace/tools.rs`. The formatting-only correction produced `1b98b78c148c6c6c0b5a8ed475484804da656a80`; replacement CI then passed architecture guards, formatting, workspace check, strict Clippy, WASM portability, full workspace tests, and M3-M9 semantic parity.
+
 ### Next checkpoint boundary
 
-Do not begin Checkpoint 4 without explicit user direction.
+Do not begin Checkpoint 5 without explicit user direction.
 
-The next checkpoint must stay on this same branch and remain inside transient interaction ownership. A suitable next cut is temporary tool-key/peek state: move its pure press/release/return-tool transitions behind `InteractionRuntime` while keeping egui event collection, UI composition, semantic edits, world lookup, and projection ownership outside it.
+The next checkpoint must stay on this same branch and remain inside transient interaction ownership. Audit the remaining `InteractionRuntime` state and choose one coherent state machine for Checkpoint 5 without moving egui event collection, UI composition, semantic edits, world lookup, renderer/projection ownership, or project lifecycle into the runtime.
 
 ## Latest completed development subsystem: verified map cache export and read-only inspection
 
@@ -219,7 +244,7 @@ Completed boundaries:
 
 In progress:
 
-1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1, 2, and 3 closed on PR #55.
+1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1, 2, 3, and 4 closed on PR #55.
 
 Remaining ownership work after this subsystem:
 
@@ -303,12 +328,12 @@ Each major subsystem should remain a separate branch/PR sequence.
 
 ## Next allowed boundary
 
-**STOP AFTER THE CHECKPOINT-3 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
+**STOP AFTER THE CHECKPOINT-4 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
 
-Do not begin Checkpoint 4 until:
+Do not begin Checkpoint 5 until:
 
-1. the exact branch head containing this Checkpoint 3 handoff passes Tier A/B/C;
-2. Checkpoint 3 and its certification are reported to the user;
+1. the exact branch head containing this Checkpoint 4 handoff passes Tier A/B/C;
+2. Checkpoint 4 and its certification are reported to the user;
 3. the user explicitly directs continuation.
 
 Do not merge PR #55 at this checkpoint. Do not create another development branch.
