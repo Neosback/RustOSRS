@@ -1,20 +1,14 @@
 //! Projection-only Height dependency metadata.
 //!
-//! This module does not own map semantics. It records which resident output zones read canonical
-//! Height vertices while a world projection is built. H3 will wire accepted worker builds into this
-//! contract. Until then Height invalidation remains on the certified conservative region policy.
+//! Semantic map state remains in `EditorSession`. This module owns disposable inverse read-sets
+//! from accepted world builds and fails closed whenever freshness or completeness cannot be proven.
 
-use super::zone_region;
-use crate::app::world_runtime::ZoneKey;
+use super::{RegionKey, ZoneKey, invalidation::zone_region};
 use osrs_core::coords::RegionCoord;
 use osrs_edit::HeightVertexCoord;
-use std::collections::{BTreeMap, BTreeSet};
+use osrs_world::HeightDependencySnapshot;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-/// Freshness identity for dependency data produced by one region projection state.
-///
-/// `projection_epoch` changes when a semantic edit invalidates that region. The presentation
-/// generation changes when the renderer/world presentation is rebuilt. H3 installs dependency data
-/// only from an accepted build whose stamp still matches the current values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct HeightDependencyStamp {
     pub projection_epoch: u64,
@@ -30,16 +24,12 @@ impl HeightDependencyStamp {
     }
 }
 
-/// Whether this collection proves the complete Height read-set for its producer region.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum HeightDependencyCompleteness {
-    /// At least one relevant projection path was not represented. Consumers must fall back.
     Incomplete,
-    /// Every Height-sensitive output dependency for the producer region is represented.
     Complete,
 }
 
-/// Why two dependency collections cannot be combined or one dependency cannot be recorded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum HeightDependencyError {
     ProducerRegionMismatch {
@@ -57,22 +47,14 @@ pub(super) enum HeightDependencyError {
     },
 }
 
-/// Result of asking one producer-region collection about a Height source vertex.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum HeightDependencyLookup<'a> {
-    /// The collection belongs to an older projection/presentation state.
     Stale,
-    /// The collection is current but cannot prove a complete read-set.
     Incomplete,
-    /// The collection is current and complete. `None` means this producer region has no output that
-    /// depends on the queried Height vertex.
     Current(Option<&'a BTreeSet<ZoneKey>>),
 }
 
 /// Deterministic projection read-set for one producer region.
-///
-/// Keys are canonical semantic Height vertices. Values are world 8x8 zones whose final projection
-/// reads that source vertex. `BTreeMap`/`BTreeSet` make merge order irrelevant and remove duplicates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct HeightDependencyCollection {
     producer_region: RegionCoord,
@@ -82,8 +64,6 @@ pub(super) struct HeightDependencyCollection {
 }
 
 impl HeightDependencyCollection {
-    /// Start conservatively incomplete. A producer must explicitly certify completeness after every
-    /// Height-sensitive stage has contributed its dependencies.
     pub(super) fn new(producer_region: RegionCoord, stamp: HeightDependencyStamp) -> Self {
         Self {
             producer_region,
@@ -105,7 +85,6 @@ impl HeightDependencyCollection {
         self.completeness
     }
 
-    /// Record that one output zone in this producer region reads `source`.
     pub(super) fn record(
         &mut self,
         source: HeightVertexCoord,
@@ -119,23 +98,14 @@ impl HeightDependencyCollection {
                 actual: RegionCoord::new(actual.0, actual.1),
             });
         }
-        self.by_source
-            .entry(source)
-            .or_default()
-            .insert(output_zone);
+        self.by_source.entry(source).or_default().insert(output_zone);
         Ok(())
     }
 
-    /// Explicitly certify that this collection contains every Height dependency for the producer.
     pub(super) fn mark_complete(&mut self) {
         self.completeness = HeightDependencyCompleteness::Complete;
     }
 
-    /// Merge independently collected stages from the same producer projection.
-    ///
-    /// Completeness is conservative: the result is complete only when both inputs independently
-    /// claim complete coverage. This prevents a partial stage from accidentally upgrading a full
-    /// dependency snapshot merely because another stage was complete.
     pub(super) fn merge(&mut self, other: Self) -> Result<(), HeightDependencyError> {
         if other.producer_region != self.producer_region {
             return Err(HeightDependencyError::ProducerRegionMismatch {
@@ -149,7 +119,6 @@ impl HeightDependencyCollection {
                 actual: other.stamp,
             });
         }
-
         let both_complete = self.completeness == HeightDependencyCompleteness::Complete
             && other.completeness == HeightDependencyCompleteness::Complete;
         for (source, zones) in other.by_source {
@@ -163,7 +132,6 @@ impl HeightDependencyCollection {
         Ok(())
     }
 
-    /// Query only when the caller's current projection identity still matches this collection.
     pub(super) fn lookup(
         &self,
         source: HeightVertexCoord,
@@ -176,6 +144,70 @@ impl HeightDependencyCollection {
             return HeightDependencyLookup::Incomplete;
         }
         HeightDependencyLookup::Current(self.by_source.get(&source))
+    }
+}
+
+/// Accepted dependency snapshots keyed by the region whose output zones they describe.
+#[derive(Debug, Default)]
+pub(super) struct HeightDependencyStore {
+    by_region: HashMap<RegionKey, HeightDependencyCollection>,
+}
+
+impl HeightDependencyStore {
+    pub(super) fn clear(&mut self) {
+        self.by_region.clear();
+    }
+
+    pub(super) fn remove(&mut self, key: RegionKey) {
+        self.by_region.remove(&key);
+    }
+
+    pub(super) fn install(
+        &mut self,
+        key: RegionKey,
+        stamp: HeightDependencyStamp,
+        snapshot: &HeightDependencySnapshot,
+    ) -> Result<(), HeightDependencyError> {
+        let mut collection =
+            HeightDependencyCollection::new(RegionCoord::new(key.0, key.1), stamp);
+        for (source, zones) in &snapshot.by_source {
+            let source = HeightVertexCoord::new(source.corner, source.plane);
+            for &zone in zones {
+                if let Err(error) = collection.record(source, zone) {
+                    self.by_region.remove(&key);
+                    return Err(error);
+                }
+            }
+        }
+        if snapshot.complete {
+            collection.mark_complete();
+        }
+        self.by_region.insert(key, collection);
+        Ok(())
+    }
+
+    /// Resolve through every resident producer. One unusable producer invalidates the proof.
+    pub(super) fn proven_zones(
+        &self,
+        producers: &[(RegionKey, HeightDependencyStamp)],
+        sources: &[HeightVertexCoord],
+    ) -> Option<BTreeSet<ZoneKey>> {
+        let mut zones = BTreeSet::new();
+        for &(key, stamp) in producers {
+            let dependencies = self.by_region.get(&key)?;
+            for &source in sources {
+                match dependencies.lookup(source, stamp) {
+                    HeightDependencyLookup::Current(Some(found)) => {
+                        zones.extend(found.iter().copied());
+                    }
+                    HeightDependencyLookup::Current(None) => {}
+                    HeightDependencyLookup::Stale | HeightDependencyLookup::Incomplete => {
+                        return None;
+                    }
+                }
+            }
+        }
+        Some(zones)
     }
 }
 
@@ -198,21 +230,10 @@ mod tests {
         let mut dependencies = HeightDependencyCollection::new(RegionCoord::new(50, 50), stamp);
         let vertex = source(3200, 3200, 0);
         assert_eq!(dependencies.record(vertex, (400, 400)), Ok(()));
-
-        assert_eq!(
-            dependencies.completeness(),
-            HeightDependencyCompleteness::Incomplete
-        );
-        assert_eq!(
-            dependencies.lookup(vertex, stamp),
-            HeightDependencyLookup::Incomplete
-        );
-
+        assert_eq!(dependencies.completeness(), HeightDependencyCompleteness::Incomplete);
+        assert_eq!(dependencies.lookup(vertex, stamp), HeightDependencyLookup::Incomplete);
         dependencies.mark_complete();
-        assert_eq!(
-            dependencies.completeness(),
-            HeightDependencyCompleteness::Complete
-        );
+        assert_eq!(dependencies.completeness(), HeightDependencyCompleteness::Complete);
         assert_eq!(
             dependencies.lookup(vertex, stamp),
             HeightDependencyLookup::Current(dependencies.by_source.get(&vertex))
@@ -224,20 +245,15 @@ mod tests {
         let stamp = HeightDependencyStamp::new(0, 1);
         let mut dependencies = HeightDependencyCollection::new(RegionCoord::new(-1, -1), stamp);
         let vertex = source(-1, -9, 2);
-
         assert_eq!(dependencies.record(vertex, (-1, -1)), Ok(()));
         assert_eq!(dependencies.record(vertex, (-8, -8)), Ok(()));
         assert_eq!(dependencies.record(vertex, (-1, -1)), Ok(()));
         dependencies.mark_complete();
-
         let HeightDependencyLookup::Current(Some(zones)) = dependencies.lookup(vertex, stamp)
         else {
             unreachable!("complete current source has recorded zones")
         };
-        assert_eq!(
-            zones.iter().copied().collect::<Vec<_>>(),
-            vec![(-8, -8), (-1, -1)]
-        );
+        assert_eq!(zones.iter().copied().collect::<Vec<_>>(), vec![(-8, -8), (-1, -1)]);
     }
 
     #[test]
@@ -245,7 +261,6 @@ mod tests {
         let stamp = HeightDependencyStamp::new(2, 3);
         let mut dependencies = HeightDependencyCollection::new(RegionCoord::new(0, 0), stamp);
         let vertex = source(63, 63, 0);
-
         assert_eq!(dependencies.record(vertex, (7, 7)), Ok(()));
         assert_eq!(
             dependencies.record(vertex, (8, 0)),
@@ -266,12 +281,10 @@ mod tests {
         assert_eq!(first.record(vertex, (401, 401)), Ok(()));
         assert_eq!(first.record(vertex, (400, 401)), Ok(()));
         first.mark_complete();
-
         let mut second = HeightDependencyCollection::new(region, stamp);
         assert_eq!(second.record(vertex, (401, 401)), Ok(()));
         assert_eq!(second.record(vertex, (401, 400)), Ok(()));
         second.mark_complete();
-
         assert_eq!(first.merge(second), Ok(()));
         assert_eq!(first.completeness(), HeightDependencyCompleteness::Complete);
         let HeightDependencyLookup::Current(Some(zones)) = first.lookup(vertex, stamp) else {
@@ -281,7 +294,6 @@ mod tests {
             zones.iter().copied().collect::<Vec<_>>(),
             vec![(400, 401), (401, 400), (401, 401)]
         );
-
         let wrong_stamp =
             HeightDependencyCollection::new(region, HeightDependencyStamp::new(7, 12));
         assert_eq!(
@@ -300,12 +312,8 @@ mod tests {
         let mut complete = HeightDependencyCollection::new(region, stamp);
         complete.mark_complete();
         let incomplete = HeightDependencyCollection::new(region, stamp);
-
         assert_eq!(complete.merge(incomplete), Ok(()));
-        assert_eq!(
-            complete.completeness(),
-            HeightDependencyCompleteness::Incomplete
-        );
+        assert_eq!(complete.completeness(), HeightDependencyCompleteness::Incomplete);
     }
 
     #[test]
@@ -315,7 +323,6 @@ mod tests {
         let vertex = source(0, 0, 3);
         assert_eq!(dependencies.record(vertex, (0, 0)), Ok(()));
         dependencies.mark_complete();
-
         assert_eq!(
             dependencies.lookup(vertex, HeightDependencyStamp::new(11, 20)),
             HeightDependencyLookup::Stale
@@ -331,7 +338,6 @@ mod tests {
         let stamp = HeightDependencyStamp::new(0, 1);
         let mut dependencies = HeightDependencyCollection::new(RegionCoord::new(0, 0), stamp);
         dependencies.mark_complete();
-
         assert_eq!(
             dependencies.lookup(source(5, 5, 0), stamp),
             HeightDependencyLookup::Current(None)
@@ -343,7 +349,6 @@ mod tests {
         let stamp = HeightDependencyStamp::new(17, 3);
         let region = RegionCoord::new(-2, 7);
         let dependencies = HeightDependencyCollection::new(region, stamp);
-
         assert_eq!(dependencies.producer_region(), region);
         assert_eq!(dependencies.stamp(), stamp);
     }
