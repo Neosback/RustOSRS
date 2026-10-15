@@ -6,7 +6,7 @@ Last updated: 2026-10-15
 
 ## Project invariant
 
-`MapDocument` / `EditorSession` is authoritative edited map state. World-worker edits, rendered geometry, GPU resources, picker data, previews, animation instances, and UI state are projections only.
+`MapDocument` / `EditorSession` is authoritative edited map state. World-worker edits, rendered geometry, GPU resources, picker data, previews, animation instances, dependency/proof snapshots, and UI state are projections only.
 
 If every projection vanished, the complete edited map must still exist correctly in the semantic session.
 
@@ -78,6 +78,8 @@ Plan:
 
 No PR is open for this branch yet.
 
+Object checkpoints O1-O4 are complete. O5 adversarial coverage is next and has not started.
+
 ## Object checkpoint O1 - dependency audit and conservative fallback hardening
 
 Status: COMPLETE and CERTIFIED.
@@ -90,120 +92,169 @@ O1 CI:
 
 O1 established that Object invalidation is not safely reducible to an anchor radius or a simple map from currently visible placement to output zones.
 
-### O1 audit findings
+### O1 findings
 
 1. `MapOp::AddObject` / `RemoveObject` already carry full canonical `ObjectPlacement` identity, but the O1 `EditFootprint` collapsed Object mutations to plane-less anchor tiles and lost add/remove polarity.
 2. Static Reference and HD loc geometry is emitted into the loc anchor zone, but the scene that produces it is fully contextual.
-3. Game-object insertion is footprint-wide and limited to five game objects per tile. Placement order matters, so removing one object can cause a later overlapping object to become accepted; adding one can cause a later object to be rejected.
-4. Fixed scene layers are replacement slots. Removing the final occupant can reveal an earlier placement; adding can replace an earlier occupant.
-5. Boundary/roof objects can rescale a wall decoration already placed on the same tile. The optional diagonal-decoration pass also derives decoration offsets from a type-9 host model.
-6. Clipped locs write the terrain shadow grid. Terrain slope light reads neighboring shadow cells, so Object edits can change terrain output, not only loc geometry.
-7. Smooth-terrain presentation can extend changed terrain colors to adjacent tiles sharing averaged vertices.
-8. Scene `ModelData` normal reconciliation changes neighboring models and can hide matched faces. Its traversal depends on storage footprint and can include the next storage plane.
+3. Game-object insertion is footprint-wide and limited to five game objects per tile. Placement order matters, so removal/addition can change whether later overlapping objects are accepted.
+4. Fixed scene layers are replacement slots; deletion can reveal an earlier placement and addition can replace one.
+5. Boundary/roof objects can change wall-decoration displacement and the diagonal-decoration presentation pass can derive offsets from a type-9 host.
+6. Clipped locs write the terrain shadow grid, which feeds terrain slope lighting; Object edits can therefore change terrain output.
+7. Smooth-terrain presentation can extend changed terrain colors to adjacent shared vertices.
+8. Scene `ModelData` normal reconciliation can change neighboring models and hide matched faces.
 9. Dynamic, morphed, omitted, rejected, or overwritten placements cannot be treated as dependency-free merely because they currently emit no static geometry.
-10. Each producer region builds a 104x104 scene around its owned 64x64 output, with 16 tiles of context before and 24 after. Therefore an Object anchored in one map region can affect a neighboring producer's owned output.
+10. Each producer builds a 104x104 scene around its owned 64x64 output, so an Object anchored in one region can affect neighboring producers.
 
-### O1 correctness hardening
+### O1 hardening
 
-Before O1, an Object-only semantic edit carries `LOCATIONS | COLLISION | BOUNDS`. The generic region fallback only expanded to neighboring regions for terrain/normals/lighting impacts, so Object-only edits rebuilt only the touched anchor region.
+Before O1, Object-only edits could rebuild only their anchor region. O1 corrected this under-invalidation.
 
-That was not conservative with respect to the worker's cross-region contextual scene.
+Any unproven Object footprint now uses the complete **3x3 producer-region ring** around every touched Object region.
 
-O1 changed Object fallback behavior so **any Object footprint invalidates the complete 3x3 producer-region ring** around each touched Object region.
-
-No Object 8x8 narrowing is enabled.
-
-### Object proof requirement established by O1
-
-A future Object dependency proof must represent **mutation effects**, not only current render ownership.
-
-A complete proof must account for removed and added placements, capacity/replacement ordering, terrain shadow/light effects, normal-reconciliation effects, and producer freshness.
-
-A simple `ObjectPlacement -> current output zones` snapshot is explicitly insufficient for removals because removal can expose a previously rejected/replaced later placement.
-
-Missing, stale, incomplete, unsupported, or non-counterfactual proof must retain the O1 3x3 producer-region fallback.
+This O1 3x3 producer-ring policy remains the mandatory fail-closed fallback after O4 runtime narrowing.
 
 ## Object checkpoint O2 - canonical Object mutation footprint
 
-Status: COMPLETE. Code head certified; final documentation-bearing exact-head certification pending.
+Status: COMPLETE and CERTIFIED.
 
-Certified O2 code head:
+O2 code head:
 `fed985ea59db7737067b6d19d53844d2d4e9429a`
 
 O2 code-head CI:
 `38700886057` / #1275 - SUCCESS across Tier A/B/C.
 
+Final documentation-bearing O2 head:
+`d61d9169d271c1dde9009707ff59d73cb8001716`
+
+Final O2 CI:
+`38701473420` / #1277 - SUCCESS across Tier A/B/C.
+
 ### O2 delivered
 
-`EditFootprint` now retains the exact Object mutation sets:
+`EditFootprint` retains exact Object mutation sets:
 
 - `object_removed: Vec<ObjectPlacement>`
 - `object_added: Vec<ObjectPlacement>`
 
-Each placement preserves:
+Each placement preserves object id, source plane, world anchor tile, loc kind, and orientation.
 
-- object id
-- source plane
-- world anchor tile
-- loc kind
-- orientation
+The placement vectors are normalized deterministically by `(source plane, x, y, object id, loc kind, orientation)` and exact duplicates are collapsed independently inside each polarity set.
 
-The placement vectors are normalized deterministically by `(source plane, x, y, object id, loc kind, orientation)` and exact duplicate placements are collapsed independently inside each polarity set.
+`EditFootprint::from_patch` preserves operation polarity directly. Semantic history replay reconstructs the same exact identities:
 
-`EditFootprint::from_patch` now preserves semantic operation polarity directly:
+- Redo preserves original removed/added polarity
+- Undo swaps original added/removed polarity
 
-- `RemoveObject` becomes an exact removed placement
-- `AddObject` becomes an exact added placement
+`object_tiles` remains only as a derived compatibility summary for region routing/fallback.
 
-The existing `object_tiles` field remains only as a derived compatibility summary of the exact removed/added anchor tiles so O1 invalidation behavior remains unchanged.
+The worker replay path remains unchanged and still validates authoritative post-replay semantics before projection.
 
-### O2 semantic history behavior
+## Object checkpoint O3 - producer-output proof contract
 
-Object history already stores canonical removed/added `LocSpec` identities produced from the semantic Object patch.
+Status: COMPLETE and CERTIFIED.
 
-Replay now reconstructs exact `ObjectPlacement` footprints from those canonical identities:
+Certified O3 head:
+`a555e07796a938676ddb3c4f7d0320dd480041aa`
 
-- Redo preserves original removed/added mutation polarity
-- Undo swaps original added/removed mutation polarity
+O3 CI:
+`38703366564` / #1285 - SUCCESS across Tier A/B/C.
 
-The worker replay path itself remains unchanged and still validates the authoritative post-replay semantic document before worker projection.
+### O3 proof choice
 
-O2 does not add any Object zone proof and does not enable Object 8x8 narrowing.
+O3 chose **producer output comparison** rather than a guessed causal radius or a `placement -> visible zones` dependency table.
 
-### O2 focused coverage
+This proof compares the exact static output of a fully assembled producer scene, so the comparison naturally includes consequences of:
 
-Tests now verify:
+- game-object capacity/order
+- fixed-slot replacement/reveal
+- wall-decoration host effects
+- terrain shadow/lighting changes
+- ModelData normal reconciliation
+- additions/removals and previously hidden/rejected placements
 
-- exact Object placement identity survives finalized footprints
-- deterministic canonical ordering
-- exact placement deduplication
-- removed and added mutation polarity remains separate
-- derived anchor-tile compatibility routing remains deterministic
-- source plane, object id, loc kind, orientation, and anchor survive history reconstruction
-- Undo reverses exact Object mutation polarity
-- Redo preserves exact Object mutation polarity
+### O3 contract
 
-The temporary wider visibility of the Object placement adapter used while tracing the replay path was removed before O2 certification; the existing `object_tool` module boundary remains intact.
+`ObjectOutputSnapshot` records:
 
-## Next checkpoint O3 - dependency/proof contract
+- producer region
+- explicit 8x8 zone coverage
+- exact per-zone `SceneGeometry`
+- explicit complete/incomplete state
 
-Status: NOT STARTED.
+A full producer snapshot covers all 64 owned 8x8 zones, including covered empty zones. Scoped snapshots carry explicit coverage; absent coverage never means unchanged.
 
-Allowed boundary only after the final O2 handoff-bearing branch head is green and the user explicitly directs continuation:
+Exact comparison returns added, removed, or changed zones by structural geometry equality.
 
-- choose the smallest proof representation sound for both Object additions and removals
-- tie proof state to producer region, projection epoch, and presentation generation
-- make proof completeness explicit and fail-closed
-- represent or explicitly reject capacity/replacement dependencies
-- represent or explicitly reject wall-decoration host/displacement dependencies
-- represent or explicitly reject loc-shadow/terrain-light dependencies
-- represent or explicitly reject ModelData normal-reconciliation dependencies
-- retain O1 3x3 producer-region fallback for every absent, stale, incomplete, or unsupported proof
-- do **not** enable runtime Object zone narrowing until the proof contract is sound
+Editor-side `ObjectOutputState` binds accepted output to:
+
+- producer region
+- projection epoch
+- presentation generation
+
+Lookup is explicitly stale, incomplete, or current with exact changed zones.
+
+O3 itself did not enable runtime narrowing.
+
+## Object checkpoint O4 - accepted-build runtime integration and planner
+
+Status: COMPLETE and CODE-CERTIFIED. Final documentation-bearing exact-head certification is the current closeout step.
+
+Certified O4 code head:
+`52eadc6284e71d9bc00de878d89cc67a0f0c7628`
+
+O4 code-head CI:
+`38705182639` / #1294 - SUCCESS across Tier A/B/C.
+
+### O4 delivered
+
+`ObjectOutputStore` now retains disposable accepted Object producer output and pending pre-edit comparison stamps.
+
+Trusted state is installed only after existing worker result freshness gates accept the request identity, projection epoch, and presentation generation.
+
+Trusted Object output state is cleared/removed on:
+
+- source/streamer replacement
+- full presentation rebuild
+- region unload
+- accepted full absent-region result
+- invalid proof/store update
+
+### O4 planner behavior
+
+For one finalized Object edit:
+
+1. derive the same O1 conservative 3x3 producer-region universe
+2. consider every resident non-empty producer in that universe
+3. require a current, complete accepted pre-edit snapshot for every required producer
+4. if any required producer is missing, stale, or incomplete, use the O1 full-region fallback
+5. otherwise queue one **full producer build** per required producer
+6. preserve full 104x104 contextual scene assembly
+7. retain the accepted pre-edit baseline stamp while normal invalidation advances the producer projection epoch
+8. accept a candidate only after the normal request/epoch and presentation-generation gates pass
+9. compare accepted full post-edit output against the retained pre-edit snapshot
+10. install only exact changed 8x8 static zones when comparison is current and complete
+11. fall back to full producer installation on missing, stale, incomplete, mismatched, or invalid proof state
+
+A later semantic invalidation cancels pending proof state and/or advances the projection epoch, so an old candidate cannot be trusted after the world advances.
+
+An exact empty static diff is valid: static upload is a no-op, while accepted region-complete inspection/picker, animations, Height dependency state, and Object proof freshness still advance.
+
+### O4 deliberately unchanged
+
+O4 does not narrow or replace:
+
+- semantic authority
+- worker Object replay
+- full contextual scene assembly
+- region-complete picker/inspection projection replacement
+- animation projection replacement
+- Height dependency replacement
+
+No worker protocol change was required. Static install scope is resolved only after the accepted full candidate has been compared with the trusted baseline.
 
 ## Integrated projection/edit architecture
 
-Current integrated `main` plus this branch through O2 includes:
+Current integrated `main` plus this branch through O4 includes:
 
 - central semantic `EditRuntime` execute/replay gateway
 - Paint, Height, Paste, Path, Objects, semantic Undo, and semantic Redo through the gateway
@@ -214,15 +265,39 @@ Current integrated `main` plus this branch through O2 includes:
 - full contextual scene assembly with zone-scoped final static geometry emission
 - stale asynchronous region-build rejection by request identity, projection epoch, and presentation generation
 - accepted-build Height dependency freshness tied to the same projection identity
-- Object edits region-conservative through the contextual O1 3x3 producer ring
 - exact canonical Object removed/added mutation footprints retained through commit receipts and semantic Undo/Redo
-- zero Object 8x8 narrowing until a sound causal proof exists
+- Object exact producer-output comparison contract
+- accepted Object producer-output freshness tied to projection epoch + presentation generation
+- Object full contextual candidate builds across the O1 producer universe
+- exact changed-zone static installation only after accepted pre/post comparison
+- O1 3x3 producer-region fail-closed fallback for every absent/stale/incomplete/invalid Object proof
+
+## O5 required adversarial coverage
+
+Status: NOT STARTED.
+
+O5 must exercise the implemented runtime proof against at least:
+
+- 8x8 zone boundary
+- 64x64 region boundary
+- fixed-slot replacement/reveal
+- wall-decoration displacement host changes
+- five-per-tile game-object capacity where removal reveals a later object
+- overlapping multi-tile capacity chains
+- clipped wall shadow changing neighboring terrain light
+- type-10/11 footprint shadow changing terrain across a zone edge
+- ModelData normal merge changing neighboring object output
+- dynamic/morphed/omitted cases and fail-closed behavior
+- semantic Undo/Redo exact mutation polarity
+- stale/in-flight worker result rejection
+
+Prefer end-to-end producer-output assertions rather than reproducing scene dependency rules in the planner tests.
 
 ## Remaining major roadmap
 
 Each item is a separate subsystem and therefore a separate branch after the prior subsystem is merged and certified on `main`.
 
-1. Complete Object dependency proof, runtime integration, adversarial coverage, and zone invalidation.
+1. Complete Object adversarial coverage, exact final branch certification, PR/merge, and integrated-main certification.
 2. `InteractionRuntime` behavioral encapsulation.
 3. `ProjectRuntime` ownership extraction.
 4. `UiRuntime` ownership extraction.
@@ -262,13 +337,13 @@ Large remaining systems include dynamic/placed point lights, full sky/day-night/
 
 ## Next allowed boundary
 
-**STOP AFTER OBJECT CHECKPOINT O2 CERTIFICATION.**
+**STOP AFTER OBJECT CHECKPOINT O4 CERTIFICATION.**
 
-Do not start O3 until:
+Do not start O5 until:
 
-1. the final documentation-bearing O2 branch head is green under required Tier A/B/C CI
+1. this documentation-bearing O4 branch head is green under required Tier A/B/C CI
 2. this handoff and the Object plan are present on that certified head
-3. O2 is reported to the user
+3. O4 is reported to the user
 4. the user explicitly directs continuation
 
-Do not open a PR or merge yet. The Object subsystem remains on this same branch through O3-O5, then O6 performs exact-head certification, PR/merge, integrated-main validation, handoff update, and final `main` certification before any later subsystem branch may be created.
+Do not open a PR or merge yet. The Object subsystem remains on this same branch for O5. O6 performs exact final branch certification, PR/merge, integrated-main validation, handoff update, and final `main` certification before any later subsystem branch may be created.
