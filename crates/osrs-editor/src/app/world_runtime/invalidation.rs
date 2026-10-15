@@ -275,9 +275,7 @@ mod tests {
         let proven = BTreeSet::from([(0, 0), (1, 0), (0, 1), (1, 1)]);
         assert_eq!(
             projection_invalidation(
-                ChangeImpact::TERRAIN_GEOMETRY
-                    | ChangeImpact::NORMALS
-                    | ChangeImpact::LIGHTING,
+                ChangeImpact::TERRAIN_GEOMETRY | ChangeImpact::NORMALS | ChangeImpact::LIGHTING,
                 &regions,
                 &footprint,
                 Some(&proven),
