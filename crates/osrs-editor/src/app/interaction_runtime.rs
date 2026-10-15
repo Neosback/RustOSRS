@@ -58,10 +58,10 @@ pub(super) struct InteractionRuntime {
     peek: Option<ToolPeek>,
     /// The selected objects being dragged by the Objects tool.
     object_drag: Option<object_tool::ObjectDrag>,
-    /// The Objects tool's transform gizmo, its drag in progress, and whether it has the pointer.
+    /// The Objects tool's transform gizmo plus its transient drag/capture lifecycle.
     pub(super) gizmo: transform_gizmo_egui::Gizmo,
-    pub(super) gizmo_drag: Option<gizmo::GizmoDrag>,
-    pub(super) gizmo_busy: bool,
+    gizmo_drag: Option<gizmo::GizmoDrag>,
+    gizmo_busy: bool,
 }
 
 impl InteractionRuntime {
@@ -296,6 +296,41 @@ impl InteractionRuntime {
 
     pub(super) fn object_drag(&self) -> Option<&object_tool::ObjectDrag> {
         self.object_drag.as_ref()
+    }
+
+    pub(super) fn update_gizmo_drag(
+        &mut self,
+        start: transform_gizmo_egui::math::Transform,
+        current: transform_gizmo_egui::math::Transform,
+        specs: Vec<osrs_world::LocSpec>,
+    ) -> gizmo::GizmoDrag {
+        let drag = self
+            .gizmo_drag
+            .get_or_insert_with(|| gizmo::GizmoDrag::new(start, specs));
+        drag.update(current);
+        drag.clone()
+    }
+
+    pub(super) fn cancel_gizmo_drag(&mut self) {
+        self.gizmo_drag = None;
+        self.gizmo_busy = false;
+    }
+
+    pub(super) fn finish_gizmo_drag(&mut self) -> Option<gizmo::GizmoDrag> {
+        self.gizmo_busy = false;
+        self.gizmo_drag.take()
+    }
+
+    pub(super) fn gizmo_drag(&self) -> Option<&gizmo::GizmoDrag> {
+        self.gizmo_drag.as_ref()
+    }
+
+    pub(super) fn update_gizmo_busy(&mut self, focused: bool) {
+        self.gizmo_busy = focused || self.gizmo_drag.is_some();
+    }
+
+    pub(super) fn gizmo_busy(&self) -> bool {
+        self.gizmo_busy
     }
 }
 
