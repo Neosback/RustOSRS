@@ -135,11 +135,11 @@ The first validation attempt (`38731844878` / #1356 on `6520304fed358cf09f882b95
 
 Validated code head:
 
-`1b98b78c148c6c6c0b5a8ed475484804da656a80`
+`d57965431a6f05b365aac1763dafd5b47877f0d5`
 
 CI:
 
-`38734432620` / #1369 - SUCCESS across Tier A/B/C.
+`38735438231` / #1375 - SUCCESS across Tier A/B/C.
 
 Checkpoint 4 changes:
 
@@ -152,7 +152,9 @@ Checkpoint 4 changes:
 - UI composition, drawer behavior, spline cleanup, semantic edits, world lookup, and projection ownership remain outside `InteractionRuntime`;
 - focused unit coverage proves return-tool latching, same-tool peek cancellation, held-key persistence, threshold-triggered return, and tap persistence.
 
-The live branch already contained the Checkpoint 4 implementation when this checkpoint was reconciled, so that work was audited and preserved instead of duplicated. The pre-certification head `7709f2e9ccad87ecb9fa49289757614fb75b6964` passed architecture guards but failed only `cargo fmt --all --check` in `workspace/tools.rs`. The formatting-only correction produced `1b98b78c148c6c6c0b5a8ed475484804da656a80`; replacement CI then passed architecture guards, formatting, workspace check, strict Clippy, WASM portability, full workspace tests, and M3-M9 semantic parity.
+The live branch already contained the Checkpoint 4 implementation when this checkpoint was reconciled, so that work was audited and preserved instead of duplicated. The pre-certification head `7709f2e9ccad87ecb9fa49289757614fb75b6964` passed architecture guards but failed only `cargo fmt --all --check` in `workspace/tools.rs`. The formatting-only correction produced `1b98b78c148c6c6c0b5a8ed475484804da656a80`, and `38734432620` / #1369 passed Tier A/B/C.
+
+After the first Checkpoint 4 handoff commit, a same-branch scope-restoration commit (`cf252c489ef67bfed523866098b97c97d27070fc`) restored a redundant hover-tint branch that was unrelated to the tool-peek refactor. Strict Clippy correctly rejected that state in `38735166959` / #1373 because the hover and non-hover branches were identical. No lint exception was added. `d57965431a6f05b365aac1763dafd5b47877f0d5` removed only that redundant branch again, with no behavior change, and its full replacement run `38735438231` / #1375 passed Tier A/B/C.
 
 ### Next checkpoint boundary
 
