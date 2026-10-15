@@ -17,6 +17,15 @@ const TILE_PX: f32 = 46.0;
 impl EditorApp {
     /// The whole Inspector: tile above, object below, each in its own scrolling half.
     pub(super) fn inspector(&mut self, ui: &mut egui::Ui) {
+        self.draw_inspector(ui, true);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) fn inspection_inspector(&mut self, ui: &mut egui::Ui) {
+        self.draw_inspector(ui, false);
+    }
+
+    fn draw_inspector(&mut self, ui: &mut egui::Ui, authoring: bool) {
         let width = ui.available_width();
         // The half with something to show gets the room; an empty one shrinks.
         let has_tile = if self.prefs.inspector_follow {
@@ -53,7 +62,7 @@ impl EditorApp {
             egui::ScrollArea::vertical()
                 .id_salt("inspect_tile")
                 .auto_shrink([false, false])
-                .show(ui, |ui| self.tile_card(ui));
+                .show(ui, |ui| self.tile_card(ui, authoring));
         });
         ui.separator();
         ui.allocate_ui(Vec2::new(width, object_height), |ui| {
@@ -62,7 +71,7 @@ impl EditorApp {
             egui::ScrollArea::vertical()
                 .id_salt("inspect_object")
                 .auto_shrink([false, false])
-                .show(ui, |ui| self.object_card(ui));
+                .show(ui, |ui| self.object_card(ui, authoring));
         });
     }
 
@@ -85,7 +94,7 @@ impl EditorApp {
     }
 
     /// The tile card: the tile and its neighbours, then its fields.
-    fn tile_card(&mut self, ui: &mut egui::Ui) {
+    fn tile_card(&mut self, ui: &mut egui::Ui, authoring: bool) {
         let ctx = ui.ctx().clone();
         // Following the cursor: the tile under it (the last one when it is over nothing). Otherwise
         // the tile that was selected.
@@ -201,10 +210,11 @@ impl EditorApp {
             });
         ui.add_space(6.0);
         ui.horizontal_wrapped(|ui| {
-            if ui
-                .button(format!("{}  Use as brush", icons::EYEDROPPER))
-                .on_hover_text("Fill the brush from this tile (I)")
-                .clicked()
+            if authoring
+                && ui
+                    .button(format!("{}  Use as brush", icons::EYEDROPPER))
+                    .on_hover_text("Fill the brush from this tile (I)")
+                    .clicked()
             {
                 self.eyedrop(values);
             }
@@ -219,7 +229,7 @@ impl EditorApp {
     }
 
     /// The object card: the selection, the primary object's footprint and fields.
-    fn object_card(&mut self, ui: &mut egui::Ui) {
+    fn object_card(&mut self, ui: &mut egui::Ui, authoring: bool) {
         let (objects, tiles) = (
             self.interaction.selection_objects.len(),
             self.interaction.selection_tiles.len(),
@@ -333,7 +343,9 @@ impl EditorApp {
                 ..Pick::default()
             };
             ui.menu_button("Copy", |ui| self.copy_menu(ui, &pick));
-            self.run_plugins(|plugin, cx| plugin.selection_ui(ui, cx));
+            if authoring {
+                self.run_plugins(|plugin, cx| plugin.selection_ui(ui, cx));
+            }
             if ui.button("Deselect").clicked() {
                 self.interaction.selected = None;
             }

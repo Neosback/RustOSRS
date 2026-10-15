@@ -409,6 +409,10 @@ impl CacheRepository {
     ) -> Result<(Self, TargetProfile), OpenMatchingError> {
         let limits = CacheReadLimits::default();
         let source = source.into();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let CacheSource::VerifiedExport(export) = &source {
+            return export.open_repository();
+        }
         let probed = catch_unwind(AssertUnwindSafe(|| {
             let transport = CacheTransport::open_source(&source)?;
             let fingerprint = match &source {
@@ -421,6 +425,10 @@ impl CacheRepository {
                     }
                 },
                 CacheSource::Dir(_) => transport.fingerprint_v1(limits.max_encoded_group_bytes)?,
+                #[cfg(not(target_arch = "wasm32"))]
+                CacheSource::VerifiedExport(_) => {
+                    transport.fingerprint_v1(limits.max_encoded_group_bytes)?
+                }
             };
             Ok::<_, TransportError>((transport, fingerprint))
         }));
@@ -458,6 +466,47 @@ impl CacheRepository {
 
     pub const fn context(&self) -> &DecoderContext {
         &self.context
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn open_verified_export(
+        path: &Path,
+        profile: &TargetProfile,
+        expected_fingerprint: &str,
+    ) -> Result<(Self, TargetProfile), OpenMatchingError> {
+        let context = DecoderContext::from_profile(profile).map_err(OpenMatchingError::Target)?;
+        let limits = CacheReadLimits::default();
+        let transport = dependency_call(&context, "open verified export", || {
+            CacheTransport::open(path)
+        })
+        .map_err(|e| OpenMatchingError::Unreadable(e.to_string()))?;
+        // The private capability has already verified every stored byte. File identity stamps
+        // are checked around each consumer open, avoiding a full-cache rescan per asset worker.
+        let mut bytes = [0u8; 32];
+        if expected_fingerprint.len() != 64 {
+            return Err(OpenMatchingError::Unreadable(
+                "Invalid verified fingerprint.".to_owned(),
+            ));
+        }
+        for (byte, pair) in bytes
+            .iter_mut()
+            .zip(expected_fingerprint.as_bytes().chunks_exact(2))
+        {
+            let pair = std::str::from_utf8(pair)
+                .map_err(|e| OpenMatchingError::Unreadable(e.to_string()))?;
+            *byte = u8::from_str_radix(pair, 16)
+                .map_err(|e| OpenMatchingError::Unreadable(e.to_string()))?;
+        }
+        let fingerprint = ComputedFingerprint(bytes);
+        Ok((
+            Self {
+                transport,
+                context,
+                limits,
+                fingerprint,
+            },
+            profile.clone(),
+        ))
     }
 
     pub fn fingerprint(&self) -> String {
@@ -1001,6 +1050,8 @@ impl CacheTransport {
     fn open_source(source: &CacheSource) -> TransportResult<Self> {
         match source {
             CacheSource::Dir(path) => Self::open(path),
+            #[cfg(not(target_arch = "wasm32"))]
+            CacheSource::VerifiedExport(export) => Self::open(export.path()),
             CacheSource::Memory(files) => {
                 let data = Dat2::from_bytes(files.dat2.clone());
                 let indices = Indices::from_memory(&data, &files.reference, &files.indices)?;

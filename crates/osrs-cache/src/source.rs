@@ -64,6 +64,9 @@ impl CacheFiles {
 pub enum CacheSource {
     Dir(PathBuf),
     Memory(Arc<CacheFiles>),
+    /// Read-only inspection source, obtainable only after validating an exported cache copy.
+    #[cfg(not(target_arch = "wasm32"))]
+    VerifiedExport(Arc<crate::verified_export::VerifiedExport>),
 }
 
 impl CacheSource {
@@ -72,6 +75,10 @@ impl CacheSource {
         match self {
             Self::Dir(path) => path.display().to_string(),
             Self::Memory(files) => format!("memory ({} MiB)", files.total_bytes() / (1024 * 1024)),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::VerifiedExport(export) => {
+                format!("export inspection: {}", export.path().display())
+            }
         }
     }
 }

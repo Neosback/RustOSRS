@@ -10,6 +10,8 @@ mod animation_smoothing;
 mod app;
 mod assets;
 mod camera;
+#[cfg(not(target_arch = "wasm32"))]
+mod export_flow;
 mod fonts;
 mod grid;
 mod heights;

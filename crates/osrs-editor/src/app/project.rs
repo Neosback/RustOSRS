@@ -50,6 +50,15 @@ pub(super) struct ProjectState {
     transition_after_save: bool,
 }
 
+impl ProjectState {
+    pub(in crate::app) fn has_pending_exports(&self) -> bool {
+        !self.pending.is_empty()
+    }
+    pub(in crate::app) fn export_pending(&self) -> Vec<RegionDiff> {
+        self.pending.values().cloned().collect()
+    }
+}
+
 /// Build the project file contents for `document`, keeping unapplied `pending` diffs for regions
 /// that are not being re-diffed. Pure apart from reading the source cache.
 fn build_project(
@@ -61,9 +70,15 @@ fn build_project(
     let squares = SourceSquares::open(source).map_err(|error| error.to_string())?;
     let mut diffs = Vec::new();
     for &region in dirty {
-        let Some(square) = squares.read(region).map_err(|error| error.to_string())? else {
-            continue;
-        };
+        let square = squares
+            .read(region)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                format!(
+                    "Cannot save authored region {},{}: its original map data is missing.",
+                    region.x, region.y
+                )
+            })?;
         let diff = diff_region(&square.terrain, &square.locations, document)
             .map_err(|error| format!("region {},{}: {error:?}", region.x, region.y))?;
         diffs.push(diff);

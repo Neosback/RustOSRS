@@ -61,7 +61,6 @@ use crate::settings::{self, Settings};
 use crate::style::ColorKey;
 use eframe::egui;
 use osrs_core::coords::RegionCoord;
-use osrs_render::gpu::FrameParams;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -86,8 +85,8 @@ pub struct EditorApp {
     clipboard: Option<tile_clipboard::TileClipboard>,
     /// Searchable object list and the object armed for placement.
     placer: object_tool::PlaceState,
-    /// A running File > Export, if any.
-    export_job: Option<export::ExportJob>,
+    /// Export snapshot, preflight, background work, and persistent review/report.
+    exports: export::ExportRuntime,
     /// The opened project's unapplied edits, its file, and a running save.
     project: project::ProjectState,
     /// Camera, picking, selection, and in-progress tool gestures.
@@ -198,6 +197,20 @@ impl eframe::App for EditorApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.export_inspection_ui(ui) {
+            self.frames += 1;
+            if let Some(hook) = &mut self.screenshot {
+                hook.tick(&ctx, self.frames);
+            }
+            if self
+                .exit_after_seconds
+                .is_some_and(|limit| self.started.elapsed().as_secs_f32() >= limit)
+            {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            return;
+        }
         let frame_started = self.stats.begin_frame();
         if self.prefs.tool == crate::paint::Tool::Spline {
             self.spline_update();
@@ -251,39 +264,7 @@ impl eframe::App for EditorApp {
                 self.update_picking(&response, rect, pixels_per_point, width, height);
                 self.stats.phase("pick", phase);
 
-                if self.world.is_ready() {
-                    self.ensure_targets(width, height);
-                    if self.prefs.render_profile == ProfileChoice::Hd {
-                        self.update_hd_lighting();
-                    }
-                    let phase = Instant::now();
-                    self.renderer.set_hd_params(self.prefs.hd_params());
-                    if let Some(frame) = self.renderer.encode_viewport(FrameParams {
-                        camera: self.interaction.camera.reference(width as f32),
-                        view_plane: self.interaction.view_plane,
-                        // The client's `gameCycle & 127`, at 50 cycles per second.
-                        tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
-                        brightness: self.prefs.brightness,
-                        remove_color_banding: self.prefs.remove_color_banding,
-                        bright_textures: self.prefs.bright_textures,
-                        fog: self.prefs.fog(),
-                        colorblind: self.prefs.colorblind(),
-                        clear_color: self.prefs.sky_color.map(f64::from),
-                        profile: self.prefs.render_profile.render_profile(),
-                    }) {
-                        self.stats.phase("encode", phase);
-                        let gpu_scene_ms = self.renderer.submit_viewport(frame.command_buffer);
-                        self.stats.set_gpu_scene_ms(gpu_scene_ms);
-                        let probe = self.stats.gpu_probe();
-                        self.renderer.on_submitted_work_done(probe);
-                        ui.painter().image(
-                            frame.texture_id,
-                            rect,
-                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                            egui::Color32::WHITE,
-                        );
-                    }
-                }
+                self.render_viewport_image(ui, rect, width, height);
                 self.draw_selection(ui, rect, pixels_per_point, width, height);
                 self.draw_selection_extras(
                     &ui.painter().with_clip_rect(rect),
@@ -332,6 +313,7 @@ impl eframe::App for EditorApp {
         self.script_window(&ctx);
         self.tool_draft_window(&ctx);
         self.settings_window(&ctx);
+        self.export_window(&ctx);
         self.assets.poll(&ctx);
         self.world_map_window(&ctx);
         if let Some(destination) = self.teleport.show(&ctx) {

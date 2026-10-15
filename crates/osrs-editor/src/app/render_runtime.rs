@@ -20,6 +20,17 @@ struct ViewportTargets {
     texture_id: egui::TextureId,
 }
 
+impl Drop for RenderRuntime {
+    fn drop(&mut self) {
+        if let Some(targets) = self.targets.take() {
+            self.render_state
+                .renderer
+                .write()
+                .free_texture(&targets.texture_id);
+        }
+    }
+}
+
 pub(super) struct EncodedViewport {
     pub(super) command_buffer: wgpu::CommandBuffer,
     pub(super) texture_id: egui::TextureId,
@@ -33,6 +44,11 @@ pub(super) struct RenderRuntime {
 }
 
 impl RenderRuntime {
+    /// Share eframe's device with an isolated viewport; each runtime owns its own scene resources.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) fn render_state(&self) -> egui_wgpu::RenderState {
+        self.render_state.clone()
+    }
     pub(super) fn new(render_state: egui_wgpu::RenderState, origin: (i32, i32)) -> Self {
         let mut scene =
             SceneRenderer::with_device(render_state.device.clone(), render_state.queue.clone());

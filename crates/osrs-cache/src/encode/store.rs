@@ -163,7 +163,10 @@ impl CacheStore {
         while out.len() < len {
             let mut raw = [0u8; SECTOR_SIZE];
             dat.seek(SeekFrom::Start((sector * SECTOR_SIZE) as u64))?;
-            dat.read_exact(&mut raw)?;
+            // Real caches may end immediately after the last payload byte, without padding
+            // the final sector to 520 bytes. Only the advertised group bytes are required.
+            let take = (len - out.len()).min(payload);
+            dat.read_exact(&mut raw[..header + take])?;
             let (id, rest) = if header == 10 {
                 (
                     u32::from_be_bytes([raw[0], raw[1], raw[2], raw[3]]),
@@ -181,7 +184,6 @@ impl CacheStore {
                     detail: "header does not match the group",
                 });
             }
-            let take = (len - out.len()).min(payload);
             out.extend_from_slice(&raw[header..header + take]);
             sector = next;
             chunk += 1;

@@ -275,6 +275,50 @@ impl EditorApp {
         }
     }
 
+    /// Shared render composition for authoring and the isolated inspection viewport.
+    pub(super) fn render_viewport_image(
+        &mut self,
+        ui: &egui::Ui,
+        rect: egui::Rect,
+        width: u32,
+        height: u32,
+    ) {
+        use osrs_render::gpu::FrameParams;
+        if self.world.is_ready() {
+            self.ensure_targets(width, height);
+            if self.prefs.render_profile == ProfileChoice::Hd {
+                self.update_hd_lighting();
+            }
+            let phase = Instant::now();
+            self.renderer.set_hd_params(self.prefs.hd_params());
+            if let Some(frame) = self.renderer.encode_viewport(FrameParams {
+                camera: self.interaction.camera.reference(width as f32),
+                view_plane: self.interaction.view_plane,
+                // The client's `gameCycle & 127`, at 50 cycles per second.
+                tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
+                brightness: self.prefs.brightness,
+                remove_color_banding: self.prefs.remove_color_banding,
+                bright_textures: self.prefs.bright_textures,
+                fog: self.prefs.fog(),
+                colorblind: self.prefs.colorblind(),
+                clear_color: self.prefs.sky_color.map(f64::from),
+                profile: self.prefs.render_profile.render_profile(),
+            }) {
+                self.stats.phase("encode", phase);
+                let gpu_scene_ms = self.renderer.submit_viewport(frame.command_buffer);
+                self.stats.set_gpu_scene_ms(gpu_scene_ms);
+                let probe = self.stats.gpu_probe();
+                self.renderer.on_submitted_work_done(probe);
+                ui.painter().image(
+                    frame.texture_id,
+                    rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
+            }
+        }
+    }
+
     pub(super) fn ensure_targets(&mut self, width: u32, height: u32) {
         self.renderer.ensure_targets(width, height);
     }

@@ -118,6 +118,35 @@ fn groups_round_trip_across_sector_boundaries_and_expanded_headers() {
 }
 
 #[test]
+fn the_final_sector_can_end_at_the_last_payload_byte_without_padding() {
+    let dir = temp_dir("unpadded");
+    let store = CacheStore::create(&dir).unwrap_or_else(|e| unreachable!("{e}"));
+    let bytes = vec![17; 601];
+    store
+        .write_raw_group(5, 7, &bytes)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let file = OpenOptions::new()
+        .write(true)
+        .open(dir.join(DATA_FILE))
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    file.set_len((2 * SECTOR_SIZE + 8 + 89) as u64)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    assert_eq!(
+        store
+            .read_raw_group(5, 7)
+            .unwrap_or_else(|e| unreachable!("{e}")),
+        Some(bytes)
+    );
+    file.set_len((2 * SECTOR_SIZE + 8 + 88) as u64)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    assert!(
+        store.read_raw_group(5, 7).is_err(),
+        "actual payload truncation must still fail"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn rewriting_a_group_repoints_it_and_leaves_other_groups_alone() {
     let dir = temp_dir("rewrite");
     let store = CacheStore::create(&dir).unwrap_or_else(|e| unreachable!("{e}"));

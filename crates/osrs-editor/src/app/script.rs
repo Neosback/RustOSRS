@@ -33,6 +33,7 @@ hud tile|stats|minimap|outline on|off|toggle
 window settings|plugins|script|map|teleport|none   open a window (or close all)
 grid                   toggle the tile grid
 project save|open PATH write / read a project file (Save returns at once; wait for it)
+export validate|review|write PATH|inspect PATH  native export workflow
 camera fly|orbit
 focus                  move the camera to the selection
 undo | redo | delete | turn | copy
@@ -382,6 +383,13 @@ impl EditorApp {
                 let path: Vec<&str> = words.collect();
                 let message = self.script_project(action, &path.join(" "))?;
                 self.notice = Some((message, Instant::now()));
+            }
+            "export" => {
+                let action = words.next().unwrap_or_default();
+                let path = words.collect::<Vec<_>>().join(" ");
+                if !self.script_export(action, &path)? {
+                    return Ok(Step::Retry);
+                }
             }
             "status" => {
                 let text: Vec<&str> = words.collect();
