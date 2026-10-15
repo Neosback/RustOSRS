@@ -12,11 +12,14 @@ use super::{
 };
 use crate::{
     WorldScene,
-    extract::{OwnedTiles, effective_level, lit_model, loc_slots},
+    extract::{
+        OwnedTiles, WorldZoneKey, effective_level, geometry_tile_selected, lit_model, loc_slots,
+    },
 };
 use osrs_core::coords::{SceneTile, StoragePlane};
 use osrs_render::{ModelPlacement, SceneGeometry, ZONE_LOCAL_UNITS};
 use osrs_scene::SemanticTile;
+use std::collections::BTreeSet;
 
 /// `TILE_FLAG_VIS_BELOW`: the floor of this tile is visible from the level below.
 const TILE_FLAG_VIS_BELOW: u8 = 4;
@@ -79,6 +82,19 @@ pub fn extract_owned_geometry_hd(
     owned: Option<OwnedTiles>,
     hd: &HdContext,
 ) -> SceneGeometry {
+    extract_owned_geometry_hd_zones(world, owned, hd, None)
+}
+
+/// HD extraction with an optional world-zone emission filter.
+///
+/// Procedural data is still generated from the full scene window. The zone set narrows only the
+/// emitted static geometry, preserving every contextual dependency used by the HD pipeline.
+pub(crate) fn extract_owned_geometry_hd_zones(
+    world: &WorldScene,
+    owned: Option<OwnedTiles>,
+    hd: &HdContext,
+    zones: Option<&BTreeSet<WorldZoneKey>>,
+) -> SceneGeometry {
     let input = procedural_input(world);
     let data = ProceduralData::generate(&input, hd);
     let emitter = TerrainEmitter {
@@ -88,7 +104,9 @@ pub fn extract_owned_geometry_hd(
     };
     let mut geometry = SceneGeometry::default();
     let (zone_base_x, zone_base_z) = (world.window.base_x / 8, world.window.base_y / 8);
-    let in_range = |x: u32, y: u32| owned.is_none_or(|range| range.contains(x, y));
+    let in_range = |x: u32, y: u32| {
+        geometry_tile_selected(owned, zones, (zone_base_x, zone_base_z), x, y)
+    };
 
     // Terrain: every storage tile, then its linked-below (bridge) tile.
     for slot in &input.tiles {
@@ -217,8 +235,4 @@ pub fn extract_owned_geometry_hd(
         }
     }
     geometry
-}
-
-fn unreachable_plane() -> StoragePlane {
-    StoragePlane::new(0).unwrap_or_else(|| unreachable!("plane 0 exists"))
 }
