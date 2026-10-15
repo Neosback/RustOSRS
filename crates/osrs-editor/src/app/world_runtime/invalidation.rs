@@ -1,6 +1,5 @@
 use super::{
-    WorldRuntime, ZoneKey, builds::ObjectOutputStamp,
-    height_dependencies::HeightDependencyStamp,
+    WorldRuntime, ZoneKey, builds::ObjectOutputStamp, height_dependencies::HeightDependencyStamp,
 };
 use crate::app::edit_runtime::{EditFootprint, EditTouches};
 use osrs_core::coords::{MapTile, RegionCoord};
