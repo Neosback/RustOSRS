@@ -60,9 +60,18 @@ fn successful_execution_finalizes_once_and_returns_receipt() {
     assert_eq!(receipt.revision, revision_before + 1);
     assert!(receipt.impact.contains(ChangeImpact::TERRAIN_GEOMETRY));
     assert_eq!(receipt.touched_regions, vec![RegionCoord::new(51, 50)]);
-    assert_eq!(receipt.footprint.terrain_tiles, Vec::<MapTile>::new());
-    assert_eq!(receipt.footprint.height_vertices, vec![edited.corner]);
-    assert_eq!(receipt.footprint.object_tiles, Vec::<MapTile>::new());
+    assert_eq!(
+        receipt.touched_regions.footprint.terrain_tiles,
+        Vec::<MapTile>::new()
+    );
+    assert_eq!(
+        receipt.touched_regions.footprint.height_vertices,
+        vec![edited.corner]
+    );
+    assert_eq!(
+        receipt.touched_regions.footprint.object_tiles,
+        Vec::<MapTile>::new()
+    );
     assert_eq!(runtime.document().height_at(edited), Some(64));
     assert!(runtime.can_undo());
     assert!(!runtime.can_redo());
@@ -155,7 +164,7 @@ fn successful_undo_replay_finalizes_once_and_returns_receipt() {
     assert_eq!(projection, "undo projected");
     assert_eq!(receipt.revision, revision_before + 1);
     assert_eq!(receipt.touched_regions, vec![RegionCoord::new(50, 50)]);
-    assert_eq!(receipt.footprint, footprint);
+    assert_eq!(receipt.touched_regions.footprint, footprint);
     assert_eq!(runtime.document().height_at(coord), Some(0));
     assert!(runtime.can_redo());
 }
@@ -218,8 +227,7 @@ fn rollback_invariant_failure_is_explicit() {
     let result = runtime.finish_execution(
         commit.revision,
         commit.impact,
-        vec![RegionCoord::new(50, 50)],
-        EditFootprint::new([], [first.corner], []),
+        EditFootprint::new([], [first.corner], []).into_touches(),
         checkpoint,
         Err::<(), _>("projection failed after intervening mutation"),
     );
@@ -255,8 +263,7 @@ fn finalize_invariant_failure_is_explicit() {
     let result = runtime.finish_execution(
         commit.revision,
         commit.impact,
-        vec![RegionCoord::new(50, 50)],
-        EditFootprint::new([], [first.corner], []),
+        EditFootprint::new([], [first.corner], []).into_touches(),
         checkpoint,
         Ok::<_, &'static str>(()),
     );
