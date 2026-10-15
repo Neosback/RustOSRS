@@ -1,9 +1,13 @@
 //! Region residency, stream requests, worker communication, and animation scheduling.
 //!
 //! `WorldRuntime` owns the disposable world-side projection state: which regions are resident,
-//! which builds are in flight, which regions wait for a rebuild after an edit, and the animation
-//! worker's schedule. It never owns edited map semantics; those live in `EditorSession`.
+//! which builds are in flight, which regions or zones wait for a rebuild after an edit, and the
+//! animation worker's schedule. It never owns edited map semantics; those live in `EditorSession`.
 
+mod invalidation;
+
+use self::invalidation::{ProjectionInvalidation, projection_invalidation, zone_region};
+use super::edit_runtime::EditTouches;
 use osrs_core::coords::RegionCoord;
 use osrs_edit::ChangeImpact;
 use osrs_render::SceneGeometry;
@@ -22,6 +26,20 @@ const ANIMATION_RADIUS_TILES: i32 = 80;
 const ANIMATION_STRIDE_CYCLES: u64 = 2;
 /// How far (tiles) the camera moves before the animated set is re-centred.
 const ANIMATION_RECENTRE_TILES: i32 = 8;
+
+type RegionKey = (i32, i32);
+pub(super) type ZoneKey = (i32, i32);
+
+/// What part of a resident region the current worker build is intended to refresh.
+///
+/// The worker still builds a full contextual region in this checkpoint. `Zones` narrows what the
+/// editor installs on the GPU; a later world-layer checkpoint can use the same scope to narrow
+/// extraction without changing invalidation semantics again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum RegionBuildScope {
+    Full,
+    Zones(BTreeSet<ZoneKey>),
+}
 
 /// What the status bar needs to know about a resident region.
 #[derive(Clone, Copy)]
@@ -46,10 +64,13 @@ pub(super) struct WorldRuntime {
     presentation_generation: u32,
     presentation_hd: bool,
     /// Regions resident on the GPU (`None` = the cache has no map data there).
-    loaded: HashMap<(i32, i32), Option<RegionStats>>,
-    in_flight: HashSet<(i32, i32)>,
-    /// Regions waiting for a rebuild after an edit.
-    dirty_regions: HashSet<(i32, i32)>,
+    loaded: HashMap<RegionKey, Option<RegionStats>>,
+    /// At most one build per region is in flight; its scope controls installation when it returns.
+    in_flight: HashMap<RegionKey, RegionBuildScope>,
+    /// Regions waiting for a conservative full rebuild after an edit.
+    dirty_regions: HashSet<RegionKey>,
+    /// Fine-grained terrain zones waiting for refresh, grouped by their owning region.
+    dirty_zones: HashMap<RegionKey, BTreeSet<ZoneKey>>,
     /// Whether the cache worker has reported ready.
     ready: bool,
 }
@@ -67,8 +88,9 @@ impl WorldRuntime {
             presentation_generation: 1,
             presentation_hd: false,
             loaded: HashMap::new(),
-            in_flight: HashSet::new(),
+            in_flight: HashMap::new(),
             dirty_regions: HashSet::new(),
+            dirty_zones: HashMap::new(),
             ready: false,
         }
     }
@@ -99,10 +121,12 @@ impl WorldRuntime {
         RegionStreamer::spawn(source, Self::presentation(false, false))
     }
 
-    /// Swap in a streamer for a newly opened cache and forget everything tied to the old one.
+    /// Swap in a streamer for a newly opened cache and forget queued edit rebuilds from the old one.
     /// The caller drops the returned streamer off-thread (it finishes its current job first).
     pub(super) fn replace_streamer(&mut self, streamer: RegionStreamer) -> RegionStreamer {
         self.dirty_regions.clear();
+        self.dirty_zones.clear();
+        self.in_flight.clear();
         self.ready = false;
         std::mem::replace(&mut self.streamer, streamer)
     }
@@ -136,7 +160,7 @@ impl WorldRuntime {
 
     /// Start a new presentation generation and forget every resident region. Returns the keys that
     /// were resident so the caller can drop their render and inspection projections.
-    pub(super) fn begin_rebuild_all(&mut self, smooth_terrain: bool, hd: bool) -> Vec<(i32, i32)> {
+    pub(super) fn begin_rebuild_all(&mut self, smooth_terrain: bool, hd: bool) -> Vec<RegionKey> {
         self.presentation_generation += 1;
         self.presentation_hd = hd;
         self.streamer.set_presentation(
@@ -149,14 +173,16 @@ impl WorldRuntime {
         }
         self.loaded.clear();
         self.in_flight.clear();
+        self.dirty_regions.clear();
+        self.dirty_zones.clear();
         self.animation.dirty = true;
         keys
     }
 
-    /// A region build finished and its geometry is on the GPU.
+    /// A region build finished and its complete geometry is available for status/animation state.
     pub(super) fn region_installed(
         &mut self,
-        key: (i32, i32),
+        key: RegionKey,
         geometry: &SceneGeometry,
         animations: Vec<AnimatedInstance>,
     ) {
@@ -171,24 +197,27 @@ impl WorldRuntime {
     }
 
     /// The cache has no map data at `key` (or the build failed).
-    pub(super) fn region_absent(&mut self, key: (i32, i32)) {
+    pub(super) fn region_absent(&mut self, key: RegionKey) {
         self.in_flight.remove(&key);
         self.loaded.insert(key, None);
     }
 
-    pub(super) fn build_finished(&mut self, key: (i32, i32)) {
-        self.in_flight.remove(&key);
+    /// Finish one build and return the scope that should be installed from its result.
+    pub(super) fn build_finished(&mut self, key: RegionKey) -> RegionBuildScope {
+        self.in_flight
+            .remove(&key)
+            .unwrap_or(RegionBuildScope::Full)
     }
 
     /// Request the nearest regions around `center` that are neither resident nor in flight.
-    pub(super) fn request_missing(&mut self, center: (i32, i32), radius: i32) {
+    pub(super) fn request_missing(&mut self, center: RegionKey, radius: i32) {
         let wanted = wanted_regions(center, radius);
         for key in wanted {
             if self.in_flight.len() >= MAX_IN_FLIGHT {
                 break;
             }
-            if !self.loaded.contains_key(&key) && !self.in_flight.contains(&key) {
-                self.in_flight.insert(key);
+            if !self.loaded.contains_key(&key) && !self.in_flight.contains_key(&key) {
+                self.in_flight.insert(key, RegionBuildScope::Full);
                 self.streamer.request(RegionCoord::new(key.0, key.1));
             }
         }
@@ -196,17 +225,20 @@ impl WorldRuntime {
 
     /// Drop regions farther than `radius + 1` from `center`; returns them so the caller can
     /// unload their semantic, render, and inspection projections.
-    pub(super) fn unload_stale(&mut self, center: (i32, i32), radius: i32) -> Vec<(i32, i32)> {
+    pub(super) fn unload_stale(&mut self, center: RegionKey, radius: i32) -> Vec<RegionKey> {
         let stale = stale_regions(self.loaded.keys().copied(), center, radius);
         for &key in &stale {
             self.loaded.remove(&key);
+            self.in_flight.remove(&key);
+            self.dirty_regions.remove(&key);
+            self.dirty_zones.remove(&key);
             self.animations.remove_region(key);
             self.animation.dirty = true;
         }
         stale
     }
 
-    pub(super) fn request_outline(&self, region: (i32, i32), index: usize, loc: LocInfo) {
+    pub(super) fn request_outline(&self, region: RegionKey, index: usize, loc: LocInfo) {
         self.streamer.request_outline(region, index, loc);
     }
 
@@ -229,7 +261,7 @@ impl WorldRuntime {
     pub(super) fn mirror_tile_edits(
         &mut self,
         edits: Vec<TileEdit>,
-        affected: impl Fn(&TileEdit) -> Vec<(i32, i32)>,
+        affected: impl Fn(&TileEdit) -> Vec<RegionKey>,
     ) {
         for edit in &edits {
             for region in affected(edit) {
@@ -262,41 +294,87 @@ impl WorldRuntime {
         }
     }
 
-    /// Translate one finalized semantic edit into region-level projection invalidation.
+    /// Translate one finalized semantic touch set into projection invalidation.
     ///
-    /// Object-only changes keep the historical behavior of rebuilding the touched regions. Terrain
-    /// geometry, materials, normals, or lighting can affect derived data across a region boundary,
-    /// so the current region-level implementation conservatively rebuilds one neighboring ring.
-    /// A later zone/chunk checkpoint can tighten this without changing semantic edit metadata.
+    /// Pure terrain edits can be bounded from audited terrain dependencies, so they refresh 8x8
+    /// zones. Height edits remain conservative because ground-contoured locs depend on model bounds,
+    /// and object edits remain conservative because object-definition footprints are not yet carried
+    /// by the semantic touch set. Those paths retain the previous region-level policy exactly.
     pub(super) fn invalidate_semantic_edit(
         &mut self,
         impact: ChangeImpact,
-        touched_regions: &[RegionCoord],
+        touched_regions: &EditTouches,
     ) {
-        for region in invalidated_regions(impact, touched_regions) {
-            self.mark_dirty((region.x, region.y));
+        match projection_invalidation(impact, touched_regions, &touched_regions.footprint) {
+            ProjectionInvalidation::None => {}
+            ProjectionInvalidation::Regions(regions) => {
+                for region in regions {
+                    self.mark_dirty((region.x, region.y));
+                }
+            }
+            ProjectionInvalidation::Zones(zones) => {
+                for zone in zones {
+                    self.mark_zone_dirty(zone);
+                }
+            }
         }
     }
 
-    /// Queue `region` for rebuild if it is resident.
-    pub(super) fn mark_dirty(&mut self, region: (i32, i32)) {
+    /// Queue a full `region` rebuild if it is resident. Full invalidation subsumes queued zones.
+    pub(super) fn mark_dirty(&mut self, region: RegionKey) {
         if self.loaded.contains_key(&region) {
+            self.dirty_zones.remove(&region);
             self.dirty_regions.insert(region);
         }
     }
 
-    /// Request a rebuild of every dirty region that is not already being built; the old geometry
-    /// stays on screen until the new one arrives.
+    /// Queue one world 8x8 zone when its owning region is resident and no full rebuild supersedes it.
+    fn mark_zone_dirty(&mut self, zone: ZoneKey) {
+        let region = zone_region(zone);
+        if self.dirty_regions.contains(&region)
+            || !matches!(self.loaded.get(&region), Some(Some(_)))
+        {
+            return;
+        }
+        self.dirty_zones.entry(region).or_default().insert(zone);
+    }
+
+    /// Request rebuild work that is not already in flight. The worker still builds the full region;
+    /// `RegionBuildScope::Zones` tells installation to upload only the fine-grained dirty subset.
     pub(super) fn flush_dirty_regions(&mut self) {
-        let ready: Vec<(i32, i32)> = self
+        let full_ready: Vec<RegionKey> = self
             .dirty_regions
             .iter()
             .copied()
-            .filter(|key| !self.in_flight.contains(key))
+            .filter(|key| !self.in_flight.contains_key(key))
             .collect();
-        for key in ready {
+        for key in full_ready {
+            if self.in_flight.len() >= MAX_IN_FLIGHT {
+                break;
+            }
             self.dirty_regions.remove(&key);
-            self.in_flight.insert(key);
+            self.dirty_zones.remove(&key);
+            self.in_flight.insert(key, RegionBuildScope::Full);
+            self.streamer.request(RegionCoord::new(key.0, key.1));
+        }
+
+        let zone_ready: Vec<RegionKey> = self
+            .dirty_zones
+            .keys()
+            .copied()
+            .filter(|key| !self.dirty_regions.contains(key) && !self.in_flight.contains_key(key))
+            .collect();
+        for key in zone_ready {
+            if self.in_flight.len() >= MAX_IN_FLIGHT {
+                break;
+            }
+            let Some(zones) = self.dirty_zones.remove(&key) else {
+                continue;
+            };
+            if zones.is_empty() {
+                continue;
+            }
+            self.in_flight.insert(key, RegionBuildScope::Zones(zones));
             self.streamer.request(RegionCoord::new(key.0, key.1));
         }
     }
@@ -359,32 +437,10 @@ impl WorldRuntime {
     }
 }
 
-/// Region-level projection invalidation derived only from authoritative semantic edit metadata.
-fn invalidated_regions(impact: ChangeImpact, touched_regions: &[RegionCoord]) -> Vec<RegionCoord> {
-    if impact.is_empty() || touched_regions.is_empty() {
-        return Vec::new();
-    }
-
-    let crosses_region_boundary = impact.intersects(ChangeImpact::TERRAIN_GEOMETRY)
-        || impact.intersects(ChangeImpact::TERRAIN_MATERIAL)
-        || impact.intersects(ChangeImpact::NORMALS)
-        || impact.intersects(ChangeImpact::LIGHTING);
-    let reach = if crosses_region_boundary { 1 } else { 0 };
-    let mut regions = BTreeSet::new();
-    for region in touched_regions {
-        for dx in -reach..=reach {
-            for dy in -reach..=reach {
-                regions.insert(RegionCoord::new(region.x + dx, region.y + dy));
-            }
-        }
-    }
-    regions.into_iter().collect()
-}
-
 /// Regions within `radius` of `center`, nearest first (ring distance, then Manhattan distance).
-fn wanted_regions(center: (i32, i32), radius: i32) -> Vec<(i32, i32)> {
+fn wanted_regions(center: RegionKey, radius: i32) -> Vec<RegionKey> {
     let (cx, cy) = center;
-    let mut wanted: Vec<(i32, i32)> = Vec::new();
+    let mut wanted: Vec<RegionKey> = Vec::new();
     for dx in -radius..=radius {
         for dy in -radius..=radius {
             wanted.push((cx + dx, cy + dy));
@@ -398,10 +454,10 @@ fn wanted_regions(center: (i32, i32), radius: i32) -> Vec<(i32, i32)> {
 
 /// Resident regions beyond one ring of hysteresis past the load radius.
 fn stale_regions(
-    loaded: impl Iterator<Item = (i32, i32)>,
-    center: (i32, i32),
+    loaded: impl Iterator<Item = RegionKey>,
+    center: RegionKey,
     radius: i32,
-) -> Vec<(i32, i32)> {
+) -> Vec<RegionKey> {
     let (cx, cy) = center;
     let keep = radius + 1;
     loaded
@@ -418,7 +474,7 @@ mod tests {
         let wanted = wanted_regions((50, 50), 2);
         assert_eq!(wanted.len(), 25);
         assert_eq!(wanted[0], (50, 50));
-        let ring = |&(x, y): &(i32, i32)| (x - 50).abs().max((y - 50).abs());
+        let ring = |&(x, y): &RegionKey| (x - 50).abs().max((y - 50).abs());
         assert!(wanted.windows(2).all(|w| ring(&w[0]) <= ring(&w[1])));
     }
 
@@ -428,30 +484,5 @@ mod tests {
         let mut stale = stale_regions(loaded.into_iter(), (50, 50), 2);
         stale.sort_unstable();
         assert_eq!(stale, vec![(54, 50)]);
-    }
-
-    #[test]
-    fn object_only_invalidation_stays_on_touched_regions() {
-        let regions = invalidated_regions(
-            ChangeImpact::LOCATIONS | ChangeImpact::COLLISION | ChangeImpact::BOUNDS,
-            &[RegionCoord::new(50, 50), RegionCoord::new(50, 50)],
-        );
-        assert_eq!(regions, vec![RegionCoord::new(50, 50)]);
-    }
-
-    #[test]
-    fn terrain_derived_invalidation_expands_one_region_ring() {
-        let regions = invalidated_regions(
-            ChangeImpact::TERRAIN_MATERIAL | ChangeImpact::NORMALS | ChangeImpact::LIGHTING,
-            &[RegionCoord::new(50, 50)],
-        );
-        assert_eq!(regions.len(), 9);
-        assert_eq!(regions.first(), Some(&RegionCoord::new(49, 49)));
-        assert_eq!(regions.last(), Some(&RegionCoord::new(51, 51)));
-    }
-
-    #[test]
-    fn empty_impact_never_invalidates_projection_regions() {
-        assert!(invalidated_regions(ChangeImpact::NONE, &[RegionCoord::new(50, 50)]).is_empty());
     }
 }

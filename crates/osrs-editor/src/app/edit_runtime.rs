@@ -6,11 +6,12 @@
 //! primitives stay private to this runtime so callers cannot bypass gateway policy accidentally.
 
 use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession, RegionSyncOutcome};
-use osrs_core::coords::RegionCoord;
+use osrs_core::coords::{MapTile, RegionCoord};
 use osrs_edit::{ChangeImpact, MapDocument, MapOp, MapPatch, MapRegionSnapshot, PatchApplyError};
 use std::collections::BTreeSet;
 #[cfg(test)]
 use std::convert::Infallible;
+use std::ops::Deref;
 
 /// Application owner of the authoritative semantic edit session.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -25,12 +26,94 @@ pub(super) enum EditReplayDirection {
     Redo,
 }
 
+/// Exact semantic coordinates touched by one application transaction.
+///
+/// This remains renderer-independent. The world projection decides how far each class of source
+/// mutation can propagate into disposable derived geometry.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(super) struct EditFootprint {
+    pub terrain_tiles: Vec<MapTile>,
+    pub height_vertices: Vec<MapTile>,
+    pub object_tiles: Vec<MapTile>,
+}
+
+impl EditFootprint {
+    pub(super) fn new(
+        terrain_tiles: impl IntoIterator<Item = MapTile>,
+        height_vertices: impl IntoIterator<Item = MapTile>,
+        object_tiles: impl IntoIterator<Item = MapTile>,
+    ) -> Self {
+        Self {
+            terrain_tiles: normalize_tiles(terrain_tiles),
+            height_vertices: normalize_tiles(height_vertices),
+            object_tiles: normalize_tiles(object_tiles),
+        }
+    }
+
+    fn from_patch(patch: &MapPatch) -> Self {
+        let mut terrain_tiles = Vec::new();
+        let mut height_vertices = Vec::new();
+        let mut object_tiles = Vec::new();
+        for op in patch.ops() {
+            match op {
+                MapOp::SetTerrain { coord, .. } => terrain_tiles.push(coord.tile),
+                MapOp::SetHeight { coord, .. } => height_vertices.push(coord.corner),
+                MapOp::AddObject { placement } | MapOp::RemoveObject { placement } => {
+                    object_tiles.push(placement.position.tile);
+                }
+            }
+        }
+        Self::new(terrain_tiles, height_vertices, object_tiles)
+    }
+
+    fn into_touches(self) -> EditTouches {
+        let regions = self
+            .terrain_tiles
+            .iter()
+            .chain(&self.height_vertices)
+            .chain(&self.object_tiles)
+            .map(|tile| tile.split_region().0)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        EditTouches {
+            regions,
+            footprint: self,
+        }
+    }
+}
+
+/// Region summary plus the exact coordinate footprint that produced it.
+///
+/// Dereferencing preserves the historical `&[RegionCoord]` view for callers that only need region
+/// membership, while projection invalidation can inspect the richer footprint without a parallel
+/// side channel.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(super) struct EditTouches {
+    regions: Vec<RegionCoord>,
+    pub footprint: EditFootprint,
+}
+
+impl Deref for EditTouches {
+    type Target = [RegionCoord];
+
+    fn deref(&self) -> &Self::Target {
+        &self.regions
+    }
+}
+
+impl PartialEq<Vec<RegionCoord>> for EditTouches {
+    fn eq(&self, other: &Vec<RegionCoord>) -> bool {
+        self.regions == *other
+    }
+}
+
 /// Successful application-level semantic transaction metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct EditReceipt {
     pub revision: u64,
     pub impact: ChangeImpact,
-    pub touched_regions: Vec<RegionCoord>,
+    pub touched_regions: EditTouches,
 }
 
 /// Result of executing one semantic transition through the application gateway.
@@ -127,7 +210,7 @@ impl EditRuntime {
     /// Test fixture convenience that still exercises the production replay gateway.
     #[cfg(test)]
     pub(super) fn undo(&mut self) -> Result<(), EditExecutionError<Infallible>> {
-        let _ = self.replay(EditReplayDirection::Undo, Vec::new(), |_| {
+        let _ = self.replay(EditReplayDirection::Undo, EditFootprint::default(), |_| {
             Ok::<_, Infallible>(())
         })?;
         Ok(())
@@ -144,7 +227,7 @@ impl EditRuntime {
         patch: MapPatch,
         project: impl FnOnce(&MapDocument) -> Result<T, E>,
     ) -> Result<EditExecution<T>, EditExecutionError<E>> {
-        let touched_regions = touched_regions(&patch);
+        let touches = EditFootprint::from_patch(&patch).into_touches();
         let Some((commit, checkpoint)) = self
             .session
             .commit_checkpointed(patch)
@@ -157,7 +240,7 @@ impl EditRuntime {
         self.finish_execution(
             commit.revision,
             commit.impact,
-            touched_regions,
+            touches,
             checkpoint,
             projection,
         )
@@ -165,14 +248,14 @@ impl EditRuntime {
 
     /// Replay one semantic Undo/Redo as an application transaction.
     ///
-    /// `touched_regions` comes from the lightweight application history route because
-    /// `EditorSession` intentionally keeps history patches opaque. The projection closure receives
-    /// only the authoritative post-replay document; worker/UI side effects belong after this method
-    /// returns `Committed`.
+    /// `footprint` comes from the lightweight application history route because `EditorSession`
+    /// intentionally keeps history patches opaque. The projection closure receives only the
+    /// authoritative post-replay document; worker/UI side effects belong after this method returns
+    /// `Committed`.
     pub(super) fn replay<T, E>(
         &mut self,
         direction: EditReplayDirection,
-        touched_regions: Vec<RegionCoord>,
+        footprint: EditFootprint,
         project: impl FnOnce(&MapDocument) -> Result<T, E>,
     ) -> Result<EditExecution<T>, EditExecutionError<E>> {
         let replay = match direction {
@@ -188,7 +271,7 @@ impl EditRuntime {
         self.finish_execution(
             commit.revision,
             commit.impact,
-            normalize_regions(touched_regions),
+            footprint.into_touches(),
             checkpoint,
             projection,
         )
@@ -198,7 +281,7 @@ impl EditRuntime {
         &mut self,
         revision: u64,
         impact: ChangeImpact,
-        touched_regions: Vec<RegionCoord>,
+        touched_regions: EditTouches,
         checkpoint: EditCheckpoint,
         projection: Result<T, E>,
     ) -> Result<EditExecution<T>, EditExecutionError<E>> {
@@ -227,27 +310,12 @@ impl EditRuntime {
     }
 }
 
-fn normalize_regions(regions: Vec<RegionCoord>) -> Vec<RegionCoord> {
-    regions
+fn normalize_tiles(tiles: impl IntoIterator<Item = MapTile>) -> Vec<MapTile> {
+    tiles
         .into_iter()
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
-}
-
-fn touched_regions(patch: &MapPatch) -> Vec<RegionCoord> {
-    let mut regions = BTreeSet::new();
-    for op in patch.ops() {
-        let tile = match op {
-            MapOp::SetTerrain { coord, .. } => coord.tile,
-            MapOp::SetHeight { coord, .. } => coord.corner,
-            MapOp::AddObject { placement } | MapOp::RemoveObject { placement } => {
-                placement.position.tile
-            }
-        };
-        regions.insert(tile.split_region().0);
-    }
-    regions.into_iter().collect()
 }
 
 #[cfg(test)]

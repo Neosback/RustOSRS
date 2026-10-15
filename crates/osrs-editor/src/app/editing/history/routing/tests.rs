@@ -1,7 +1,7 @@
 use super::*;
-use crate::app::edit_runtime::EditRuntime;
+use crate::app::edit_runtime::{EditFootprint, EditRuntime};
 use crate::session::EditorSession;
-use osrs_core::coords::SourcePlane;
+use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::{HeightVertexCoord, MapDocument, MapOp, MapPatch};
 
 fn plane() -> SourcePlane {
@@ -18,6 +18,10 @@ fn height_patch(coord: HeightVertexCoord, before: i32, after: i32) -> MapPatch {
         before,
         after,
     }])
+}
+
+fn height_footprint() -> EditFootprint {
+    EditFootprint::new([], [MapTile::new(3200, 3200)], [])
 }
 
 fn applied_runtime() -> EditRuntime {
@@ -47,11 +51,9 @@ fn failed_semantic_undo_projection_restores_runtime_and_history_stack() {
         .pop()
         .unwrap_or_else(|| unreachable!("Undo marker exists"));
 
-    let result = runtime.replay(
-        EditReplayDirection::Undo,
-        vec![RegionCoord::new(50, 50)],
-        |_| Err::<(), _>("injected Undo projection failure".to_owned()),
-    );
+    let result = runtime.replay(EditReplayDirection::Undo, height_footprint(), |_| {
+        Err::<(), _>("injected Undo projection failure".to_owned())
+    });
     assert!(matches!(result, Err(EditExecutionError::Projection(_))));
     Direction::Undo.restore(&mut history, &mut redo_stack, step);
 
@@ -74,11 +76,9 @@ fn failed_semantic_redo_projection_restores_runtime_and_redo_stack() {
         .pop()
         .unwrap_or_else(|| unreachable!("Redo marker exists"));
 
-    let result = runtime.replay(
-        EditReplayDirection::Redo,
-        vec![RegionCoord::new(50, 50)],
-        |_| Err::<(), _>("injected Redo projection failure".to_owned()),
-    );
+    let result = runtime.replay(EditReplayDirection::Redo, height_footprint(), |_| {
+        Err::<(), _>("injected Redo projection failure".to_owned())
+    });
     assert!(matches!(result, Err(EditExecutionError::Projection(_))));
     Direction::Redo.restore(&mut history, &mut redo_stack, step);
 
@@ -99,11 +99,9 @@ fn successful_semantic_undo_finalizes_once_and_moves_history_marker() {
         .unwrap_or_else(|| unreachable!("Undo marker exists"));
 
     let result = runtime
-        .replay(
-            EditReplayDirection::Undo,
-            vec![RegionCoord::new(50, 50)],
-            |_| Ok::<_, String>(1),
-        )
+        .replay(EditReplayDirection::Undo, height_footprint(), |_| {
+            Ok::<_, String>(1)
+        })
         .unwrap_or_else(|error| unreachable!("valid Undo replay: {error:?}"));
     assert!(matches!(result, EditExecution::Committed { .. }));
     Direction::Undo.settle(&mut history, &mut redo_stack, step);
@@ -130,11 +128,9 @@ fn successful_semantic_redo_finalizes_once_and_moves_redo_marker() {
         .unwrap_or_else(|| unreachable!("Redo marker exists"));
 
     let result = runtime
-        .replay(
-            EditReplayDirection::Redo,
-            vec![RegionCoord::new(50, 50)],
-            |_| Ok::<_, String>(1),
-        )
+        .replay(EditReplayDirection::Redo, height_footprint(), |_| {
+            Ok::<_, String>(1)
+        })
         .unwrap_or_else(|error| unreachable!("valid Redo replay: {error:?}"));
     assert!(matches!(result, EditExecution::Committed { .. }));
     Direction::Redo.settle(&mut history, &mut redo_stack, step);
