@@ -73,11 +73,41 @@ Checkpoint 1 changes:
 
 The first validation attempt (`38726838237` / #1331 on `8bf8a6cef35765381a760eb0bcde20c472fb15f3`) failed only the rustfmt check. The formatting-only correction advanced the code head to `bb0b538e4837e72272030eed92044916890cbf02`; the full replacement run then passed Tier A/B/C.
 
+### Checkpoint 2 - marquee gesture lifecycle ownership
+
+**CLOSED.**
+
+Validated code head:
+
+`e37feed2be1bad377729f64d2acbe040d1c7a32c`
+
+CI:
+
+`38729816578` / #1350 - SUCCESS across Tier A/B/C.
+
+Checkpoint 2 changes:
+
+- `Marquee` and its transient gesture state now live in `InteractionRuntime` rather than `selection.rs`;
+- begin, update, cancel, finish, and read access are encapsulated through `InteractionRuntime` methods;
+- pointer updates remain clamped to the viewport bounds and Shift/Cmd modifier intent remains latched across the gesture exactly as before;
+- switching tools, leaving the viewport after pointer release, object placement, object dragging, quick-open/context-menu suppression, and gizmo capture now cancel marquee state through the runtime instead of mutating the field directly;
+- viewport projection, loaded-world iteration, tile/object discovery, and application of the completed marquee selection remain in `EditorApp`, so `InteractionRuntime` does not absorb world or projection ownership;
+- the marquee field is private to the runtime, preventing future direct lifecycle mutation from outside the boundary;
+- focused unit coverage proves clamping/modifier latching and cancellation/finish behavior.
+
+Validation caught and closed three boundary-quality issues before this checkpoint was accepted:
+
+- the initial implementation required rustfmt-only corrections;
+- making `marquee` private exposed two remaining direct resets in `viewport.rs` and `workspace/tools.rs`, which were routed through `cancel_marquee()`;
+- strict Clippy rejected an `expect()` in the new unit test, so the assertion was rewritten without `unwrap`/`expect` and then formatted exactly.
+
+The final replacement run on `e37feed2be1bad377729f64d2acbe040d1c7a32c` passed architecture guards, formatting, workspace check, strict Clippy, WASM portability, the full workspace tests, and the M3-M9 semantic parity suite.
+
 ### Next checkpoint boundary
 
-Do not begin Checkpoint 2 without explicit user direction.
+Do not begin Checkpoint 3 without explicit user direction.
 
-The next checkpoint should stay on this same branch and continue a single coherent interaction behavior boundary. The likely next cut is the selection/marquee gesture lifecycle: begin/update/cancel/finish state transitions should move behind `InteractionRuntime` while screen projection, world iteration, and semantic actions remain outside it.
+The next checkpoint must stay on this same branch and remain inside transient interaction ownership. A suitable next cut is to encapsulate another coherent interaction state machine, such as hover/context-pick bookkeeping or temporary tool-key/peek state, without moving world lookup, UI composition, semantic edits, or projection ownership into `InteractionRuntime`.
 
 ## Latest completed development subsystem: verified map cache export and read-only inspection
 
@@ -163,7 +193,7 @@ Completed boundaries:
 
 In progress:
 
-1. `InteractionRuntime` behavioral encapsulation, Checkpoint 1 closed on PR #55.
+1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1 and 2 closed on PR #55.
 
 Remaining ownership work after this subsystem:
 
@@ -247,12 +277,12 @@ Each major subsystem should remain a separate branch/PR sequence.
 
 ## Next allowed boundary
 
-**STOP AFTER THE CHECKPOINT-1 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
+**STOP AFTER THE CHECKPOINT-2 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
 
-Do not begin Checkpoint 2 until:
+Do not begin Checkpoint 3 until:
 
-1. the exact branch head containing this Checkpoint 1 handoff passes Tier A/B/C;
-2. Checkpoint 1 and its certification are reported to the user;
+1. the exact branch head containing this Checkpoint 2 handoff passes Tier A/B/C;
+2. Checkpoint 2 and its certification are reported to the user;
 3. the user explicitly directs continuation.
 
 Do not merge PR #55 at this checkpoint. Do not create another development branch.
