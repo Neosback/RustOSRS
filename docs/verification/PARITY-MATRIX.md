@@ -1,214 +1,192 @@
-# Semantic Parity Verification Matrix
+# Semantic and Reference Parity Verification Matrix
 
-Status: **Current through M10 Checkpoint 5 plus M10 foundation audit**
+Status: **Current through the 2026-10-15 implementation audit**
 
-This matrix records current production/verification state. Historical milestone conclusions that were later corrected remain documented in their milestone audit files, but this file represents the current authoritative disposition.
+This matrix records proof state, not merely feature existence. A working renderer/editor path is not automatically external parity evidence.
 
-Status vocabulary:
+For current project completion scope read `docs/PROJECT-STATUS.md`. For exact branch/SHA/CI state read `DEV_HANDOFF.md`.
 
-- `EXISTING`: owning production behavior plus required exact verification exists.
-- `EXISTING-PARTIAL`: a declared subset is implemented and tested; remaining scope is explicit.
-- `SOURCE_VERIFIED / IMPLEMENTATION_REQUIRED`: exact source contract is pinned, but owning Rust implementation/fixture is not complete.
-- `STRUCTURAL_EXISTING / GPU_PENDING`: semantic/render-structural contract exists, physical GPU realization remains later.
-- `DEFERRED`: deliberately belongs to a later milestone.
-- `OPEN-ORACLE`: implementation/regression work may exist, but an independent parity oracle is still missing.
+## 1. Status vocabulary
 
-## 1. Target/cache/decode foundation
+- `EXISTING`: owning production behavior plus required exact verification exists for the declared scope.
+- `EXISTING-PARTIAL`: an explicit subset is implemented/tested and remaining scope is named.
+- `IMPLEMENTED / PARITY-OPEN`: production implementation exists, but release-level external/exact parity proof remains incomplete.
+- `OPEN-ORACLE`: internal implementation/regression work exists, but an independent parity oracle is missing.
+- `DEFERRED`: deliberately outside the currently claimed scope.
+
+## 2. Target/cache/decode foundation
 
 | Family | Current evidence | Status |
 |---|---|---|
-| target cache identity | OpenRS2 2727, build 241, fingerprint `ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38` | EXISTING |
-| target profile identity | `rustosrs-target-profile/v1`, current digest `203bb13fc48b56e88257d1a4bc96dfca9afd66fcd9216276bb7f83c97038726f` | EXISTING |
-| cache transport | `osrs-cache` transport tests, exact group/fingerprint safeguards | EXISTING |
-| object definitions | M3 decode fixtures/unit tests, full-width model IDs, opcode-92 fallback/null | EXISTING |
-| floor underlay/overlay | M3 fixtures plus `osrs-core::floor_color` exact HSL tests | EXISTING |
-| map terrain/loc streams | M3 fixtures and decoder tests | EXISTING |
-| texture definitions | build-241 M3 fixtures | EXISTING |
-| sequence/varbit/varp inputs | M3 fixtures/tests | EXISTING |
-| malformed/random decoder input | decoder unit/fuzz-smoke suites | EXISTING |
+| target cache/profile identity | pinned build-241 profile/fingerprint safeguards | EXISTING |
+| cache transport | `osrs-cache` transport/fingerprint tests | EXISTING |
+| object/floor/map/loc/texture/sequence/var decode | M3 fixtures and decoder suites | EXISTING |
+| malformed/random decoder input | unit + deterministic fuzz-smoke suites | EXISTING |
+| map terrain/location encoding | strict inverse encoders with real-cache byte-exact coverage for representable data | EXISTING-PARTIAL |
 
-## 2. Model construction
+## 3. Model construction and scene semantics
 
-| Spec/family | Current evidence | Status |
+| Family | Current evidence | Status |
 |---|---|---|
-| model decode | build-241 `FF FD`/`FF FE` decoder sweep and M4 tests | EXISTING |
-| `MODEL-BUILD-001` selection/combine | M4 normalized fixture + production tests | EXISTING |
-| `MODEL-BUILD-002` mirroring/winding | M4 normalized fixture/tests | EXISTING |
-| `MODEL-BUILD-003` transform order | M4 exact transform tests | EXISTING |
-| `MODEL-BUILD-004` non-flat/static lifecycle | M7 scene-local ModelData/finalization tests | EXISTING |
-| `MODEL-BUILD-005` runtime ownership | M8 private runtime model/contour/animation tests | EXISTING |
-
-## 3. Placement and scene semantics
-
-| Spec | Current evidence | Status |
-|---|---|---|
-| `LOC-PLACEMENT-001` type dispatch/storage | M6 insertion tests + historical orientation matrices | EXISTING |
-| `LOC-PLACEMENT-002` wall-decor offsets | M6 placement tests + pinned initial placement source | EXISTING |
-| `LOC-PLACEMENT-003` footprints/centers/heights | M6 placement-height and golden-scene tests | EXISTING |
-| `LOC-PLACEMENT-004` initial vs runtime representation | M7/M8 lifecycle tests | EXISTING |
-| `LOC-PLACEMENT-005` side-effect ownership/regeneration inputs | M6 planner tests + M9 ownership regression | EXISTING at ownership/regeneration contract |
-| private collision/occlusion/shadow bit-grid formulas beyond current contracts | not all promoted as independent narrow specs | DEFERRED until owning specs/fixtures |
-
-### Placement-shadow correction
-
-Pinned `FriendSystem.addObjects(...)` proves `Tiles.Tiles_underlays2` is placement-derived shadow state. Clipped walls write orientation-specific value `50`; clipped game objects may write model-height-derived values capped at `30`. This input is now part of the future `TERRAIN-004` implementation contract.
+| model decode/selection/combine | M4 fixtures/tests | EXISTING |
+| mirroring/winding/transforms | exact construction tests | EXISTING |
+| static/non-flat/runtime ownership | M7/M8 lifecycle tests | EXISTING |
+| loc placement/storage/footprints/heights | M6+ scene/placement suites | EXISTING |
+| bridge/link-below and typed planes | semantic scene tests and golden fixtures | EXISTING |
+| normals and cross-model reconciliation | M7 exact suites | EXISTING |
+| target object lighting | M7 exact lighting suites | EXISTING |
+| morph/contour/declared legacy animation | M8 suites | EXISTING within declared scope |
+| broader skeletal execution | not claimed by current M8 scope | DEFERRED |
 
 ## 4. Terrain
 
-| Spec | Current evidence | Status |
+| Contract | Current evidence | Status |
 |---|---|---|
-| `TERRAIN-001` shaped topology | 13x4 exact gallery, pinned `SceneTileModel` | EXISTING |
-| `TERRAIN-002` flat/shaped surface contract | M6 terrain tests, flat diagonal/sentinel cases | EXISTING |
-| `TERRAIN-003` floor-definition HSL | floor decode/post-decode exact tests | EXISTING |
-| `TERRAIN-004` complete terrain builder | pinned `class470.method9712(WorldView)` + `FriendSystem.addObjects(...)` shadow writer | SOURCE_VERIFIED / IMPLEMENTATION_REQUIRED |
+| shaped topology | exact shape gallery + pinned source | EXISTING |
+| flat/shaped surface contract | terrain tests/golden scenes | EXISTING |
+| floor HSL semantics | decode/post-decode exact tests | EXISTING |
+| `TERRAIN-004` complete terrain builder | production port + real pinned-client differential oracle | EXISTING |
 
-### `TERRAIN-004` current truth
+`TERRAIN-004` is no longer an implementation blocker. Commit `4e1757bded5952a18e51aef67981273dbf066c7c` ported the terrain loader/builder and reproduced real Lumbridge heights/settings/tile outputs/minimum planes/link-below state against the pinned client.
 
-The old `BLOCKED because class470 is unrelated` conclusion is superseded. The exact public method is now pinned.
+Placement-derived clipped shadow writes are integrated into cache-backed world construction before terrain-color finalization.
 
-Verified source behavior includes:
+## 5. Plane/visibility semantics
 
-- slope lighting;
-- placement-derived shadow subtraction;
-- separable radius-5/11x11 underlay blending;
-- weighted hue/saturation/lightness accumulation;
-- overlay texture/magenta/secondary branches;
-- 3D terrain corner colors based on non-jittered HSL;
-- separately jittered palette/minimap-style RGB;
-- hue wrap with `& 255`;
-- `minPlane` assignment;
-- normal finalization and link-below sequencing.
-
-Production Rust builder + executable differential fixture are still required before promotion to `EXISTING`.
-
-## 5. Planes and bridges
-
-| Spec | Current evidence | Status |
+| Contract | Current evidence | Status |
 |---|---|---|
-| `PLANES-001` typed plane separation | `osrs-core` plane types and scene tests | EXISTING |
-| `PLANES-002` collision-plane bridge adjustment | pinned client + M6/M9 tests | EXISTING |
-| `PLANES-003` structural `setLinkBelow` | exact four-plane fixture + production scene tests | EXISTING |
-| `PLANES-004` `minPlane`/`originalPlane` + renderer grouping boundary | pinned `Tile`, `Scene`, `class470`, imported `SceneUploader` | SOURCE_VERIFIED / IMPLEMENTATION_PARTIAL |
+| source/storage/collision plane separation | core types + scene tests | EXISTING |
+| bridge collision adjustment | pinned source + M6/M9 tests | EXISTING |
+| structural link-below | exact four-plane fixture + scene tests | EXISTING |
+| minimum-plane output | terrain builder oracle + renderer grouping | EXISTING |
+| `originalPlane` / roof / visibility edge behavior | implementation exists in surrounding scene/render path, exhaustive release parity fixtures remain incomplete | IMPLEMENTED / PARITY-OPEN |
 
-Current correction: `Tile.minPlane` and `Tile.originalPlane` are target client scene state. Imported RuneLite `maplevel` changes settings/roof lookup; it does not relocate `tiles[level]` geometry into another semantic storage plane.
+Do not describe min-plane grouping as unimplemented. Remaining work is edge-case parity around visibility/roof/original-plane semantics.
 
-Renderer grouping tests and target `minPlane/originalPlane` representation remain required before this row becomes fully `EXISTING` end to end.
-
-## 6. Normals and lighting
-
-| Spec | Current evidence | Status |
-|---|---|---|
-| `NORMALS-001` base normals | M7 exact smooth/flat/winding tests | EXISTING |
-| `NORMALS-002` cross-model merge | M7 positive/negative/translated/hide tests | EXISTING |
-| `NORMALS-003` scene neighbor reconciliation | M7 wall/game/floor/plane-above tests | EXISTING |
-| `NORMALS-004` merged-normal lighting precedence | M7 exact lighting delta tests | EXISTING |
-| `LIGHTING-001` object lighting | M7 exact lighting tests + pinned opcode decode | EXISTING |
-
-Corrections now explicit:
-
-- Scene does reconcile normals across separate wall/object ModelData; this is not mesh welding.
-- same-plane and plane-above reconciliation do not share one universal hide flag.
-- opcode-39 object contrast is already decoded as signed byte `* 25`; loc lighting then adds `768`.
-- raw alpha `-1/-2` affects render type before final face lighting; suppressed faces use baked `c == -2`.
-
-## 7. Morph, animation, contouring
+## 6. Deterministic identity and projection safety
 
 | Family | Current evidence | Status |
 |---|---|---|
-| varbit/varp/fallback/null morph | M8 exact tests | EXISTING |
-| active morph footprint/null model | M8 scene tests | EXISTING |
-| contouring | M8 exact flat/slope/threshold/border tests | EXISTING |
-| legacy animation decode/pose/progression/replacement | M8 exact suites | EXISTING within declared legacy scope |
-| broader skeletal execution | not claimed by M8 | DEFERRED |
+| world/region/local coordinates | M6/M9 exact tests | EXISTING |
+| semantic scene hash | pinned semantic golden hashes | EXISTING |
+| render-origin rebase | renderer extraction tests | EXISTING |
+| stale async build rejection | request/projection/presentation identity tests | EXISTING |
+| pure terrain zone invalidation | exact 8x8 invalidation tests | EXISTING |
+| Height invalidation | accepted dependency proof + conservative fallback | EXISTING |
+| Object invalidation | accepted producer-output proof + conservative fallback | EXISTING |
 
-## 8. Coordinates and deterministic scene identity
+## 7. Reference face/material/render preparation
 
-| Spec/family | Current evidence | Status |
+| Contract | Current evidence | Status |
 |---|---|---|
-| `COORD-001` world/region/local composition | M6/M9 exact tests | EXISTING |
-| semantic scene hash | `rustosrs-semantic-scene-v1` golden hashes | EXISTING |
-| renderer rebase side of coordinate boundary | M10 CP1 exact tests | EXISTING |
+| face metadata preservation | renderer extraction regressions | EXISTING |
+| software/client priority preparation | exact preparation tests | EXISTING |
+| alpha/sentinel preparation | renderer preparation + draw-path coverage | EXISTING |
+| suppressed `c == -2` admission | packed Reference geometry excludes suppressed faces | EXISTING |
+| authored bias metadata | carried into Reference path; full distance-sensitive parity fixture remains | IMPLEMENTED / PARITY-OPEN |
+| zone/level/min-plane grouping | Reference geometry/render path | EXISTING |
 
-Pinned semantic-scene hashes remain:
+RustOSRS Reference priority behavior must continue to name the selected pinned software/client contract. Imported RuneLite GPU sorting behavior is a separate comparison path where relevant.
 
-- composed scene: `50974f0232192dbd97c623d31bdbe208432ef64a13121c2852230afcc262f4a6`
-- four-plane linked-below: `bf7a7876864142f75a29c47836f331da6cfb97b512d500274fd3c8035c3a296c`
+## 8. Reference textures/materials
 
-## 9. Face behavior
-
-| Spec | Current evidence | Status |
+| Contract | Current evidence | Status |
 |---|---|---|
-| `FACE-001` metadata preservation | M10 CP1 `RenderMesh` extraction + optional-array regression | EXISTING |
-| `FACE-002` software/client priority preparation | M10 CP2 exact M5 threshold fixture execution | STRUCTURAL_EXISTING / GPU_PENDING |
-| imported RuneLite GPU render-mode sorting | source audited, no dedicated Rust comparison profile yet | SOURCE_VERIFIED / IMPLEMENTATION_REQUIRED |
-| `FACE-003` semantic alpha/sentinel state | M7 lighting + M10 CP2 draw-alpha preparation | STRUCTURAL_EXISTING / GPU_PENDING |
-| suppressed `c == -2` face admission | semantic output exists; explicit renderer draw exclusion fixture still required | IMPLEMENTATION_REQUIRED before Reference GPU draw |
-| `FACE-004` authored bias metadata | M10 extraction preserves input; GPU realization pending | STRUCTURAL_EXISTING / GPU_PENDING |
+| full-width semantic texture IDs/material handles | renderer material preparation | EXISTING |
+| canonical/explicit/projected UV preparation | exact renderer tests | EXISTING |
+| cache sprite decode and 128x128 texture construction | production texture path | EXISTING |
+| mipmapped texture array | production GPU path | EXISTING |
+| cutout/transparency handling | Reference texture path + regressions | EXISTING |
+| texture animation | deterministic render tick/path | EXISTING |
+| Reference sampler state | production implementation exists; external/exact parity proof still needs release closure | IMPLEMENTED / PARITY-OPEN |
 
-### Priority provenance rule
+The old `GPU IMPLEMENTATION_REQUIRED` texture rows are obsolete. Commit `a3141d3edc6f7ce855c5a9f1378cf944f6c850e5` introduced the real cache texture construction/upload/sampler/cutout/animation path.
 
-RustOSRS M10 priority preparation targets pinned software/client `Model.method5946`.
-
-Imported RuneLite GPU only executes its full priority queue where `prioritySort=true`, notably `SORTED_NO_DEPTH`; ordinary dynamic/static work is not universally priority-sorted. These are separate reference profiles, not contradictory implementations.
-
-## 10. Textures/materials
-
-| Spec/family | Current evidence | Status |
-|---|---|---|
-| `TEXTURE-001` full-width IDs/material handles | M10 CP4 | EXISTING CPU handoff |
-| canonical/explicit/projected model UV | M10 CP4 exact tests | EXISTING CPU preparation |
-| texture animation vector/tick preparation | M10 CP4 | EXISTING CPU preparation |
-| 128x128 imported RuneLite pixel construction | source audited only | SOURCE_VERIFIED / GPU IMPLEMENTATION_REQUIRED |
-| RGB-zero transparency + level0 cutout | source/shader audited only | SOURCE_VERIFIED / GPU IMPLEMENTATION_REQUIRED |
-| Reference filtering/wrap behavior | source audited only | SOURCE_VERIFIED / GPU IMPLEMENTATION_REQUIRED |
-
-Imported RuneLite filtering is not simply "nearest": magnification is nearest; minification is nearest at filter level 0 and `NEAREST_MIPMAP_LINEAR` at level >=1; imported config defaults to level 1. S wrap is clamp-to-edge and T remains default repeat in the audited setup.
-
-## 11. Renderer structural M10 progress
-
-| Checkpoint | Contract | Status |
-|---|---|---|
-| CP1 | render crate, immutable snapshot/generation, integer rebase, metadata handoff | EXISTING |
-| CP2 | software priority + draw-alpha preparation | EXISTING |
-| CP3 | static/dynamic/ordered classification + CPU draw plan | EXISTING |
-| CP4 | material table, full-width texture handles, UV/animation preparation | EXISTING |
-| CP5 | 8x8 storage-plane zones, dirty state, stale ticket rejection | EXISTING |
-| picking/diagnostics/final M10 exit | later M10 | DEFERRED |
-
-## 12. Raster/GPU Reference policy
+## 9. Reference GPU renderer
 
 | Contract | Current state |
 |---|---|
-| reverse-Z clear 0 | PROJECT_DECISION + imported evidence |
-| strict `Greater` Reference depth compare | corrected ADR-0004, GPU implementation pending |
-| no-far projection equivalence | source verified, implementation/fixture pending |
-| authored bias distance dependence | source verified, fixture pending |
-| Reference alpha depth-write/no-depth behavior | source verified at imported renderer level, implementation fixture pending |
-| CCW/backface convention | project decision, GPU fixture pending |
+| headless/offscreen wgpu Reference renderer | EXISTING |
+| reverse-Z path | EXISTING implementation; final parity fixtures remain part of M17 |
+| opaque terrain/model rendering | EXISTING |
+| alpha path | EXISTING implementation; complete mode/depth-write parity remains open |
+| editor Reference viewport | EXISTING |
+| internal Reference pixel regression | EXISTING |
+| exhaustive depth/raster/bias parity | IMPLEMENTED / PARITY-OPEN |
+| independent external visual oracle | OPEN-ORACLE |
+| measured broad external 1:1 claim | NOT YET PERMITTED |
 
-`GreaterEqual` is no longer the Reference baseline.
+Commit `210d279e42bf94bcaa87da7982f3a90951abaf81` established the packed zone geometry and headless reverse-Z wgpu Reference renderer. Subsequent commits added the native editor viewport and real texture path.
 
-## 13. Visual verification
+## 10. Editor semantic authority
 
-| Verification class | Current state |
+| Contract | Current state |
 |---|---|
-| RustOSRS self-generated Reference screenshots | planned/usable as internal regression evidence (`V3R`) |
-| independent external RuneLite/client visual oracle | OPEN-ORACLE |
-| measured external "1:1" visual parity claim | NOT YET PERMITTED |
+| semantic edit gateway | EXISTING |
+| Paint/Height/Paste/Path/Object mutations | EXISTING through semantic authority |
+| semantic Undo/Redo | EXISTING |
+| one gesture <= one semantic history entry | EXISTING contract/tests |
+| projection invalidation from mutation receipts | EXISTING |
+| stale result rejection | EXISTING |
+| read-only verified-export inspection | EXISTING |
+| runtime ownership extraction | EXISTING-PARTIAL |
 
-A self-generated golden proves regression stability, not external parity. External V3 requires a separately generated, provenance-complete comparison artifact.
+Remaining ownership work is `InteractionRuntime` behavior plus `ProjectRuntime`, `UiRuntime`, and `DiagnosticsRuntime` extraction.
 
-## 14. Foundation audit gates before first Reference viewport is considered solid
+## 11. Persistence/export
 
-Required before/while crossing M10 -> M11/M12:
+| Contract | Current state |
+|---|---|
+| project save/open | EXISTING |
+| region-diff persistence | EXISTING |
+| terrain/location encoders | EXISTING for representable values |
+| staged verified existing-group map export | EXISTING |
+| manifest-backed independent validation | EXISTING |
+| extra map-group file preservation | EXISTING |
+| isolated verified read-through | EXISTING, native-only |
+| autosave/crash recovery | IMPLEMENTATION REQUIRED if retained in M16 scope |
+| creation of new map groups | NOT IMPLEMENTED |
+| hash/Whirlpool table-row validation | fail-closed, not supported |
+| ordinary profile matching for edited cache | intentionally not supported by current design |
 
-1. implement `TERRAIN-004` from the now-pinned builder and add an exact differential fixture;
-2. represent/test `minPlane` and `originalPlane` where renderer visibility owns them;
-3. add explicit suppressed-face admission test so `c == -2` cannot reach a Reference draw;
-4. implement strict-`Greater` reverse-Z/no-far projection tests;
-5. add near/far authored-bias fixture;
-6. encode Reference alpha depth-write/no-depth behavior explicitly;
-7. implement/reference-test texture pixel construction, cutout, filtering, and wrap behavior;
-8. establish at least one external visual oracle before claiming measured 1:1 rendering.
+## 12. 117HD / enhanced profile
 
-No known P0/P1 semantic defect found by the M10 foundation audit is being intentionally pushed into renderer compensation.
+117HD is not a Reference parity target. Its proof model is data-resolution tests, shader/renderer regression tests, fixed-camera comparisons, and preservation of Reference behavior.
+
+Implemented scope includes:
+
+- render-profile/HDR foundation;
+- 117HD data/material/override loaders;
+- HD terrain/model extraction;
+- ground blending/normals;
+- environments/fog/directional lighting;
+- directional shadows/filtering;
+- water, flow/normal maps, foam, Fresnel, underwater tint/caustics;
+- animated-loc HD material routing;
+- material flow maps;
+- parallax/displacement and displaced shadow lookup.
+
+Remaining enhanced scope includes placed/dynamic lights, sky/day-night/star/moon/aurora systems, sky/reflection integration, remaining post/settings work, wind/character displacement, and remaining material/model visual edge cleanup.
+
+## 13. CI certification state
+
+Current CI has strong Tier A architecture/format/check/lint/WASM gates, Tier B full-workspace tests, and explicit Tier C semantic gates through M3-M9.
+
+The implementation has advanced beyond the naming of Tier C. M10+ renderer/editor/export/117HD tests exist, but the release certification matrix should add explicit permanent later-stage gates instead of relying only on broad workspace coverage.
+
+This is a **certification/tracking gap**, not evidence that M10+ production code does not exist.
+
+## 14. Remaining Reference parity closure
+
+Release-level Reference closure still requires:
+
+1. exhaustive placement/side-grid shadow edge fixtures where coverage remains incomplete;
+2. remaining original-plane/roof/visibility cases around the implemented min-plane path;
+3. exact depth/raster and near/far authored-bias fixtures;
+4. explicit alpha/depth-write/no-depth parity across relevant modes;
+5. exact sampler/texture behavior verification against the selected reference path;
+6. at least one independent external visual oracle;
+7. measured external visual gates before a broad 1:1 claim;
+8. first-class M10+ CI certification entries.
+
+No renderer workaround may be used to hide an earlier semantic failure.
