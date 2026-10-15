@@ -14,3 +14,5 @@ pub mod profile;
 pub mod registry;
 pub mod source;
 pub mod transport;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod verified_export;

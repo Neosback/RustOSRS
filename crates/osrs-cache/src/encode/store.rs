@@ -45,6 +45,11 @@ pub enum StoreError {
         index_id: u8,
         group_id: u32,
     },
+    /// Incrementing a group's reference-table version would overflow `u32`.
+    VersionOverflow {
+        index_id: u8,
+        group_id: u32,
+    },
     /// A container with a compression byte this writer cannot reproduce.
     UnsupportedCompression {
         byte: u8,
@@ -66,6 +71,12 @@ impl fmt::Display for StoreError {
             }
             Self::UnknownGroup { index_id, group_id } => {
                 write!(formatter, "index {index_id} has no group {group_id}")
+            }
+            Self::VersionOverflow { index_id, group_id } => {
+                write!(
+                    formatter,
+                    "index {index_id} group {group_id} version cannot be incremented"
+                )
             }
             Self::UnsupportedCompression { byte } => {
                 write!(formatter, "unsupported container compression {byte}")
@@ -163,7 +174,10 @@ impl CacheStore {
         while out.len() < len {
             let mut raw = [0u8; SECTOR_SIZE];
             dat.seek(SeekFrom::Start((sector * SECTOR_SIZE) as u64))?;
-            dat.read_exact(&mut raw)?;
+            // Real caches may end immediately after the last payload byte, without padding
+            // the final sector to 520 bytes. Only the advertised group bytes are required.
+            let take = (len - out.len()).min(payload);
+            dat.read_exact(&mut raw[..header + take])?;
             let (id, rest) = if header == 10 {
                 (
                     u32::from_be_bytes([raw[0], raw[1], raw[2], raw[3]]),
@@ -181,7 +195,6 @@ impl CacheStore {
                     detail: "header does not match the group",
                 });
             }
-            let take = (len - out.len()).min(payload);
             out.extend_from_slice(&raw[header..header + take]);
             sector = next;
             chunk += 1;
@@ -335,11 +348,18 @@ pub fn repack_groups(
                     index_id,
                     group_id: update.group_id,
                 })?;
+            let next_version = entry
+                .version
+                .checked_add(1)
+                .ok_or(StoreError::VersionOverflow {
+                    index_id,
+                    group_id: update.group_id,
+                })?;
             entry.crc = crc32(&container);
             if entry.sizes.is_some() {
                 entry.sizes = Some((container.len() as u32, update.payload.len() as u32));
             }
-            entry.version += 1;
+            entry.version = next_version;
             if had_suffix {
                 container.extend_from_slice(&(entry.version as u16).to_be_bytes());
             }

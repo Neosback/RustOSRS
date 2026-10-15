@@ -100,6 +100,7 @@ impl EditorApp {
     /// Whether a modal window is up (the editor behind it takes no keys or tools).
     pub(super) fn modal_open(&self) -> bool {
         self.settings_open
+            || self.export_modal_open()
             || self.script_open
             || self.plugins_open
             || self.tool_draft.is_some()

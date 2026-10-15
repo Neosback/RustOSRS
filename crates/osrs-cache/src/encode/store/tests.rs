@@ -118,6 +118,35 @@ fn groups_round_trip_across_sector_boundaries_and_expanded_headers() {
 }
 
 #[test]
+fn the_final_sector_can_end_at_the_last_payload_byte_without_padding() {
+    let dir = temp_dir("unpadded");
+    let store = CacheStore::create(&dir).unwrap_or_else(|e| unreachable!("{e}"));
+    let bytes = vec![17; 601];
+    store
+        .write_raw_group(5, 7, &bytes)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let file = OpenOptions::new()
+        .write(true)
+        .open(dir.join(DATA_FILE))
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    file.set_len((2 * SECTOR_SIZE + 8 + 89) as u64)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    assert_eq!(
+        store
+            .read_raw_group(5, 7)
+            .unwrap_or_else(|e| unreachable!("{e}")),
+        Some(bytes)
+    );
+    file.set_len((2 * SECTOR_SIZE + 8 + 88) as u64)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    assert!(
+        store.read_raw_group(5, 7).is_err(),
+        "actual payload truncation must still fail"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn rewriting_a_group_repoints_it_and_leaves_other_groups_alone() {
     let dir = temp_dir("rewrite");
     let store = CacheStore::create(&dir).unwrap_or_else(|e| unreachable!("{e}"));
@@ -260,6 +289,68 @@ fn repacking_updates_the_group_and_keeps_its_table_row_consistent() {
     )
     .unwrap_or_else(|e| unreachable!("{e}"));
     assert_eq!(table_of(&store).group(1).map(|g| g.version), Some(3));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn repacking_rejects_version_overflow_without_writing() {
+    let dir = temp_dir("version-overflow");
+    let store = build_cache(&dir);
+    let table_raw = store
+        .read_raw_group(REFERENCE_TABLE_INDEX, 5)
+        .unwrap_or_else(|e| unreachable!("{e}"))
+        .unwrap_or_else(|| unreachable!("table exists"));
+    let table_compression = compression_of(&table_raw).unwrap_or_else(|e| unreachable!("{e}"));
+    let mut table =
+        ReferenceTable::parse(&decode_container(table_raw).unwrap_or_else(|e| unreachable!("{e}")))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+    table
+        .group_mut(1)
+        .unwrap_or_else(|| unreachable!("group exists"))
+        .version = u32::MAX;
+    let encoded = encode_container(
+        table.encode().unwrap_or_else(|e| unreachable!("{e}")),
+        table_compression,
+        None,
+    )
+    .unwrap_or_else(|e| unreachable!("{e}"));
+    store
+        .write_raw_group(REFERENCE_TABLE_INDEX, 5, &encoded)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let group_before = store
+        .read_raw_group(5, 1)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let table_before = store
+        .read_raw_group(REFERENCE_TABLE_INDEX, 5)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+
+    let result = repack_groups(
+        &dir,
+        &[GroupUpdate {
+            index_id: 5,
+            group_id: 1,
+            payload: pack(1),
+        }],
+    );
+    assert!(matches!(
+        result,
+        Err(StoreError::VersionOverflow {
+            index_id: 5,
+            group_id: 1
+        })
+    ));
+    assert_eq!(
+        store
+            .read_raw_group(5, 1)
+            .unwrap_or_else(|e| unreachable!("{e}")),
+        group_before
+    );
+    assert_eq!(
+        store
+            .read_raw_group(REFERENCE_TABLE_INDEX, 5)
+            .unwrap_or_else(|e| unreachable!("{e}")),
+        table_before
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

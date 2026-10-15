@@ -1,273 +1,295 @@
-//! File > Export: write edited map squares as JS5 group containers, or as a whole cache copy.
-//!
-//! Export never modifies the source cache. *Loose* mode writes each edited square as
-//! `5/<group>.dat` (a gzip container holding the original group's files with terrain and locations
-//! replaced) next to a `manifest.json` recording the source cache identity and what changed.
-//! *Cache copy* mode copies the cache folder into an empty destination and repacks the edited
-//! squares into the copy (`osrs_cache::encode::repack_groups`), keeping each reference-table row
-//! consistent, so the result is a cache other tools can open. Untouched squares are not written. Reading, diffing, encoding, and writing run on a worker thread against a snapshot
-//! of the document, so the editor stays responsive and keeps its own history.
+//! Export orchestration. Workers own immutable inputs; only current-job results enter the UI.
+
+mod inspection;
+mod review;
 
 use super::EditorApp;
-use crate::session::{ExportChanges, export_region};
-use eframe::egui;
-use osrs_cache::encode::{
-    ContainerCompression, ContainerError, GroupUpdate, encode_container, pack_group, repack_groups,
+use crate::export_flow::{
+    ExportMode, ExportSnapshot, ExportStamp, ExportVerificationReport, PreparedExport, prepare,
+    publish,
 };
-use osrs_core::coords::RegionCoord;
-use osrs_edit::MapDocument;
-use osrs_world::SourceSquares;
-use serde_json::json;
-use std::path::{Path, PathBuf};
-use std::sync::mpsc::{Receiver, TryRecvError};
-use web_time::Instant;
+use eframe::egui;
+use osrs_cache::source::CacheSource;
+use osrs_cache::verified_export::{CACHE_MANIFEST, ExportManifest, VerifiedExport};
+use std::path::PathBuf;
+use std::sync::{
+    Arc,
+    mpsc::{Receiver, TryRecvError},
+};
 
-pub(super) struct ExportJob {
-    receiver: Receiver<Result<ExportReport, String>>,
+pub(super) enum ExportEvent {
+    Prepared(PreparedExport),
+    Published(Result<ExportVerificationReport, String>),
+    Inspected(Result<InspectionSource, String>),
 }
 
-struct ExportReport {
-    out_dir: PathBuf,
-    written: usize,
-    unchanged: usize,
+pub(super) struct InspectionSource {
+    source: CacheSource,
+    path: PathBuf,
+    manifest: ExportManifest,
+}
+
+struct ExportJob {
+    stamp: ExportStamp,
+    receiver: Receiver<ExportEvent>,
+}
+
+pub(super) struct ExportRuntime {
+    epoch: u64,
+    next: u64,
+    active: Option<ExportStamp>,
+    job: Option<ExportJob>,
+    prepared: Option<Arc<PreparedExport>>,
+    report: Option<ExportVerificationReport>,
+    failure: Option<String>,
     mode: ExportMode,
+    pub(super) open: bool,
+    inspection: Option<Box<inspection::ExportInspection>>,
+    pending_inspection: Option<InspectionSource>,
 }
 
-/// How an export lands on disk.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) enum ExportMode {
-    /// `5/<group>.dat` files plus a manifest.
-    Loose,
-    /// A copy of the cache folder with the edited squares repacked into it.
-    CacheCopy,
-}
-
-/// Replace files 0 (terrain) and 1 (locations) of a stored group and pack the result.
-fn package_payload(
-    original: &[(u32, Vec<u8>)],
-    terrain: &[u8],
-    locations: &[u8],
-) -> Result<Vec<u8>, ContainerError> {
-    let parts: Vec<&[u8]> = original
-        .iter()
-        .map(|(id, bytes)| match id {
-            0 => terrain,
-            1 => locations,
-            _ => bytes.as_slice(),
-        })
-        .collect();
-    pack_group(&parts)
-}
-
-/// `package_payload`, wrapped in a gzip container for writing as a loose file.
-fn package_group(
-    original: &[(u32, Vec<u8>)],
-    terrain: &[u8],
-    locations: &[u8],
-) -> Result<Vec<u8>, ContainerError> {
-    encode_container(
-        package_payload(original, terrain, locations)?,
-        ContainerCompression::Gzip,
-        None,
-    )
-}
-
-/// Copy every file of a cache folder into an empty `dest`.
-fn copy_cache_folder(source: &Path, dest: &Path) -> Result<(), String> {
-    let occupied = std::fs::read_dir(dest)
-        .map_err(|error| format!("reading {}: {error}", dest.display()))?
-        .next()
-        .is_some();
-    if occupied {
-        return Err(format!(
-            "{} is not empty; choose an empty folder",
-            dest.display()
-        ));
-    }
-    for entry in std::fs::read_dir(source).map_err(|error| format!("reading cache: {error}"))? {
-        let entry = entry.map_err(|error| error.to_string())?;
-        if entry.path().is_file() {
-            std::fs::copy(entry.path(), dest.join(entry.file_name())).map_err(|error| {
-                format!("copying {}: {error}", entry.file_name().to_string_lossy())
-            })?;
+impl Default for ExportRuntime {
+    fn default() -> Self {
+        Self {
+            epoch: 0,
+            next: 0,
+            active: None,
+            job: None,
+            prepared: None,
+            report: None,
+            failure: None,
+            mode: ExportMode::CacheCopy,
+            open: false,
+            inspection: None,
+            pending_inspection: None,
         }
     }
-    Ok(())
 }
 
-fn run_export(
-    source: osrs_cache::source::CacheSource,
-    out_dir: &Path,
-    document: &MapDocument,
-    regions: &[RegionCoord],
-    mode: ExportMode,
-) -> Result<ExportReport, String> {
-    let source_dir = match &source {
-        osrs_cache::source::CacheSource::Dir(dir) => Some(dir.clone()),
-        _ => None,
-    };
-    let squares = SourceSquares::open(source).map_err(|error| error.to_string())?;
-    std::fs::create_dir_all(out_dir.join("5"))
-        .map_err(|error| format!("creating output: {error}"))?;
-    if mode == ExportMode::CacheCopy {
-        // Created above only for the loose layout; a cache copy is the folder itself.
-        std::fs::remove_dir(out_dir.join("5")).map_err(|error| error.to_string())?;
+impl ExportRuntime {
+    pub(in crate::app) fn reset_source(&mut self) {
+        let epoch = self.epoch + 1;
+        let next = self.next;
+        *self = Self {
+            epoch,
+            next,
+            ..Self::default()
+        };
     }
 
-    let (mut entries, mut unchanged, mut updates) = (Vec::new(), 0, Vec::new());
-    for &region in regions {
-        let Some(square) = squares.read(region).map_err(|error| error.to_string())? else {
-            unchanged += 1;
-            continue;
+    fn stamp(&mut self, edit_revision: u64) -> ExportStamp {
+        self.next += 1;
+        let stamp = ExportStamp {
+            epoch: self.epoch,
+            job: self.next,
+            edit_revision,
         };
-        let exported = export_region(&square.terrain, &square.locations, document)
-            .map_err(|error| format!("region {},{}: {error:?}", region.x, region.y))?;
-        let Some(exported) = exported else {
-            unchanged += 1;
-            continue;
-        };
-        let file = format!("5/{}.dat", square.group_id);
-        match mode {
-            ExportMode::Loose => {
-                let bytes = package_group(&square.files, &exported.terrain, &exported.locations)
-                    .map_err(|error| error.to_string())?;
-                std::fs::write(out_dir.join(&file), bytes)
-                    .map_err(|error| format!("writing {file}: {error}"))?;
+        self.active = Some(stamp);
+        stamp
+    }
+
+    fn accepts(&self, stamp: ExportStamp) -> bool {
+        stamp.epoch == self.epoch && self.active == Some(stamp)
+    }
+
+    fn spawn(&mut self, stamp: ExportStamp, work: impl FnOnce() -> ExportEvent + Send + 'static) {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = sender.send(work());
+        });
+        self.job = Some(ExportJob { stamp, receiver });
+    }
+
+    fn poll(&mut self) {
+        let Some(job) = &self.job else { return };
+        let stamp = job.stamp;
+        let result = job.receiver.try_recv();
+        if matches!(result, Err(TryRecvError::Empty)) {
+            return;
+        }
+        self.job = None;
+        if !self.accepts(stamp) {
+            return;
+        }
+        match result {
+            Ok(ExportEvent::Prepared(prepared)) => self.prepared = Some(Arc::new(prepared)),
+            Ok(ExportEvent::Published(Ok(report))) => self.report = Some(report),
+            Ok(ExportEvent::Inspected(Ok(source))) => self.pending_inspection = Some(source),
+            Ok(ExportEvent::Published(Err(error)) | ExportEvent::Inspected(Err(error))) => {
+                self.failure = Some(error)
             }
-            ExportMode::CacheCopy => {
-                let payload =
-                    package_payload(&square.files, &exported.terrain, &exported.locations)
-                        .map_err(|error| error.to_string())?;
-                updates.push(GroupUpdate {
-                    index_id: 5,
-                    group_id: square.group_id,
-                    payload,
-                });
+            Err(_) => {
+                self.failure =
+                    Some("Export worker stopped unexpectedly. Validate again to retry.".to_owned())
             }
         }
-        entries.push(entry_json(region, square.group_id, &file, exported.changes));
     }
-    if mode == ExportMode::CacheCopy && !updates.is_empty() {
-        let source_dir = source_dir.ok_or("cache copy needs a cache folder as the source")?;
-        copy_cache_folder(&source_dir, out_dir)?;
-        repack_groups(out_dir, &updates).map_err(|error| format!("repacking: {error}"))?;
-    }
-
-    let manifest = json!({
-        "format": "rustosrs-map-export-v1",
-        "mode": if mode == ExportMode::Loose { "loose" } else { "cache-copy" },
-        "note": "edited map squares only; the source cache is unchanged",
-        "profile": squares.profile_id(),
-        "cache_fingerprint": squares.fingerprint(),
-        "regions": entries,
-    });
-    let text = serde_json::to_string_pretty(&manifest).map_err(|error| error.to_string())?;
-    let manifest_name = match mode {
-        ExportMode::Loose => "manifest.json",
-        ExportMode::CacheCopy => "rustosrs-export.json",
-    };
-    std::fs::write(out_dir.join(manifest_name), text)
-        .map_err(|error| format!("writing manifest: {error}"))?;
-    Ok(ExportReport {
-        out_dir: out_dir.to_path_buf(),
-        written: entries.len(),
-        unchanged,
-        mode,
-    })
-}
-
-fn entry_json(
-    region: RegionCoord,
-    group_id: u32,
-    file: &str,
-    changes: ExportChanges,
-) -> serde_json::Value {
-    json!({
-        "region": [region.x, region.y],
-        "index": 5,
-        "group": group_id,
-        "file": file,
-        "tiles_changed": changes.tiles,
-        "heights_changed": changes.heights,
-        "objects_added": changes.objects_added,
-        "objects_removed": changes.objects_removed,
-    })
 }
 
 impl EditorApp {
-    /// File menu entries. Disabled until an edit exists, or when the cache is not a folder.
     pub(super) fn export_menu(&mut self, ui: &mut egui::Ui) {
-        let editable = self.session.dirty_regions().next().is_some();
-        let enabled =
-            editable && self.export_job.is_none() && !self.cache_dir.as_os_str().is_empty();
-        let loose = ui
+        let changed =
+            self.session.dirty_regions().next().is_some() || self.project.has_pending_exports();
+        let enabled = changed && self.exports.job.is_none() && self.cache_build.is_some();
+        for (label, mode) in [
+            ("Export edited regions...", ExportMode::Loose),
+            ("Export as cache copy...", ExportMode::CacheCopy),
+        ] {
+            if ui
+                .add_enabled(enabled, egui::Button::new(label))
+                .on_disabled_hover_text(
+                    "Open a cache and edit the map first; wait for active export work to finish.",
+                )
+                .clicked()
+            {
+                ui.close();
+                self.prepare_export(mode);
+            }
+        }
+        if ui.button("Export review and report...").clicked() {
+            ui.close();
+            self.exports.open = true;
+        }
+        if ui
             .add_enabled(
-                enabled,
-                egui::Button::new(format!(
-                    "{}  Export edited regions...",
-                    egui_phosphor::regular::EXPORT
-                )),
+                self.cache_build.is_some() && self.exports.job.is_none(),
+                egui::Button::new("Inspect exported cache..."),
             )
-            .on_disabled_hover_text("Edit the map first; export writes only changed squares");
-        if loose.clicked() {
+            .clicked()
+        {
             ui.close();
-            self.start_export(ExportMode::Loose);
-        }
-        let copy = ui
-            .add_enabled(enabled, egui::Button::new("Export as cache copy..."))
-            .on_hover_text("A copy of the cache folder with your edits repacked into it")
-            .on_disabled_hover_text("Edit the map first");
-        if copy.clicked() {
-            ui.close();
-            self.start_export(ExportMode::CacheCopy);
+            if let Some(path) = rfd::FileDialog::new()
+                .set_title("Choose an exported cache copy")
+                .pick_folder()
+            {
+                self.inspect_export(path);
+            }
         }
     }
 
-    fn start_export(&mut self, mode: ExportMode) {
-        let title = match mode {
-            ExportMode::Loose => "Choose an empty folder for the exported map squares",
-            ExportMode::CacheCopy => "Choose an empty folder for the edited cache copy",
-        };
-        let Some(out_dir) = rfd::FileDialog::new().set_title(title).pick_folder() else {
+    fn prepare_export(&mut self, mode: ExportMode) {
+        let Some((_, profile)) = &self.cache_build else {
             return;
         };
-        let regions: Vec<RegionCoord> = self.session.dirty_regions().collect();
-        let document = self.session.document().clone();
-        let source = osrs_cache::source::CacheSource::Dir(self.cache_dir.clone());
-        let (sender, receiver) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let _ = sender.send(run_export(source, &out_dir, &document, &regions, mode));
+        let profile = profile.clone();
+        let stamp = self.exports.stamp(self.session.edit_revision());
+        let snapshot = ExportSnapshot {
+            stamp,
+            profile,
+            source: CacheSource::Dir(self.cache_dir.clone()),
+            document: self.session.document().clone(),
+            authored: self.session.dirty_regions().collect(),
+            pending: self.project.export_pending(),
+        };
+        self.exports.prepared = None;
+        self.exports.report = None;
+        self.exports.failure = None;
+        self.exports.mode = mode;
+        self.exports.open = true;
+        self.exports
+            .spawn(stamp, move || ExportEvent::Prepared(prepare(snapshot)));
+    }
+
+    fn publish_export(&mut self) {
+        let Some(prepared) = self.exports.prepared.clone() else {
+            return;
+        };
+        if !prepared.can_publish()
+            || prepared.stamp.edit_revision != self.session.edit_revision()
+            || self.exports.job.is_some()
+        {
+            return;
+        }
+        let Some(out) = rfd::FileDialog::new()
+            .set_title("Choose an empty folder for the verified export")
+            .pick_folder()
+        else {
+            return;
+        };
+        let _ = self.publish_export_to(out);
+    }
+
+    fn publish_export_to(&mut self, out: PathBuf) -> Result<(), String> {
+        let prepared = self
+            .exports
+            .prepared
+            .clone()
+            .ok_or("Validate the map before exporting.")?;
+        if !prepared.can_publish()
+            || prepared.stamp.edit_revision != self.session.edit_revision()
+            || self.exports.job.is_some()
+        {
+            return Err("Validation is blocked, outdated, or still running. Validate again before exporting.".to_owned());
+        }
+        let mode = self.exports.mode;
+        self.exports.failure = None;
+        self.exports.report = None;
+        let stamp = self.exports.stamp(prepared.stamp.edit_revision);
+        self.exports.spawn(stamp, move || {
+            ExportEvent::Published(publish(&prepared, mode, &out))
         });
-        self.export_job = Some(ExportJob { receiver });
-        self.notice = Some(("Exporting edited regions...".to_owned(), Instant::now()));
+        Ok(())
     }
 
-    /// Report a finished export once per frame.
+    fn inspect_export(&mut self, path: PathBuf) {
+        let original = self.cache_dir.clone();
+        let stamp = self.exports.stamp(self.session.edit_revision());
+        self.exports.failure = None;
+        self.exports.open = true;
+        self.exports.spawn(stamp, move || {
+            let result = (|| {
+                let bytes = std::fs::read(path.join(CACHE_MANIFEST)).map_err(|e| {
+                    format!("Read {CACHE_MANIFEST}: {e}. Choose a completed cache-copy export.")
+                })?;
+                let manifest: ExportManifest = serde_json::from_slice(&bytes).map_err(|e| {
+                    format!("Unsupported or invalid export manifest: {e}. Export a new cache copy.")
+                })?;
+                let profiles =
+                    osrs_cache::registry::bundled_profiles().map_err(|e| e.to_string())?;
+                let verified = VerifiedExport::validate(&original, &path, &manifest, &profiles)
+                    .map_err(|e| e.to_string())?;
+                Ok(InspectionSource {
+                    source: verified.source(),
+                    path,
+                    manifest,
+                })
+            })();
+            ExportEvent::Inspected(result)
+        });
+    }
+
     pub(super) fn poll_export(&mut self) {
-        let Some(job) = &self.export_job else {
-            return;
-        };
-        let message = match job.receiver.try_recv() {
-            Ok(Ok(report)) => format!(
-                "Exported {} region{} {} {} ({} unchanged)",
-                report.written,
-                if report.written == 1 { "" } else { "s" },
-                if report.mode == ExportMode::CacheCopy {
-                    "into a cache copy at"
-                } else {
-                    "to"
-                },
-                report.out_dir.display(),
-                report.unchanged
-            ),
-            Ok(Err(error)) => format!("Export failed: {error}"),
-            Err(TryRecvError::Empty) => return,
-            Err(TryRecvError::Disconnected) => "Export stopped unexpectedly".to_owned(),
-        };
-        self.export_job = None;
-        self.notice = Some((message, Instant::now()));
+        self.exports.poll();
+    }
+
+    /// Recorded UI operations for repeatable native export smoke tests.
+    pub(super) fn script_export(&mut self, action: &str, path: &str) -> Result<bool, String> {
+        if self.exports.job.is_some() || self.cache_build.is_none() {
+            return Ok(false);
+        }
+        if let Some(error) = &self.exports.failure {
+            return Err(error.clone());
+        }
+        match action {
+            "validate" => {
+                self.prepare_export(ExportMode::CacheCopy);
+                self.exports.open = false;
+            }
+            "write" if !path.is_empty() => self.publish_export_to(PathBuf::from(path))?,
+            "inspect" if !path.is_empty() => self.inspect_export(PathBuf::from(path)),
+            "review" => self.exports.open = true,
+            _ => {
+                return Err(
+                    "Use export validate|review, export write PATH, or export inspect PATH."
+                        .to_owned(),
+                );
+            }
+        }
+        Ok(true)
     }
 }
 
+#[cfg(test)]
+mod settlement_tests;
 #[cfg(test)]
 mod tests;

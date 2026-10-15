@@ -16,6 +16,27 @@ impl EditorApp {
             .clone()
             .ok_or("eframe is not running on the wgpu backend")?;
 
+        Self::from_source(
+            &cc.egui_ctx,
+            render_state,
+            osrs_cache::source::CacheSource::Dir(cache_dir.clone()),
+            cache_dir,
+            base_x,
+            base_y,
+            true,
+        )
+    }
+
+    /// Composition shared with isolated read-only export inspection; no authoring state is moved.
+    pub(super) fn from_source(
+        ctx: &egui::Context,
+        render_state: eframe::egui_wgpu::RenderState,
+        source: osrs_cache::source::CacheSource,
+        cache_dir: PathBuf,
+        base_x: i32,
+        base_y: i32,
+        authoring: bool,
+    ) -> Result<Self, String> {
         // Start above the middle of the requested window's region, looking north.
         let start_region = (base_x.div_euclid(64) + 1, base_y.div_euclid(64) + 1);
         let origin = (start_region.0 * REGION_UNITS, start_region.1 * REGION_UNITS);
@@ -26,7 +47,7 @@ impl EditorApp {
             0.3 * REGION_UNITS as f32,
         );
         let initial_dir = cache_dir.clone();
-        let initial_source = osrs_cache::source::CacheSource::Dir(cache_dir);
+        let initial_source = source;
         let world = world_runtime::WorldRuntime::new(world_runtime::WorldRuntime::spawn_streamer(
             initial_source.clone(),
         ));
@@ -35,7 +56,7 @@ impl EditorApp {
             renderer,
             clipboard: None,
             placer: object_tool::PlaceState::default(),
-            export_job: None,
+            exports: export::ExportRuntime::default(),
             project: project::ProjectState::default(),
             interaction: interaction_runtime::InteractionRuntime::new(camera),
             session: edit_runtime::EditRuntime::default(),
@@ -118,10 +139,12 @@ impl EditorApp {
         for plugin in &app.plugins {
             app.keymap.register(plugin.actions());
         }
-        app.init_settings(&cc.egui_ctx);
+        if authoring {
+            app.init_settings(ctx);
+        }
         // Start-up script (`RUSTOSRS_SCRIPT="wait 120; tool paint; radius 2"`), for smoke tests.
         let script = Self::env_script();
-        if !script.is_empty() {
+        if authoring && !script.is_empty() {
             app.run_script(&script);
         }
         app.start_catalog_loader(initial_source.clone());
@@ -129,7 +152,14 @@ impl EditorApp {
         app.start_palette_loader(initial_source);
         #[cfg(target_arch = "wasm32")]
         if let Some(base) = crate::platform::web::cache_url_param() {
-            app.pick_cache_url(&cc.egui_ctx, base);
+            app.pick_cache_url(ctx, base);
+        }
+        if !authoring {
+            app.settings_open = false;
+            app.quick_open = None;
+            app.screenshot = None;
+            app.exit_after_seconds = None;
+            app.autofly = None;
         }
         Ok(app)
     }

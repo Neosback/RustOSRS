@@ -16,10 +16,10 @@ pub(crate) use edit_session::{
     EditCheckpoint, EditCheckpointError, EditorSession, RegionSyncOutcome,
 };
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) use export::{ExportChanges, export_region};
+pub(crate) use export::{ExportChanges, ExportError, export_region};
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use project_file::{PROJECT_FORMAT, ProjectFile};
-#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) use region_diff::baseline_document;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use region_diff::{RegionDiff, diff_region};
