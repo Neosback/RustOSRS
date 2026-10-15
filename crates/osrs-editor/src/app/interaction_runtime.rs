@@ -5,9 +5,10 @@
 
 use super::{gizmo, object_tool, spline_tool};
 use crate::camera::FlyCamera;
+use crate::paint::Tool;
 use crate::pick::{ObjectPick, Pick};
 use eframe::egui;
-use std::collections::HashSet;
+use std::{collections::HashSet, time::Duration};
 use web_time::Instant;
 
 /// A box being dragged out with the left button.
@@ -23,6 +24,13 @@ impl Marquee {
     pub(super) fn rect(&self) -> egui::Rect {
         egui::Rect::from_two_pos(self.start, self.current)
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ToolPeek {
+    return_tool: Tool,
+    key: egui::Key,
+    since: Instant,
 }
 
 pub(super) struct InteractionRuntime {
@@ -46,8 +54,8 @@ pub(super) struct InteractionRuntime {
     marquee: Option<Marquee>,
     /// The spline tool's control points and preview.
     pub(super) spline: spline_tool::SplineState,
-    /// A held tool key: the tool to return to on release, the key and when it went down.
-    pub(super) peek: Option<(crate::paint::Tool, egui::Key, Instant)>,
+    /// A held tool key and the tool to return to if the hold becomes a peek.
+    peek: Option<ToolPeek>,
     /// The selected objects being dragged by the Objects tool.
     pub(super) object_drag: Option<object_tool::ObjectDrag>,
     /// The Objects tool's transform gizmo, its drag in progress, and whether it has the pointer.
@@ -220,14 +228,55 @@ impl InteractionRuntime {
     pub(super) fn marquee(&self) -> Option<&Marquee> {
         self.marquee.as_ref()
     }
+
+    pub(super) fn press_tool_key(
+        &mut self,
+        current: Tool,
+        pressed: Tool,
+        key: Option<egui::Key>,
+        now: Instant,
+    ) -> Tool {
+        if pressed == current && pressed != Tool::Select {
+            self.peek = None;
+            Tool::Select
+        } else {
+            self.peek = key.map(|key| ToolPeek {
+                return_tool: current,
+                key,
+                since: now,
+            });
+            pressed
+        }
+    }
+
+    pub(super) fn peek_key(&self) -> Option<egui::Key> {
+        self.peek.map(|peek| peek.key)
+    }
+
+    pub(super) fn release_tool_key(
+        &mut self,
+        key_down: bool,
+        now: Instant,
+        peek_after: Duration,
+    ) -> Option<Tool> {
+        let peek = self.peek?;
+        if key_down {
+            return None;
+        }
+        self.peek = None;
+        (now.duration_since(peek.since) > peek_after).then_some(peek.return_tool)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::InteractionRuntime;
     use crate::camera::FlyCamera;
+    use crate::paint::Tool;
     use crate::pick::{ObjectPick, Pick, TilePick};
-    use eframe::egui::{Pos2, Rect};
+    use eframe::egui::{Key, Pos2, Rect};
+    use std::time::Duration;
+    use web_time::Instant;
 
     fn runtime() -> InteractionRuntime {
         InteractionRuntime::new(FlyCamera::new(0.0, 0.0, 0.0))
@@ -395,5 +444,47 @@ mod tests {
         interaction.cancel_marquee();
 
         assert!(interaction.finish_marquee().is_none());
+    }
+
+    #[test]
+    fn tool_key_press_latches_return_tool_and_repress_cancels_peek() {
+        let mut interaction = runtime();
+        let now = Instant::now();
+
+        let target = interaction.press_tool_key(Tool::Select, Tool::Paint, Some(Key::P), now);
+        assert_eq!(target, Tool::Paint);
+        assert_eq!(interaction.peek_key(), Some(Key::P));
+
+        let target = interaction.press_tool_key(Tool::Paint, Tool::Paint, Some(Key::P), now);
+        assert_eq!(target, Tool::Select);
+        assert_eq!(interaction.peek_key(), None);
+    }
+
+    #[test]
+    fn tool_key_release_returns_only_after_peek_threshold() {
+        let mut interaction = runtime();
+        let started = Instant::now();
+        let threshold = Duration::from_millis(280);
+        interaction.press_tool_key(Tool::Select, Tool::Paint, Some(Key::P), started);
+
+        let held_until = started + Duration::from_millis(400);
+        assert_eq!(
+            interaction.release_tool_key(true, held_until, threshold),
+            None
+        );
+        assert_eq!(interaction.peek_key(), Some(Key::P));
+        assert_eq!(
+            interaction.release_tool_key(false, held_until, threshold),
+            Some(Tool::Select)
+        );
+        assert_eq!(interaction.peek_key(), None);
+
+        interaction.press_tool_key(Tool::Select, Tool::Height, Some(Key::H), started);
+        let tapped_at = started + Duration::from_millis(100);
+        assert_eq!(
+            interaction.release_tool_key(false, tapped_at, threshold),
+            None
+        );
+        assert_eq!(interaction.peek_key(), None);
     }
 }
