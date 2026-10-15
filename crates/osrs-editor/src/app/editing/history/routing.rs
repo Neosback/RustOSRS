@@ -392,7 +392,7 @@ impl EditorApp {
             } => {
                 self.world.project_loc_edits(edits);
                 self.clear_selection();
-                self.interaction.pending_reselect = reselect;
+                self.interaction.set_pending_reselect(reselect);
                 count
             }
         }
