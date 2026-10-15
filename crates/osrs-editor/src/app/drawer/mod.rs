@@ -2,7 +2,7 @@
 //!
 //! * **Paint**: the tile painter. One tab per channel (overlay, underlay, shape, height, mask); the
 //!   checkbox on a tab arms the channel, and unarmed channels keep the tile's own value.
-//! * **Spline**: the path's width and edges, plus the overlay and underlay it is laid with.
+//! * **Spline**: the path's width and edges, plus the overlay it is laid with.
 //! * **Height**: sculpting (raise, lower, smooth, flatten, roughen) with strength and falloff.
 //!
 //! The drawer exists only for tools that have a palette; Select has none.

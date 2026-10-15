@@ -121,7 +121,7 @@ above and handles painting finer than one tile.
 
 ## 7. Status (2026-10-11)
 
-Built in `crates/osrs-editor/src/autotile.rs` (to move into `osrs-edit`): sub-tile mask rasterisation from the
+Built in `crates/osrs-editor/src/terrain_path/fitter.rs` (originally `autotile.rs`; the path planner itself is `osrs-edit/src/path.rs`; no `soften` or census code is in the tree yet): sub-tile mask rasterisation from the
 real `FACE_CODES` tables (file shape + 1 indexes the builder's rows), Hamming-error choice, edge-portal passes,
 and the spline band. Used by the Spline tool. Not yet: the real-map frequency table for tie-breaking, multiple
 overlays with priorities, retile-selection, and flood fill.

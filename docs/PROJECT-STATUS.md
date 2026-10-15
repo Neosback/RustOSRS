@@ -117,7 +117,7 @@ The 117HD port is advanced, but it is not complete. See section 4.
 
 ## 3. Current ownership implementation
 
-The user-authorized ownership refinement is implemented on `Neosback/editor-ownership`, based on main merge `d7db98cd179fe8d64b2e743f74d8aefa9a955449`. The user has authorized commit and merge; see `DEV_HANDOFF.md` for current integration and exact validation status. This updates the earlier audit's architecture assessment; it does not recertify its historical branch/CI metadata.
+The ownership refinement merged to `main` as PR #56 (`63d2721e3fa30dc2eaecff140d6b27886e4dff2f`); its feature branch is retired. See `DEV_HANDOFF.md` for current integration and exact validation status. This updates the earlier audit's architecture assessment; it does not recertify its historical branch/CI metadata.
 
 - Paint/Height/Path planners and their tests live in the headless edit crate.
 - `InteractionRuntime` has private state and explicit lifecycle operations, including camera and spline preview behavior.
@@ -231,7 +231,7 @@ Ownership extraction for interaction, project, UI and diagnostics is implemented
 6. **Autosave/recovery, project/browser lifecycle polish, and future import/merge workflows**.
 7. **Release acceptance** on the pinned real cache plus final documentation/parity audit.
 
-Do not mix these into one branch. Follow the one-active-subsystem rule in `DEV_HANDOFF.md`.
+Do not mix these into one checkpoint. Work stays on `main` unless the user requests a branch; follow the checkpoint sequence in `DEV_HANDOFF.md`.
 
 ## 7. Definition of project completion
 

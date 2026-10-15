@@ -6,19 +6,20 @@ Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md`
 
 ## Current boundary and standing workflow
 
-- Working branch: `main`; stay on `main` unless the user explicitly asks otherwise.
-- Program baseline: `63d2721e3fa30dc2eaecff140d6b27886e4dff2f`, merge of PR #56 (editor ownership).
-- Integrated baseline CI: run `38766016806`, successful Tier A/B/C. The old feature branch is retired remotely.
-- Current authorized work: performance measurement, responsive spline/tool UI, measured optimization, offline map playtesting and complete pinned 117HD behavior. See `docs/plans/PERFORMANCE-UI-PLAYTEST-HD.md`.
-- Implementation is in progress, beginning with reproducible release baselines. Changes after the baseline are uncommitted until a checkpoint records otherwise.
+- Working branch: `main`; stay on `main` unless the user explicitly asks otherwise. One local commit per checkpoint; nothing is pushed or published without authorization.
+- Program baseline: `63d2721e3fa30dc2eaecff140d6b27886e4dff2f`, merge of PR #56 (editor ownership), main CI run `38766016806` (Tier A/B/C success). The old feature branch is retired remotely.
+- Commit `41d0c020` ("updates") on top of that baseline already contains the program foundations: opt-in JSON performance capture (`diagnostics/capture.rs`, schema v1), owned-GPU-byte accounting (`gpu/resources.rs`), Reference frame reuse (`render_runtime/reuse.rs`), the shared Spline settings widget (`spline_tool/panel.rs`), `scripts/performance.py`, and the 117HD source manifest/ledger (98 config items, all `audit_pending`). They are committed, not pending, but **no baseline or improvement has been recorded**.
+- Authorized work and plan: `docs/plans/PERFORMANCE-UI-PLAYTEST-HD.md`. The expanded user goals (RuneLite/deob re-verification, exact tile/overlay/underlay/blend abstraction for the spline tool, NPC/entity runtime for a future own client) are carried by the checkpoints below.
 
 ## Current program checkpoints
 
-1. Baselines and resource/timing measurements — in progress.
-2. Responsive tool panels and spline workflow — pending.
+0. Reconcile handoff/docs and record gate results at `41d0c020` — done (see Validation).
+1. Measurement completion (schema v2, worker/renderer counters, workloads, compare tool) and recorded baselines — pending.
+2. (a) Terrain appearance abstraction in `osrs-scene`, no behavior change; (b) responsive tool panels and Spline workflow with real blended preview — pending.
 3. Measured CPU/GPU/memory optimizations — pending.
-4. Offline client/playtest runtime and cache/model support — pending.
-5. Remaining 117HD systems and independent visual proof — pending.
+4. Entity cache decoders, skeletal animation, shared model appearance transforms — pending.
+5. `osrs-playtest` crate, editor controller, entity rendering — pending.
+6. Remaining 117HD systems and independent visual proof — pending.
 
 Do not describe this program as complete merely because its foundations or self-generated regression images pass. Viewing distance, resolution and visual settings remain fixed in performance comparisons. Client networking/accounts and full combat/economy are outside scope.
 
@@ -41,19 +42,15 @@ Do not describe this program as complete merely because its foundations or self-
 
 ## Validation
 
-Prior ownership implementation validation (not certification of new program changes):
+Checkpoint 0, at `41d0c020` plus documentation/comment-only edits (local results, not remote CI certification), Python 3.14.8 (`/opt/homebrew/bin/python3`):
 
-- Architecture/dependency/file-size/application-surface/feature-reference guards.
-- Architecture guard tests: 24 passed; editor ownership/feature guard tests: 11 passed; reference-regeneration safety: 5 passed; historical golden-index check passed.
-- `cargo fmt --all --check` and `git diff --check`.
-- Locked workspace/all-target/all-feature compile and strict Clippy.
-- Locked full workspace/all-target/all-feature tests: **793 passed, 0 failed, 18 ignored**, including the permanent M3–M9 semantic/reference gates and available renderer tests.
-- Final editor suite after the scheduling-revision diagnostic adjustment: **231 passed, 0 failed, 3 ignored**. Native strict Clippy was rerun for that adjustment.
-- WASM lower-crate check and strict editor Clippy passed. Native-only inspection/quit helpers are target-gated rather than lint-suppressed.
+- Architecture guard, 24 architecture-guard tests, 11 editor-ownership tests, 5 reference-regeneration tests, golden-index check, HD source pins (98 entries awaiting audit) and 3 HD-source tests: all passed.
+- `cargo fmt --all --check`; locked workspace/all-target/all-feature `cargo check` and strict Clippy: passed.
+- Locked full workspace/all-target/all-feature tests: **805 passed, 0 failed, 18 ignored** (the ignored tests keep their explicit external cache/GPU/oracle prerequisites and are not acceptance evidence).
+- WASM lower-crate check and strict editor Clippy: passed.
+- Cargo emits the existing vendored `rune-fs` MSRV-metadata warning.
 
-The ignored tests keep their existing explicit prerequisites (external cache/GPU/oracle data); they were not promoted to passing acceptance evidence. Cargo emits the existing vendored `rune-fs` MSRV-metadata warning; repository strict lint checks still pass.
-
-These are local implementation results, not remote CI certification. Record exact branch/main SHAs and actual CI evidence during merge closeout. Historical CI results only certify the SHAs listed in the archived handoff.
+This supersedes the earlier PR #56 figures (793 passed). Historical CI results only certify the SHAs they name.
 
 ## Subsequent work
 

@@ -3,9 +3,9 @@
 //!
 //! Supported override fields: base and texture materials (and per-vanilla-material overrides),
 //! `uvType` (geometry, vanilla, model/world planes, box), `uvScale` and orientation, flat and
-//! upward normals, `undoVanillaShading`, `doubleSidedFaces`, `receiveShadows`, `depthBias`, `hide`
-//! and colour/alpha modifiers. Not yet: colour-conditional overrides, terrain vertex snapping,
-//! wind displacement, tile-colour inheritance, TzHaar recolouring and fake-shadow hiding.
+//! upward normals, `undoVanillaShading`, `doubleSidedFaces`, `receiveShadows`, `depthBias`, `hide`,
+//! fake-shadow hiding and colour/alpha modifiers. Not yet: colour-conditional overrides, terrain
+//! vertex snapping, wind displacement, tile-colour inheritance and TzHaar recolouring.
 //!
 //! Adapted from `rs117.hd.scene.ModelOverrideManager`, `ModelOverride` and
 //! `rs117.hd.renderer.zone.SceneUploader`. Copyright (c) 2018, Adam <Adam@sigterm.info>; (c) 2021,
