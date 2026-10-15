@@ -29,7 +29,7 @@ impl EditorApp {
             // The pointer left the viewport: a stroke or box in progress ends here.
             if !response.ctx.input(|i| i.pointer.primary_down()) {
                 self.end_stroke();
-                self.interaction.marquee = None;
+                self.interaction.cancel_marquee();
             }
             return;
         };
