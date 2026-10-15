@@ -66,7 +66,7 @@ impl ObjectOutputStore {
         requested: RegionBuildScope,
         geometry: &SceneGeometry,
     ) -> RegionBuildScope {
-        if !matches!(requested, RegionBuildScope::Full) {
+        if !matches!(&requested, RegionBuildScope::Full) {
             self.pending.remove(&key);
             return requested;
         }
