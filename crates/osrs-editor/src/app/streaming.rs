@@ -90,12 +90,8 @@ impl EditorApp {
                     }
                     self.infos.insert(key, region.info);
                     self.infos_version += 1;
-                    self.world.region_installed(
-                        key,
-                        &scope,
-                        &region.geometry,
-                        region.animations,
-                    );
+                    self.world
+                        .region_installed(key, &scope, &region.geometry, region.animations);
                     if matches!(scope, world_runtime::RegionBuildScope::Full) {
                         self.apply_project_region(RegionCoord::new(key.0, key.1));
                     }
