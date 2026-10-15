@@ -1,8 +1,8 @@
 //! Editing objects: move, turn, copy and delete the selected placements.
 //!
 //! Completed object actions commit through the authoritative semantic editor session. The existing
-//! world-worker `LocEdit` layer remains a downstream projection that rebuilds affected regions and
-//! re-selects moved/new placements after the rebuild arrives.
+//! world-worker `LocEdit` layer remains a downstream projection; rebuild scope comes from the
+//! finalized semantic receipt and re-selection happens after the rebuilt regions arrive.
 
 mod commit;
 mod place;
@@ -10,6 +10,7 @@ mod place;
 mod drawer;
 
 use super::EditorApp;
+use super::edit_runtime::{EditExecution, EditExecutionError};
 use super::editing::EditStep;
 use crate::icons;
 use crate::paint::Tool;
@@ -19,7 +20,7 @@ use commit::{ObjectCommitPlan, build_object_commit_plan};
 pub(super) use commit::{ObjectHistoryRoute, build_object_history_projection};
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
 use egui_phosphor::regular as ph;
-use osrs_world::{LocEdit, LocSpec};
+use osrs_world::LocSpec;
 pub(super) use place::PlaceState;
 use web_time::Instant;
 
@@ -63,8 +64,9 @@ impl EditorApp {
             .collect()
     }
 
-    /// Commit one complete object action semantically, project it to the world worker, and select
-    /// the placements it made. Returns whether a non-empty semantic transaction committed.
+    /// Commit one complete object action through the application gateway, project it to the world
+    /// worker, and select the placements it made. Returns whether a non-empty semantic transaction
+    /// committed and finalized successfully.
     fn edit_objects(&mut self, removed: Vec<LocSpec>, added: Vec<LocSpec>, label: &str) -> bool {
         if removed.is_empty() && added.is_empty() {
             return false;
@@ -85,30 +87,63 @@ impl EditorApp {
             }
         };
 
-        match self.session.commit(patch) {
-            Ok(Some(_)) => {}
-            Ok(None) => {
+        let route = ObjectHistoryRoute::new(removed.clone(), added.clone());
+        let execution = self.session.execute(patch, |document| {
+            build_object_history_projection(document, &route, true)
+        });
+        let (receipt, projection) = match execution {
+            Ok(EditExecution::Committed {
+                receipt,
+                projection,
+            }) => (receipt, projection),
+            Ok(EditExecution::NoChange) => {
                 self.notice = Some((
                     "Object action made no semantic changes".to_owned(),
                     Instant::now(),
                 ));
                 return false;
             }
-            Err(error) => {
+            Err(EditExecutionError::Semantic(error)) => {
                 self.notice = Some((
                     format!("Object action was rejected by the semantic session: {error:?}"),
                     Instant::now(),
                 ));
                 return false;
             }
-        }
+            Err(EditExecutionError::Projection(error)) => {
+                self.notice = Some((
+                    format!("Object action was rolled back: {error:?}"),
+                    Instant::now(),
+                ));
+                return false;
+            }
+            Err(EditExecutionError::Rollback {
+                projection,
+                rollback,
+            }) => {
+                self.notice = Some((
+                    format!(
+                        "Object projection failed and semantic rollback failed: {projection:?} ({rollback:?})"
+                    ),
+                    Instant::now(),
+                ));
+                return false;
+            }
+            Err(EditExecutionError::Finalize(error)) => {
+                self.notice = Some((
+                    format!("Object projection succeeded but semantic finalize failed: {error:?}"),
+                    Instant::now(),
+                ));
+                return false;
+            }
+        };
 
-        let mut edits: Vec<LocEdit> = removed.iter().map(|s| LocEdit::Remove(*s)).collect();
-        edits.extend(added.iter().map(|s| LocEdit::Add(*s)));
-        self.send_loc_edits(edits);
-        self.push_step(EditStep::semantic_object(removed, added.clone()));
+        self.world.project_loc_edits(projection.edits);
+        self.world
+            .invalidate_semantic_edit(receipt.impact, &receipt.touched_regions);
+        self.push_step(EditStep::semantic_object(removed, added));
         self.clear_selection();
-        self.interaction.pending_reselect = added;
+        self.interaction.pending_reselect = projection.reselect;
         self.notice = Some((label.to_owned(), Instant::now()));
         true
     }
@@ -408,3 +443,6 @@ impl EditorApp {
         }
     }
 }
+
+#[cfg(test)]
+mod gateway_tests;

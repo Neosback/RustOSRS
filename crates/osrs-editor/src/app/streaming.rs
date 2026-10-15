@@ -60,10 +60,22 @@ impl EditorApp {
                 }
                 StreamEvent::Region(region) => {
                     let key = (region.region.x, region.region.y);
+                    // Retire the FIFO build ticket before checking worker presentation generation.
+                    // Old results must consume their own ticket so a later request for the same
+                    // region cannot be mistaken for this completion.
+                    let scope = self.world.build_finished(key);
                     if !self.world.is_current_generation(region.generation) {
                         continue;
                     }
-                    self.world.build_finished(key);
+                    let Some(scope) = scope else {
+                        continue;
+                    };
+                    // Accepted Object proof builds are full contextual/static worker results. Only
+                    // after the existing request/generation gates pass do we compare them with the
+                    // retained pre-edit producer output and possibly narrow the static install.
+                    let scope = self
+                        .world
+                        .resolve_install_scope(key, scope, &region.geometry);
                     match crate::session::adapt_region_map(&region.source) {
                         Ok(snapshot) => {
                             let _ = self.session.ingest_region(&snapshot);
@@ -79,12 +91,27 @@ impl EditorApp {
                     // outlined for the old ones is gone: the selection's highlight is made afresh.
                     self.outlines.retain(|(r, _), _| *r != key);
                     self.outline_requested.retain(|(r, _)| *r != key);
-                    self.renderer.upload_region(key, &region.geometry);
+                    match &scope {
+                        world_runtime::RegionBuildScope::Full => {
+                            self.renderer.upload_region(key, &region.geometry);
+                        }
+                        world_runtime::RegionBuildScope::Zones(zones) => {
+                            self.renderer
+                                .upload_region_zones(key, &region.geometry, zones);
+                        }
+                    }
                     self.infos.insert(key, region.info);
                     self.infos_version += 1;
-                    self.world
-                        .region_installed(key, &region.geometry, region.animations);
-                    self.apply_project_region(RegionCoord::new(key.0, key.1));
+                    self.world.region_installed(
+                        key,
+                        &scope,
+                        &region.geometry,
+                        &region.height_dependencies,
+                        region.animations,
+                    );
+                    if matches!(scope, world_runtime::RegionBuildScope::Full) {
+                        self.apply_project_region(RegionCoord::new(key.0, key.1));
+                    }
                 }
                 StreamEvent::Outline {
                     region,
@@ -95,11 +122,20 @@ impl EditorApp {
                 }
                 StreamEvent::Empty(region) => {
                     let key = (region.x, region.y);
-                    let _ = self.session.unload_region(region);
-                    self.world.region_absent(key);
+                    let Some(scope) = self.world.build_finished(key) else {
+                        continue;
+                    };
+                    self.world.region_absent(key, &scope);
+                    if matches!(scope, world_runtime::RegionBuildScope::Full) {
+                        let _ = self.session.unload_region(region);
+                    }
                 }
                 StreamEvent::Failed(region, error) => {
-                    self.world.region_absent((region.x, region.y));
+                    let key = (region.x, region.y);
+                    let Some(scope) = self.world.build_finished(key) else {
+                        continue;
+                    };
+                    self.world.region_absent(key, &scope);
                     self.status = Some(format!("region {},{} failed: {error}", region.x, region.y));
                 }
                 StreamEvent::InitFailed(_) if self.cache_dir.as_os_str().is_empty() => {}
@@ -134,7 +170,7 @@ impl EditorApp {
     pub(super) fn update_animations(&mut self) {
         if let Some(geometry) = self.world.poll_animation_geometry() {
             let phase = Instant::now();
-            self.renderer.upload_region(ANIMATED_KEY, &geometry);
+            self.renderer.upload_transient(ANIMATED_KEY, &geometry);
             self.stats.phase("anim-upload", phase);
         }
         let (world_x, world_z) = self.world_position();

@@ -11,11 +11,12 @@ mod lifecycle;
 mod tests;
 
 use super::EditorApp;
+use super::edit_runtime::EditRuntime;
 use super::editing::TileKey;
 use super::object_tool::{
     ObjectHistoryRoute, build_object_history_projection, spec_from_placement,
 };
-use crate::session::{EditorSession, PROJECT_FORMAT, ProjectFile, RegionDiff, diff_region};
+use crate::session::{PROJECT_FORMAT, ProjectFile, RegionDiff, diff_region};
 use eframe::egui;
 use osrs_cache::source::CacheSource;
 use osrs_core::coords::RegionCoord;
@@ -112,7 +113,7 @@ fn tile_key(position: osrs_edit::MapPosition) -> TileKey {
 /// Establish a clean semantic/project state before the current source is restarted.
 fn prepare_project_replacement(
     project: &mut ProjectState,
-    session: &mut EditorSession,
+    session: &mut EditRuntime,
     path: PathBuf,
     diffs: Vec<RegionDiff>,
 ) {
@@ -127,7 +128,7 @@ fn prepare_project_replacement(
 /// Apply the queued semantic diff without consuming it. Projection success owns final removal.
 fn apply_pending_project_semantics(
     project: &ProjectState,
-    session: &mut EditorSession,
+    session: &mut EditRuntime,
     region: RegionCoord,
 ) -> Result<Option<(RegionDiff, bool)>, osrs_edit::PatchApplyError> {
     let Some(diff) = project.pending.get(&region).cloned() else {

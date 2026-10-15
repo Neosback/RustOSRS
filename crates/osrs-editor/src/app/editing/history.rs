@@ -6,15 +6,11 @@
 
 mod routing;
 
-use super::{
-    EditorApp, TileKey, path::project_semantic_path_values, project_height_values,
-    project_paint_values,
-};
-use crate::app::object_tool::{ObjectHistoryRoute, build_object_history_projection};
+use super::{EditorApp, TileKey};
+use crate::app::object_tool::ObjectHistoryRoute;
 use crate::paint::{Brush, TileValues};
 use eframe::egui;
 use osrs_world::{LocEdit, LocSpec};
-use web_time::Instant;
 
 /// Most global undo steps kept by the editor shell.
 const HISTORY_LIMIT: usize = 200;
@@ -136,104 +132,6 @@ impl EditorApp {
             self.interaction.pending_reselect = came.clone();
             self.clear_selection();
         }
-    }
-
-    fn project_semantic_paint_history(
-        &mut self,
-        paint: &SemanticPaintHistory,
-    ) -> Result<usize, &'static str> {
-        let mut projected = Vec::with_capacity(paint.keys.len());
-        for key in &paint.keys {
-            let current = self
-                .current_tile(*key)
-                .ok_or("a painted tile is no longer available to the projection adapter")?;
-            let values = project_paint_values(self.session.document(), &paint.brush, *key, current)
-                .ok_or("semantic Paint state cannot be represented by the legacy projection")?;
-            projected.push((*key, current, values));
-        }
-
-        let mut edits = Vec::new();
-        for (key, current, values) in projected {
-            if values != current {
-                self.edited.insert(key, values);
-                edits.push(self.edit_for(key, values));
-            }
-        }
-        self.send_edits(edits);
-        Ok(paint.keys.len())
-    }
-
-    fn project_semantic_height_history(
-        &mut self,
-        height: &SemanticHeightHistory,
-    ) -> Result<usize, &'static str> {
-        let mut projected = Vec::with_capacity(height.keys.len());
-        for key in &height.keys {
-            let current = self
-                .current_tile(*key)
-                .ok_or("a Height tile is no longer available to the projection adapter")?;
-            let values = project_height_values(self.session.document(), *key, current)
-                .ok_or("semantic Height state cannot be represented by the legacy projection")?;
-            projected.push((*key, current, values));
-        }
-
-        let mut edits = Vec::new();
-        for (key, current, values) in projected {
-            self.height_edited.insert(key);
-            if values != current {
-                self.edited.insert(key, values);
-                edits.push(self.edit_for(key, values));
-            }
-        }
-        self.send_edits(edits);
-        Ok(height.keys.len())
-    }
-
-    fn project_semantic_path_history(
-        &mut self,
-        path: &SemanticPathHistory,
-    ) -> Result<usize, &'static str> {
-        let mut projected = Vec::with_capacity(path.keys.len());
-        for key in &path.keys {
-            let current = self
-                .current_tile(*key)
-                .ok_or("a Path tile is no longer available to the projection adapter")?;
-            let values = project_semantic_path_values(
-                self.session.document(),
-                *key,
-                current,
-                path.include_height,
-            )
-            .ok_or("semantic Path state cannot be represented by the legacy projection")?;
-            projected.push((*key, current, values));
-        }
-
-        let mut edits = Vec::new();
-        for (key, current, values) in projected {
-            if path.include_height {
-                self.height_edited.insert(key);
-            }
-            if values != current {
-                self.edited.insert(key, values);
-                edits.push(self.edit_for(key, values));
-            }
-        }
-        self.send_edits(edits);
-        Ok(path.keys.len())
-    }
-
-    fn project_semantic_object_history(
-        &mut self,
-        object: &ObjectHistoryRoute,
-        forward: bool,
-    ) -> Result<usize, String> {
-        let projection = build_object_history_projection(self.session.document(), object, forward)
-            .map_err(|error| format!("{error:?}"))?;
-        let count = object.object_count();
-        self.send_loc_edits(projection.edits);
-        self.clear_selection();
-        self.interaction.pending_reselect = projection.reselect;
-        Ok(count)
     }
 
     /// Hand object edits to the world worker and queue the regions they sit in for a rebuild.

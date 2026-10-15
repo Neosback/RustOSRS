@@ -48,12 +48,10 @@ impl ObjectHistoryRoute {
         self.removed.len().max(self.added.len())
     }
 
-    #[cfg(test)]
     pub(in crate::app) fn removed(&self) -> &[LocSpec] {
         &self.removed
     }
 
-    #[cfg(test)]
     pub(in crate::app) fn added(&self) -> &[LocSpec] {
         &self.added
     }

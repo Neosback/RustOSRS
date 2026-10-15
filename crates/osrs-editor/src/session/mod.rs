@@ -12,7 +12,9 @@ mod project_file;
 mod region_diff;
 mod region_ingest;
 
-pub(crate) use edit_session::{EditCheckpoint, EditCheckpointError, EditorSession};
+pub(crate) use edit_session::{
+    EditCheckpoint, EditCheckpointError, EditorSession, RegionSyncOutcome,
+};
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use export::{ExportChanges, ExportError, export_region};
 #[cfg(not(target_arch = "wasm32"))]

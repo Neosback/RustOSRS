@@ -1,522 +1,261 @@
-# RustOSRS Map Editor Architecture Handoff
-
-Last updated: 2026-10-14
+# RustOSRS Development Handoff
 
-`ARCHITECTURE.md` is the authoritative architecture contract. This handoff records current implementation state, exact SHAs, completed checkpoints, transitional hazards, validation, and the next allowed boundary.
-
-## Project goal
+Last updated: 2026-10-15
 
-Build a production-grade OSRS editor where semantic map state is authoritative, deterministic, headless-testable, and independent from UI, rendering, world-worker state, picker state, cache codecs, and GPU resources.
+`ARCHITECTURE.md` is the authoritative architecture contract. This handoff records the certified integrated baseline, completed subsystem state, remaining roadmap, and next allowed boundary.
 
-Core invariant:
+## Project invariant
 
-> If every GPU buffer, scene cache, picker cache, world-worker edit mirror, and UI widget vanished, the complete edited map would still exist correctly inside the semantic editor session.
+`MapDocument` / `EditorSession` is authoritative edited map state. World-worker edits, rendered geometry, GPU resources, picker data, previews, animation instances, dependency/proof snapshots, and UI state are projections only.
 
-## Mandatory working rules
+If every projection vanished, the complete edited map must still exist correctly in the semantic session.
 
-1. Read `ARCHITECTURE.md` and this handoff before coding.
-2. One active development branch/system at a time.
-3. Work in small checkpoints and stop after each checkpoint for review.
-4. Do not begin the next checkpoint without explicit user direction.
-5. A completed subsystem must pass exact-head Tier A/B/C as required before merge.
-6. After merge, validate the exact integrated `main` commit.
-7. Preserve semantic/reference parity unless a checkpoint explicitly changes behavior.
-8. Keep renderer/117HD work isolated from editor-domain migration unless a narrow adapter change is required.
-9. One logical user gesture should become at most one logical `MapPatch` and one semantic history entry.
-10. `MapDocument` is authoritative. Worker/render/picker/UI state is projection/cache only.
-11. Use existing workspace boundaries. Do not create parallel replacement architecture crates.
-12. New or fully refactored production Rust files have a normal hard cap of 500 lines and 32 KiB.
-13. Dedicated test modules have a hard cap of 700 lines and 40 KiB.
-14. Existing oversized production modules are listed in `scripts/architecture_debt.json` at exact measured baselines and may never grow beyond those baselines.
-15. Once an allowlisted file falls within the normal cap, its exception must be removed permanently.
-16. Exact SHA matters. A green run certifies only the SHA it tested.
+## Mandatory development protocol
 
-## Target data flow
+1. Keep exactly one active development branch/system at a time.
+2. Do not start a second feature/refactor branch while another subsystem is active.
+3. Break each subsystem into reviewable checkpoints.
+4. Update this handoff with exact SHAs and validation as checkpoints close.
+5. Keep one subsystem on the same branch until complete.
+6. Do not mix unrelated architecture, renderer/117HD, cache, or UI work into an active subsystem branch.
+7. Before merge, validate the exact final branch head with Tier A/B/C CI.
+8. **Merge the current subsystem into `main` before opening any new development branch.**
+9. After merge, validate exact integrated `main`, update this handoff, and certify the final handoff-bearing `main` head if docs advance it.
+10. Exact SHA matters. A green run certifies only the SHA it tested.
+11. One logical user gesture produces at most one logical semantic transaction/history entry.
+12. Failed projection preparation must not knowingly leave semantic authority and visible projection divergent.
+13. Do not introduce architecture-guard debt exceptions for convenience.
 
-```text
-COMMAND
-UI/input -> typed intent -> pure planner -> MapPatch -> EditorSession::commit
+## Current repository state
 
-QUERY
-UI/tool/read model -> read-only semantic query -> MapDocument
+Active development subsystem: **none**.
 
-PROJECTION
-semantic commit -> revision + ChangeImpact + touched area
-                -> projection invalidation
-                -> async rebuild
-                -> revision/generation check
-                -> worker/render/GPU replacement
-```
+Open subsystem PR: **none for Object work; PR #52 is merged**.
 
-Loading remains:
+No next development branch has been created.
 
-```text
-cache decode
-  -> semantic RegionMap / MapRegionSnapshot
-  -> EditorSession / MapDocument
-  -> scene construction
-  -> renderer
-```
+The next subsystem may start only after this final handoff-bearing `main` head is green and the user explicitly directs the next work.
 
-Never seed semantic authority by scraping renderer meshes, picker geometry, worker edit mirrors, or GPU buffers.
+## Latest completed subsystem: Object dependency proof and zone invalidation
 
-## Workspace ownership summary
+Merged PR:
+#52 - `refactor(editor): prove Object zone invalidation by accepted output`
 
-- `osrs-core`: typed coordinates, IDs, planes, shared semantic vocabulary
-- `osrs-edit`: pure/headless editable domain, patches, history, validation, queries
-- `osrs-cache`: cache codecs/infrastructure
-- `osrs-scene`: OSRS scene semantics
-- `osrs-hd`: reusable 117HD data/settings/material/environment semantics
-- `osrs-render`: WGPU projection only
-- `osrs-world`: streaming/orchestration and transitional projection workers
-- `osrs-reference`: fixtures/parity infrastructure, never a production dependency
-- `osrs-editor`: product composition root, UI, tools/controllers, application adapters
+Object branch:
+`refactor/object-zone-invalidation`
 
-## Core semantic contract already established
+Object branch base:
+`a7b9fb47835ab00b25db7c02e1aa3ca3157a054b`
 
-- canonical typed coordinates come from `osrs-core`
-- `MapPosition = MapTile + SourcePlane`
-- `HeightVertexCoord = MapTile corner + SourcePlane`
-- `TerrainTile` owns underlay/overlay/flags; height is separate
-- missing sparse terrain = `TerrainTile::default()`
-- missing height is distinct from numeric `0`
-- object identity is exact `ObjectPlacement`
-- `MapPatch` contains reversible `MapOp`s and derives `ChangeImpact`
-- `MapDocument::apply_patch` validates the complete touched state atomically before mutation
-- one successful non-empty patch = one semantic history entry
-- empty patches create no history and do not clear redo
-- failed commit/undo/redo leaves state/history coherent
+Final Object branch head:
+`86c724cd67add8ec96b011effc258cd0256f489c`
 
-## Merged architecture systems
+Final branch CI:
+`38708254817` / #1302 - SUCCESS across Tier A/B/C.
 
-### PR #33: edit-domain foundation
+Merge commit on `main`:
+`e8f1102739345b171ee216cf47996fb2f055b114`
 
-Squash merge:
-`5c5eef3bde696b20ae0319867e6e84567701ebf6`
+Integrated-main CI:
+`38708782538` / #1304 - SUCCESS across Tier A/B/C.
 
-### PR #34: history/query foundation
+Post-merge Object plan commit:
+`334b54fffd99b6fff9078f56b87808e8f5d6ae94`
 
-Squash merge:
-`cf7001a9d0d7af847cc2ad8568a4701a7dc7f1eb`
+This handoff commit advances `main` once more and therefore must receive its own exact-head Tier A/B/C certification before another subsystem starts.
 
-### PR #35: semantic path planner + simplified fitter
+## Object subsystem result
 
-Squash merge:
-`cf552b734e1fdef54bf90b3b5c08211433f56a40`
+Object invalidation is now exact-zone capable without relying on a guessed dependency radius.
 
-Established:
+### Conservative safety baseline
 
-- deterministic Catmull-Rom fitting
-- OSRS overlay-shape matching
-- pure terrain-path `MapPatch` planner
-- obsolete pathfinding/router/network/wall/noise stack removed
+O1 proved that Object effects can propagate through:
 
-Do not reintroduce pathfinding, wall mode, topology repair, automatic joining, or hidden obstacle routing without an explicit product decision.
+- five-per-tile game-object capacity and insertion order
+- fixed-slot replacement/reveal
+- wall-decoration host/displacement behavior
+- loc shadow effects on terrain lighting
+- ModelData normal reconciliation
+- dynamic/morphed/omitted/rejected placements
+- cross-region producer context from the 104x104 scene window
 
-### PR #36: persistent semantic editor session
+Therefore every unproven Object edit retains the complete 3x3 producer-region fallback around touched Object regions.
 
-Squash merge:
-`ace39238f67fa5c3f31611bf60ca5c106ace1d90`
+### Canonical semantic footprint
 
-Post-merge CI `38363970256`: Tier A/B/C PASS.
+O2 retains exact removed and added `ObjectPlacement` identity:
 
-Established:
+- object id
+- source plane
+- world anchor tile
+- loc kind
+- orientation
 
-- persistent `EditorSession { MapDocument, EditHistory, revision }`
-- semantic region hydration/unload
-- dirty-region preservation across streaming churn
-- cache-source reset boundary
+Ordering/deduplication is deterministic. Undo swaps removed/added polarity exactly. Redo preserves original polarity.
 
-### PR #37: Paint -> semantic session
+### Accepted producer-output proof
 
-Squash merge:
-`be59c01dc57e72d256ff616d1947594d939a4b5b`
+O3/O4 implement producer-output comparison:
 
-Post-merge CI `38370847153`: Tier A/B/C PASS.
-
-Established:
-
-- Paint commit + undo/redo authoritative through `EditorSession`
-- worker `TileEdit` is projection only
-
-### PR #38: Height -> semantic session
-
-Squash merge:
-`392206ae55e35dbe26e17d664a693b21a42dc006`
-
-Post-merge CI `38384232077`: Tier A/B/C PASS.
-
-Established:
-
-- Height commit + undo/redo authoritative through `EditorSession`
-- exact storage quantization and explicit lower-plane semantics
-- worker preview remains projection only
-
-### PR #39: Object -> semantic session + editor module hardening
-
-Regular merge commit:
-`50960fddbcc6851dea285b4b90c51b806fd70215`
-
-Post-merge CI `38410554574`: Tier A/B/C PASS, including M3-M9.
-
-Established:
-
-- pure deterministic Object planner
-- live Object actions commit once through `EditorSession`
-- Object undo/redo use `EditorSession`
-- worker `LocEdit` is projection only
-- stale projection routes validate against authoritative `MapDocument`
-- Paint, Height, and Object share one chronological semantic-history routing order
-- old `app/editing.rs` responsibility was split into focused history/tests modules
-
-### PR #40: Path -> persistent semantic session
-
-Final pre-merge branch head:
-`6a66758bf901a3c8af919dffc1434b84a0735c23`
-
-Exact branch CI:
-`38416867837` - Tier A/B/C PASS, including M3-M9.
-
-Regular merge commit on `main`:
-`a125f8e237f4a1594fe585df5a0dd7a2e2011da6`
-
-Exact post-merge CI:
-`38422182517` - Tier A/B/C PASS, including M3-M9.
-
-Path authority now follows:
-
-```text
-fitted PathTile[]
-  -> TerrainPathIntent[]
-  -> build_terrain_path_patch(EditorSession::document, ...)
-  -> projection preflight on disposable scratch state
-  -> one EditorSession::commit
-  -> authoritative MapDocument
-  -> transitional worker TileEdit projection
-```
-
-Path undo/redo follows:
-
-```text
-global chronological route
-  -> EditorSession::undo / redo
-  -> authoritative MapDocument
-  -> complete projection preflight
-  -> worker/render mirror update
-```
-
-Path no longer stores terrain/height before/after values as history authority. Its global route stores only lightweight semantic projection metadata:
-
-```text
-SemanticPathHistory {
-  keys: Vec<TileKey>,
-  include_height: bool,
-}
-```
-
-Paint, Height, Object, and Path now share the same semantic-history model:
-
-```text
-one user transaction
-  -> one semantic commit
-  -> one lightweight global route
-  -> one EditorSession history entry
-  -> projection-only worker mirror
-```
-
-The former Path split-history hazard is closed.
-
-### PR #41: Architecture Contract v2 + debt ratchet
-
-Final branch head:
-`e38a3b5035c6ebd6ea65adb899fc31a89c45ebea`
-
-Exact branch CI:
-`38427434417` - Tier A/B/C PASS, including M3-M9.
-
-Regular merge commit on `main`:
-`bd21b72555cbe75dd1fbb8b70df1f7cd5b90ad41`
-
-Exact post-merge CI:
-`38428015008` - Tier A/B/C PASS, including M3-M9.
-
-Established:
-
-- root `ARCHITECTURE.md` is the authoritative Architecture Contract v2
-- production Rust module normal cap is 500 lines / 32 KiB
-- dedicated test-module cap is 700 lines / 40 KiB
-- 13 pre-existing oversized production modules are frozen at measured debt baselines
-- stale, orphaned, malformed, or growing debt entries fail the architecture guard
-- architecture guard self-tests run in Tier A
-
-The former `architecture/editor-contract-v2` branch could not be deleted through the currently available repository tooling, so its continued remote existence must not be interpreted as an active development branch.
-
-## Semantic loading and residency
-
-`EditorSession` tracks loaded and dirty regions.
-
-- clean region ingestion may replace semantic source state
-- identical ingestion is a no-op
-- dirty regions are not overwritten by incoming streaming snapshots
-- dirty regions are not semantically evicted by camera unload
-- cache-source switch resets the semantic session
-
-Height ingestion stores source-owned 64x64 final height samples per plane. Do not invent shared 65th boundary samples. Neighboring source regions own their boundary data.
-
-Transitional caveat: `WorldDefinitions::region()` can still include legacy worker edits until remaining editing/projection routes are migrated.
-
-## Completed: runtime ownership and architecture debt work
-
-`RenderRuntime` (`app/render_runtime.rs`) owns the eframe WGPU render state, the sole `SceneRenderer`, viewport targets, HD GPU install, and frame submission.
-
-`WorldRuntime` (`app/world_runtime.rs`) owns the disposable world-side projection state: the `RegionStreamer` and `AnimationWorker`, presentation generation/HD flag, resident/in-flight/dirty region sets, animation schedule, worker-readiness flag, and mirroring of tile/loc edits to the worker. `EditorSession` remains authoritative.
-
-`InteractionRuntime` (`app/interaction_runtime.rs`) owns camera, view plane, hover/context picks, selection, marquee, spline state, tool peek, object drag, and gizmo state. It remains field ownership only; behavior encapsulation is still pending.
-
-Every file on the former architecture-debt allowlist is now within the 500-line / 32 KiB cap and `scripts/architecture_debt.json` is empty. The guard still rejects new or growing exceptions.
-
-### Phase 4 closed: context-menu overlay clear is semantic
-
-`clear_overlay_at` now commits through the same Paint planner as every other stroke. The legacy terrain-mutation fallback is gone, so the invariant "every terrain mutation enters through `EditorSession`" is enforced in code.
-
-### Phase 8 started: map-stream encoders (`osrs-cache::encode`)
-
-`encode_terrain` / `encode_locations` are strict inverses of `decode_terrain` / `decode_locations`, with typed `MapEncodeError`s for unrepresentable values (no silent truncation). Measured against every decodable square of the pinned build-241 cache:
-
-- locations: 2936 / 2936 byte-exact
-- terrain: 2935 / 2936 byte-exact; the one exception carries client-discarded data that the semantic decoder does not retain
-- every re-encoded terrain stream decodes back to identical retained semantics
-- repacking all five files of every real group is byte-exact: 2936 / 2936
-
-### Phase 8: export of edited regions
-
-`session::export` diffs the authoritative document against pristine source semantics, rewrites only changed terrain/location streams, preserves untouched group files, and verifies the result by decoding. The source cache is never modified.
-
-Not done: writing into `.dat2`/`.idx`, reference-table updates, and full loadable-cache repack/version/CRC bookkeeping.
-
-## Merged: project/source lifecycle hardening
-
-PR #43 regular merge commit on `main`:
-`267d2d7b54faf587304510d0d3e4012e7a17375d`
-
-Exact post-merge CI:
-`38527889023` - Tier A/B/C PASS, including architecture guard, formatting, workspace compile, strict Clippy, WebAssembly portability, workspace tests, and M3-M9 semantic/reference parity.
-
-Lifecycle contract:
-
-```text
-current session
-  -> source/project transition request
-  -> if dirty: Save / Discard / Cancel
-  -> transition permitted
-  -> reset source-bound project + semantic state
-  -> load/restart pristine source
-  -> apply only the new project's diffs
-```
-
-Established:
-
-- cache switches and GUI project opens use one lifecycle guard
-- a source/project replacement is blocked while an asynchronous project save is in flight
-- Save-before-transition waits for the save to finish; failed/disconnected saves reopen the transition prompt
-- cache replacement clears source-bound project state and resets the authoritative `EditorSession`
-- Open Project is replacement, not implicit merge: it resets the current semantic session and restarts the current cache from pristine source before applying the opened project's diffs
-- scripted project open refuses to replace unsaved work and refuses to run while a save is active
-- pending project diffs remain queued until semantic application and all synchronous projection steps succeed, so projection failures remain retryable
-- project projection retries derive work from stored `RegionDiff`, not only from a now-empty second semantic patch
-- obsolete `EditorSession::is_loaded` and `clear_history` APIs were removed because replacement resets the whole session
-
-Remaining lifecycle caveats:
-
-- if an opened project's pending region applies while a save snapshot is already in flight, the saved file contains that pending diff, but the later `edit_revision` can conservatively leave the session marked dirty and require another save; this is safe but may be redundant
-- projects remain native-only; the WebAssembly project module is a stub, while browser cache/source replacement still resets the semantic session
-
-### Projects: File > Open / Save project (Ctrl/Cmd+S)
-
-A project file (`rustosrs-project-v1` JSON, `session/project_file.rs`) stores only per-region `RegionDiff`s plus the bundled cache profile id. Decoding validates semantic values and rejects unknown formats/out-of-range values rather than clamping them.
-
-- Save (`app/project.rs`) runs on a worker thread, reads pristine source squares, diffs a document snapshot, merges still-unapplied project diffs, and writes atomically using a temporary file + rename.
-- Open validates the file against the currently open cache, then routes through the lifecycle guard. Opening a project means replacement: the old semantic session/history/project state is discarded, the current source is restarted from pristine cache data, and only the newly opened project's diffs are queued.
-- Project diffs apply through `EditorSession::apply_untracked` without becoming undo steps. The region remains queued until semantic application and synchronous tile/object projection succeed.
-- Closing the application with unsaved edits uses Save and quit / Quit without saving / Cancel. A close request supersedes a pending source/project transition choice.
-- Export continues to share the same `RegionDiff` representation.
-
-### Place new objects
-
-The Objects tool can add cache objects through the same semantic Object planner and `EditorSession` authority used for move/duplicate/delete. Placement remains one semantic commit and one undo step.
-
-### Copy / paste tiles
-
-Tile copy/paste records terrain channels and heights relative to the copied selection and pastes through one semantic `MapPatch`/history step. Objects are intentionally not copied by the tile clipboard.
-
-### Phase 8: loadable cache export (File > Export as cache copy...)
-
-`osrs-cache::encode` now carries the pieces a repacked cache needs, all verified against the real build-241 cache:
-
-- `ReferenceTable` (`reference_table.rs`): full-fidelity parse/encode of the JS5 reference table (protocol, revision, flags, name/hash/whirlpool/size columns, file lists). All 23 real tables re-encode byte-exact (`cargo run --release -p osrs-reference --example reference_table_roundtrip -- $RUSTOSRS_TARGET_CACHE_DIR`).
-- `crc32`: a group's table CRC covers its container without the trailing 2-byte version (3274 of 3274 sampled groups); table sizes are `(container length without version, decoded payload length)` (500 of 500).
-- `CacheStore` / `repack_groups` (`store.rs`, native only): append-only sector writer (8- and 10-byte headers, `.idx` entries) and a repack that appends the new container, rewrites the group's row (CRC, sizes, `version + 1`, version suffix kept) and re-appends the index's table to `idx255` with its original compression. A failed write can only leave unreferenced garbage at the end of `.dat2`; nothing is edited in place. The table `revision` is left unchanged; disk caches carry no master checksum table.
-- Fixtures: deterministic synthetic caches (no real cache needed) cross-checked against the independent vendored `runefs` reader; `repack_real_cache` example repacks a real square into a copy and verifies the edit, files 2..=4, every other index-5 group (byte-identical) and the table row.
-
-The editor's Export menu gained "Export as cache copy...": it copies the cache folder into an empty destination (a non-empty one is refused before anything is written) and repacks the edited squares into the copy. The copy is a different cache than the source by design, so `CacheRepository::open*` (which fingerprints against bundled profiles) will report it as unknown; other tools that read `.dat2`/`.idx` directly can open it. Not done: updating other indices (only map squares are repacked), writing new groups that the table does not already list, and a profile/fingerprint story for edited caches.
-
-### Phase 7 gate: WebAssembly portability
-
-Tier A runs the WebAssembly portability checks. Native-only project/export behavior remains cfg-gated with browser stubs where required.
-
-## Current checkpoint: exact edit transaction rollback
-
-Active branch:
-`refactor/edit-transaction-rollback`
-
-Base `main`:
-`267d2d7b54faf587304510d0d3e4012e7a17375d`
-
-Certified implementation head before this handoff refresh:
-`76c50364b4447e76d05b6f801d617d0953e10129`
-
-Exact implementation CI:
-`38539407666` - Tier A/B/C PASS, including architecture guard, formatting, workspace compile, strict Clippy, WebAssembly portability, full workspace tests, and M3-M9 semantic/reference parity.
-
-### Exact rollback invariant
-
-For any checkpointed semantic transition, let the pre-transaction state be document `D`, semantic history `H`, revision `R`, edit revision `E`, redo state `X`, loaded-region ownership `L`, and dirty-region ownership `Y`.
-
-If downstream projection fails, restoring the checkpoint must return the session to exactly:
-
-```text
-D, H, R, E, X, L, Y
-```
-
-A failed transaction is therefore semantically invisible. It is not represented as another user Undo/Redo operation.
-
-### Reversible history/session transactions
-
-`osrs-edit::EditHistory` now supports short-lived reversible `Commit`, `Undo`, and `Redo` transactions. The opaque transaction token records operation identity and history generation, not a full map snapshot. Rollback uses the patch that just moved between the history stacks, so work remains proportional to the edit.
-
-`EditorSession` wraps those transactions with `EditCheckpoint`, preserving the session metadata needed for exact restoration:
-
-- `revision`
-- `edit_revision`
-- loaded-region identity
-- newly acquired dirty-region ownership
-- semantic history/redo shape through the underlying history transaction
-
-The compatibility `commit`, `undo`, and `redo` APIs still finalize immediately. Fallible post-semantic projection paths use `commit_checkpointed`, `undo_checkpointed`, or `redo_checkpointed`, then explicitly finalize or restore.
-
-### Migrated fallible post-semantic projection paths
-
-- **Tile Paste:** semantic commit is checkpointed. Projection failure restores the exact pre-Paste session, including any existing redo branch. Redo is invalidated only after successful projection/finalization.
-- **Height:** semantic stroke commit is checkpointed. A failed Height projection restores the exact pre-stroke session and does not consume an extra revision.
-- **Semantic Undo/Redo routing:** replay uses checkpointed Undo/Redo. Projection success finalizes once and moves the app-level mixed-history marker to the opposite stack. Projection failure restores the semantic checkpoint and returns that marker to its original stack.
-
-The former compensation patterns are removed from these production routes:
-
-```text
-commit -> projection fails -> ordinary undo
-undo -> projection fails -> ordinary redo
-redo -> projection fails -> ordinary undo
-```
-
-### Other edit paths after the rollback audit
-
-Not every semantic commit needs a checkpoint merely because it projects afterward. The relevant hazard is a semantic transition followed by a fallible projection step.
-
-- **Path:** the complete worker representation is preflighted on disposable semantic state before `EditorSession::commit`, so adapter failure occurs before authoritative mutation.
-- **Paint:** Paint's initial semantic commit is followed by a non-fallible reconciliation/mirror path. There is no post-commit `Result` that is compensated with semantic Undo.
-- **Object initial actions:** Object planning can fail before commit, but the post-commit `LocEdit` mirror send is not a fallible semantic transaction result. Object Undo/Redo goes through the checkpointed semantic history router.
-- **Project open/application:** project diffs intentionally use `EditorSession::apply_untracked`, not interactive history. A projection failure keeps the `RegionDiff` pending and retries projection from that stored diff. This is project-loading retry semantics, not a user-history rollback transaction.
-
-The closure audit found no remaining production path that performs a fallible post-semantic projection and then uses ordinary `EditorSession::undo()` or `redo()` as compensation.
-
-### Checkpoint finalization contract
-
-`EditorSession::finalize_checkpoint` first verifies that session `revision`, `edit_revision`, and loaded-region ownership still match the checkpoint's expected post-transition state. `EditHistory::finalize` then verifies the history generation.
-
-Under the current synchronous projection routes, projection helpers do not mutate `EditorSession`, and history is private to the session. A finalize failure therefore represents an invariant violation or unexpected intervening session mutation, not a normal recoverable projection outcome. Error variants remain explicit so such divergence is surfaced rather than hidden.
-
-### Regression coverage
-
-Coverage now includes:
-
-- exact rollback after failed checkpointed Commit
-- exact rollback after failed checkpointed Undo
-- exact rollback after failed checkpointed Redo
-- preservation of an existing redo branch when a candidate commit is rolled back
-- successful checkpoint finalization invalidating redo only at the correct point
-- failed Paste projection restoring the complete prior `EditorSession`
-- failed Height projection restoring the complete prior `EditorSession`
-- failed semantic Undo projection restoring both session state and the mixed-history marker
-- failed semantic Redo projection restoring both session state and the mixed-history marker
-- successful semantic Undo/Redo finalizing exactly once and moving the mixed-history marker correctly
-
-### Explicit non-goals of this branch
-
-This branch does not implement:
-
-- a central `EditRuntime` or application edit gateway
-- centralized `EditReceipt` / `ChangeImpact` projection invalidation
-- ProjectRuntime, UiRuntime, or DiagnosticsRuntime extraction
-- InteractionRuntime behavioral encapsulation
-- cache write/repack fixture expansion
-- renderer or 117HD work
-- a new project import/merge model
-
-## Remaining migration roadmap
-
-### Phase 2: decompose EditorApp state ownership
-
-Completed ownership extractions:
-
-1. `RenderRuntime` - done
-2. `WorldRuntime` - done
-3. `InteractionRuntime` - field ownership done; behavior encapsulation pending
-
-Remaining focused ownership work:
-
-4. `ProjectRuntime`
-5. `UiRuntime`
-6. `DiagnosticsRuntime`
-
-Do not combine runtimes into one large refactor. Behavior remains unchanged during pure ownership extraction.
-
-### Completed prerequisite: exact transaction rollback
-
-Before a central gateway, failed semantic transition plus fallible projection had to become exactly revision-neutral. That prerequisite is implemented on `refactor/edit-transaction-rollback` and must be merged/certified before gateway work begins.
-
-### Phase 3: central edit gateway
-
-Provisional next architecture branch after rollback merge/certification: `refactor/edit-gateway-core`.
-
-- introduce one contained application gateway for typed edit intents/patches
-- start with one narrow route rather than migrating every tool at once
-- preserve one gesture -> one `MapPatch` -> one semantic history entry
-- make projection success/failure use the checkpoint contract established by this branch
-- do not combine projection-invalidation redesign into the first gateway checkpoint
-
-### Phase 5: projection/invalidation service
-
-- centralize semantic receipt/change impact -> invalidation
-- remove tool-specific dirty-region poking
-- revision/generation-check every async install
-- add 8x8 projection granularity only after profiling and edge-rule tests justify it
-
-### Phase 8: cache writing/round-trip guarantees
-
-- add small deterministic checked-in write/repack fixtures that do not require a real cache environment
-- retain the real-cache full-sweep tests as extended validation
-- complete transactional loadable-cache repack only after fixture guarantees are strong
-
-### Phase 9: renderer/projection optimization
-
-- profile first
-- introduce finer zone/chunk rebuilds only where measured
-- semantic ownership remains unchanged
-
-### Phase 10: continue 117HD parity
-
-Resume on separate focused branches once editor authority/projection boundaries are stable enough to prevent coupling.
-
-## Next boundary
-
-Finish `refactor/edit-transaction-rollback` through review/PR/merge only after explicit user direction. Do not begin `refactor/edit-gateway-core` on this branch. After rollback is merged and the exact integrated `main` commit passes Tier A/B/C, re-read `ARCHITECTURE.md`, accepted ADRs, this handoff, and current code before creating the gateway branch. Projection invalidation remains a later separate branch.
+- full producer snapshots explicitly cover all 64 owned 8x8 zones, including empty zones
+- exact per-zone `SceneGeometry` is retained for proof comparison
+- proof state is bound to producer region, projection epoch, and presentation generation
+- Object edits derive the same O1 3x3 producer universe
+- every required resident non-empty producer must have a current complete accepted baseline
+- one untrusted producer forces the conservative fallback
+- eligible producers receive full contextual candidate builds
+- candidates still pass request identity, epoch, and presentation-generation freshness gates
+- accepted pre/post output is compared structurally
+- only exact changed static zones are installed when proof is current and complete
+- invalid proof falls back to full producer installation
+- later edits cancel pending proof and/or invalidate old candidates
+
+Full contextual scene assembly remains unchanged. Region-complete picker/inspection state, animations, Height dependencies, and proof freshness continue to advance from accepted builds.
+
+### Adversarial coverage
+
+O5 added producer-output tests for:
+
+- 8x8 zone boundaries
+- 64x64 producer-region boundaries
+- fixed-slot replacement/reveal
+- wall-decoration host effects
+- capacity reveal and overlapping capacity chains
+- clipped-wall shadow effects on neighboring terrain
+- type-10/11 shadow effects across zone edges
+- ModelData normal-reconciliation changes in neighboring object output
+- incomplete dynamic/morphed/omitted candidate state failing closed
+- exact empty static diff for complete dynamic-only no-op output
+
+Existing focused tests continue to cover:
+
+- semantic Undo/Redo exact Object polarity
+- stale projection epoch rejection
+- stale presentation-generation rejection
+- old in-flight completion not consuming newer work
+- missing/stale/incomplete Object proof fallback
+
+O5 changed no production behavior.
+
+## Object checkpoint certifications
+
+- O1: `643f760a7f318d5519fc9897a588d732afe0c293`, CI #1264 / `38699017109`
+- O2 code: `fed985ea59db7737067b6d19d53844d2d4e9429a`, CI #1275 / `38700886057`
+- O2 docs: `d61d9169d271c1dde9009707ff59d73cb8001716`, CI #1277 / `38701473420`
+- O3: `a555e07796a938676ddb3c4f7d0320dd480041aa`, CI #1285 / `38703366564`
+- O4 code: `52eadc6284e71d9bc00de878d89cc67a0f0c7628`, CI #1294 / `38705182639`
+- O4 docs: `55f42228003770c3adc5ef5500a32052ebf1ff2a`, CI #1296 / `38705932458`
+- O5 code: `398545757f67b56cfb4bdb9b19864b620b1c822a`, CI #1300 / `38707609239`
+- final branch: `86c724cd67add8ec96b011effc258cd0256f489c`, CI #1302 / `38708254817`
+- integrated merge commit: `e8f1102739345b171ee216cf47996fb2f055b114`, CI #1304 / `38708782538`
+
+All listed CI runs completed successfully across Tier A/B/C.
+
+## Integrated edit/projection architecture
+
+Current `main` includes:
+
+- central semantic `EditRuntime` execute/replay gateway
+- Paint, Height, Paste, Path, Objects, semantic Undo, and semantic Redo through the gateway
+- receipt-driven projection invalidation
+- pure terrain 8x8 zone invalidation
+- Height exact 8x8 zone invalidation only with complete/current dependency proof
+- conservative Height region fallback for unproven cases
+- Object exact 8x8 static installation only with complete/current accepted producer-output proof
+- conservative Object 3x3 producer-region fallback for unproven cases
+- full contextual scene assembly with zone-scoped final static geometry installation
+- stale asynchronous region-build rejection by request identity, projection epoch, and presentation generation
+- accepted-build Height and Object proof freshness tied to the same projection identity
+- exact canonical Object removed/added mutation footprints through semantic history
+
+## Runtime ownership status
+
+Completed boundaries:
+
+- `EditRuntime`
+- `RenderRuntime`
+- `WorldRuntime`
+- `InteractionRuntime` field ownership
+
+Future ownership work:
+
+- `InteractionRuntime` behavioral encapsulation
+- `ProjectRuntime`
+- `UiRuntime`
+- `DiagnosticsRuntime`
+
+## Reference renderer remaining work
+
+Known remaining or partially stale audit areas include:
+
+- side-grid shadow exactness
+- minPlane/originalPlane behavior
+- GPU depth/raster semantics
+- alpha modes
+- sampler behavior
+- external visual oracle/gates
+
+## 117HD current high-level state
+
+Already substantially implemented:
+
+- render-profile/HDR foundation
+- HD data/material tables
+- HD terrain/model extraction
+- material replacement
+- ground blending/normals
+- environments/fog/directional lighting
+- directional shadows/filtering
+- water surfaces, flow/normal maps, foam, Fresnel, underwater tint/caustics
+- animated-loc HD material routing
+- material flow maps
+- parallax/displacement and displaced shadow position
+
+Large remaining systems include:
+
+- dynamic/placed point lights
+- sky/star/moon/aurora/day-night systems
+- sky reflection/water integration
+- remaining post-processing/settings parity
+- wind/character displacement and remaining model/material edge cases
+
+## Cache/export current state
+
+Implemented:
+
+- locations exact 2936/2936
+- terrain 2935/2936 retained semantics
+- five-file repack exact
+- map stream encoding/cache-copy repack for existing map groups
+
+Known limitations:
+
+- only existing map-square groups are repacked
+- new groups absent from the reference table are not created
+- other indices are not generally rewritten by the editor export path
+- edited cache copies intentionally no longer match the pristine-cache fingerprint/profile
+
+## Remaining major roadmap
+
+Each item is a separate future subsystem and therefore a separate branch after the final handoff-bearing `main` head is certified and the user explicitly directs continuation:
+
+1. `InteractionRuntime` behavioral encapsulation
+2. `ProjectRuntime` ownership extraction
+3. `UiRuntime` ownership extraction
+4. `DiagnosticsRuntime` ownership extraction
+5. Reference renderer parity gates and external visual oracle
+6. 117HD dynamic/placed lights
+7. 117HD sky/day-night/reflection systems and remaining effects
+8. edited-cache fingerprint/profile strategy, new-group support, and broader index repack when justified
+9. project/browser lifecycle polish and future import/merge product work
+
+## Next allowed boundary
+
+**STOP AFTER FINAL HANDOFF-BEARING `main` CERTIFICATION.**
+
+Do not create a new development branch until:
+
+1. the exact `main` head containing this handoff is green across Tier A/B/C
+2. the Object merge and final certification are reported to the user
+3. the user explicitly directs the next subsystem

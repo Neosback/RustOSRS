@@ -10,6 +10,13 @@ use osrs_render::{
     },
 };
 use osrs_world::hd::gpu::HdGpuData;
+use std::collections::{BTreeMap, BTreeSet};
+
+const ZONES_PER_REGION_AXIS: i32 = 8;
+const ZONES_PER_REGION: i32 = ZONES_PER_REGION_AXIS * ZONES_PER_REGION_AXIS;
+
+type RegionKey = (i32, i32);
+type ZoneKey = (i32, i32);
 
 struct ViewportTargets {
     width: u32,
@@ -40,6 +47,8 @@ pub(super) struct EncodedViewport {
 pub(super) struct RenderRuntime {
     render_state: egui_wgpu::RenderState,
     scene: SceneRenderer,
+    /// World-zone keys currently installed for each streamed 64x64 map region.
+    region_zones: BTreeMap<RegionKey, BTreeSet<ZoneKey>>,
     targets: Option<ViewportTargets>,
 }
 
@@ -56,6 +65,7 @@ impl RenderRuntime {
         Self {
             render_state,
             scene,
+            region_zones: BTreeMap::new(),
             targets: None,
         }
     }
@@ -72,12 +82,75 @@ impl RenderRuntime {
         self.scene.set_textures(layers);
     }
 
-    pub(super) fn upload_region(&mut self, key: (i32, i32), geometry: &SceneGeometry) {
+    /// Replace one streamed region, storing each static 8x8 zone under its own opaque renderer key.
+    pub(super) fn upload_region(&mut self, key: RegionKey, geometry: &SceneGeometry) {
+        let incoming: BTreeSet<ZoneKey> = geometry
+            .zones
+            .iter()
+            .map(|zone| (zone.zone_x, zone.zone_z))
+            .collect();
+        let previous = self.region_zones.remove(&key).unwrap_or_default();
+
+        for stale in previous.difference(&incoming) {
+            self.scene.remove_region(zone_renderer_key(key, *stale));
+        }
+        for zone in &geometry.zones {
+            let zone_key = (zone.zone_x, zone.zone_z);
+            debug_assert!(zone_belongs_to_region(key, zone_key));
+            let single = SceneGeometry {
+                zones: vec![zone.clone()],
+            };
+            self.scene
+                .upload_region(zone_renderer_key(key, zone_key), &single);
+        }
+        self.region_zones.insert(key, incoming);
+    }
+
+    /// Refresh only the requested world zones of an already-resident streamed region.
+    ///
+    /// `geometry` may be a full worker result; only requested zones are installed. A requested zone
+    /// absent from the result is removed, which handles edits that make its geometry empty.
+    pub(super) fn upload_region_zones(
+        &mut self,
+        key: RegionKey,
+        geometry: &SceneGeometry,
+        requested: &BTreeSet<ZoneKey>,
+    ) {
+        let resident = self.region_zones.entry(key).or_default();
+        for &zone_key in requested {
+            debug_assert!(zone_belongs_to_region(key, zone_key));
+            let renderer_key = zone_renderer_key(key, zone_key);
+            match geometry
+                .zones
+                .iter()
+                .find(|zone| (zone.zone_x, zone.zone_z) == zone_key)
+            {
+                Some(zone) => {
+                    let single = SceneGeometry {
+                        zones: vec![zone.clone()],
+                    };
+                    self.scene.upload_region(renderer_key, &single);
+                    resident.insert(zone_key);
+                }
+                None => {
+                    self.scene.remove_region(renderer_key);
+                    resident.remove(&zone_key);
+                }
+            }
+        }
+    }
+
+    /// Upload geometry that is not part of streamed static-region residency (animated locs).
+    pub(super) fn upload_transient(&mut self, key: (i32, i32), geometry: &SceneGeometry) {
         self.scene.upload_region(key, geometry);
     }
 
-    pub(super) fn remove_region(&mut self, key: (i32, i32)) {
-        self.scene.remove_region(key);
+    pub(super) fn remove_region(&mut self, key: RegionKey) {
+        if let Some(zones) = self.region_zones.remove(&key) {
+            for zone in zones {
+                self.scene.remove_region(zone_renderer_key(key, zone));
+            }
+        }
     }
 
     pub(super) fn set_overlay_lines(&mut self, lines: &[LineVertex]) {
@@ -210,5 +283,36 @@ impl RenderRuntime {
 
     pub(super) fn on_submitted_work_done(&self, callback: impl FnOnce() + Send + 'static) {
         self.render_state.queue.on_submitted_work_done(callback);
+    }
+}
+
+fn zone_belongs_to_region(region: RegionKey, zone: ZoneKey) -> bool {
+    zone.0.div_euclid(ZONES_PER_REGION_AXIS) == region.0
+        && zone.1.div_euclid(ZONES_PER_REGION_AXIS) == region.1
+}
+
+/// Preserve the old renderer ordering: region x, region y, then zone x/y inside the region.
+fn zone_renderer_key(region: RegionKey, zone: ZoneKey) -> (i32, i32) {
+    let local_x = zone.0 - region.0 * ZONES_PER_REGION_AXIS;
+    let local_y = zone.1 - region.1 * ZONES_PER_REGION_AXIS;
+    debug_assert!((0..ZONES_PER_REGION_AXIS).contains(&local_x));
+    debug_assert!((0..ZONES_PER_REGION_AXIS).contains(&local_y));
+    (
+        region.0,
+        region.1 * ZONES_PER_REGION + local_x * ZONES_PER_REGION_AXIS + local_y,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renderer_zone_keys_preserve_region_and_local_order() {
+        let region = (50, 60);
+        assert_eq!(zone_renderer_key(region, (400, 480)), (50, 60 * 64));
+        assert_eq!(zone_renderer_key(region, (407, 487)), (50, 60 * 64 + 63));
+        assert!(zone_belongs_to_region(region, (403, 486)));
+        assert!(!zone_belongs_to_region(region, (408, 486)));
     }
 }
