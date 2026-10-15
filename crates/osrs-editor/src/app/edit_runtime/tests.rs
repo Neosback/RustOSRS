@@ -23,8 +23,8 @@ fn object(
     kind: u8,
     orientation: u8,
 ) -> ObjectPlacement {
-    let source_plane = SourcePlane::new(plane_value)
-        .unwrap_or_else(|| unreachable!("test source plane is valid"));
+    let source_plane =
+        SourcePlane::new(plane_value).unwrap_or_else(|| unreachable!("test source plane is valid"));
     ObjectPlacement {
         object_id: ObjectId::new(object_id),
         position: MapPosition::new(MapTile::new(x, y), source_plane),
@@ -152,12 +152,8 @@ fn object_patch_footprint_preserves_exact_polarity_and_canonical_order() {
 fn object_mutation_constructor_deduplicates_exact_placements_without_losing_polarity() {
     let removed = object(100, 3200, 3200, 0, 10, 1);
     let added = object(100, 3201, 3200, 0, 10, 1);
-    let footprint = EditFootprint::with_object_mutations(
-        [],
-        [],
-        [removed, removed],
-        [added, added],
-    );
+    let footprint =
+        EditFootprint::with_object_mutations([], [], [removed, removed], [added, added]);
 
     assert_eq!(footprint.object_removed, vec![removed]);
     assert_eq!(footprint.object_added, vec![added]);
