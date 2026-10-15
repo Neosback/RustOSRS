@@ -9,8 +9,8 @@
 use crate::{
     AnimatedInstance, OwnedTiles, RegionInfo, RegionMap, SceneWindow, TerrainPresentation,
     WorldDefinitions, WorldError, build_world_scene, extract_animated_instances,
-    extract_owned_geometry, extract_region_info,
-    hd::{HdContext, extract::extract_owned_geometry_hd, gpu::HdGpuData},
+    extract::extract_owned_geometry_zones, extract_region_info,
+    hd::{HdContext, extract::extract_owned_geometry_hd_zones, gpu::HdGpuData},
     texture_layers,
 };
 use osrs_cache::source::CacheSource;
@@ -178,6 +178,17 @@ pub fn build_region_geometry_with(
     presentation: TerrainPresentation,
     hd: Option<&HdContext>,
 ) -> Result<Option<RegionGeometry>, WorldError> {
+    build_region_geometry_scoped_with(definitions, region, presentation, hd, None)
+}
+
+/// Full contextual scene build with optional static-geometry zone emission.
+fn build_region_geometry_scoped_with(
+    definitions: &mut WorldDefinitions,
+    region: RegionCoord,
+    presentation: TerrainPresentation,
+    hd: Option<&HdContext>,
+    zones: Option<&BTreeSet<(i32, i32)>>,
+) -> Result<Option<RegionGeometry>, WorldError> {
     let Some(source) = definitions.region(region)? else {
         return Ok(None);
     };
@@ -191,11 +202,15 @@ pub fn build_region_geometry_with(
     });
     let render_path = RegionRenderPath::select(presentation.hd_geometry, hd.is_some());
     let geometry = match (render_path, hd) {
-        (RegionRenderPath::Hd, Some(hd)) => extract_owned_geometry_hd(&world, owned, hd),
-        _ => extract_owned_geometry(&world, owned),
+        (RegionRenderPath::Hd, Some(hd)) => {
+            extract_owned_geometry_hd_zones(&world, owned, hd, zones)
+        }
+        _ => extract_owned_geometry_zones(&world, owned, zones),
     };
     let hd_stats =
         (render_path == RegionRenderPath::Hd).then(|| HdRegionStats::from_geometry(&geometry));
+    // Animation and inspection projections remain region-complete even for a zone-scoped static
+    // refresh. Their identity/indexing is consumed region-wide by the editor.
     let animations = extract_animated_instances(&world, owned, hd);
     let info = Arc::new(extract_region_info(
         &world,
@@ -266,7 +281,10 @@ pub enum StreamEvent {
 }
 
 enum Request {
-    Build(RegionCoord),
+    Build {
+        region: RegionCoord,
+        zones: Option<BTreeSet<(i32, i32)>>,
+    },
     SetPresentation(TerrainPresentation, u32),
     Edit(Vec<crate::TileEdit>),
     EditLocs(Vec<crate::LocEdit>),
@@ -340,12 +358,19 @@ impl StreamWorker {
                 self.presentation = presentation;
                 self.generation = generation;
             }
-            Request::Build(region) => return self.build(region, events),
+            Request::Build { region, zones } => {
+                return self.build(region, zones.as_ref(), events);
+            }
         }
         true
     }
 
-    fn build(&mut self, region: RegionCoord, events: &Sender<StreamEvent>) -> bool {
+    fn build(
+        &mut self,
+        region: RegionCoord,
+        zones: Option<&BTreeSet<(i32, i32)>>,
+        events: &Sender<StreamEvent>,
+    ) -> bool {
         if self.presentation.hd_geometry && self.hd.is_none() && self.hd_failure.is_none() {
             match load_hd(&self.definitions) {
                 Ok((context, gpu)) => {
@@ -372,11 +397,12 @@ impl StreamWorker {
                 .is_ok();
         }
 
-        let event = match build_region_geometry_with(
+        let event = match build_region_geometry_scoped_with(
             &mut self.definitions,
             region,
             self.presentation,
             self.hd.as_ref(),
+            zones,
         ) {
             Ok(Some(mut geometry)) => {
                 geometry.generation = self.generation;
@@ -535,9 +561,26 @@ impl RegionStreamer {
         let _ = self.requests.send(Request::EditLocs(edits));
     }
 
-    /// Queue a region build.
+    /// Queue a full static-geometry region build.
     pub fn request(&self, region: RegionCoord) {
-        let _ = self.requests.send(Request::Build(region));
+        let _ = self.requests.send(Request::Build {
+            region,
+            zones: None,
+        });
+    }
+
+    /// Queue a region build whose static geometry is emitted only for `zones`.
+    ///
+    /// The worker still assembles the complete contextual scene window and still returns complete
+    /// source, picker, and animation projections for the region.
+    pub fn request_zones(&self, region: RegionCoord, zones: BTreeSet<(i32, i32)>) {
+        if zones.is_empty() {
+            return;
+        }
+        let _ = self.requests.send(Request::Build {
+            region,
+            zones: Some(zones),
+        });
     }
 
     /// Next finished event, if any.
@@ -558,7 +601,8 @@ impl Drop for RegionStreamer {
 
 #[cfg(test)]
 mod tests {
-    use super::{HdRegionStats, RegionRenderPath, accumulate_hd_faces};
+    use super::{HdRegionStats, RegionRenderPath, Request, accumulate_hd_faces};
+    use osrs_core::coords::RegionCoord;
     use osrs_render::{HD_FLAG_TERRAIN, HD_MATERIAL_OVERLAY, HdVertex};
     use std::collections::BTreeSet;
 
@@ -577,6 +621,24 @@ mod tests {
             RegionRenderPath::select(true, false),
             RegionRenderPath::ReferenceFallback
         );
+    }
+
+    #[test]
+    fn scoped_build_request_preserves_world_zone_set() {
+        let expected = BTreeSet::from([(400, 400), (401, 400)]);
+        let request = Request::Build {
+            region: RegionCoord::new(50, 50),
+            zones: Some(expected.clone()),
+        };
+        let Request::Build {
+            region,
+            zones: Some(actual),
+        } = request
+        else {
+            unreachable!("scoped request shape")
+        };
+        assert_eq!(region, RegionCoord::new(50, 50));
+        assert_eq!(actual, expected);
     }
 
     #[test]
