@@ -53,11 +53,8 @@ impl BuildTracker {
             projection_epoch: self.projection_epoch(key),
             presentation_generation,
         };
-        self.pending_results.push_back(PendingBuild {
-            key,
-            scope,
-            stamp,
-        });
+        self.pending_results
+            .push_back(PendingBuild { key, scope, stamp });
         self.current.insert(key, request_id);
     }
 
@@ -79,7 +76,10 @@ impl BuildTracker {
     ) -> Option<RegionBuildScope> {
         let pending = self.pending_results.pop_front()?;
         if pending.key != key {
-            debug_assert_eq!(pending.key, key, "region build results must preserve FIFO order");
+            debug_assert_eq!(
+                pending.key, key,
+                "region build results must preserve FIFO order"
+            );
             self.pending_results.push_front(pending);
             return None;
         }
