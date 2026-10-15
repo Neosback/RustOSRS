@@ -9,6 +9,7 @@ use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession, RegionS
 use osrs_core::coords::{MapTile, RegionCoord};
 use osrs_edit::{ChangeImpact, MapDocument, MapOp, MapPatch, MapRegionSnapshot, PatchApplyError};
 use std::collections::BTreeSet;
+use std::ops::Deref;
 #[cfg(test)]
 use std::convert::Infallible;
 
@@ -65,15 +66,45 @@ impl EditFootprint {
         Self::new(terrain_tiles, height_vertices, object_tiles)
     }
 
-    fn touched_regions(&self) -> Vec<RegionCoord> {
-        self.terrain_tiles
+    fn into_touches(self) -> EditTouches {
+        let regions = self
+            .terrain_tiles
             .iter()
             .chain(&self.height_vertices)
             .chain(&self.object_tiles)
             .map(|tile| tile.split_region().0)
             .collect::<BTreeSet<_>>()
             .into_iter()
-            .collect()
+            .collect();
+        EditTouches {
+            regions,
+            footprint: self,
+        }
+    }
+}
+
+/// Region summary plus the exact coordinate footprint that produced it.
+///
+/// Dereferencing preserves the historical `&[RegionCoord]` view for callers that only need region
+/// membership, while projection invalidation can inspect the richer footprint without a parallel
+/// side channel.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(super) struct EditTouches {
+    regions: Vec<RegionCoord>,
+    pub footprint: EditFootprint,
+}
+
+impl Deref for EditTouches {
+    type Target = [RegionCoord];
+
+    fn deref(&self) -> &Self::Target {
+        &self.regions
+    }
+}
+
+impl PartialEq<Vec<RegionCoord>> for EditTouches {
+    fn eq(&self, other: &Vec<RegionCoord>) -> bool {
+        self.regions == *other
     }
 }
 
@@ -82,8 +113,7 @@ impl EditFootprint {
 pub(super) struct EditReceipt {
     pub revision: u64,
     pub impact: ChangeImpact,
-    pub touched_regions: Vec<RegionCoord>,
-    pub footprint: EditFootprint,
+    pub touched_regions: EditTouches,
 }
 
 /// Result of executing one semantic transition through the application gateway.
@@ -197,8 +227,7 @@ impl EditRuntime {
         patch: MapPatch,
         project: impl FnOnce(&MapDocument) -> Result<T, E>,
     ) -> Result<EditExecution<T>, EditExecutionError<E>> {
-        let footprint = EditFootprint::from_patch(&patch);
-        let touched_regions = footprint.touched_regions();
+        let touches = EditFootprint::from_patch(&patch).into_touches();
         let Some((commit, checkpoint)) = self
             .session
             .commit_checkpointed(patch)
@@ -211,8 +240,7 @@ impl EditRuntime {
         self.finish_execution(
             commit.revision,
             commit.impact,
-            touched_regions,
-            footprint,
+            touches,
             checkpoint,
             projection,
         )
@@ -239,13 +267,11 @@ impl EditRuntime {
             return Ok(EditExecution::NoChange);
         };
 
-        let touched_regions = footprint.touched_regions();
         let projection = project(self.session.document());
         self.finish_execution(
             commit.revision,
             commit.impact,
-            touched_regions,
-            footprint,
+            footprint.into_touches(),
             checkpoint,
             projection,
         )
@@ -255,8 +281,7 @@ impl EditRuntime {
         &mut self,
         revision: u64,
         impact: ChangeImpact,
-        touched_regions: Vec<RegionCoord>,
-        footprint: EditFootprint,
+        touched_regions: EditTouches,
         checkpoint: EditCheckpoint,
         projection: Result<T, E>,
     ) -> Result<EditExecution<T>, EditExecutionError<E>> {
@@ -270,7 +295,6 @@ impl EditRuntime {
                         revision,
                         impact,
                         touched_regions,
-                        footprint,
                     },
                     projection,
                 })
