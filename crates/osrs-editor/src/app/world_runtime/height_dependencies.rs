@@ -197,7 +197,7 @@ mod tests {
         let stamp = HeightDependencyStamp::new(4, 9);
         let mut dependencies = HeightDependencyCollection::new(RegionCoord::new(50, 50), stamp);
         let vertex = source(3200, 3200, 0);
-        dependencies.record(vertex, (400, 400)).unwrap();
+        assert_eq!(dependencies.record(vertex, (400, 400)), Ok(()));
 
         assert_eq!(
             dependencies.completeness(),
@@ -225,9 +225,9 @@ mod tests {
         let mut dependencies = HeightDependencyCollection::new(RegionCoord::new(-1, -1), stamp);
         let vertex = source(-1, -9, 2);
 
-        dependencies.record(vertex, (-1, -1)).unwrap();
-        dependencies.record(vertex, (-8, -8)).unwrap();
-        dependencies.record(vertex, (-1, -1)).unwrap();
+        assert_eq!(dependencies.record(vertex, (-1, -1)), Ok(()));
+        assert_eq!(dependencies.record(vertex, (-8, -8)), Ok(()));
+        assert_eq!(dependencies.record(vertex, (-1, -1)), Ok(()));
         dependencies.mark_complete();
 
         let HeightDependencyLookup::Current(Some(zones)) = dependencies.lookup(vertex, stamp)
@@ -263,16 +263,16 @@ mod tests {
         let region = RegionCoord::new(50, 50);
         let vertex = source(3208, 3208, 1);
         let mut first = HeightDependencyCollection::new(region, stamp);
-        first.record(vertex, (401, 401)).unwrap();
-        first.record(vertex, (400, 401)).unwrap();
+        assert_eq!(first.record(vertex, (401, 401)), Ok(()));
+        assert_eq!(first.record(vertex, (400, 401)), Ok(()));
         first.mark_complete();
 
         let mut second = HeightDependencyCollection::new(region, stamp);
-        second.record(vertex, (401, 401)).unwrap();
-        second.record(vertex, (401, 400)).unwrap();
+        assert_eq!(second.record(vertex, (401, 401)), Ok(()));
+        assert_eq!(second.record(vertex, (401, 400)), Ok(()));
         second.mark_complete();
 
-        first.merge(second).unwrap();
+        assert_eq!(first.merge(second), Ok(()));
         assert_eq!(first.completeness(), HeightDependencyCompleteness::Complete);
         let HeightDependencyLookup::Current(Some(zones)) = first.lookup(vertex, stamp) else {
             unreachable!("merged complete dependency exists")
@@ -301,7 +301,7 @@ mod tests {
         complete.mark_complete();
         let incomplete = HeightDependencyCollection::new(region, stamp);
 
-        complete.merge(incomplete).unwrap();
+        assert_eq!(complete.merge(incomplete), Ok(()));
         assert_eq!(
             complete.completeness(),
             HeightDependencyCompleteness::Incomplete
@@ -313,7 +313,7 @@ mod tests {
         let stamp = HeightDependencyStamp::new(10, 20);
         let mut dependencies = HeightDependencyCollection::new(RegionCoord::new(0, 0), stamp);
         let vertex = source(0, 0, 3);
-        dependencies.record(vertex, (0, 0)).unwrap();
+        assert_eq!(dependencies.record(vertex, (0, 0)), Ok(()));
         dependencies.mark_complete();
 
         assert_eq!(
