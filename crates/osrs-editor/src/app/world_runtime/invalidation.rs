@@ -269,6 +269,45 @@ mod tests {
     }
 
     #[test]
+    fn height_proof_can_span_an_eight_tile_zone_edge() {
+        let footprint = EditFootprint::new([], [height(7, 7, 0)], []);
+        let regions = touched_regions(&footprint);
+        let proven = BTreeSet::from([(0, 0), (1, 0), (0, 1), (1, 1)]);
+        assert_eq!(
+            projection_invalidation(
+                ChangeImpact::TERRAIN_GEOMETRY
+                    | ChangeImpact::NORMALS
+                    | ChangeImpact::LIGHTING,
+                &regions,
+                &footprint,
+                Some(&proven),
+            ),
+            ProjectionInvalidation::Zones(proven)
+        );
+    }
+
+    #[test]
+    fn height_proof_can_span_a_sixty_four_tile_region_edge() {
+        let footprint = EditFootprint::new([], [height(63, 31, 1)], []);
+        let regions = touched_regions(&footprint);
+        let proven = BTreeSet::from([(7, 3), (8, 3)]);
+        assert_eq!(
+            projection_invalidation(
+                ChangeImpact::TERRAIN_GEOMETRY
+                    | ChangeImpact::NORMALS
+                    | ChangeImpact::LIGHTING
+                    | ChangeImpact::LOCATIONS,
+                &regions,
+                &footprint,
+                Some(&proven),
+            ),
+            ProjectionInvalidation::Zones(proven)
+        );
+        assert_eq!(zone_region((7, 3)), (0, 0));
+        assert_eq!(zone_region((8, 3)), (1, 0));
+    }
+
+    #[test]
     fn mixed_height_and_terrain_unions_both_zone_sets() {
         let footprint = EditFootprint::new([MapTile::new(3204, 3204)], [height(3204, 3204, 0)], []);
         let regions = touched_regions(&footprint);
