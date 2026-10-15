@@ -27,11 +27,7 @@ fn loc(tile: (i32, i32)) -> LocSpec {
 }
 
 fn transform(x: f64, z: f64) -> Transform {
-    Transform::from_scale_rotation_translation(
-        DVec3::ONE,
-        DQuat::IDENTITY,
-        DVec3::new(x, 0.0, z),
-    )
+    Transform::from_scale_rotation_translation(DVec3::ONE, DQuat::IDENTITY, DVec3::new(x, 0.0, z))
 }
 
 #[test]
