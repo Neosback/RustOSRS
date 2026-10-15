@@ -1,7 +1,4 @@
-use super::{
-    WorldRuntime, ZoneKey,
-    height_dependencies::HeightDependencyStamp,
-};
+use super::{WorldRuntime, ZoneKey, height_dependencies::HeightDependencyStamp};
 use crate::app::edit_runtime::{EditFootprint, EditTouches};
 use osrs_core::coords::{MapTile, RegionCoord};
 use osrs_edit::ChangeImpact;
@@ -161,10 +158,7 @@ fn invalidated_terrain_zones(tiles: &[MapTile], radius: i32) -> BTreeSet<ZoneKey
     for tile in tiles {
         for x in tile.x - radius..=tile.x + radius {
             for y in tile.y - radius..=tile.y + radius {
-                zones.insert((
-                    x.div_euclid(ZONE_SIZE_TILES),
-                    y.div_euclid(ZONE_SIZE_TILES),
-                ));
+                zones.insert((x.div_euclid(ZONE_SIZE_TILES), y.div_euclid(ZONE_SIZE_TILES)));
             }
         }
     }
@@ -276,11 +270,7 @@ mod tests {
 
     #[test]
     fn mixed_height_and_terrain_unions_both_zone_sets() {
-        let footprint = EditFootprint::new(
-            [MapTile::new(3204, 3204)],
-            [height(3204, 3204, 0)],
-            [],
-        );
+        let footprint = EditFootprint::new([MapTile::new(3204, 3204)], [height(3204, 3204, 0)], []);
         let regions = touched_regions(&footprint);
         let proven = BTreeSet::from([(410, 410)]);
         let ProjectionInvalidation::Zones(zones) = projection_invalidation(
@@ -316,11 +306,7 @@ mod tests {
 
     #[test]
     fn object_receipt_overrides_any_height_zone_proof() {
-        let footprint = EditFootprint::new(
-            [],
-            [height(3204, 3204, 0)],
-            [MapTile::new(3204, 3204)],
-        );
+        let footprint = EditFootprint::new([], [height(3204, 3204, 0)], [MapTile::new(3204, 3204)]);
         let regions = touched_regions(&footprint);
         let proven = BTreeSet::from([(400, 400)]);
         let ProjectionInvalidation::Regions(_) = projection_invalidation(
