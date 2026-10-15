@@ -98,12 +98,7 @@ impl EditFootprint {
                 MapOp::AddObject { placement } => object_added.push(*placement),
             }
         }
-        Self::with_object_mutations(
-            terrain_tiles,
-            height_vertices,
-            object_removed,
-            object_added,
-        )
+        Self::with_object_mutations(terrain_tiles, height_vertices, object_removed, object_added)
     }
 
     fn into_touches(self) -> EditTouches {
