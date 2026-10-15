@@ -55,14 +55,8 @@ fn object_output_change_can_span_a_sixty_four_tile_region_boundary() {
     let right_before = full(right, &[((8, 0), 1)]);
     let right_after = full(right, &[((8, 0), 3)]);
 
-    assert_eq!(
-        exact(&left_before, &left_after),
-        BTreeSet::from([(7, 0)])
-    );
-    assert_eq!(
-        exact(&right_before, &right_after),
-        BTreeSet::from([(8, 0)])
-    );
+    assert_eq!(exact(&left_before, &left_after), BTreeSet::from([(7, 0)]));
+    assert_eq!(exact(&right_before, &right_after), BTreeSet::from([(8, 0)]));
 }
 
 #[test]
