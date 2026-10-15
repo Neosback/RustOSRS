@@ -230,7 +230,8 @@ mod tests {
         dependencies.record(vertex, (-1, -1)).unwrap();
         dependencies.mark_complete();
 
-        let HeightDependencyLookup::Current(Some(zones)) = dependencies.lookup(vertex, stamp) else {
+        let HeightDependencyLookup::Current(Some(zones)) = dependencies.lookup(vertex, stamp)
+        else {
             unreachable!("complete current source has recorded zones")
         };
         assert_eq!(
