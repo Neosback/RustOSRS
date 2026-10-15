@@ -28,32 +28,56 @@ If every projection vanished, the complete edited map must still exist correctly
 
 ## Current repository boundary
 
-Active development subsystem: **none**.
+Active development subsystem: **`InteractionRuntime` behavioral encapsulation**.
 
-Open subsystem PR: **none**.
+Open subsystem PR: **#55 - `refactor(editor): encapsulate InteractionRuntime behavior` (draft)**.
 
-Live development branches at the 2026-10-15 audit: **`main` only**.
+Active development branch: **`refactor/interaction-runtime-behavior`**.
 
-No next feature/refactor branch has been created.
+Certified `main` baseline for this subsystem:
 
-The previously certified handoff baseline was:
-
-`c2f55192ea08435a6ca2df82a84a032f0493b30f`
+`5b1975d3be40fc4c0f417a4fd37d84284ada96c2`
 
 CI:
 
-`38717265880` / #1320 - SUCCESS across Tier A/B/C.
+`38725189001` / #1327 - SUCCESS across Tier A/B/C.
 
-A project-wide documentation/completion audit then advanced `main` through the following documentation commits:
+No second feature/refactor branch may be created while PR #55 is active.
 
-- `62de140f2d0210e40fd68cdcc1582afb6dfe9fa5` - add `docs/PROJECT-STATUS.md` current completion audit;
-- `ca3befb512707d4fa409d22b57922242aa7c0434` - route the documentation index through current status;
-- `be1beb72449b805198ea035e22c7083a9a3a17ed` - reconcile the implementation roadmap;
-- `f725bad554b61b81d0ddec030e3b1dcc1bd09567` - reconcile the blueprint registry/status;
-- `48031a9b59fc4eea4bc43365e783368838ad3bfd` - reconcile the parity matrix with implemented renderer/editor/export state;
-- `7f7bc3d4cd665e3d1facfea1a416a7b68d74e861` - reconcile the 117HD plan.
+## Active subsystem: InteractionRuntime behavioral encapsulation
 
-This handoff update advances `main` once more. **The exact handoff-bearing head must pass Tier A/B/C before a new subsystem starts.**
+The subsystem exists to move transient interaction behavior behind the already-established `InteractionRuntime` field-ownership boundary without changing semantic edit authority, projection correctness, rendering semantics, or user-gesture transaction semantics.
+
+### Checkpoint 1 - selection transition ownership
+
+**CLOSED.**
+
+Validated code head:
+
+`bb0b538e4837e72272030eed92044916890cbf02`
+
+CI:
+
+`38727030087` / #1332 - SUCCESS across Tier A/B/C.
+
+Checkpoint 1 changes:
+
+- object/tile selection state transitions now live behind `InteractionRuntime` methods instead of being mutated directly by `selection.rs`;
+- clear object, clear tile, full clear, single-object select, replace-object selection, add/toggle object, add/select/toggle tile, primary-object detection, and selection counts are encapsulated;
+- world/scene lookup needed to resolve an object's inspector tile remains in `EditorApp`, so the runtime does not absorb world ownership;
+- click-selection inspector behavior is preserved;
+- marquee plain tile addition still does not move inspector focus;
+- toggling an object out still leaves the prior inspector tile unchanged;
+- replacing object selection, including Select Similar, still updates the primary object without implicitly moving inspector focus;
+- focused unit tests cover object primary-selection transitions, replace semantics, tile inspector behavior, and full selection clear.
+
+The first validation attempt (`38726838237` / #1331 on `8bf8a6cef35765381a760eb0bcde20c472fb15f3`) failed only the rustfmt check. The formatting-only correction advanced the code head to `bb0b538e4837e72272030eed92044916890cbf02`; the full replacement run then passed Tier A/B/C.
+
+### Next checkpoint boundary
+
+Do not begin Checkpoint 2 without explicit user direction.
+
+The next checkpoint should stay on this same branch and continue a single coherent interaction behavior boundary. The likely next cut is the selection/marquee gesture lifecycle: begin/update/cancel/finish state transitions should move behind `InteractionRuntime` while screen projection, world iteration, and semantic actions remain outside it.
 
 ## Latest completed development subsystem: verified map cache export and read-only inspection
 
@@ -137,12 +161,15 @@ Completed boundaries:
 - `WorldRuntime`;
 - `InteractionRuntime` field ownership.
 
-Remaining ownership work:
+In progress:
 
-1. `InteractionRuntime` behavioral encapsulation;
-2. `ProjectRuntime` extraction;
-3. `UiRuntime` extraction;
-4. `DiagnosticsRuntime` extraction.
+1. `InteractionRuntime` behavioral encapsulation, Checkpoint 1 closed on PR #55.
+
+Remaining ownership work after this subsystem:
+
+1. `ProjectRuntime` extraction;
+2. `UiRuntime` extraction;
+3. `DiagnosticsRuntime` extraction.
 
 ## Project-wide completion audit result
 
@@ -203,26 +230,29 @@ Historical M10-era text that says the renderer/editor are not started is superse
 
 Unless the user directs a different priority, the recommended next order is:
 
-1. `InteractionRuntime` behavioral encapsulation;
-2. `ProjectRuntime` ownership extraction;
-3. `UiRuntime` ownership extraction;
-4. `DiagnosticsRuntime` ownership extraction;
-5. Reference parity closure + external visual oracle;
-6. explicit M10+ CI/certification expansion;
-7. 117HD placed/dynamic lights;
-8. 117HD sky/day-night/reflection/post/settings remainder;
-9. cache/export generalization;
-10. autosave/recovery plus project lifecycle/import/merge polish;
-11. final pinned-cache release acceptance and documentation reconciliation.
+1. finish `InteractionRuntime` behavioral encapsulation on the current branch/PR;
+2. merge it to `main` and certify exact integrated `main`;
+3. `ProjectRuntime` ownership extraction;
+4. `UiRuntime` ownership extraction;
+5. `DiagnosticsRuntime` ownership extraction;
+6. Reference parity closure + external visual oracle;
+7. explicit M10+ CI/certification expansion;
+8. 117HD placed/dynamic lights;
+9. 117HD sky/day-night/reflection/post/settings remainder;
+10. cache/export generalization;
+11. autosave/recovery plus project lifecycle/import/merge polish;
+12. final pinned-cache release acceptance and documentation reconciliation.
 
-Each should normally be a separate subsystem branch/PR sequence.
+Each major subsystem should remain a separate branch/PR sequence.
 
 ## Next allowed boundary
 
-**STOP AFTER THIS HANDOFF-BEARING `main` HEAD IS CERTIFIED.**
+**STOP AFTER THE CHECKPOINT-1 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
 
-Do not create a new development branch until:
+Do not begin Checkpoint 2 until:
 
-1. the exact `main` head containing this handoff passes Tier A/B/C;
-2. the documentation audit and its certification are reported to the user;
-3. the user explicitly directs continuation into the next subsystem.
+1. the exact branch head containing this Checkpoint 1 handoff passes Tier A/B/C;
+2. Checkpoint 1 and its certification are reported to the user;
+3. the user explicitly directs continuation.
+
+Do not merge PR #55 at this checkpoint. Do not create another development branch.
