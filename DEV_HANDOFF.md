@@ -156,13 +156,43 @@ Validation history:
 - formatting-only commits advanced the candidate to `dc533db9da1ae0f6c2f9882315cdc826f27f7c5f`;
 - replacement run `38751272791` / #1405 passed architecture guards, formatting, warnings-denied workspace check, strict Clippy, WASM portability, full workspace tests, and the complete M3-M9 semantic parity suite.
 
+### Checkpoint 7 - post-edit object reselection lifecycle ownership
+
+**CLOSED.**
+
+Validated code head:
+
+`c79706fc45c8f2ed597052e83f943a55d4a6cf6b`
+
+CI:
+
+`38754787094` / #1413 - SUCCESS across Tier A/B/C.
+
+Checkpoint 7 changes:
+
+- the transient `pending_reselect` queue is private to `InteractionRuntime`;
+- `set_pending_reselect` is the single write path used by normal object edits, legacy object-history replay, and semantic object undo/redo projection;
+- `pending_reselect()` exposes only the read-only target specs needed for rebuilt-world matching;
+- `complete_reselect` is all-or-nothing: an empty queue or incomplete match leaves the queue and current selection unchanged, while a complete match atomically replaces object selection and clears the pending queue;
+- completing reselection reuses the existing `replace_objects` transition, so the last resolved object remains primary and inspector focus is not changed implicitly;
+- `EditorApp::resolve_reselect` still owns rebuilt-region lookup and exact placement matching against `infos`; the runtime does not absorb world lookup or projection state;
+- semantic object commits, history replay, world invalidation, renderer/projection ownership, egui collection, UI composition, and project lifecycle remain outside `InteractionRuntime`;
+- focused unit tests prove incomplete-match preservation, complete-match replacement/clear behavior, primary-object semantics, inspector preservation, and the empty-queue guard.
+
+Validation history:
+
+- initial candidate `14dbcb2fe5cba91cad8da5db553662f7083b1a5e` ran as `38753973641` / #1409; architecture and guard checks passed, and the run failed only `cargo fmt --all --check` because the three Git-data-written Rust files lacked the trailing newline required by rustfmt;
+- the newline-only correction produced `dd8d88bc0c992c03df5bb01825ae6cc4957aeb59`, whose `38754392652` / #1411 run passed architecture and formatting but the warnings-denied workspace build exposed two additional direct producers of `pending_reselect` in `editing/history.rs` and `editing/history/routing.rs`;
+- those two history producers were routed through `set_pending_reselect` instead of reopening the field or adding an exception;
+- final code head `c79706fc45c8f2ed597052e83f943a55d4a6cf6b` passed architecture guards, formatting, warnings-denied workspace check, strict Clippy, WASM portability, full workspace tests, and the complete M3-M9 semantic parity suite in `38754787094` / #1413.
+
 ### Next checkpoint boundary
 
-**Do not begin Checkpoint 7 without explicit user direction.**
+**Do not begin Checkpoint 8 without explicit user direction.**
 
-Checkpoint 7, if authorized, must stay on this same branch and remain inside transient interaction ownership. Audit the remaining `InteractionRuntime` state and choose one coherent state machine without moving egui event collection, UI composition, semantic edits, world lookup, renderer/projection ownership, project lifecycle, or unrelated runtime extraction into this subsystem.
+Checkpoint 8, if authorized, must stay on this same branch and remain inside transient interaction ownership. Audit the remaining `InteractionRuntime` state and choose one coherent behavioral boundary without moving egui event collection, UI composition, semantic edits, world lookup, renderer/projection ownership, project lifecycle, or unrelated runtime extraction into this subsystem.
 
-Do not merge PR #55 at the Checkpoint 6 boundary. Do not create another development branch.
+Do not merge PR #55 at the Checkpoint 7 boundary. Do not create another development branch.
 
 ## Latest completed development subsystem: verified map cache export and read-only inspection
 
@@ -229,7 +259,7 @@ Completed boundaries:
 
 In progress:
 
-1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1 through 6 closed on PR #55.
+1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1 through 7 closed on PR #55.
 
 Remaining ownership work after this subsystem:
 
@@ -275,12 +305,12 @@ Each major subsystem remains a separate branch/PR sequence.
 
 ## Next allowed boundary
 
-**STOP AFTER THE CHECKPOINT-6 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
+**STOP AFTER THE CHECKPOINT-7 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
 
-Do not begin Checkpoint 7 until:
+Do not begin Checkpoint 8 until:
 
-1. the exact branch head containing this Checkpoint 6 handoff passes Tier A/B/C;
-2. Checkpoint 6 and its certification are reported to the user;
+1. the exact branch head containing this Checkpoint 7 handoff passes Tier A/B/C;
+2. Checkpoint 7 and its certification are reported to the user;
 3. the user explicitly directs continuation.
 
 Do not merge PR #55 at this checkpoint. Do not create another development branch.
