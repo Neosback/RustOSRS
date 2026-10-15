@@ -104,7 +104,7 @@ This branch is Height-only. Object fine-grained invalidation is a later separate
 
 Status: COMPLETE AND CERTIFIED.
 
-Certified H1 content head before this validation-record-only handoff refresh:
+Certified H1 content head before its validation-record-only handoff refresh:
 `73694a9d97fd2845c8ed818400430709d6c704c5`
 
 CI:
@@ -155,17 +155,49 @@ The Height zone planner must be driven by explicit scene/model dependency metada
 
 ### H2 - explicit height dependency metadata
 
-Status: NOT STARTED.
+Status: COMPLETE AND CERTIFIED.
 
-Planned boundary:
+Certified H2 code/test head before this handoff refresh:
+`c59eea2cadffbc5861f6ecf8c138a9a0b6b11f99`
 
-- introduce a pure representation for projection-only Height dependencies
-- capture enough information to answer which world zones can change when a height vertex changes
-- include terrain dependency plus height-sensitive placed object/model bounds
-- preserve full-region fallback when exact dependency data is unavailable
-- no switch to zone invalidation yet
+CI:
+Run `38689828881` / #1227 - SUCCESS.
 
-Do not start H2 without explicit user direction.
+Passed on the certified H2 head:
+
+- Tier A architecture boundaries and architecture guard
+- reference regeneration safety
+- historical deob golden index
+- rustfmt
+- workspace check
+- strict Clippy
+- WebAssembly portability
+- Tier B full workspace tests
+- Tier C M3 decode/fuzz
+- M4 fixtures/model/fuzz
+- M5 normalized fixtures
+- M6 semantic scene
+- M7 normals/lighting/finalization
+- M8 morph/contour/animation/replacement
+- M9 semantic closure/golden hashes
+
+H2 scope:
+
+- added `crates/osrs-editor/src/app/world_runtime/height_dependencies.rs`
+- compiled the dependency contract into the editor without changing current Height invalidation behavior
+- represented source dependencies with canonical `HeightVertexCoord`, preserving source plane plus world X/Y identity
+- mapped each source vertex to a deterministic ordered set of output 8x8 world zones
+- added per-producer-region validation so a dependency collection cannot silently claim an output zone owned by a different producer region
+- added `HeightDependencyStamp` keyed by projection epoch and presentation generation
+- added explicit `Incomplete` / `Complete` state
+- made lookup return `Stale`, `Incomplete`, or current dependency data
+- made merge reject producer/stamp mismatches, deduplicate deterministically, and remain fail-closed if either side is incomplete
+- covered negative coordinates, zone/region boundaries, multi-zone dependencies, stale epoch/presentation, known-empty complete results, producer/stamp mismatches, and incomplete merge behavior
+- current Height invalidation still uses the conservative region fallback
+
+Important H2 boundary:
+
+The dependency types exist, but no accepted world-worker build installs current dependency metadata yet. `EditFootprint` also still exposes the pre-H2 Height footprint shape used by existing invalidation. H3 must wire canonical Height coordinate identity and accepted-build metadata into the planner before any Height edit is permitted to narrow to zones.
 
 ### H3 - Height receipt to zone invalidation
 
@@ -173,11 +205,16 @@ Status: NOT STARTED.
 
 Planned boundary:
 
-- consume H2 dependency metadata in `WorldRuntime`
-- map finalized Height semantic footprints to affected zones
-- keep conservative fallback for incomplete/unsupported dependency state
+- preserve enough canonical Height coordinate identity in finalized edit footprints to query H2 metadata correctly, including source plane
+- collect and install Height dependency metadata only from accepted/current region build results
+- tie trusted metadata to current projection epoch and presentation generation
+- map finalized Height semantic footprints to exact affected zones only when every relevant producer dependency set is complete/current
+- keep conservative region fallback for absent, incomplete, stale, unsupported, or cross-region-unproven dependency state
 - preserve full contextual scene assembly
 - change only final dirty projection scope
+- do not move semantic authority into `WorldRuntime`
+
+Do not start H3 without explicit user direction after this checkpoint report.
 
 ### H4 - adversarial boundary and replay coverage
 
@@ -222,7 +259,7 @@ After successful merge:
 
 `crates/osrs-editor/src/app/world_runtime/invalidation.rs` intentionally routes any footprint containing `height_vertices` to the conservative region policy.
 
-The current fallback expands one region ring for impacts that can cross region boundaries. This is safe and must remain the fallback throughout this branch.
+The current fallback expands one region ring for impacts that can cross region boundaries. This is safe and remains the runtime fallback after H2.
 
 Pure terrain-only edits remain zone-scoped using the certified radius-5 underlay blend boundary.
 
@@ -306,6 +343,8 @@ Large remaining systems include:
 
 ## Next allowed boundary
 
-STOPPED AFTER HEIGHT CHECKPOINT H1.
+STOPPED AFTER HEIGHT CHECKPOINT H2.
 
-Do not start H2 until the user explicitly instructs continuation.
+Next checkpoint is H3: runtime integration and receipt-to-zone planning using only complete/current H2 dependency metadata, with the existing region policy as mandatory fallback.
+
+Do not start H3 until the user explicitly instructs continuation after this checkpoint report.
