@@ -102,14 +102,39 @@ This branch is Height-only. Object fine-grained invalidation is a later separate
 
 ### H1 - dependency audit and operating protocol
 
-Status: COMPLETE pending checkpoint commit/validation record.
+Status: COMPLETE AND CERTIFIED.
 
-Scope:
+Certified H1 content head before this validation-record-only handoff refresh:
+`73694a9d97fd2845c8ed818400430709d6c704c5`
 
-- refresh this handoff with the mandatory one-branch/checkpoint/stop protocol
-- audit current Height invalidation and the scene/model height dependencies
-- define the safety contract before changing runtime invalidation behavior
-- make no projection behavior change
+CI:
+Run `38688385096` / #1221 - SUCCESS.
+
+Passed on the certified H1 head:
+
+- Tier A architecture boundaries and architecture guard
+- reference regeneration safety
+- historical deob golden index
+- rustfmt
+- workspace check
+- strict Clippy
+- WebAssembly portability
+- Tier B full workspace tests
+- Tier C M3 decode/fuzz
+- M4 fixtures/model/fuzz
+- M5 normalized fixtures
+- M6 semantic scene
+- M7 normals/lighting/finalization
+- M8 morph/contour/animation/replacement
+- M9 semantic closure/golden hashes
+
+H1 scope:
+
+- refreshed this handoff with the mandatory one-branch/checkpoint/stop protocol
+- audited current Height invalidation and the scene/model height dependencies
+- added `docs/plans/HEIGHT-ZONE-INVALIDATION.md`
+- defined the safety contract before changing runtime invalidation behavior
+- made no production projection behavior change
 
 Audit result:
 
