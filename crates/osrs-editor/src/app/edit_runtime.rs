@@ -7,7 +7,10 @@
 
 use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession, RegionSyncOutcome};
 use osrs_core::coords::{MapTile, RegionCoord};
-use osrs_edit::{ChangeImpact, MapDocument, MapOp, MapPatch, MapRegionSnapshot, PatchApplyError};
+use osrs_edit::{
+    ChangeImpact, HeightVertexCoord, MapDocument, MapOp, MapPatch, MapRegionSnapshot,
+    PatchApplyError,
+};
 use std::collections::BTreeSet;
 #[cfg(test)]
 use std::convert::Infallible;
@@ -33,19 +36,19 @@ pub(super) enum EditReplayDirection {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(super) struct EditFootprint {
     pub terrain_tiles: Vec<MapTile>,
-    pub height_vertices: Vec<MapTile>,
+    pub height_vertices: Vec<HeightVertexCoord>,
     pub object_tiles: Vec<MapTile>,
 }
 
 impl EditFootprint {
     pub(super) fn new(
         terrain_tiles: impl IntoIterator<Item = MapTile>,
-        height_vertices: impl IntoIterator<Item = MapTile>,
+        height_vertices: impl IntoIterator<Item = HeightVertexCoord>,
         object_tiles: impl IntoIterator<Item = MapTile>,
     ) -> Self {
         Self {
             terrain_tiles: normalize_tiles(terrain_tiles),
-            height_vertices: normalize_tiles(height_vertices),
+            height_vertices: normalize_height_vertices(height_vertices),
             object_tiles: normalize_tiles(object_tiles),
         }
     }
@@ -57,7 +60,7 @@ impl EditFootprint {
         for op in patch.ops() {
             match op {
                 MapOp::SetTerrain { coord, .. } => terrain_tiles.push(coord.tile),
-                MapOp::SetHeight { coord, .. } => height_vertices.push(coord.corner),
+                MapOp::SetHeight { coord, .. } => height_vertices.push(*coord),
                 MapOp::AddObject { placement } | MapOp::RemoveObject { placement } => {
                     object_tiles.push(placement.position.tile);
                 }
@@ -67,17 +70,24 @@ impl EditFootprint {
     }
 
     fn into_touches(self) -> EditTouches {
-        let regions = self
-            .terrain_tiles
-            .iter()
-            .chain(&self.height_vertices)
-            .chain(&self.object_tiles)
-            .map(|tile| tile.split_region().0)
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
+        let mut regions = BTreeSet::new();
+        regions.extend(
+            self.terrain_tiles
+                .iter()
+                .map(|tile| tile.split_region().0),
+        );
+        regions.extend(
+            self.height_vertices
+                .iter()
+                .map(|coord| coord.corner.split_region().0),
+        );
+        regions.extend(
+            self.object_tiles
+                .iter()
+                .map(|tile| tile.split_region().0),
+        );
         EditTouches {
-            regions,
+            regions: regions.into_iter().collect(),
             footprint: self,
         }
     }
@@ -312,6 +322,16 @@ impl EditRuntime {
 
 fn normalize_tiles(tiles: impl IntoIterator<Item = MapTile>) -> Vec<MapTile> {
     tiles
+        .into_iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn normalize_height_vertices(
+    vertices: impl IntoIterator<Item = HeightVertexCoord>,
+) -> Vec<HeightVertexCoord> {
+    vertices
         .into_iter()
         .collect::<BTreeSet<_>>()
         .into_iter()
