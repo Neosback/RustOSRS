@@ -7,8 +7,9 @@
 mod invalidation;
 
 use self::invalidation::{ProjectionInvalidation, projection_invalidation, zone_region};
-use super::edit_runtime::EditReceipt;
+use super::edit_runtime::EditTouches;
 use osrs_core::coords::RegionCoord;
+use osrs_edit::ChangeImpact;
 use osrs_render::SceneGeometry;
 use osrs_world::{
     AnimatedInstance, AnimationWorker, LocEdit, LocInfo, RegionStreamer, StreamEvent,
@@ -293,14 +294,18 @@ impl WorldRuntime {
         }
     }
 
-    /// Translate one finalized semantic receipt into projection invalidation.
+    /// Translate one finalized semantic touch set into projection invalidation.
     ///
     /// Pure terrain edits can be bounded from audited terrain dependencies, so they refresh 8x8
     /// zones. Height edits remain conservative because ground-contoured locs depend on model bounds,
     /// and object edits remain conservative because object-definition footprints are not yet carried
-    /// by the semantic receipt. Those paths retain the previous region-level policy exactly.
-    pub(super) fn invalidate_semantic_edit(&mut self, receipt: &EditReceipt) {
-        match projection_invalidation(receipt) {
+    /// by the semantic touch set. Those paths retain the previous region-level policy exactly.
+    pub(super) fn invalidate_semantic_edit(
+        &mut self,
+        impact: ChangeImpact,
+        touched_regions: &EditTouches,
+    ) {
+        match projection_invalidation(impact, touched_regions, &touched_regions.footprint) {
             ProjectionInvalidation::None => {}
             ProjectionInvalidation::Regions(regions) => {
                 for region in regions {
