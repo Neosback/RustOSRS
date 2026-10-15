@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-15
 
-`ARCHITECTURE.md` remains the authoritative architecture contract. `docs/PROJECT-STATUS.md` is the current project-wide completion audit. This handoff records the exact subsystem boundary, certified baseline history, development protocol, and next allowed work.
+`ARCHITECTURE.md` remains the authoritative architecture contract. `docs/PROJECT-STATUS.md` is the project-wide completion audit. This handoff records the exact active subsystem boundary, certified history, development protocol, and next allowed work.
 
 ## Project invariant
 
@@ -10,21 +10,21 @@ Last updated: 2026-10-15
 
 If every projection vanished, the complete edited map must still exist correctly in the semantic session.
 
+One logical user gesture produces at most one logical semantic transaction/history entry. Failed projection preparation must not knowingly leave semantic authority and visible projection divergent.
+
 ## Mandatory development protocol
 
 1. Keep exactly one active development branch/system at a time.
 2. Do not start a second feature/refactor branch while another subsystem is active.
-3. Break each subsystem into reviewable checkpoints.
+3. Break each subsystem into reviewable checkpoints and stop at checkpoint boundaries.
 4. Update this handoff with exact SHAs and validation as checkpoints close.
 5. Keep one subsystem on the same branch until complete.
 6. Do not mix unrelated architecture, Reference renderer, 117HD, cache/export, or UI work into an active subsystem branch.
 7. Before merge, validate the exact final branch head with Tier A/B/C CI.
-8. **Merge the current subsystem into `main` before opening any new development branch.**
+8. Merge the current subsystem into `main` before opening any new development branch.
 9. After merge, validate exact integrated `main`, update this handoff, and certify the final handoff-bearing `main` head if documentation advances it.
 10. Exact SHA matters. A green run certifies only the SHA it tested.
-11. One logical user gesture produces at most one logical semantic transaction/history entry.
-12. Failed projection preparation must not knowingly leave semantic authority and visible projection divergent.
-13. Do not introduce architecture-guard debt exceptions for convenience.
+11. Do not introduce architecture-guard debt exceptions or lint suppressions for convenience.
 
 ## Current repository boundary
 
@@ -46,7 +46,7 @@ No second feature/refactor branch may be created while PR #55 is active.
 
 ## Active subsystem: InteractionRuntime behavioral encapsulation
 
-The subsystem exists to move transient interaction behavior behind the already-established `InteractionRuntime` field-ownership boundary without changing semantic edit authority, projection correctness, rendering semantics, or user-gesture transaction semantics.
+The subsystem moves transient interaction behavior behind the already-established `InteractionRuntime` field-ownership boundary without changing semantic edit authority, projection correctness, rendering semantics, or user-gesture transaction semantics.
 
 ### Checkpoint 1 - selection transition ownership
 
@@ -60,18 +60,7 @@ CI:
 
 `38727030087` / #1332 - SUCCESS across Tier A/B/C.
 
-Checkpoint 1 changes:
-
-- object/tile selection state transitions now live behind `InteractionRuntime` methods instead of being mutated directly by `selection.rs`;
-- clear object, clear tile, full clear, single-object select, replace-object selection, add/toggle object, add/select/toggle tile, primary-object detection, and selection counts are encapsulated;
-- world/scene lookup needed to resolve an object's inspector tile remains in `EditorApp`, so the runtime does not absorb world ownership;
-- click-selection inspector behavior is preserved;
-- marquee plain tile addition still does not move inspector focus;
-- toggling an object out still leaves the prior inspector tile unchanged;
-- replacing object selection, including Select Similar, still updates the primary object without implicitly moving inspector focus;
-- focused unit tests cover object primary-selection transitions, replace semantics, tile inspector behavior, and full selection clear.
-
-The first validation attempt (`38726838237` / #1331 on `8bf8a6cef35765381a760eb0bcde20c472fb15f3`) failed only the rustfmt check. The formatting-only correction advanced the code head to `bb0b538e4837e72272030eed92044916890cbf02`; the full replacement run then passed Tier A/B/C.
+Selection clear/replace/add/toggle transitions and primary-selection bookkeeping moved behind `InteractionRuntime`. World lookup needed to resolve inspector tiles remained in `EditorApp`. Focused tests cover object primary selection, replace semantics, tile inspector behavior, and full clear. The first attempt `8bf8a6cef35765381a760eb0bcde20c472fb15f3` failed only rustfmt; the formatting-only replacement became the validated head above.
 
 ### Checkpoint 2 - marquee gesture lifecycle ownership
 
@@ -85,23 +74,7 @@ CI:
 
 `38729816578` / #1350 - SUCCESS across Tier A/B/C.
 
-Checkpoint 2 changes:
-
-- `Marquee` and its transient gesture state now live in `InteractionRuntime` rather than `selection.rs`;
-- begin, update, cancel, finish, and read access are encapsulated through `InteractionRuntime` methods;
-- pointer updates remain clamped to the viewport bounds and Shift/Cmd modifier intent remains latched across the gesture exactly as before;
-- switching tools, leaving the viewport after pointer release, object placement, object dragging, quick-open/context-menu suppression, and gizmo capture now cancel marquee state through the runtime instead of mutating the field directly;
-- viewport projection, loaded-world iteration, tile/object discovery, and application of the completed marquee selection remain in `EditorApp`, so `InteractionRuntime` does not absorb world or projection ownership;
-- the marquee field is private to the runtime, preventing future direct lifecycle mutation from outside the boundary;
-- focused unit coverage proves clamping/modifier latching and cancellation/finish behavior.
-
-Validation caught and closed three boundary-quality issues before this checkpoint was accepted:
-
-- the initial implementation required rustfmt-only corrections;
-- making `marquee` private exposed two remaining direct resets in `viewport.rs` and `workspace/tools.rs`, which were routed through `cancel_marquee()`;
-- strict Clippy rejected an `expect()` in the new unit test, so the assertion was rewritten without `unwrap`/`expect` and then formatted exactly.
-
-The final replacement run on `e37feed2be1bad377729f64d2acbe040d1c7a32c` passed architecture guards, formatting, workspace check, strict Clippy, WASM portability, the full workspace tests, and the M3-M9 semantic parity suite.
+`Marquee` begin/update/cancel/finish/read lifecycle moved behind `InteractionRuntime`, with viewport clamping and modifier latching preserved. Loaded-world iteration, projection, tile/object discovery, and application of the completed marquee selection remain in `EditorApp`. Validation caught formatting, remaining direct resets, and a strict-Clippy test issue before the final green run.
 
 ### Checkpoint 3 - hover and context-pick bookkeeping ownership
 
@@ -115,19 +88,7 @@ CI:
 
 `38732036663` / #1358 - SUCCESS across Tier A/B/C.
 
-Checkpoint 3 changes:
-
-- final hover commit now routes through `InteractionRuntime::set_hover`;
-- `set_hover` latches `last_hover_tile` from the final normalized hover tile before storing the hover state;
-- pointer-leave clearing routes through `InteractionRuntime::clear_hover`, preserving the prior `last_hover_tile` exactly as before;
-- Shift-right-click context capture routes through `InteractionRuntime::capture_context_pick`, preserving a snapshot of the current hover even if hover later changes;
-- ray construction, resident-world picking, and Select/Objects object-to-standing-tile normalization remain in `EditorApp`, so world/projection ownership stays outside the runtime;
-- context-menu UI and outline requests remain outside the runtime;
-- focused tests cover last-hover-tile latching/clear semantics and context-pick snapshot isolation.
-
-The ordering of the hover commit is intentional: Select/Objects first normalize an object hit to the tile the object stands on, then `set_hover` latches that final tile. This prevents `last_hover_tile` from retaining the terrain hit behind an object.
-
-The first validation attempt (`38731844878` / #1356 on `6520304fed358cf09f882b95def1c1923a974e54`) passed architecture guards and formatting but failed the warnings-denied workspace check because moving pick construction removed the final use of the root-level `Pick` import. The stale import was removed in `11a6ab2901c20003a6d0718da0a46a0324b37b68`; the full replacement run then passed Tier A/B/C.
+Final hover commit, hover clear, last-hover-tile latching, and context-pick snapshot capture moved behind runtime methods. Ray construction, resident-world picking, Select/Objects hit normalization, context-menu UI, and outline requests remain outside. The first validation attempt exposed a stale warnings-denied import; removing it produced the validated head.
 
 ### Checkpoint 4 - temporary tool-key / peek lifecycle ownership
 
@@ -141,22 +102,9 @@ CI:
 
 `38735438231` / #1375 - SUCCESS across Tier A/B/C.
 
-Checkpoint 4 changes:
+Temporary tool-key/peek state is private behind `ToolPeek`, `press_tool_key`, `peek_key`, and `release_tool_key`. egui polling, keymap lookup, actual tool application, UI composition, spline cleanup, semantic edits, world lookup, and projection remain outside. A formatting-only correction first passed A/B/C at `1b98b78c148c6c6c0b5a8ed475484804da656a80`; a later same-branch redundant hover-tint branch was correctly rejected by strict Clippy in #1373, then removed without a lint exception. The replacement head above passed full A/B/C.
 
-- temporary tool-key / peek state is now private to `InteractionRuntime` through a dedicated `ToolPeek` record;
-- tool-key press transitions route through `InteractionRuntime::press_tool_key`, which preserves tap-to-switch, same-tool return-to-Select, and the previous tool needed for a held peek;
-- release transitions route through `InteractionRuntime::release_tool_key`, which clears the peek on release and returns the previous tool only after the existing `PEEK_AFTER` threshold;
-- `peek_key()` exposes only the key needed for egui key-state collection, so egui event collection remains outside the runtime;
-- `EditorApp::tool_actions` still owns keymap lookup and actual tool application through `set_tool`;
-- `EditorApp::tool_release` still owns egui polling and applies any returned tool through `set_tool`;
-- UI composition, drawer behavior, spline cleanup, semantic edits, world lookup, and projection ownership remain outside `InteractionRuntime`;
-- focused unit coverage proves return-tool latching, same-tool peek cancellation, held-key persistence, threshold-triggered return, and tap persistence.
-
-The live branch already contained the Checkpoint 4 implementation when this checkpoint was reconciled, so that work was audited and preserved instead of duplicated. The pre-certification head `7709f2e9ccad87ecb9fa49289757614fb75b6964` passed architecture guards but failed only `cargo fmt --all --check` in `workspace/tools.rs`. The formatting-only correction produced `1b98b78c148c6c6c0b5a8ed475484804da656a80`, and `38734432620` / #1369 passed Tier A/B/C.
-
-After the first Checkpoint 4 handoff commit, a same-branch scope-restoration commit (`cf252c489ef67bfed523866098b97c97d27070fc`) restored a redundant hover-tint branch that was unrelated to the tool-peek refactor. Strict Clippy correctly rejected that state in `38735166959` / #1373 because the hover and non-hover branches were identical. No lint exception was added. `d57965431a6f05b365aac1763dafd5b47877f0d5` removed only that redundant branch again, with no behavior change, and its full replacement run `38735438231` / #1375 passed Tier A/B/C.
-
-### Checkpoint 5 - object drag gesture lifecycle ownership
+### Checkpoint 5 - object-drag gesture lifecycle ownership
 
 **CLOSED.**
 
@@ -168,24 +116,53 @@ CI:
 
 `38740332353` / #1389 - SUCCESS across Tier A/B/C.
 
-Checkpoint 5 changes:
+The transient `object_drag` field became private, with begin/update/cancel/finish/read access routed through runtime methods. Pointer-driven object dragging and transform-gizmo translation preview use the same runtime-owned preview lifecycle. egui collection, selected-spec resolution, destination validation, preview projection, semantic object editing, world invalidation, and projection remain in `EditorApp`.
 
-- the transient `object_drag` field is now private to `InteractionRuntime`;
-- begin, update, cancel, finish, and read access route through `InteractionRuntime::begin_object_drag`, `update_object_drag`, `cancel_object_drag`, `finish_object_drag`, and `object_drag`;
-- pointer-driven object dragging still collects egui drag state, resolves the selected semantic specs, and commits the completed move in `EditorApp`; only the transient drag lifecycle moved behind the runtime boundary;
-- transform-gizmo translation previews now use the same runtime-owned object-drag lifecycle instead of mutating the preview record directly;
-- gizmo transform math, pointer collection, final move/rotation choice, semantic object editing, world invalidation, and projection remain outside `InteractionRuntime`;
-- object-drag preview rendering still validates destinations and projects tile footprints in `EditorApp`, reading the transient drag through the runtime accessor;
-- the `InteractionRuntime` unit suite moved to `interaction_runtime/tests.rs` to preserve the 500-line production-module architecture cap without deleting coverage or adding an exception;
-- focused tests prove drag delta tracking, one-shot finish semantics, and cancellation behavior while retaining the previous selection, marquee, hover, context-pick, and tool-peek coverage.
+Validation caught three useful issues before acceptance: the first candidate exceeded the 500-line production-module cap after adding tests, so tests moved into `interaction_runtime/tests.rs` rather than weakening the guard; the warnings-denied build then exposed remaining direct gizmo mutations; finally the compiler exposed an overlapping gizmo borrow. The corrected head above passed architecture, formatting, workspace check, strict Clippy, WASM, full workspace tests, and M3-M9 semantic parity.
 
-Validation caught three boundary-quality issues before this checkpoint was accepted. The first candidate (`aaa8f3c601925632092ff913ef1e209e31944a9a`, `38739519426` / #1381) failed the architecture guard because adding the focused tests pushed the production `interaction_runtime.rs` module to 563 lines against the 500-line cap. The tests were split into a child test module instead of weakening the guard. The next candidate (`1a7f4b44cbaed9ec979f1d1938388cea06ff91d5`, `38739750325` / #1385) passed architecture and formatting but the warnings-denied workspace build exposed two remaining direct `object_drag` mutations in `gizmo.rs`; those were routed through the runtime. The following candidate (`b209ab6899ba6e74f266c723d1162dd1f0c6a2c9`, `38739995732` / #1387) passed architecture and formatting but the workspace compiler caught an overlapping mutable borrow in the gizmo path. Scoping the gizmo-drag borrow before updating the preview produced `a740843dac78880e31fba21e64652e6535f9313f`, whose replacement run passed architecture guards, formatting, workspace check, strict Clippy, WASM portability, full workspace tests, and M3-M9 semantic parity.
+### Checkpoint 6 - transform-gizmo gesture lifecycle ownership
+
+**CLOSED.**
+
+Validated code head:
+
+`dc533db9da1ae0f6c2f9882315cdc826f27f7c5f`
+
+CI:
+
+`38751272791` / #1405 - SUCCESS across Tier A/B/C.
+
+Checkpoint 6 changes:
+
+- the transient `gizmo_drag` field is private to `InteractionRuntime`;
+- `InteractionRuntime::update_gizmo_drag` creates the drag once, latches the original start transform and selected specs, then updates only the current transform on later samples;
+- `cancel_gizmo_drag` clears both the in-progress drag and capture/busy state;
+- `finish_gizmo_drag` clears capture/busy state and returns the completed drag exactly once;
+- `gizmo_drag()` exposes read-only drag state needed for target continuity and release detection;
+- `update_gizmo_busy` derives the busy state from the external gizmo focus signal plus whether a runtime drag is active;
+- `GizmoDrag` now exposes constructor/update/read methods while keeping its transform/spec fields private;
+- tool/modal/context-menu/empty-selection cancellation routes through `cancel_gizmo_drag` instead of mutating drag/busy fields directly;
+- transform samples route through `update_gizmo_drag`, and final release routes through `finish_gizmo_drag`;
+- transform-gizmo widget configuration, matrices, pointer collection, snapped translation/rotation math, object-drag footprint preview, and final semantic move-or-rotation decision remain in `gizmo.rs` / `EditorApp`;
+- semantic object edits, world invalidation, renderer/projection ownership, and project lifecycle did not move into `InteractionRuntime`;
+- focused tests prove initial start/spec latching across later updates, busy-state persistence while a drag is active, one-shot finish behavior, and cancellation clearing capture state.
+
+Validation history:
+
+- initial certification candidate `e739c76b2e1de7ad21a19b524d7f357cab268bd1` ran as `38751004541` / #1401;
+- architecture checks and guard tests passed on that candidate;
+- #1401 failed only `cargo fmt --all --check`, with one mechanical wrap in `gizmo.rs` and one helper-line formatting change in `interaction_runtime/tests.rs`;
+- no behavioral workaround, guard exception, or lint suppression was introduced;
+- formatting-only commits advanced the candidate to `dc533db9da1ae0f6c2f9882315cdc826f27f7c5f`;
+- replacement run `38751272791` / #1405 passed architecture guards, formatting, warnings-denied workspace check, strict Clippy, WASM portability, full workspace tests, and the complete M3-M9 semantic parity suite.
 
 ### Next checkpoint boundary
 
-Do not begin Checkpoint 6 without explicit user direction.
+**Do not begin Checkpoint 7 without explicit user direction.**
 
-The next checkpoint must stay on this same branch and remain inside transient interaction ownership. Audit the remaining `InteractionRuntime` state and choose one coherent state machine for Checkpoint 6 without moving egui event collection, UI composition, semantic edits, world lookup, renderer/projection ownership, or project lifecycle into the runtime.
+Checkpoint 7, if authorized, must stay on this same branch and remain inside transient interaction ownership. Audit the remaining `InteractionRuntime` state and choose one coherent state machine without moving egui event collection, UI composition, semantic edits, world lookup, renderer/projection ownership, project lifecycle, or unrelated runtime extraction into this subsystem.
+
+Do not merge PR #55 at the Checkpoint 6 boundary. Do not create another development branch.
 
 ## Latest completed development subsystem: verified map cache export and read-only inspection
 
@@ -209,17 +186,9 @@ Integrated-main CI:
 
 `38716729696` / #1319 - SUCCESS across Tier A/B/C.
 
-The subsystem added fail-closed staged export, semantic round-trip validation, existing-group JS5 repack, manifest-backed independent verification, preservation of extra map-group files, verified native read-through, isolated read-only inspection, pending-project export support, stale-job protection, and checked group-version overflow.
+This subsystem added fail-closed staged export, semantic round-trip validation, existing-group JS5 repack, manifest-backed independent verification, preservation of extra map-group files, verified native read-through, isolated read-only inspection, pending-project export support, stale-job protection, and checked group-version overflow.
 
-Current export limitations remain explicit:
-
-- only existing map-square groups can be repacked;
-- new groups absent from the reference table are not created;
-- editor export currently rewrites map index 5 only;
-- hash/Whirlpool reference-table rows fail closed;
-- edited caches intentionally do not match pristine profile fingerprints through ordinary matching;
-- `VerifiedExport` read-through is native-only;
-- the pinned real build-241 export acceptance test requires external cache data and remains ignored in ordinary CI.
+Current export limitations remain explicit: only existing map-square groups can be repacked; new groups absent from the reference table are not created; editor export currently rewrites map index 5 only; hash/Whirlpool reference-table rows fail closed; edited caches intentionally do not match pristine profile fingerprints through ordinary matching; `VerifiedExport` read-through is native-only; the pinned real build-241 export acceptance test requires external cache data and remains ignored in ordinary CI.
 
 ## Previous completed development subsystem: Object dependency proof and zone invalidation
 
@@ -247,18 +216,7 @@ Object edits use exact 8x8 static installation only with complete/current accept
 
 ## Integrated edit/projection architecture
 
-Current `main` includes:
-
-- central semantic `EditRuntime` execute/replay gateway;
-- Paint, Height, Paste, Path, Objects, semantic Undo, and semantic Redo through that authority;
-- receipt-driven projection invalidation;
-- exact 8x8 pure-terrain invalidation;
-- Height exact-zone invalidation only with complete/current dependency proof, otherwise conservative region fallback;
-- Object exact-zone static installation only with complete/current accepted producer-output proof, otherwise conservative 3x3 producer fallback;
-- full contextual scene assembly;
-- stale asynchronous build rejection by request identity, projection epoch, and presentation generation;
-- immutable export snapshots over semantic authority plus pending project state;
-- verified export inspection isolated from authoring state.
+Current `main` includes the central semantic `EditRuntime` execute/replay gateway; Paint, Height, Paste, Path, Objects, semantic Undo, and semantic Redo through that authority; receipt-driven projection invalidation; exact 8x8 pure-terrain invalidation; proof-gated exact-zone Height/Object behavior with conservative fallbacks; full contextual scene assembly; stale asynchronous build rejection; immutable export snapshots over semantic authority plus pending project state; and verified export inspection isolated from authoring state.
 
 ## Current runtime ownership state
 
@@ -271,7 +229,7 @@ Completed boundaries:
 
 In progress:
 
-1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1, 2, 3, 4, and 5 closed on PR #55.
+1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1 through 6 closed on PR #55.
 
 Remaining ownership work after this subsystem:
 
@@ -281,47 +239,9 @@ Remaining ownership work after this subsystem:
 
 ## Project-wide completion audit result
 
-The 2026-10-15 audit corrected several stale documentation claims.
+The 2026-10-15 audit corrected stale historical documentation. Claims that must not be reintroduced as blockers include: `TERRAIN-004` is implemented and differential-tested; a packed/headless reverse-Z Reference wgpu renderer exists; suppressed-face admission and min-plane grouping exist; real cache textures/mips/samplers/cutout/UV/animation exist; the native editor/viewport exists; semantic editing, multi-region workflow, project save/open, and verified export exist; and 117HD water plus parallax/displacement are implemented.
 
-### Closed claims that must not be reintroduced as blockers
-
-- `TERRAIN-004` is implemented and differential-tested against the pinned client;
-- a packed/headless reverse-Z Reference wgpu renderer exists;
-- suppressed-face admission and min-plane grouping exist;
-- real cache textures, mip arrays, sampler setup, cutout handling, UVs, and texture animation exist;
-- the native editor/viewport exists;
-- semantic editing, multi-region workflow, project save/open, and verified export exist;
-- 117HD water and parallax/displacement are implemented.
-
-### Still incomplete
-
-Reference parity/certification:
-
-- side-grid/placement-shadow edge exactness where coverage is not exhaustive;
-- remaining original-plane/roof/visibility edge cases;
-- exact depth/raster/bias closure;
-- alpha/depth-write/no-depth closure;
-- exact texture/sampler proof against the selected reference path;
-- independent external visual oracle and measured external 1:1 gates;
-- explicit permanent M10+ CI certification entries.
-
-117HD:
-
-- placed/dynamic point lights;
-- sky/star/moon/aurora/day-night;
-- sky/reflection and remaining atmosphere/water coupling;
-- remaining post/settings work;
-- wind/character displacement and visual edge cleanup.
-
-Persistence/export/product:
-
-- autosave/crash recovery if retained in M16 scope;
-- project/browser lifecycle polish and future import/merge/conflict workflow;
-- new map-group creation;
-- broader index/repack support where required;
-- hash/Whirlpool table-row support/policy;
-- future edited-cache identity/profile strategy beyond private verified inspection if desired;
-- real pinned-cache release acceptance.
+Still incomplete work includes Reference edge/depth/alpha/texture parity closure and an independent external visual oracle; explicit permanent M10+ CI certification entries; 117HD placed/dynamic lights, sky/star/moon/aurora/day-night, remaining sky/reflection/atmosphere/water coupling, post/settings, wind/character displacement, and visual cleanup; autosave/crash recovery if retained; project/browser lifecycle and import/merge/conflict polish; new map-group creation; broader index/repack support; hash/Whirlpool row policy/support; future edited-cache identity/profile strategy if desired; and real pinned-cache release acceptance.
 
 ## Canonical current roadmap
 
@@ -343,7 +263,7 @@ Unless the user directs a different priority, the recommended next order is:
 3. `ProjectRuntime` ownership extraction;
 4. `UiRuntime` ownership extraction;
 5. `DiagnosticsRuntime` ownership extraction;
-6. Reference parity closure + external visual oracle;
+6. Reference parity closure plus external visual oracle;
 7. explicit M10+ CI/certification expansion;
 8. 117HD placed/dynamic lights;
 9. 117HD sky/day-night/reflection/post/settings remainder;
@@ -351,16 +271,16 @@ Unless the user directs a different priority, the recommended next order is:
 11. autosave/recovery plus project lifecycle/import/merge polish;
 12. final pinned-cache release acceptance and documentation reconciliation.
 
-Each major subsystem should remain a separate branch/PR sequence.
+Each major subsystem remains a separate branch/PR sequence.
 
 ## Next allowed boundary
 
-**STOP AFTER THE CHECKPOINT-5 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
+**STOP AFTER THE CHECKPOINT-6 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
 
-Do not begin Checkpoint 6 until:
+Do not begin Checkpoint 7 until:
 
-1. the exact branch head containing this Checkpoint 5 handoff passes Tier A/B/C;
-2. Checkpoint 5 and its certification are reported to the user;
+1. the exact branch head containing this Checkpoint 6 handoff passes Tier A/B/C;
+2. Checkpoint 6 and its certification are reported to the user;
 3. the user explicitly directs continuation.
 
 Do not merge PR #55 at this checkpoint. Do not create another development branch.
