@@ -107,7 +107,16 @@ pub(super) fn projection_invalidation(
         object_tiles,
     } = footprint;
 
-    if !object_tiles.is_empty() || (terrain_tiles.is_empty() && height_vertices.is_empty()) {
+    // Every producer region builds a 104x104 contextual scene around its owned 64x64 output. An
+    // object anchored in one map region can therefore influence a neighboring producer's terrain
+    // shadow/light or ModelData reconciliation even though that producer emits only its own tiles.
+    // Until the Object dependency contract can prove a tighter set, fail closed to the complete
+    // 3x3 producer-region ring around every touched object anchor.
+    if !object_tiles.is_empty() {
+        return ProjectionInvalidation::Regions(expand_regions(touched_regions, 1));
+    }
+
+    if terrain_tiles.is_empty() && height_vertices.is_empty() {
         return ProjectionInvalidation::Regions(invalidated_regions(impact, touched_regions));
     }
 
@@ -142,6 +151,10 @@ fn invalidated_regions(impact: ChangeImpact, touched_regions: &[RegionCoord]) ->
         || impact.intersects(ChangeImpact::NORMALS)
         || impact.intersects(ChangeImpact::LIGHTING);
     let reach = if crosses_region_boundary { 1 } else { 0 };
+    expand_regions(touched_regions, reach)
+}
+
+fn expand_regions(touched_regions: &[RegionCoord], reach: i32) -> Vec<RegionCoord> {
     let mut regions = BTreeSet::new();
     for region in touched_regions {
         for dx in -reach..=reach {
@@ -327,18 +340,20 @@ mod tests {
     }
 
     #[test]
-    fn object_receipt_keeps_touched_region_fallback() {
+    fn object_receipt_rebuilds_the_contextual_producer_ring() {
         let footprint = EditFootprint::new([], [], [MapTile::new(3204, 3204)]);
         let regions = touched_regions(&footprint);
-        assert_eq!(
-            projection_invalidation(
-                ChangeImpact::LOCATIONS | ChangeImpact::COLLISION | ChangeImpact::BOUNDS,
-                &regions,
-                &footprint,
-                None,
-            ),
-            ProjectionInvalidation::Regions(vec![RegionCoord::new(50, 50)])
-        );
+        let ProjectionInvalidation::Regions(regions) = projection_invalidation(
+            ChangeImpact::LOCATIONS | ChangeImpact::COLLISION | ChangeImpact::BOUNDS,
+            &regions,
+            &footprint,
+            None,
+        ) else {
+            unreachable!("object dependencies remain region conservative")
+        };
+        assert_eq!(regions.len(), 9);
+        assert_eq!(regions.first(), Some(&RegionCoord::new(49, 49)));
+        assert_eq!(regions.last(), Some(&RegionCoord::new(51, 51)));
     }
 
     #[test]
@@ -346,7 +361,7 @@ mod tests {
         let footprint = EditFootprint::new([], [height(3204, 3204, 0)], [MapTile::new(3204, 3204)]);
         let regions = touched_regions(&footprint);
         let proven = BTreeSet::from([(400, 400)]);
-        let ProjectionInvalidation::Regions(_) = projection_invalidation(
+        let ProjectionInvalidation::Regions(regions) = projection_invalidation(
             ChangeImpact::TERRAIN_GEOMETRY | ChangeImpact::LOCATIONS | ChangeImpact::BOUNDS,
             &regions,
             &footprint,
@@ -354,6 +369,7 @@ mod tests {
         ) else {
             unreachable!("object dependencies remain region conservative")
         };
+        assert_eq!(regions.len(), 9);
     }
 
     #[test]
