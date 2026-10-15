@@ -145,8 +145,13 @@ impl ObjectOutputSnapshot {
             });
         }
 
-        for zone in update.covered {
-            match update.zones.get(&zone) {
+        let Self {
+            producer_region: _,
+            covered,
+            zones,
+        } = update;
+        for zone in covered {
+            match zones.get(&zone) {
                 Some(geometry) => {
                     self.zones.insert(zone, geometry.clone());
                 }
@@ -236,10 +241,7 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("valid producer geometry: {error:?}"));
 
         assert_eq!(snapshot.covered_zones().len(), 64);
-        assert_eq!(
-            snapshot.completeness(),
-            ObjectOutputCompleteness::Complete
-        );
+        assert_eq!(snapshot.completeness(), ObjectOutputCompleteness::Complete);
     }
 
     #[test]
@@ -258,10 +260,7 @@ mod tests {
         let region = RegionCoord::new(0, 0);
         let scoped = ObjectOutputSnapshot::scoped(region, [(0, 0)], &geometry(&[((0, 0), 0)]))
             .unwrap_or_else(|error| unreachable!("valid scoped geometry: {error:?}"));
-        assert_eq!(
-            scoped.completeness(),
-            ObjectOutputCompleteness::Incomplete
-        );
+        assert_eq!(scoped.completeness(), ObjectOutputCompleteness::Incomplete);
 
         let full = ObjectOutputSnapshot::full(region, &geometry(&[((0, 0), 0)]))
             .unwrap_or_else(|error| unreachable!("valid full geometry: {error:?}"));
@@ -276,46 +275,31 @@ mod tests {
     #[test]
     fn accepted_scoped_merge_replaces_and_removes_only_covered_zones() {
         let region = RegionCoord::new(0, 0);
-        let mut baseline = ObjectOutputSnapshot::full(
-            region,
-            &geometry(&[((0, 0), 0), ((1, 0), 0), ((2, 0), 0)]),
-        )
-        .unwrap_or_else(|error| unreachable!("valid baseline: {error:?}"));
-        let update = ObjectOutputSnapshot::scoped(
-            region,
-            [(0, 0), (1, 0)],
-            &geometry(&[((0, 0), 3)]),
-        )
-        .unwrap_or_else(|error| unreachable!("valid scoped update: {error:?}"));
+        let mut baseline =
+            ObjectOutputSnapshot::full(region, &geometry(&[((0, 0), 0), ((1, 0), 0), ((2, 0), 0)]))
+                .unwrap_or_else(|error| unreachable!("valid baseline: {error:?}"));
+        let update =
+            ObjectOutputSnapshot::scoped(region, [(0, 0), (1, 0)], &geometry(&[((0, 0), 3)]))
+                .unwrap_or_else(|error| unreachable!("valid scoped update: {error:?}"));
         baseline
             .merge(update)
             .unwrap_or_else(|error| unreachable!("same producer merge: {error:?}"));
 
-        let expected = ObjectOutputSnapshot::full(
-            region,
-            &geometry(&[((0, 0), 3), ((2, 0), 0)]),
-        )
-        .unwrap_or_else(|error| unreachable!("valid expected state: {error:?}"));
+        let expected = ObjectOutputSnapshot::full(region, &geometry(&[((0, 0), 3), ((2, 0), 0)]))
+            .unwrap_or_else(|error| unreachable!("valid expected state: {error:?}"));
         assert_eq!(baseline, expected);
-        assert_eq!(
-            baseline.completeness(),
-            ObjectOutputCompleteness::Complete
-        );
+        assert_eq!(baseline.completeness(), ObjectOutputCompleteness::Complete);
     }
 
     #[test]
     fn exact_comparison_detects_add_remove_and_in_place_output_change() {
         let region = RegionCoord::new(0, 0);
-        let before = ObjectOutputSnapshot::full(
-            region,
-            &geometry(&[((0, 0), 0), ((1, 0), 0), ((2, 0), 0)]),
-        )
-        .unwrap_or_else(|error| unreachable!("valid baseline: {error:?}"));
-        let after = ObjectOutputSnapshot::full(
-            region,
-            &geometry(&[((1, 0), 2), ((2, 0), 0), ((3, 0), 0)]),
-        )
-        .unwrap_or_else(|error| unreachable!("valid candidate: {error:?}"));
+        let before =
+            ObjectOutputSnapshot::full(region, &geometry(&[((0, 0), 0), ((1, 0), 0), ((2, 0), 0)]))
+                .unwrap_or_else(|error| unreachable!("valid baseline: {error:?}"));
+        let after =
+            ObjectOutputSnapshot::full(region, &geometry(&[((1, 0), 2), ((2, 0), 0), ((3, 0), 0)]))
+                .unwrap_or_else(|error| unreachable!("valid candidate: {error:?}"));
 
         assert_eq!(
             before
