@@ -362,9 +362,7 @@ impl WorldRuntime {
             .dirty_zones
             .keys()
             .copied()
-            .filter(|key| {
-                !self.dirty_regions.contains(key) && !self.in_flight.contains_key(key)
-            })
+            .filter(|key| !self.dirty_regions.contains(key) && !self.in_flight.contains_key(key))
             .collect();
         for key in zone_ready {
             if self.in_flight.len() >= MAX_IN_FLIGHT {
@@ -376,8 +374,7 @@ impl WorldRuntime {
             if zones.is_empty() {
                 continue;
             }
-            self.in_flight
-                .insert(key, RegionBuildScope::Zones(zones));
+            self.in_flight.insert(key, RegionBuildScope::Zones(zones));
             self.streamer.request(RegionCoord::new(key.0, key.1));
         }
     }
