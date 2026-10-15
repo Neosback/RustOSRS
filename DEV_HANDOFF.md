@@ -186,13 +186,43 @@ Validation history:
 - those two history producers were routed through `set_pending_reselect` instead of reopening the field or adding an exception;
 - final code head `c79706fc45c8f2ed597052e83f943a55d4a6cf6b` passed architecture guards, formatting, warnings-denied workspace check, strict Clippy, WASM portability, full workspace tests, and the complete M3-M9 semantic parity suite in `38754787094` / #1413.
 
+### Checkpoint 8 - spline control-point gesture lifecycle ownership
+
+**CLOSED.**
+
+Validated code head:
+
+`b7f85d6bcfb8bf90cd8da9496f46495f0cd6f099`
+
+CI:
+
+`38757306394` / #1419 - SUCCESS across Tier A/B/C.
+
+Checkpoint 8 changes:
+
+- pointer-driven spline point append, insert, remove, pop, active-point update, and post-commit point clearing now route through an `InteractionRuntime` behavioral API;
+- spline drag capture begins through `begin_spline_drag`, updates through `update_spline_drag`, finishes on pointer release through `finish_spline_drag`, and cancels when leaving the Spline tool through `cancel_spline_drag`;
+- `spline_points()` provides the read-only control-point view needed by the pointer handler for nearest-point and insertion-segment calculations;
+- the behavioral API is implemented beside spline input so it can operate on the already-owned nested `SplineState` without moving spline planning state into another runtime;
+- egui event collection, modifier interpretation, nearest-point/segment math, snap-point calculation, and Enter/Delete/Backspace dispatch remain in `EditorApp::spline_input`;
+- spline fitting, background plan-worker coalescing, preview freshness, preview rendering, ground projection, reporting, brush/overlay selection, semantic terrain-path application, world/renderer projection, and project lifecycle remain outside this interaction behavior boundary;
+- focused tests cover append/insert/update behavior, finish/cancel capture behavior, and remove/pop/clear transitions through the runtime methods.
+
+Validation history:
+
+- initial candidate `632f42bde206c5f04e761d94544cdfdbaf32ac63` ran as `38757068703` / #1417;
+- architecture guards and formatting passed on #1417;
+- the warnings-denied workspace build rejected one unused test-only production accessor, `spline_drag`;
+- that accessor was removed rather than suppressed, while tests inspect the nested private drag state from the spline test module;
+- replacement code head `b7f85d6bcfb8bf90cd8da9496f46495f0cd6f099` passed architecture guards, formatting, warnings-denied workspace check, strict Clippy, WASM portability, full workspace tests, and the complete M3-M9 semantic parity suite in `38757306394` / #1419.
+
 ### Next checkpoint boundary
 
-**Do not begin Checkpoint 8 without explicit user direction.**
+**Do not begin Checkpoint 9 without explicit user direction.**
 
-Checkpoint 8, if authorized, must stay on this same branch and remain inside transient interaction ownership. Audit the remaining `InteractionRuntime` state and choose one coherent behavioral boundary without moving egui event collection, UI composition, semantic edits, world lookup, renderer/projection ownership, project lifecycle, or unrelated runtime extraction into this subsystem.
+Checkpoint 9, if authorized, must stay on this same branch and remain inside transient interaction ownership. Audit the remaining `InteractionRuntime` state and choose one coherent behavioral boundary without moving egui event collection, UI composition, semantic edits, world lookup, renderer/projection ownership, project lifecycle, or unrelated runtime extraction into this subsystem.
 
-Do not merge PR #55 at the Checkpoint 7 boundary. Do not create another development branch.
+Do not merge PR #55 at the Checkpoint 8 boundary. Do not create another development branch.
 
 ## Latest completed development subsystem: verified map cache export and read-only inspection
 
@@ -259,7 +289,7 @@ Completed boundaries:
 
 In progress:
 
-1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1 through 7 closed on PR #55.
+1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1 through 8 closed on PR #55.
 
 Remaining ownership work after this subsystem:
 
@@ -305,12 +335,12 @@ Each major subsystem remains a separate branch/PR sequence.
 
 ## Next allowed boundary
 
-**STOP AFTER THE CHECKPOINT-7 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
+**STOP AFTER THE CHECKPOINT-8 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
 
-Do not begin Checkpoint 8 until:
+Do not begin Checkpoint 9 until:
 
-1. the exact branch head containing this Checkpoint 7 handoff passes Tier A/B/C;
-2. Checkpoint 7 and its certification are reported to the user;
+1. the exact branch head containing this Checkpoint 8 handoff passes Tier A/B/C;
+2. Checkpoint 8 and its certification are reported to the user;
 3. the user explicitly directs continuation.
 
 Do not merge PR #55 at this checkpoint. Do not create another development branch.
