@@ -63,7 +63,7 @@ impl EditorApp {
                     if !self.world.is_current_generation(region.generation) {
                         continue;
                     }
-                    self.world.build_finished(key);
+                    let scope = self.world.build_finished(key);
                     match crate::session::adapt_region_map(&region.source) {
                         Ok(snapshot) => {
                             let _ = self.session.ingest_region(&snapshot);
@@ -79,12 +79,22 @@ impl EditorApp {
                     // outlined for the old ones is gone: the selection's highlight is made afresh.
                     self.outlines.retain(|(r, _), _| *r != key);
                     self.outline_requested.retain(|(r, _)| *r != key);
-                    self.renderer.upload_region(key, &region.geometry);
+                    match &scope {
+                        world_runtime::RegionBuildScope::Full => {
+                            self.renderer.upload_region(key, &region.geometry);
+                        }
+                        world_runtime::RegionBuildScope::Zones(zones) => {
+                            self.renderer
+                                .upload_region_zones(key, &region.geometry, zones);
+                        }
+                    }
                     self.infos.insert(key, region.info);
                     self.infos_version += 1;
                     self.world
                         .region_installed(key, &region.geometry, region.animations);
-                    self.apply_project_region(RegionCoord::new(key.0, key.1));
+                    if matches!(scope, world_runtime::RegionBuildScope::Full) {
+                        self.apply_project_region(RegionCoord::new(key.0, key.1));
+                    }
                 }
                 StreamEvent::Outline {
                     region,
@@ -134,7 +144,7 @@ impl EditorApp {
     pub(super) fn update_animations(&mut self) {
         if let Some(geometry) = self.world.poll_animation_geometry() {
             let phase = Instant::now();
-            self.renderer.upload_region(ANIMATED_KEY, &geometry);
+            self.renderer.upload_transient(ANIMATED_KEY, &geometry);
             self.stats.phase("anim-upload", phase);
         }
         let (world_x, world_z) = self.world_position();
