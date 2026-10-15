@@ -30,6 +30,7 @@ pub(super) enum HeightDependencyCompleteness {
     Complete,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum HeightDependencyError {
     ProducerRegionMismatch {
@@ -73,14 +74,17 @@ impl HeightDependencyCollection {
         }
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) const fn producer_region(&self) -> RegionCoord {
         self.producer_region
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) const fn stamp(&self) -> HeightDependencyStamp {
         self.stamp
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) const fn completeness(&self) -> HeightDependencyCompleteness {
         self.completeness
     }
@@ -109,6 +113,7 @@ impl HeightDependencyCollection {
         self.completeness = HeightDependencyCompleteness::Complete;
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn merge(&mut self, other: Self) -> Result<(), HeightDependencyError> {
         if other.producer_region != self.producer_region {
             return Err(HeightDependencyError::ProducerRegionMismatch {
