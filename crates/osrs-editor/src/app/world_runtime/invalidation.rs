@@ -1,4 +1,7 @@
-use super::{WorldRuntime, ZoneKey, height_dependencies::HeightDependencyStamp};
+use super::{
+    WorldRuntime, ZoneKey, builds::ObjectOutputStamp,
+    height_dependencies::HeightDependencyStamp,
+};
 use crate::app::edit_runtime::{EditFootprint, EditTouches};
 use osrs_core::coords::{MapTile, RegionCoord};
 use osrs_edit::ChangeImpact;
@@ -19,14 +22,23 @@ pub(super) enum ProjectionInvalidation {
 impl WorldRuntime {
     /// Translate one finalized semantic touch set into projection invalidation.
     ///
-    /// Height edits use exact zones only when every resident non-empty producer has a current,
-    /// complete dependency snapshot. Any missing, stale, or incomplete producer fails closed to the
-    /// previous region policy. Object edits remain region-conservative on their separate roadmap.
+    /// Object edits first attempt the accepted-output comparison path. That path is entered only
+    /// when every resident non-empty producer in the O1 3x3 conservative universe has current,
+    /// complete accepted output. Each producer then receives a full contextual build; exact static
+    /// zones are selected only after that accepted post-edit result is compared with the retained
+    /// pre-edit baseline. If any baseline is absent, stale, or incomplete, Object edits retain the
+    /// O1 full-region fallback. Height-only edits keep their existing dependency proof path.
     pub(in crate::app) fn invalidate_semantic_edit(
         &mut self,
         impact: ChangeImpact,
         touched_regions: &EditTouches,
     ) {
+        if !touched_regions.footprint.object_tiles.is_empty()
+            && self.try_queue_object_proofs(touched_regions)
+        {
+            return;
+        }
+
         let proven_height_zones = if touched_regions.footprint.height_vertices.is_empty() {
             None
         } else {
@@ -69,8 +81,41 @@ impl WorldRuntime {
         }
     }
 
+    /// Queue full candidate builds for exact Object output comparison. Planning is all-or-nothing:
+    /// one untrusted resident producer prevents every producer from using the proof path.
+    fn try_queue_object_proofs(&mut self, touched_regions: &[RegionCoord]) -> bool {
+        let producer_ring = expand_regions(touched_regions, 1);
+        let producers = producer_ring
+            .iter()
+            .map(|region| (region.x, region.y))
+            .filter(|key| matches!(self.loaded.get(key), Some(Some(_))))
+            .collect::<Vec<_>>();
+
+        let mut baselines = Vec::with_capacity(producers.len());
+        for key in producers {
+            let current = ObjectOutputStamp::new(
+                self.builds.projection_epoch(key),
+                self.presentation_generation,
+            );
+            let Some(baseline) = self.object_outputs.current_complete(key, current) else {
+                return false;
+            };
+            baselines.push((key, baseline));
+        }
+
+        // Increment projection epochs before retaining the pre-edit stamp. A later edit will cancel
+        // the pending proof and/or advance the epoch again, causing any already-requested candidate
+        // result to be rejected by BuildTracker before comparison.
+        for (key, baseline) in baselines {
+            self.mark_dirty(key);
+            self.object_outputs.begin_proof(key, baseline);
+        }
+        true
+    }
+
     /// Queue a full `region` rebuild if it is resident. Full invalidation subsumes queued zones.
     pub(super) fn mark_dirty(&mut self, region: (i32, i32)) {
+        self.object_outputs.cancel_pending(region);
         if self.loaded.contains_key(&region) {
             self.builds.invalidate(region);
             self.dirty_zones.remove(&region);
@@ -81,6 +126,9 @@ impl WorldRuntime {
     /// Queue one world 8x8 zone when its owning region is resident and no full rebuild supersedes it.
     fn mark_zone_dirty(&mut self, zone: ZoneKey) {
         let region = zone_region(zone);
+        // Any later semantic invalidation cancels an Object proof that was waiting on this producer.
+        // The conservative/normal dirty state remains and will rebuild safely.
+        self.object_outputs.cancel_pending(region);
         if self.dirty_regions.contains(&region)
             || !matches!(self.loaded.get(&region), Some(Some(_)))
         {
@@ -108,11 +156,9 @@ pub(super) fn projection_invalidation(
         ..
     } = footprint;
 
-    // Every producer region builds a 104x104 contextual scene around its owned 64x64 output. An
-    // object anchored in one map region can therefore influence a neighboring producer's terrain
-    // shadow/light or ModelData reconciliation even though that producer emits only its own tiles.
-    // Until the Object dependency contract can prove a tighter set, fail closed to the complete
-    // 3x3 producer-region ring around every touched object anchor.
+    // Runtime Object comparison is attempted before this pure fallback function. Reaching this path
+    // with an Object footprint means at least one required producer baseline was absent, stale, or
+    // incomplete, so fail closed to the complete 3x3 producer-region ring.
     if !object_tiles.is_empty() {
         return ProjectionInvalidation::Regions(expand_regions(touched_regions, 1));
     }
@@ -341,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn object_receipt_rebuilds_the_contextual_producer_ring() {
+    fn object_receipt_without_runtime_proof_rebuilds_the_contextual_producer_ring() {
         let footprint = EditFootprint::new([], [], [MapTile::new(3204, 3204)]);
         let regions = touched_regions(&footprint);
         let ProjectionInvalidation::Regions(regions) = projection_invalidation(
@@ -350,7 +396,7 @@ mod tests {
             &footprint,
             None,
         ) else {
-            unreachable!("object dependencies remain region conservative")
+            unreachable!("unproven object dependencies remain region conservative")
         };
         assert_eq!(regions.len(), 9);
         assert_eq!(regions.first(), Some(&RegionCoord::new(49, 49)));
@@ -358,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn object_receipt_overrides_any_height_zone_proof() {
+    fn unproven_object_receipt_overrides_any_height_zone_proof() {
         let footprint = EditFootprint::new([], [height(3204, 3204, 0)], [MapTile::new(3204, 3204)]);
         let regions = touched_regions(&footprint);
         let proven = BTreeSet::from([(400, 400)]);
@@ -368,7 +414,7 @@ mod tests {
             &footprint,
             Some(&proven),
         ) else {
-            unreachable!("object dependencies remain region conservative")
+            unreachable!("unproven object dependencies remain region conservative")
         };
         assert_eq!(regions.len(), 9);
     }
