@@ -1,7 +1,3 @@
-#[allow(dead_code)]
-#[path = "height_dependencies.rs"]
-mod height_dependencies;
-
 use super::ZoneKey;
 use crate::app::edit_runtime::EditFootprint;
 use osrs_core::coords::{MapTile, RegionCoord};
@@ -24,6 +20,7 @@ pub(super) fn projection_invalidation(
     impact: ChangeImpact,
     touched_regions: &[RegionCoord],
     footprint: &EditFootprint,
+    proven_height_zones: Option<&BTreeSet<ZoneKey>>,
 ) -> ProjectionInvalidation {
     if impact.is_empty() || touched_regions.is_empty() {
         return ProjectionInvalidation::None;
@@ -35,11 +32,24 @@ pub(super) fn projection_invalidation(
         object_tiles,
     } = footprint;
 
-    // Height can re-contour models over their model-space XZ bounds; object edits can write clipped
-    // shadows over definition-sized footprints. Until those dependency footprints are explicit,
-    // retain the previously certified region policy rather than guessing a zone radius.
-    if !height_vertices.is_empty() || !object_tiles.is_empty() || terrain_tiles.is_empty() {
+    // Object edits can still affect clipped shadows/scene relationships outside an anchor zone.
+    // They retain the previously certified region policy until Object dependency metadata exists.
+    if !object_tiles.is_empty() || (terrain_tiles.is_empty() && height_vertices.is_empty()) {
         return ProjectionInvalidation::Regions(invalidated_regions(impact, touched_regions));
+    }
+
+    if !height_vertices.is_empty() {
+        let Some(height_zones) = proven_height_zones else {
+            return ProjectionInvalidation::Regions(invalidated_regions(impact, touched_regions));
+        };
+        let mut zones = height_zones.clone();
+        if !terrain_tiles.is_empty() {
+            zones.extend(invalidated_terrain_zones(
+                terrain_tiles,
+                TERRAIN_BLEND_RADIUS_TILES,
+            ));
+        }
+        return ProjectionInvalidation::Zones(zones);
     }
 
     ProjectionInvalidation::Zones(invalidated_terrain_zones(
@@ -75,7 +85,10 @@ fn invalidated_terrain_zones(tiles: &[MapTile], radius: i32) -> BTreeSet<ZoneKey
     for tile in tiles {
         for x in tile.x - radius..=tile.x + radius {
             for y in tile.y - radius..=tile.y + radius {
-                zones.insert((x.div_euclid(ZONE_SIZE_TILES), y.div_euclid(ZONE_SIZE_TILES)));
+                zones.insert((
+                    x.div_euclid(ZONE_SIZE_TILES),
+                    y.div_euclid(ZONE_SIZE_TILES),
+                ));
             }
         }
     }
@@ -92,14 +105,31 @@ pub(super) fn zone_region(zone: ZoneKey) -> (i32, i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use osrs_core::coords::SourcePlane;
+    use osrs_edit::HeightVertexCoord;
+
+    fn height(x: i32, y: i32, plane: u8) -> HeightVertexCoord {
+        let plane = SourcePlane::new(plane).unwrap_or_else(|| unreachable!("test plane is valid"));
+        HeightVertexCoord::new(MapTile::new(x, y), plane)
+    }
 
     fn touched_regions(footprint: &EditFootprint) -> Vec<RegionCoord> {
         footprint
             .terrain_tiles
             .iter()
-            .chain(&footprint.height_vertices)
-            .chain(&footprint.object_tiles)
             .map(|tile| tile.split_region().0)
+            .chain(
+                footprint
+                    .height_vertices
+                    .iter()
+                    .map(|coord| coord.corner.split_region().0),
+            )
+            .chain(
+                footprint
+                    .object_tiles
+                    .iter()
+                    .map(|tile| tile.split_region().0),
+            )
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect()
@@ -116,6 +146,7 @@ mod tests {
                 | ChangeImpact::LIGHTING,
             &regions,
             &footprint,
+            None,
         );
         let ProjectionInvalidation::Zones(zones) = result else {
             unreachable!("pure terrain edit is zone bounded")
@@ -126,8 +157,8 @@ mod tests {
     }
 
     #[test]
-    fn height_receipt_keeps_previous_region_ring_fallback() {
-        let footprint = EditFootprint::new([], [MapTile::new(3204, 3204)], []);
+    fn height_receipt_without_metadata_keeps_previous_region_ring_fallback() {
+        let footprint = EditFootprint::new([], [height(3204, 3204, 0)], []);
         let regions = touched_regions(&footprint);
         let result = projection_invalidation(
             ChangeImpact::TERRAIN_GEOMETRY
@@ -137,13 +168,59 @@ mod tests {
                 | ChangeImpact::BOUNDS,
             &regions,
             &footprint,
+            None,
         );
         let ProjectionInvalidation::Regions(regions) = result else {
-            unreachable!("height remains region conservative")
+            unreachable!("height without proof remains region conservative")
         };
         assert_eq!(regions.len(), 9);
         assert_eq!(regions.first(), Some(&RegionCoord::new(49, 49)));
         assert_eq!(regions.last(), Some(&RegionCoord::new(51, 51)));
+    }
+
+    #[test]
+    fn height_receipt_with_proven_dependencies_uses_exact_zones() {
+        let footprint = EditFootprint::new([], [height(3204, 3204, 2)], []);
+        let regions = touched_regions(&footprint);
+        let proven = BTreeSet::from([(400, 400), (401, 400)]);
+        assert_eq!(
+            projection_invalidation(
+                ChangeImpact::TERRAIN_GEOMETRY
+                    | ChangeImpact::NORMALS
+                    | ChangeImpact::LIGHTING
+                    | ChangeImpact::LOCATIONS
+                    | ChangeImpact::BOUNDS,
+                &regions,
+                &footprint,
+                Some(&proven),
+            ),
+            ProjectionInvalidation::Zones(proven)
+        );
+    }
+
+    #[test]
+    fn mixed_height_and_terrain_unions_both_zone_sets() {
+        let footprint = EditFootprint::new(
+            [MapTile::new(3204, 3204)],
+            [height(3204, 3204, 0)],
+            [],
+        );
+        let regions = touched_regions(&footprint);
+        let proven = BTreeSet::from([(410, 410)]);
+        let ProjectionInvalidation::Zones(zones) = projection_invalidation(
+            ChangeImpact::TERRAIN_GEOMETRY
+                | ChangeImpact::TERRAIN_MATERIAL
+                | ChangeImpact::NORMALS
+                | ChangeImpact::LIGHTING,
+            &regions,
+            &footprint,
+            Some(&proven),
+        ) else {
+            unreachable!("complete Height proof plus terrain dependency remains zone bounded")
+        };
+        assert!(zones.contains(&(410, 410)));
+        assert!(zones.contains(&(399, 399)));
+        assert!(zones.contains(&(401, 401)));
     }
 
     #[test]
@@ -155,9 +232,29 @@ mod tests {
                 ChangeImpact::LOCATIONS | ChangeImpact::COLLISION | ChangeImpact::BOUNDS,
                 &regions,
                 &footprint,
+                None,
             ),
             ProjectionInvalidation::Regions(vec![RegionCoord::new(50, 50)])
         );
+    }
+
+    #[test]
+    fn object_receipt_overrides_any_height_zone_proof() {
+        let footprint = EditFootprint::new(
+            [],
+            [height(3204, 3204, 0)],
+            [MapTile::new(3204, 3204)],
+        );
+        let regions = touched_regions(&footprint);
+        let proven = BTreeSet::from([(400, 400)]);
+        let ProjectionInvalidation::Regions(_) = projection_invalidation(
+            ChangeImpact::TERRAIN_GEOMETRY | ChangeImpact::LOCATIONS | ChangeImpact::BOUNDS,
+            &regions,
+            &footprint,
+            Some(&proven),
+        ) else {
+            unreachable!("object dependencies remain region conservative")
+        };
     }
 
     #[test]
@@ -165,7 +262,7 @@ mod tests {
         let footprint = EditFootprint::new([MapTile::new(3204, 3204)], [], []);
         let regions = touched_regions(&footprint);
         assert_eq!(
-            projection_invalidation(ChangeImpact::NONE, &regions, &footprint),
+            projection_invalidation(ChangeImpact::NONE, &regions, &footprint, None),
             ProjectionInvalidation::None
         );
     }
