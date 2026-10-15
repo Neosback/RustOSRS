@@ -54,7 +54,7 @@ use crate::grid::GridPlugin;
 use crate::hud::{Destination, FrameStats, TeleportWindow};
 use crate::interact;
 use crate::keymap::Keymap;
-use crate::pick::{self, Infos, ObjectPick, Pick};
+use crate::pick::{self, Infos, ObjectPick};
 use crate::plugin::EditorPlugin;
 use crate::settings::ProfileChoice;
 use crate::settings::{self, Settings};

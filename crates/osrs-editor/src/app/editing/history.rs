@@ -129,7 +129,7 @@ impl EditorApp {
             let mut loc_edits: Vec<LocEdit> = gone.iter().map(|s| LocEdit::Remove(*s)).collect();
             loc_edits.extend(came.iter().map(|s| LocEdit::Add(*s)));
             self.send_loc_edits(loc_edits);
-            self.interaction.pending_reselect = came.clone();
+            self.interaction.set_pending_reselect(came.clone());
             self.clear_selection();
         }
     }

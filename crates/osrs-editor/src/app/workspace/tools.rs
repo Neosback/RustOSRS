@@ -89,7 +89,7 @@ impl EditorApp {
             return;
         }
         self.stroke = None;
-        self.interaction.marquee = None;
+        self.interaction.cancel_marquee();
         self.prefs.tool = tool;
         if tool == Tool::Objects {
             // The Objects tool works on objects: its picker is the object picker.
@@ -254,14 +254,14 @@ impl EditorApp {
     /// A held tool key returns to the previous tool when released (called every frame, even
     /// while a text field has focus, so a held key can never strand the tool).
     pub(in crate::app) fn tool_release(&mut self, ctx: &egui::Context) {
-        let Some((previous, key, since)) = self.interaction.peek else {
+        let Some(key) = self.interaction.peek_key() else {
             return;
         };
-        if ctx.input(|i| i.key_down(key)) {
-            return;
-        }
-        self.interaction.peek = None;
-        if since.elapsed() > PEEK_AFTER {
+        let key_down = ctx.input(|i| i.key_down(key));
+        if let Some(previous) =
+            self.interaction
+                .release_tool_key(key_down, Instant::now(), PEEK_AFTER)
+        {
             self.set_tool(previous);
         }
     }
@@ -280,14 +280,10 @@ impl EditorApp {
         let eyedrop = pressed("tool.eyedrop");
         if let Some(tool) = tool {
             let key = self.keymap.binding(tool.action()).map(|b| b.key);
-            if tool == self.prefs.tool && tool != Tool::Select {
-                self.set_tool(Tool::Select);
-                self.interaction.peek = None;
-            } else {
-                let previous = self.prefs.tool;
-                self.set_tool(tool);
-                self.interaction.peek = key.map(|key| (previous, key, Instant::now()));
-            }
+            let target =
+                self.interaction
+                    .press_tool_key(self.prefs.tool, tool, key, Instant::now());
+            self.set_tool(target);
         }
         if quick {
             self.quick_open = match self.quick_open {

@@ -25,11 +25,11 @@ impl EditorApp {
             Some(pointer)
         };
         let Some(position) = response.hover_pos().or_else(over_hud) else {
-            self.interaction.hover = Pick::default();
+            self.interaction.clear_hover();
             // The pointer left the viewport: a stroke or box in progress ends here.
             if !response.ctx.input(|i| i.pointer.primary_down()) {
                 self.end_stroke();
-                self.interaction.marquee = None;
+                self.interaction.cancel_marquee();
             }
             return;
         };
@@ -41,25 +41,23 @@ impl EditorApp {
             (position.x - rect.min.x) * pixels_per_point,
             (position.y - rect.min.y) * pixels_per_point,
         );
-        self.interaction.hover = pick::pick(&self.infos, &ray, self.interaction.view_plane);
+        let mut hover = pick::pick(&self.infos, &ray, self.interaction.view_plane);
         // Selecting tools read the tile an object stands on, not the ground the ray reaches behind it.
         if matches!(
             self.prefs.tool,
             crate::paint::Tool::Select | crate::paint::Tool::Objects
-        ) && let Some(object) = &self.interaction.hover.object
+        ) && let Some(object) = &hover.object
             && let Some(loc) = self
                 .infos
                 .get(&object.region)
                 .and_then(|info| info.locs.get(object.index))
         {
-            self.interaction.hover.tile = Some(pick::TilePick {
+            hover.tile = Some(pick::TilePick {
                 tile: loc.tile,
                 at: (loc.tile.0 as f32 + 0.5, loc.tile.1 as f32 + 0.5),
             });
         }
-        if let Some(pick) = self.interaction.hover.tile {
-            self.interaction.last_hover_tile = Some(pick.tile);
-        }
+        self.interaction.set_hover(hover);
         // The brush tools keep the left button for painting; Select clicks and boxes.
         self.brush_input(&response.ctx, response);
         self.spline_input(&response.ctx, response);
@@ -72,7 +70,7 @@ impl EditorApp {
             height,
         );
         if response.secondary_clicked() && response.ctx.input(|i| i.modifiers.shift) {
-            self.interaction.context_pick = self.interaction.hover.clone();
+            self.interaction.capture_context_pick();
             self.context_menu = response.interact_pointer_pos();
         }
         let wanted: Vec<ObjectPick> = [

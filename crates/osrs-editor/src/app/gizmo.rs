@@ -3,7 +3,6 @@
 //! turns. A drag shows the footprints it would land on and commits as one undo step on release.
 
 use super::EditorApp;
-use super::object_tool::ObjectDrag;
 use crate::camera::FlyCamera;
 use crate::paint::Tool;
 use eframe::egui::{self, Rect};
@@ -14,10 +13,37 @@ use transform_gizmo_egui::{
 };
 
 /// A gizmo drag in progress.
-pub struct GizmoDrag {
+#[derive(Clone)]
+pub(super) struct GizmoDrag {
     start: Transform,
     current: Transform,
     specs: Vec<LocSpec>,
+}
+
+impl GizmoDrag {
+    pub(super) fn new(start: Transform, specs: Vec<LocSpec>) -> Self {
+        Self {
+            start,
+            current: start,
+            specs,
+        }
+    }
+
+    pub(super) fn update(&mut self, current: Transform) {
+        self.current = current;
+    }
+
+    pub(super) fn start(&self) -> &Transform {
+        &self.start
+    }
+
+    pub(super) fn current(&self) -> &Transform {
+        &self.current
+    }
+
+    pub(super) fn specs(&self) -> &[LocSpec] {
+        &self.specs
+    }
 }
 
 /// Near and far planes of the gizmo's projection, in world units.
@@ -110,13 +136,11 @@ impl EditorApp {
             || self.context_menu.is_some()
             || self.modal_open()
         {
-            self.interaction.gizmo_drag = None;
-            self.interaction.gizmo_busy = false;
+            self.interaction.cancel_gizmo_drag();
             return;
         }
         let Some(origin) = self.gizmo_origin(&specs) else {
-            self.interaction.gizmo_drag = None;
-            self.interaction.gizmo_busy = false;
+            self.interaction.cancel_gizmo_drag();
             return;
         };
         let (view_matrix, projection_matrix) = gizmo_matrices(&self.interaction.camera, viewport);
@@ -134,9 +158,9 @@ impl EditorApp {
             snap_angle: std::f32::consts::FRAC_PI_2,
             ..*self.interaction.gizmo.config()
         });
-        let target = self.interaction.gizmo_drag.as_ref().map_or_else(
+        let target = self.interaction.gizmo_drag().map_or_else(
             || Transform::from_scale_rotation_translation(DVec3::ONE, DQuat::IDENTITY, origin),
-            |drag| drag.current,
+            |drag| *drag.current(),
         );
         let result = self.interact_gizmo(ui, viewport, response, &[target]);
         if let Some((_, transforms)) = result
@@ -144,29 +168,21 @@ impl EditorApp {
         {
             let drag = self
                 .interaction
-                .gizmo_drag
-                .get_or_insert_with(|| GizmoDrag {
-                    start: target,
-                    current: target,
-                    specs: specs.clone(),
-                });
-            drag.current = *moved;
+                .update_gizmo_drag(target, *moved, specs.clone());
             // Whole tiles moved so far, for the footprints.
-            let from = DVec3::from(drag.start.translation);
-            let to = DVec3::from(drag.current.translation);
+            let from = DVec3::from(drag.start().translation);
+            let to = DVec3::from(drag.current().translation);
             let delta = (
                 ((to.x - from.x) / 128.0).round() as i32,
                 ((to.z - from.z) / 128.0).round() as i32,
             );
-            self.interaction.object_drag = Some(ObjectDrag {
-                anchor: (0, 0),
-                specs: drag.specs.clone(),
-                delta,
-            });
+            self.interaction
+                .begin_object_drag((0, 0), drag.specs().to_vec());
+            self.interaction.update_object_drag(delta);
         }
-        self.interaction.gizmo_busy =
-            self.interaction.gizmo.is_focused() || self.interaction.gizmo_drag.is_some();
-        if self.interaction.gizmo_drag.is_some() && !ui.input(|i| i.pointer.primary_down()) {
+        let focused = self.interaction.gizmo.is_focused();
+        self.interaction.update_gizmo_busy(focused);
+        if self.interaction.gizmo_drag().is_some() && !ui.input(|i| i.pointer.primary_down()) {
             self.finish_gizmo_drag();
         }
     }
@@ -223,22 +239,21 @@ impl EditorApp {
 
     /// The button went up: commit the move, or the turn, as one undo step.
     fn finish_gizmo_drag(&mut self) {
-        self.interaction.object_drag = None;
-        self.interaction.gizmo_busy = false;
-        let Some(drag) = self.interaction.gizmo_drag.take() else {
+        self.interaction.cancel_object_drag();
+        let Some(drag) = self.interaction.finish_gizmo_drag() else {
             return;
         };
-        let from = DVec3::from(drag.start.translation);
-        let to = DVec3::from(drag.current.translation);
+        let from = DVec3::from(drag.start().translation);
+        let to = DVec3::from(drag.current().translation);
         let delta = (
             ((to.x - from.x) / 128.0).round() as i32,
             ((to.z - from.z) / 128.0).round() as i32,
         );
-        let q = DQuat::from(drag.current.rotation);
+        let q = DQuat::from(drag.current().rotation);
         let angle = 2.0 * q.y.atan2(q.w);
         let quarters = (angle / std::f64::consts::FRAC_PI_2).round() as i32;
         if delta != (0, 0) {
-            self.move_objects(drag.specs, delta);
+            self.move_objects(drag.specs().to_vec(), delta);
         } else if quarters.rem_euclid(4) != 0 {
             self.interaction.selection_objects.clear();
             self.rotate_selected_objects(quarters.rem_euclid(4) as i8);

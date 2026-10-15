@@ -4,7 +4,7 @@
 //! toolbar. Tiles are selected on the viewed plane; objects are those placed on it. The selection is
 //! what other tools act on ("apply to the selected tiles").
 
-use super::EditorApp;
+use super::{EditorApp, interaction_runtime::Marquee};
 use crate::interact;
 use crate::paint::SelectMode;
 use crate::pick::{self, ObjectPick};
@@ -12,43 +12,20 @@ use crate::style::ColorKey;
 use eframe::egui::{self, Pos2, Rect, Stroke};
 use std::collections::HashSet;
 
-/// A box being dragged out with the left button.
-#[derive(Debug, Clone, Copy)]
-pub struct Marquee {
-    pub start: Pos2,
-    pub current: Pos2,
-    pub additive: bool,
-    pub toggle: bool,
-}
-
-impl Marquee {
-    pub fn rect(&self) -> Rect {
-        Rect::from_two_pos(self.start, self.current)
-    }
-}
-
 /// Most tiles drawn as selected at once (a box over a whole region is thousands).
 const MAX_DRAWN_TILES: usize = 6000;
 /// A drag shorter than this is a click.
 const MIN_BOX: f32 = 4.0;
 
-fn same(a: &ObjectPick, b: &ObjectPick) -> bool {
-    a.region == b.region && a.index == b.index
-}
-
 impl EditorApp {
     pub(super) fn clear_selection(&mut self) {
-        self.interaction.selected = None;
-        self.interaction.selection_objects.clear();
-        self.interaction.selection_tiles.clear();
-        self.interaction.inspect_tile = None;
+        self.interaction.clear_selection();
     }
 
     /// Select exactly one object (the context menu's Select, focus, the smoke hook).
     pub(super) fn select_only(&mut self, object: ObjectPick) {
-        self.inspect_object_tile(&object);
-        self.interaction.selection_objects = vec![object.clone()];
-        self.interaction.selected = Some(object);
+        let inspect_tile = self.object_tile(&object);
+        self.interaction.select_only_object(object, inspect_tile);
     }
 
     /// Select every loaded object with definition `id`.
@@ -65,8 +42,7 @@ impl EditorApp {
             }
         }
         let count = found.len();
-        self.interaction.selected = found.last().cloned();
-        self.interaction.selection_objects = found;
+        self.interaction.replace_objects(found);
         self.notice = Some((
             format!(
                 "Selected {count} object{} (id {id})",
@@ -77,50 +53,21 @@ impl EditorApp {
     }
 
     fn toggle_object(&mut self, object: ObjectPick) {
-        if let Some(index) = self
-            .interaction
-            .selection_objects
-            .iter()
-            .position(|o| same(o, &object))
-        {
-            self.interaction.selection_objects.remove(index);
-            self.interaction.selected = self.interaction.selection_objects.last().cloned();
-        } else {
-            self.inspect_object_tile(&object);
-            self.interaction.selection_objects.push(object.clone());
-            self.interaction.selected = Some(object);
-        }
+        let inspect_tile = self.object_tile(&object);
+        self.interaction.toggle_object(object, inspect_tile);
     }
 
     fn add_object(&mut self, object: ObjectPick) {
-        self.inspect_object_tile(&object);
-        if !self
-            .interaction
-            .selection_objects
-            .iter()
-            .any(|o| same(o, &object))
-        {
-            self.interaction.selection_objects.push(object.clone());
-        }
-        self.interaction.selected = Some(object);
+        let inspect_tile = self.object_tile(&object);
+        self.interaction.add_object(object, inspect_tile);
     }
 
-    fn toggle_tile(&mut self, tile: (i32, i32)) {
-        if !self.interaction.selection_tiles.remove(&tile) {
-            self.interaction.selection_tiles.insert(tile);
-            self.interaction.inspect_tile = Some(tile);
-        }
-    }
-
-    /// The Inspector's tile: the tile of an object just selected (its anchor).
-    fn inspect_object_tile(&mut self, object: &ObjectPick) {
-        if let Some(loc) = self
-            .infos
+    /// The Inspector's tile for an object selection (its anchor).
+    fn object_tile(&self, object: &ObjectPick) -> Option<(i32, i32)> {
+        self.infos
             .get(&object.region)
             .and_then(|info| info.locs.get(object.index))
-        {
-            self.interaction.inspect_tile = Some(loc.tile);
-        }
+            .map(|loc| loc.tile)
     }
 
     /// Click and box selection with the Select tool (called once per frame after picking).
@@ -139,12 +86,12 @@ impl EditorApp {
             || self.context_menu.is_some()
             || self.interaction.gizmo_busy
         {
-            self.interaction.marquee = None;
+            self.interaction.cancel_marquee();
             return;
         }
         // An armed object is placed by clicking; nothing else is selected or dragged meanwhile.
         if objects_tool && self.placer.is_armed() {
-            self.interaction.marquee = None;
+            self.interaction.cancel_marquee();
             if response.clicked() {
                 self.place_armed_object();
             }
@@ -152,7 +99,7 @@ impl EditorApp {
         }
         // Dragging a selected object moves it (Objects tool); that drag is not a box.
         if self.object_drag_input(ctx, response) {
-            self.interaction.marquee = None;
+            self.interaction.cancel_marquee();
             return;
         }
         let modifiers = ctx.input(|i| i.modifiers);
@@ -162,22 +109,16 @@ impl EditorApp {
             && !modifiers.alt
             && let Some(position) = ctx.input(|i| i.pointer.interact_pos())
         {
-            self.interaction.marquee = Some(Marquee {
-                start: position,
-                current: position,
-                additive,
-                toggle,
-            });
+            self.interaction.begin_marquee(position, additive, toggle);
         }
-        if let Some(marquee) = &mut self.interaction.marquee {
-            if let Some(position) = ctx.input(|i| i.pointer.interact_pos()) {
-                marquee.current = position.clamp(rect.min, rect.max);
-            }
-            marquee.additive |= additive;
-            marquee.toggle |= toggle;
-        }
+        self.interaction.update_marquee(
+            ctx.input(|i| i.pointer.interact_pos()),
+            rect,
+            additive,
+            toggle,
+        );
         if response.drag_stopped_by(primary)
-            && let Some(marquee) = self.interaction.marquee.take()
+            && let Some(marquee) = self.interaction.finish_marquee()
         {
             let area = marquee.rect();
             if area.width() >= MIN_BOX || area.height() >= MIN_BOX {
@@ -200,11 +141,10 @@ impl EditorApp {
         let tile = self.interaction.hover.tile.map(|pick| pick.tile);
         if !additive && !toggle {
             if mode.objects() {
-                self.interaction.selection_objects.clear();
-                self.interaction.selected = None;
+                self.interaction.clear_objects();
             }
             if mode.tiles() {
-                self.interaction.selection_tiles.clear();
+                self.interaction.clear_tiles();
             }
         }
         if mode.objects()
@@ -222,10 +162,9 @@ impl EditorApp {
             && (mode == SelectMode::Tiles || self.interaction.selected.is_none() || additive || toggle)
         {
             if toggle {
-                self.toggle_tile(tile);
+                self.interaction.toggle_tile(tile);
             } else {
-                self.interaction.selection_tiles.insert(tile);
-                self.interaction.inspect_tile = Some(tile);
+                self.interaction.select_tile(tile);
             }
         }
     }
@@ -309,18 +248,17 @@ impl EditorApp {
         }
         if !marquee.additive && !marquee.toggle {
             if mode.objects() {
-                self.interaction.selection_objects.clear();
-                self.interaction.selected = None;
+                self.interaction.clear_objects();
             }
             if mode.tiles() {
-                self.interaction.selection_tiles.clear();
+                self.interaction.clear_tiles();
             }
         }
         for tile in tiles {
             if marquee.toggle {
-                self.toggle_tile(tile);
+                self.interaction.toggle_tile(tile);
             } else {
-                self.interaction.selection_tiles.insert(tile);
+                self.interaction.add_tile(tile);
             }
         }
         for object in objects {
@@ -330,10 +268,7 @@ impl EditorApp {
                 self.add_object(object);
             }
         }
-        let (objects, tiles) = (
-            self.interaction.selection_objects.len(),
-            self.interaction.selection_tiles.len(),
-        );
+        let (objects, tiles) = self.interaction.selection_counts();
         self.notice = Some((
             format!(
                 "Selected {objects} object{} and {tiles} tile{}",
@@ -402,12 +337,7 @@ impl EditorApp {
             }
         }
         for object in &self.interaction.selection_objects {
-            if self
-                .interaction
-                .selected
-                .as_ref()
-                .is_some_and(|s| same(s, object))
-            {
+            if self.interaction.is_primary_object(object) {
                 continue;
             }
             let Some(loc) = self
@@ -438,7 +368,7 @@ impl EditorApp {
                 ));
             }
         }
-        if let Some(marquee) = &self.interaction.marquee {
+        if let Some(marquee) = self.interaction.marquee() {
             let accent = self.prefs.colors.get(ColorKey::TileSelectionOutline);
             painter.rect(
                 marquee.rect(),
