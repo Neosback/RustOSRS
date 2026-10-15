@@ -293,6 +293,69 @@ fn repacking_updates_the_group_and_keeps_its_table_row_consistent() {
 }
 
 #[test]
+fn repacking_rejects_version_overflow_without_writing() {
+    let dir = temp_dir("version-overflow");
+    let store = build_cache(&dir);
+    let table_raw = store
+        .read_raw_group(REFERENCE_TABLE_INDEX, 5)
+        .unwrap_or_else(|e| unreachable!("{e}"))
+        .unwrap_or_else(|| unreachable!("table exists"));
+    let table_compression = compression_of(&table_raw).unwrap_or_else(|e| unreachable!("{e}"));
+    let mut table = ReferenceTable::parse(
+        &decode_container(table_raw).unwrap_or_else(|e| unreachable!("{e}")),
+    )
+    .unwrap_or_else(|e| unreachable!("{e}"));
+    table
+        .group_mut(1)
+        .unwrap_or_else(|| unreachable!("group exists"))
+        .version = u32::MAX;
+    let encoded = encode_container(
+        table.encode().unwrap_or_else(|e| unreachable!("{e}")),
+        table_compression,
+        None,
+    )
+    .unwrap_or_else(|e| unreachable!("{e}"));
+    store
+        .write_raw_group(REFERENCE_TABLE_INDEX, 5, &encoded)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let group_before = store
+        .read_raw_group(5, 1)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let table_before = store
+        .read_raw_group(REFERENCE_TABLE_INDEX, 5)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+
+    let result = repack_groups(
+        &dir,
+        &[GroupUpdate {
+            index_id: 5,
+            group_id: 1,
+            payload: pack(1),
+        }],
+    );
+    assert!(matches!(
+        result,
+        Err(StoreError::VersionOverflow {
+            index_id: 5,
+            group_id: 1
+        })
+    ));
+    assert_eq!(
+        store
+            .read_raw_group(5, 1)
+            .unwrap_or_else(|e| unreachable!("{e}")),
+        group_before
+    );
+    assert_eq!(
+        store
+            .read_raw_group(REFERENCE_TABLE_INDEX, 5)
+            .unwrap_or_else(|e| unreachable!("{e}")),
+        table_before
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn repacking_rejects_unknown_groups_and_missing_tables_without_writing() {
     let dir = temp_dir("errors");
     let store = build_cache(&dir);
