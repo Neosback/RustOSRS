@@ -107,11 +107,7 @@ impl InteractionRuntime {
         self.selection_objects = objects;
     }
 
-    pub(super) fn add_object(
-        &mut self,
-        object: ObjectPick,
-        inspect_tile: Option<(i32, i32)>,
-    ) {
+    pub(super) fn add_object(&mut self, object: ObjectPick, inspect_tile: Option<(i32, i32)>) {
         if let Some(tile) = inspect_tile {
             self.inspect_tile = Some(tile);
         }
@@ -125,11 +121,7 @@ impl InteractionRuntime {
         self.selected = Some(object);
     }
 
-    pub(super) fn toggle_object(
-        &mut self,
-        object: ObjectPick,
-        inspect_tile: Option<(i32, i32)>,
-    ) {
+    pub(super) fn toggle_object(&mut self, object: ObjectPick, inspect_tile: Option<(i32, i32)>) {
         if let Some(index) = self
             .selection_objects
             .iter()
