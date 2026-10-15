@@ -1,6 +1,6 @@
 # Height Zone Invalidation Plan
 
-Status: Checkpoint H1 audit complete. No runtime invalidation behavior changed.
+Status: Checkpoint H2 dependency metadata contract complete and certified. Runtime Height invalidation remains conservative region based.
 
 Branch: `refactor/height-zone-invalidation`
 
@@ -28,9 +28,9 @@ This branch does not:
 
 `crates/osrs-editor/src/app/world_runtime/invalidation.rs` uses zone invalidation only for pure terrain footprints.
 
-Any finalized footprint containing Height vertices or Object tiles falls back to region invalidation. For Height impacts that include terrain geometry, normals, or lighting, that fallback expands one region ring.
+Any finalized footprint containing Height vertices or Object tiles still falls back to region invalidation. For Height impacts that include terrain geometry, normals, or lighting, that fallback expands one region ring.
 
-This policy is intentionally conservative and currently certified.
+This policy is intentionally conservative and remains the certified runtime behavior after H2.
 
 ## Audited Height dependencies
 
@@ -103,26 +103,61 @@ A single constant Height radius is not currently proven safe.
 
 The branch must use explicit projection dependency metadata and retain the current region fallback whenever that metadata cannot prove a complete zone set.
 
-## Proposed dependency model
+## H2 dependency contract
 
-The preferred direction for H2 is a projection-only Height dependency read-set.
+H2 adds a projection-only dependency contract in:
 
-Conceptually:
+`crates/osrs-editor/src/app/world_runtime/height_dependencies.rs`
+
+The core mapping is:
 
 ```text
-height source vertex (plane, world x, world y)
-    -> one or more output world zones whose final projection reads that height
+HeightVertexCoord (source plane + world x/y)
+    -> deterministic set of output 8x8 world zones
 ```
 
-The inverse mapping is useful at edit time because a finalized Height receipt already contains the changed Height vertices.
+The metadata is intentionally disposable. It is not semantic authority and it does not modify `MapDocument` / `EditorSession` ownership.
 
-The dependency data is not semantic authority. It is disposable projection metadata tied to a successfully installed/current scene build.
+### Freshness identity
+
+Every collection carries a `HeightDependencyStamp` containing:
+
+- region projection epoch
+- presentation generation
+
+Lookup returns stale when either no longer matches the caller's current projection state.
+
+### Completeness
+
+Collections begin `Incomplete` and must be explicitly certified `Complete` by a future producer only after every Height-sensitive projection stage has contributed its read-set.
+
+An incomplete collection is unusable for narrowing and therefore forces fallback when H3 consumes it.
+
+### Deterministic merge and deduplication
+
+Dependencies use ordered map/set storage so merge order does not change the resulting source-to-zone mapping and duplicate source-zone edges collapse deterministically.
+
+Collections can merge only when producer region and freshness stamp match.
+
+Completeness is fail-closed: merging a complete collection with an incomplete collection produces an incomplete collection.
+
+### Producer-region boundary
+
+A collection represents one producer region. Recording an output zone that belongs to another region is rejected rather than silently widening or misclassifying the dependency set.
+
+This makes cross-region dependency handling explicit for H3/H4 instead of hiding it in the metadata layer.
+
+### Runtime behavior after H2
+
+H2 deliberately does not switch Height edits to zone invalidation.
+
+The module is compiled into the editor, but existing Height invalidation remains on the certified conservative region policy until H3 wires accepted/current build results into the dependency contract and can prove a complete zone set.
 
 ## Required freshness rule
 
 Dependency metadata must never survive as trusted current data across a projection state change that can alter Height dependencies.
 
-At minimum, trust must be tied to the same current region/projection epoch used by stale-build rejection.
+At minimum, trust must be tied to the same current region/projection epoch and presentation generation used by stale-build rejection.
 
 Examples that must invalidate or make dependency metadata unusable until refreshed:
 
@@ -152,7 +187,7 @@ Only final projection emission/installation is eligible for zone filtering.
 
 ### H1 - dependency audit and protocol
 
-Complete.
+Complete and certified.
 
 Deliverables:
 
@@ -162,14 +197,24 @@ Deliverables:
 
 ### H2 - dependency metadata types and collection contract
 
-Not started.
+Complete and certified.
 
-Acceptance:
+Certified code head:
+`c59eea2cadffbc5861f6ecf8c138a9a0b6b11f99`
 
-- projection-only types represent Height source vertices and affected output zones
-- deterministic merge/deduplication behavior
-- explicit completeness/freshness state
-- tests cover negative coordinates, zone/region edges, and multi-zone dependencies
+CI:
+Run `38689828881` / #1227 - SUCCESS.
+
+Delivered:
+
+- canonical `HeightVertexCoord` source keys retain source plane and world tile coordinates
+- deterministic source-to-zone mapping using ordered map/set storage
+- producer-region validation for output zones
+- projection epoch + presentation generation freshness stamps
+- explicit `Incomplete` / `Complete` state
+- stale/incomplete/current lookup outcomes
+- fail-closed merge semantics and duplicate elimination
+- tests for negative coordinates, region/zone edges, multiple zones, stale stamps, mismatched producers/stamps, known-empty complete lookups, and incomplete merges
 - current Height invalidation remains region based
 
 ### H3 - runtime integration and zone planner
@@ -179,9 +224,11 @@ Not started.
 Acceptance:
 
 - current dependency metadata is installed only from accepted/current build results
+- finalized Height receipts retain enough canonical coordinate identity, including source plane, to query H2 metadata correctly
 - finalized Height receipt resolves to exact affected zones when metadata is complete/current
 - missing or stale metadata falls back to region invalidation
 - no semantic authority moves into WorldRuntime
+- full contextual scene assembly remains unchanged
 
 ### H4 - adversarial integration coverage
 
