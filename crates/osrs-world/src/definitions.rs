@@ -40,7 +40,7 @@ const SPRITE_INDEX: u8 = 8;
 pub const TEXTURE_SIZE: usize = 128;
 
 /// Floor and texture inputs for the terrain builder, loaded eagerly (a few hundred small files).
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct FloorTable {
     underlays: HashMap<u32, UnderlayHsl>,
     overlays: HashMap<u32, OverlayFloor>,

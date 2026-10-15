@@ -50,7 +50,9 @@ impl EditorApp {
                     textures,
                     profile_id,
                     build,
+                    floors,
                 } => {
+                    self.world.set_floors(floors);
                     // `Ready` is emitted exactly once by each newly opened cache worker. Visual
                     // presentation rebuilds do not emit it, so this is the cache/source boundary
                     // where old semantic state must be discarded.

@@ -80,6 +80,16 @@ def validate(report: dict) -> list[str]:
     return errors
 
 
+STALL_MS = 1000.0
+
+
+def stalls(report: dict) -> list[float]:
+    """Frame intervals above one second. They mean the window or process was throttled or the
+    machine slept, not that the editor is slow: such a run is contaminated and must be repeated."""
+    return [s["interval_ms"] for s in report.get("samples", [])
+            if (s.get("interval_ms") or 0.0) > STALL_MS]
+
+
 def camera_drift(report: dict) -> int:
     """Number of distinct camera hashes beyond one per segment: nonzero in a stationary workload
     means the camera moved (input contamination)."""
@@ -152,3 +162,29 @@ def compare(before: dict, after: dict) -> list[dict]:
                          "regression": bool(delta is not None and worse and abs(delta) > max(spread, 2.0)),
                          "note": ""})
     return rows
+
+
+SUMMARY_COLUMNS = (
+    ("frame p50 ms", "frame_interval_p50_ms"), ("p99 ms", "frame_interval_p99_ms"),
+    ("cpu p50 ms", "cpu_p50_ms"), ("gpu scene ms", "gpu_scene_p50_ms"),
+    ("draws", "draw_calls_mean"), ("upload B/frame", "upload_bytes_mean"),
+    ("shadow redraw/frame", "shadow_redraws_mean"), ("RSS MiB", "rss_max_mib"),
+    ("footprint MiB", "footprint_max_mib"),
+)
+
+
+def markdown_summary(groups: dict[tuple[str, str], list[dict]]) -> str:
+    """Markdown table of per-workload medians; each cell is `median (min-max)` over repetitions."""
+    header = ["workload", "profile", "runs"] + [name for name, _ in SUMMARY_COLUMNS]
+    lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    for (workload, profile), reports in sorted(groups.items()):
+        agg = aggregate(reports)
+        cells = [workload, profile, str(len(reports))]
+        for _, key in SUMMARY_COLUMNS:
+            m = agg[key]
+            if m["median"] is None:
+                cells.append("n/a")
+            else:
+                cells.append(f"{m['median']:.2f} ({m['min']:.2f}-{m['max']:.2f})")
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)

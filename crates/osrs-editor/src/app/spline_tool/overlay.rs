@@ -2,6 +2,25 @@
 
 use super::*;
 
+/// Colour of one preview vertex. A textured face shows its texture's average colour lit by the
+/// vertex's lightness (an approximation of the textured raster, which samples the texture).
+fn path_vertex_color(rgb: i32, texture_rgb: Option<i32>, alpha: u8) -> Color32 {
+    let channel = |value: i32, shift: u32| ((value >> shift) & 0xff) as u32;
+    match texture_rgb {
+        Some(texture) => {
+            let light = (channel(rgb, 16) + channel(rgb, 8) + channel(rgb, 0)) / 3;
+            let lit = |shift: u32| (channel(texture, shift) * light / 128).min(255) as u8;
+            Color32::from_rgba_unmultiplied(lit(16), lit(8), lit(0), alpha)
+        }
+        None => Color32::from_rgba_unmultiplied(
+            channel(rgb, 16) as u8,
+            channel(rgb, 8) as u8,
+            channel(rgb, 0) as u8,
+            alpha,
+        ),
+    }
+}
+
 impl EditorApp {
     /// The path preview: the planned tiles, the centre line, a ghost segment to the cursor, the
     /// control points.
@@ -65,6 +84,12 @@ impl EditorApp {
             };
             let overlay_color = fade(base_overlay_color);
             let edge = Stroke::new(0.75, fade(base_edge_color));
+            // The real builder output for the planned tiles, when it is for this preview.
+            let real = self
+                .interaction
+                .spline_appearance()
+                .filter(|a| a.key == preview.key && !a.tiles.is_empty());
+            let alpha = if current { 235 } else { 80 };
             let tile_polygon = |tile: (i32, i32), shape: u8, rotation: u8| {
                 let Some(corners) = interact::tile_corners(self.world.infos(), tile, plane) else {
                     return;
@@ -97,8 +122,37 @@ impl EditorApp {
                     }
                 }
             };
-            for paint in &preview.paints {
-                tile_polygon((paint.tile_x, paint.tile_y), paint.shape, paint.orientation);
+            if let Some(real) = real {
+                let mut mesh = egui::Mesh::default();
+                for tile in &real.tiles {
+                    for triangle in &tile.triangles {
+                        let points = triangle.vertices.map(|vertex| {
+                            let [x, y, z] = vertex.position;
+                            let world = [
+                                f64::from(x) + f64::from(real.origin.0) * 128.0,
+                                f64::from(y) - 4.0,
+                                f64::from(z) + f64::from(real.origin.1) * 128.0,
+                            ];
+                            (project(world), vertex.rgb)
+                        });
+                        if points.iter().any(|(position, _)| position.is_none()) {
+                            continue;
+                        }
+                        let base = mesh.vertices.len() as u32;
+                        for (position, rgb) in points {
+                            mesh.colored_vertex(
+                                position.unwrap_or_default(),
+                                path_vertex_color(rgb, triangle.texture_rgb, alpha),
+                            );
+                        }
+                        mesh.add_triangle(base, base + 1, base + 2);
+                    }
+                }
+                painter.add(egui::Shape::mesh(mesh));
+            } else {
+                for paint in &preview.paints {
+                    tile_polygon((paint.tile_x, paint.tile_y), paint.shape, paint.orientation);
+                }
             }
         }
 

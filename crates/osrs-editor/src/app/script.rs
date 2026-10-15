@@ -35,6 +35,8 @@ grid                   toggle the tile grid
 project save|open PATH write / read a project file (Save returns at once; wait for it)
 export validate|review|write PATH|inspect PATH  native export workflow
 camera fly|orbit
+pose YAW PITCH [HEIGHT]  set the view in degrees (and height above the plane), for measurement scripts
+mark NAME              label following performance-capture samples as a workload segment
 focus                  move the camera to the selection
 undo | redo | delete | turn | copy
 wait N                 pause N frames; at N waits until frame N

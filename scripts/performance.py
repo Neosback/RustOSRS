@@ -102,6 +102,10 @@ def footprint_mib(pid: int) -> float | None:
 
 def run_process(argv: list[str], env: dict, log, timeout: float, interval: float = 2.0):
     """Run the editor, sampling its footprint every `interval` seconds. Returns (code, samples)."""
+    # `caffeinate` keeps the display and system awake for the life of the editor so an unattended
+    # window is not throttled or slept mid-run (observed as multi-second frame gaps otherwise).
+    if sys.platform == "darwin" and Path("/usr/bin/caffeinate").exists():
+        argv = ["/usr/bin/caffeinate", "-dimsu", *argv]
     process = subprocess.Popen(argv, cwd=ROOT, env=env, stdout=log, stderr=log)
     samples: list[dict] = []
     started = time.monotonic()
@@ -142,6 +146,8 @@ def main() -> int:
     parser.add_argument("--cooldown", type=float, default=10, help="seconds idle between runs")
     parser.add_argument("--reuse", choices=["on", "off"], default="on")
     parser.add_argument("--vsync", action="store_true", help="capped (vsync) instead of uncapped runs")
+    parser.add_argument("--retries", type=int, default=2,
+                        help="repeat a run that failed or contained a >1 s frame stall this many times")
     parser.add_argument("--build", action="store_true", help="cargo build --release --locked first")
     parser.add_argument("--capture", action="store_true", help="Capture one window screenshot per run")
     parser.add_argument("--capture-frame", type=int, default=600,
@@ -155,6 +161,7 @@ def main() -> int:
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     first = True
+    failures: list[str] = []
     for workload in args.workloads:
         spec = WORKLOADS[workload]
         seconds = float(spec.get("seconds", args.seconds))
@@ -190,24 +197,44 @@ def main() -> int:
                 if args.capture:
                     env["RUSTOSRS_SCREENSHOT"] = str(output / f"{name}.png")
                     env["RUSTOSRS_SCREENSHOT_FRAME"] = str(args.capture_frame)
-                with (output / f"{name}.log").open("w") as log:
-                    code, footprint = run_process([str(binary), str(args.cache.resolve())], env, log, seconds + 120)
-                report_path = output / f"{name}.json"
-                if code or not report_path.exists():
-                    print(f"{name}: failed or missing report; see {name}.log", file=sys.stderr)
-                    return 1
+                outcome = None
+                for attempt in range(args.retries + 1):
+                    report_path = output / f"{name}.json"
+                    report_path.unlink(missing_ok=True)
+                    with (output / f"{name}.log").open("w") as log:
+                        code, footprint = run_process(
+                            [str(binary), str(args.cache.resolve())], env, log, seconds + 120)
+                    if code or not report_path.exists():
+                        outcome = f"failed (exit {code}); see {name}.log"
+                        continue
+                    attach_external(report_path, footprint, {"thermal_after": machine_state().get("thermal")})
+                    report = json.loads(report_path.read_text())
+                    problems = perf_report.validate(report)
+                    if problems:
+                        outcome = f"invalid report: {'; '.join(problems)}"
+                        continue
+                    gaps = perf_report.stalls(report)
+                    if gaps:
+                        outcome = f"contaminated by {len(gaps)} stall(s), longest {max(gaps) / 1000:.1f} s"
+                        report_path.rename(output / f"{name}.stalled-{attempt}.json.txt")
+                        continue
+                    outcome = None
+                    break
+                if outcome is not None:
+                    print(f"{name}: giving up after {args.retries + 1} attempts: {outcome}", file=sys.stderr)
+                    failures.append(name)
+                    continue
                 if args.capture and not (output / f"{name}.png").exists():
                     print(f"{name}: requested capture did not arrive", file=sys.stderr)
-                    return 1
-                attach_external(report_path, footprint, {"thermal_after": machine_state().get("thermal")})
-                report = json.loads(report_path.read_text())
-                problems = perf_report.validate(report)
-                if problems:
-                    print(f"{name}: invalid report: {'; '.join(problems)}", file=sys.stderr)
-                    return 1
+                    failures.append(name)
+                    continue
                 drift = perf_report.camera_drift(report)
                 note = f" camera segments changed {drift}x" if drift else ""
-                print(name, json.dumps(report["summary"]["frame_interval_ms"]), note, flush=True)
+                retried = f" (attempt {attempt + 1})" if attempt else ""
+                print(name, json.dumps(report["summary"]["frame_interval_ms"]), note, retried, flush=True)
+    if failures:
+        print("runs without a clean report:", ", ".join(failures), file=sys.stderr)
+        return 1
     return 0
 
 

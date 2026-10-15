@@ -13,6 +13,8 @@ pub(super) struct SplineState {
     selected: Option<usize>,
     error: Option<&'static str>,
     preview: Option<Preview>,
+    /// Real terrain colours of the current preview (see [`terrain_path::PathAppearance`]).
+    appearance: Option<std::sync::Arc<terrain_path::PathAppearance>>,
     /// The editor state the preview should represent. The worker may still be catching up.
     desired_key: Option<u64>,
     /// One background worker. Rapid edits are coalesced to the newest request.
@@ -277,6 +279,17 @@ impl InteractionRuntime {
     }
     pub(in crate::app) fn current_spline_preview(&self) -> Option<&Preview> {
         self.spline.current_preview()
+    }
+    pub(in crate::app) fn spline_appearance(
+        &self,
+    ) -> Option<&std::sync::Arc<terrain_path::PathAppearance>> {
+        self.spline.appearance.as_ref()
+    }
+    pub(in crate::app) fn set_spline_appearance(
+        &mut self,
+        appearance: terrain_path::PathAppearance,
+    ) {
+        self.spline.appearance = Some(std::sync::Arc::new(appearance));
     }
     pub(in crate::app) fn spline_preview_is_current(&self) -> bool {
         self.spline.current_preview().is_some()

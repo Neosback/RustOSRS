@@ -26,9 +26,9 @@ use osrs_core::{
     },
 };
 
+use crate::terrain_appearance::{BLEND_RADIUS, CORNER_BRIGHTNESS, shape_row};
+
 const FLOOR_ID_MASK: u16 = 32_767;
-const BLEND_RADIUS: i32 = 5;
-const CORNER_BRIGHTNESS: i32 = 96;
 const MAGENTA_RGB: i32 = 16_711_935;
 /// Fixed `(int)sqrt(5100) * 768 >> 8` divisor of the slope-light term.
 const SLOPE_LIGHT_DIVISOR: i32 = 213;
@@ -363,7 +363,7 @@ pub fn build_terrain<F: FloorLookup>(
                     adjust_overlay_lightness(overlay_hsl, corner_light.northwest),
                 );
 
-                let add_tile_shape = i32::from(grid.shape(plane, tile_x, tile_y)) + 1;
+                let add_tile_shape = shape_row(grid.shape(plane, tile_x, tile_y));
                 let texture_id = (texture >= 0).then_some(texture);
                 let surface = if add_tile_shape == 1 {
                     // Flat overlay: `Scene.addTile` builds a paint from the overlay colors.
@@ -431,7 +431,7 @@ fn compute_slope_light(grid: &TerrainLoadGrid, plane: usize, light: &mut [i32]) 
     }
 }
 
-fn palette_rgb(palette: &[i32], index: i32) -> i32 {
+pub(crate) fn palette_rgb(palette: &[i32], index: i32) -> i32 {
     usize::try_from(index)
         .ok()
         .and_then(|index| palette.get(index).copied())

@@ -17,6 +17,7 @@ pub mod scene;
 pub mod semantic_hash;
 pub mod side_effects;
 pub mod terrain;
+pub mod terrain_appearance;
 pub mod terrain_build;
 pub mod terrain_contract;
 pub mod terrain_load;

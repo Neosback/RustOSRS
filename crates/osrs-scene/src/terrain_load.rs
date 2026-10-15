@@ -100,6 +100,19 @@ impl RegionTerrain {
     }
 }
 
+/// One fully resolved tile: what the terrain builder reads, with corner heights as
+/// `[southwest, southeast, northeast, northwest]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ResolvedTile {
+    pub heights: [i32; 4],
+    pub underlay: u16,
+    pub overlay_raw: u16,
+    pub shape: u8,
+    pub rotation: u8,
+    pub settings: u8,
+    pub shadow: u8,
+}
+
 /// Scene-sized arrays the terrain builder consumes.
 ///
 /// Per-plane tile arrays are `size_x * size_y`; height and shadow arrays are
@@ -226,6 +239,32 @@ impl TerrainLoadGrid {
         if value > self.shadow[index] {
             self.shadow[index] = value;
         }
+    }
+
+    /// Store one already-resolved tile, for windows assembled from built terrain (the editor's
+    /// picker data) rather than streamed region files. Out-of-range tiles are ignored.
+    pub fn set_resolved_tile(&mut self, plane: usize, x: usize, y: usize, tile: ResolvedTile) {
+        if plane >= SCENE_PLANES || x >= self.size_x || y >= self.size_y {
+            return;
+        }
+        let index = self.tile_index(plane, x, y);
+        self.underlays[index] = tile.underlay;
+        self.overlays[index] = tile.overlay_raw;
+        self.shapes[index] = tile.shape;
+        self.rotations[index] = tile.rotation;
+        self.settings[index] = tile.settings;
+        // Corner order is `[southwest, southeast, northeast, northwest]`; neighbours agree on
+        // shared corners, so later tiles simply rewrite the same values.
+        for (corner, (dx, dy)) in tile
+            .heights
+            .into_iter()
+            .zip([(0, 0), (1, 0), (1, 1), (0, 1)])
+        {
+            let at = self.corner_index(plane, x + dx, y + dy);
+            self.heights[at] = corner;
+        }
+        let shadow = self.corner_index(plane, x, y);
+        self.shadow[shadow] = tile.shadow;
     }
 
     /// Port of `class337.method7281`'s terrain loop for one region.

@@ -303,6 +303,9 @@ pub enum StreamEvent {
         /// The matched profile id and its build.
         profile_id: String,
         build: u32,
+        /// Floor definitions for appearance previews on the editor thread. The same table the
+        /// terrain builder reads, shared immutably.
+        floors: Arc<crate::FloorTable>,
     },
     Region(Box<RegionGeometry>),
     /// The HD profile's material table and textures, decoded (sent once, before the first HD
@@ -371,6 +374,7 @@ impl StreamWorker {
             textures: texture_layers(definitions.textures()),
             profile_id: definitions.profile_id().to_owned(),
             build: definitions.build(),
+            floors: Arc::new(definitions.floors().clone()),
         });
         Some(Self {
             definitions,

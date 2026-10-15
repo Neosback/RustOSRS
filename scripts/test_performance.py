@@ -75,6 +75,23 @@ class ReportTests(unittest.TestCase):
         self.assertEqual({k: len(v) for k, v in groups.items()}, {("water", "Hd"): 2})
 
 
+class StallTests(unittest.TestCase):
+    def test_frame_gaps_over_a_second_are_reported_as_stalls(self):
+        clean = report(samples=[dict(sample(), interval_ms=16.0)])
+        stalled = report(samples=[dict(sample(), interval_ms=16.0), dict(sample(), interval_ms=5200.0)])
+        self.assertEqual(perf_report.stalls(clean), [])
+        self.assertEqual(perf_report.stalls(stalled), [5200.0])
+        self.assertEqual(perf_report.stalls(report(samples=[sample()])), [])
+
+
+class SummaryTests(unittest.TestCase):
+    def test_markdown_summary_shows_median_and_spread_and_marks_unavailable(self):
+        groups = {("water", "Hd"): [report(10.0), report(12.0), report(11.0)]}
+        table = perf_report.markdown_summary(groups)
+        self.assertIn("| water | Hd | 3 | 11.00 (10.00-12.00) |", table)
+        self.assertIn("n/a", table)
+
+
 class WorkloadTests(unittest.TestCase):
     def test_every_workload_script_uses_only_known_commands_and_fits_its_duration(self):
         known = {"teleport", "pose", "sleep", "mark", "tool", "overlay", "paint", "undo", "redo",

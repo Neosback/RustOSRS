@@ -8,8 +8,8 @@ use std::collections::BTreeSet;
 
 /// Renderer/world extraction zones are 8x8 map tiles.
 const ZONE_SIZE_TILES: i32 = 8;
-/// Reference underlay blending reaches five tiles from the edited terrain tile.
-const TERRAIN_BLEND_RADIUS_TILES: i32 = 5;
+/// Reference underlay blending reaches this many tiles from the edited terrain tile.
+const TERRAIN_BLEND_RADIUS_TILES: i32 = osrs_scene::terrain_appearance::BLEND_RADIUS;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum ProjectionInvalidation {

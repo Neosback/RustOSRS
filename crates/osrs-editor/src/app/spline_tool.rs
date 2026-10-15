@@ -46,6 +46,43 @@ impl EditorApp {
         let overlay = self.laying_overlay();
         self.interaction
             .update_spline_preview(&self.settings.prefs.spline, overlay);
+        // Rebuild the real-colour appearance when the plan or the terrain under it changed.
+        let version = self.world.infos_version();
+        let built = match (
+            self.interaction.current_spline_preview(),
+            self.world.floors(),
+        ) {
+            (Some(preview), Some(floors))
+                if self
+                    .interaction
+                    .spline_appearance()
+                    .is_none_or(|a| a.key != preview.key || a.infos_version != version) =>
+            {
+                let plane = self.interaction.view_plane();
+                let infos = self.world.infos();
+                let appearance = terrain_path::path_appearance(
+                    plane,
+                    preview.overlay_id,
+                    &preview.paints,
+                    |tile| {
+                        let region = (tile.0.div_euclid(64), tile.1.div_euclid(64));
+                        infos.get(&region)?.tile(usize::from(plane), tile).copied()
+                    },
+                    floors.as_ref(),
+                    terrain_path::reference_palette(),
+                );
+                Some(terrain_path::PathAppearance {
+                    key: preview.key,
+                    infos_version: version,
+                    origin: appearance.as_ref().map_or((0, 0), |(origin, _)| *origin),
+                    tiles: appearance.map(|(_, tiles)| tiles).unwrap_or_default(),
+                })
+            }
+            _ => None,
+        };
+        if let Some(appearance) = built {
+            self.interaction.set_spline_appearance(appearance);
+        }
     }
     /// Everything about the current fitted path in one copyable block.
     pub(super) fn spline_report(&self) -> String {

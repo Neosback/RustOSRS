@@ -2,18 +2,19 @@
 //! thumbnails, the shape atlas and the renderer cannot drift apart.
 
 use osrs_core::coords::SceneTile;
-use osrs_scene::terrain::{
-    ShapedTerrainInput, ShapedTerrainSurface, TerrainColorSource, TerrainCorners,
+use osrs_scene::{
+    terrain::{ShapedTerrainInput, ShapedTerrainSurface, TerrainColorSource, TerrainCorners},
+    terrain_appearance::shape_row,
 };
 
 /// Triangles of one overlay shape on a unit square (`y` up) and whether each is overlay
 /// (otherwise underlay).
 pub fn shape_triangles(shape: u8, rotation: u8) -> Vec<([[f32; 2]; 3], bool)> {
     let flat = TerrainCorners::new(0, 0, 0, 0);
-    // The builder indexes its tables with the file shape plus one (rows 0 and 1 are "all underlay" and
+    // The builder indexes its tables with the shape row (rows 0 and 1 are "all underlay" and
     // "all overlay").
     let Ok(surface) = ShapedTerrainSurface::build(ShapedTerrainInput {
-        shape: shape + 1,
+        shape: shape_row(shape) as u8,
         rotation: rotation & 3,
         texture_id: None,
         tile: SceneTile::new(0, 0),

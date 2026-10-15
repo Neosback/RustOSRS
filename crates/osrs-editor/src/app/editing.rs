@@ -34,7 +34,7 @@ use web_time::Instant;
 
 /// Tiles around an edit whose derived geometry can change: the underlay blend reaches 5 tiles
 /// (`BLEND_RADIUS`) and lighting one more.
-const REBUILD_REACH: i32 = 6;
+const REBUILD_REACH: i32 = osrs_scene::terrain_appearance::APPEARANCE_REACH;
 /// How often a held sculpting brush applies again without moving.
 const SCULPT_REPEAT: Duration = Duration::from_millis(110);
 

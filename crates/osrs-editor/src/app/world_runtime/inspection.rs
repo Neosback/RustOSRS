@@ -2,7 +2,7 @@
 //! `InteractionRuntime`; these caches are disposable and never answer semantic edit queries.
 use super::{RegionKey, WorldRuntime};
 use crate::pick::Infos;
-use osrs_world::RegionInfo;
+use osrs_world::{FloorTable, RegionInfo};
 use std::{collections::HashMap, sync::Arc};
 use web_time::Instant;
 type OutlineKey = (RegionKey, usize);
@@ -13,6 +13,8 @@ pub(super) struct InspectionProjection {
     infos: Infos,
     version: u64,
     outlines: HashMap<OutlineKey, Triangles>,
+    /// The floor definitions the terrain builder reads, for appearance previews.
+    floors: Option<Arc<FloorTable>>,
     /// Outlines asked of the worker, with the request time (latency observation only).
     requested: HashMap<OutlineKey, Instant>,
 }
@@ -22,6 +24,12 @@ impl WorldRuntime {
     }
     pub(in crate::app) fn infos_version(&self) -> u64 {
         self.inspection.version
+    }
+    pub(in crate::app) fn set_floors(&mut self, floors: Arc<FloorTable>) {
+        self.inspection.floors = Some(floors);
+    }
+    pub(in crate::app) fn floors(&self) -> Option<&Arc<FloorTable>> {
+        self.inspection.floors.as_ref()
     }
     pub(in crate::app) fn install_info(&mut self, key: RegionKey, info: Arc<RegionInfo>) {
         self.inspection
