@@ -8,8 +8,9 @@
 
 use crate::{
     AnimatedInstance, OwnedTiles, RegionInfo, RegionMap, SceneWindow, TerrainPresentation,
-    WorldDefinitions, WorldError, build_world_scene, extract_animated_instances,
-    extract::extract_owned_geometry_zones, extract_region_info,
+    WorldDefinitions, WorldError, build_world_scene,
+    extract::extract_owned_geometry_zones,
+    extract_animated_instances, extract_region_info,
     hd::{HdContext, extract::extract_owned_geometry_hd_zones, gpu::HdGpuData},
     texture_layers,
 };
