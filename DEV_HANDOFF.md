@@ -156,11 +156,36 @@ The live branch already contained the Checkpoint 4 implementation when this chec
 
 After the first Checkpoint 4 handoff commit, a same-branch scope-restoration commit (`cf252c489ef67bfed523866098b97c97d27070fc`) restored a redundant hover-tint branch that was unrelated to the tool-peek refactor. Strict Clippy correctly rejected that state in `38735166959` / #1373 because the hover and non-hover branches were identical. No lint exception was added. `d57965431a6f05b365aac1763dafd5b47877f0d5` removed only that redundant branch again, with no behavior change, and its full replacement run `38735438231` / #1375 passed Tier A/B/C.
 
+### Checkpoint 5 - object drag gesture lifecycle ownership
+
+**CLOSED.**
+
+Validated code head:
+
+`a740843dac78880e31fba21e64652e6535f9313f`
+
+CI:
+
+`38740332353` / #1389 - SUCCESS across Tier A/B/C.
+
+Checkpoint 5 changes:
+
+- the transient `object_drag` field is now private to `InteractionRuntime`;
+- begin, update, cancel, finish, and read access route through `InteractionRuntime::begin_object_drag`, `update_object_drag`, `cancel_object_drag`, `finish_object_drag`, and `object_drag`;
+- pointer-driven object dragging still collects egui drag state, resolves the selected semantic specs, and commits the completed move in `EditorApp`; only the transient drag lifecycle moved behind the runtime boundary;
+- transform-gizmo translation previews now use the same runtime-owned object-drag lifecycle instead of mutating the preview record directly;
+- gizmo transform math, pointer collection, final move/rotation choice, semantic object editing, world invalidation, and projection remain outside `InteractionRuntime`;
+- object-drag preview rendering still validates destinations and projects tile footprints in `EditorApp`, reading the transient drag through the runtime accessor;
+- the `InteractionRuntime` unit suite moved to `interaction_runtime/tests.rs` to preserve the 500-line production-module architecture cap without deleting coverage or adding an exception;
+- focused tests prove drag delta tracking, one-shot finish semantics, and cancellation behavior while retaining the previous selection, marquee, hover, context-pick, and tool-peek coverage.
+
+Validation caught three boundary-quality issues before this checkpoint was accepted. The first candidate (`aaa8f3c601925632092ff913ef1e209e31944a9a`, `38739519426` / #1381) failed the architecture guard because adding the focused tests pushed the production `interaction_runtime.rs` module to 563 lines against the 500-line cap. The tests were split into a child test module instead of weakening the guard. The next candidate (`1a7f4b44cbaed9ec979f1d1938388cea06ff91d5`, `38739750325` / #1385) passed architecture and formatting but the warnings-denied workspace build exposed two remaining direct `object_drag` mutations in `gizmo.rs`; those were routed through the runtime. The following candidate (`b209ab6899ba6e74f266c723d1162dd1f0c6a2c9`, `38739995732` / #1387) passed architecture and formatting but the workspace compiler caught an overlapping mutable borrow in the gizmo path. Scoping the gizmo-drag borrow before updating the preview produced `a740843dac78880e31fba21e64652e6535f9313f`, whose replacement run passed architecture guards, formatting, workspace check, strict Clippy, WASM portability, full workspace tests, and M3-M9 semantic parity.
+
 ### Next checkpoint boundary
 
-Do not begin Checkpoint 5 without explicit user direction.
+Do not begin Checkpoint 6 without explicit user direction.
 
-The next checkpoint must stay on this same branch and remain inside transient interaction ownership. Audit the remaining `InteractionRuntime` state and choose one coherent state machine for Checkpoint 5 without moving egui event collection, UI composition, semantic edits, world lookup, renderer/projection ownership, or project lifecycle into the runtime.
+The next checkpoint must stay on this same branch and remain inside transient interaction ownership. Audit the remaining `InteractionRuntime` state and choose one coherent state machine for Checkpoint 6 without moving egui event collection, UI composition, semantic edits, world lookup, renderer/projection ownership, or project lifecycle into the runtime.
 
 ## Latest completed development subsystem: verified map cache export and read-only inspection
 
@@ -246,7 +271,7 @@ Completed boundaries:
 
 In progress:
 
-1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1, 2, 3, and 4 closed on PR #55.
+1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1, 2, 3, 4, and 5 closed on PR #55.
 
 Remaining ownership work after this subsystem:
 
@@ -330,12 +355,12 @@ Each major subsystem should remain a separate branch/PR sequence.
 
 ## Next allowed boundary
 
-**STOP AFTER THE CHECKPOINT-4 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
+**STOP AFTER THE CHECKPOINT-5 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
 
-Do not begin Checkpoint 5 until:
+Do not begin Checkpoint 6 until:
 
-1. the exact branch head containing this Checkpoint 4 handoff passes Tier A/B/C;
-2. Checkpoint 4 and its certification are reported to the user;
+1. the exact branch head containing this Checkpoint 5 handoff passes Tier A/B/C;
+2. Checkpoint 5 and its certification are reported to the user;
 3. the user explicitly directs continuation.
 
 Do not merge PR #55 at this checkpoint. Do not create another development branch.
