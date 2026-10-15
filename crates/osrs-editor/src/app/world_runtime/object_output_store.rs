@@ -169,7 +169,12 @@ mod tests {
         let key = (0, 0);
         let stamp = ObjectOutputStamp::new(3, 7);
         let mut store = ObjectOutputStore::default();
-        store.install(key, stamp, &RegionBuildScope::Full, &geometry(&[((0, 0), 0)]));
+        store.install(
+            key,
+            stamp,
+            &RegionBuildScope::Full,
+            &geometry(&[((0, 0), 0)]),
+        );
 
         assert_eq!(store.current_complete(key, stamp), Some(stamp));
         assert_eq!(
@@ -217,7 +222,12 @@ mod tests {
             RegionBuildScope::Full
         );
 
-        store.install(key, baseline, &RegionBuildScope::Full, &SceneGeometry::default());
+        store.install(
+            key,
+            baseline,
+            &RegionBuildScope::Full,
+            &SceneGeometry::default(),
+        );
         store.begin_proof(key, ObjectOutputStamp::new(1, 5));
         assert_eq!(
             store.resolve_scope(key, RegionBuildScope::Full, &SceneGeometry::default()),
