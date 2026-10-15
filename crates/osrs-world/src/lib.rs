@@ -13,6 +13,7 @@ mod error;
 mod extract;
 mod floor_palette;
 pub mod hd;
+mod height_dependencies;
 mod info;
 mod loc_edits;
 mod loc_stage;
@@ -40,6 +41,7 @@ pub use extract::{
     texture_layers,
 };
 pub use floor_palette::{FloorPalette, OverlaySwatch, UnderlaySwatch, load_floor_palette};
+pub use height_dependencies::{HeightDependencySnapshot, HeightOutputZone, HeightSource};
 pub use info::{
     LocInfo, RegionInfo, SlotInfo, SurfaceKind, TileInfo, extract_region_info,
     loc_outline_triangles,

@@ -7,11 +7,12 @@
 //! context in every direction.
 
 use crate::{
-    AnimatedInstance, OwnedTiles, RegionInfo, RegionMap, SceneWindow, TerrainPresentation,
-    WorldDefinitions, WorldError, build_world_scene,
+    AnimatedInstance, HeightDependencySnapshot, OwnedTiles, RegionInfo, RegionMap, SceneWindow,
+    TerrainPresentation, WorldDefinitions, WorldError, build_world_scene,
     extract::extract_owned_geometry_zones,
     extract_animated_instances, extract_region_info,
     hd::{HdContext, extract::extract_owned_geometry_hd_zones, gpu::HdGpuData},
+    height_dependencies::extract_height_dependencies,
     texture_layers,
 };
 use osrs_cache::source::CacheSource;
@@ -148,6 +149,8 @@ pub struct RegionGeometry {
     /// into its canonical semantic document; renderer and picker data remain disposable views.
     pub source: Arc<RegionMap>,
     pub geometry: SceneGeometry,
+    /// Complete Height read-set for this producer region when `complete` is true.
+    pub height_dependencies: HeightDependencySnapshot,
     /// The extraction path that actually produced `geometry`.
     pub render_path: RegionRenderPath,
     /// Material coverage when [`RegionRenderPath::Hd`] produced this region.
@@ -197,10 +200,12 @@ fn build_region_geometry_scoped_with(
     let window = region_window(region);
     let world = build_world_scene(definitions, window, presentation)?;
     let margin = REGION_WINDOW_MARGIN as u32;
-    let owned = Some(OwnedTiles {
+    let owned_tiles = OwnedTiles {
         min: (margin, margin),
         max: (margin + REGION_TILES, margin + REGION_TILES),
-    });
+    };
+    let owned = Some(owned_tiles);
+    let height_dependencies = extract_height_dependencies(&world, owned_tiles);
     let render_path = RegionRenderPath::select(presentation.hd_geometry, hd.is_some());
     let geometry = match (render_path, hd) {
         (RegionRenderPath::Hd, Some(hd)) => {
@@ -226,6 +231,7 @@ fn build_region_geometry_scoped_with(
         region,
         source: Arc::new(source),
         geometry,
+        height_dependencies,
         render_path,
         hd_stats,
         animations,
@@ -573,7 +579,7 @@ impl RegionStreamer {
     /// Queue a region build whose static geometry is emitted only for `zones`.
     ///
     /// The worker still assembles the complete contextual scene window and still returns complete
-    /// source, picker, and animation projections for the region.
+    /// source, picker, animation, and Height-dependency projections for the region.
     pub fn request_zones(&self, region: RegionCoord, zones: BTreeSet<(i32, i32)>) {
         if zones.is_empty() {
             return;

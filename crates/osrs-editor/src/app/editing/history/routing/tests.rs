@@ -21,7 +21,7 @@ fn height_patch(coord: HeightVertexCoord, before: i32, after: i32) -> MapPatch {
 }
 
 fn height_footprint() -> EditFootprint {
-    EditFootprint::new([], [MapTile::new(3200, 3200)], [])
+    EditFootprint::new([], [coord()], [])
 }
 
 fn applied_runtime() -> EditRuntime {

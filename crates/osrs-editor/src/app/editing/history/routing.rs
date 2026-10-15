@@ -14,8 +14,8 @@ use crate::app::edit_runtime::{
 };
 use crate::app::object_tool::{ObjectHistoryRoute, build_object_history_projection};
 use crate::paint::TileValues;
-use osrs_core::coords::MapTile;
-use osrs_edit::MapQuery;
+use osrs_core::coords::{MapTile, SourcePlane};
+use osrs_edit::{HeightVertexCoord, MapQuery};
 use osrs_world::{LocEdit, LocSpec};
 use web_time::Instant;
 
@@ -149,12 +149,20 @@ impl Route {
                 .map(|key| MapTile::new(key.1, key.2))
                 .collect::<Vec<_>>()
         };
+        let height_vertices = |keys: &[TileKey]| {
+            keys.iter()
+                .map(|key| {
+                    let plane = SourcePlane::new(key.0)
+                        .unwrap_or_else(|| unreachable!("history TileKey plane is valid"));
+                    HeightVertexCoord::new(MapTile::new(key.1, key.2), plane)
+                })
+                .collect::<Vec<_>>()
+        };
         match self {
             Self::Paint(paint) => EditFootprint::new(map_tiles(&paint.keys), [], []),
-            Self::Height(height) => EditFootprint::new([], map_tiles(&height.keys), []),
+            Self::Height(height) => EditFootprint::new([], height_vertices(&height.keys), []),
             Self::Path(path) if path.include_height => {
-                let tiles = map_tiles(&path.keys);
-                EditFootprint::new(tiles.clone(), tiles, [])
+                EditFootprint::new(map_tiles(&path.keys), height_vertices(&path.keys), [])
             }
             Self::Path(path) => EditFootprint::new(map_tiles(&path.keys), [], []),
             Self::Object(object) => EditFootprint::new(
