@@ -6,7 +6,7 @@
 //! fails closed to a full producer install.
 
 use super::{
-    RegionBuildScope, RegionKey, ZoneKey,
+    RegionBuildScope, RegionKey,
     builds::{ObjectOutputLookup, ObjectOutputStamp, ObjectOutputState},
 };
 use osrs_core::coords::RegionCoord;
