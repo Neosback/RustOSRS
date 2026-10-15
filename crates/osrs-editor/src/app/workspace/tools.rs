@@ -89,7 +89,7 @@ impl EditorApp {
             return;
         }
         self.stroke = None;
-        self.interaction.marquee = None;
+        self.interaction.cancel_marquee();
         self.prefs.tool = tool;
         if tool == Tool::Objects {
             // The Objects tool works on objects: its picker is the object picker.
