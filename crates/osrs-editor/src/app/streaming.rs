@@ -60,10 +60,16 @@ impl EditorApp {
                 }
                 StreamEvent::Region(region) => {
                     let key = (region.region.x, region.region.y);
+                    // Retire the FIFO build ticket before checking worker presentation generation.
+                    // Old results must consume their own ticket so a later request for the same
+                    // region cannot be mistaken for this completion.
+                    let scope = self.world.build_finished(key);
                     if !self.world.is_current_generation(region.generation) {
                         continue;
                     }
-                    let scope = self.world.build_finished(key);
+                    let Some(scope) = scope else {
+                        continue;
+                    };
                     match crate::session::adapt_region_map(&region.source) {
                         Ok(snapshot) => {
                             let _ = self.session.ingest_region(&snapshot);
@@ -105,13 +111,20 @@ impl EditorApp {
                 }
                 StreamEvent::Empty(region) => {
                     let key = (region.x, region.y);
-                    let scope = self.world.region_absent(key);
+                    let Some(scope) = self.world.build_finished(key) else {
+                        continue;
+                    };
+                    self.world.region_absent(key, &scope);
                     if matches!(scope, world_runtime::RegionBuildScope::Full) {
                         let _ = self.session.unload_region(region);
                     }
                 }
                 StreamEvent::Failed(region, error) => {
-                    let _ = self.world.region_absent((region.x, region.y));
+                    let key = (region.x, region.y);
+                    let Some(scope) = self.world.build_finished(key) else {
+                        continue;
+                    };
+                    self.world.region_absent(key, &scope);
                     self.status = Some(format!("region {},{} failed: {error}", region.x, region.y));
                 }
                 StreamEvent::InitFailed(_) if self.cache_dir.as_os_str().is_empty() => {}
