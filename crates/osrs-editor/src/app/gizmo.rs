@@ -166,7 +166,9 @@ impl EditorApp {
         if let Some((_, transforms)) = result
             && let Some(moved) = transforms.first()
         {
-            let drag = self.interaction.update_gizmo_drag(target, *moved, specs.clone());
+            let drag = self
+                .interaction
+                .update_gizmo_drag(target, *moved, specs.clone());
             // Whole tiles moved so far, for the footprints.
             let from = DVec3::from(drag.start().translation);
             let to = DVec3::from(drag.current().translation);
