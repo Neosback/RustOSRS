@@ -5,8 +5,12 @@
 //! animation worker's schedule. It never owns edited map semantics; those live in `EditorSession`.
 
 mod invalidation;
+mod stats;
 
-use self::invalidation::{ProjectionInvalidation, projection_invalidation, zone_region};
+use self::{
+    invalidation::{ProjectionInvalidation, projection_invalidation, zone_region},
+    stats::RegionStats,
+};
 use super::edit_runtime::EditTouches;
 use osrs_core::coords::RegionCoord;
 use osrs_edit::ChangeImpact;
@@ -32,19 +36,12 @@ pub(super) type ZoneKey = (i32, i32);
 
 /// What part of a resident region the current worker build is intended to refresh.
 ///
-/// The worker still builds a full contextual region in this checkpoint. `Zones` narrows what the
-/// editor installs on the GPU; a later world-layer checkpoint can use the same scope to narrow
-/// extraction without changing invalidation semantics again.
+/// The worker always assembles the full contextual scene. `Zones` narrows static extraction and GPU
+/// installation while source, picker, and animation projections remain region-complete.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum RegionBuildScope {
     Full,
     Zones(BTreeSet<ZoneKey>),
-}
-
-/// What the status bar needs to know about a resident region.
-#[derive(Clone, Copy)]
-pub(super) struct RegionStats {
-    pub(super) vertices: usize,
 }
 
 /// When animated geometry was last requested, and what forces another request.
@@ -65,7 +62,7 @@ pub(super) struct WorldRuntime {
     presentation_hd: bool,
     /// Regions resident on the GPU (`None` = the cache has no map data there).
     loaded: HashMap<RegionKey, Option<RegionStats>>,
-    /// At most one build per region is in flight; its scope controls installation when it returns.
+    /// At most one build per region is in flight; its scope controls extraction and installation.
     in_flight: HashMap<RegionKey, RegionBuildScope>,
     /// Regions waiting for a conservative full rebuild after an edit.
     dirty_regions: HashSet<RegionKey>,
@@ -179,27 +176,44 @@ impl WorldRuntime {
         keys
     }
 
-    /// A region build finished and its complete geometry is available for status/animation state.
+    /// One region build finished; static status accounting follows the same full/zone scope used by
+    /// the renderer while animation state is replaced from the complete contextual worker result.
     pub(super) fn region_installed(
         &mut self,
         key: RegionKey,
+        scope: &RegionBuildScope,
         geometry: &SceneGeometry,
         animations: Vec<AnimatedInstance>,
     ) {
         self.animations.insert_region(key, animations);
         self.animation.dirty = true;
-        self.loaded.insert(
-            key,
-            Some(RegionStats {
-                vertices: geometry.vertex_count(),
-            }),
-        );
+        match scope {
+            RegionBuildScope::Full => {
+                self.loaded
+                    .insert(key, Some(RegionStats::from_geometry(geometry)));
+            }
+            RegionBuildScope::Zones(_) => {
+                let slot = self
+                    .loaded
+                    .entry(key)
+                    .or_insert_with(|| Some(RegionStats::default()));
+                let stats = slot.get_or_insert_with(RegionStats::default);
+                stats.refresh(scope, geometry);
+            }
+        }
     }
 
-    /// The cache has no map data at `key` (or the build failed).
-    pub(super) fn region_absent(&mut self, key: RegionKey) {
-        self.in_flight.remove(&key);
-        self.loaded.insert(key, None);
+    /// The cache has no map data at `key` (or the build failed). A failed zone refresh leaves the
+    /// previously resident region intact because its static GPU projection was never replaced.
+    pub(super) fn region_absent(&mut self, key: RegionKey) -> RegionBuildScope {
+        let scope = self
+            .in_flight
+            .remove(&key)
+            .unwrap_or(RegionBuildScope::Full);
+        if matches!(scope, RegionBuildScope::Full) {
+            self.loaded.insert(key, None);
+        }
+        scope
     }
 
     /// Finish one build and return the scope that should be installed from its result.
@@ -250,7 +264,7 @@ impl WorldRuntime {
     }
 
     pub(super) fn resident_vertices(&self) -> usize {
-        self.loaded.values().flatten().map(|s| s.vertices).sum()
+        self.loaded.values().flatten().map(RegionStats::vertices).sum()
     }
 
     pub(super) fn in_flight_count(&self) -> usize {
@@ -339,8 +353,8 @@ impl WorldRuntime {
         self.dirty_zones.entry(region).or_default().insert(zone);
     }
 
-    /// Request rebuild work that is not already in flight. The worker still builds the full region;
-    /// `RegionBuildScope::Zones` tells installation to upload only the fine-grained dirty subset.
+    /// Request rebuild work that is not already in flight. Full refreshes request the whole static
+    /// region; zone refreshes carry their exact zone set through worker extraction and GPU install.
     pub(super) fn flush_dirty_regions(&mut self) {
         let full_ready: Vec<RegionKey> = self
             .dirty_regions
@@ -374,8 +388,10 @@ impl WorldRuntime {
             if zones.is_empty() {
                 continue;
             }
+            let requested = zones.clone();
             self.in_flight.insert(key, RegionBuildScope::Zones(zones));
-            self.streamer.request(RegionCoord::new(key.0, key.1));
+            self.streamer
+                .request_zones(RegionCoord::new(key.0, key.1), requested);
         }
     }
 
