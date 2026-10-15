@@ -87,7 +87,15 @@ impl EditorApp {
                 .notify("Choose an overlay to lay the path with".to_owned());
             return;
         }
-        self.spline_plan_now();
+        self.spline_update();
+        if !matches!(
+            self.interaction.spline_status(),
+            crate::app::interaction_runtime::SplineStatus::Ready { .. }
+        ) {
+            self.ui
+                .notify("Wait for a current, non-empty path preview before laying it".to_owned());
+            return;
+        }
         let Some(preview) = self.interaction.current_spline_preview().cloned() else {
             return;
         };

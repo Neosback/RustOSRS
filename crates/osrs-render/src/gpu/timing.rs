@@ -7,7 +7,7 @@
 
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicU32, Ordering},
+    atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
 };
 
 const SLOTS: usize = 3;
@@ -24,11 +24,20 @@ pub(super) struct GpuTimer {
     slots: Vec<Slot>,
     period_ns: f32,
     result_bits: Arc<AtomicU32>,
+    raw_sample: Arc<AtomicU64>,
     next: usize,
     active: Option<usize>,
 }
 
 impl GpuTimer {
+    pub(super) fn buffer_bytes(&self) -> u64 {
+        self.resolve.size()
+            + self
+                .slots
+                .iter()
+                .map(|slot| slot.buffer.size())
+                .sum::<u64>()
+    }
     /// `None` when the device was created without `TIMESTAMP_QUERY`.
     pub(super) fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Self> {
         if !device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
@@ -66,6 +75,7 @@ impl GpuTimer {
             slots,
             period_ns: queue.get_timestamp_period(),
             result_bits: Arc::new(AtomicU32::new(0)),
+            raw_sample: Arc::new(AtomicU64::new(0)),
             next: 0,
             active: None,
         })
@@ -108,6 +118,7 @@ impl GpuTimer {
             let busy = slot.busy.clone();
             let buffer = slot.buffer.clone();
             let result = self.result_bits.clone();
+            let raw = self.raw_sample.clone();
             let period = self.period_ns;
             slot.buffer
                 .slice(..)
@@ -122,6 +133,10 @@ impl GpuTimer {
                                 ticks[1].saturating_sub(ticks[0]) as f32 * period / 1.0e6
                             });
                         buffer.unmap();
+                        let _ = raw.try_update(Ordering::AcqRel, Ordering::Acquire, |old| {
+                            let sequence = ((old >> 32) as u32).wrapping_add(1);
+                            Some((u64::from(sequence) << 32) | u64::from(ms.to_bits()))
+                        });
                         let previous = f32::from_bits(result.load(Ordering::Relaxed));
                         let smoothed = if previous == 0.0 {
                             ms
@@ -134,6 +149,12 @@ impl GpuTimer {
                 });
         }
         let _ = device.poll(wgpu::PollType::Poll);
+    }
+
+    /// Sequence and raw execution time; consumers can distinguish delayed/repeated results.
+    pub(super) fn latest_sample(&self) -> Option<(u32, f32)> {
+        let packed = self.raw_sample.load(Ordering::Acquire);
+        (packed != 0).then_some(((packed >> 32) as u32, f32::from_bits(packed as u32)))
     }
 
     pub(super) fn scene_ms(&self) -> Option<f32> {

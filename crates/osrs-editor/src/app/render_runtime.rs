@@ -1,12 +1,12 @@
 //! GPU renderer, viewport targets, and frame submission owned by the editor runtime.
+mod reuse;
 
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_hd::shadows::ShadowSettings;
 use osrs_render::{
     SceneGeometry,
     gpu::{
-        COLOR_FORMAT, DEPTH_FORMAT, FrameParams, HdLighting, HdParams, LineVertex, SceneRenderer,
-        TextureLayer,
+        COLOR_FORMAT, FrameParams, HdLighting, HdParams, LineVertex, SceneRenderer, TextureLayer,
     },
 };
 use osrs_world::hd::gpu::HdGpuData;
@@ -23,7 +23,6 @@ struct ViewportTargets {
     height: u32,
     color: wgpu::Texture,
     color_view: wgpu::TextureView,
-    depth_view: wgpu::TextureView,
     texture_id: egui::TextureId,
 }
 
@@ -39,7 +38,8 @@ impl Drop for RenderRuntime {
 }
 
 pub(super) struct EncodedViewport {
-    pub(super) command_buffer: wgpu::CommandBuffer,
+    pub(super) command_buffer: Option<wgpu::CommandBuffer>,
+    params: FrameParams,
     pub(super) texture_id: egui::TextureId,
 }
 
@@ -50,6 +50,8 @@ pub(super) struct RenderRuntime {
     /// World-zone keys currently installed for each streamed 64x64 map region.
     region_zones: BTreeMap<RegionKey, BTreeSet<ZoneKey>>,
     targets: Option<ViewportTargets>,
+    reuse: reuse::ViewportReuse,
+    reuse_enabled: bool,
 }
 
 impl RenderRuntime {
@@ -67,6 +69,9 @@ impl RenderRuntime {
             scene,
             region_zones: BTreeMap::new(),
             targets: None,
+            reuse: reuse::ViewportReuse::default(),
+            reuse_enabled: std::env::var("RUSTOSRS_VIEWPORT_REUSE")
+                .map_or(true, |value| value != "0"),
         }
     }
 
@@ -75,15 +80,18 @@ impl RenderRuntime {
     }
 
     pub(super) fn set_render_origin(&mut self, origin: (i32, i32)) {
+        self.reuse.invalidate();
         self.scene.set_render_origin(origin);
     }
 
     pub(super) fn set_textures(&mut self, layers: &[Option<TextureLayer>]) {
+        self.reuse.invalidate();
         self.scene.set_textures(layers);
     }
 
     /// Replace one streamed region, storing each static 8x8 zone under its own opaque renderer key.
     pub(super) fn upload_region(&mut self, key: RegionKey, geometry: &SceneGeometry) {
+        self.reuse.invalidate();
         let incoming: BTreeSet<ZoneKey> = geometry
             .zones
             .iter()
@@ -97,11 +105,8 @@ impl RenderRuntime {
         for zone in &geometry.zones {
             let zone_key = (zone.zone_x, zone.zone_z);
             debug_assert!(zone_belongs_to_region(key, zone_key));
-            let single = SceneGeometry {
-                zones: vec![zone.clone()],
-            };
             self.scene
-                .upload_region(zone_renderer_key(key, zone_key), &single);
+                .upload_zones(zone_renderer_key(key, zone_key), std::iter::once(zone));
         }
         self.region_zones.insert(key, incoming);
     }
@@ -116,6 +121,7 @@ impl RenderRuntime {
         geometry: &SceneGeometry,
         requested: &BTreeSet<ZoneKey>,
     ) {
+        self.reuse.invalidate();
         let resident = self.region_zones.entry(key).or_default();
         for &zone_key in requested {
             debug_assert!(zone_belongs_to_region(key, zone_key));
@@ -126,10 +132,7 @@ impl RenderRuntime {
                 .find(|zone| (zone.zone_x, zone.zone_z) == zone_key)
             {
                 Some(zone) => {
-                    let single = SceneGeometry {
-                        zones: vec![zone.clone()],
-                    };
-                    self.scene.upload_region(renderer_key, &single);
+                    self.scene.upload_zones(renderer_key, std::iter::once(zone));
                     resident.insert(zone_key);
                 }
                 None => {
@@ -142,10 +145,12 @@ impl RenderRuntime {
 
     /// Upload geometry that is not part of streamed static-region residency (animated locs).
     pub(super) fn upload_transient(&mut self, key: (i32, i32), geometry: &SceneGeometry) {
+        self.reuse.invalidate();
         self.scene.upload_region(key, geometry);
     }
 
     pub(super) fn remove_region(&mut self, key: RegionKey) {
+        self.reuse.invalidate();
         if let Some(zones) = self.region_zones.remove(&key) {
             for zone in zones {
                 self.scene.remove_region(zone_renderer_key(key, zone));
@@ -154,6 +159,7 @@ impl RenderRuntime {
     }
 
     pub(super) fn set_overlay_lines(&mut self, lines: &[LineVertex]) {
+        self.reuse.invalidate();
         self.scene.set_overlay_lines(lines);
     }
 
@@ -170,6 +176,7 @@ impl RenderRuntime {
     }
 
     pub(super) fn install_hd_materials(&mut self, data: HdGpuData) -> Result<(), String> {
+        self.reuse.invalidate();
         data.install(&mut self.scene)
             .map_err(|error| error.to_string())
     }
@@ -186,6 +193,25 @@ impl RenderRuntime {
         self.scene.hd_shadow_map_bytes()
     }
 
+    pub(super) fn adapter_description(&self) -> String {
+        format!("{:?}", self.render_state.adapter.get_info())
+    }
+
+    pub(super) fn gpu_pass_samples(&self) -> BTreeMap<&'static str, (u32, f32)> {
+        self.scene.gpu_pass_samples()
+    }
+
+    pub(super) fn resource_bytes(&self) -> BTreeMap<&'static str, u64> {
+        let mut bytes = self.scene.resource_bytes();
+        if let Some(targets) = &self.targets {
+            bytes.insert(
+                "viewport_color",
+                u64::from(targets.width) * u64::from(targets.height) * 4,
+            );
+        }
+        bytes
+    }
+
     pub(super) fn ensure_targets(&mut self, width: u32, height: u32) {
         if let Some(targets) = &self.targets
             && targets.width == width
@@ -193,6 +219,7 @@ impl RenderRuntime {
         {
             return;
         }
+        self.reuse.invalidate();
         let device = &self.render_state.device;
         let color = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("viewport-color"),
@@ -208,22 +235,7 @@ impl RenderRuntime {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        let depth = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("viewport-depth"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
         let color_view = color.create_view(&wgpu::TextureViewDescriptor::default());
-        let depth_view = depth.create_view(&wgpu::TextureViewDescriptor::default());
 
         let mut egui_renderer = self.render_state.renderer.write();
         let texture_id = match self.targets.take() {
@@ -247,37 +259,46 @@ impl RenderRuntime {
             height,
             color,
             color_view,
-            depth_view,
             texture_id,
         });
     }
 
     pub(super) fn encode_viewport(&self, params: FrameParams) -> Option<EncodedViewport> {
         let targets = self.targets.as_ref()?;
+        if self.reuse_enabled && self.reuse.can_reuse(params) {
+            return Some(EncodedViewport {
+                command_buffer: None,
+                texture_id: targets.texture_id,
+                params,
+            });
+        }
         let mut encoder =
             self.render_state
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("viewport"),
                 });
-        self.scene.encode_frame(
+        self.scene.encode_color_frame(
             &mut encoder,
             &targets.color_view,
-            &targets.depth_view,
             params,
             targets.width,
             targets.height,
         );
         let _ = &targets.color;
         Some(EncodedViewport {
-            command_buffer: encoder.finish(),
+            command_buffer: Some(encoder.finish()),
+            params,
             texture_id: targets.texture_id,
         })
     }
 
-    pub(super) fn submit_viewport(&self, command_buffer: wgpu::CommandBuffer) -> Option<f32> {
-        self.render_state.queue.submit(Some(command_buffer));
-        self.scene.finish_frame();
+    pub(super) fn submit_viewport(&self, frame: &mut EncodedViewport) -> Option<f32> {
+        if let Some(command_buffer) = frame.command_buffer.take() {
+            self.render_state.queue.submit(Some(command_buffer));
+            self.reuse.submitted(frame.params);
+            self.scene.finish_frame();
+        }
         self.scene.gpu_scene_ms()
     }
 

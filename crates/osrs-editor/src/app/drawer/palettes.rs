@@ -118,7 +118,7 @@ impl EditorApp {
         if self.palettes.palette().is_some() {
             return false;
         }
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if self.palettes.loading() {
                 ui.spinner();
                 ui.weak("Loading floor colours...");
@@ -136,7 +136,7 @@ impl EditorApp {
         shown: usize,
         textured: bool,
     ) -> String {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             for filter in PaletteFilter::ALL {
                 if filter == PaletteFilter::Textured && !textured {
                     continue;

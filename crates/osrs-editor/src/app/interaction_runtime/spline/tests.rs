@@ -72,3 +72,44 @@ fn removing_a_point_cancels_its_captured_drag_instead_of_moving_a_successor() {
     assert_eq!(interaction.spline_points(), &[(2.0, 2.0)]);
     assert_eq!(interaction.spline_drag(), None);
 }
+
+#[test]
+fn moving_a_point_invalidates_ready_preview_before_next_worker_poll() {
+    let mut interaction = interaction();
+    let settings = crate::paint::SplineSettings::default();
+    interaction.replace_spline_points(vec![(1.0, 1.0), (5.0, 5.0)]);
+    interaction.plan_spline_now(&settings, Some(1));
+    assert!(matches!(
+        interaction.spline_status(),
+        SplineStatus::Ready { .. }
+    ));
+    interaction.move_spline_point(0, (2.0, 3.0));
+    assert!(interaction.current_spline_preview().is_none());
+    interaction.clear_spline_points();
+    assert_eq!(interaction.spline_status(), SplineStatus::NeedsPoints);
+    assert!(interaction.spline_preview().is_none());
+}
+
+#[test]
+fn non_finite_script_points_fail_without_starting_a_fit() {
+    let mut interaction = interaction();
+    interaction.replace_spline_points(vec![(f32::NAN, 1.0), (5.0, 5.0)]);
+    interaction.update_spline_preview(&crate::paint::SplineSettings::default(), Some(1));
+    assert!(matches!(
+        interaction.spline_status(),
+        SplineStatus::Failed(_)
+    ));
+    assert!(interaction.current_spline_preview().is_none());
+}
+
+#[test]
+fn deleting_a_point_preserves_selection_identity_and_cancels_drag() {
+    let mut interaction = interaction();
+    interaction.replace_spline_points(vec![(1.0, 1.0), (2.0, 2.0), (3.0, 3.0)]);
+    interaction.begin_spline_drag(2);
+    interaction.remove_spline_point(0);
+    assert_eq!(interaction.selected_spline_point(), Some(1));
+    assert_eq!(interaction.spline_drag(), None);
+    interaction.remove_spline_point(1);
+    assert_eq!(interaction.selected_spline_point(), None);
+}

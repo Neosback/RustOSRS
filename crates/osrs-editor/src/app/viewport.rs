@@ -275,16 +275,37 @@ impl EditorApp {
         use osrs_render::gpu::FrameParams;
         if self.world.is_ready() {
             self.ensure_targets(width, height);
+            self.diagnostics.capture_context(|| {
+                serde_json::json!({
+                    "settings": self.settings.prefs,
+                    "viewport_pixels": [width, height],
+                    "render_origin": self.renderer.render_origin(),
+                    "camera": {
+                    "local_position": [self.interaction.camera().x, self.interaction.camera().y, self.interaction.camera().z],
+                    "yaw": self.interaction.camera().yaw, "pitch": self.interaction.camera().pitch,
+                    "fov_degrees": self.interaction.camera().fov_degrees,
+                },
+                "adapter": self.renderer.adapter_description(),
+                "view_plane": self.interaction.view_plane(),
+                    "owned_gpu_bytes": self.renderer.resource_bytes(),
+                    "semantic_revision": self.session.revision(),
+                "cache_build_and_profile": self.project.cache_build(),
+                })
+            });
             if self.settings.prefs.render_profile == ProfileChoice::Hd {
                 self.update_hd_lighting();
             }
             let phase = Instant::now();
             self.renderer.set_hd_params(self.settings.prefs.hd_params());
-            if let Some(frame) = self.renderer.encode_viewport(FrameParams {
+            if let Some(mut frame) = self.renderer.encode_viewport(FrameParams {
                 camera: self.interaction.camera().reference(width as f32),
                 view_plane: self.interaction.view_plane(),
                 // The client's `gameCycle & 127`, at 50 cycles per second.
-                tick: ((self.started.elapsed().as_secs_f32() * 50.0) as u32) & 127,
+                tick: ((self
+                    .diagnostics
+                    .scene_seconds(self.started.elapsed().as_secs_f32())
+                    * 50.0) as u32)
+                    & 127,
                 brightness: self.settings.prefs.brightness,
                 remove_color_banding: self.settings.prefs.remove_color_banding,
                 bright_textures: self.settings.prefs.bright_textures,
@@ -294,8 +315,12 @@ impl EditorApp {
                 profile: self.settings.prefs.render_profile.render_profile(),
             }) {
                 self.diagnostics.phase("encode", phase);
-                let gpu_scene_ms = self.renderer.submit_viewport(frame.command_buffer);
+                self.diagnostics
+                    .record_scene_encoding(frame.command_buffer.is_some());
+                let gpu_scene_ms = self.renderer.submit_viewport(&mut frame);
                 self.diagnostics.set_gpu_scene_ms(gpu_scene_ms);
+                self.diagnostics
+                    .capture_gpu_samples(|| self.renderer.gpu_pass_samples());
                 let probe = self.diagnostics.stats().gpu_probe();
                 self.renderer.on_submitted_work_done(probe);
                 ui.painter().image(

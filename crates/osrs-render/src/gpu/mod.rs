@@ -27,7 +27,9 @@ pub mod frame_graph;
 pub mod hd;
 mod overlay;
 mod profile;
+mod resources;
 mod timing;
+pub use resources::texture_storage_bytes;
 
 pub use overlay::LineVertex;
 pub use profile::{HdLighting, HdParams, RenderProfile};
@@ -140,7 +142,7 @@ impl ReferenceCamera {
 }
 
 /// Per-frame inputs.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FrameParams {
     pub camera: ReferenceCamera,
     /// Current plane: a tile (and everything on it) is drawn when its minimum plane is `<=` this,
@@ -502,6 +504,7 @@ pub struct SceneRenderer {
     globals_buffer: wgpu::Buffer,
     globals_layout: wgpu::BindGroupLayout,
     globals_bind_group: wgpu::BindGroup,
+    reference_texture_layers: u32,
     zone_layout: wgpu::BindGroupLayout,
     /// Streamed regions, keyed by an opaque caller key (for example the map region).
     regions: std::collections::BTreeMap<(i32, i32), Vec<GpuZone>>,
@@ -512,6 +515,7 @@ pub struct SceneRenderer {
     alpha_indices: std::cell::RefCell<Option<(wgpu::Buffer, u64)>>,
     /// Scene-pass GPU timing, when the device supports timestamp queries.
     timer: std::cell::RefCell<Option<timing::GpuTimer>>,
+    auxiliary_timers: std::cell::RefCell<[Option<timing::GpuTimer>; 3]>,
     /// Editor guide lines drawn over the scene.
     lines: overlay::LineOverlay,
 }
@@ -538,6 +542,10 @@ impl SceneRenderer {
     /// Build the pipelines on an existing device (for example the eframe-owned one).
     pub fn with_device(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         let timer = timing::GpuTimer::new(&device, &queue);
+        let auxiliary_timers = std::array::from_fn(|_| {
+            std::env::var_os("RUSTOSRS_PERF_REPORT")
+                .and_then(|_| timing::GpuTimer::new(&device, &queue))
+        });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("scene.wgsl"),
             source: wgpu::ShaderSource::Wgsl(include_str!("scene.wgsl").into()),
@@ -652,12 +660,14 @@ impl SceneRenderer {
             globals_buffer,
             globals_layout,
             globals_bind_group,
+            reference_texture_layers: 1,
             zone_layout,
             regions: std::collections::BTreeMap::new(),
             render_origin: (0, 0),
             msaa: std::cell::RefCell::new(None),
             alpha_indices: std::cell::RefCell::new(None),
             timer: std::cell::RefCell::new(timer),
+            auxiliary_timers: std::cell::RefCell::new(auxiliary_timers),
             lines,
         }
     }
@@ -672,6 +682,7 @@ impl SceneRenderer {
 
     /// Upload the texture array (layer `i` = texture id `i`) and its animation table.
     pub fn set_textures(&mut self, layers: &[Option<TextureLayer>]) {
+        self.reference_texture_layers = layers.len().clamp(1, MAX_TEXTURE_LAYERS) as u32;
         self.globals_bind_group = build_globals_bind_group(
             &self.device,
             &self.queue,
@@ -715,7 +726,16 @@ impl SceneRenderer {
 
     /// Upload (or replace) one streamed region's zones under `key`.
     pub fn upload_region(&mut self, key: (i32, i32), geometry: &SceneGeometry) {
-        let mut gpu_zones = Vec::with_capacity(geometry.zones.len());
+        self.upload_zones(key, geometry.zones.iter());
+    }
+
+    /// Upload borrowed zones without copying their CPU vertex streams into a temporary scene.
+    pub fn upload_zones<'a>(
+        &mut self,
+        key: (i32, i32),
+        zones: impl ExactSizeIterator<Item = &'a crate::ZoneGeometry>,
+    ) {
+        let mut gpu_zones = Vec::with_capacity(zones.len());
         // Re-uploads (animated locs every few cycles) reuse the zone's GPU objects, so a
         // refresh is a buffer write instead of fresh allocations.
         let previous = self.regions.remove(&key).unwrap_or_default();
@@ -726,7 +746,7 @@ impl SceneRenderer {
             .into_iter()
             .map(|zone| (zone.world_origin, zone))
             .collect();
-        for zone in &geometry.zones {
+        for zone in zones {
             let world_origin = zone.origin();
             let (old_buffers, old_opaque, old_alpha, old_opaque_hd, old_alpha_hd) =
                 match reusable.remove(&world_origin) {
@@ -933,6 +953,20 @@ impl SceneRenderer {
         width: u32,
         height: u32,
     ) {
+        let _ = depth_view;
+        self.encode_color_frame(encoder, color_view, params, width, height);
+    }
+
+    /// Encode into the caller's color target. Depth is owned by the renderer's MSAA/frame graph;
+    /// no unused caller-side depth allocation is required.
+    pub fn encode_color_frame(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        color_view: &wgpu::TextureView,
+        params: FrameParams,
+        width: u32,
+        height: u32,
+    ) {
         let globals = GlobalsUniform {
             world_proj: params.camera.world_projection(width as f32, height as f32),
             brightness: params.brightness,
@@ -1069,7 +1103,6 @@ impl SceneRenderer {
         };
         self.queue
             .write_buffer(&self.hd_env_buffer, 0, bytemuck::bytes_of(&environment));
-        let _ = depth_view;
         let mut visible: Vec<&GpuZone> = self
             .regions
             .values()
@@ -1223,6 +1256,9 @@ impl SceneRenderer {
                     else {
                         return;
                     };
+                    let mut timers = self.auxiliary_timers.borrow_mut();
+                    let timer = &mut timers[2];
+                    let timed = timer.as_mut().is_some_and(timing::GpuTimer::begin);
                     hd.post.record(
                         &self.device,
                         &self.queue,
@@ -1231,9 +1267,16 @@ impl SceneRenderer {
                             hdr,
                             target,
                             size: (width, height),
+                            timestamps: timer
+                                .as_ref()
+                                .filter(|_| timed)
+                                .map(timing::GpuTimer::pass_writes),
                         },
                         self.hd_params,
                     );
+                    if timed && let Some(timer) = timer.as_ref() {
+                        timer.resolve(encoder);
+                    }
                 });
             }
         }
@@ -1401,6 +1444,9 @@ impl SceneRenderer {
             } else {
                 (maps.view(), &hd.shadows.plain)
             };
+            let mut timers = self.auxiliary_timers.borrow_mut();
+            let timer = &mut timers[usize::from(terrain_only)];
+            let timed = timer.as_mut().is_some_and(timing::GpuTimer::begin);
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some(if terrain_only {
                     "terrain-shadow"
@@ -1416,7 +1462,10 @@ impl SceneRenderer {
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: timer
+                    .as_ref()
+                    .filter(|_| timed)
+                    .map(timing::GpuTimer::pass_writes),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
@@ -1463,6 +1512,10 @@ impl SceneRenderer {
                         pass.draw(0..count, 0..1);
                     }
                 }
+            }
+            drop(pass);
+            if timed && let Some(timer) = timer.as_ref() {
+                timer.resolve(encoder);
             }
         }
     }
@@ -1753,6 +1806,9 @@ impl SceneRenderer {
 
     /// Call after the encoder from [`Self::encode_frame`] was submitted: collects GPU timings.
     pub fn finish_frame(&self) {
+        for timer in self.auxiliary_timers.borrow_mut().iter_mut().flatten() {
+            timer.finish(&self.device);
+        }
         if let Some(timer) = self.timer.borrow_mut().as_mut() {
             timer.finish(&self.device);
         }
@@ -1938,36 +1994,14 @@ impl SceneRenderer {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        let depth = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("frame-depth"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
         let color_view = color.create_view(&wgpu::TextureViewDescriptor::default());
-        let depth_view = depth.create_view(&wgpu::TextureViewDescriptor::default());
 
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
-        self.encode_frame(
-            &mut encoder,
-            &color_view,
-            &depth_view,
-            params,
-            width,
-            height,
-        );
+        self.encode_color_frame(&mut encoder, &color_view, params, width, height);
 
         let unpadded = width * 4;
         let padded = unpadded.div_ceil(256) * 256;

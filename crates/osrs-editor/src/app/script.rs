@@ -273,7 +273,12 @@ impl EditorApp {
                 if self.interaction.spline_points().is_empty() {
                     return Err("no path points".to_owned());
                 }
-                self.commit_spline();
+                self.spline_update();
+                match self.interaction.spline_status() {
+                    super::interaction_runtime::SplineStatus::Updating => return Ok(Step::Retry),
+                    super::interaction_runtime::SplineStatus::Ready { .. } => self.commit_spline(),
+                    status => return Err(format!("path is not ready: {status:?}")),
+                }
             }
             "select" => match words.next() {
                 Some("object") => {

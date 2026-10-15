@@ -340,9 +340,7 @@
     ],
     "app/spline_tool.rs": [
       "laying_overlay",
-      "spline_plan_now",
       "spline_report",
-      "spline_tile_count",
       "spline_update"
     ],
     "app/status.rs": [

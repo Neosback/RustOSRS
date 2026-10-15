@@ -12,71 +12,60 @@ impl EditorApp {
             self.settings.prefs.brush.shape.rotation,
         );
         let mut picked = false;
-        egui::ScrollArea::horizontal()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.horizontal_top(|ui| {
-                    ui.vertical(|ui| {
-                        ui.weak("Shape");
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing = Vec2::splat(5.0);
-                            ui.set_max_width(330.0);
-                            for id in 0..=MAX_SHAPE {
-                                if swatch(ui, 40.0, shape == id, |painter, rect| {
-                                    paint_tile(
-                                        painter,
-                                        rect,
-                                        id,
-                                        rotation,
-                                        Some(under),
-                                        Some(over),
-                                    );
-                                })
-                                .on_hover_text(if id == 0 {
-                                    "Shape 0: full tile".to_owned()
-                                } else {
-                                    format!("Shape {id}")
-                                })
-                                .clicked()
-                                {
-                                    shape = id;
-                                    picked = true;
-                                }
-                            }
-                        });
-                    });
-                    ui.add_space(16.0);
-                    ui.vertical(|ui| {
-                        ui.weak("Rotation");
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing = Vec2::splat(5.0);
-                            for (index, name) in
-                                ["North", "East", "South", "West"].into_iter().enumerate()
-                            {
-                                let index = index as u8;
-                                ui.vertical(|ui| {
-                                    if swatch(ui, 40.0, rotation == index, |painter, rect| {
-                                        paint_tile(
-                                            painter,
-                                            rect,
-                                            if shape == 0 { 3 } else { shape },
-                                            index,
-                                            Some(under),
-                                            Some(over),
-                                        );
-                                    })
-                                    .clicked()
-                                    {
-                                        rotation = index;
-                                        picked = true;
-                                    }
-                                    ui.label(egui::RichText::new(name).size(11.0));
-                                });
-                            }
-                        });
-                    });
+        ui.horizontal_wrapped(|ui| {
+            ui.vertical(|ui| {
+                ui.weak("Shape");
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::splat(5.0);
+                    ui.set_max_width(ui.available_width().min(330.0));
+                    for id in 0..=MAX_SHAPE {
+                        if swatch(ui, 40.0, shape == id, |painter, rect| {
+                            paint_tile(painter, rect, id, rotation, Some(under), Some(over));
+                        })
+                        .on_hover_text(if id == 0 {
+                            "Shape 0: full tile".to_owned()
+                        } else {
+                            format!("Shape {id}")
+                        })
+                        .clicked()
+                        {
+                            shape = id;
+                            picked = true;
+                        }
+                    }
                 });
             });
+            ui.add_space(16.0);
+            ui.vertical(|ui| {
+                ui.weak("Rotation");
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::splat(5.0);
+                    for (index, name) in ["North", "East", "South", "West"].into_iter().enumerate()
+                    {
+                        let index = index as u8;
+                        ui.vertical(|ui| {
+                            if swatch(ui, 40.0, rotation == index, |painter, rect| {
+                                paint_tile(
+                                    painter,
+                                    rect,
+                                    if shape == 0 { 3 } else { shape },
+                                    index,
+                                    Some(under),
+                                    Some(over),
+                                );
+                            })
+                            .clicked()
+                            {
+                                rotation = index;
+                                picked = true;
+                            }
+                            ui.label(egui::RichText::new(name).size(11.0));
+                        });
+                    }
+                });
+            });
+        });
+
         self.settings.prefs.brush.shape.shape = shape;
         self.settings.prefs.brush.shape.rotation = rotation;
         if picked {

@@ -100,6 +100,22 @@ pub struct TransientPool {
 }
 
 impl TransientPool {
+    /// Storage owned by pooled render targets, excluding backend allocation overhead.
+    pub fn allocated_bytes(&self) -> u64 {
+        self.textures
+            .values()
+            .map(|pooled| {
+                super::texture_storage_bytes(
+                    pooled.size.0,
+                    pooled.size.1,
+                    1,
+                    1,
+                    pooled.desc.samples,
+                    pooled.desc.format.block_copy_size(None).unwrap_or(0),
+                )
+            })
+            .sum()
+    }
     fn ensure(
         &mut self,
         device: &wgpu::Device,

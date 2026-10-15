@@ -1,0 +1,605 @@
+{
+  "version": 1,
+  "target": "117HD 1.5.2",
+  "config_sha256": "62a296f7fec124991204f442fcd1e1152a14d192e5562ac9979dba80622b660f",
+  "completion_rule": "Every rendering behavior requires implementation evidence and independent source/reference verification. Backend-only options need explicit equivalent/not-applicable reasons. audit_pending never means complete.",
+  "config_items": [
+    {
+      "key": "drawDistance",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "detailDistance",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "expandedMapLoadingChunks",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "hideUnrelatedAreas",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "antiAliasingMode",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "sceneResolutionScale",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "sceneScalingMode",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "uiScalingMode",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "anisotropicFilteringLevel",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "unlockFps",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "vsyncMode",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "fpsTarget",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "colorBlindMode",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "colorBlindnessIntensity",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "flashingEffects",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "fSaturation",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "saturation",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "fContrast",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "contrast",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "screenBrightness",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "shadowMode",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "shadowResolution",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "shadowFiltering",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "enableShadowTransparency",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "experimentalRoofShadows",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "terrainShadows",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "expandShadowDraw",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "dynamicLights",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "tiledLighting",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "projectileLights",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "npcLights",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "environmentalLighting",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "vanillaShadowMode",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "normalMapping",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "parallaxOcclusionMappingToggle",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "daylightCycle",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "nightBrightness",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "stars",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "nebulae",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "moonBehavior",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "moonPhase",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "replaceVanillaSkyboxes",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "customCycleDurationMinutes",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "latitudeDegrees",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "longitudeDegrees",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "seasonalTheme",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "seasonalHemisphere",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "seasonalFoliage",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "fogDepthMode",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "fogDepth",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "groundFog",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "defaultSkyColor",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "overrideSky",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "objectTextures",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "groundTextures",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "textureResolution",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "groundBlendingv2",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "groundBlending",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "underwaterCaustics",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "windDisplacement",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "characterDisplacement",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "hideVanillaWaterEffects",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "pohThemeEnvironments",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "cpuUsageLimit",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "powerSaving",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "macosIntelWorkaround",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "infernalCape",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "vanillaColorBanding",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "lowMemoryMode",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "colorFilter",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "removeVertexSnapping",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "fillGapsInTerrain",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "flatShading",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "windowsHdrCorrection",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "legacyRenderer2",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "useLegacyBrightness",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "brightness2",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "shadowDistance",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "useModelBatching",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "useModelCaching",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "modelCacheSizeMiBv2",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "modelCacheSizeMiB",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "reduceOverExposure",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "legacyTobEnvironment",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "tzhaarHD",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "experimentalFasterModelHashing",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "experimentalZoneStreaming",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "experimentalPreserveVanillaNormals",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "experimentalShadingMode",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "experimentalDecoupleWaterFromSkyColor",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "wireframe",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "experimentalTiledLightingImageStore",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "experimentalIndirectDraw",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "experimentalStorageBuffers",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "asyncModelProcessing",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "experimentalPointSprites",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "pluginUpdateMessage",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    },
+    {
+      "key": "preciseLatitudeLongitude",
+      "status": "audit_pending",
+      "implementation": [],
+      "verification": []
+    }
+  ],
+  "systems": {
+    "entity_lights": "pending",
+    "portable_light_selection": "pending",
+    "sky_daynight": "pending",
+    "reflections": "pending",
+    "wind_character_displacement": "pending",
+    "post_sampling_settings_remainder": "pending",
+    "independent_visual_oracle": "pending"
+  }
+}

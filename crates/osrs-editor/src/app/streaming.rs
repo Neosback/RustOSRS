@@ -61,6 +61,7 @@ impl EditorApp {
                     self.world.mark_ready();
                 }
                 StreamEvent::Region(region) => {
+                    self.diagnostics.build(region.build_ms);
                     let key = (region.region.x, region.region.y);
                     // Retire the FIFO build ticket before checking worker presentation generation.
                     // Old results must consume their own ticket so a later request for the same
@@ -176,7 +177,8 @@ impl EditorApp {
         let (world_x, world_z) = self.world_position();
         self.world.schedule_animation(
             self.settings.prefs.animate_objects,
-            self.started.elapsed().as_secs_f32(),
+            self.diagnostics
+                .scene_seconds(self.started.elapsed().as_secs_f32()),
             ((world_x / 128.0) as i32, (world_z / 128.0) as i32),
         );
     }

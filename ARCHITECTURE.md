@@ -679,7 +679,7 @@ These rules make repository editing safer for AI/API workflows.
 
 ### One active system
 
-Work on one focused subsystem/branch at a time.
+Stay on `main` unless the user explicitly requests a branch. Work on one focused checkpoint at a time; an authorized multi-subsystem plan may continue through its documented sequence.
 
 Do not mix editor refactors, renderer work, 117HD work, cache work, and UI redesign merely because files are nearby.
 
@@ -714,7 +714,7 @@ If an unexpected dependency requires a much larger checkpoint, choose the narrow
 
 ### PR count
 
-Keep at most 1-2 active PRs unless the user explicitly changes the rule. Prefer one focused PR per completed subsystem.
+Keep at most 1-2 active PRs unless the user explicitly changes the rule. Use PRs only when the user requests a branch/PR workflow; the standing default is focused checkpoints on `main`.
 
 ### Merge rule
 
@@ -736,7 +736,7 @@ After merge:
 2. validate that exact commit through required CI
 3. confirm the old branch is retired/deleted if tooling permits
 4. update handoff with the real merge SHA when required
-5. only then start the next subsystem on a fresh branch
+5. continue subsequent authorized work on `main`; create a branch only when explicitly requested
 
 Never assume squash vs merge-commit behavior.
 

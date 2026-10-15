@@ -51,7 +51,7 @@ impl EditorApp {
             .default_width(SHELF_WIDTH)
             .min_width(SHELF_WIDTH)
             .max_height(560.0)
-            .resizable([false, true])
+            .resizable([true, true])
             .constrain_to(ctx.content_rect())
             .show(ctx, |ui| self.shelf_contents(ui, tool));
         if let Some(response) = response {
@@ -131,7 +131,7 @@ impl EditorApp {
         ui.add_space(4.0);
         ui.label(egui::RichText::new("Size").weak());
         let mut radius = i32::from(self.settings.prefs.brush.radius);
-        ui.spacing_mut().slider_width = ui.available_width() - 70.0;
+        ui.spacing_mut().slider_width = (ui.available_width() - 70.0).max(48.0);
         if ui
             .add(
                 egui::Slider::new(&mut radius, 0..=16).custom_formatter(|r, _| {
@@ -151,7 +151,7 @@ impl EditorApp {
     fn sculpt_section(&mut self, ui: &mut egui::Ui) {
         crate::theme::section_heading(ui, "Strength");
         let tool = &mut self.settings.prefs.height_tool;
-        ui.spacing_mut().slider_width = ui.available_width() - 56.0;
+        ui.spacing_mut().slider_width = (ui.available_width() - 56.0).max(48.0);
         ui.add(egui::Slider::new(&mut tool.strength, 8..=128).step_by(8.0));
         ui.add_space(4.0);
         ui.label(egui::RichText::new("Falloff").weak());
@@ -164,25 +164,8 @@ impl EditorApp {
     /// Deterministic width/shape fitting controls used by the Spline tool.
     fn path_section(&mut self, ui: &mut egui::Ui) {
         crate::theme::section_heading(ui, "Path");
-        let spline = &mut self.settings.prefs.spline;
-        ui.checkbox(&mut spline.snap_points, "Snap points to tile centres")
-            .on_hover_text(
-                "Place control points at tile centres instead of the exact cursor position",
-            );
-
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new("Width").weak());
-        ui.add(
-            egui::Slider::new(&mut spline.width, 0.5..=24.0)
-                .max_decimals(1)
-                .suffix(" tiles"),
-        );
-        ui.label(egui::RichText::new("Edge continuity").weak());
-        ui.add(egui::Slider::new(&mut spline.edge_weight, 0.0..=2.0).max_decimals(2))
-            .on_hover_text("0 fits every tile independently; higher values prefer neighbouring shapes whose shared edges agree");
+        super::spline_tool::panel::settings(ui, &mut self.settings.prefs.spline);
         ui.add_space(6.0);
-        ui.weak(
-            "The path follows the line you draw. Obstacle routing and walls are disabled for now.",
-        );
+        ui.weak("Edit the control points and lay the current preview in the Path drawer.");
     }
 }

@@ -1,5 +1,6 @@
 //! Performance measurement, smoke-test hooks and a bounded edit/rebuild trace. Diagnostics
 //! observe runtime transitions; enabling or disabling them cannot change editing correctness.
+mod capture;
 mod trace;
 use crate::{hud::FrameStats, screenshot::ScreenshotHook};
 use eframe::egui;
@@ -15,6 +16,9 @@ pub(super) struct DiagnosticsRuntime {
     exit_after_seconds: Option<f32>,
     autofly: Option<(f32, f32)>,
     trace: DiagnosticSink,
+    capture: Option<capture::PerformanceCapture>,
+    gpu_scene_ms: Option<f32>,
+    fixed_time_seconds: Option<f32>,
 }
 
 pub(super) struct SmokeSnapshot {
@@ -55,6 +59,14 @@ impl DiagnosticsRuntime {
             } else {
                 DiagnosticSink::default()
             },
+            capture: authoring
+                .then(capture::PerformanceCapture::from_env)
+                .flatten(),
+            gpu_scene_ms: None,
+            fixed_time_seconds: std::env::var("RUSTOSRS_FIXED_TIME_SECONDS")
+                .ok()
+                .and_then(|value| value.parse::<f32>().ok())
+                .filter(|value| value.is_finite() && *value >= 0.0),
         }
     }
     pub(super) fn sink(&self) -> DiagnosticSink {
@@ -81,16 +93,55 @@ impl DiagnosticsRuntime {
         self.autofly
     }
     pub(super) fn begin_frame(&mut self) -> Instant {
+        if let Some(capture) = &mut self.capture {
+            capture.begin();
+        }
         self.stats.begin_frame()
     }
     pub(super) fn phase(&mut self, name: &'static str, started: Instant) {
+        if let Some(capture) = &mut self.capture {
+            capture.phase(name, started);
+        }
         self.stats.phase(name, started);
     }
     pub(super) fn end_frame(&mut self, started: Instant) {
         self.stats.end_frame(started);
+        if let Some(capture) = &mut self.capture {
+            capture.end(started, self.gpu_scene_ms, self.stats.queue_latency_ms());
+            capture.memory(self.stats.resident_mib());
+        }
     }
     pub(super) fn set_gpu_scene_ms(&mut self, ms: Option<f32>) {
+        self.gpu_scene_ms = ms;
         self.stats.set_gpu_scene_ms(ms);
+    }
+    pub(super) fn record_scene_encoding(&mut self, encoded: bool) {
+        if let Some(capture) = &mut self.capture {
+            capture.scene_encoded(encoded);
+        }
+    }
+    pub(super) fn capture_gpu_samples(
+        &mut self,
+        make: impl FnOnce() -> std::collections::BTreeMap<&'static str, (u32, f32)>,
+    ) {
+        if let Some(capture) = &mut self.capture {
+            capture.gpu_samples(make());
+        }
+    }
+    pub(super) fn scene_seconds(&self, real: f32) -> f32 {
+        self.fixed_time_seconds.unwrap_or(real)
+    }
+    pub(super) fn build(&mut self, ms: f32) {
+        if let Some(capture) = &mut self.capture {
+            capture.build(ms);
+        }
+    }
+    pub(super) fn capture_context(&mut self, make: impl FnOnce() -> serde_json::Value) {
+        if let Some(capture) = &mut self.capture
+            && capture.context_due()
+        {
+            capture.context(make());
+        }
     }
     pub(super) fn observe_residency(&mut self, regions: usize) {
         self.peak_resident = self.peak_resident.max(regions);

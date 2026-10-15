@@ -4,17 +4,25 @@ Last updated: 2026-10-15
 
 Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md` and `scripts/editor_features.json` locate feature ownership and tests. Live Git state is authoritative for branch/SHA facts; CI claims require actual run evidence.
 
-## Current local boundary
+## Current boundary and standing workflow
 
-- Active work: the user-authorized editor ownership implementation, covering the complete approved checkpoint sequence.
-- Branch: `Neosback/editor-ownership`.
-- Baseline HEAD: `d7db98cd179fe8d64b2e743f74d8aefa9a955449` (local `main` merge of PR #55).
-- Implementation is complete and locally validated; remote branch certification is the next closeout step. The user explicitly requested commit and merge into `main`; branch CI and merge closeout are in progress.
-- This branch incorporates remote main handoff-only commit `f390f00f05b1a2014223c8fe3c00d43687d2e7b9`, which records the completed PR #55 closeout (Tier A/B/C success in CI #1423 / run `38759609008`). The earlier checkpoint/CI history is also preserved in `docs/history/interaction-runtime-checkpoints.md`.
+- Working branch: `main`; stay on `main` unless the user explicitly asks otherwise.
+- Program baseline: `63d2721e3fa30dc2eaecff140d6b27886e4dff2f`, merge of PR #56 (editor ownership).
+- Integrated baseline CI: run `38766016806`, successful Tier A/B/C. The old feature branch is retired remotely.
+- Current authorized work: performance measurement, responsive spline/tool UI, measured optimization, offline map playtesting and complete pinned 117HD behavior. See `docs/plans/PERFORMANCE-UI-PLAYTEST-HD.md`.
+- Implementation is in progress, beginning with reproducible release baselines. Changes after the baseline are uncommitted until a checkpoint records otherwise.
 
-The user explicitly authorized the full architecture plan, including continuing through its checkpoints, and subsequently authorized committing and merging the completed implementation.
+## Current program checkpoints
 
-## Completed ownership changes
+1. Baselines and resource/timing measurements — in progress.
+2. Responsive tool panels and spline workflow — pending.
+3. Measured CPU/GPU/memory optimizations — pending.
+4. Offline client/playtest runtime and cache/model support — pending.
+5. Remaining 117HD systems and independent visual proof — pending.
+
+Do not describe this program as complete merely because its foundations or self-generated regression images pass. Viewing distance, resolution and visual settings remain fixed in performance comparisons. Client networking/accounts and full combat/economy are outside scope.
+
+## Previously completed ownership changes (PR #56)
 
 1. Moved Paint, Height and Path semantic planners plus their existing cases into `osrs-edit`; reused canonical brush/Height setting types without changing settings/project wire shapes. Domain intents use `MapTile`.
 2. Made interaction fields private and moved camera movement and the spline preview lifecycle behind runtime operations. Preserved input polling, world lookup and semantic commit orchestration at the application boundary.
@@ -33,7 +41,7 @@ The user explicitly authorized the full architecture plan, including continuing 
 
 ## Validation
 
-Passed locally against the implementation working tree:
+Prior ownership implementation validation (not certification of new program changes):
 
 - Architecture/dependency/file-size/application-surface/feature-reference guards.
 - Architecture guard tests: 24 passed; editor ownership/feature guard tests: 11 passed; reference-regeneration safety: 5 passed; historical golden-index check passed.
@@ -49,4 +57,4 @@ These are local implementation results, not remote CI certification. Record exac
 
 ## Subsequent work
 
-Keep this branch focused on ownership/maintainability. Follow the existing product roadmap for independent Reference visual proof, M10+ certification, remaining HD features, export generalization and recovery/project polish; this refactor does not claim those features are complete. See `docs/PROJECT-STATUS.md`.
+Continue the authorized checkpoints on `main`. Follow the existing product roadmap for independent Reference visual proof, M10+ certification, remaining HD features, export generalization and recovery/project polish; this refactor does not claim those features are complete. See `docs/PROJECT-STATUS.md`.

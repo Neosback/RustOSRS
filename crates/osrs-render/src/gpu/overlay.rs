@@ -92,6 +92,9 @@ fn build_pipeline(
 }
 
 impl LineOverlay {
+    pub(super) fn buffer_bytes(&self) -> u64 {
+        self.buffer.as_ref().map_or(0, wgpu::Buffer::size)
+    }
     pub(super) fn new(device: &wgpu::Device, globals_layout: &wgpu::BindGroupLayout) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("overlay.wgsl"),

@@ -71,7 +71,10 @@ impl EditorApp {
         ];
         let mut settings = self.settings.prefs.hd_environment;
         settings.host_sky = self.settings.prefs.sky_color;
-        let elapsed = now.duration_since(self.hd.started).as_secs_f64();
+        let elapsed = f64::from(
+            self.diagnostics
+                .scene_seconds(now.duration_since(self.hd.started).as_secs_f32()),
+        );
         self.hd
             .state
             .update(&set, &settings, focal, &NoVariables, elapsed, delta);

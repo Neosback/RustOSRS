@@ -11,6 +11,7 @@ pub(in crate::gpu) struct PostIo<'a> {
     /// `COLOR_FORMAT` destination.
     pub target: &'a wgpu::TextureView,
     pub size: (u32, u32),
+    pub timestamps: Option<wgpu::RenderPassTimestampWrites<'a>>,
 }
 
 pub(in crate::gpu) struct PostPass {
@@ -106,7 +107,12 @@ impl PostPass {
         io: PostIo<'_>,
         params: HdParams,
     ) {
-        let PostIo { hdr, target, size } = io;
+        let PostIo {
+            hdr,
+            target,
+            size,
+            timestamps,
+        } = io;
         queue.write_buffer(
             &self.uniform,
             0,
@@ -143,7 +149,7 @@ impl PostPass {
                 },
             })],
             depth_stencil_attachment: None,
-            timestamp_writes: None,
+            timestamp_writes: timestamps,
             occlusion_query_set: None,
             multiview_mask: None,
         });

@@ -106,13 +106,13 @@ impl EditorApp {
 
     /// The drawer's "Place object" group: search, pick, and the armed object's controls.
     pub(super) fn place_group(&mut self, ui: &mut egui::Ui) {
-        ui.set_width(250.0);
+        ui.set_width((ui.ctx().content_rect().width() - 32.0).clamp(120.0, 250.0));
         if let Some(error) = &self.placer.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
             return;
         }
         let Some(catalog) = self.placer.catalog.clone() else {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.spinner();
                 ui.weak("Loading objects...");
             });
@@ -151,7 +151,7 @@ impl EditorApp {
         let Some(target) = &mut self.placer.target else {
             return;
         };
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new(&target.entry.name).strong());
             if target.entry.loc_types.len() > 1 {
                 egui::ComboBox::from_id_salt("place_loc_type")
@@ -168,7 +168,7 @@ impl EditorApp {
             }
         });
         let mut stop = false;
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button(egui_phosphor::regular::ARROW_COUNTER_CLOCKWISE)
                 .clicked()

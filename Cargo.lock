@@ -2430,6 +2430,7 @@ dependencies = [
  "osrs-render",
  "osrs-scene",
  "osrs-world",
+ "pollster 1.0.1",
  "rfd",
  "serde",
  "serde_json",

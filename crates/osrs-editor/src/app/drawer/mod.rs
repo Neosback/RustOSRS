@@ -52,7 +52,8 @@ impl EditorApp {
                 130.0,
                 380.0,
             ),
-            Tool::Objects => (72.0, 60.0, 120.0),
+            Tool::Objects => (120.0, 60.0, 360.0),
+            Tool::Spline => (210.0, 100.0, 440.0),
             _ => (104.0, 84.0, 200.0),
         };
         egui::Panel::bottom(egui::Id::new(("tool_drawer", tool as u8)))
@@ -65,7 +66,11 @@ impl EditorApp {
                     .stroke(Stroke::new(1.0, line))
                     .inner_margin(egui::Margin::symmetric(10, 6)),
             )
-            .show(ui, |ui| self.drawer(ui));
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt(("tool_drawer_scroll", tool as u8))
+                    .show(ui, |ui| self.drawer(ui));
+            });
     }
 
     fn drawer(&mut self, ui: &mut egui::Ui) {
@@ -181,27 +186,26 @@ impl EditorApp {
         self.height_tool_options(ui);
     }
 
-    /// The spline tool's drawer: only what the path is laid with, chosen from popups, and the actions.
+    /// Responsive Spline workflow; pure widgets emit actions for the interaction owner.
     fn spline_drawer(&mut self, ui: &mut egui::Ui) {
+        use super::interaction_runtime::SplineStatus;
+        use super::spline_tool::panel::{self, PointAction};
         let ctx = ui.ctx().clone();
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Path").strong());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                self.drawer_collapse(ui);
+                self.drawer_collapse(ui)
             });
         });
-        ui.add_space(2.0);
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 8.0;
-            // Overlay: the swatch opens the palette.
-            ui.weak("Overlay");
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Appearance");
             let overlay = match self.settings.prefs.brush.overlay.fill {
                 Fill::Set(id) => self
                     .overlay_swatch(id)
                     .map(|swatch| self.overlay_fill(&ctx, &swatch)),
                 Fill::Clear => None,
             };
-            let response = swatch(ui, 40.0, false, |painter, rect| match overlay {
+            let response = swatch(ui, 32.0, false, |painter, rect| match overlay {
                 Some(fill) => paint_overlay_swatch(painter, rect, fill, false),
                 None => {
                     painter.rect_filled(rect, 3.0, Color32::from_gray(38));
@@ -211,51 +215,86 @@ impl EditorApp {
                     );
                 }
             })
-            .on_hover_text("Choose the overlay the path is laid with");
+            .on_hover_text("Choose the path overlay");
             egui::Popup::from_toggle_button_response(&response)
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                 .show(|ui| {
-                    ui.set_min_width(560.0);
+                    ui.set_width((ui.ctx().content_rect().width() - 32.0).clamp(120.0, 560.0));
                     self.overlay_palette(ui, true);
                 });
             if let Fill::Set(id) = self.settings.prefs.brush.overlay.fill {
-                ui.weak(format!("#{id}"));
+                ui.weak(format!("Overlay #{id}"));
             }
-            ui.separator();
-            let points = self.interaction.spline_points().len();
-            ui.weak(format!(
-                "{points} point{}  \u{b7}  {} tiles",
-                if points == 1 { "" } else { "s" },
-                self.spline_tile_count()
-            ));
+            ui.checkbox(
+                &mut self.settings.prefs.brush.overlay.armed,
+                "Paint overlay",
+            );
+        });
+        panel::settings(ui, &mut self.settings.prefs.spline);
+        if let Some(action) = panel::points(
+            ui,
+            self.interaction.spline_points(),
+            self.interaction.selected_spline_point(),
+        ) {
+            match action {
+                PointAction::Select(index) => self.interaction.select_spline_point(index),
+                PointAction::Move(index, point) => self.interaction.move_spline_point(index, point),
+                PointAction::Remove(index) => self.interaction.remove_spline_point(index),
+            }
+        }
+        self.spline_update();
+        let status = self.interaction.spline_status();
+        ui.horizontal_wrapped(|ui| {
+            match status {
+                SplineStatus::NeedsPoints => {
+                    ui.weak("Add at least two control points");
+                }
+                SplineStatus::NeedsOverlay => {
+                    ui.weak("Choose and enable an overlay");
+                }
+                SplineStatus::Updating => {
+                    ui.spinner();
+                    ui.weak("Updating preview…");
+                }
+                SplineStatus::Ready { tiles } => {
+                    ui.label(format!("Ready · {tiles} tiles"));
+                }
+                SplineStatus::Empty => {
+                    ui.weak("The fitted path contains no tiles");
+                }
+                SplineStatus::Failed(reason) => {
+                    ui.colored_label(ui.visuals().error_fg_color, reason);
+                }
+            }
             if ui
-                .add_enabled(points >= 1, egui::Button::new("Lay path"))
-                .on_hover_text("Enter")
+                .add_enabled(
+                    matches!(status, SplineStatus::Ready { .. }),
+                    egui::Button::new("Lay path"),
+                )
+                .on_hover_text("Enter · one undo step")
                 .clicked()
             {
                 self.commit_spline();
             }
+            let any = !self.interaction.spline_points().is_empty();
             if ui
-                .add_enabled(points >= 1, egui::Button::new("Clear"))
-                .on_hover_text("Esc")
+                .add_enabled(any, egui::Button::new("Clear"))
+                .on_hover_text("Cancel this path without changing the map")
                 .clicked()
             {
                 self.interaction.clear_spline_points();
             }
             if ui
-                .add_enabled(points >= 1, egui::Button::new("Copy"))
-                .on_hover_text(
-                    "Copy the path's details (points, options, result) to paste into a chat",
-                )
+                .add_enabled(any, egui::Button::new("Copy details"))
                 .clicked()
             {
-                let text = self.spline_report();
-                ui.ctx().copy_text(text);
+                ui.ctx().copy_text(self.spline_report());
                 self.ui.notify("Copied the path details".to_owned());
             }
         });
-        ui.add_space(4.0);
-        ui.weak("Click the terrain to add points \u{b7} drag a point to move it \u{b7} Shift + click inserts \u{b7} Cmd + click or Delete removes \u{b7} Enter lays the path");
+        egui::CollapsingHeader::new("How to edit the path").show(ui, |ui| {
+            ui.label("Click to add · drag to move · Shift-click a segment to insert · Cmd-click or Delete to remove · Backspace removes the last point · Enter lays the current preview · Esc cancels");
+        });
     }
 
     /// What one painted tile will look like.

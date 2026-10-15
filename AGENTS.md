@@ -17,7 +17,7 @@
 - Preserve FIFO worker assumptions, dependency proofs and conservative rebuild fallbacks. GPU resources stay in rendering; UI code emits actions for product changes.
 - Keep UI-local widget state in `UiRuntime`; preferences/key bindings in `SettingsRuntime`; diagnostics never decide whether an edit or worker result is valid.
 - Search before creating a type, planner, history, worker message or cache. Reuse existing concepts and names. Do not introduce catch-all helper modules or broad mutable accessors.
-- Work in reviewable checkpoints on one architecture/feature branch. Continue across checkpoints when the user has authorized the whole sequence; otherwise report the completed boundary before expanding scope. Do not merge or publish without authorization.
+- Stay on `main` unless the user explicitly asks for a branch. Work in focused, reviewable checkpoints and continue through an authorized sequence. Do not create worktrees or PRs by default. Publishing still requires authorization.
 - New tools must update the feature registry with real planning, cancellation, commit and undo tests. When removing `EditorApp` behavior, remove its obsolete baseline entries; never widen the baseline just to bypass a guard.
 - Temporary adapters must name their authoritative source, allowed callers, and removal condition. The terrain preview/history-routing adapter's condition is documented on `TerrainController` and in the feature map.
 

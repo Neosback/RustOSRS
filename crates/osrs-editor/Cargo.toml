@@ -40,3 +40,6 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+pollster.workspace = true

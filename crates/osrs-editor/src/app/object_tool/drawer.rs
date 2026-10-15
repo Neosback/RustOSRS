@@ -24,7 +24,7 @@ impl EditorApp {
             .selection_objects()
             .len()
             .max(usize::from(self.interaction.selected().is_some()));
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new("Objects").strong().size(15.0));
             ui.label(match count {
                 0 => "Click an object (Shift adds, drag a box for several)".to_owned(),
@@ -53,7 +53,7 @@ impl EditorApp {
         let mut floor = 0;
         let mut turn = 0;
         let (mut copy, mut delete) = (false, false);
-        ui.horizontal_top(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
             ui.spacing_mut().button_padding = egui::vec2(10.0, 7.0);
             group(ui, "Place object", |ui| self.place_group(ui));

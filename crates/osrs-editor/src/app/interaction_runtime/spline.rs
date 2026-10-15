@@ -10,6 +10,8 @@ pub(super) struct SplineState {
     /// Control points in world tile coordinates.
     points: Vec<(f32, f32)>,
     drag: Option<usize>,
+    selected: Option<usize>,
+    error: Option<&'static str>,
     preview: Option<Preview>,
     /// The editor state the preview should represent. The worker may still be catching up.
     desired_key: Option<u64>,
@@ -28,6 +30,16 @@ pub(in crate::app) struct Preview {
     pub(in crate::app) lines: Vec<Vec<(f32, f32)>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::app) enum SplineStatus {
+    NeedsPoints,
+    NeedsOverlay,
+    Updating,
+    Ready { tiles: usize },
+    Empty,
+    Failed(&'static str),
+}
+
 impl SplineState {
     fn current_preview(&self) -> Option<&Preview> {
         self.preview
@@ -44,13 +56,29 @@ struct PlanWorker {
     requested_key: u64,
 }
 
-fn fnv(text: &str) -> u64 {
-    let mut hash = FNV_OFFSET;
-    for byte in text.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
+fn plan_key(
+    points: &[(f32, f32)],
+    width: f32,
+    edge: f32,
+    overlay: u16,
+    plane: u8,
+    snap: bool,
+) -> u64 {
+    let words = points
+        .iter()
+        .flat_map(|point| [point.0.to_bits(), point.1.to_bits()])
+        .chain([
+            width.to_bits(),
+            edge.to_bits(),
+            u32::from(overlay),
+            u32::from(plane),
+            u32::from(snap),
+        ]);
+    words
+        .flat_map(u32::to_le_bytes)
+        .fold(FNV_OFFSET, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(FNV_PRIME)
+        })
 }
 
 /// Everything a fit is made from, copied off the editor so another thread can make it.
@@ -128,6 +156,43 @@ impl PlanWorker {
 }
 
 impl InteractionRuntime {
+    pub(in crate::app) fn selected_spline_point(&self) -> Option<usize> {
+        self.spline.selected
+    }
+    pub(in crate::app) fn select_spline_point(&mut self, index: usize) {
+        if index < self.spline.points.len() {
+            self.spline.selected = Some(index);
+        }
+    }
+    pub(in crate::app) fn move_spline_point(&mut self, index: usize, point: (f32, f32)) {
+        if !point.0.is_finite() || !point.1.is_finite() {
+            return;
+        }
+        if let Some(current) = self.spline.points.get_mut(index)
+            && *current != point
+        {
+            *current = point;
+            self.spline.desired_key = None;
+        }
+    }
+    pub(in crate::app) fn spline_status(&self) -> SplineStatus {
+        if let Some(error) = self.spline.error {
+            return SplineStatus::Failed(error);
+        }
+        if self.spline.points.len() < 2 {
+            return SplineStatus::NeedsPoints;
+        }
+        if self.spline.desired_key.is_none() {
+            return SplineStatus::NeedsOverlay;
+        }
+        match self.spline.current_preview() {
+            Some(preview) if preview.paints.is_empty() => SplineStatus::Empty,
+            Some(preview) => SplineStatus::Ready {
+                tiles: preview.paints.len(),
+            },
+            None => SplineStatus::Updating,
+        }
+    }
     pub(in crate::app) fn spline_points(&self) -> &[(f32, f32)] {
         &self.spline.points
     }
@@ -135,25 +200,32 @@ impl InteractionRuntime {
     pub(in crate::app) fn begin_spline_drag(&mut self, index: usize) {
         if index < self.spline.points.len() {
             self.spline.drag = Some(index);
+            self.spline.selected = Some(index);
         }
     }
 
     pub(in crate::app) fn append_spline_point_and_drag(&mut self, point: (f32, f32)) {
         self.spline.points.push(point);
         self.spline.drag = Some(self.spline.points.len() - 1);
+        self.spline.selected = self.spline.drag;
+        self.spline.desired_key = None;
     }
 
     pub(in crate::app) fn insert_spline_point_and_drag(&mut self, index: usize, point: (f32, f32)) {
         let index = index.min(self.spline.points.len());
         self.spline.points.insert(index, point);
         self.spline.drag = Some(index);
+        self.spline.selected = Some(index);
+        self.spline.desired_key = None;
     }
 
     pub(in crate::app) fn update_spline_drag(&mut self, point: (f32, f32)) {
         if let Some(index) = self.spline.drag
             && let Some(current) = self.spline.points.get_mut(index)
+            && *current != point
         {
             *current = point;
+            self.spline.desired_key = None;
         }
     }
 
@@ -169,17 +241,30 @@ impl InteractionRuntime {
         if index < self.spline.points.len() {
             self.spline.points.remove(index);
             self.spline.drag = None;
+            self.spline.selected = self.spline.selected.and_then(|selected| {
+                if selected == index {
+                    None
+                } else {
+                    Some(selected - usize::from(selected > index))
+                }
+            });
+            self.spline.desired_key = None;
         }
     }
 
     pub(in crate::app) fn pop_spline_point(&mut self) {
-        self.spline.points.pop();
-        self.spline.drag = None;
+        if let Some(index) = self.spline.points.len().checked_sub(1) {
+            self.remove_spline_point(index);
+        }
     }
 
     pub(in crate::app) fn clear_spline_points(&mut self) {
         self.spline.points.clear();
         self.spline.drag = None;
+        self.spline.selected = None;
+        self.spline.desired_key = None;
+        self.spline.preview = None;
+        self.spline.error = None;
     }
 }
 
@@ -202,6 +287,8 @@ impl InteractionRuntime {
     pub(in crate::app) fn replace_spline_points(&mut self, points: Vec<(f32, f32)>) {
         self.spline.points = points;
         self.spline.drag = None;
+        self.spline.selected = None;
+        self.spline.desired_key = None;
     }
     /// Everything the current path is planned from, or `None` when there is nothing to plan.
     fn plan_input(
@@ -215,15 +302,14 @@ impl InteractionRuntime {
         let overlay_id = overlay_id?;
         let width = spline.width.clamp(0.5, 24.0);
         let edge_weight = spline.edge_weight.clamp(0.0, 2.0);
-        let key = fnv(&format!(
-            "{:?}|{}|{}|{}|{}|{}",
-            self.spline.points,
-            width.to_bits(),
-            edge_weight.to_bits(),
+        let key = plan_key(
+            &self.spline.points,
+            width,
+            edge_weight,
             overlay_id,
             self.view_plane,
             spline.snap_points,
-        ));
+        );
         Some(PlanInput {
             key,
             points: self.spline.points.clone(),
@@ -239,6 +325,34 @@ impl InteractionRuntime {
         settings: &crate::paint::SplineSettings,
         overlay_id: Option<u16>,
     ) {
+        if self
+            .spline
+            .points
+            .iter()
+            .any(|point| !point.0.is_finite() || !point.1.is_finite())
+        {
+            self.spline.error = Some("Control points must have finite coordinates");
+            self.spline.desired_key = None;
+            self.spline.preview = None;
+            return;
+        }
+        if self.spline.error == Some("Control points must have finite coordinates") {
+            self.spline.error = None;
+        }
+        if let Some(overlay) = overlay_id
+            && self.spline.current_preview().is_some()
+            && self.spline.desired_key
+                == Some(plan_key(
+                    &self.spline.points,
+                    settings.width.clamp(0.5, 24.0),
+                    settings.edge_weight.clamp(0.0, 2.0),
+                    overlay,
+                    self.view_plane,
+                    settings.snap_points,
+                ))
+        {
+            return;
+        }
         let Some(input) = self.plan_input(settings, overlay_id) else {
             self.spline.desired_key = None;
             self.spline.preview = None;
@@ -263,6 +377,7 @@ impl InteractionRuntime {
                             // warnings/counts or a stale planned centre line.
                             if preview.key == desired_key {
                                 self.spline.preview = Some(preview);
+                                self.spline.error = None;
                             }
                         }
                         Err(std::sync::mpsc::TryRecvError::Empty) => break,
@@ -274,6 +389,7 @@ impl InteractionRuntime {
                 }
             }
             if disconnected {
+                self.spline.error = Some("Preview worker stopped; retrying");
                 self.spline.worker = None;
             }
 
@@ -302,6 +418,7 @@ impl InteractionRuntime {
     }
 
     /// Plan now, on this thread, so what is laid is what the points and options say.
+    #[cfg(test)]
     pub(in crate::app) fn plan_spline_now(
         &mut self,
         settings: &crate::paint::SplineSettings,

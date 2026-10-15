@@ -192,6 +192,16 @@ impl FrameStats {
             gpu_geometry_bytes as f32 / MIB
         )
     }
+
+    pub fn queue_latency_ms(&self) -> Option<f32> {
+        let ms = f32::from_bits(self.gpu_bits.load(Ordering::Relaxed));
+        (ms > 0.0).then_some(ms)
+    }
+
+    /// Latest process RSS sample, collected at most once per second when supported.
+    pub fn resident_mib(&self) -> Option<f32> {
+        (self.process_mib > 0.0).then_some(self.process_mib)
+    }
 }
 
 /// A place to move the camera to.

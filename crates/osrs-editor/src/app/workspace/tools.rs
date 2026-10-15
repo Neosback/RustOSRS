@@ -133,7 +133,7 @@ impl EditorApp {
                             );
                         });
                         ui.add_space(4.0);
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             ui.spacing_mut().item_spacing.x = 6.0;
                             for tool in Tool::ALL {
                                 let key = self
@@ -220,21 +220,7 @@ impl EditorApp {
             }
             Tool::Spline => {
                 crate::theme::section_heading(ui, "Path");
-                ui.horizontal(|ui| {
-                    ui.weak("Width");
-                    ui.add(
-                        egui::DragValue::new(&mut self.settings.prefs.spline.width)
-                            .range(0.5..=24.0)
-                            .speed(0.1)
-                            .suffix(" tiles"),
-                    );
-                    ui.weak("Edge");
-                    ui.add(
-                        egui::DragValue::new(&mut self.settings.prefs.spline.edge_weight)
-                            .range(0.0..=2.0)
-                            .speed(0.05),
-                    );
-                });
+                crate::app::spline_tool::panel::settings(ui, &mut self.settings.prefs.spline);
             }
             Tool::Height => {
                 crate::theme::section_heading(ui, "Height");

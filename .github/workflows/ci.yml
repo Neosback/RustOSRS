@@ -39,6 +39,11 @@ jobs:
       - name: Test historical deob golden index
         run: python3 scripts/test_deob_golden_index.py
 
+      - name: Verify pinned HD corpus and feature ledger
+        run: |
+          python3 scripts/check_hd_sources.py
+          python3 scripts/test_hd_sources.py
+
       - name: Check formatting
         run: cargo fmt --all --check
 

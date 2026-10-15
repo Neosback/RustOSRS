@@ -6,6 +6,7 @@
 
 mod input;
 mod overlay;
+pub(in crate::app) mod panel;
 
 use super::EditorApp;
 use super::editing::PathTile;
@@ -34,11 +35,6 @@ fn segment_distance(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
 }
 
 impl EditorApp {
-    pub(super) fn spline_tile_count(&self) -> usize {
-        self.interaction
-            .current_spline_preview()
-            .map_or(0, |preview| preview.paints.len())
-    }
     fn laying_overlay(&self) -> Option<u16> {
         let brush = &self.settings.prefs.brush;
         match brush.overlay.fill {
@@ -50,11 +46,6 @@ impl EditorApp {
         let overlay = self.laying_overlay();
         self.interaction
             .update_spline_preview(&self.settings.prefs.spline, overlay);
-    }
-    fn spline_plan_now(&mut self) {
-        let overlay = self.laying_overlay();
-        self.interaction
-            .plan_spline_now(&self.settings.prefs.spline, overlay);
     }
     /// Everything about the current fitted path in one copyable block.
     pub(super) fn spline_report(&self) -> String {
