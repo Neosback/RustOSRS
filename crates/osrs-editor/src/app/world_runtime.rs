@@ -5,21 +5,25 @@
 //! animation worker's schedule. It never owns edited map semantics; those live in `EditorSession`.
 
 mod builds;
+mod height_dependencies;
 mod invalidation;
 mod stats;
 
 use self::{
     builds::BuildTracker,
+    height_dependencies::{
+        HeightDependencyCollection, HeightDependencyLookup, HeightDependencyStamp,
+    },
     invalidation::{ProjectionInvalidation, projection_invalidation, zone_region},
     stats::RegionStats,
 };
 use super::edit_runtime::EditTouches;
 use osrs_core::coords::RegionCoord;
-use osrs_edit::ChangeImpact;
+use osrs_edit::{ChangeImpact, HeightVertexCoord};
 use osrs_render::SceneGeometry;
 use osrs_world::{
-    AnimatedInstance, AnimationWorker, LocEdit, LocInfo, RegionStreamer, StreamEvent,
-    TerrainPresentation, TileEdit,
+    AnimatedInstance, AnimationWorker, HeightDependencySnapshot, LocEdit, LocInfo, RegionStreamer,
+    StreamEvent, TerrainPresentation, TileEdit,
 };
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Duration;
@@ -39,7 +43,7 @@ pub(super) type ZoneKey = (i32, i32);
 /// What part of a resident region the current worker build is intended to refresh.
 ///
 /// The worker always assembles the full contextual scene. `Zones` narrows static extraction and GPU
-/// installation while source, picker, and animation projections remain region-complete.
+/// installation while source, picker, animation, and Height-dependency projections remain complete.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum RegionBuildScope {
     Full,
@@ -64,11 +68,13 @@ pub(super) struct WorldRuntime {
     presentation_hd: bool,
     /// Regions resident on the GPU (`None` = the cache has no map data there).
     loaded: HashMap<RegionKey, Option<RegionStats>>,
+    /// Projection-only Height dependency data installed from accepted current worker builds.
+    height_dependencies: HashMap<RegionKey, HeightDependencyCollection>,
     /// FIFO request identity and per-region projection epochs for stale-result rejection.
     builds: BuildTracker,
     /// Regions waiting for a conservative full rebuild after an edit.
     dirty_regions: HashSet<RegionKey>,
-    /// Fine-grained terrain zones waiting for refresh, grouped by their owning region.
+    /// Fine-grained zones waiting for refresh, grouped by their owning region.
     dirty_zones: HashMap<RegionKey, BTreeSet<ZoneKey>>,
     /// Whether the cache worker has reported ready.
     ready: bool,
@@ -87,6 +93,7 @@ impl WorldRuntime {
             presentation_generation: 1,
             presentation_hd: false,
             loaded: HashMap::new(),
+            height_dependencies: HashMap::new(),
             builds: BuildTracker::default(),
             dirty_regions: HashSet::new(),
             dirty_zones: HashMap::new(),
@@ -125,6 +132,7 @@ impl WorldRuntime {
     pub(super) fn replace_streamer(&mut self, streamer: RegionStreamer) -> RegionStreamer {
         self.dirty_regions.clear();
         self.dirty_zones.clear();
+        self.height_dependencies.clear();
         self.builds.reset_source();
         self.ready = false;
         std::mem::replace(&mut self.streamer, streamer)
@@ -171,6 +179,7 @@ impl WorldRuntime {
             self.animations.remove_region(key);
         }
         self.loaded.clear();
+        self.height_dependencies.clear();
         self.builds.cancel_all();
         self.dirty_regions.clear();
         self.dirty_zones.clear();
@@ -178,16 +187,19 @@ impl WorldRuntime {
         keys
     }
 
-    /// One region build finished; static status accounting follows the same full/zone scope used by
-    /// the renderer while animation state is replaced from the complete contextual worker result.
+    /// One accepted current region build finished; static status accounting follows the same
+    /// full/zone scope used by the renderer while animation and Height dependency state are replaced
+    /// from the complete contextual worker result.
     pub(super) fn region_installed(
         &mut self,
         key: RegionKey,
         scope: &RegionBuildScope,
         geometry: &SceneGeometry,
+        dependencies: &HeightDependencySnapshot,
         animations: Vec<AnimatedInstance>,
     ) {
         self.animations.insert_region(key, animations);
+        self.install_height_dependencies(key, dependencies);
         self.animation.dirty = true;
         match scope {
             RegionBuildScope::Full => {
@@ -205,11 +217,38 @@ impl WorldRuntime {
         }
     }
 
+    fn install_height_dependencies(
+        &mut self,
+        key: RegionKey,
+        snapshot: &HeightDependencySnapshot,
+    ) {
+        let producer = RegionCoord::new(key.0, key.1);
+        let stamp = HeightDependencyStamp::new(
+            self.builds.projection_epoch(key),
+            self.presentation_generation,
+        );
+        let mut dependencies = HeightDependencyCollection::new(producer, stamp);
+        for (source, zones) in &snapshot.by_source {
+            let source = HeightVertexCoord::new(source.corner, source.plane);
+            for &zone in zones {
+                if dependencies.record(source, zone).is_err() {
+                    self.height_dependencies.remove(&key);
+                    return;
+                }
+            }
+        }
+        if snapshot.complete {
+            dependencies.mark_complete();
+        }
+        self.height_dependencies.insert(key, dependencies);
+    }
+
     /// Mark a current build as absent. Stale completions are filtered by [`Self::build_finished`]
     /// before this method is called, so they cannot overwrite newer residency state.
     pub(super) fn region_absent(&mut self, key: RegionKey, scope: &RegionBuildScope) {
         if matches!(scope, RegionBuildScope::Full) {
             self.loaded.insert(key, None);
+            self.height_dependencies.remove(&key);
         }
     }
 
@@ -242,6 +281,7 @@ impl WorldRuntime {
         let stale = stale_regions(self.loaded.keys().copied(), center, radius);
         for &key in &stale {
             self.loaded.remove(&key);
+            self.height_dependencies.remove(&key);
             self.builds.cancel(key);
             self.dirty_regions.remove(&key);
             self.dirty_zones.remove(&key);
@@ -313,16 +353,26 @@ impl WorldRuntime {
 
     /// Translate one finalized semantic touch set into projection invalidation.
     ///
-    /// Pure terrain edits can be bounded from audited terrain dependencies, so they refresh 8x8
-    /// zones. Height edits remain conservative because ground-contoured locs depend on model bounds,
-    /// and object edits remain conservative because object-definition footprints are not yet carried
-    /// by the semantic touch set. Those paths retain the previous region-level policy exactly.
+    /// Height edits use exact world zones only when every resident non-empty producer region has a
+    /// current, complete dependency snapshot. Missing, stale, or incomplete metadata fails closed
+    /// to the previous region policy. Object edits remain region-conservative until their separate
+    /// dependency subsystem exists.
     pub(super) fn invalidate_semantic_edit(
         &mut self,
         impact: ChangeImpact,
         touched_regions: &EditTouches,
     ) {
-        match projection_invalidation(impact, touched_regions, &touched_regions.footprint) {
+        let proven_height_zones = if touched_regions.footprint.height_vertices.is_empty() {
+            None
+        } else {
+            self.proven_height_zones(&touched_regions.footprint.height_vertices)
+        };
+        match projection_invalidation(
+            impact,
+            touched_regions,
+            &touched_regions.footprint,
+            proven_height_zones.as_ref(),
+        ) {
             ProjectionInvalidation::None => {}
             ProjectionInvalidation::Regions(regions) => {
                 for region in regions {
@@ -335,6 +385,37 @@ impl WorldRuntime {
                 }
             }
         }
+    }
+
+    /// Resolve source Height vertices through every resident producer. Any producer without a
+    /// current complete read-set makes the whole transaction fall back to region invalidation.
+    fn proven_height_zones(
+        &self,
+        sources: &[HeightVertexCoord],
+    ) -> Option<BTreeSet<ZoneKey>> {
+        let mut zones = BTreeSet::new();
+        for (&key, stats) in &self.loaded {
+            if stats.is_none() {
+                continue;
+            }
+            let dependencies = self.height_dependencies.get(&key)?;
+            let current = HeightDependencyStamp::new(
+                self.builds.projection_epoch(key),
+                self.presentation_generation,
+            );
+            for &source in sources {
+                match dependencies.lookup(source, current) {
+                    HeightDependencyLookup::Current(Some(found)) => {
+                        zones.extend(found.iter().copied());
+                    }
+                    HeightDependencyLookup::Current(None) => {}
+                    HeightDependencyLookup::Stale | HeightDependencyLookup::Incomplete => {
+                        return None;
+                    }
+                }
+            }
+        }
+        Some(zones)
     }
 
     /// Queue a full `region` rebuild if it is resident. Full invalidation subsumes queued zones.
