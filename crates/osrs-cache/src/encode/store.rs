@@ -45,6 +45,11 @@ pub enum StoreError {
         index_id: u8,
         group_id: u32,
     },
+    /// Incrementing a group's reference-table version would overflow `u32`.
+    VersionOverflow {
+        index_id: u8,
+        group_id: u32,
+    },
     /// A container with a compression byte this writer cannot reproduce.
     UnsupportedCompression {
         byte: u8,
@@ -66,6 +71,9 @@ impl fmt::Display for StoreError {
             }
             Self::UnknownGroup { index_id, group_id } => {
                 write!(formatter, "index {index_id} has no group {group_id}")
+            }
+            Self::VersionOverflow { index_id, group_id } => {
+                write!(formatter, "index {index_id} group {group_id} version cannot be incremented")
             }
             Self::UnsupportedCompression { byte } => {
                 write!(formatter, "unsupported container compression {byte}")
@@ -337,11 +345,15 @@ pub fn repack_groups(
                     index_id,
                     group_id: update.group_id,
                 })?;
+            let next_version = entry.version.checked_add(1).ok_or(StoreError::VersionOverflow {
+                index_id,
+                group_id: update.group_id,
+            })?;
             entry.crc = crc32(&container);
             if entry.sizes.is_some() {
                 entry.sizes = Some((container.len() as u32, update.payload.len() as u32));
             }
-            entry.version += 1;
+            entry.version = next_version;
             if had_suffix {
                 container.extend_from_slice(&(entry.version as u16).to_be_bytes());
             }
