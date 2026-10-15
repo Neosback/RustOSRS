@@ -161,11 +161,9 @@ impl Route {
         match self {
             Self::Paint(paint) => EditFootprint::new(map_tiles(&paint.keys), [], []),
             Self::Height(height) => EditFootprint::new([], height_vertices(&height.keys), []),
-            Self::Path(path) if path.include_height => EditFootprint::new(
-                map_tiles(&path.keys),
-                height_vertices(&path.keys),
-                [],
-            ),
+            Self::Path(path) if path.include_height => {
+                EditFootprint::new(map_tiles(&path.keys), height_vertices(&path.keys), [])
+            }
             Self::Path(path) => EditFootprint::new(map_tiles(&path.keys), [], []),
             Self::Object(object) => EditFootprint::new(
                 [],
