@@ -303,17 +303,17 @@ mod tests {
         interaction.update_marquee(Some(Pos2::new(150.0, -5.0)), bounds, true, false);
         interaction.update_marquee(None, bounds, false, true);
 
-        let finished = interaction
-            .finish_marquee()
-            .map(|marquee| (marquee.start, marquee.current, marquee.additive, marquee.toggle));
+        let finished = interaction.finish_marquee().map(|marquee| {
+            (
+                marquee.start,
+                marquee.current,
+                marquee.additive,
+                marquee.toggle,
+            )
+        });
         assert_eq!(
             finished,
-            Some((
-                Pos2::new(10.0, 20.0),
-                Pos2::new(100.0, 0.0),
-                true,
-                true,
-            ))
+            Some((Pos2::new(10.0, 20.0), Pos2::new(100.0, 0.0), true, true,))
         );
         assert!(interaction.marquee().is_none());
     }
