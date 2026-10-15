@@ -301,10 +301,9 @@ fn repacking_rejects_version_overflow_without_writing() {
         .unwrap_or_else(|e| unreachable!("{e}"))
         .unwrap_or_else(|| unreachable!("table exists"));
     let table_compression = compression_of(&table_raw).unwrap_or_else(|e| unreachable!("{e}"));
-    let mut table = ReferenceTable::parse(
-        &decode_container(table_raw).unwrap_or_else(|e| unreachable!("{e}")),
-    )
-    .unwrap_or_else(|e| unreachable!("{e}"));
+    let mut table =
+        ReferenceTable::parse(&decode_container(table_raw).unwrap_or_else(|e| unreachable!("{e}")))
+            .unwrap_or_else(|e| unreachable!("{e}"));
     table
         .group_mut(1)
         .unwrap_or_else(|| unreachable!("group exists"))
