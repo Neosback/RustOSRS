@@ -9,13 +9,14 @@ use super::super::plan::{project_height_values, project_paint_values};
 use super::{
     EditStep, EditorApp, SemanticHeightHistory, SemanticPaintHistory, SemanticPathHistory, TileKey,
 };
-use crate::app::edit_runtime::{EditExecution, EditExecutionError, EditReplayDirection};
+use crate::app::edit_runtime::{
+    EditExecution, EditExecutionError, EditFootprint, EditReplayDirection,
+};
 use crate::app::object_tool::{ObjectHistoryRoute, build_object_history_projection};
 use crate::paint::TileValues;
-use osrs_core::coords::{MapTile, RegionCoord};
+use osrs_core::coords::MapTile;
 use osrs_edit::MapQuery;
 use osrs_world::{LocEdit, LocSpec};
-use std::collections::BTreeSet;
 use web_time::Instant;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -141,19 +142,31 @@ impl Route {
         }
     }
 
-    fn touched_regions(&self) -> Vec<RegionCoord> {
-        let mut regions = BTreeSet::new();
+    /// Reconstruct the semantic coordinate classes of the opaque session-history patch.
+    fn footprint(&self) -> EditFootprint {
+        let map_tiles = |keys: &[TileKey]| {
+            keys.iter()
+                .map(|key| MapTile::new(key.1, key.2))
+                .collect::<Vec<_>>()
+        };
         match self {
-            Self::Paint(paint) => collect_tile_regions(&mut regions, &paint.keys),
-            Self::Height(height) => collect_tile_regions(&mut regions, &height.keys),
-            Self::Path(path) => collect_tile_regions(&mut regions, &path.keys),
-            Self::Object(object) => {
-                for spec in object.removed().iter().chain(object.added()) {
-                    regions.insert(MapTile::new(spec.tile.0, spec.tile.1).split_region().0);
-                }
+            Self::Paint(paint) => EditFootprint::new(map_tiles(&paint.keys), [], []),
+            Self::Height(height) => EditFootprint::new([], map_tiles(&height.keys), []),
+            Self::Path(path) if path.include_height => {
+                let tiles = map_tiles(&path.keys);
+                EditFootprint::new(tiles.clone(), tiles, [])
             }
+            Self::Path(path) => EditFootprint::new(map_tiles(&path.keys), [], []),
+            Self::Object(object) => EditFootprint::new(
+                [],
+                [],
+                object
+                    .removed()
+                    .iter()
+                    .chain(object.added())
+                    .map(|spec| MapTile::new(spec.tile.0, spec.tile.1)),
+            ),
         }
-        regions.into_iter().collect()
     }
 
     fn prepare_projection(
@@ -232,12 +245,6 @@ impl Route {
     }
 }
 
-fn collect_tile_regions(regions: &mut BTreeSet<RegionCoord>, keys: &[TileKey]) {
-    for key in keys {
-        regions.insert(MapTile::new(key.1, key.2).split_region().0);
-    }
-}
-
 impl EditorApp {
     pub(in crate::app) fn undo(&mut self) {
         let Some(step) = self.history.pop() else {
@@ -273,10 +280,10 @@ impl EditorApp {
     fn route_semantic(&mut self, direction: Direction, step: EditStep, route: &Route) {
         let (label, word) = (route.label(), direction.word());
         let input = route.capture_projection_input(self);
-        let touched_regions = route.touched_regions();
+        let footprint = route.footprint();
         let execution = self
             .session
-            .replay(direction.gateway(), touched_regions, |document| {
+            .replay(direction.gateway(), footprint, |document| {
                 route.prepare_projection(document, direction, input)
             });
 
