@@ -71,21 +71,13 @@ impl EditFootprint {
 
     fn into_touches(self) -> EditTouches {
         let mut regions = BTreeSet::new();
-        regions.extend(
-            self.terrain_tiles
-                .iter()
-                .map(|tile| tile.split_region().0),
-        );
+        regions.extend(self.terrain_tiles.iter().map(|tile| tile.split_region().0));
         regions.extend(
             self.height_vertices
                 .iter()
                 .map(|coord| coord.corner.split_region().0),
         );
-        regions.extend(
-            self.object_tiles
-                .iter()
-                .map(|tile| tile.split_region().0),
-        );
+        regions.extend(self.object_tiles.iter().map(|tile| tile.split_region().0));
         EditTouches {
             regions: regions.into_iter().collect(),
             footprint: self,
