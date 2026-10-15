@@ -1,7 +1,7 @@
 use super::*;
-use crate::app::edit_runtime::EditRuntime;
+use crate::app::edit_runtime::{EditFootprint, EditRuntime};
 use crate::session::EditorSession;
-use osrs_core::coords::SourcePlane;
+use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::{HeightVertexCoord, MapDocument, MapOp, MapPatch};
 
 fn plane() -> SourcePlane {
@@ -18,6 +18,10 @@ fn height_patch(coord: HeightVertexCoord, before: i32, after: i32) -> MapPatch {
         before,
         after,
     }])
+}
+
+fn height_footprint() -> EditFootprint {
+    EditFootprint::new([], [MapTile::new(3200, 3200)], [])
 }
 
 fn applied_runtime() -> EditRuntime {
@@ -49,7 +53,7 @@ fn failed_semantic_undo_projection_restores_runtime_and_history_stack() {
 
     let result = runtime.replay(
         EditReplayDirection::Undo,
-        vec![RegionCoord::new(50, 50)],
+        height_footprint(),
         |_| Err::<(), _>("injected Undo projection failure".to_owned()),
     );
     assert!(matches!(result, Err(EditExecutionError::Projection(_))));
@@ -76,7 +80,7 @@ fn failed_semantic_redo_projection_restores_runtime_and_redo_stack() {
 
     let result = runtime.replay(
         EditReplayDirection::Redo,
-        vec![RegionCoord::new(50, 50)],
+        height_footprint(),
         |_| Err::<(), _>("injected Redo projection failure".to_owned()),
     );
     assert!(matches!(result, Err(EditExecutionError::Projection(_))));
@@ -101,7 +105,7 @@ fn successful_semantic_undo_finalizes_once_and_moves_history_marker() {
     let result = runtime
         .replay(
             EditReplayDirection::Undo,
-            vec![RegionCoord::new(50, 50)],
+            height_footprint(),
             |_| Ok::<_, String>(1),
         )
         .unwrap_or_else(|error| unreachable!("valid Undo replay: {error:?}"));
@@ -132,7 +136,7 @@ fn successful_semantic_redo_finalizes_once_and_moves_redo_marker() {
     let result = runtime
         .replay(
             EditReplayDirection::Redo,
-            vec![RegionCoord::new(50, 50)],
+            height_footprint(),
             |_| Ok::<_, String>(1),
         )
         .unwrap_or_else(|error| unreachable!("valid Redo replay: {error:?}"));
