@@ -98,7 +98,10 @@ impl HeightDependencyCollection {
                 actual: RegionCoord::new(actual.0, actual.1),
             });
         }
-        self.by_source.entry(source).or_default().insert(output_zone);
+        self.by_source
+            .entry(source)
+            .or_default()
+            .insert(output_zone);
         Ok(())
     }
 
@@ -168,8 +171,7 @@ impl HeightDependencyStore {
         stamp: HeightDependencyStamp,
         snapshot: &HeightDependencySnapshot,
     ) -> Result<(), HeightDependencyError> {
-        let mut collection =
-            HeightDependencyCollection::new(RegionCoord::new(key.0, key.1), stamp);
+        let mut collection = HeightDependencyCollection::new(RegionCoord::new(key.0, key.1), stamp);
         for (source, zones) in &snapshot.by_source {
             let source = HeightVertexCoord::new(source.corner, source.plane);
             for &zone in zones {
@@ -230,10 +232,19 @@ mod tests {
         let mut dependencies = HeightDependencyCollection::new(RegionCoord::new(50, 50), stamp);
         let vertex = source(3200, 3200, 0);
         assert_eq!(dependencies.record(vertex, (400, 400)), Ok(()));
-        assert_eq!(dependencies.completeness(), HeightDependencyCompleteness::Incomplete);
-        assert_eq!(dependencies.lookup(vertex, stamp), HeightDependencyLookup::Incomplete);
+        assert_eq!(
+            dependencies.completeness(),
+            HeightDependencyCompleteness::Incomplete
+        );
+        assert_eq!(
+            dependencies.lookup(vertex, stamp),
+            HeightDependencyLookup::Incomplete
+        );
         dependencies.mark_complete();
-        assert_eq!(dependencies.completeness(), HeightDependencyCompleteness::Complete);
+        assert_eq!(
+            dependencies.completeness(),
+            HeightDependencyCompleteness::Complete
+        );
         assert_eq!(
             dependencies.lookup(vertex, stamp),
             HeightDependencyLookup::Current(dependencies.by_source.get(&vertex))
@@ -253,7 +264,10 @@ mod tests {
         else {
             unreachable!("complete current source has recorded zones")
         };
-        assert_eq!(zones.iter().copied().collect::<Vec<_>>(), vec![(-8, -8), (-1, -1)]);
+        assert_eq!(
+            zones.iter().copied().collect::<Vec<_>>(),
+            vec![(-8, -8), (-1, -1)]
+        );
     }
 
     #[test]
@@ -313,7 +327,10 @@ mod tests {
         complete.mark_complete();
         let incomplete = HeightDependencyCollection::new(region, stamp);
         assert_eq!(complete.merge(incomplete), Ok(()));
-        assert_eq!(complete.completeness(), HeightDependencyCompleteness::Incomplete);
+        assert_eq!(
+            complete.completeness(),
+            HeightDependencyCompleteness::Incomplete
+        );
     }
 
     #[test]
