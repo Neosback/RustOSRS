@@ -488,10 +488,13 @@ impl CacheRepository {
                 "Invalid verified fingerprint.".to_owned(),
             ));
         }
-        for (byte, pair) in bytes
-            .iter_mut()
-            .zip(expected_fingerprint.as_bytes().chunks_exact(2))
-        {
+        let (pairs, remainder) = expected_fingerprint.as_bytes().as_chunks::<2>();
+        if !remainder.is_empty() {
+            return Err(OpenMatchingError::Unreadable(
+                "Invalid verified fingerprint.".to_owned(),
+            ));
+        }
+        for (byte, pair) in bytes.iter_mut().zip(pairs) {
             let pair = std::str::from_utf8(pair)
                 .map_err(|e| OpenMatchingError::Unreadable(e.to_string()))?;
             *byte = u8::from_str_radix(pair, 16)
