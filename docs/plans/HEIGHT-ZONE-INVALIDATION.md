@@ -1,6 +1,6 @@
 # Height Zone Invalidation Plan
 
-Status: Checkpoint H2 dependency metadata contract complete and certified. Runtime Height invalidation remains conservative region based.
+Status: H1-H4 complete. H5 exact-head certification and merge pending.
 
 Branch: `refactor/height-zone-invalidation`
 
@@ -8,251 +8,170 @@ Base main: `5938df7d723c55b66ad4522f79c08cf89bf0acbf`
 
 ## Goal
 
-Narrow finalized Height edit projection work from the current conservative region-ring policy to 8x8 world zones only when the runtime can prove every affected projection zone.
+Narrow finalized Height edit projection work from the conservative region-ring policy to 8x8 world zones only when runtime dependency metadata proves every affected projection zone.
 
-Semantic ownership does not change. `EditorSession` remains authoritative and 8x8 zones remain projection/cache granularity only.
+Semantic ownership does not change. `EditorSession` remains authoritative and 8x8 zones remain disposable projection/cache granularity only.
 
 ## Non-goals
 
 This branch does not:
 
-- change Object edit invalidation
-- change Height semantic planning or history
-- change terrain Paint invalidation
+- narrow Object edit invalidation
+- change Height semantic planning or history authority
+- change terrain Paint invalidation semantics
 - narrow contextual scene assembly
 - change Reference or HD visual semantics
 - introduce another authoritative map model
 - guess a universal model radius
 
-## Current behavior
-
-`crates/osrs-editor/src/app/world_runtime/invalidation.rs` uses zone invalidation only for pure terrain footprints.
-
-Any finalized footprint containing Height vertices or Object tiles still falls back to region invalidation. For Height impacts that include terrain geometry, normals, or lighting, that fallback expands one region ring.
-
-This policy is intentionally conservative and remains the certified runtime behavior after H2.
-
-## Audited Height dependencies
-
-### 1. Terrain geometry
-
-A terrain surface consumes four height-grid corners. One changed height vertex can therefore change the geometry of adjacent terrain tiles that reference that corner.
-
-This dependency is locally bounded.
-
-### 2. Terrain slope lighting
-
-`osrs-scene::terrain_build::compute_slope_light` computes a corner light from height samples one grid point away in X and Y.
-
-Terrain surfaces then consume four corner-light values.
-
-Therefore Height edits can change terrain presentation beyond only the tiles that directly contain the edited vertex, but the terrain-only portion remains locally bounded.
-
-The existing radius-5 Paint rule is not relevant here because that radius comes from underlay material/color blending, not Height sampling.
-
-### 3. Initial object placement height
-
-`osrs-scene::placement_height::sample_placement_height` samples four height-grid values around the midpoint of the rotated object-definition footprint.
-
-The sampled coordinates depend on:
-
-- anchor tile
-- definition `size_x`
-- definition `size_y`
-- orientation
-- scene-edge fallback behavior
-
-A changed height vertex can therefore alter a placed object's vertical placement even when the object's anchor is not on the edited tile.
-
-There is no proven fixed anchor radius independent of definition dimensions.
-
-### 4. Lit-model ground contouring
-
-`osrs-core::contour::contour_ground_in_place` and `contour_ground_copy` calculate the model's X/Z cylinder radius from actual model vertices.
-
-Contour sampling is based on the model's transformed world X/Z positions, not merely the definition footprint.
-
-A fixed radius based only on the Height edit coordinate or object anchor would therefore be unsafe without a proven target-cache bound.
-
-### 5. ModelData contouring
-
-`osrs-core::contour::contour_model_data_copy` uses actual vertex min/max X/Z bounds.
-
-This is a separate dependency shape from the lit-model cylinder bound and must be represented rather than approximated away.
-
-### 6. Dynamic/morphed models
-
-`osrs-scene::dynamic_model::resolve_dynamic_model`:
-
-1. resolves the active morph and placement
-2. selects the active model
-3. optionally poses it
-4. contours the private working model
-
-The effective Height read-set can therefore depend on active definition/model state and posed geometry.
-
-### 7. Downstream scene relationships
-
-A Height-driven change to contoured/placed geometry can affect final model bounds and normal/lighting relationships used by scene finalization.
-
-The invalidation boundary must include every output zone whose final geometry can change, not only the zone containing the source Height vertex.
-
-## H1 conclusion
-
-A single constant Height radius is not currently proven safe.
-
-The branch must use explicit projection dependency metadata and retain the current region fallback whenever that metadata cannot prove a complete zone set.
-
-## H2 dependency contract
-
-H2 adds a projection-only dependency contract in:
-
-`crates/osrs-editor/src/app/world_runtime/height_dependencies.rs`
-
-The core mapping is:
-
-```text
-HeightVertexCoord (source plane + world x/y)
-    -> deterministic set of output 8x8 world zones
-```
-
-The metadata is intentionally disposable. It is not semantic authority and it does not modify `MapDocument` / `EditorSession` ownership.
-
-### Freshness identity
-
-Every collection carries a `HeightDependencyStamp` containing:
-
-- region projection epoch
-- presentation generation
-
-Lookup returns stale when either no longer matches the caller's current projection state.
-
-### Completeness
-
-Collections begin `Incomplete` and must be explicitly certified `Complete` by a future producer only after every Height-sensitive projection stage has contributed its read-set.
-
-An incomplete collection is unusable for narrowing and therefore forces fallback when H3 consumes it.
-
-### Deterministic merge and deduplication
-
-Dependencies use ordered map/set storage so merge order does not change the resulting source-to-zone mapping and duplicate source-zone edges collapse deterministically.
-
-Collections can merge only when producer region and freshness stamp match.
-
-Completeness is fail-closed: merging a complete collection with an incomplete collection produces an incomplete collection.
-
-### Producer-region boundary
-
-A collection represents one producer region. Recording an output zone that belongs to another region is rejected rather than silently widening or misclassifying the dependency set.
-
-This makes cross-region dependency handling explicit for H3/H4 instead of hiding it in the metadata layer.
-
-### Runtime behavior after H2
-
-H2 deliberately does not switch Height edits to zone invalidation.
-
-The module is compiled into the editor, but existing Height invalidation remains on the certified conservative region policy until H3 wires accepted/current build results into the dependency contract and can prove a complete zone set.
-
-## Required freshness rule
-
-Dependency metadata must never survive as trusted current data across a projection state change that can alter Height dependencies.
-
-At minimum, trust must be tied to the same current region/projection epoch and presentation generation used by stale-build rejection.
-
-Examples that must invalidate or make dependency metadata unusable until refreshed:
-
-- Object placement/deletion/move/rotation that changes height-sensitive scene content
-- source replacement
-- presentation/source generation changes where the dependency-producing worker is replaced
-- rejected/stale build completion
-
-If a Height edit arrives while dependency metadata for an affected region is absent or stale, use the existing conservative region policy.
-
-## Context versus output
-
-This work narrows dirty output scope only.
-
-The world worker continues to construct the full contextual scene required for:
-
-- terrain lighting
-- normal reconciliation
-- contouring
-- object interactions
-- Reference extraction
-- 117HD procedural generation
-
-Only final projection emission/installation is eligible for zone filtering.
-
-## Checkpoints
-
-### H1 - dependency audit and protocol
-
-Complete and certified.
-
-Deliverables:
-
-- refreshed `DEV_HANDOFF.md`
-- this safety/architecture plan
-- no production behavior change
-
-### H2 - dependency metadata types and collection contract
-
-Complete and certified.
-
-Certified code head:
-`c59eea2cadffbc5861f6ecf8c138a9a0b6b11f99`
-
-CI:
-Run `38689828881` / #1227 - SUCCESS.
-
-Delivered:
-
-- canonical `HeightVertexCoord` source keys retain source plane and world tile coordinates
-- deterministic source-to-zone mapping using ordered map/set storage
-- producer-region validation for output zones
-- projection epoch + presentation generation freshness stamps
-- explicit `Incomplete` / `Complete` state
-- stale/incomplete/current lookup outcomes
-- fail-closed merge semantics and duplicate elimination
-- tests for negative coordinates, region/zone edges, multiple zones, stale stamps, mismatched producers/stamps, known-empty complete lookups, and incomplete merges
-- current Height invalidation remains region based
-
-### H3 - runtime integration and zone planner
-
-Not started.
-
-Acceptance:
-
-- current dependency metadata is installed only from accepted/current build results
-- finalized Height receipts retain enough canonical coordinate identity, including source plane, to query H2 metadata correctly
-- finalized Height receipt resolves to exact affected zones when metadata is complete/current
-- missing or stale metadata falls back to region invalidation
-- no semantic authority moves into WorldRuntime
-- full contextual scene assembly remains unchanged
-
-### H4 - adversarial integration coverage
-
-Not started.
-
-Acceptance includes:
-
-- 8x8 edge
-- 64x64 edge
-- rotated multi-tile placement
-- contoured geometry crossing zones
-- dynamic/morphed case where current runtime supports deterministic fixture input
-- Undo/Redo
-- in-flight stale build
-- dependency metadata loss/staleness fallback
-
-### H5 - certify and merge
-
-Not started.
-
-Required exact-head Tier A/B/C plus focused Height invalidation coverage. After merge, certify integrated `main`, refresh `DEV_HANDOFF.md`, stop, and report before any Object invalidation branch is created.
-
 ## Safety invariant
 
 For every Height semantic transaction, zone-scoped invalidation is permitted only when the selected zone set is a proven superset of every projection output that can change because of the touched Height vertices.
 
-If that proof is unavailable, use the existing conservative region fallback.
+If that proof is absent, stale, incomplete, unsupported, or otherwise untrusted, the existing conservative region fallback is mandatory.
+
+## Audited Height dependencies
+
+### Terrain geometry and slope lighting
+
+Terrain tiles consume height-grid corners. Reference slope lighting additionally reads one grid point in each cardinal direction around corner samples. These terrain dependencies are locally bounded.
+
+### Initial loc placement
+
+`sample_placement_height` reads four height-grid values around the midpoint of the rotated definition footprint. The dependency therefore varies with anchor, `size_x`, `size_y`, orientation, and scene-edge fallback behavior.
+
+### Static lit-model contouring
+
+Ground contouring uses actual transformed model geometry. Static lit models are bounded from their final model-space X/Z cylinder radius rather than guessed from definition footprint alone.
+
+### ModelData reconciliation
+
+`ModelData` can participate in neighbouring normal reconciliation. The branch does not claim a complete fine-grained dependency closure for this case. Its presence marks Height dependency metadata incomplete and therefore forces region fallback.
+
+### Dynamic/posed contouring
+
+Dynamic locs can morph, pose, then contour a private model. Because the active pose can change X/Z bounds, the branch does not claim a static fine-grained read-set for contoured animated models. Supported worker input marks this case incomplete and therefore retains region fallback.
+
+## H1 - dependency audit and protocol
+
+Status: COMPLETE AND CERTIFIED.
+
+Certified content head: `73694a9d97fd2845c8ed818400430709d6c704c5`
+
+CI: `38688385096` / #1221 - SUCCESS.
+
+H1 established that a fixed Height radius was not proven safe and required explicit projection dependency metadata with conservative fallback.
+
+## H2 - dependency metadata contract
+
+Status: COMPLETE AND CERTIFIED.
+
+Certified code/test head: `c59eea2cadffbc5861f6ecf8c138a9a0b6b11f99`
+
+CI: `38689828881` / #1227 - SUCCESS.
+
+Delivered:
+
+- canonical `HeightVertexCoord` keys preserving source plane and world X/Y
+- deterministic ordered source-to-zone mapping
+- producer-region validation
+- projection epoch + presentation generation freshness stamps
+- explicit `Incomplete` / `Complete` state
+- stale/incomplete/current lookup outcomes
+- fail-closed merge semantics
+- duplicate edge elimination
+- boundary, stale-stamp, producer/stamp mismatch, known-empty, and incomplete-merge tests
+
+## H3 - runtime integration and zone planner
+
+Status: COMPLETE. Final subsystem certification occurs in H5.
+
+Delivered:
+
+- finalized `EditFootprint` Height coordinates now retain canonical `HeightVertexCoord`, including `SourcePlane`
+- semantic Undo/Redo reconstruct the same canonical Height coordinate identity rather than flattening to plane-less map tiles
+- the world worker produces a region-complete `HeightDependencySnapshot` from the full contextual `WorldScene` before static geometry output is zone-filtered
+- terrain corner and slope-light dependencies are collected per producer output zone
+- static loc placement midpoint samples are collected from the rotated definition footprint
+- static lit-model contour dependencies use actual model X/Z radius sampling
+- `ModelData` normal-reconciliation and posed animated contour cases mark the snapshot incomplete rather than guessing a bound
+- `RegionGeometry` carries Height dependency metadata alongside geometry, animation, source, and inspection projections
+- dependency snapshots are installed only after the existing `BuildTracker` accepts the worker result as current
+- stale request identity, projection epoch, or presentation generation prevents metadata installation
+- accepted metadata is stamped with the current region projection epoch and presentation generation
+- source replacement, full presentation rebuild, and region unload clear/remove trusted metadata
+- Height invalidation resolves through every resident non-empty producer snapshot
+- exact zones are used only when all required producer snapshots are present, current, and complete
+- missing, stale, incomplete, unsupported, or unproven state falls back to the previous region policy
+- mixed terrain + Height footprints union certified terrain zones with proven Height zones
+- Object participation still forces conservative region invalidation
+- semantic authority remains in `EditorSession`
+- full contextual scene assembly remains unchanged
+
+## H4 - adversarial boundary and replay coverage
+
+Status: COMPLETE. Final subsystem certification occurs in H5.
+
+Coverage now includes:
+
+- Height dependency proofs spanning an 8x8 output-zone edge
+- Height dependency proofs spanning a 64x64 region edge
+- Euclidean zone ownership for negative coordinates
+- rotated/multi-tile placement midpoint sampling helper behavior and scene-edge fallback
+- contour sample expansion, bilinear +1 behavior, and scene clamping
+- deterministic dependency deduplication
+- missing metadata retaining the conservative region-ring fallback
+- stale projection epoch and stale presentation generation rejecting metadata
+- incomplete metadata rejecting zone narrowing
+- semantic Undo/Redo replay using canonical Height footprints
+- stale in-flight builds rejected by request identity / projection epoch / presentation generation
+- cancelled old build results unable to consume newer requests
+
+Dynamic/morphed contoured models remain deliberately fail-closed. When their active posed contour dependency cannot be proven, the worker marks the snapshot incomplete and the editor rebuilds conservatively by region.
+
+## Context versus output
+
+This subsystem narrows dirty output scope only.
+
+The world worker continues to construct the full contextual scene required for terrain lighting, normal reconciliation, contouring, object relationships, Reference extraction, and 117HD procedural generation. Only final static projection emission/installation is zone-addressable.
+
+## H5 - exact-head certification and merge
+
+Status: IN PROGRESS.
+
+Required before merge:
+
+- identify the final branch head after this plan and `DEV_HANDOFF.md` are current
+- architecture boundaries pass
+- architecture guard passes without new debt exceptions
+- reference regeneration safety passes
+- historical deob golden index passes
+- rustfmt passes
+- full workspace compile passes
+- strict Clippy passes
+- WebAssembly portability passes
+- full workspace tests pass
+- M3-M9 semantic/reference parity passes
+- focused Height invalidation tests pass as part of the workspace suite
+- branch remains Height-only plus handoff/plan documentation
+
+After exact branch-head success:
+
+1. open one PR from `refactor/height-zone-invalidation` to `main`
+2. merge it without opening another development branch
+3. validate the exact integrated `main`
+4. record the merge and post-merge validation in `DEV_HANDOFF.md`
+5. certify the final handoff-only `main` head if the validation record changes `main`
+6. ensure temporary/merged refs contain no unmerged work
+7. stop and report before any new branch is created
+
+## Branch discipline
+
+A new development branch must not be created while this subsystem is unmerged.
+
+The next subsystem may begin only after:
+
+- the Height branch is merged into `main`
+- exact integrated `main` is green
+- the handoff records that integrated state
+- the user explicitly directs continuation
