@@ -3,7 +3,6 @@
 //! turns. A drag shows the footprints it would land on and commits as one undo step on release.
 
 use super::EditorApp;
-use super::object_tool::ObjectDrag;
 use crate::camera::FlyCamera;
 use crate::paint::Tool;
 use eframe::egui::{self, Rect};
@@ -158,11 +157,9 @@ impl EditorApp {
                 ((to.x - from.x) / 128.0).round() as i32,
                 ((to.z - from.z) / 128.0).round() as i32,
             );
-            self.interaction.object_drag = Some(ObjectDrag {
-                anchor: (0, 0),
-                specs: drag.specs.clone(),
-                delta,
-            });
+            self.interaction
+                .begin_object_drag((0, 0), drag.specs.clone());
+            self.interaction.update_object_drag(delta);
         }
         self.interaction.gizmo_busy =
             self.interaction.gizmo.is_focused() || self.interaction.gizmo_drag.is_some();
@@ -223,7 +220,7 @@ impl EditorApp {
 
     /// The button went up: commit the move, or the turn, as one undo step.
     fn finish_gizmo_drag(&mut self) {
-        self.interaction.object_drag = None;
+        self.interaction.cancel_object_drag();
         self.interaction.gizmo_busy = false;
         let Some(drag) = self.interaction.gizmo_drag.take() else {
             return;
