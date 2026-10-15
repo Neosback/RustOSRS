@@ -16,7 +16,7 @@ use osrs_core::{
 };
 use osrs_render::{ModelPlacement, SceneGeometry, ZONE_LOCAL_UNITS};
 use osrs_scene::placement::PlacementKind;
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 /// Inclusive-exclusive tile range `[min, max)` in scene coordinates that a window owns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +31,28 @@ impl OwnedTiles {
     }
 }
 
+pub(crate) type WorldZoneKey = (i32, i32);
+
+/// Whether one scene tile belongs to both the owned tile rectangle and the optional world-zone set.
+///
+/// Streaming windows are aligned to 8-tile zone boundaries, so adding the scene-zone offset to the
+/// window's world-zone base gives the exact renderer zone key without losing negative coordinates.
+pub(crate) fn geometry_tile_selected(
+    owned: Option<OwnedTiles>,
+    zones: Option<&BTreeSet<WorldZoneKey>>,
+    zone_base: WorldZoneKey,
+    x: u32,
+    y: u32,
+) -> bool {
+    owned.is_none_or(|range| range.contains(x, y))
+        && zones.is_none_or(|zones| {
+            zones.contains(&(
+                zone_base.0 + x as i32 / 8,
+                zone_base.1 + y as i32 / 8,
+            ))
+        })
+}
+
 /// Extract all static geometry of `world`. Zones are keyed by world zone coordinates.
 pub fn extract_scene_geometry(world: &WorldScene) -> SceneGeometry {
     extract_owned_geometry(world, None)
@@ -41,9 +63,24 @@ pub fn extract_scene_geometry(world: &WorldScene) -> SceneGeometry {
 /// Windows used for streaming overlap their neighbours so every owned tile has full blend and
 /// normal-merge context; only the owned tiles' terrain and the locs anchored on them are emitted.
 pub fn extract_owned_geometry(world: &WorldScene, owned: Option<OwnedTiles>) -> SceneGeometry {
+    extract_owned_geometry_zones(world, owned, None)
+}
+
+/// Extract static geometry only for selected world zones while retaining the caller's full scene.
+///
+/// The scene has already been assembled with its complete contextual window. This filter only
+/// narrows emission, so terrain blending, normal reconciliation, contouring, and loc interactions
+/// still observe the same source context as a full-region extraction.
+pub(crate) fn extract_owned_geometry_zones(
+    world: &WorldScene,
+    owned: Option<OwnedTiles>,
+    zones: Option<&BTreeSet<WorldZoneKey>>,
+) -> SceneGeometry {
     let mut geometry = SceneGeometry::default();
     let (zone_base_x, zone_base_z) = (world.window.base_x / 8, world.window.base_y / 8);
-    let in_range = |x: u32, y: u32| owned.is_none_or(|range| range.contains(x, y));
+    let in_range = |x: u32, y: u32| {
+        geometry_tile_selected(owned, zones, (zone_base_x, zone_base_z), x, y)
+    };
 
     // Terrain: every storage tile, then its linked-below (bridge) tile.
     for plane_index in 0..4_u8 {
@@ -302,4 +339,48 @@ pub fn texture_layers(table: &TextureTable) -> Vec<Option<osrs_render::gpu::Text
                 })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tile_selection_applies_owned_range_and_world_zone_filter() {
+        let owned = OwnedTiles {
+            min: (16, 16),
+            max: (80, 80),
+        };
+        let zones = BTreeSet::from([(400, 400), (401, 400)]);
+        let base = (398, 398);
+
+        assert!(geometry_tile_selected(
+            Some(owned),
+            Some(&zones),
+            base,
+            16,
+            16
+        ));
+        assert!(geometry_tile_selected(
+            Some(owned),
+            Some(&zones),
+            base,
+            24,
+            16
+        ));
+        assert!(!geometry_tile_selected(
+            Some(owned),
+            Some(&zones),
+            base,
+            32,
+            16
+        ));
+        assert!(!geometry_tile_selected(
+            Some(owned),
+            Some(&zones),
+            base,
+            8,
+            16
+        ));
+    }
 }
