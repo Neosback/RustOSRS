@@ -1,5 +1,8 @@
-use super::ZoneKey;
-use crate::app::edit_runtime::EditFootprint;
+use super::{
+    WorldRuntime, ZoneKey,
+    height_dependencies::HeightDependencyStamp,
+};
+use crate::app::edit_runtime::{EditFootprint, EditTouches};
 use osrs_core::coords::{MapTile, RegionCoord};
 use osrs_edit::ChangeImpact;
 use std::collections::BTreeSet;
@@ -14,6 +17,81 @@ pub(super) enum ProjectionInvalidation {
     None,
     Regions(Vec<RegionCoord>),
     Zones(BTreeSet<ZoneKey>),
+}
+
+impl WorldRuntime {
+    /// Translate one finalized semantic touch set into projection invalidation.
+    ///
+    /// Height edits use exact zones only when every resident non-empty producer has a current,
+    /// complete dependency snapshot. Any missing, stale, or incomplete producer fails closed to the
+    /// previous region policy. Object edits remain region-conservative on their separate roadmap.
+    pub(super) fn invalidate_semantic_edit(
+        &mut self,
+        impact: ChangeImpact,
+        touched_regions: &EditTouches,
+    ) {
+        let proven_height_zones = if touched_regions.footprint.height_vertices.is_empty() {
+            None
+        } else {
+            let producers = self
+                .loaded
+                .iter()
+                .filter_map(|(&key, stats)| {
+                    stats.as_ref().map(|_| {
+                        (
+                            key,
+                            HeightDependencyStamp::new(
+                                self.builds.projection_epoch(key),
+                                self.presentation_generation,
+                            ),
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
+            self.height_dependencies
+                .proven_zones(&producers, &touched_regions.footprint.height_vertices)
+        };
+
+        match projection_invalidation(
+            impact,
+            touched_regions,
+            &touched_regions.footprint,
+            proven_height_zones.as_ref(),
+        ) {
+            ProjectionInvalidation::None => {}
+            ProjectionInvalidation::Regions(regions) => {
+                for region in regions {
+                    self.mark_dirty((region.x, region.y));
+                }
+            }
+            ProjectionInvalidation::Zones(zones) => {
+                for zone in zones {
+                    self.mark_zone_dirty(zone);
+                }
+            }
+        }
+    }
+
+    /// Queue a full `region` rebuild if it is resident. Full invalidation subsumes queued zones.
+    pub(super) fn mark_dirty(&mut self, region: (i32, i32)) {
+        if self.loaded.contains_key(&region) {
+            self.builds.invalidate(region);
+            self.dirty_zones.remove(&region);
+            self.dirty_regions.insert(region);
+        }
+    }
+
+    /// Queue one world 8x8 zone when its owning region is resident and no full rebuild supersedes it.
+    fn mark_zone_dirty(&mut self, zone: ZoneKey) {
+        let region = zone_region(zone);
+        if self.dirty_regions.contains(&region)
+            || !matches!(self.loaded.get(&region), Some(Some(_)))
+        {
+            return;
+        }
+        self.builds.invalidate(region);
+        self.dirty_zones.entry(region).or_default().insert(zone);
+    }
 }
 
 pub(super) fn projection_invalidation(
@@ -32,8 +110,6 @@ pub(super) fn projection_invalidation(
         object_tiles,
     } = footprint;
 
-    // Object edits can still affect clipped shadows/scene relationships outside an anchor zone.
-    // They retain the previously certified region policy until Object dependency metadata exists.
     if !object_tiles.is_empty() || (terrain_tiles.is_empty() && height_vertices.is_empty()) {
         return ProjectionInvalidation::Regions(invalidated_regions(impact, touched_regions));
     }
