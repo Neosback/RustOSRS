@@ -5,6 +5,7 @@ use crate::pick::{ObjectPick, Pick, TilePick};
 use eframe::egui::{Key, Pos2, Rect};
 use osrs_world::LocSpec;
 use std::time::Duration;
+use transform_gizmo_egui::math::{DQuat, DVec3, Transform};
 use web_time::Instant;
 
 fn runtime() -> InteractionRuntime {
@@ -23,6 +24,14 @@ fn loc(tile: (i32, i32)) -> LocSpec {
         loc_type: 10,
         orientation: 0,
     }
+}
+
+fn transform(x: f64, z: f64) -> Transform {
+    Transform::from_scale_rotation_translation(
+        DVec3::ONE,
+        DQuat::IDENTITY,
+        DVec3::new(x, 0.0, z),
+    )
 }
 
 #[test]
@@ -256,4 +265,53 @@ fn cancel_object_drag_discards_in_progress_gesture() {
 
     assert!(interaction.object_drag().is_none());
     assert!(interaction.finish_object_drag().is_none());
+}
+
+#[test]
+fn gizmo_drag_lifecycle_latches_start_specs_and_finishes_once() {
+    let mut interaction = runtime();
+    let start = transform(0.0, 0.0);
+    let start_translation = start.translation;
+    let moved = transform(128.0, 256.0);
+    let moved_translation = moved.translation;
+
+    let drag = interaction.update_gizmo_drag(start, moved, vec![loc((3, 4))]);
+    assert_eq!(drag.start().translation, start_translation);
+    assert_eq!(drag.current().translation, moved_translation);
+    assert_eq!(drag.specs().len(), 1);
+    assert_eq!(drag.specs()[0].tile, (3, 4));
+
+    interaction.update_gizmo_busy(false);
+    assert!(interaction.gizmo_busy);
+
+    let later = transform(256.0, 384.0);
+    let later_translation = later.translation;
+    let drag = interaction.update_gizmo_drag(transform(999.0, 999.0), later, vec![loc((9, 9))]);
+    assert_eq!(drag.start().translation, start_translation);
+    assert_eq!(drag.current().translation, later_translation);
+    assert_eq!(drag.specs()[0].tile, (3, 4));
+
+    let finished = interaction
+        .finish_gizmo_drag()
+        .map(|drag| (drag.start().translation, drag.current().translation));
+    assert_eq!(finished, Some((start_translation, later_translation)));
+    assert!(!interaction.gizmo_busy);
+    assert!(interaction.gizmo_drag().is_none());
+    assert!(interaction.finish_gizmo_drag().is_none());
+}
+
+#[test]
+fn cancel_gizmo_drag_clears_capture_state() {
+    let mut interaction = runtime();
+    interaction.update_gizmo_drag(
+        transform(0.0, 0.0),
+        transform(128.0, 0.0),
+        vec![loc((1, 2))],
+    );
+    interaction.update_gizmo_busy(true);
+
+    interaction.cancel_gizmo_drag();
+
+    assert!(interaction.gizmo_drag().is_none());
+    assert!(!interaction.gizmo_busy);
 }
