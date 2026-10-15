@@ -66,7 +66,7 @@ fn successful_execution_finalizes_once_and_returns_receipt() {
     );
     assert_eq!(
         receipt.touched_regions.footprint.height_vertices,
-        vec![edited.corner]
+        vec![edited]
     );
     assert_eq!(
         receipt.touched_regions.footprint.object_tiles,
@@ -145,7 +145,7 @@ fn successful_undo_replay_finalizes_once_and_returns_receipt() {
         .commit(height_patch(coord, 0, 64))
         .unwrap_or_else(|error| unreachable!("valid setup commit: {error:?}"));
     let revision_before = runtime.revision();
-    let footprint = EditFootprint::new([], [coord.corner], []);
+    let footprint = EditFootprint::new([], [coord], []);
 
     let result = runtime
         .replay(EditReplayDirection::Undo, footprint.clone(), |document| {
@@ -189,7 +189,7 @@ fn failed_redo_replay_projection_restores_exact_pre_transaction_state() {
 
     let result = runtime.replay(
         EditReplayDirection::Redo,
-        EditFootprint::new([], [coord.corner], []),
+        EditFootprint::new([], [coord], []),
         |document| {
             assert_eq!(document.height_at(coord), Some(64));
             Err::<(), _>("injected Redo projection failure")
@@ -227,7 +227,7 @@ fn rollback_invariant_failure_is_explicit() {
     let result = runtime.finish_execution(
         commit.revision,
         commit.impact,
-        EditFootprint::new([], [first.corner], []).into_touches(),
+        EditFootprint::new([], [first], []).into_touches(),
         checkpoint,
         Err::<(), _>("projection failed after intervening mutation"),
     );
@@ -263,7 +263,7 @@ fn finalize_invariant_failure_is_explicit() {
     let result = runtime.finish_execution(
         commit.revision,
         commit.impact,
-        EditFootprint::new([], [first.corner], []).into_touches(),
+        EditFootprint::new([], [first], []).into_touches(),
         checkpoint,
         Ok::<_, &'static str>(()),
     );
