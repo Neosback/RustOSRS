@@ -104,9 +104,8 @@ pub(crate) fn extract_owned_geometry_hd_zones(
     };
     let mut geometry = SceneGeometry::default();
     let (zone_base_x, zone_base_z) = (world.window.base_x / 8, world.window.base_y / 8);
-    let in_range = |x: u32, y: u32| {
-        geometry_tile_selected(owned, zones, (zone_base_x, zone_base_z), x, y)
-    };
+    let in_range =
+        |x: u32, y: u32| geometry_tile_selected(owned, zones, (zone_base_x, zone_base_z), x, y);
 
     // Terrain: every storage tile, then its linked-below (bridge) tile.
     for slot in &input.tiles {
