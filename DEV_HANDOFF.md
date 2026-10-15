@@ -103,11 +103,37 @@ Validation caught and closed three boundary-quality issues before this checkpoin
 
 The final replacement run on `e37feed2be1bad377729f64d2acbe040d1c7a32c` passed architecture guards, formatting, workspace check, strict Clippy, WASM portability, the full workspace tests, and the M3-M9 semantic parity suite.
 
+### Checkpoint 3 - hover and context-pick bookkeeping ownership
+
+**CLOSED.**
+
+Validated code head:
+
+`11a6ab2901c20003a6d0718da0a46a0324b37b68`
+
+CI:
+
+`38732036663` / #1358 - SUCCESS across Tier A/B/C.
+
+Checkpoint 3 changes:
+
+- final hover commit now routes through `InteractionRuntime::set_hover`;
+- `set_hover` latches `last_hover_tile` from the final normalized hover tile before storing the hover state;
+- pointer-leave clearing routes through `InteractionRuntime::clear_hover`, preserving the prior `last_hover_tile` exactly as before;
+- Shift-right-click context capture routes through `InteractionRuntime::capture_context_pick`, preserving a snapshot of the current hover even if hover later changes;
+- ray construction, resident-world picking, and Select/Objects object-to-standing-tile normalization remain in `EditorApp`, so world/projection ownership stays outside the runtime;
+- context-menu UI and outline requests remain outside the runtime;
+- focused tests cover last-hover-tile latching/clear semantics and context-pick snapshot isolation.
+
+The ordering of the hover commit is intentional: Select/Objects first normalize an object hit to the tile the object stands on, then `set_hover` latches that final tile. This prevents `last_hover_tile` from retaining the terrain hit behind an object.
+
+The first validation attempt (`38731844878` / #1356 on `6520304fed358cf09f882b95def1c1923a974e54`) passed architecture guards and formatting but failed the warnings-denied workspace check because moving pick construction removed the final use of the root-level `Pick` import. The stale import was removed in `11a6ab2901c20003a6d0718da0a46a0324b37b68`; the full replacement run then passed Tier A/B/C.
+
 ### Next checkpoint boundary
 
-Do not begin Checkpoint 3 without explicit user direction.
+Do not begin Checkpoint 4 without explicit user direction.
 
-The next checkpoint must stay on this same branch and remain inside transient interaction ownership. A suitable next cut is to encapsulate another coherent interaction state machine, such as hover/context-pick bookkeeping or temporary tool-key/peek state, without moving world lookup, UI composition, semantic edits, or projection ownership into `InteractionRuntime`.
+The next checkpoint must stay on this same branch and remain inside transient interaction ownership. A suitable next cut is temporary tool-key/peek state: move its pure press/release/return-tool transitions behind `InteractionRuntime` while keeping egui event collection, UI composition, semantic edits, world lookup, and projection ownership outside it.
 
 ## Latest completed development subsystem: verified map cache export and read-only inspection
 
@@ -193,7 +219,7 @@ Completed boundaries:
 
 In progress:
 
-1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1 and 2 closed on PR #55.
+1. `InteractionRuntime` behavioral encapsulation, Checkpoints 1, 2, and 3 closed on PR #55.
 
 Remaining ownership work after this subsystem:
 
@@ -277,12 +303,12 @@ Each major subsystem should remain a separate branch/PR sequence.
 
 ## Next allowed boundary
 
-**STOP AFTER THE CHECKPOINT-2 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
+**STOP AFTER THE CHECKPOINT-3 HANDOFF-BEARING BRANCH HEAD IS CERTIFIED.**
 
-Do not begin Checkpoint 3 until:
+Do not begin Checkpoint 4 until:
 
-1. the exact branch head containing this Checkpoint 2 handoff passes Tier A/B/C;
-2. Checkpoint 2 and its certification are reported to the user;
+1. the exact branch head containing this Checkpoint 3 handoff passes Tier A/B/C;
+2. Checkpoint 3 and its certification are reported to the user;
 3. the user explicitly directs continuation.
 
 Do not merge PR #55 at this checkpoint. Do not create another development branch.
