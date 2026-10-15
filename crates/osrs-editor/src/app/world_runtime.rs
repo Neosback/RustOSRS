@@ -418,8 +418,11 @@ impl WorldRuntime {
     }
 
     /// Geometry the animation worker finished since the last poll.
-    pub(super) fn poll_animation_geometry(&mut self) -> Option<SceneGeometry> {
-        self.animations.poll().and_then(|update| update.geometry)
+    pub(super) fn poll_animation_geometry(&mut self) -> Option<(SceneGeometry, f32)> {
+        let update = self.animations.poll()?;
+        update
+            .geometry
+            .map(|geometry| (geometry, update.rebuild_ms))
     }
 
     /// Request the next animation step if the schedule calls for one.

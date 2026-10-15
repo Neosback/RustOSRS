@@ -258,6 +258,16 @@ impl EditorApp {
                 };
                 self.interaction.set_camera_mode(mode);
             }
+            // `pose YAW_DEG PITCH_DEG [HEIGHT]`: a deterministic view for measurement workloads.
+            "pose" => {
+                let yaw = number::<f32>(words.next(), "yaw degrees")?.to_radians();
+                let pitch = number::<f32>(words.next(), "pitch degrees")?.to_radians();
+                let height = words
+                    .next()
+                    .map(|word| number::<f32>(Some(word), "height"))
+                    .transpose()?;
+                self.interaction.set_camera_pose(yaw, pitch, height);
+            }
             "spline" => {
                 let mut points = Vec::new();
                 for pair in words {
@@ -391,6 +401,10 @@ impl EditorApp {
                     "smoke: inspect ({x},{y}) plane {plane}: view {:?}, document {semantic:?}",
                     self.tile_now((x, y))
                 );
+            }
+            "mark" => {
+                let name: Vec<&str> = words.collect();
+                self.diagnostics.mark_segment(&name.join(" "));
             }
             "sleep" => {
                 let seconds = number::<f32>(words.next(), "seconds")?;

@@ -143,6 +143,7 @@ impl eframe::App for EditorApp {
         self.diagnostics
             .observe_residency(self.world.resident_regions());
 
+        let phase = Instant::now();
         self.palettes.poll();
         self.poll_catalog();
         self.poll_export();
@@ -154,6 +155,7 @@ impl eframe::App for EditorApp {
         self.tool_drawer(ui);
         self.dock(ui);
         self.tool_shelf(ui);
+        self.diagnostics.phase("chrome", phase);
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
@@ -167,12 +169,15 @@ impl eframe::App for EditorApp {
                 let width = ((rect.width() * pixels_per_point) as u32).max(16);
                 let height = ((rect.height() * pixels_per_point) as u32).max(16);
 
+                let phase = Instant::now();
                 self.handle_input(&ctx, &response);
+                self.diagnostics.phase("input", phase);
                 let phase = Instant::now();
                 self.update_picking(&response, rect, pixels_per_point, width, height);
                 self.diagnostics.phase("pick", phase);
 
                 self.render_viewport_image(ui, rect, width, height);
+                let phase = Instant::now();
                 self.draw_selection(ui, rect, pixels_per_point, width, height);
                 self.draw_selection_extras(
                     &ui.painter().with_clip_rect(rect),
@@ -210,10 +215,14 @@ impl eframe::App for EditorApp {
                     height,
                 );
                 self.object_gizmo(ui, rect, &response);
+                self.diagnostics.phase("overlays", phase);
+                let phase = Instant::now();
                 self.viewport_overlays(ui, rect);
                 self.floating_toolbar(&ctx, rect);
                 self.context_menu(&ctx);
+                self.diagnostics.phase("viewport_ui", phase);
             });
+        let phase = Instant::now();
         self.quick_tools_hud(&ctx);
         self.cache_welcome(&ctx);
 
@@ -230,6 +239,7 @@ impl eframe::App for EditorApp {
             self.teleport_to(destination);
         }
         self.autosave_settings();
+        self.diagnostics.phase("windows", phase);
         self.diagnostics.end_frame(frame_started);
         self.diagnostics.finish_frame(&ctx);
         if self

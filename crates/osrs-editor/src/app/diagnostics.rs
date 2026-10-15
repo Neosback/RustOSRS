@@ -131,9 +131,40 @@ impl DiagnosticsRuntime {
     pub(super) fn scene_seconds(&self, real: f32) -> f32 {
         self.fixed_time_seconds.unwrap_or(real)
     }
-    pub(super) fn build(&mut self, ms: f32) {
+    /// Record the stages of one accepted-or-rejected worker build (observation only).
+    pub(super) fn record_build(&mut self, timings: &osrs_world::BuildTimings, compute_ms: f32) {
         if let Some(capture) = &mut self.capture {
-            capture.build(ms);
+            capture.event("build.queue_wait", timings.queue_wait_ms);
+            capture.event("build.decode", timings.decode_ms);
+            capture.event("build.scene", timings.scene_ms);
+            capture.event("build.extract", timings.extract_ms);
+            capture.event("build.animations", timings.animations_ms);
+            capture.event("build.info", timings.info_ms);
+            capture.event("build.compute", compute_ms);
+        }
+    }
+    /// Record a latency or cost event such as a main-thread install or an animation rebuild.
+    pub(super) fn event(&mut self, name: &'static str, ms: f32) {
+        if let Some(capture) = &mut self.capture {
+            capture.event(name, ms);
+        }
+    }
+    /// Attribute following samples to a named workload segment (script command `mark`).
+    pub(super) fn mark_segment(&mut self, name: &str) {
+        if let Some(capture) = &mut self.capture {
+            capture.mark_segment(name);
+        }
+    }
+    pub(super) fn capture_counters(&mut self, make: impl FnOnce() -> Vec<(&'static str, u64)>) {
+        if let Some(capture) = &mut self.capture {
+            for (name, value) in make() {
+                capture.counter(name, value);
+            }
+        }
+    }
+    pub(super) fn capture_camera(&mut self, make: impl FnOnce() -> Vec<u32>) {
+        if let Some(capture) = &mut self.capture {
+            capture.camera(&make());
         }
     }
     pub(super) fn capture_context(&mut self, make: impl FnOnce() -> serde_json::Value) {

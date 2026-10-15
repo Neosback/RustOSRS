@@ -285,12 +285,35 @@ impl EditorApp {
                     "yaw": self.interaction.camera().yaw, "pitch": self.interaction.camera().pitch,
                     "fov_degrees": self.interaction.camera().fov_degrees,
                 },
-                "adapter": self.renderer.adapter_description(),
+                "adapter": self.renderer.adapter_report(),
+                "display": {
+                    "pixels_per_point": ui.ctx().pixels_per_point(),
+                    "render_scale": self.settings.prefs.render_scale,
+                    "refresh_hz": null,
+                    "refresh_hz_unavailable_reason": "eframe does not expose the monitor refresh rate; performance.py records the system value",
+                },
+                "gpu_pass_timers": self.renderer.gpu_pass_samples().keys().collect::<Vec<_>>(),
                 "view_plane": self.interaction.view_plane(),
                     "owned_gpu_bytes": self.renderer.resource_bytes(),
                     "semantic_revision": self.session.revision(),
                 "cache_build_and_profile": self.project.cache_build(),
                 })
+            });
+            self.diagnostics.capture_camera(|| {
+                let camera = self.interaction.camera();
+                let origin = self.renderer.render_origin();
+                [
+                    camera.x.to_bits(),
+                    camera.y.to_bits(),
+                    camera.z.to_bits(),
+                    camera.yaw.to_bits(),
+                    camera.pitch.to_bits(),
+                    camera.fov_degrees.to_bits(),
+                    origin.0 as u32,
+                    origin.1 as u32,
+                    u32::from(self.interaction.view_plane()),
+                ]
+                .to_vec()
             });
             if self.settings.prefs.render_profile == ProfileChoice::Hd {
                 self.update_hd_lighting();
@@ -317,8 +340,22 @@ impl EditorApp {
                 self.diagnostics.phase("encode", phase);
                 self.diagnostics
                     .record_scene_encoding(frame.command_buffer.is_some());
+                let phase = Instant::now();
                 let gpu_scene_ms = self.renderer.submit_viewport(&mut frame);
+                self.diagnostics.phase("submit", phase);
                 self.diagnostics.set_gpu_scene_ms(gpu_scene_ms);
+                self.diagnostics.capture_counters(|| {
+                    let counters = self.renderer.take_counters();
+                    vec![
+                        ("draw_calls", u64::from(counters.draw_calls)),
+                        ("vertices", counters.vertices),
+                        ("upload_bytes", counters.upload_bytes),
+                        ("shadow_redraws", u64::from(counters.shadow_redraws)),
+                        ("visible_zones", u64::from(counters.visible_zones)),
+                        ("resident_regions", self.world.resident_regions() as u64),
+                        ("builds_in_flight", self.world.in_flight_count() as u64),
+                    ]
+                });
                 self.diagnostics
                     .capture_gpu_samples(|| self.renderer.gpu_pass_samples());
                 let probe = self.diagnostics.stats().gpu_probe();

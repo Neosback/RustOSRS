@@ -61,7 +61,9 @@ impl EditorApp {
                     self.world.mark_ready();
                 }
                 StreamEvent::Region(region) => {
-                    self.diagnostics.build(region.build_ms);
+                    let install_started = Instant::now();
+                    self.diagnostics
+                        .record_build(&region.timings, region.build_ms);
                     let key = (region.region.x, region.region.y);
                     // Retire the FIFO build ticket before checking worker presentation generation.
                     // Old results must consume their own ticket so a later request for the same
@@ -111,13 +113,20 @@ impl EditorApp {
                     if matches!(scope, world_runtime::RegionBuildScope::Full) {
                         self.apply_project_region(RegionCoord::new(key.0, key.1));
                     }
+                    self.diagnostics.event(
+                        "build.install",
+                        install_started.elapsed().as_secs_f32() * 1000.0,
+                    );
                 }
                 StreamEvent::Outline {
                     region,
                     index,
                     triangles,
                 } => {
-                    self.world.install_outline((region, index), triangles);
+                    if let Some(latency_ms) = self.world.install_outline((region, index), triangles)
+                    {
+                        self.diagnostics.event("outline.latency", latency_ms);
+                    }
                 }
                 StreamEvent::Empty(region) => {
                     let key = (region.x, region.y);
@@ -169,7 +178,8 @@ impl EditorApp {
     /// Advance animated locs to the current game cycle on the animation worker and upload the
     /// geometry it finishes.
     pub(super) fn update_animations(&mut self) {
-        if let Some(geometry) = self.world.poll_animation_geometry() {
+        if let Some((geometry, rebuild_ms)) = self.world.poll_animation_geometry() {
+            self.diagnostics.event("anim.rebuild", rebuild_ms);
             let phase = Instant::now();
             self.renderer.upload_transient(ANIMATED_KEY, &geometry);
             self.diagnostics.phase("anim-upload", phase);

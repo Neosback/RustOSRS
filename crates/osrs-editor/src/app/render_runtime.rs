@@ -193,12 +193,31 @@ impl RenderRuntime {
         self.scene.hd_shadow_map_bytes()
     }
 
-    pub(super) fn adapter_description(&self) -> String {
-        format!("{:?}", self.render_state.adapter.get_info())
+    /// Structured adapter, backend and device-limit identity for reproducible reports.
+    pub(super) fn adapter_report(&self) -> serde_json::Value {
+        let info = self.render_state.adapter.get_info();
+        let limits = self.render_state.device.limits();
+        serde_json::json!({
+            "name": info.name, "vendor": info.vendor, "device": info.device,
+            "device_type": format!("{:?}", info.device_type), "backend": format!("{:?}", info.backend),
+            "driver": info.driver, "driver_info": info.driver_info,
+            "timestamp_queries": self.render_state.device.features()
+                .contains(eframe::wgpu::Features::TIMESTAMP_QUERY),
+            "limits": {
+                "max_texture_dimension_2d": limits.max_texture_dimension_2d,
+                "max_texture_array_layers": limits.max_texture_array_layers,
+                "max_buffer_size": limits.max_buffer_size,
+                "max_storage_buffer_binding_size": limits.max_storage_buffer_binding_size,
+            },
+        })
     }
 
     pub(super) fn gpu_pass_samples(&self) -> BTreeMap<&'static str, (u32, f32)> {
         self.scene.gpu_pass_samples()
+    }
+
+    pub(super) fn take_counters(&self) -> osrs_render::gpu::RenderCounters {
+        self.scene.take_counters()
     }
 
     pub(super) fn resource_bytes(&self) -> BTreeMap<&'static str, u64> {

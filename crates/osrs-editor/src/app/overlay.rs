@@ -18,7 +18,9 @@ fn overlay_frame(fill: egui::Color32) -> egui::Frame {
 impl EditorApp {
     pub(super) fn viewport_overlays(&mut self, ui: &egui::Ui, rect: egui::Rect) {
         let ctx = ui.ctx().clone();
+        let phase = web_time::Instant::now();
         self.minimap_hud(ui, rect);
+        self.diagnostics.phase("minimap", phase);
         self.run_plugins(|plugin, cx| plugin.overlay(&ctx, rect, cx));
 
         let tile_lines = if self.settings.prefs.tile_info_hud {

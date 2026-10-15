@@ -23,12 +23,14 @@ pub const REFERENCE_NEAR: f32 = 50.0;
 /// MSAA sample count of the scene pass (RuneLite's GPU plugin defaults to 2x MSAA).
 pub const MSAA_SAMPLES: u32 = 4;
 
+mod counters;
 pub mod frame_graph;
 pub mod hd;
 mod overlay;
 mod profile;
 mod resources;
 mod timing;
+pub use counters::RenderCounters;
 pub use resources::texture_storage_bytes;
 
 pub use overlay::LineVertex;
@@ -499,6 +501,7 @@ pub struct SceneRenderer {
     hd_shadow_drawn: std::cell::Cell<Option<ShadowSignature>>,
     /// Bumped whenever geometry that can cast shadows changes.
     shadow_geometry_version: u64,
+    counters: counters::FrameCounters,
     /// Transient textures of the HD frame graph (HDR colour, its MSAA and depth targets).
     transients: std::cell::RefCell<TransientPool>,
     globals_buffer: wgpu::Buffer,
@@ -656,6 +659,7 @@ impl SceneRenderer {
             hd_shadow_size: std::cell::Cell::new(None),
             hd_shadow_drawn: std::cell::Cell::new(None),
             shadow_geometry_version: 0,
+            counters: counters::FrameCounters::default(),
             transients: std::cell::RefCell::new(TransientPool::default()),
             globals_buffer,
             globals_layout,
@@ -715,6 +719,11 @@ impl SceneRenderer {
                     .write_buffer(&zone.zone_buffer, 0, bytemuck::bytes_of(&uniform));
             }
         }
+    }
+
+    /// Work counted since the previous call: draws, vertices, uploaded bytes and shadow redraws.
+    pub fn take_counters(&self) -> RenderCounters {
+        self.counters.take()
     }
 
     /// Upload extracted geometry as the only resident scene.
@@ -843,6 +852,7 @@ impl SceneRenderer {
                 if bytes.is_empty() {
                     return None;
                 }
+                self.counters.upload(bytes.len());
                 match old {
                     Some(buffer) if buffer.size() >= bytes.len() as u64 => {
                         self.queue.write_buffer(&buffer, 0, bytes);
@@ -1112,6 +1122,7 @@ impl SceneRenderer {
                     && zone_visible(zone, self.render_origin, &globals.world_proj)
             })
             .collect();
+        self.counters.set_visible_zones(visible.len());
         if params.profile == RenderProfile::Hd {
             // The HD fragment shader is expensive: draw the opaque zones front to back so the
             // depth test rejects hidden fragments early. (The Reference profile keeps its order:
@@ -1362,6 +1373,9 @@ impl SceneRenderer {
         if redraw && std::env::var_os("RUSTOSRS_SHADOW_DEBUG").is_some() {
             eprintln!("shadow map redrawn: {signature:?}");
         }
+        if redraw {
+            self.counters.shadow_redraw();
+        }
         self.hd_shadow_drawn.set(Some(signature));
         Some(ShadowPlan {
             redraw,
@@ -1493,6 +1507,7 @@ impl SceneRenderer {
                             (false, false) => range.start..end,
                         };
                         if !drawn.is_empty() {
+                            self.counters.draw(drawn.end - drawn.start);
                             pass.draw(drawn, 0..1);
                         }
                     }
@@ -1509,6 +1524,7 @@ impl SceneRenderer {
                     if count > 0 {
                         pass.set_vertex_buffer(0, buffer.slice(..));
                         pass.set_vertex_buffer(1, hd_buffer.slice(..));
+                        self.counters.draw(count);
                         pass.draw(0..count, 0..1);
                     }
                 }
@@ -1717,6 +1733,7 @@ impl SceneRenderer {
                             range.count
                         };
                         if solid > 0 {
+                            self.counters.draw(solid);
                             pass.draw(range.start..range.start + solid, 0..1);
                         }
                     }
@@ -1751,6 +1768,7 @@ impl SceneRenderer {
                     for range in &zone.opaque_ranges {
                         if range.min_plane <= params.view_plane && range.cutout_count > 0 {
                             let end = range.start + range.count;
+                            self.counters.draw(range.cutout_count.min(range.count));
                             pass.draw(end - range.cutout_count.min(range.count)..end, 0..1);
                         }
                     }
@@ -1788,6 +1806,7 @@ impl SceneRenderer {
                         ),
                         wgpu::IndexFormat::Uint32,
                     );
+                    self.counters.draw(draw.count);
                     pass.draw_indexed(0..draw.count, 0, 0..1);
                 }
             }
@@ -1940,6 +1959,7 @@ impl SceneRenderer {
         }
         let buffer = slot.as_ref().map(|(buffer, _)| buffer.clone());
         if let Some(buffer) = &buffer {
+            self.counters.upload(indices.len() * 4);
             self.queue
                 .write_buffer(buffer, 0, bytemuck::cast_slice(&indices));
         }

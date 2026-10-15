@@ -1,20 +1,36 @@
-//! Opt-in raw performance capture. Disabled runs allocate no sample storage. GPU timings
-//! retain their measurement source; queue latency is never called GPU execution time.
+//! Opt-in raw performance capture (report schema 2). Disabled runs allocate no sample storage.
+//! GPU timings retain their measurement source; queue latency is never called GPU execution time.
+mod summary;
+
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, path::PathBuf};
 use web_time::Instant;
 
+const SCHEMA_VERSION: u32 = 2;
 const MAX_SAMPLES: usize = 100_000;
+/// Cap per recorded event stream; later events are counted in `dropped_events`.
+const MAX_EVENTS: usize = 20_000;
+/// Phases that run inside another phase. They are reported, but not subtracted from the frame
+/// twice when computing the unaccounted remainder.
+const NESTED_PHASES: &[&str] = &["anim-upload", "minimap"];
 
 #[derive(Serialize)]
 struct FrameSample {
     seconds: f64,
+    /// Index into the report's `segments` table (see `mark` in the script language).
+    segment: u16,
+    /// FNV-1a hash of the camera state, to detect drift or input contamination within a run.
+    camera_hash: u64,
     scene_encoded: bool,
     interval_ms: Option<f64>,
     cpu_ms: f64,
+    /// `cpu_ms` minus the top-level named phases.
+    unaccounted_ms: f64,
     gpu_pass_samples: BTreeMap<&'static str, (u32, f32)>,
     phases_ms: BTreeMap<&'static str, f64>,
+    /// Renderer counters and sampled gauges for this frame.
+    counters: BTreeMap<&'static str, u64>,
     gpu_scene_smoothed_ms: Option<f32>,
     gpu_submit_to_done_smoothed_ms: Option<f32>,
     process_resident_mib: Option<f32>,
@@ -26,13 +42,19 @@ pub(super) struct PerformanceCapture {
     last_frame: Option<Instant>,
     warmup_seconds: f64,
     phases: BTreeMap<&'static str, f64>,
+    counters: BTreeMap<&'static str, u64>,
     samples: Vec<FrameSample>,
     dropped: u64,
     context: Value,
-    build_ms: Vec<f32>,
+    /// Latency and cost events (worker build stages, installs, rebuilds), in milliseconds.
+    events: BTreeMap<&'static str, Vec<f32>>,
+    dropped_events: u64,
     context_at: Option<Instant>,
     gpu_pass_samples: BTreeMap<&'static str, (u32, f32)>,
     scene_encoded: bool,
+    segments: Vec<String>,
+    segment: u16,
+    camera_hash: u64,
 }
 
 impl PerformanceCapture {
@@ -53,13 +75,18 @@ impl PerformanceCapture {
             last_frame: None,
             warmup_seconds,
             phases: BTreeMap::new(),
+            counters: BTreeMap::new(),
             samples: Vec::new(),
             dropped: 0,
             context: json!({}),
-            build_ms: Vec::new(),
+            events: BTreeMap::new(),
+            dropped_events: 0,
             context_at: None,
             gpu_pass_samples: BTreeMap::new(),
             scene_encoded: false,
+            segments: vec!["start".to_owned()],
+            segment: 0,
+            camera_hash: 0,
         }
     }
 
@@ -70,10 +97,36 @@ impl PerformanceCapture {
     pub(super) fn begin(&mut self) {
         self.scene_encoded = false;
         self.phases.clear();
+        self.counters.clear();
     }
 
     pub(super) fn phase(&mut self, name: &'static str, started: Instant) {
         *self.phases.entry(name).or_default() += started.elapsed().as_secs_f64() * 1000.0;
+    }
+
+    pub(super) fn counter(&mut self, name: &'static str, value: u64) {
+        self.counters.insert(name, value);
+    }
+
+    /// Start a named workload segment; later samples are attributed to it.
+    pub(super) fn mark_segment(&mut self, name: &str) {
+        let index = self
+            .segments
+            .iter()
+            .position(|existing| existing == name)
+            .unwrap_or_else(|| {
+                self.segments.push(name.to_owned());
+                self.segments.len() - 1
+            });
+        self.segment = u16::try_from(index).unwrap_or(u16::MAX);
+    }
+
+    pub(super) fn camera(&mut self, words: &[u32]) {
+        let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+        for byte in words.iter().flat_map(|word| word.to_le_bytes()) {
+            hash = (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3);
+        }
+        self.camera_hash = hash;
     }
 
     pub(super) fn context(&mut self, context: Value) {
@@ -86,9 +139,15 @@ impl PerformanceCapture {
             .is_none_or(|at| at.elapsed().as_secs_f32() >= 1.0)
     }
 
-    pub(super) fn build(&mut self, ms: f32) {
-        if self.build_ms.len() < MAX_SAMPLES && ms.is_finite() {
-            self.build_ms.push(ms);
+    pub(super) fn event(&mut self, name: &'static str, ms: f32) {
+        if !ms.is_finite() || self.started.elapsed().as_secs_f64() < self.warmup_seconds {
+            return;
+        }
+        let stream = self.events.entry(name).or_default();
+        if stream.len() < MAX_EVENTS {
+            stream.push(ms);
+        } else {
+            self.dropped_events += 1;
         }
     }
 
@@ -106,12 +165,23 @@ impl PerformanceCapture {
             self.dropped += 1;
             return;
         }
+        let cpu_ms = now.duration_since(started).as_secs_f64() * 1000.0;
+        let top_level: f64 = self
+            .phases
+            .iter()
+            .filter(|(name, _)| !NESTED_PHASES.contains(name))
+            .map(|(_, ms)| ms)
+            .sum();
         self.samples.push(FrameSample {
             seconds,
+            segment: self.segment,
+            camera_hash: self.camera_hash,
             scene_encoded: self.scene_encoded,
             interval_ms,
-            cpu_ms: now.duration_since(started).as_secs_f64() * 1000.0,
+            cpu_ms,
+            unaccounted_ms: (cpu_ms - top_level).max(0.0),
             phases_ms: self.phases.clone(),
+            counters: self.counters.clone(),
             gpu_pass_samples: self.gpu_pass_samples.clone(),
             gpu_scene_smoothed_ms: gpu,
             gpu_submit_to_done_smoothed_ms: queue_latency,
@@ -132,29 +202,32 @@ impl PerformanceCapture {
 
     fn report(&self) -> Value {
         json!({
-            "schema_version": 1,
+            "schema_version": SCHEMA_VERSION,
             "metadata": std::env::var("RUSTOSRS_PERF_METADATA").ok()
                 .and_then(|value| serde_json::from_str::<Value>(&value).ok()),
             "context": self.context,
             "warmup_seconds": self.warmup_seconds,
             "dropped_samples": self.dropped,
+            "dropped_events": self.dropped_events,
             "measurements": {
+                "interval_ms": "Time between frame starts. On a presented window it includes waiting for the drawable and the compositor; present wait is not separated from useful work",
+                "cpu_ms": "Body of EditorApp::ui only; excludes egui tessellation, queue submission by eframe and present",
+                "unaccounted_ms": "cpu_ms minus top-level named phases; nested phases (anim-upload, minimap) are not subtracted twice",
                 "gpu_scene_smoothed_ms": "GPU timestamp queries; scene pass only, delayed and smoothed",
                 "gpu_submit_to_done_smoothed_ms": "Queue submission-to-callback latency, including waiting; not GPU execution time",
-                "gpu_pass_samples": "Per-pass [sequence, raw milliseconds]; delayed results, deduplicate by sequence within each pass",
-                "process_resident_mib": "Latest supported process RSS, sampled at most once per second",
+                "gpu_pass_samples": "Per-pass [sequence, raw milliseconds]; delayed results, deduplicated by sequence in the summary",
+                "process_resident_mib": "Latest supported process RSS, sampled at most once per second; not the macOS physical footprint",
+                "counters": "Per-frame renderer counters (draw calls, vertices, upload bytes since the previous sample, shadow redraws, visible zones) and worker gauges",
+                "events_ms": "Worker and install latencies: build.queue_wait/decode/scene/extract/animations/info/compute, build.install, anim.rebuild, outline.latency",
                 "allocation_count": null,
-                "allocation_count_unavailable_reason": "No allocator profiler attached; unsafe allocator interception is not enabled",
+                "allocation_count_unavailable_reason": "No allocator profiler attached; unsafe allocator interception is not enabled (use the alloc-profile feature in a dedicated run)",
                 "gpu_driver_resident_bytes": null,
                 "gpu_driver_resident_bytes_unavailable_reason": "Owned resource sizes exclude driver metadata, alignment and shared eframe resources",
                 "memory_accounting": "Process RSS and owned GPU bytes may overlap on unified memory; never sum them"
             },
-            "summary": {
-                "frame_interval_ms": distribution(self.samples.iter().filter_map(|s| s.interval_ms)),
-                "cpu_ms": distribution(self.samples.iter().map(|s| s.cpu_ms)),
-                "build_ms": distribution(self.build_ms.iter().map(|ms| f64::from(*ms)))
-            },
-            "build_ms": self.build_ms,
+            "segments": self.segments,
+            "summary": summary::summarize(&self.samples, &self.segments, &self.events),
+            "events_ms": self.events,
             "samples": self.samples
         })
     }
@@ -188,20 +261,6 @@ impl Drop for PerformanceCapture {
     }
 }
 
-fn distribution(values: impl Iterator<Item = f64>) -> Value {
-    let mut values: Vec<_> = values.filter(|value| value.is_finite()).collect();
-    values.sort_by(f64::total_cmp);
-    if values.is_empty() {
-        return Value::Null;
-    }
-    let percentile = |fraction: f64| {
-        let index = ((values.len() - 1) as f64 * fraction).ceil() as usize;
-        values[index]
-    };
-    json!({"count": values.len(), "p50": percentile(0.5), "p95": percentile(0.95),
-        "p99": percentile(0.99), "max": values.last()})
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +277,7 @@ mod tests {
         assert_eq!(capture.samples[0].gpu_scene_smoothed_ms, None);
         assert_eq!(capture.samples[1].gpu_submit_to_done_smoothed_ms, Some(8.0));
         assert!(capture.report()["measurements"]["allocation_count"].is_null());
+        assert_eq!(capture.report()["schema_version"], SCHEMA_VERSION);
         // This in-memory test never publishes a file when the capture is dropped.
         capture.path =
             std::env::temp_dir().join(format!("rustosrs-capture-test-{}.json", std::process::id()));
@@ -231,19 +291,42 @@ mod tests {
     }
 
     #[test]
-    fn warmup_frames_are_not_promoted_to_measurement_samples() {
+    fn warmup_frames_and_events_are_not_promoted_to_measurement_samples() {
         let mut capture = PerformanceCapture::new(PathBuf::new(), 1e6);
         capture.end(Instant::now(), None, None);
+        capture.event("build.compute", 3.0);
         assert!(capture.samples.is_empty());
-        // Drop still verifies error handling without panicking for an invalid output path.
+        assert!(capture.events.is_empty());
     }
 
     #[test]
-    fn distributions_handle_absent_and_non_finite_samples() {
-        assert_eq!(distribution([f64::NAN].into_iter()), Value::Null);
-        let result = distribution([4.0, 1.0, 3.0, 2.0].into_iter());
-        assert_eq!(result["p50"], 3.0);
-        assert_eq!(result["p95"], 4.0);
-        assert_eq!(result["count"], 4);
+    fn nested_phases_are_not_subtracted_twice_from_the_unaccounted_remainder() {
+        let mut capture = PerformanceCapture::new(PathBuf::new(), 0.0);
+        let started = Instant::now();
+        capture.phases.insert("anim", 1.0e6);
+        capture.phases.insert("anim-upload", 5.0e5);
+        capture.end(started, None, None);
+        let sample = &capture.samples[0];
+        // The injected top-level phase dwarfs any real frame time, so the remainder clamps to zero.
+        assert_eq!(sample.unaccounted_ms, 0.0);
+        assert_eq!(sample.phases_ms["anim-upload"], 5.0e5);
+    }
+
+    #[test]
+    fn segments_attribute_samples_and_camera_hash_tracks_state() {
+        let mut capture = PerformanceCapture::new(PathBuf::new(), 0.0);
+        capture.end(Instant::now(), None, None);
+        capture.mark_segment("travel");
+        capture.mark_segment("return");
+        capture.mark_segment("travel");
+        capture.camera(&[1, 2, 3]);
+        capture.end(Instant::now(), None, None);
+        let first = capture.samples[1].camera_hash;
+        capture.camera(&[1, 2, 4]);
+        capture.end(Instant::now(), None, None);
+        assert_eq!(capture.samples[0].segment, 0);
+        assert_eq!(capture.samples[1].segment, 1);
+        assert_ne!(first, capture.samples[2].camera_hash);
+        assert_eq!(capture.segments, ["start", "travel", "return"]);
     }
 }

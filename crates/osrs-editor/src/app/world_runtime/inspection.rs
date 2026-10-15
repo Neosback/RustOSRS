@@ -3,10 +3,8 @@
 use super::{RegionKey, WorldRuntime};
 use crate::pick::Infos;
 use osrs_world::RegionInfo;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
+use web_time::Instant;
 type OutlineKey = (RegionKey, usize);
 type Triangles = Arc<Vec<[[i32; 3]; 3]>>;
 
@@ -15,7 +13,8 @@ pub(super) struct InspectionProjection {
     infos: Infos,
     version: u64,
     outlines: HashMap<OutlineKey, Triangles>,
-    requested: HashSet<OutlineKey>,
+    /// Outlines asked of the worker, with the request time (latency observation only).
+    requested: HashMap<OutlineKey, Instant>,
 }
 impl WorldRuntime {
     pub(in crate::app) fn infos(&self) -> &Infos {
@@ -30,7 +29,7 @@ impl WorldRuntime {
             .retain(|(region, _), _| *region != key);
         self.inspection
             .requested
-            .retain(|(region, _)| *region != key);
+            .retain(|(region, _), _| *region != key);
         self.inspection.infos.insert(key, info);
         self.inspection.version += 1;
     }
@@ -51,16 +50,23 @@ impl WorldRuntime {
         &mut self,
         key: OutlineKey,
         triangles: Vec<[[i32; 3]; 3]>,
-    ) {
+    ) -> Option<f32> {
         self.inspection.outlines.insert(key, Arc::new(triangles));
+        self.inspection
+            .requested
+            .get(&key)
+            .map(|requested| requested.elapsed().as_secs_f32() * 1000.0)
     }
     pub(in crate::app) fn outline(&self, key: &OutlineKey) -> Option<&Triangles> {
         self.inspection.outlines.get(key)
     }
     pub(in crate::app) fn queue_outline(&mut self, key: OutlineKey) {
-        if self.inspection.outlines.contains_key(&key) || !self.inspection.requested.insert(key) {
+        if self.inspection.outlines.contains_key(&key)
+            || self.inspection.requested.contains_key(&key)
+        {
             return;
         }
+        self.inspection.requested.insert(key, Instant::now());
         if let Some(loc) = self
             .inspection
             .infos

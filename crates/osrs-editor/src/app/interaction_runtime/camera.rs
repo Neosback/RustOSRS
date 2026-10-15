@@ -44,6 +44,15 @@ impl InteractionRuntime {
         [self.camera.x, self.camera.y, self.camera.z] = local;
         self.set_view_plane(plane);
     }
+    /// Set the view direction (radians) and, when given, the camera height (client units above
+    /// the plane origin, positive up). Used by deterministic workload scripts.
+    pub(in crate::app) fn set_camera_pose(&mut self, yaw: f32, pitch: f32, height: Option<f32>) {
+        self.camera.yaw = yaw;
+        self.camera.pitch = pitch;
+        if let Some(height) = height {
+            self.camera.y = -height;
+        }
+    }
     pub(in crate::app) fn shift_camera_origin(&mut self, delta: [f32; 2]) {
         self.camera.x += delta[0];
         self.camera.z += delta[1];

@@ -59,8 +59,8 @@ pub use object_output_proof::{
 pub use scene_builder::{WorldScene, build_world_scene};
 pub use source_squares::{SourceSquare, SourceSquares};
 pub use streaming::{
-    HdRegionStats, REGION_WINDOW_MARGIN, RegionGeometry, RegionRenderPath, RegionStreamer,
-    StreamEvent, build_region_geometry, build_region_geometry_with, region_window,
+    BuildTimings, HdRegionStats, REGION_WINDOW_MARGIN, RegionGeometry, RegionRenderPath,
+    RegionStreamer, StreamEvent, build_region_geometry, build_region_geometry_with, region_window,
 };
 pub use terrain_edits::{TerrainEdits, TileEdit};
 pub use terrain_stage::{

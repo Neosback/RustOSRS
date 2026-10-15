@@ -30,6 +30,8 @@ enum Request {
 pub struct AnimationUpdate {
     /// `None` when nothing changed and no rebuild was forced.
     pub geometry: Option<SceneGeometry>,
+    /// Worker time spent advancing and rebuilding, in milliseconds (observation only).
+    pub rebuild_ms: f32,
 }
 
 /// Applies requests to the animation system and answers rebuilds.
@@ -53,10 +55,17 @@ impl AnimationState {
                 radius_tiles,
                 force,
             } => {
+                let started = web_time::Instant::now();
                 let advanced = system.advance(cycles);
                 let geometry =
                     (advanced || force).then(|| system.build_geometry(center_tile, radius_tiles));
-                return updates.send(AnimationUpdate { geometry }).is_ok();
+                let rebuild_ms = started.elapsed().as_secs_f32() * 1000.0;
+                return updates
+                    .send(AnimationUpdate {
+                        geometry,
+                        rebuild_ms,
+                    })
+                    .is_ok();
             }
         }
         true

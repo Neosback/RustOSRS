@@ -160,8 +160,28 @@ pub struct RegionGeometry {
     /// Inspection data for the picker.
     pub info: Arc<RegionInfo>,
     pub build_ms: f32,
+    /// Stage breakdown of this build; see [`BuildTimings`].
+    pub timings: BuildTimings,
     /// Presentation generation the region was built under (see [`RegionStreamer::set_presentation`]).
     pub generation: u32,
+}
+
+/// Wall-clock stages of one region build in milliseconds. Observations only: no consumer may use
+/// them to decide whether a result is fresh. `queue_wait_ms` is how long the request waited behind
+/// earlier worker requests (zero outside the streamer thread); `decode_ms` is the map decode that
+/// precedes `RegionGeometry::build_ms`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct BuildTimings {
+    pub queue_wait_ms: f32,
+    pub decode_ms: f32,
+    pub scene_ms: f32,
+    pub extract_ms: f32,
+    pub animations_ms: f32,
+    pub info_ms: f32,
+}
+
+fn elapsed_ms(since: Instant) -> f32 {
+    since.elapsed().as_secs_f32() * 1000.0
 }
 
 /// Build one region's geometry, or `None` when the cache has no map data for it.
@@ -193,18 +213,22 @@ fn build_region_geometry_scoped_with(
     hd: Option<&HdContext>,
     zones: Option<&BTreeSet<(i32, i32)>>,
 ) -> Result<Option<RegionGeometry>, WorldError> {
+    let decode_started = Instant::now();
     let Some(source) = definitions.region(region)? else {
         return Ok(None);
     };
+    let decode_ms = elapsed_ms(decode_started);
     let started = Instant::now();
     let window = region_window(region);
     let world = build_world_scene(definitions, window, presentation)?;
+    let scene_ms = elapsed_ms(started);
     let margin = REGION_WINDOW_MARGIN as u32;
     let owned_tiles = OwnedTiles {
         min: (margin, margin),
         max: (margin + REGION_TILES, margin + REGION_TILES),
     };
     let owned = Some(owned_tiles);
+    let extract_started = Instant::now();
     let height_dependencies = extract_height_dependencies(&world, owned_tiles);
     let render_path = RegionRenderPath::select(presentation.hd_geometry, hd.is_some());
     let geometry = match (render_path, hd) {
@@ -213,11 +237,15 @@ fn build_region_geometry_scoped_with(
         }
         _ => extract_owned_geometry_zones(&world, owned, zones),
     };
+    let extract_ms = elapsed_ms(extract_started);
     let hd_stats =
         (render_path == RegionRenderPath::Hd).then(|| HdRegionStats::from_geometry(&geometry));
+    let animations_started = Instant::now();
     // Animation and inspection projections remain region-complete even for a zone-scoped static
     // refresh. Their identity/indexing is consumed region-wide by the editor.
     let animations = extract_animated_instances(&world, owned, hd);
+    let animations_ms = elapsed_ms(animations_started);
+    let info_started = Instant::now();
     let info = Arc::new(extract_region_info(
         &world,
         region,
@@ -236,7 +264,15 @@ fn build_region_geometry_scoped_with(
         hd_stats,
         animations,
         info,
-        build_ms: started.elapsed().as_secs_f32() * 1000.0,
+        build_ms: elapsed_ms(started),
+        timings: BuildTimings {
+            queue_wait_ms: 0.0,
+            decode_ms,
+            scene_ms,
+            extract_ms,
+            animations_ms,
+            info_ms: elapsed_ms(info_started),
+        },
         generation: 0,
     }))
 }
@@ -291,6 +327,7 @@ enum Request {
     Build {
         region: RegionCoord,
         zones: Option<BTreeSet<(i32, i32)>>,
+        queued_at: Instant,
     },
     SetPresentation(TerrainPresentation, u32),
     Edit(Vec<crate::TileEdit>),
@@ -365,8 +402,13 @@ impl StreamWorker {
                 self.presentation = presentation;
                 self.generation = generation;
             }
-            Request::Build { region, zones } => {
-                return self.build(region, zones.as_ref(), events);
+            Request::Build {
+                region,
+                zones,
+                queued_at,
+            } => {
+                let queue_wait_ms = elapsed_ms(queued_at);
+                return self.build(region, zones.as_ref(), queue_wait_ms, events);
             }
         }
         true
@@ -376,6 +418,7 @@ impl StreamWorker {
         &mut self,
         region: RegionCoord,
         zones: Option<&BTreeSet<(i32, i32)>>,
+        queue_wait_ms: f32,
         events: &Sender<StreamEvent>,
     ) -> bool {
         if self.presentation.hd_geometry && self.hd.is_none() && self.hd_failure.is_none() {
@@ -413,6 +456,7 @@ impl StreamWorker {
         ) {
             Ok(Some(mut geometry)) => {
                 geometry.generation = self.generation;
+                geometry.timings.queue_wait_ms = queue_wait_ms;
                 if geometry.render_path == RegionRenderPath::ReferenceFallback {
                     let reason = self
                         .hd_failure
@@ -573,6 +617,7 @@ impl RegionStreamer {
         let _ = self.requests.send(Request::Build {
             region,
             zones: None,
+            queued_at: Instant::now(),
         });
     }
 
@@ -587,6 +632,7 @@ impl RegionStreamer {
         let _ = self.requests.send(Request::Build {
             region,
             zones: Some(zones),
+            queued_at: Instant::now(),
         });
     }
 
@@ -636,10 +682,12 @@ mod tests {
         let request = Request::Build {
             region: RegionCoord::new(50, 50),
             zones: Some(expected.clone()),
+            queued_at: web_time::Instant::now(),
         };
         let Request::Build {
             region,
             zones: Some(actual),
+            ..
         } = request
         else {
             unreachable!("scoped request shape")
