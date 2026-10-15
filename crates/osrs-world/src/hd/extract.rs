@@ -235,3 +235,7 @@ pub(crate) fn extract_owned_geometry_hd_zones(
     }
     geometry
 }
+
+fn unreachable_plane() -> StoragePlane {
+    StoragePlane::new(0).unwrap_or_else(|| unreachable!("plane 0 exists"))
+}
