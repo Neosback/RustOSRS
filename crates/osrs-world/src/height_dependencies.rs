@@ -186,7 +186,8 @@ fn record_placement_samples(
         snapshot.mark_incomplete();
         return;
     };
-    let Some((y0, y1)) = midpoint_pair(loc.tile.y, u32::from(footprint.depth), world.scene.height())
+    let Some((y0, y1)) =
+        midpoint_pair(loc.tile.y, u32::from(footprint.depth), world.scene.height())
     else {
         snapshot.mark_incomplete();
         return;
@@ -234,10 +235,7 @@ fn record_local_source(
 ) {
     snapshot.record(
         HeightSource::new(
-            MapTile::new(
-                world.window.base_x + local_x,
-                world.window.base_y + local_y,
-            ),
+            MapTile::new(world.window.base_x + local_x, world.window.base_y + local_y),
             plane,
         ),
         output,
