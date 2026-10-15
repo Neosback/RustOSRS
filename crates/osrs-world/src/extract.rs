@@ -46,10 +46,7 @@ pub(crate) fn geometry_tile_selected(
 ) -> bool {
     owned.is_none_or(|range| range.contains(x, y))
         && zones.is_none_or(|zones| {
-            zones.contains(&(
-                zone_base.0 + x as i32 / 8,
-                zone_base.1 + y as i32 / 8,
-            ))
+            zones.contains(&(zone_base.0 + x as i32 / 8, zone_base.1 + y as i32 / 8))
         })
 }
 
@@ -78,9 +75,8 @@ pub(crate) fn extract_owned_geometry_zones(
 ) -> SceneGeometry {
     let mut geometry = SceneGeometry::default();
     let (zone_base_x, zone_base_z) = (world.window.base_x / 8, world.window.base_y / 8);
-    let in_range = |x: u32, y: u32| {
-        geometry_tile_selected(owned, zones, (zone_base_x, zone_base_z), x, y)
-    };
+    let in_range =
+        |x: u32, y: u32| geometry_tile_selected(owned, zones, (zone_base_x, zone_base_z), x, y);
 
     // Terrain: every storage tile, then its linked-below (bridge) tile.
     for plane_index in 0..4_u8 {
