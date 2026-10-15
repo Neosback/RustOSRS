@@ -1,5 +1,5 @@
 use super::ZoneKey;
-use crate::app::edit_runtime::{EditFootprint, EditReceipt};
+use crate::app::edit_runtime::EditFootprint;
 use osrs_core::coords::{MapTile, RegionCoord};
 use osrs_edit::ChangeImpact;
 use std::collections::BTreeSet;
@@ -16,8 +16,12 @@ pub(super) enum ProjectionInvalidation {
     Zones(BTreeSet<ZoneKey>),
 }
 
-pub(super) fn projection_invalidation(receipt: &EditReceipt) -> ProjectionInvalidation {
-    if receipt.impact.is_empty() || receipt.touched_regions.is_empty() {
+pub(super) fn projection_invalidation(
+    impact: ChangeImpact,
+    touched_regions: &[RegionCoord],
+    footprint: &EditFootprint,
+) -> ProjectionInvalidation {
+    if impact.is_empty() || touched_regions.is_empty() {
         return ProjectionInvalidation::None;
     }
 
@@ -25,16 +29,13 @@ pub(super) fn projection_invalidation(receipt: &EditReceipt) -> ProjectionInvali
         terrain_tiles,
         height_vertices,
         object_tiles,
-    } = &receipt.footprint;
+    } = footprint;
 
     // Height can re-contour models over their model-space XZ bounds; object edits can write clipped
     // shadows over definition-sized footprints. Until those dependency footprints are explicit,
     // retain the previously certified region policy rather than guessing a zone radius.
     if !height_vertices.is_empty() || !object_tiles.is_empty() || terrain_tiles.is_empty() {
-        return ProjectionInvalidation::Regions(invalidated_regions(
-            receipt.impact,
-            &receipt.touched_regions,
-        ));
+        return ProjectionInvalidation::Regions(invalidated_regions(impact, touched_regions));
     }
 
     ProjectionInvalidation::Zones(invalidated_terrain_zones(
@@ -88,8 +89,8 @@ pub(super) fn zone_region(zone: ZoneKey) -> (i32, i32) {
 mod tests {
     use super::*;
 
-    fn receipt(impact: ChangeImpact, footprint: EditFootprint) -> EditReceipt {
-        let touched_regions = footprint
+    fn touched_regions(footprint: &EditFootprint) -> Vec<RegionCoord> {
+        footprint
             .terrain_tiles
             .iter()
             .chain(&footprint.height_vertices)
@@ -97,25 +98,22 @@ mod tests {
             .map(|tile| tile.split_region().0)
             .collect::<BTreeSet<_>>()
             .into_iter()
-            .collect();
-        EditReceipt {
-            revision: 1,
-            impact,
-            touched_regions,
-            footprint,
-        }
+            .collect()
     }
 
     #[test]
     fn terrain_only_receipt_maps_radius_five_to_world_zones() {
-        let edit = receipt(
+        let footprint = EditFootprint::new([MapTile::new(3204, 3204)], [], []);
+        let regions = touched_regions(&footprint);
+        let result = projection_invalidation(
             ChangeImpact::TERRAIN_GEOMETRY
                 | ChangeImpact::TERRAIN_MATERIAL
                 | ChangeImpact::NORMALS
                 | ChangeImpact::LIGHTING,
-            EditFootprint::new([MapTile::new(3204, 3204)], [], []),
+            &regions,
+            &footprint,
         );
-        let ProjectionInvalidation::Zones(zones) = projection_invalidation(&edit) else {
+        let ProjectionInvalidation::Zones(zones) = result else {
             unreachable!("pure terrain edit is zone bounded")
         };
         assert_eq!(zones.len(), 9);
@@ -125,15 +123,18 @@ mod tests {
 
     #[test]
     fn height_receipt_keeps_previous_region_ring_fallback() {
-        let edit = receipt(
+        let footprint = EditFootprint::new([], [MapTile::new(3204, 3204)], []);
+        let regions = touched_regions(&footprint);
+        let result = projection_invalidation(
             ChangeImpact::TERRAIN_GEOMETRY
                 | ChangeImpact::NORMALS
                 | ChangeImpact::LIGHTING
                 | ChangeImpact::LOCATIONS
                 | ChangeImpact::BOUNDS,
-            EditFootprint::new([], [MapTile::new(3204, 3204)], []),
+            &regions,
+            &footprint,
         );
-        let ProjectionInvalidation::Regions(regions) = projection_invalidation(&edit) else {
+        let ProjectionInvalidation::Regions(regions) = result else {
             unreachable!("height remains region conservative")
         };
         assert_eq!(regions.len(), 9);
@@ -143,23 +144,26 @@ mod tests {
 
     #[test]
     fn object_receipt_keeps_touched_region_fallback() {
-        let edit = receipt(
-            ChangeImpact::LOCATIONS | ChangeImpact::COLLISION | ChangeImpact::BOUNDS,
-            EditFootprint::new([], [], [MapTile::new(3204, 3204)]),
-        );
+        let footprint = EditFootprint::new([], [], [MapTile::new(3204, 3204)]);
+        let regions = touched_regions(&footprint);
         assert_eq!(
-            projection_invalidation(&edit),
+            projection_invalidation(
+                ChangeImpact::LOCATIONS | ChangeImpact::COLLISION | ChangeImpact::BOUNDS,
+                &regions,
+                &footprint,
+            ),
             ProjectionInvalidation::Regions(vec![RegionCoord::new(50, 50)])
         );
     }
 
     #[test]
     fn empty_impact_never_invalidates_projection() {
-        let edit = receipt(
-            ChangeImpact::NONE,
-            EditFootprint::new([MapTile::new(3204, 3204)], [], []),
+        let footprint = EditFootprint::new([MapTile::new(3204, 3204)], [], []);
+        let regions = touched_regions(&footprint);
+        assert_eq!(
+            projection_invalidation(ChangeImpact::NONE, &regions, &footprint),
+            ProjectionInvalidation::None
         );
-        assert_eq!(projection_invalidation(&edit), ProjectionInvalidation::None);
     }
 
     #[test]
