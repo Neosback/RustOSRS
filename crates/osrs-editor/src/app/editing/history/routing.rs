@@ -12,12 +12,15 @@ use super::{
 use crate::app::edit_runtime::{
     EditExecution, EditExecutionError, EditFootprint, EditReplayDirection,
 };
-use crate::app::object_tool::{
-    ObjectHistoryRoute, build_object_history_projection, placement_from_spec,
-};
+use crate::app::object_tool::{ObjectHistoryRoute, build_object_history_projection};
 use crate::paint::TileValues;
-use osrs_core::coords::{MapTile, SourcePlane};
-use osrs_edit::{HeightVertexCoord, MapQuery};
+use osrs_core::{
+    coords::{MapTile, SourcePlane},
+    ids::ObjectId,
+};
+use osrs_edit::{
+    HeightVertexCoord, LocKind, MapPosition, MapQuery, ObjectOrientation, ObjectPlacement,
+};
 use osrs_world::{LocEdit, LocSpec};
 use web_time::Instant;
 
@@ -174,20 +177,12 @@ impl Route {
                     Direction::Undo => (object.added(), object.removed()),
                     Direction::Redo => (object.removed(), object.added()),
                 };
-                let adapt = |specs: &[LocSpec]| {
-                    specs
-                        .iter()
-                        .copied()
-                        .map(|spec| {
-                            placement_from_spec(spec).unwrap_or_else(|error| {
-                                unreachable!(
-                                    "semantic Object history contains only canonical placements: {error:?}"
-                                )
-                            })
-                        })
-                        .collect::<Vec<_>>()
-                };
-                EditFootprint::with_object_mutations([], [], adapt(removed), adapt(added))
+                EditFootprint::with_object_mutations(
+                    [],
+                    [],
+                    removed.iter().copied().map(history_object_placement),
+                    added.iter().copied().map(history_object_placement),
+                )
             }
         }
     }
@@ -265,6 +260,21 @@ impl Route {
             }
             _ => unreachable!("projection input is captured from the same history route"),
         }
+    }
+}
+
+fn history_object_placement(spec: LocSpec) -> ObjectPlacement {
+    let plane = SourcePlane::new(spec.plane)
+        .unwrap_or_else(|| unreachable!("semantic Object history plane is canonical"));
+    let kind = LocKind::new(spec.loc_type)
+        .unwrap_or_else(|| unreachable!("semantic Object history loc kind is canonical"));
+    let orientation = ObjectOrientation::new(spec.orientation)
+        .unwrap_or_else(|| unreachable!("semantic Object history orientation is canonical"));
+    ObjectPlacement {
+        object_id: ObjectId::new(spec.object_id),
+        position: MapPosition::new(MapTile::new(spec.tile.0, spec.tile.1), plane),
+        kind,
+        orientation,
     }
 }
 
