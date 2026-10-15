@@ -280,12 +280,9 @@ impl EditorApp {
         let eyedrop = pressed("tool.eyedrop");
         if let Some(tool) = tool {
             let key = self.keymap.binding(tool.action()).map(|b| b.key);
-            let target = self.interaction.press_tool_key(
-                self.prefs.tool,
-                tool,
-                key,
-                Instant::now(),
-            );
+            let target =
+                self.interaction
+                    .press_tool_key(self.prefs.tool, tool, key, Instant::now());
             self.set_tool(target);
         }
         if quick {
