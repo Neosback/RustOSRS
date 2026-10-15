@@ -49,7 +49,7 @@ pub(super) struct InteractionRuntime {
     pub(super) selection_objects: Vec<ObjectPick>,
     pub(super) selection_tiles: HashSet<(i32, i32)>,
     /// Placements to select once their rebuilt region arrives (after an object edit).
-    pub(super) pending_reselect: Vec<osrs_world::LocSpec>,
+    pending_reselect: Vec<osrs_world::LocSpec>,
     /// The box being dragged with the Select tool.
     marquee: Option<Marquee>,
     /// The spline tool's control points and preview.
@@ -189,6 +189,23 @@ impl InteractionRuntime {
 
     pub(super) fn selection_counts(&self) -> (usize, usize) {
         (self.selection_objects.len(), self.selection_tiles.len())
+    }
+
+    pub(super) fn set_pending_reselect(&mut self, specs: Vec<osrs_world::LocSpec>) {
+        self.pending_reselect = specs;
+    }
+
+    pub(super) fn pending_reselect(&self) -> &[osrs_world::LocSpec] {
+        &self.pending_reselect
+    }
+
+    pub(super) fn complete_reselect(&mut self, objects: Vec<ObjectPick>) -> bool {
+        if self.pending_reselect.is_empty() || objects.len() != self.pending_reselect.len() {
+            return false;
+        }
+        self.replace_objects(objects);
+        self.pending_reselect.clear();
+        true
     }
 
     pub(super) fn begin_marquee(&mut self, position: egui::Pos2, additive: bool, toggle: bool) {

@@ -143,7 +143,7 @@ impl EditorApp {
             .invalidate_semantic_edit(receipt.impact, &receipt.touched_regions);
         self.push_step(EditStep::semantic_object(removed, added));
         self.clear_selection();
-        self.interaction.pending_reselect = projection.reselect;
+        self.interaction.set_pending_reselect(projection.reselect);
         self.notice = Some((label.to_owned(), Instant::now()));
         true
     }
@@ -286,11 +286,11 @@ impl EditorApp {
 
     /// Select the placements an edit made, once the rebuilt regions are in.
     pub(super) fn resolve_reselect(&mut self) {
-        if self.interaction.pending_reselect.is_empty() {
+        if self.interaction.pending_reselect().is_empty() {
             return;
         }
         let mut found = Vec::new();
-        for spec in &self.interaction.pending_reselect {
+        for spec in self.interaction.pending_reselect() {
             let Some(info) = self.infos.get(&spec.region()) else {
                 continue;
             };
@@ -308,11 +308,7 @@ impl EditorApp {
                 });
             }
         }
-        if found.len() == self.interaction.pending_reselect.len() {
-            self.interaction.selected = found.last().cloned();
-            self.interaction.selection_objects = found;
-            self.interaction.pending_reselect.clear();
-        }
+        self.interaction.complete_reselect(found);
     }
 
     /// Keys: delete, turn, duplicate (with objects selected, in Select and in the Objects tool).

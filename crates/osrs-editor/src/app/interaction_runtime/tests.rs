@@ -157,6 +157,39 @@ fn clear_selection_clears_all_selection_and_inspector_state() {
 }
 
 #[test]
+fn pending_reselect_requires_all_targets_before_replacing_selection() {
+    let mut interaction = runtime();
+    let original = object((1, 1), 1);
+    interaction.select_only_object(original.clone(), Some((7, 8)));
+    interaction.set_pending_reselect(vec![loc((10, 20)), loc((11, 20))]);
+
+    assert_eq!(interaction.pending_reselect().len(), 2);
+    assert!(!interaction.complete_reselect(vec![object((2, 2), 2)]));
+    assert_eq!(interaction.pending_reselect().len(), 2);
+    assert!(interaction.is_primary_object(&original));
+    assert_eq!(interaction.inspect_tile, Some((7, 8)));
+
+    let first = object((2, 2), 2);
+    let second = object((3, 3), 3);
+    assert!(interaction.complete_reselect(vec![first, second.clone()]));
+    assert!(interaction.pending_reselect().is_empty());
+    assert_eq!(interaction.selection_objects.len(), 2);
+    assert!(interaction.is_primary_object(&second));
+    assert_eq!(interaction.inspect_tile, Some((7, 8)));
+}
+
+#[test]
+fn empty_pending_reselect_cannot_replace_selection() {
+    let mut interaction = runtime();
+    let original = object((1, 2), 3);
+    interaction.select_only_object(original.clone(), None);
+
+    assert!(!interaction.complete_reselect(Vec::new()));
+    assert!(interaction.is_primary_object(&original));
+    assert_eq!(interaction.selection_objects.len(), 1);
+}
+
+#[test]
 fn marquee_lifecycle_clamps_pointer_and_latches_modifiers() {
     let mut interaction = runtime();
     let bounds = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(100.0, 100.0));
