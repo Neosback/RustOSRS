@@ -8,10 +8,6 @@ impl InteractionRuntime {
         &self.spline.points
     }
 
-    pub(super) fn spline_drag(&self) -> Option<usize> {
-        self.spline.drag
-    }
-
     pub(super) fn begin_spline_drag(&mut self, index: usize) {
         if index < self.spline.points.len() {
             self.spline.drag = Some(index);
@@ -196,7 +192,7 @@ mod tests {
         let mut interaction = interaction();
         interaction.append_spline_point_and_drag((1.0, 2.0));
         assert_eq!(interaction.spline_points(), &[(1.0, 2.0)]);
-        assert_eq!(interaction.spline_drag(), Some(0));
+        assert_eq!(interaction.spline.drag, Some(0));
 
         interaction.finish_spline_drag();
         interaction.append_spline_point_and_drag((5.0, 6.0));
@@ -206,7 +202,7 @@ mod tests {
             interaction.spline_points(),
             &[(1.0, 2.0), (3.0, 4.0), (5.0, 6.0)]
         );
-        assert_eq!(interaction.spline_drag(), Some(1));
+        assert_eq!(interaction.spline.drag, Some(1));
 
         interaction.update_spline_drag((3.5, 4.5));
         assert_eq!(
@@ -220,13 +216,13 @@ mod tests {
         let mut interaction = interaction();
         interaction.append_spline_point_and_drag((1.0, 2.0));
         interaction.finish_spline_drag();
-        assert_eq!(interaction.spline_drag(), None);
+        assert_eq!(interaction.spline.drag, None);
         assert_eq!(interaction.spline_points(), &[(1.0, 2.0)]);
 
         interaction.begin_spline_drag(0);
         interaction.cancel_spline_drag();
         interaction.update_spline_drag((9.0, 9.0));
-        assert_eq!(interaction.spline_drag(), None);
+        assert_eq!(interaction.spline.drag, None);
         assert_eq!(interaction.spline_points(), &[(1.0, 2.0)]);
     }
 
