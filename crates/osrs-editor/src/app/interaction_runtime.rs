@@ -3,12 +3,27 @@
 //! `InteractionRuntime` owns transient input-side state. It emits edit intents that the
 //! application routes to `EditorSession`; it never commits map mutations itself.
 
-use super::{gizmo, object_tool, selection, spline_tool};
+use super::{gizmo, object_tool, spline_tool};
 use crate::camera::FlyCamera;
 use crate::pick::{ObjectPick, Pick};
 use eframe::egui;
 use std::collections::HashSet;
 use web_time::Instant;
+
+/// A box being dragged out with the left button.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct Marquee {
+    pub(super) start: egui::Pos2,
+    pub(super) current: egui::Pos2,
+    pub(super) additive: bool,
+    pub(super) toggle: bool,
+}
+
+impl Marquee {
+    pub(super) fn rect(&self) -> egui::Rect {
+        egui::Rect::from_two_pos(self.start, self.current)
+    }
+}
 
 pub(super) struct InteractionRuntime {
     pub(super) camera: FlyCamera,
@@ -28,7 +43,7 @@ pub(super) struct InteractionRuntime {
     /// Placements to select once their rebuilt region arrives (after an object edit).
     pub(super) pending_reselect: Vec<osrs_world::LocSpec>,
     /// The box being dragged with the Select tool.
-    pub(super) marquee: Option<selection::Marquee>,
+    marquee: Option<Marquee>,
     /// The spline tool's control points and preview.
     pub(super) spline: spline_tool::SplineState,
     /// A held tool key: the tool to return to on release, the key and when it went down.
@@ -152,6 +167,49 @@ impl InteractionRuntime {
     pub(super) fn selection_counts(&self) -> (usize, usize) {
         (self.selection_objects.len(), self.selection_tiles.len())
     }
+
+    pub(super) fn begin_marquee(
+        &mut self,
+        position: egui::Pos2,
+        additive: bool,
+        toggle: bool,
+    ) {
+        self.marquee = Some(Marquee {
+            start: position,
+            current: position,
+            additive,
+            toggle,
+        });
+    }
+
+    pub(super) fn update_marquee(
+        &mut self,
+        position: Option<egui::Pos2>,
+        bounds: egui::Rect,
+        additive: bool,
+        toggle: bool,
+    ) {
+        let Some(marquee) = &mut self.marquee else {
+            return;
+        };
+        if let Some(position) = position {
+            marquee.current = position.clamp(bounds.min, bounds.max);
+        }
+        marquee.additive |= additive;
+        marquee.toggle |= toggle;
+    }
+
+    pub(super) fn cancel_marquee(&mut self) {
+        self.marquee = None;
+    }
+
+    pub(super) fn finish_marquee(&mut self) -> Option<Marquee> {
+        self.marquee.take()
+    }
+
+    pub(super) fn marquee(&self) -> Option<&Marquee> {
+        self.marquee.as_ref()
+    }
 }
 
 #[cfg(test)]
@@ -159,6 +217,7 @@ mod tests {
     use super::InteractionRuntime;
     use crate::camera::FlyCamera;
     use crate::pick::ObjectPick;
+    use eframe::egui::{Pos2, Rect};
 
     fn runtime() -> InteractionRuntime {
         InteractionRuntime::new(FlyCamera::new(0.0, 0.0, 0.0))
@@ -238,5 +297,32 @@ mod tests {
         assert!(interaction.selection_objects.is_empty());
         assert!(interaction.selection_tiles.is_empty());
         assert!(interaction.inspect_tile.is_none());
+    }
+
+    #[test]
+    fn marquee_lifecycle_clamps_pointer_and_latches_modifiers() {
+        let mut interaction = runtime();
+        let bounds = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(100.0, 100.0));
+
+        interaction.begin_marquee(Pos2::new(10.0, 20.0), false, false);
+        interaction.update_marquee(Some(Pos2::new(150.0, -5.0)), bounds, true, false);
+        interaction.update_marquee(None, bounds, false, true);
+
+        let marquee = interaction.finish_marquee().expect("marquee should finish");
+        assert_eq!(marquee.start, Pos2::new(10.0, 20.0));
+        assert_eq!(marquee.current, Pos2::new(100.0, 0.0));
+        assert!(marquee.additive);
+        assert!(marquee.toggle);
+        assert!(interaction.marquee().is_none());
+    }
+
+    #[test]
+    fn cancel_marquee_discards_in_progress_gesture() {
+        let mut interaction = runtime();
+        interaction.begin_marquee(Pos2::new(10.0, 20.0), true, false);
+
+        interaction.cancel_marquee();
+
+        assert!(interaction.finish_marquee().is_none());
     }
 }
