@@ -1,10 +1,14 @@
 //! Deterministic overlay-shape fitting for the Spline tool.
 //!
-//! The fitter has no obstacle routing or map mutation. It takes a dense polyline, samples the ideal
-//! path band on an 8x8 grid per touched tile, and picks only shapes that the audited OSRS terrain
-//! geometry can actually render. A short deterministic relaxation then improves shared edges.
+//! The fitter has no obstacle routing or map mutation. It takes a dense centre line that carries
+//! the local half-width, samples the ideal path band on an 8x8 grid per touched tile, and picks
+//! only shapes the audited OSRS terrain geometry can render. A short deterministic relaxation then
+//! lines up shared edges and prefers the choices the real map makes for each neighbourhood (see
+//! [`super::census`]): full tiles along straight edges, square ends, partial shapes where the
+//! outline turns.
 
-use super::overlay_triangles;
+use super::census::{self, NeighbourMask};
+use super::smooth::PathSample;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
@@ -16,6 +20,17 @@ const WEST: usize = 0;
 const EAST: usize = 1;
 const SOUTH: usize = 2;
 const NORTH: usize = 3;
+/// 8-neighbour offsets, bit i of a [`NeighbourMask`]: N, NE, E, SE, S, SW, W, NW (y grows north).
+const NEIGHBOURS: [(i32, i32); 8] = [
+    (0, 1),
+    (1, 1),
+    (1, 0),
+    (1, -1),
+    (0, -1),
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+];
 
 /// One fitted map-file overlay shape. `shape` is the stored 0..=11 value, not the renderer's
 /// internal shape-table row.
@@ -25,6 +40,25 @@ pub struct FittedTile {
     pub tile_y: i32,
     pub shape: u8,
     pub orientation: u8,
+}
+
+/// How the fit is steered.
+pub struct FitOptions<'a> {
+    /// Shared-edge agreement weight. Zero fits each tile independently.
+    pub edge_weight: f32,
+    /// How strongly the real map's usual choice for a neighbourhood is preferred, in samples per
+    /// nat of surprise. Zero ignores the census.
+    pub prior_weight: f32,
+    /// Tiles the path must not cover (overlays it should not paint over).
+    pub blocked: &'a dyn Fn((i32, i32)) -> bool,
+}
+
+/// The result of a fit.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Fit {
+    pub tiles: Vec<FittedTile>,
+    /// Tiles the ideal path covers but that are blocked, so were left alone.
+    pub clipped: Vec<(i32, i32)>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,81 +75,53 @@ struct TileState {
     candidate: usize,
 }
 
-/// Uniform Catmull-Rom smoothing with clamped endpoints and twelve samples per control segment.
-/// Two points remain a straight segment exactly.
-pub fn smooth_catmull_rom(points: &[(f32, f32)]) -> Vec<(f32, f32)> {
-    if points.len() < 3 {
-        return points.to_vec();
-    }
-    let mut out = Vec::with_capacity((points.len() - 1) * 12 + 1);
-    for i in 0..points.len() - 1 {
-        let p0 = points[i.saturating_sub(1)];
-        let p1 = points[i];
-        let p2 = points[i + 1];
-        let p3 = points[(i + 2).min(points.len() - 1)];
-        for step in 0..12 {
-            let t = step as f32 / 12.0;
-            let t2 = t * t;
-            let t3 = t2 * t;
-            out.push((
-                catmull_component(p0.0, p1.0, p2.0, p3.0, t, t2, t3),
-                catmull_component(p0.1, p1.1, p2.1, p3.1, t, t2, t3),
-            ));
-        }
-    }
-    out.push(points[points.len() - 1]);
-    out
-}
-
-fn catmull_component(p0: f32, p1: f32, p2: f32, p3: f32, t: f32, t2: f32, t3: f32) -> f32 {
-    0.5 * (2.0 * p1
-        + (p2 - p0) * t
-        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
-        + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t3)
-}
-
-/// Fit OSRS overlay shapes to a dense path polyline.
+/// Fit OSRS overlay shapes to a dense path centre line.
 ///
-/// Unlike the old planner this never reroutes. The output follows the supplied line exactly.
-/// Candidate tiles come from segment-local expanded boxes rather than one giant global rectangle,
-/// which preserves coverage while avoiding pathological work for long diagonal paths.
-pub fn fit_path_overlay(points: &[(f32, f32)], width: f32, edge_weight: f32) -> Vec<FittedTile> {
-    if points.is_empty() {
-        return Vec::new();
+/// This never reroutes: the output follows the line exactly. Candidate tiles come from
+/// segment-local expanded boxes rather than one giant rectangle, which preserves coverage and avoids
+/// pathological work for long diagonal paths.
+pub fn fit_path_overlay(line: &[PathSample], options: &FitOptions<'_>) -> Fit {
+    if line.is_empty() {
+        return Fit::default();
     }
-    let width = if width.is_finite() {
-        width.max(0.05)
+    let edge_weight = if options.edge_weight.is_finite() {
+        options.edge_weight.max(0.0)
     } else {
-        1.0
+        0.0
     };
-    let half = width * 0.5;
-    let edge_weight = if edge_weight.is_finite() {
-        edge_weight.max(0.0)
+    let prior_weight = if options.prior_weight.is_finite() {
+        options.prior_weight.max(0.0)
     } else {
         0.0
     };
     let candidates = candidates();
     let mut states = BTreeMap::<(i32, i32), TileState>::new();
+    let mut clipped = Vec::new();
 
-    for tile in candidate_tiles(points, half) {
+    for tile in candidate_tiles(line) {
         let center = (tile.0 as f32 + 0.5, tile.1 as f32 + 0.5);
-        if distance_to_path(center, points) > half + CENTER_REJECT_MARGIN {
+        if path_margin(center, line) > CENTER_REJECT_MARGIN {
             continue;
         }
-        let ideal = ideal_mask(tile, points, half);
+        let ideal = ideal_mask(tile, line);
         if !ideal.iter().any(|covered| *covered) {
+            continue;
+        }
+        if (options.blocked)(tile) {
+            clipped.push(tile);
             continue;
         }
         let candidate = best_independent(&ideal, candidates);
         states.insert(tile, TileState { ideal, candidate });
     }
 
-    if edge_weight > 0.0 {
+    if edge_weight > 0.0 || prior_weight > 0.0 {
         let keys: Vec<_> = states.keys().copied().collect();
         for _ in 0..REFINE_PASSES {
             let mut changed = false;
             for key in &keys {
-                let next = best_with_neighbors(*key, &states, candidates, edge_weight);
+                let next =
+                    best_with_neighbors(*key, &states, candidates, edge_weight, prior_weight);
                 if let Some(state) = states.get_mut(key)
                     && state.candidate != next
                 {
@@ -129,7 +135,7 @@ pub fn fit_path_overlay(points: &[(f32, f32)], width: f32, edge_weight: f32) -> 
         }
     }
 
-    states
+    let tiles = states
         .into_iter()
         .filter_map(|((tile_x, tile_y), state)| {
             let candidate = &candidates[state.candidate];
@@ -140,18 +146,29 @@ pub fn fit_path_overlay(points: &[(f32, f32)], width: f32, edge_weight: f32) -> 
                 orientation: candidate.orientation,
             })
         })
-        .collect()
+        .collect();
+    Fit { tiles, clipped }
 }
 
-fn candidate_tiles(points: &[(f32, f32)], half: f32) -> BTreeSet<(i32, i32)> {
+fn candidate_tiles(line: &[PathSample]) -> BTreeSet<(i32, i32)> {
     let mut tiles = BTreeSet::new();
-    let pad = half + 1.0;
-    if points.len() == 1 {
-        add_box(&mut tiles, points[0], points[0], pad);
+    if line.len() == 1 {
+        add_box(
+            &mut tiles,
+            (line[0].x, line[0].y),
+            (line[0].x, line[0].y),
+            line[0].half + 1.0,
+        );
         return tiles;
     }
-    for pair in points.windows(2) {
-        add_box(&mut tiles, pair[0], pair[1], pad);
+    for pair in line.windows(2) {
+        let pad = pair[0].half.max(pair[1].half) + 1.0;
+        add_box(
+            &mut tiles,
+            (pair[0].x, pair[0].y),
+            (pair[1].x, pair[1].y),
+            pad,
+        );
     }
     tiles
 }
@@ -168,7 +185,7 @@ fn add_box(tiles: &mut BTreeSet<(i32, i32)>, a: (f32, f32), b: (f32, f32), pad: 
     }
 }
 
-fn ideal_mask(tile: (i32, i32), points: &[(f32, f32)], half: f32) -> [bool; SAMPLE_COUNT] {
+fn ideal_mask(tile: (i32, i32), line: &[PathSample]) -> [bool; SAMPLE_COUNT] {
     let mut ideal = [false; SAMPLE_COUNT];
     for sy in 0..SAMPLE_GRID {
         for sx in 0..SAMPLE_GRID {
@@ -176,19 +193,20 @@ fn ideal_mask(tile: (i32, i32), points: &[(f32, f32)], half: f32) -> [bool; SAMP
                 tile.0 as f32 + (sx as f32 + 0.5) / SAMPLE_GRID as f32,
                 tile.1 as f32 + (sy as f32 + 0.5) / SAMPLE_GRID as f32,
             );
-            ideal[sy * SAMPLE_GRID + sx] = distance_to_path(point, points) <= half;
+            ideal[sy * SAMPLE_GRID + sx] = path_margin(point, line) <= 0.0;
         }
     }
     ideal
 }
 
-fn distance_to_path(point: (f32, f32), points: &[(f32, f32)]) -> f32 {
-    if points.len() == 1 {
-        return distance(point, points[0]);
+/// Distance from `point` to the path edge: negative inside. The half-width is that of the nearest
+/// stretch, interpolated along it.
+fn path_margin(point: (f32, f32), line: &[PathSample]) -> f32 {
+    if line.len() == 1 {
+        return distance(point, (line[0].x, line[0].y)) - line[0].half;
     }
-    points
-        .windows(2)
-        .map(|pair| segment_distance(point, pair[0], pair[1]))
+    line.windows(2)
+        .map(|pair| segment_margin(point, pair[0], pair[1]))
         .fold(f32::INFINITY, f32::min)
 }
 
@@ -196,15 +214,15 @@ fn distance(a: (f32, f32), b: (f32, f32)) -> f32 {
     ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()
 }
 
-fn segment_distance(point: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
-    let dx = b.0 - a.0;
-    let dy = b.1 - a.1;
+fn segment_margin(point: (f32, f32), a: PathSample, b: PathSample) -> f32 {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
     let length_squared = dx * dx + dy * dy;
-    if length_squared <= f32::EPSILON {
-        return distance(point, a);
-    }
-    let t = (((point.0 - a.0) * dx + (point.1 - a.1) * dy) / length_squared).clamp(0.0, 1.0);
-    distance(point, (a.0 + dx * t, a.1 + dy * t))
+    let t = if length_squared <= f32::EPSILON {
+        0.0
+    } else {
+        (((point.0 - a.x) * dx + (point.1 - a.y) * dy) / length_squared).clamp(0.0, 1.0)
+    };
+    distance(point, (a.x + dx * t, a.y + dy * t)) - (a.half + (b.half - a.half) * t)
 }
 
 fn candidates() -> &'static [Candidate] {
@@ -302,20 +320,41 @@ fn best_with_neighbors(
     states: &BTreeMap<(i32, i32), TileState>,
     candidates: &[Candidate],
     edge_weight: f32,
+    prior_weight: f32,
 ) -> usize {
     let Some(state) = states.get(&key) else {
         return 0;
     };
+    // The neighbourhood is read once: which neighbours currently carry the overlay.
+    let mask = neighbour_mask(key, states);
+    let penalty = census::penalty(mask);
     let mut best = 0;
-    let mut best_score = score_candidate(key, state, 0, states, candidates, edge_weight);
-    for index in 1..candidates.len() {
-        let score = score_candidate(key, state, index, states, candidates, edge_weight);
+    let mut best_score = f32::NEG_INFINITY;
+    for index in 0..candidates.len() {
+        let mut score = score_candidate(key, state, index, states, candidates, edge_weight);
+        if index > 0 {
+            score -= prior_weight * penalty[index];
+        }
         if score > best_score {
             best = index;
             best_score = score;
         }
     }
     best
+}
+
+/// Which of the eight neighbours currently carry the overlay.
+fn neighbour_mask(key: (i32, i32), states: &BTreeMap<(i32, i32), TileState>) -> NeighbourMask {
+    let mut mask = 0;
+    for (bit, (dx, dy)) in NEIGHBOURS.iter().enumerate() {
+        if states
+            .get(&(key.0 + dx, key.1 + dy))
+            .is_some_and(|neighbor| neighbor.candidate != 0)
+        {
+            mask |= 1 << bit;
+        }
+    }
+    mask
 }
 
 fn score_candidate(
@@ -357,50 +396,4 @@ fn edge_mismatch(left: &[bool; SAMPLE_GRID], right: &[bool; SAMPLE_GRID]) -> u32
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn candidate_set_is_empty_full_plus_all_shaped_rotations() {
-        assert_eq!(candidates().len(), 46);
-        assert!(candidates()[0].shape.is_none());
-        assert_eq!(candidates()[1].shape, Some(0));
-        assert!(candidates()[1].covered.iter().all(|covered| *covered));
-    }
-
-    #[test]
-    fn two_points_remain_a_straight_segment() {
-        let points = [(1.25, 2.5), (8.75, 4.0)];
-        assert_eq!(smooth_catmull_rom(&points), points);
-    }
-
-    #[test]
-    fn catmull_rom_keeps_exact_endpoints() {
-        let points = [(0.0, 0.0), (2.0, 3.0), (6.0, 4.0)];
-        let smooth = smooth_catmull_rom(&points);
-        assert_eq!(smooth.first().copied(), Some(points[0]));
-        assert_eq!(smooth.last().copied(), Some(points[2]));
-        assert_eq!(smooth.len(), 25);
-    }
-
-    #[test]
-    fn fit_is_deterministic_and_uses_only_valid_stored_shapes() {
-        let line = smooth_catmull_rom(&[(0.25, 0.5), (4.0, 2.0), (8.75, 2.75)]);
-        let first = fit_path_overlay(&line, 2.5, 0.75);
-        let second = fit_path_overlay(&line, 2.5, 0.75);
-        assert_eq!(first, second);
-        assert!(!first.is_empty());
-        assert!(
-            first
-                .iter()
-                .all(|tile| tile.shape <= 11 && tile.orientation <= 3)
-        );
-    }
-
-    #[test]
-    fn negative_world_coordinates_are_supported() {
-        let fitted = fit_path_overlay(&[(-4.5, -2.25), (-0.25, -2.25)], 1.5, 0.5);
-        assert!(!fitted.is_empty());
-        assert!(fitted.iter().any(|tile| tile.tile_x < 0 && tile.tile_y < 0));
-    }
-}
+mod tests;

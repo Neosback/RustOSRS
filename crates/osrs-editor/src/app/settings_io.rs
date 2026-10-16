@@ -12,13 +12,6 @@ fn sanitize_loaded_settings(settings: Settings) -> Settings {
     let defaults = crate::paint::SplineSettings::default();
     let spline = &mut settings.spline;
     spline.width = finite_f32_or(spline.width, defaults.width).clamp(0.5, 24.0);
-    spline.edge_weight = finite_f32_or(spline.edge_weight, defaults.edge_weight).clamp(0.0, 2.0);
-    spline.grade_smoothing = finite_f32_or(spline.grade_smoothing, defaults.grade_smoothing)
-        .clamp(0.0, osrs_edit::MAX_SMOOTHING_TILES);
-    spline.grade_max_slope = finite_f32_or(spline.grade_max_slope, defaults.grade_max_slope)
-        .clamp(osrs_edit::MIN_SLOPE, osrs_edit::MAX_SLOPE);
-    spline.grade_blend = finite_f32_or(spline.grade_blend, defaults.grade_blend)
-        .clamp(0.0, osrs_edit::MAX_BLEND_TILES);
     settings
 }
 
@@ -85,26 +78,22 @@ mod tests {
     fn loaded_spline_settings_are_clamped_to_simple_fitter_ranges() {
         let mut settings = Settings::default();
         settings.spline.width = 999.0;
-        settings.spline.edge_weight = -5.0;
-        settings.spline.snap_points = true;
+        settings.spline.smooth_ground = true;
 
         let settings = sanitize_loaded_settings(settings);
 
         assert_eq!(settings.spline.width, 24.0);
-        assert_eq!(settings.spline.edge_weight, 0.0);
-        assert!(settings.spline.snap_points);
+        assert!(settings.spline.smooth_ground);
     }
 
     #[test]
     fn loaded_spline_settings_recover_from_non_finite_values() {
         let mut settings = Settings::default();
         settings.spline.width = f32::NAN;
-        settings.spline.edge_weight = f32::INFINITY;
         let defaults = crate::paint::SplineSettings::default();
 
         let settings = sanitize_loaded_settings(settings);
 
         assert_eq!(settings.spline.width, defaults.width);
-        assert_eq!(settings.spline.edge_weight, defaults.edge_weight);
     }
 }

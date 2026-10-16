@@ -1,14 +1,16 @@
-//! Terrain grading under a laid path: a road bed that follows the ground along the path and is
-//! flat across it, with a smooth falloff back to the original terrain.
+//! Smoothing the ground along a laid path. Real paths follow the ground and are not levelled across
+//! (see `docs/verification/PATH-CENSUS.md`), so this keeps the ground's cross-slope and only removes
+//! bumps and too-steep stretches *along* the path: the whole cross-section moves together.
 //!
-//! Pure and deterministic. The result depends only on the centre line, the width, the spec and the
-//! heights the caller supplies, so the editor's preview and the committed patch agree exactly when
-//! they read the same heights. Heights follow the map convention: client units, up is negative.
+//! Pure and deterministic. The result depends only on the centre line, the spec and the heights
+//! the caller supplies, so the editor's preview and the committed patch agree exactly when they
+//! read the same heights. Heights follow the map convention: client units, up is negative.
 //!
 //! Method: sample the terrain along the centre line (every half tile), smooth that profile, limit
 //! its slope with a Lipschitz envelope (the average of the upper and lower envelopes, so it stays
-//! close to the smoothed profile), then move every vertex within `width / 2 + blend` of the line
-//! toward the bed height of its nearest point on the line.
+//! close to the smoothed profile), then shift every vertex within `half-width + blend` of the line
+//! by the correction (smoothed minus raw) at its nearest point on the line, fading to nothing
+//! across the blend.
 
 use std::collections::BTreeMap;
 
@@ -16,20 +18,29 @@ use std::collections::BTreeMap;
 const STEP: f32 = 0.5;
 /// How many times the box filter runs; three passes approximate a Gaussian.
 const BLUR_PASSES: usize = 3;
-/// Limits of each parameter, shared by the planner and the editor's settings validation.
+/// Limits of each parameter.
 pub const MAX_SMOOTHING_TILES: f32 = 40.0;
 pub const MAX_BLEND_TILES: f32 = 30.0;
 pub const MIN_SLOPE: f32 = 4.0;
 pub const MAX_SLOPE: f32 = 128.0;
 
-/// How a path grades the terrain beneath it.
+/// A point of the path's centre line and the half-width of the path there, in tiles.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GradePoint {
+    pub x: f32,
+    pub y: f32,
+    pub half: f32,
+}
+
+/// How the ground is smoothed along a path. The defaults come from the real map: its paths have a
+/// steepest-10% slope of about 40 units per tile (128 is a whole tile), so that is not "too steep".
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PathGradeSpec {
-    /// Length over which the bed profile is smoothed along the path (`0` follows the ground).
+    /// Length over which the profile along the path is smoothed (`0` keeps it as it is).
     pub smoothing_tiles: f32,
-    /// Steepest allowed change of the bed along the path, in client units per tile.
+    /// Steepest allowed change along the path, in client units per tile.
     pub max_slope: f32,
-    /// Distance beyond the path edge over which the bed fades back into the terrain.
+    /// Distance beyond the path edge over which the correction fades out.
     pub blend_tiles: f32,
 }
 
@@ -37,7 +48,7 @@ impl Default for PathGradeSpec {
     fn default() -> Self {
         Self {
             smoothing_tiles: 8.0,
-            max_slope: 32.0,
+            max_slope: 40.0,
             blend_tiles: 4.0,
         }
     }
@@ -64,20 +75,24 @@ fn smoothstep(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// The line resampled every [`STEP`] tiles, with each sample's position.
-fn resample(line: &[(f32, f32)]) -> Vec<(f32, f32)> {
+/// The line resampled every [`STEP`] tiles, with the half-width interpolated.
+fn resample(line: &[GradePoint]) -> Vec<GradePoint> {
     let mut out = vec![line[0]];
     let mut carry = 0.0_f32;
     for pair in line.windows(2) {
         let (a, b) = (pair[0], pair[1]);
-        let length = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+        let length = ((b.x - a.x).powi(2) + (b.y - a.y).powi(2)).sqrt();
         if length <= f32::EPSILON {
             continue;
         }
         let mut at = STEP - carry;
         while at <= length {
             let t = at / length;
-            out.push((a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t));
+            out.push(GradePoint {
+                x: a.x + (b.x - a.x) * t,
+                y: a.y + (b.y - a.y) * t,
+                half: a.half + (b.half - a.half) * t,
+            });
             at += STEP;
         }
         carry = length - (at - STEP);
@@ -141,70 +156,76 @@ fn limit_slope(profile: &mut [f32], max_step: f32) {
     }
 }
 
-/// Nearest point on the sampled line: its distance and the interpolated bed height there.
-fn nearest(samples: &[(f32, f32)], bed: &[f32], point: (f32, f32)) -> (f32, f32) {
+/// Nearest point on the sampled line: its distance, the interpolated correction and half-width.
+fn nearest(samples: &[GradePoint], correction: &[f32], point: (f32, f32)) -> (f32, f32, f32) {
     if samples.len() == 1 {
-        let d = ((point.0 - samples[0].0).powi(2) + (point.1 - samples[0].1).powi(2)).sqrt();
-        return (d, bed[0]);
+        let d = ((point.0 - samples[0].x).powi(2) + (point.1 - samples[0].y).powi(2)).sqrt();
+        return (d, correction[0], samples[0].half);
     }
-    let mut best = (f32::INFINITY, bed[0]);
+    let mut best = (f32::INFINITY, correction[0], samples[0].half);
     for (i, pair) in samples.windows(2).enumerate() {
         let (a, b) = (pair[0], pair[1]);
-        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let (dx, dy) = (b.x - a.x, b.y - a.y);
         let length_squared = dx * dx + dy * dy;
         let t = if length_squared <= f32::EPSILON {
             0.0
         } else {
-            (((point.0 - a.0) * dx + (point.1 - a.1) * dy) / length_squared).clamp(0.0, 1.0)
+            (((point.0 - a.x) * dx + (point.1 - a.y) * dy) / length_squared).clamp(0.0, 1.0)
         };
-        let (cx, cy) = (a.0 + dx * t, a.1 + dy * t);
+        let (cx, cy) = (a.x + dx * t, a.y + dy * t);
         let d = ((point.0 - cx).powi(2) + (point.1 - cy).powi(2)).sqrt();
         if d < best.0 {
-            best = (d, bed[i] + (bed[i + 1] - bed[i]) * t);
+            best = (
+                d,
+                correction[i] + (correction[i + 1] - correction[i]) * t,
+                a.half + (b.half - a.half) * t,
+            );
         }
     }
     best
 }
 
-/// The new height of every vertex a path of `width` tiles along `line` grades, sorted by vertex.
+/// The new height of every vertex that smoothing the ground along a path would change, sorted by
+/// vertex.
 ///
 /// `height` gives a vertex's current height (`None` where unknown). If any profile sample's ground
-/// is unknown the result is empty: grading never guesses a height. Only vertices whose height
-/// changes are returned.
+/// is unknown the result is empty: this never guesses a height. Only vertices whose height changes
+/// are returned.
 pub fn plan_path_grade(
-    line: &[(f32, f32)],
-    width: f32,
+    line: &[GradePoint],
     spec: PathGradeSpec,
     height: &dyn Fn((i32, i32)) -> Option<i32>,
 ) -> Vec<((i32, i32), i32)> {
     if line.is_empty()
-        || !width.is_finite()
-        || width <= 0.0
-        || line.iter().any(|p| !p.0.is_finite() || !p.1.is_finite())
+        || line
+            .iter()
+            .any(|p| !p.x.is_finite() || !p.y.is_finite() || !p.half.is_finite() || p.half <= 0.0)
     {
         return Vec::new();
     }
     let spec = spec.clamped();
     let samples = resample(line);
-    let mut profile = Vec::with_capacity(samples.len());
+    let mut raw = Vec::with_capacity(samples.len());
     for sample in &samples {
-        let Some(ground) = terrain_at(*sample, height) else {
+        let Some(ground) = terrain_at((sample.x, sample.y), height) else {
             return Vec::new();
         };
-        profile.push(ground);
+        raw.push(ground);
     }
+    let mut bed = raw.clone();
     blur(
-        &mut profile,
+        &mut bed,
         (spec.smoothing_tiles / STEP / 2.0).round() as usize,
     );
-    limit_slope(&mut profile, spec.max_slope * STEP);
+    limit_slope(&mut bed, spec.max_slope * STEP);
+    let correction: Vec<f32> = bed.iter().zip(&raw).map(|(bed, raw)| bed - raw).collect();
 
-    let half = width / 2.0;
-    let reach = half + spec.blend_tiles;
+    let widest = samples.iter().map(|p| p.half).fold(0.0_f32, f32::max);
+    let reach = widest + spec.blend_tiles;
     let (mut min, mut max) = ((f32::MAX, f32::MAX), (f32::MIN, f32::MIN));
     for p in &samples {
-        min = (min.0.min(p.0), min.1.min(p.1));
-        max = (max.0.max(p.0), max.1.max(p.1));
+        min = (min.0.min(p.x), min.1.min(p.y));
+        max = (max.0.max(p.x), max.1.max(p.y));
     }
     let mut changes = BTreeMap::new();
     for x in (min.0 - reach).floor() as i32..=(max.0 + reach).ceil() as i32 {
@@ -212,16 +233,15 @@ pub fn plan_path_grade(
             let Some(current) = height((x, y)) else {
                 continue;
             };
-            let (distance, bed) = nearest(&samples, &profile, (x as f32, y as f32));
+            let (distance, shift, half) = nearest(&samples, &correction, (x as f32, y as f32));
             let weight = if distance <= half {
                 1.0
-            } else if spec.blend_tiles <= 0.0 || distance >= reach {
+            } else if spec.blend_tiles <= 0.0 || distance >= half + spec.blend_tiles {
                 continue;
             } else {
                 1.0 - smoothstep((distance - half) / spec.blend_tiles)
             };
-            let target = current as f32 + (bed - current as f32) * weight;
-            let new = round8(target);
+            let new = round8(current as f32 + shift * weight);
             if new != current {
                 changes.insert((x, y), new);
             }

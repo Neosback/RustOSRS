@@ -530,7 +530,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let best = choices.values().max().copied().unwrap_or(0);
         explained += best;
         total += sum;
-        prior.push(json!({"mask": mask, "n": sum, "top": top(choices, 4)}));
+        prior.push(json!({"mask": mask, "n": sum, "top": top(choices, 8)}));
     }
     let boundary_partial =
         totals.boundary[1] as f64 / (totals.boundary[0] + totals.boundary[1]).max(1) as f64;

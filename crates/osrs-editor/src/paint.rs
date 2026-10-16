@@ -152,66 +152,58 @@ impl SelectMode {
     }
 }
 
-/// How the simplified Spline tool fits an overlay band to the user's control line.
+/// The Spline tool's settings: only what a path cannot work out for itself. Everything else
+/// (edge tiling, how paths meet other overlays and underlays, curves and corners, per-point widths)
+/// follows how the real map is built (see `docs/verification/PATH-CENSUS.md`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SplineSettings {
-    /// Total path-band width in tiles.
+    /// Width new control points start with, in tiles: the Trail / Path / Road preset.
     pub width: f32,
-    /// Shared-edge agreement weight. Zero fits each tile independently.
-    pub edge_weight: f32,
-    /// Control points land on tile centres (off: where you click).
-    pub snap_points: bool,
-    /// The line between control points.
-    pub curve: PathCurve,
-    /// Also grade the terrain under the path: a bed that follows the ground along the path and
-    /// is level across it. Laid in the same undo step as the overlay.
-    pub grade: bool,
-    /// Length over which the bed is smoothed along the path, in tiles.
-    pub grade_smoothing: f32,
-    /// Steepest bed slope along the path, in client units per tile.
-    pub grade_max_slope: f32,
-    /// Distance beyond the path edge over which the bed fades into the terrain, in tiles.
-    pub grade_blend: f32,
-    /// Preview the next segment up to the cursor while placing points.
-    pub follow_cursor: bool,
-}
-
-/// How the path runs between its control points.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum PathCurve {
-    /// A smooth Catmull-Rom curve through every point.
-    #[default]
-    Smooth,
-    /// Straight segments.
-    Straight,
+    /// Also smooth the ground along the path when laying it (off: the path follows the ground,
+    /// as the real map's paths do). Laid in the same undo step.
+    pub smooth_ground: bool,
 }
 
 impl Default for SplineSettings {
     fn default() -> Self {
-        let grade = osrs_edit::PathGradeSpec::default();
         Self {
-            width: 3.0,
-            edge_weight: 0.75,
-            snap_points: false,
-            curve: PathCurve::Smooth,
-            grade: false,
-            grade_smoothing: grade.smoothing_tiles,
-            grade_max_slope: grade.max_slope,
-            grade_blend: grade.blend_tiles,
-            follow_cursor: true,
+            width: PathStyle::Path.width(),
+            smooth_ground: false,
         }
     }
 }
 
-impl SplineSettings {
-    /// The grading parameters, when grading is on.
-    pub fn grade_spec(&self) -> Option<osrs_edit::PathGradeSpec> {
-        self.grade.then_some(osrs_edit::PathGradeSpec {
-            smoothing_tiles: self.grade_smoothing,
-            max_slope: self.grade_max_slope,
-            blend_tiles: self.grade_blend,
-        })
+/// The three widths real paths come in: a one-tile trail, a three-tile path, a five-tile road.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathStyle {
+    Trail,
+    Path,
+    Road,
+}
+
+impl PathStyle {
+    pub const ALL: [Self; 3] = [Self::Trail, Self::Path, Self::Road];
+
+    pub const fn width(self) -> f32 {
+        match self {
+            Self::Trail => 1.0,
+            Self::Path => 3.0,
+            Self::Road => 5.0,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Trail => "Trail",
+            Self::Path => "Path",
+            Self::Road => "Road",
+        }
+    }
+
+    /// The preset a width belongs to, when it is exactly one of them.
+    pub fn of_width(width: f32) -> Option<Self> {
+        Self::ALL.into_iter().find(|style| style.width() == width)
     }
 }
 
