@@ -44,6 +44,11 @@ macro_rules! semantic_id {
 }
 
 semantic_id!(ObjectId, "Canonical object/loc definition ID.");
+semantic_id!(NpcId, "Canonical NPC definition ID.");
+semantic_id!(
+    SpotAnimationId,
+    "Canonical spot-animation/graphics definition ID."
+);
 semantic_id!(
     ModelId,
     "Canonical model definition ID, including target-era 32-bit values."
@@ -109,5 +114,7 @@ mod tests {
         assert_eq!(FrameId::new(0x1234_5678).get(), 0x1234_5678);
         assert_eq!(SkeletalAnimationId::new(900_000).get(), 900_000);
         assert_eq!(ItemId::new(4151).get(), 4151);
+        assert_eq!(NpcId::new(12_345).get(), 12_345);
+        assert_eq!(SpotAnimationId::new(678).get(), 678);
     }
 }
