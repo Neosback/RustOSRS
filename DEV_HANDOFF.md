@@ -21,6 +21,14 @@ Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md`
 5. `osrs-playtest` crate, editor controller, entity rendering — pending.
 6. Remaining 117HD systems and independent visual proof — pending.
 
+### Path grading, curve and cursor preview (after 2b)
+
+- `osrs-edit::plan_path_grade` (pure, deterministic): samples the ground along the centre line, smooths it, limits its slope with a Lipschitz envelope, and moves vertices within `width/2 + blend` toward the bed height of their nearest centre-line point (flat across the path, smoothstep falloff). `build_terrain_path_patch_with_grade` joins the graded heights to the overlay in one patch: one commit, one undo step.
+- Verified in the real editor on the pinned cache: laying a graded path levelled the ground across the path, blended within reach, left ground beyond reach unchanged, and one undo restored every sampled height exactly. The preview draws the graded terrain (real builder colours and slope light) from the same planner.
+- Settings added (with defaults, persistence and clamping): curve (smooth/straight), grade on/off, smoothing, max slope, blend, preview-to-cursor. Grade is off by default. These are provisional: the next step derives defaults from a census of the real map and replaces global sliders where possible.
+- Cursor-following preview plans one extra segment up to the cursor alongside the placed path; it is never laid and does not affect "Lay path". Verified by unit tests only, **not visually with a real mouse**.
+- Baselines: the C3 baseline job started earlier was invalid (the release binary was rebuilt while it ran and other runs competed for the machine); its output is quarantined under `target/performance/c3-before-INVALID-mixed-binaries`. Retake baselines from a frozen copy of the binary on an idle machine.
+
 ### Checkpoint 2b notes
 
 - Spline panel is one pure widget set (`app/spline_tool/sections.rs`) used by the drawer (all sections) and the quick HUD (compact); the shelf keeps the shape settings. Order: appearance, shape, preview status + actions, control points; two columns from 640 points.
@@ -50,11 +58,11 @@ Do not describe this program as complete merely because its foundations or self-
 
 ## Validation
 
-Latest full run (checkpoint 2b working tree on top of `8768cf07`; local results, not remote CI certification), Python 3.14.8 (`/opt/homebrew/bin/python3`):
+Latest full run (path grading/curve/cursor work on top of `7757ff4a`; local results, not remote CI certification), Python 3.14.8 (`/opt/homebrew/bin/python3`):
 
 - Architecture guard and its tests, editor-ownership tests, reference-regeneration tests, golden-index check, HD source pins (98 entries awaiting audit), HD-source tests and `test_performance.py`: passed.
 - `cargo fmt --all --check`; locked workspace/all-target/all-feature `cargo check` and strict Clippy; WASM lower-crate check and strict editor Clippy: passed.
-- Locked full workspace/all-target/all-feature tests: **825 passed, 0 failed, 18 ignored** (ignored tests keep their external cache/GPU/oracle prerequisites).
+- Locked full workspace/all-target/all-feature tests: **845 passed, 0 failed, 18 ignored** (ignored tests keep their external cache/GPU/oracle prerequisites).
 - With the pinned cache: terrain oracle (`terrain_oracle_diff`) and the Reference pixel golden passed; `region_capture` Reference hashes were identical before and after checkpoint 2a. HD captures vary by up to one channel level in a few hundred pixels between identical runs, so HD comparisons use a tolerance.
 
 Earlier figures (805 at `41d0c020`, 793 for PR #56) are superseded. Historical CI results only certify the SHAs they name. Cargo emits the existing vendored `rune-fs` MSRV-metadata warning.

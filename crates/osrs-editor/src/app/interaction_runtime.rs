@@ -5,7 +5,7 @@
 
 mod camera;
 mod spline;
-pub(super) use spline::SplineStatus;
+pub(super) use spline::{Preview, SplineStatus};
 
 use super::{gizmo, object_tool};
 use crate::camera::FlyCamera;

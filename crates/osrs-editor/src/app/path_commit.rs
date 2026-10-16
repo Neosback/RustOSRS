@@ -1,6 +1,8 @@
 //! Conversion from fitted preview tiles to headless Path planning.
 
-pub(super) use osrs_edit::{TerrainPathIntent, build_terrain_path_patch};
+#[cfg(test)]
+pub(super) use osrs_edit::build_terrain_path_patch;
+pub(super) use osrs_edit::{TerrainPathIntent, build_terrain_path_patch_with_grade};
 
 use super::editing::PathTile;
 

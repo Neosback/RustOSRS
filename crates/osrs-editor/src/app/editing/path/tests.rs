@@ -313,3 +313,80 @@ fn consecutive_path_transactions_follow_semantic_history_order() {
     );
     assert_eq!(session.document().height_at(vertex), Some(-32));
 }
+
+#[test]
+fn graded_path_commits_once_and_one_undo_restores_overlay_and_terrain() {
+    // Ground rising 16 units per tile toward +y, over a 20 x 20 area.
+    let heights: Vec<_> = (3190..=3210)
+        .flat_map(|x| {
+            (3190..=3210).map(move |y| {
+                (
+                    HeightVertexCoord::new(MapTile::new(x, y), plane(0)),
+                    -16 * (y - 3190),
+                )
+            })
+        })
+        .collect();
+    let mut session = EditorSession::new(MapDocument::from_parts([], heights, []));
+    let original = session.document().clone();
+    let line = [(3194.0_f32, 3200.0_f32), (3206.0, 3200.0)];
+    let grade = osrs_edit::plan_path_grade(&line, 3.0, osrs_edit::PathGradeSpec::default(), &|v| {
+        session
+            .document()
+            .height_at(HeightVertexCoord::new(MapTile::new(v.0, v.1), plane(0)))
+    });
+    assert!(!grade.is_empty(), "a path across a slope grades something");
+    let intent = TerrainPathIntent {
+        tile: MapTile::new(3200, 3200),
+        overlay: Some(7),
+        shape: 0,
+        rotation: 0,
+        height: None,
+        flags: None,
+    };
+    let patch =
+        build_terrain_path_patch_with_grade(session.document(), plane(0), &[intent], &grade)
+            .unwrap_or_else(|error| unreachable!("valid graded patch: {error:?}"));
+
+    assert!(session.commit(patch).is_ok());
+    assert_eq!(session.revision(), 1, "overlay and grade are one commit");
+    assert_ne!(*session.document(), original);
+    // The bed is level across the path at x = 3200.
+    let across: Vec<_> = (3199..=3201)
+        .filter_map(|y| {
+            session
+                .document()
+                .height_at(HeightVertexCoord::new(MapTile::new(3200, y), plane(0)))
+        })
+        .collect();
+    assert!(
+        across.windows(2).all(|pair| pair[0] == pair[1]),
+        "{across:?}"
+    );
+
+    assert!(session.undo().is_ok());
+    assert_eq!(*session.document(), original);
+    assert!(session.redo().is_ok());
+    assert_eq!(session.revision(), 3, "undo and redo are single steps too");
+}
+
+#[test]
+fn projection_with_height_covers_graded_vertices_outside_the_path_tiles() {
+    let tile = MapTile::new(3201, 3200);
+    let vertex = HeightVertexCoord::new(tile, plane(0));
+    let document = MapDocument::from_parts([], [(vertex, -64)], []);
+    let current = [(
+        (0, 3201, 3200),
+        TileValues {
+            height: -16,
+            ..TileValues::default()
+        },
+    )];
+    let projected = plan_path_projection(&document, &current, true)
+        .unwrap_or_else(|key| unreachable!("projection of {key:?} is representable"));
+    assert_eq!(projected[0].2.height, -64, "the graded height is projected");
+    // Without height the worker's own height is preserved (the old Path behaviour).
+    let unchanged = plan_path_projection(&document, &current, false)
+        .unwrap_or_else(|key| unreachable!("projection of {key:?} is representable"));
+    assert_eq!(unchanged[0].2.height, -16);
+}

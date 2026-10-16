@@ -38,6 +38,19 @@ pub fn build_terrain_path_patch(
     plane: SourcePlane,
     intents: &[TerrainPathIntent],
 ) -> Result<MapPatch, PathCommitError> {
+    build_terrain_path_patch_with_grade(query, plane, intents, &[])
+}
+
+/// [`build_terrain_path_patch`] plus a terrain grade: `grade` lists vertices and their desired
+/// heights (see [`crate::plan_path_grade`]). They are quantised to what the map file stores and
+/// joined into the same patch, so the path and its grading are one reversible step. A graded
+/// vertex replaces any height an intent also set for it.
+pub fn build_terrain_path_patch_with_grade(
+    query: &impl MapQuery,
+    plane: SourcePlane,
+    intents: &[TerrainPathIntent],
+    grade: &[((i32, i32), i32)],
+) -> Result<MapPatch, PathCommitError> {
     let mut terrain_order = Vec::new();
     let mut terrain = HashMap::<MapPosition, (TerrainTile, TerrainTile)>::new();
     let mut height_order = Vec::new();
@@ -98,6 +111,23 @@ pub fn build_terrain_path_patch(
             });
             entry.1 = target_height;
         }
+    }
+
+    for &((x, y), desired) in grade {
+        let map_tile = MapTile::new(x, y);
+        let vertex = HeightVertexCoord::new(map_tile, plane);
+        let current_height = heights
+            .get(&vertex)
+            .map(|(_, after)| *after)
+            .or_else(|| query.height_at(vertex))
+            .ok_or(PathCommitError::MissingHeight { tile: map_tile })?;
+        let after = crate::height::commit::quantize_height(query, plane, map_tile, desired)
+            .map_err(|_| PathCommitError::MissingHeight { tile: map_tile })?;
+        let entry = heights.entry(vertex).or_insert_with(|| {
+            height_order.push(vertex);
+            (current_height, current_height)
+        });
+        entry.1 = after;
     }
 
     let mut ops = Vec::with_capacity(terrain_order.len() + height_order.len());
@@ -247,5 +277,65 @@ mod tests {
                 tile: MapTile::new(tile.0, tile.1)
             })
         );
+    }
+
+    #[test]
+    fn graded_path_is_one_patch_that_undoes_exactly() {
+        let tile = (3200, 3200);
+        let heights: Vec<_> = (3198..=3203)
+            .flat_map(|x| (3198..=3203).map(move |y| (vertex((x, y)), -16 * (y - 3198))))
+            .collect();
+        let mut document = MapDocument::from_parts([], heights.clone(), []);
+        let original = document.clone();
+        let grade = [
+            ((3200, 3200), -32),
+            ((3201, 3200), -32),
+            ((3200, 3201), -40),
+        ];
+
+        let patch = build_terrain_path_patch_with_grade(
+            &document,
+            plane(),
+            &[intent(tile, 7, 1, 0)],
+            &grade,
+        )
+        .unwrap_or_else(|error| unreachable!("valid graded patch: {error:?}"));
+        // One overlay op plus the heights that actually change.
+        assert!(document.apply_patch(&patch).is_ok());
+        assert!(document.terrain_at(position(tile)).overlay.is_some());
+        assert_eq!(document.height_at(vertex((3200, 3200))), Some(-32));
+        assert_eq!(document.height_at(vertex((3200, 3201))), Some(-40));
+        // Vertices outside the grade are untouched.
+        assert_eq!(
+            document.height_at(vertex((3203, 3203))),
+            original.height_at(vertex((3203, 3203)))
+        );
+
+        assert!(document.apply_patch(&patch.inverse()).is_ok());
+        assert_eq!(document, original);
+    }
+
+    #[test]
+    fn grading_an_unknown_vertex_fails_instead_of_inventing_a_height() {
+        let document = MapDocument::new();
+        assert_eq!(
+            build_terrain_path_patch_with_grade(&document, plane(), &[], &[((1, 1), -8)]),
+            Err(PathCommitError::MissingHeight {
+                tile: MapTile::new(1, 1)
+            })
+        );
+    }
+
+    #[test]
+    fn a_graded_vertex_replaces_an_armed_flat_height() {
+        let tile = (3200, 3200);
+        let mut document = MapDocument::from_parts([], [(vertex(tile), 0)], []);
+        let mut path = intent(tile, 7, 1, 0);
+        path.height = Some(64);
+        let patch =
+            build_terrain_path_patch_with_grade(&document, plane(), &[path], &[(tile, -24)])
+                .unwrap_or_else(|error| unreachable!("valid patch: {error:?}"));
+        assert!(document.apply_patch(&patch).is_ok());
+        assert_eq!(document.height_at(vertex(tile)), Some(-24));
     }
 }

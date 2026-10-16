@@ -240,7 +240,9 @@ impl EditorApp {
         let points = self.interaction.spline_points().to_vec();
         let brush = &self.settings.prefs.brush;
         let also = AlsoApplies {
-            height: brush.height.armed.then_some(brush.height.value),
+            // A graded bed replaces the Paint brush's flat height.
+            height: (brush.height.armed && !self.settings.prefs.spline.grade)
+                .then_some(brush.height.value),
             flags: brush.flags.armed.then_some(brush.flags.bits),
         };
         let view = SplineView {

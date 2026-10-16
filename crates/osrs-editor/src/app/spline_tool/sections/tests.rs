@@ -25,6 +25,7 @@ fn run(
     status: SplineStatus,
     point_count: usize,
     click: Option<egui::Pos2>,
+    grade: bool,
 ) -> (Vec<SplineAction>, egui::Rect, f32) {
     let ctx = crate::theme::layout_test_context(scale);
     let input = |events: Vec<egui::Event>| egui::RawInput {
@@ -36,7 +37,10 @@ fn run(
         ..Default::default()
     };
     let pts = points(point_count);
-    let mut settings = SplineSettings::default();
+    let mut settings = SplineSettings {
+        grade,
+        ..SplineSettings::default()
+    };
     let mut result = (Vec::new(), egui::Rect::NOTHING, 0.0);
     let mut frame = |events: Vec<egui::Event>,
                      result: &mut (Vec<SplineAction>, egui::Rect, f32)| {
@@ -82,12 +86,21 @@ fn every_section_fits_every_panel_width_and_scale_for_every_status() {
         for scale in [1.0, 1.5, 2.0] {
             for status in STATUSES {
                 for count in [0, 2, 12] {
-                    let (_, used, right) =
-                        run(width, scale, SplineSections::FULL, status, count, None);
-                    assert!(
-                        used.right() <= right + 0.5,
-                        "width {width}, scale {scale}, {status:?}, {count} points: {used:?}"
-                    );
+                    for grade in [false, true] {
+                        let (_, used, right) = run(
+                            width,
+                            scale,
+                            SplineSections::FULL,
+                            status,
+                            count,
+                            None,
+                            grade,
+                        );
+                        assert!(
+                            used.right() <= right + 0.5,
+                            "width {width}, scale {scale}, {status:?}, {count} points, grade {grade}: {used:?}"
+                        );
+                    }
                 }
             }
         }
@@ -97,8 +110,21 @@ fn every_section_fits_every_panel_width_and_scale_for_every_status() {
 #[test]
 fn the_shelf_width_still_fits_the_compact_sections() {
     for scale in [1.0, 2.0] {
-        let (_, used, right) = run(172.0, scale, SplineSections::COMPACT, STATUSES[4], 3, None);
-        assert!(used.right() <= right + 0.5, "scale {scale}: {used:?}");
+        for grade in [false, true] {
+            let (_, used, right) = run(
+                172.0,
+                scale,
+                SplineSections::COMPACT,
+                STATUSES[4],
+                3,
+                None,
+                grade,
+            );
+            assert!(
+                used.right() <= right + 0.5,
+                "scale {scale}, grade {grade}: {used:?}"
+            );
+        }
     }
 }
 
@@ -122,7 +148,7 @@ fn lay_is_offered_only_for_a_ready_preview() {
 #[test]
 fn nothing_is_emitted_without_interaction() {
     for status in STATUSES {
-        let (actions, ..) = run(320.0, 1.0, SplineSections::FULL, status, 3, None);
+        let (actions, ..) = run(320.0, 1.0, SplineSections::FULL, status, 3, None, false);
         assert!(actions.is_empty(), "{status:?}: {actions:?}");
     }
 }

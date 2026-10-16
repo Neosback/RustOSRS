@@ -13,6 +13,12 @@ fn sanitize_loaded_settings(settings: Settings) -> Settings {
     let spline = &mut settings.spline;
     spline.width = finite_f32_or(spline.width, defaults.width).clamp(0.5, 24.0);
     spline.edge_weight = finite_f32_or(spline.edge_weight, defaults.edge_weight).clamp(0.0, 2.0);
+    spline.grade_smoothing = finite_f32_or(spline.grade_smoothing, defaults.grade_smoothing)
+        .clamp(0.0, osrs_edit::MAX_SMOOTHING_TILES);
+    spline.grade_max_slope = finite_f32_or(spline.grade_max_slope, defaults.grade_max_slope)
+        .clamp(osrs_edit::MIN_SLOPE, osrs_edit::MAX_SLOPE);
+    spline.grade_blend = finite_f32_or(spline.grade_blend, defaults.grade_blend)
+        .clamp(0.0, osrs_edit::MAX_BLEND_TILES);
     settings
 }
 

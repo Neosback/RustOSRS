@@ -6,7 +6,9 @@
 
 use super::{EditStep, EditorApp, PathTile, TileKey};
 use crate::app::edit_runtime::{EditExecution, EditExecutionError};
-use crate::app::path_commit::{build_terrain_path_patch, path_intent};
+#[cfg(test)]
+use crate::app::path_commit::build_terrain_path_patch;
+use crate::app::path_commit::{build_terrain_path_patch_with_grade, path_intent};
 use crate::heights::{decode_height, encode_height};
 use crate::paint::TileValues;
 use osrs_core::coords::{MapTile, SourcePlane};
@@ -97,8 +99,14 @@ fn quantize_path_height(
 }
 
 impl EditorApp {
-    /// Lay one fitted terrain path as one persistent semantic transaction.
-    pub(in crate::app) fn apply_terrain_path(&mut self, tiles: &[PathTile]) -> usize {
+    /// Lay one fitted terrain path as one persistent semantic transaction. `grade` lists the
+    /// vertices the path also grades (see `osrs_edit::plan_path_grade`) and their new heights; they
+    /// are part of the same patch, so one undo restores the overlay and the terrain together.
+    pub(in crate::app) fn apply_terrain_path(
+        &mut self,
+        tiles: &[PathTile],
+        grade: &[((i32, i32), i32)],
+    ) -> usize {
         if tiles.is_empty() {
             return 0;
         }
@@ -109,6 +117,16 @@ impl EditorApp {
         };
 
         let brush = self.settings.prefs.brush.clone();
+        // Only vertices the worker mirror holds can be projected; the same rule skips path tiles.
+        let view_plane = self.interaction.view_plane();
+        let grade: Vec<((i32, i32), i32)> = grade
+            .iter()
+            .copied()
+            .filter(|((x, y), _)| self.current_tile((view_plane, *x, *y)).is_some())
+            .collect();
+        // A graded bed replaces the Paint brush's flat height.
+        let flat_height = brush.height.armed && grade.is_empty();
+        let include_height = flat_height || !grade.is_empty();
         let mut intents = Vec::new();
         for path_tile in tiles {
             let key = (
@@ -120,7 +138,7 @@ impl EditorApp {
                 continue;
             }
             let map_tile = MapTile::new(path_tile.tile.0, path_tile.tile.1);
-            let height = if brush.height.armed {
+            let height = if flat_height {
                 match quantize_path_height(
                     self.session.document(),
                     plane,
@@ -147,7 +165,12 @@ impl EditorApp {
             return 0;
         }
 
-        let patch = match build_terrain_path_patch(self.session.document(), plane, &intents) {
+        let patch = match build_terrain_path_patch_with_grade(
+            self.session.document(),
+            plane,
+            &intents,
+            &grade,
+        ) {
             Ok(patch) => patch,
             Err(error) => {
                 self.ui.notify(format!(
@@ -180,10 +203,21 @@ impl EditorApp {
             };
             projection_input.push((key, before));
         }
+        let path_tiles = projection_input.len();
+        for ((x, y), _) in &grade {
+            let key = (self.interaction.view_plane(), *x, *y);
+            if !seen.insert(MapTile::new(*x, *y)) {
+                continue;
+            }
+            let Some(before) = self.current_tile(key) else {
+                continue;
+            };
+            projection_input.push((key, before));
+        }
         let route_keys: Vec<_> = projection_input.iter().map(|(key, _)| *key).collect();
 
         let execution = self.session.execute_named("path", patch, |document| {
-            plan_path_projection(document, &projection_input, brush.height.armed)
+            plan_path_projection(document, &projection_input, include_height)
         });
         let (receipt, projection) = match execution {
             Ok(EditExecution::Committed {
@@ -238,12 +272,17 @@ impl EditorApp {
             self.terrain.edited.insert(*key, *after);
             edits.push(self.edit_for(*key, *after));
         }
-        let count = route_keys.len();
+        let count = path_tiles;
         self.world.project_tile_edits(edits);
         self.world.invalidate_semantic_edit(&receipt);
-        self.push_step(EditStep::semantic_path(route_keys, brush.height.armed));
+        self.push_step(EditStep::semantic_path(route_keys, include_height));
+        let graded = if grade.is_empty() {
+            String::new()
+        } else {
+            format!(" and graded {} vertices", grade.len())
+        };
         self.ui.notify(format!(
-            "Changed {count} path tile{}",
+            "Changed {count} path tile{}{graded}",
             if count == 1 { "" } else { "s" }
         ));
         count

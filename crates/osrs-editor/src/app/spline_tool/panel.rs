@@ -1,48 +1,120 @@
 //! Shared Spline widgets. Drawing emits point actions; the interaction owner applies them.
-use crate::paint::SplineSettings;
+use crate::paint::{PathCurve, SplineSettings};
 use eframe::egui;
 
+/// One labelled control that stays together when the row wraps.
+fn pair(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal(|ui| {
+        ui.label(label);
+        add(ui);
+    });
+}
+
+/// Panel width below which each control gets its own line. A control that is itself a row (a
+/// label and its field) does not wrap inside a wrapping flow, so narrow panels stack them.
+const STACK_BELOW: f32 = 300.0;
+/// The same for the three grading fields.
+const STACK_BELOW_GRADE: f32 = 520.0;
+
+fn width_field(ui: &mut egui::Ui, settings: &mut SplineSettings) {
+    pair(ui, "Width", |ui| {
+        ui.add(
+            egui::DragValue::new(&mut settings.width)
+                .range(0.5..=24.0)
+                .speed(0.1)
+                .suffix(" tiles"),
+        );
+    });
+}
+
+fn edge_field(ui: &mut egui::Ui, settings: &mut SplineSettings) {
+    pair(ui, "Edge", |ui| {
+        ui.add(
+            egui::DragValue::new(&mut settings.edge_weight)
+                .range(0.0..=2.0)
+                .speed(0.05),
+        )
+        .on_hover_text("How strongly neighbouring tiles' shapes are made to line up");
+    });
+}
+
+/// The path's shape and terrain options. Every control fits any panel width: narrow panels stack
+/// them, wider ones flow them into rows.
 pub(in crate::app) fn settings(ui: &mut egui::Ui, settings: &mut SplineSettings) {
-    if ui.available_width() < 280.0 {
-        ui.horizontal(|ui| {
-            ui.label("Width");
-            ui.add(
-                egui::DragValue::new(&mut settings.width)
-                    .range(0.5..=24.0)
-                    .speed(0.1)
-                    .suffix(" tiles"),
-            );
+    if ui.available_width() < STACK_BELOW {
+        width_field(ui, settings);
+        edge_field(ui, settings);
+    } else {
+        ui.horizontal_wrapped(|ui| {
+            width_field(ui, settings);
+            edge_field(ui, settings);
         });
-        ui.horizontal(|ui| {
-            ui.label("Edge");
-            ui.add(
-                egui::DragValue::new(&mut settings.edge_weight)
-                    .range(0.0..=2.0)
-                    .speed(0.05),
-            );
-        });
-        ui.checkbox(&mut settings.snap_points, "Snap to tiles");
-        return;
     }
+    let mut straight = settings.curve == PathCurve::Straight;
     ui.horizontal_wrapped(|ui| {
-        ui.horizontal(|ui| {
-            ui.label("Width");
-            ui.add(
-                egui::DragValue::new(&mut settings.width)
-                    .range(0.5..=24.0)
-                    .speed(0.1)
-                    .suffix(" tiles"),
-            );
-        });
-        ui.horizontal(|ui| {
-            ui.label("Edge");
-            ui.add(
-                egui::DragValue::new(&mut settings.edge_weight)
-                    .range(0.0..=2.0)
-                    .speed(0.05),
-            );
-        });
+        ui.checkbox(&mut straight, "Straight lines")
+            .on_hover_text("Straight segments between points instead of a smooth curve");
         ui.checkbox(&mut settings.snap_points, "Snap to tiles");
+        ui.checkbox(&mut settings.follow_cursor, "Preview to cursor")
+            .on_hover_text("Show the next segment up to the cursor while placing points");
+    });
+    settings.curve = if straight {
+        PathCurve::Straight
+    } else {
+        PathCurve::Smooth
+    };
+    ui.checkbox(&mut settings.grade, "Grade terrain")
+        .on_hover_text(
+            "Level the ground across the path and follow it along the path; laid in the same undo step",
+        );
+    if settings.grade {
+        // Three fields side by side need more room than two.
+        if ui.available_width() < STACK_BELOW_GRADE {
+            grade_smooth(ui, settings);
+            grade_slope(ui, settings);
+            grade_blend(ui, settings);
+        } else {
+            ui.horizontal_wrapped(|ui| {
+                grade_smooth(ui, settings);
+                grade_slope(ui, settings);
+                grade_blend(ui, settings);
+            });
+        }
+    }
+}
+
+fn grade_smooth(ui: &mut egui::Ui, settings: &mut SplineSettings) {
+    pair(ui, "Smooth", |ui| {
+        ui.add(
+            egui::DragValue::new(&mut settings.grade_smoothing)
+                .range(0.0..=osrs_edit::MAX_SMOOTHING_TILES)
+                .speed(0.25)
+                .suffix(" tiles"),
+        )
+        .on_hover_text("Length over which the road bed is smoothed along the path");
+    });
+}
+
+fn grade_slope(ui: &mut egui::Ui, settings: &mut SplineSettings) {
+    pair(ui, "Max slope", |ui| {
+        ui.add(
+            egui::DragValue::new(&mut settings.grade_max_slope)
+                .range(osrs_edit::MIN_SLOPE..=osrs_edit::MAX_SLOPE)
+                .speed(0.5),
+        )
+        .on_hover_text("Steepest road bed change per tile, in client units (128 = a tile)");
+    });
+}
+
+fn grade_blend(ui: &mut egui::Ui, settings: &mut SplineSettings) {
+    pair(ui, "Blend", |ui| {
+        ui.add(
+            egui::DragValue::new(&mut settings.grade_blend)
+                .range(0.0..=osrs_edit::MAX_BLEND_TILES)
+                .speed(0.25)
+                .suffix(" tiles"),
+        )
+        .on_hover_text("Distance beyond the path edge over which the bed fades into the terrain");
     });
 }
 
@@ -124,12 +196,18 @@ mod tests {
                 };
                 let mut output = ctx.run_ui(input, |ui| {
                     let right = ui.max_rect().right();
-                    let response = ui.scope(|ui| settings(ui, &mut SplineSettings::default()));
-                    assert!(
-                        response.response.rect.right() <= right + 0.5,
-                        "width {width}, scale {scale}: {:?}",
-                        response.response.rect
-                    );
+                    for grade in [false, true] {
+                        let mut settings_value = SplineSettings {
+                            grade,
+                            ..SplineSettings::default()
+                        };
+                        let response = ui.scope(|ui| settings(ui, &mut settings_value));
+                        assert!(
+                            response.response.rect.right() <= right + 0.5,
+                            "width {width}, scale {scale}, grade {grade}: {:?}",
+                            response.response.rect
+                        );
+                    }
                 });
                 output.textures_delta.clear();
             }

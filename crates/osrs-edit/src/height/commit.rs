@@ -70,7 +70,7 @@ fn query_height(query: &impl MapQuery, plane: SourcePlane, tile: MapTile) -> Opt
     query.height_at(HeightVertexCoord::new(tile, plane))
 }
 
-fn quantize_height(
+pub(crate) fn quantize_height(
     query: &impl MapQuery,
     plane: SourcePlane,
     tile: MapTile,

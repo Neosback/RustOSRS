@@ -162,15 +162,56 @@ pub struct SplineSettings {
     pub edge_weight: f32,
     /// Control points land on tile centres (off: where you click).
     pub snap_points: bool,
+    /// The line between control points.
+    pub curve: PathCurve,
+    /// Also grade the terrain under the path: a bed that follows the ground along the path and
+    /// is level across it. Laid in the same undo step as the overlay.
+    pub grade: bool,
+    /// Length over which the bed is smoothed along the path, in tiles.
+    pub grade_smoothing: f32,
+    /// Steepest bed slope along the path, in client units per tile.
+    pub grade_max_slope: f32,
+    /// Distance beyond the path edge over which the bed fades into the terrain, in tiles.
+    pub grade_blend: f32,
+    /// Preview the next segment up to the cursor while placing points.
+    pub follow_cursor: bool,
+}
+
+/// How the path runs between its control points.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PathCurve {
+    /// A smooth Catmull-Rom curve through every point.
+    #[default]
+    Smooth,
+    /// Straight segments.
+    Straight,
 }
 
 impl Default for SplineSettings {
     fn default() -> Self {
+        let grade = osrs_edit::PathGradeSpec::default();
         Self {
             width: 3.0,
             edge_weight: 0.75,
             snap_points: false,
+            curve: PathCurve::Smooth,
+            grade: false,
+            grade_smoothing: grade.smoothing_tiles,
+            grade_max_slope: grade.max_slope,
+            grade_blend: grade.blend_tiles,
+            follow_cursor: true,
         }
+    }
+}
+
+impl SplineSettings {
+    /// The grading parameters, when grading is on.
+    pub fn grade_spec(&self) -> Option<osrs_edit::PathGradeSpec> {
+        self.grade.then_some(osrs_edit::PathGradeSpec {
+            smoothing_tiles: self.grade_smoothing,
+            max_slope: self.grade_max_slope,
+            blend_tiles: self.grade_blend,
+        })
     }
 }
 

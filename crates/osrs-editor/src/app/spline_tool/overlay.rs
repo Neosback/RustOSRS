@@ -90,7 +90,7 @@ impl EditorApp {
                 .spline_appearance()
                 .filter(|a| a.key == preview.key && !a.tiles.is_empty());
             let alpha = if current { 235 } else { 80 };
-            let tile_polygon = |tile: (i32, i32), shape: u8, rotation: u8| {
+            let tile_polygon = |tile: (i32, i32), shape: u8, rotation: u8, fill: Color32| {
                 let Some(corners) = interact::tile_corners(self.world.infos(), tile, plane) else {
                     return;
                 };
@@ -114,14 +114,31 @@ impl EditorApp {
                         at(triangle[1][0], triangle[1][1]),
                         at(triangle[2][0], triangle[2][1]),
                     ) {
-                        painter.add(egui::Shape::convex_polygon(
-                            vec![a, b, c],
-                            overlay_color,
-                            edge,
-                        ));
+                        painter.add(egui::Shape::convex_polygon(vec![a, b, c], fill, edge));
                     }
                 }
             };
+            // The segment up to the cursor: what the next click adds, drawn faintly underneath.
+            if let Some(ahead) = preview
+                .ahead
+                .as_ref()
+                .filter(|ahead| super::pending_point(self) == Some(ahead.pending))
+            {
+                let faint = Color32::from_rgba_unmultiplied(
+                    base_overlay_color.r(),
+                    base_overlay_color.g(),
+                    base_overlay_color.b(),
+                    base_overlay_color.a() / 2,
+                );
+                for paint in &ahead.paints {
+                    tile_polygon(
+                        (paint.tile_x, paint.tile_y),
+                        paint.shape,
+                        paint.orientation,
+                        faint,
+                    );
+                }
+            }
             if let Some(real) = real {
                 let mut mesh = egui::Mesh::default();
                 for tile in &real.tiles {
@@ -151,7 +168,12 @@ impl EditorApp {
                 painter.add(egui::Shape::mesh(mesh));
             } else {
                 for paint in &preview.paints {
-                    tile_polygon((paint.tile_x, paint.tile_y), paint.shape, paint.orientation);
+                    tile_polygon(
+                        (paint.tile_x, paint.tile_y),
+                        paint.shape,
+                        paint.orientation,
+                        overlay_color,
+                    );
                 }
             }
         }

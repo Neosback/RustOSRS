@@ -114,7 +114,8 @@ impl EditorApp {
                 rotation: paint.orientation,
             })
             .collect();
-        let changed = self.apply_terrain_path(&tiles);
+        let grade = super::commit_grade(self, &preview);
+        let changed = self.apply_terrain_path(&tiles, &grade);
         self.interaction.clear_spline_points();
         self.ui
             .notify(format!("Laid a fitted path over {changed} tiles"));

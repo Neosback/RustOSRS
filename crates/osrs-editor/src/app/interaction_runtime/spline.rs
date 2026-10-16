@@ -3,8 +3,11 @@ use super::InteractionRuntime;
 use crate::terrain_path::{self, FittedTile};
 use eframe::egui;
 mod cancel;
-const FNV_OFFSET: u64 = 0xCBF2_9CE4_8422_2325;
-const FNV_PRIME: u64 = 0x0100_0000_01B3;
+mod plan;
+pub(in crate::app) use plan::Ahead;
+#[cfg(not(target_arch = "wasm32"))]
+use plan::PlanWorker;
+use plan::{PlanInput, PlanKey, plan_key, request_key};
 
 #[derive(Debug, Default)]
 pub(super) struct SplineState {
@@ -30,11 +33,16 @@ pub(super) struct SplineState {
 
 #[derive(Debug, Default, Clone)]
 pub(in crate::app) struct Preview {
+    /// Key of the placed path this preview plans (the cursor is not part of it).
     pub(in crate::app) key: u64,
+    /// Key of the placed path and the cursor position it was made for.
+    pub(in crate::app) request_key: u64,
     pub(in crate::app) overlay_id: u16,
     pub(in crate::app) paints: Vec<FittedTile>,
     /// The exact smoothed centre line used by the fitter.
     pub(in crate::app) lines: Vec<Vec<(f32, f32)>>,
+    /// The path extended to the cursor, when following the cursor.
+    pub(in crate::app) ahead: Option<Ahead>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,113 +65,6 @@ impl SplineState {
         self.preview
             .as_ref()
             .filter(|preview| self.desired_key == Some(preview.key))
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Debug)]
-struct PlanWorker {
-    request: std::sync::mpsc::Sender<PlanInput>,
-    result: std::sync::mpsc::Receiver<Preview>,
-    requested_key: u64,
-}
-
-fn plan_key(
-    points: &[(f32, f32)],
-    width: f32,
-    edge: f32,
-    overlay: u16,
-    plane: u8,
-    snap: bool,
-) -> u64 {
-    let words = points
-        .iter()
-        .flat_map(|point| [point.0.to_bits(), point.1.to_bits()])
-        .chain([
-            width.to_bits(),
-            edge.to_bits(),
-            u32::from(overlay),
-            u32::from(plane),
-            u32::from(snap),
-        ]);
-    words
-        .flat_map(u32::to_le_bytes)
-        .fold(FNV_OFFSET, |hash, byte| {
-            (hash ^ u64::from(byte)).wrapping_mul(FNV_PRIME)
-        })
-}
-
-/// Everything a fit is made from, copied off the editor so another thread can make it.
-struct PlanInput {
-    key: u64,
-    points: Vec<(f32, f32)>,
-    width: f32,
-    edge_weight: f32,
-    overlay_id: u16,
-}
-
-impl PlanInput {
-    fn make(self) -> Preview {
-        let line = terrain_path::smooth_catmull_rom(&self.points);
-        let paints = terrain_path::fit_path_overlay(&line, self.width, self.edge_weight);
-        Preview {
-            key: self.key,
-            overlay_id: self.overlay_id,
-            paints,
-            lines: vec![line],
-        }
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl PlanWorker {
-    /// A short quiet period prevents expensive plans for every pointer sample while dragging.
-    const DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(24);
-
-    fn new(first: PlanInput, repaint: Option<egui::Context>) -> Self {
-        let requested_key = first.key;
-        let (request, requests) = std::sync::mpsc::channel::<PlanInput>();
-        let (results, result) = std::sync::mpsc::channel::<Preview>();
-        let _ = request.send(first);
-        std::thread::spawn(move || {
-            while let Ok(mut input) = requests.recv() {
-                // Wait briefly for the drag stream to settle, always replacing the pending input
-                // with the newest one. Only one expensive plan is ever running at a time.
-                loop {
-                    match requests.recv_timeout(Self::DEBOUNCE) {
-                        Ok(newer) => input = newer,
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
-                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
-                    }
-                }
-                let preview = input.make();
-                if results.send(preview).is_err() {
-                    return;
-                }
-                if let Some(ctx) = &repaint {
-                    ctx.request_repaint();
-                }
-            }
-        });
-        Self {
-            request,
-            result,
-            requested_key,
-        }
-    }
-
-    fn request(&mut self, input: PlanInput) -> Option<PlanInput> {
-        if input.key == self.requested_key {
-            return None;
-        }
-        let key = input.key;
-        match self.request.send(input) {
-            Ok(()) => {
-                self.requested_key = key;
-                None
-            }
-            Err(error) => Some(error.0),
-        }
     }
 }
 
@@ -318,40 +219,54 @@ impl InteractionRuntime {
         self.spline.selected = None;
         self.spline.desired_key = None;
     }
+    /// The key of the placed path under `settings` and `overlay`.
+    fn placed_key(&self, spline: &crate::paint::SplineSettings, overlay: u16) -> u64 {
+        plan_key(&PlanKey {
+            points: &self.spline.points,
+            width: spline.width.clamp(0.5, 24.0),
+            edge: spline.edge_weight.clamp(0.0, 2.0),
+            overlay,
+            plane: self.view_plane,
+            snap: spline.snap_points,
+            curve: spline.curve,
+        })
+    }
+
     /// Everything the current path is planned from, or `None` when there is nothing to plan.
+    ///
+    /// Two placed points make a path. One placed point plus the cursor still plans, so the first
+    /// segment can be previewed before the second click.
     fn plan_input(
         &self,
         spline: &crate::paint::SplineSettings,
         overlay_id: Option<u16>,
+        pending: Option<(f32, f32)>,
     ) -> Option<PlanInput> {
-        if self.spline.points.len() < 2 {
+        let pending =
+            pending.filter(|p| spline.follow_cursor && p.0.is_finite() && p.1.is_finite());
+        if self.spline.points.len() < 2 && !(self.spline.points.len() == 1 && pending.is_some()) {
             return None;
         }
         let overlay_id = overlay_id?;
-        let width = spline.width.clamp(0.5, 24.0);
-        let edge_weight = spline.edge_weight.clamp(0.0, 2.0);
-        let key = plan_key(
-            &self.spline.points,
-            width,
-            edge_weight,
-            overlay_id,
-            self.view_plane,
-            spline.snap_points,
-        );
+        let key = self.placed_key(spline, overlay_id);
         Some(PlanInput {
             key,
+            request_key: request_key(key, pending),
             points: self.spline.points.clone(),
-            width,
-            edge_weight,
+            pending,
+            width: spline.width.clamp(0.5, 24.0),
+            edge_weight: spline.edge_weight.clamp(0.0, 2.0),
             overlay_id,
+            curve: spline.curve,
         })
     }
 
-    /// Keep the preview in step with the points and options.
+    /// Keep the preview in step with the points, options and (when following it) the cursor.
     pub(in crate::app) fn update_spline_preview(
         &mut self,
         settings: &crate::paint::SplineSettings,
         overlay_id: Option<u16>,
+        pending: Option<(f32, f32)>,
     ) {
         if self
             .spline
@@ -368,21 +283,7 @@ impl InteractionRuntime {
             self.spline.error = None;
         }
         self.spline.needs_overlay = overlay_id.is_none();
-        if let Some(overlay) = overlay_id
-            && self.spline.current_preview().is_some()
-            && self.spline.desired_key
-                == Some(plan_key(
-                    &self.spline.points,
-                    settings.width.clamp(0.5, 24.0),
-                    settings.edge_weight.clamp(0.0, 2.0),
-                    overlay,
-                    self.view_plane,
-                    settings.snap_points,
-                ))
-        {
-            return;
-        }
-        let Some(input) = self.plan_input(settings, overlay_id) else {
+        let Some(input) = self.plan_input(settings, overlay_id, pending) else {
             self.spline.desired_key = None;
             self.spline.preview = None;
             #[cfg(not(target_arch = "wasm32"))]
@@ -391,6 +292,15 @@ impl InteractionRuntime {
             }
             return;
         };
+        // Up to date for the placed path and the cursor: nothing to do.
+        if self.spline.desired_key == Some(input.key)
+            && self
+                .spline
+                .current_preview()
+                .is_some_and(|preview| preview.request_key == input.request_key)
+        {
+            return;
+        }
         let desired_key = input.key;
         self.spline.desired_key = Some(desired_key);
         if self.cancelled_plan_stays_cancelled(desired_key) {
@@ -443,8 +353,13 @@ impl InteractionRuntime {
 
         #[cfg(target_arch = "wasm32")]
         {
-            if self.spline.current_preview().is_none() {
-                self.spline.preview = Some(input.make());
+            // The browser has no worker thread: plan on this thread when the plan changed.
+            if self
+                .spline
+                .current_preview()
+                .is_none_or(|preview| preview.request_key != input.request_key)
+            {
+                self.spline.preview = Some(input.make(None));
             }
         }
     }
@@ -460,11 +375,11 @@ impl InteractionRuntime {
         {
             self.spline.worker = None;
         }
-        match self.plan_input(settings, overlay_id) {
+        match self.plan_input(settings, overlay_id, None) {
             Some(input) => {
                 self.spline.desired_key = Some(input.key);
                 if self.spline.current_preview().is_none() {
-                    self.spline.preview = Some(input.make());
+                    self.spline.preview = Some(input.make(None));
                 }
             }
             None => {
