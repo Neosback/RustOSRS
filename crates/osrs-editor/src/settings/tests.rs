@@ -126,8 +126,10 @@ fn the_sound_and_player_rail_tabs_and_the_mock_player_persist() -> Result<(), se
     // A file from before these panels has the default player and still loads.
     let old: Settings = serde_json::from_str(r#"{ "rail_tab": "View" }"#)?;
     assert_eq!(old.player, crate::player::PlayerSandbox::default());
-    let mut settings = Settings::default();
-    settings.rail_tab = RailTab::Sound;
+    let mut settings = Settings {
+        rail_tab: RailTab::Sound,
+        ..Settings::default()
+    };
     settings.player.name = "Ada".to_owned();
     settings.player.varps.insert(281, 7);
     let back: Settings = serde_json::from_str(&serde_json::to_string(&settings)?)?;

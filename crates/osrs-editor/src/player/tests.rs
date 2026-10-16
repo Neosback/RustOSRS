@@ -54,13 +54,15 @@ fn wearing_and_removing_items_by_slot() {
 
 #[test]
 fn the_player_round_trips_through_settings_json() {
-    let mut player = PlayerSandbox::default();
-    player.name = "Test".to_owned();
-    player.stand = Some(Stand {
-        x: 3222,
-        y: 3218,
-        plane: 0,
-    });
+    let mut player = PlayerSandbox {
+        name: "Test".to_owned(),
+        stand: Some(Stand {
+            x: 3222,
+            y: 3218,
+            plane: 0,
+        }),
+        ..PlayerSandbox::default()
+    };
     player.varps.insert(281, 1000);
     player.varbits.insert(4895, 3);
     player.varcs.insert(5, -1);
