@@ -93,6 +93,13 @@ impl EditorApp {
                             &mut self.settings.prefs.map_icons_3d,
                             "Map icons in the world",
                         );
+                        ui.checkbox(
+                            &mut self.settings.prefs.sound_overlay,
+                            "Sounds in the world",
+                        )
+                        .on_hover_text(
+                            "Mark objects that play a sound (the Sound panel always does)",
+                        );
                         ui.checkbox(&mut self.settings.prefs.mouse_tooltips, "Action tooltip")
                             .on_hover_text("The game's action text next to the cursor");
                         ui.separator();

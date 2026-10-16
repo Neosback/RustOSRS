@@ -156,17 +156,19 @@ pub fn collect(infos: &Infos, scope: Scope, plane: Option<u8>) -> (Vec<AreaSound
     (sounds, unresolved)
 }
 
-/// How many objects play each sound, most used first.
-pub fn by_sound(sounds: &[AreaSound]) -> Vec<(u32, usize)> {
-    let mut counts = std::collections::BTreeMap::new();
-    for sound in sounds {
-        for id in sound.sound.sounds() {
-            *counts.entry(id.get()).or_insert(0usize) += 1;
+/// The objects that play each sound, most used first (ties by sound ID). An object with several
+/// sounds appears under each of them.
+pub fn by_sound<'a>(sounds: &[&'a AreaSound]) -> Vec<(u32, Vec<&'a AreaSound>)> {
+    let mut groups: std::collections::BTreeMap<u32, Vec<&'a AreaSound>> =
+        std::collections::BTreeMap::new();
+    for row in sounds {
+        for id in row.sound.sounds() {
+            groups.entry(id.get()).or_default().push(row);
         }
     }
-    let mut counts: Vec<_> = counts.into_iter().collect();
-    counts.sort_by_key(|&(id, count)| (std::cmp::Reverse(count), id));
-    counts
+    let mut groups: Vec<_> = groups.into_iter().collect();
+    groups.sort_by_key(|(id, objects)| (std::cmp::Reverse(objects.len()), *id));
+    groups
 }
 
 #[cfg(test)]

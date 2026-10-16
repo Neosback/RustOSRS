@@ -250,6 +250,12 @@ impl EditorApp {
         .on_hover_text("Bank, shop and altar icons floating over their tiles");
         crate::theme::toggle(
             ui,
+            &mut self.settings.prefs.sound_overlay,
+            "Sounds in the world",
+        )
+        .on_hover_text("Mark objects that play a sound, even with the Sound panel closed");
+        crate::theme::toggle(
+            ui,
             &mut self.settings.prefs.mouse_tooltips,
             "Action tooltip",
         )

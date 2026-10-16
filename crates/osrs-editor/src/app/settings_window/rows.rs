@@ -96,6 +96,14 @@ pub(super) const ROWS: &[RowDef] = &[
         Any,
     ),
     def(
+        Row::SoundOverlay,
+        Interface,
+        "Menus and hints",
+        "Sounds in the world",
+        "audio markers objects range overlay speaker",
+        Any,
+    ),
+    def(
         Row::ObjectGizmo,
         Interface,
         "Menus and hints",

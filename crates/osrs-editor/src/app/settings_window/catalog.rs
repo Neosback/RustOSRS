@@ -29,6 +29,7 @@ pub(super) enum Row {
     HoverTile,
     TileInfoHud,
     MapIcons3d,
+    SoundOverlay,
     ObjectGizmo,
     RenderScale,
     CameraMode,

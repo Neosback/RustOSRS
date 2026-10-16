@@ -96,6 +96,10 @@ impl EditorApp {
                         .clicked()
                         {
                             self.settings.prefs.select_mode = mode;
+                            // Choosing a picker stops whatever else is going on: the active
+                            // tool, an object waiting to be placed, an NPC placement.
+                            self.placer.disarm();
+                            self.npcs.cancel_gesture();
                             if !selecting {
                                 self.interaction.clear_spline_points();
                                 self.set_tool(Tool::Select);
@@ -105,6 +109,7 @@ impl EditorApp {
                     if !self.settings.prefs.picker_collapsed {
                         self.user_tool_buttons(ui);
                     }
+                    recent_tool_buttons(self, ui);
                 });
             });
         self.ui.rail_rect = Some(area.response.rect);
@@ -114,6 +119,47 @@ impl EditorApp {
         {
             self.settings.prefs.picker_pos = [offset.x, offset.y];
         }
+    }
+}
+
+/// What is in use now, as shortcuts under the pickers (which always stay): the tools last
+/// used, up to three, with the active one lit, and the armed NPC gesture while one is pending.
+fn recent_tool_buttons(app: &mut EditorApp, ui: &mut egui::Ui) {
+    let recent: Vec<Tool> = app.ui.recent_tools().to_vec();
+    let npc_armed = app.npcs.arm != super::npc_runtime::Arm::None;
+    if recent.is_empty() && !npc_armed {
+        return;
+    }
+    ui.separator();
+    for tool in recent {
+        let active = app.settings.prefs.tool == tool && !npc_armed;
+        let tip = if active {
+            format!(
+                "{}: active. Click to stop and go back to selecting",
+                tool.label()
+            )
+        } else {
+            format!("{}: switch back to it", tool.label())
+        };
+        if picker_button(ui, super::workspace::tool_icon(tool), active, &tip).clicked() {
+            if active {
+                app.interaction.clear_spline_points();
+                app.set_tool(Tool::Select);
+            } else {
+                app.set_tool(tool);
+            }
+        }
+    }
+    if npc_armed
+        && picker_button(
+            ui,
+            crate::icons::NPC,
+            true,
+            "NPC placement or destination is armed. Click (or Esc) to cancel",
+        )
+        .clicked()
+    {
+        app.npcs.cancel_gesture();
     }
 }
 

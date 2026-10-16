@@ -418,6 +418,11 @@ impl EditorApp {
                     return Ok(Step::Retry);
                 }
             }
+            "sound" => {
+                if !super::sound_panel::script::command(self, &mut words)? {
+                    return Ok(Step::Retry);
+                }
+            }
             "npc" => {
                 if !super::npc_panel::script::command(self, &mut words)? {
                     return Ok(Step::Retry);

@@ -46,6 +46,7 @@ impl EditorApp {
                     self.npcs.catalog_arrived(entries, errors);
                 }
                 StreamEvent::NpcAssets(update) => self.npcs.assets_arrived(update),
+                StreamEvent::Sound { id, result } => self.audio.arrived(id, result),
                 StreamEvent::NpcGeometry(update) => {
                     self.npcs.geometry_arrived(update, &mut self.renderer);
                 }
@@ -65,6 +66,8 @@ impl EditorApp {
                     // presentation rebuilds do not emit it, so this is the cache/source boundary
                     // where old semantic state must be discarded.
                     self.session.reset();
+                    self.audio.source_opened();
+                    self.names.source_opened(self.project.cache_label(), build);
                     self.npcs
                         .source_opened(fingerprint, build, &self.world, &mut self.renderer);
                     self.cache_opened(ctx, profile_id, build);

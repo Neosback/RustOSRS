@@ -172,7 +172,7 @@ pub(super) fn preview_export(app: &mut EditorApp) {
 }
 
 pub(super) fn scenario_section(app: &mut EditorApp, ui: &mut egui::Ui) {
-    crate::theme::section_heading(ui, "Scenario");
+    crate::theme::section_heading(ui, "OpenRune spawns");
     let summary = app.session.scenario().definition().map(|d| {
         (
             d.spawns.len(),
@@ -182,46 +182,52 @@ pub(super) fn scenario_section(app: &mut EditorApp, ui: &mut egui::Ui) {
     });
     match &summary {
         Some((count, build, fingerprint)) => {
-            ui.label(format!(
-                "{count} spawns \u{b7} build {build} \u{b7} cache {fingerprint}"
-            ));
+            ui.horizontal_wrapped(|ui| {
+                ui.label(format!(
+                    "{count} spawns \u{b7} build {build} \u{b7} cache {fingerprint}"
+                ));
+                if ui
+                    .small_button("Remove all")
+                    .on_hover_text("Remove every spawn (undoable)")
+                    .clicked()
+                {
+                    plan_and_commit(app, |doc| plan_replace_scenario(doc, None));
+                    app.npcs.selection = None;
+                }
+            });
         }
         None => {
-            ui.weak("No scenario. Create one, load a saved one or import from OpenRune.");
+            ui.weak("Load the spawns an OpenRune server places, then press Play.");
         }
     }
-    ui.horizontal_wrapped(|ui| {
-        if summary.is_none() && ui.button("New").clicked() {
-            new_scenario(app);
-        }
-        if ui.button("Load...").clicked() && app.npcs.open_task.is_none() {
-            app.npcs.open_task = Some((
-                OpenKind::Scenario,
-                open_text("Load an NPC scenario", "json"),
-            ));
-        }
-        if summary.is_some() {
-            if ui.button("Save...").clicked() {
-                save_scenario(app);
-            }
-            if ui.button("OpenRune export...").clicked() {
-                preview_export(app);
-            }
-            if ui
-                .button("Clear")
-                .on_hover_text("Remove the scenario (undoable)")
-                .clicked()
-            {
-                plan_and_commit(app, |doc| plan_replace_scenario(doc, None));
-                app.npcs.selection = None;
-            }
-        }
-    });
-    export_preview_ui(app, ui);
     #[cfg(not(target_arch = "wasm32"))]
     import_ui(app, ui);
     #[cfg(target_arch = "wasm32")]
-    ui.weak("Importing OpenRune spawn directories needs the native editor; the browser loads and saves scenario files.");
+    ui.weak("Loading OpenRune spawn files needs the native editor; the browser opens saved scenario files below.");
+    egui::CollapsingHeader::new("Scenario files and export")
+        .id_salt("npc-files")
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if summary.is_none() && ui.button("New empty").clicked() {
+                    new_scenario(app);
+                }
+                if ui.button("Open...").clicked() && app.npcs.open_task.is_none() {
+                    app.npcs.open_task = Some((
+                        OpenKind::Scenario,
+                        open_text("Open an NPC scenario", "json"),
+                    ));
+                }
+                if summary.is_some() {
+                    if ui.button("Save...").clicked() {
+                        save_scenario(app);
+                    }
+                    if ui.button("OpenRune export...").clicked() {
+                        preview_export(app);
+                    }
+                }
+            });
+            export_preview_ui(app, ui);
+        });
 }
 
 fn export_preview_ui(app: &mut EditorApp, ui: &mut egui::Ui) {
@@ -266,8 +272,9 @@ fn export_preview_ui(app: &mut EditorApp, ui: &mut egui::Ui) {
 #[cfg(not(target_arch = "wasm32"))]
 fn import_ui(app: &mut EditorApp, ui: &mut egui::Ui) {
     use crate::app::npc_runtime::{preview_import, read_installation};
-    egui::CollapsingHeader::new("Import from OpenRune")
+    egui::CollapsingHeader::new("Choose spawn files")
         .id_salt("npc-import")
+        .default_open(true)
         .show(ui, |ui| {
             let busy = app.npcs.import_job.is_some();
             if busy {
@@ -276,8 +283,26 @@ fn import_ui(app: &mut EditorApp, ui: &mut egui::Ui) {
                     ui.label("Working...");
                 });
             }
+            // The open cache usually is the installation's own LIVE cache: one click reads it.
+            let detected = crate::app::names::installation_of(app.project.cache_label());
+            if let Some(root) = detected.filter(|_| app.npcs.installation.is_none())
+                && ui
+                    .add_enabled(
+                        !busy,
+                        egui::Button::new(format!(
+                            "Read spawns from {}",
+                            root.file_name().map_or_else(String::new, |n| n
+                                .to_string_lossy()
+                                .into_owned())
+                        )),
+                    )
+                    .on_hover_text(root.display().to_string())
+                    .clicked()
+            {
+                app.npcs.import_job = Some(read_installation(root));
+            }
             if ui
-                .add_enabled(!busy, egui::Button::new("Choose installation folder..."))
+                .add_enabled(!busy, egui::Button::new("Choose another folder..."))
                 .clicked()
                 && let Some(folder) = rfd::FileDialog::new()
                     .set_title("OpenRune-Server folder")

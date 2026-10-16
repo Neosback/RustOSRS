@@ -4,6 +4,9 @@ mod script_window;
 use eframe::egui;
 use web_time::Instant;
 
+/// How many recently used tools the picker rail keeps as shortcuts.
+const RECENT_TOOLS: usize = 3;
+
 pub(super) struct UiRuntime {
     pub(super) palette_search: String,
     pub(super) context_menu: Option<egui::Pos2>,
@@ -22,6 +25,8 @@ pub(super) struct UiRuntime {
     pub(super) minimap_hud: super::minimap::MinimapHud,
     pub(super) teleport: crate::hud::TeleportWindow,
     pub(super) sound: super::sound_panel::SoundPanel,
+    /// The editing tools used most recently, newest first (the picker rail shows them).
+    recent_tools: Vec<crate::paint::Tool>,
     notice: Option<(String, Instant)>,
     status: Option<String>,
 }
@@ -45,9 +50,22 @@ impl UiRuntime {
             minimap_hud: super::minimap::MinimapHud::default(),
             teleport: crate::hud::TeleportWindow::new(),
             sound: super::sound_panel::SoundPanel::default(),
+            recent_tools: Vec::new(),
             notice: None,
             status: None,
         }
+    }
+    /// Remember an editing tool (not Select) as the most recent; at most `RECENT_TOOLS` are kept.
+    pub(super) fn note_tool(&mut self, tool: crate::paint::Tool) {
+        if tool == crate::paint::Tool::Select {
+            return;
+        }
+        self.recent_tools.retain(|t| *t != tool);
+        self.recent_tools.insert(0, tool);
+        self.recent_tools.truncate(RECENT_TOOLS);
+    }
+    pub(super) fn recent_tools(&self) -> &[crate::paint::Tool] {
+        &self.recent_tools
     }
     pub(super) fn notify(&mut self, message: impl Into<String>) {
         self.notice = Some((message.into(), Instant::now()));

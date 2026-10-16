@@ -101,7 +101,14 @@ fn sounds_are_counted_most_used_first() {
         row("b", 2, (1, 0), (1, 1), sound(Some(7), &[9], 3, 0)),
         row("c", 3, (2, 0), (1, 1), sound(Some(8), &[], 3, 0)),
     ];
-    assert_eq!(by_sound(&rows), [(7, 2), (8, 1), (9, 1)]);
+    let refs: Vec<&AreaSound> = rows.iter().collect();
+    let grouped = by_sound(&refs);
+    let summary: Vec<(u32, usize)> = grouped.iter().map(|(id, o)| (*id, o.len())).collect();
+    assert_eq!(summary, [(7, 2), (8, 1), (9, 1)]);
+    assert_eq!(
+        grouped[0].1[1].name, "b",
+        "objects keep their order within a sound"
+    );
 }
 
 #[test]

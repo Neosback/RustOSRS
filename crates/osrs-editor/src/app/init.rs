@@ -84,6 +84,8 @@ impl EditorApp {
             assets: Assets::new(initial_source.clone()),
             palettes: palette_runtime::PaletteRuntime::default(),
             npcs: npc_runtime::NpcRuntime::default(),
+            audio: audio_runtime::AudioRuntime::default(),
+            names: names::NameRuntime::default(),
             hd: hd::HdRuntime::new(),
             world,
             diagnostics,

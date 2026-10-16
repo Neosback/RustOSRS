@@ -102,6 +102,13 @@ impl EditorApp {
                     "Draw map icons over their tiles",
                 );
             }
+            Row::SoundOverlay => {
+                crate::theme::toggle(
+                    ui,
+                    &mut prefs.sound_overlay,
+                    "Mark objects that play a sound, even with the Sound panel closed",
+                );
+            }
             Row::ObjectGizmo => {
                 crate::theme::toggle(
                     ui,

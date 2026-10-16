@@ -4,6 +4,10 @@ use super::WorldRuntime;
 use std::collections::BTreeSet;
 
 impl WorldRuntime {
+    pub(in crate::app) fn request_sound(&self, id: u32) {
+        self.streamer.request_sound(id);
+    }
+
     pub(in crate::app) fn request_npc_catalog(&self) {
         self.streamer.request_npc_catalog();
     }

@@ -83,6 +83,9 @@ impl EditorApp {
     }
 
     pub(in crate::app) fn set_tool(&mut self, tool: Tool) {
+        // Choosing a tool stops an armed NPC placement or destination click.
+        self.npcs.cancel_gesture();
+        self.ui.note_tool(tool);
         if self.settings.prefs.tool == tool {
             return;
         }

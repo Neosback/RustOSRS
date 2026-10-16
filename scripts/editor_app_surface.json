@@ -2,10 +2,12 @@
   "version": 1,
   "fields": [
     "assets",
+    "audio",
     "diagnostics",
     "exports",
     "hd",
     "interaction",
+    "names",
     "npcs",
     "palettes",
     "placer",

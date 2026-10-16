@@ -150,8 +150,12 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
             scenario_section(app, ui);
             if app.session.scenario().definition().is_some() {
                 playback_section(app, ui);
-                place_section(app, ui);
-                selection_section(app, ui);
+                egui::CollapsingHeader::new("Edit spawns (advanced)")
+                    .id_salt("npc-edit")
+                    .show(ui, |ui| {
+                        place_section(app, ui);
+                        selection_section(app, ui);
+                    });
             }
             diagnostics_section(app, ui);
         });

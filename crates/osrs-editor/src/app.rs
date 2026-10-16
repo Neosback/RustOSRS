@@ -5,6 +5,7 @@ mod init;
 mod input;
 mod interaction_runtime;
 
+mod audio_runtime;
 mod cache_picker;
 mod camera_ops;
 mod context_menu;
@@ -21,6 +22,7 @@ mod map_icons;
 mod menu;
 mod minimap;
 pub(crate) mod modal;
+mod names;
 mod npc_panel;
 mod npc_runtime;
 mod object_tool;
@@ -95,6 +97,8 @@ pub struct EditorApp {
     plugins: plugin_runtime::PluginRuntime,
     palettes: palette_runtime::PaletteRuntime,
     npcs: npc_runtime::NpcRuntime,
+    audio: audio_runtime::AudioRuntime,
+    names: names::NameRuntime,
     assets: Assets,
     hd: hd::HdRuntime,
     placer: object_tool::PlaceState,
@@ -144,6 +148,9 @@ impl eframe::App for EditorApp {
         self.diagnostics.phase("anim", phase);
         let phase = Instant::now();
         npc_panel::update(self, &ctx);
+        if self.settings.prefs.sound_overlay {
+            sound_panel::refresh(self);
+        }
         self.diagnostics.phase("npcs", phase);
         let phase = Instant::now();
         self.run_plugins(|plugin, cx| plugin.update(cx));
@@ -156,6 +163,7 @@ impl eframe::App for EditorApp {
         self.poll_catalog();
         self.poll_export();
         self.poll_project();
+        self.names.poll();
         self.menu_bar(ui);
         self.toolbar(ui);
         self.status_bar(ui);

@@ -280,6 +280,9 @@ pub struct Settings {
     pub tile_info_hud: bool,
     /// Map icons (banks, shops, altars ...) drawn as billboards in the 3D world.
     pub map_icons_3d: bool,
+    /// Sound markers (and the selected sound's range) in the world even with the Sound panel
+    /// closed; with it open they always show.
+    pub sound_overlay: bool,
     /// The Objects tool's transform gizmo (arrows and a turn ring on the selection).
     pub object_gizmo: bool,
     /// The Inspector's tile follows the cursor (off: it shows the selected tile).
@@ -367,6 +370,7 @@ impl Default for Settings {
             view_tab: ViewTab::default(),
             tile_info_hud: true,
             map_icons_3d: false,
+            sound_overlay: false,
             object_gizmo: true,
             inspector_follow: false,
             render_scale: 1.0,

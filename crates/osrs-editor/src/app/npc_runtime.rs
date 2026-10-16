@@ -164,6 +164,11 @@ impl NpcRuntime {
         self.catalog_requested = true;
     }
 
+    /// Drop an armed placement or destination click (choosing any picker or tool does this).
+    pub(super) fn cancel_gesture(&mut self) {
+        self.arm = Arm::None;
+    }
+
     pub(super) fn source(&self) -> Option<&SourceBinding> {
         self.source.as_ref()
     }
