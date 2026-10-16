@@ -90,7 +90,7 @@ impl ActorAnimationState {
     /// present. The `*_model_usable` inputs correspond to the source
     /// `SequenceDefinition.method4925()` predicate and stay external because it
     /// depends on resolved frame/cached-model resources rather than actor state.
-    pub const fn select_action_and_pose(
+    pub fn select_action_and_pose(
         self,
         idle_sequence: Option<SequenceId>,
         action_model_usable: bool,
