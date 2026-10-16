@@ -17,6 +17,34 @@ pub(super) fn points<'a>(words: impl Iterator<Item = &'a str>) -> Result<Vec<(f3
         .collect()
 }
 
+/// Scripts use the same captured map as pointer input, and reject an invalid batch atomically.
+pub(super) fn replace_points(
+    app: &mut crate::app::EditorApp,
+    points: Vec<(f32, f32)>,
+) -> Result<(), String> {
+    use osrs_core::coords::MapTile;
+    let extent = crate::app::interaction_runtime::PathExtent::capture(
+        app.session.available_regions(),
+        app.project.generation(),
+    );
+    if points.iter().any(|p| {
+        !p.0.is_finite()
+            || !p.1.is_finite()
+            || !extent
+                .as_ref()
+                .is_some_and(|e| e.contains(MapTile::new(p.0 as i32, p.1 as i32)))
+    }) {
+        return Err(
+            "Path points must be inside the loaded map captured at the first point".to_owned(),
+        );
+    }
+    app.interaction.clear_spline_points();
+    app.interaction
+        .prepare_spline_extent(app.session.available_regions(), app.project.generation());
+    app.interaction.replace_spline_points(points);
+    Ok(())
+}
+
 /// `curve on|off`.
 pub(super) fn on_off(word: Option<&str>, what: &str) -> Result<bool, String> {
     match word {

@@ -170,11 +170,8 @@ impl TerrainController {
         heights::decode_height(base, encode_height(base, desired))
     }
 
-    fn edit_for(&self, infos: &crate::pick::Infos, key: TileKey, values: TileValues) -> TileEdit {
-        let height = self
-            .height_edited
-            .contains(&key)
-            .then(|| encode_height(self.base_height(infos, key), values.height));
+    fn edit_for(&self, _infos: &crate::pick::Infos, key: TileKey, values: TileValues) -> TileEdit {
+        let height = self.height_edited.contains(&key).then_some(values.height);
         TileEdit {
             plane: key.0,
             tile: (key.1, key.2),

@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 pub(super) struct ProjectRuntime {
     source: CacheSource,
+    generation: u64,
     label: PathBuf,
     build: Option<(u32, String)>,
     error: Option<String>,
@@ -24,12 +25,16 @@ impl ProjectRuntime {
     pub(super) fn new(source: CacheSource, label: PathBuf, error: Option<String>) -> Self {
         Self {
             source,
+            generation: 1,
             label,
             build: None,
             error,
             #[cfg(not(target_arch = "wasm32"))]
             persistence: native::ProjectPersistence::default(),
         }
+    }
+    pub(super) fn generation(&self) -> u64 {
+        self.generation
     }
     pub(super) fn cache_label(&self) -> &PathBuf {
         &self.label
@@ -47,6 +52,7 @@ impl ProjectRuntime {
         self.build = Some((build, profile));
     }
     pub(super) fn replace_source(&mut self, source: CacheSource, label: PathBuf) {
+        self.generation = self.generation.wrapping_add(1);
         self.source = source;
         self.label = label;
         self.build = None;

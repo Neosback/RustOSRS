@@ -57,7 +57,7 @@
     },
     "cancellation_test": {
       "file": "crates/osrs-editor/src/app/editing/controller_tests.rs",
-      "symbol": "cancelling_height_preview_restores_source_height_encoding_and_existing_overrides"
+      "symbol": "cancelling_height_preview_restores_absolute_height_and_existing_overrides"
     },
     "commit_test": {
       "file": "crates/osrs-editor/src/app/editing/tests.rs",
@@ -84,7 +84,7 @@
     },
     "planning_test": {
       "file": "crates/osrs-edit/src/path/tests.rs",
-      "symbol": "duplicate_tile_intents_collapse_to_one_final_terrain_op"
+      "symbol": "path_patch_sets_the_overlay_and_keeps_everything_else"
     },
     "cancellation_test": {
       "file": "crates/osrs-editor/src/app/interaction_runtime/spline/tests.rs",

@@ -71,6 +71,16 @@ fn publish_with_profiles(
     let stage = staging::Staging::new(source, out)?;
     let mut manifest = manifest_of(prepared, mode)?;
     write_prepared(prepared, mode, source, stage.path())?;
+    let conversions: Vec<_> = prepared.regions.iter().flat_map(|region| region.conversions.iter()).map(|c| serde_json::json!({
+        "x": c.position.tile.x, "y": c.position.tile.y, "plane": c.position.plane.index().get(), "authored": c.authored, "reloaded": c.reloaded
+    })).collect();
+    if !conversions.is_empty() {
+        let report = serde_json::to_vec_pretty(
+            &serde_json::json!({"policy":"eiken-truncate-v1", "heights":conversions}),
+        )
+        .map_err(|e| e.to_string())?;
+        staging::write_file(&stage.path().join("height-conversions.json"), &report)?;
+    }
     before_verify(stage.path())?;
     verify_prepared(prepared, mode, stage.path(), &profile)?;
     manifest.output_sha256 = match mode {

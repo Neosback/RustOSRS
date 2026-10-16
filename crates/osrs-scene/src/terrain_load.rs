@@ -186,6 +186,15 @@ impl TerrainLoadGrid {
         self.heights[self.corner_index(plane, x, y)]
     }
 
+    /// Project one absolute semantic corner height after source loading. No file quantization.
+    /// Out-of-window vertices are ignored, including contextual edits outside this scene.
+    pub fn set_height_vertex(&mut self, plane: usize, x: usize, y: usize, height: i32) {
+        if plane < SCENE_PLANES && x <= self.size_x && y <= self.size_y {
+            let at = self.corner_index(plane, x, y);
+            self.heights[at] = height;
+        }
+    }
+
     /// Corner heights of one plane as `[x][y]` rows (`size_x + 1` by `size_y + 1`).
     pub fn plane_heights(&self, plane: usize) -> Vec<Vec<i32>> {
         (0..=self.size_x)

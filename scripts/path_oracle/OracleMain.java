@@ -10,7 +10,9 @@ import java.util.TreeMap;
  * compared with the original's output exactly. See scripts/path_oracle/run.sh.
  */
 public class OracleMain {
-	record Case(String name, double[][] points, double width, double edge, boolean smooth) {}
+	record Case(String name, double[][] points, double width, double edge, boolean smooth, int sizeX, int sizeY) {
+        Case(String name, double[][] points, double width, double edge, boolean smooth) { this(name, points, width, edge, smooth, 32768, 32768); }
+    }
 
 	static double[][] pts(double... xy) {
 		double[][] out = new double[xy.length / 2][];
@@ -41,14 +43,26 @@ public class OracleMain {
 		cases.add(new Case("duplicate-points", pts(8, 8, 8, 8, 18, 12), 3, 1.5, true));
 		cases.add(new Case("width-20", pts(8, 8, 28, 20), 20, 1.5, true));
 		cases.add(new Case("half-tile-width", pts(4, 7, 24, 9), 0.5, 1.5, true));
+
+        if (ox == 0 && oy == 0) {
+            cases.add(new Case("west-edge", pts(0, 2, 0, 14), 3, 1.5, true, 16, 16));
+            cases.add(new Case("east-edge", pts(15, 2, 15, 14), 5, 4, true, 16, 16));
+            cases.add(new Case("south-edge", pts(1, 0, 14, 0), 2.5, 1.5, false, 16, 16));
+            cases.add(new Case("north-edge", pts(1, 15, 14, 15), 1.5, 0.5, true, 16, 16));
+            cases.add(new Case("corner-disc", pts(0, 0), 20, 4, true, 16, 16));
+            cases.add(new Case("curve-clipping", pts(0, 1, 0, 14, 3, 15), 3.5, 1.5, true, 16, 16));
+            cases.add(new Case("many-resizes", pts(1, 1, 90, 90), 20, 1.5, true, 128, 128));
+            cases.add(new Case("repeated-corner", pts(2, 2, 2, 2, 14, 3, 14, 14), 1.5, 4, true, 16, 16));
+        }
 		for (Case c : cases) {
 			List<double[]> points = new ArrayList<>();
 			for (double[] p : c.points())
 				points.add(new double[] { p[0] + ox, p[1] + oy });
 			List<double[]> line = c.smooth() ? PathOverlayFitter.smooth(points) : points;
-			Map<Integer, PathOverlayFitter.Fit> fits = PathOverlayFitter.fit(line, c.width(), 1 << 15, 1 << 15, c.edge());
+			Map<Integer, PathOverlayFitter.Fit> fits = PathOverlayFitter.fit(line, c.width(), c.sizeX(), c.sizeY(), c.edge());
 			TreeMap<Long, PathOverlayFitter.Fit> sorted = new TreeMap<>();
 			fits.forEach((key, fit) -> sorted.put(((long) PathOverlayFitter.tileX(key) << 32) | PathOverlayFitter.tileY(key), fit));
+			System.out.println("size " + c.sizeX() + " " + c.sizeY());
 			System.out.println("case " + c.name() + " width=" + c.width() + " edge=" + c.edge() + " smooth=" + c.smooth());
 			for (double[] p : points)
 				System.out.println("point " + p[0] + " " + p[1]);

@@ -23,9 +23,11 @@ teleport X Y [plane]
 overlay ID|none        underlay ID|none        shape S [R]
 radius N               arm overlay|underlay|shape|height|mask on|off
 paint X Y              apply the brush at a tile (waits until it is loaded)
-spline X,Y[:W][!] ...  set the path's control points (tile coordinates, width, ! = corner)
-width N                the width new points start with (1 trail, 3 path, 5 road)
-ground follow|smooth   lay paths following the ground, or smoothing it along the path
+spline X,Y ...         set tile-centre points inside the captured loaded map
+width N                path width, 1–20 tiles
+curve on|off           Catmull-Rom curve or straight segments
+edge N                 neighbour edge smoothing, 0–4
+height off|PASSES [BLEND]  optional height smoothing, 1–250 passes, 0–30 tile blend
 lay                    lay the path
 select object X Y      the nearest named object within 4 tiles (waits for it)
 select tiles X0 Y0 X1 Y1
@@ -273,7 +275,8 @@ impl EditorApp {
                     .transpose()?;
                 self.interaction.set_camera_pose(yaw, pitch, height);
             }
-            "spline" => self.interaction.replace_spline_points(path::points(words)?),
+            "spline" => path::replace_points(self, path::points(words)?)?,
+
             "width" => {
                 self.settings.prefs.spline.width = number::<f32>(words.next(), "width")?;
             }

@@ -20,7 +20,7 @@ fn sample_diff() -> RegionDiff {
                 flags: 5,
             },
         )],
-        heights: vec![(HeightVertexCoord::new(tile, plane0()), -48)],
+        heights: vec![(HeightVertexCoord::new(tile, plane0()), -53)],
         objects_added: vec![ObjectPlacement {
             object_id: ObjectId::new(2600),
             position: MapPosition::new(MapTile::new(3220, 3221), plane0()),

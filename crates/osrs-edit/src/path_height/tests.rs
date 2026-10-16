@@ -134,7 +134,7 @@ fn vertex(tile: (i32, i32), plane_index: u8) -> HeightVertexCoord {
 }
 
 #[test]
-fn the_patch_quantises_carries_upper_planes_and_undoes_exactly() {
+fn the_patch_keeps_single_units_carries_upper_planes_and_undoes_exactly() {
     let tile = (3200, 3200);
     let mut document = MapDocument::from_parts(
         [],
@@ -146,12 +146,12 @@ fn the_patch_quantises_carries_upper_planes_and_undoes_exactly() {
         [],
     );
     let original = document.clone();
-    // Ask for -52: the map file stores multiples of eight.
-    let patch = build_path_height_patch(&document, plane(0), &[(tile, -52)])
+    // Keep -53 exactly; map export is the only lossy boundary.
+    let patch = build_path_height_patch(&document, plane(0), &[(tile, -53)])
         .unwrap_or_else(|error| unreachable!("valid patch: {error:?}"));
     assert!(document.apply_patch(&patch).is_ok());
     let after = document.height_at(vertex(tile, 0));
-    assert!(matches!(after, Some(-56 | -48)), "{after:?}");
+    assert_eq!(after, Some(-53));
     let shift = after.unwrap_or(0) + 40;
     // The planes above kept their offset from the plane below.
     assert_eq!(document.height_at(vertex(tile, 1)), Some(-240 + shift));

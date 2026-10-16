@@ -71,6 +71,10 @@ pub fn load_window(
     for (scene_x, scene_y) in missing {
         grid.fill_missing_region(scene_x, scene_y, 64, 64);
     }
+    definitions.project_heights(
+        &mut grid,
+        osrs_core::coords::MapTile::new(window.base_x, window.base_y),
+    );
     Ok(LoadedWindow {
         window,
         grid,

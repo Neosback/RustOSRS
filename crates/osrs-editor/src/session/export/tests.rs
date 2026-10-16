@@ -28,7 +28,7 @@ fn plane(value: u8) -> SourcePlane {
     SourcePlane::new(value).unwrap_or_else(|| unreachable!("test plane is valid"))
 }
 
-fn blank_terrain() -> DecodedTerrain {
+pub(super) fn blank_terrain() -> DecodedTerrain {
     let mut tiles = Vec::with_capacity(SCENE_PLANES * TILES_PER_PLANE);
     for p in 0..SCENE_PLANES {
         for x in 0..REGION_TILES {
@@ -57,12 +57,12 @@ fn placement(id: u32, x: i32, y: i32, p: u8) -> ObjectPlacement {
     }
 }
 
-fn source_locations() -> DecodedLocations {
+pub(super) fn source_locations() -> DecodedLocations {
     DecodedLocations::with_locations(region(), vec![location_of(placement(1500, 3210, 3210, 0))])
 }
 
 /// Re-import exported streams the way the editor loads a region.
-fn reimport(exported: &ExportedRegion) -> MapDocument {
+pub(super) fn reimport(exported: &ExportedRegion) -> MapDocument {
     let tiles: Vec<EncodedTerrainTile> = blank_terrain().tiles().to_vec();
     // Decode the exported terrain stream with the production decoder semantics by replaying it
     // through the same adapter the loader uses.

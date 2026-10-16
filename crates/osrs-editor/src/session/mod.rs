@@ -16,7 +16,9 @@ pub(crate) use edit_session::{
     EditCheckpoint, EditCheckpointError, EditorSession, RegionSyncOutcome,
 };
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) use export::{ExportChanges, ExportError, export_region};
+pub(crate) use export::{
+    ExportChanges, ExportError, HeightConversion, HeightExportPolicy, export_region_with_policy,
+};
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use project_file::{PROJECT_FORMAT, ProjectFile};
 #[cfg(not(target_arch = "wasm32"))]

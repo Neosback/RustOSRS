@@ -4,12 +4,12 @@
 //! has set on a tile; [`crate::WorldDefinitions::region`] applies them right after decoding, so the
 //! scene builder, the picker data and the HD stream all see the edited map.
 
-use osrs_scene::terrain_load::{RegionTerrainTile, RegionTileHeight, RegionTileOverlay};
+use osrs_scene::terrain_load::{RegionTerrainTile, RegionTileOverlay};
 use std::collections::HashMap;
 
 const REGION_TILES: i32 = 64;
 
-/// The terrain channels of one tile after an edit (heights are not edited yet).
+/// The terrain channels of one tile after an edit. Absolute heights project semantic state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TileEdit {
     /// Source plane `0..=3`.
@@ -24,9 +24,9 @@ pub struct TileEdit {
     pub rotation: u8,
     /// Tile-settings byte.
     pub flags: u8,
-    /// The stored height byte (`None` keeps the height as decoded). On plane 0 the height is
-    /// `-8 * byte`; above it, the height of the plane below minus `8 * byte`; a stored 1 reads as 0.
-    pub height: Option<u8>,
+    /// Absolute client-unit corner height (`None` keeps the decoded height). Applied after all
+    /// source heights are resolved, before loc placement, lighting, picking and HD extraction.
+    pub height: Option<i32>,
 }
 
 impl TileEdit {
@@ -53,9 +53,6 @@ impl TileEdit {
             rotation: self.rotation & 3,
         });
         tile.settings = (self.flags != 0).then_some(self.flags);
-        if let Some(byte) = self.height {
-            tile.height = RegionTileHeight::Explicit(byte);
-        }
     }
 }
 
@@ -79,6 +76,31 @@ impl TerrainEdits {
         }
     }
 
+    /// Project authoritative absolute heights after loading and missing-region fill. Applying
+    /// decoded height bytes would lose single-unit precision and implicitly move upper planes.
+    pub fn project_heights(
+        &self,
+        grid: &mut osrs_scene::terrain_load::TerrainLoadGrid,
+        origin: osrs_core::coords::MapTile,
+    ) {
+        for edits in self.by_region.values() {
+            for edit in edits.values() {
+                if let Some(height) = edit.height {
+                    let x = edit.tile.0 - origin.x;
+                    let y = edit.tile.1 - origin.y;
+                    if x >= 0 && y >= 0 {
+                        grid.set_height_vertex(
+                            usize::from(edit.plane),
+                            x as usize,
+                            y as usize,
+                            height,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     pub fn clear(&mut self) {
         self.by_region.clear();
     }
@@ -99,6 +121,8 @@ impl TerrainEdits {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use osrs_core::coords::MapTile;
+    use osrs_scene::terrain_load::{RegionTileHeight, TerrainLoadGrid};
 
     fn tile() -> RegionTerrainTile {
         RegionTerrainTile {
@@ -144,14 +168,30 @@ mod tests {
     }
 
     #[test]
-    fn a_stored_height_replaces_the_decoded_one() {
-        let mut tile = tile();
-        TileEdit {
-            height: Some(30),
+    fn absolute_heights_are_applied_after_decoding_without_moving_upper_planes() {
+        let mut edits = TerrainEdits::default();
+        edits.apply(&[TileEdit {
+            height: Some(-53),
             ..edit()
-        }
-        .apply_to(&mut tile);
-        assert_eq!(tile.height, RegionTileHeight::Explicit(30));
+        }]);
+        let mut decoded = tile();
+        edits
+            .region((50, 50))
+            .next()
+            .unwrap_or_else(|| unreachable!("valid fixture"))
+            .apply_to(&mut decoded);
+        assert_eq!(decoded.height, RegionTileHeight::Explicit(9));
+        let mut grid = TerrainLoadGrid::new(4, 4).unwrap_or_else(|_| unreachable!("valid fixture"));
+        grid.set_height_vertex(1, 2, 2, -240);
+        edits.project_heights(&mut grid, MapTile::new(3220, 3216));
+        assert_eq!(grid.height(0, 2, 2), -53);
+        assert_eq!(grid.height(1, 2, 2), -240);
+        edits.apply(&[TileEdit {
+            height: Some(-40),
+            ..edit()
+        }]);
+        edits.project_heights(&mut grid, MapTile::new(3220, 3216));
+        assert_eq!(grid.height(0, 2, 2), -40);
     }
 
     #[test]

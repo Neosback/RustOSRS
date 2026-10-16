@@ -68,7 +68,7 @@ fn unstorable_height_reports_the_exact_location() {
         .apply_patch(&MapPatch::new(vec![MapOp::SetHeight {
             coord,
             before: -80,
-            after: -81,
+            after: 1000,
         }]))
         .unwrap_or_else(|e| unreachable!("{e:?}"));
     let prepared = prepare_with(snapshot, "fixture".into(), |r| Ok(Some(square(r))));
@@ -125,4 +125,37 @@ fn floor_id_truncation_is_a_located_blocker_before_encoding() {
     assert!(!prepared.can_publish());
     assert_eq!(prepared.issues[0].code, "terrain-not-storable");
     assert_eq!(prepared.issues[0].location, Some(p));
+}
+
+#[test]
+fn off_grid_heights_are_reported_and_verified_without_rounding_the_project() {
+    let f = fixture();
+    let mut snapshot = snapshot(&f);
+    let p = position(3202, 3203, 0);
+    paint(&mut snapshot.document, p, 5);
+    let coord = HeightVertexCoord::new(p.tile, p.plane);
+    snapshot
+        .document
+        .apply_patch(&MapPatch::new([MapOp::SetHeight {
+            coord,
+            before: -80,
+            after: -83,
+        }]))
+        .unwrap_or_else(|_| unreachable!("valid fixture"));
+    let original = snapshot.document.clone();
+    let prepared = prepare_with(snapshot.clone(), "fixture".into(), |r| Ok(Some(square(r))));
+    assert!(prepared.can_publish(), "{:?}", prepared.issues);
+    let region = prepared
+        .regions
+        .iter()
+        .find(|r| r.region == p.tile.split_region().0)
+        .unwrap_or_else(|| unreachable!("valid fixture"));
+    assert_eq!(region.expected.height_at(coord), Some(-80));
+    assert!(
+        prepared
+            .issues
+            .iter()
+            .any(|i| i.code == "height-conversion" && i.location == Some(p))
+    );
+    assert_eq!(snapshot.document, original);
 }

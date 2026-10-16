@@ -6,7 +6,9 @@
 //! exact opcodes, so an unedited square re-encodes byte-for-byte and is reported as `None`
 //! (untouched archives are never rewritten).
 
-use super::region_diff::{DiffError, RegionDiff, TILES_PER_PLANE, diff_region, plane_of, tile_of};
+use super::region_diff::{
+    DiffError, RegionDiff, TILES_PER_PLANE, baseline_document, diff_region, plane_of, tile_of,
+};
 use crate::heights::{decode_height, encode_height};
 use osrs_cache::decode::{
     DecodedLocation, DecodedLocations, DecodedTerrain, EncodedTerrainOverlay, EncodedTerrainTile,
@@ -23,6 +25,9 @@ use std::collections::HashSet;
 
 #[cfg(test)]
 mod tests;
+
+mod height_conversion;
+pub(crate) use height_conversion::{HeightConversion, HeightExportPolicy};
 
 const FLOOR_ID_MASK: u16 = 0x7fff;
 
@@ -69,7 +74,38 @@ pub struct ExportedRegion {
 }
 
 /// Re-encode `region` from `document`, or `None` when the document matches the source square.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn export_region(
+    terrain: &DecodedTerrain,
+    locations: &DecodedLocations,
+    document: &MapDocument,
+) -> Result<Option<ExportedRegion>, ExportError> {
+    Ok(export_region_with_policy(terrain, locations, document, HeightExportPolicy::Exact)?.region)
+}
+
+pub(crate) struct PreparedRegionExport {
+    pub region: Option<ExportedRegion>,
+    pub expected: MapDocument,
+    pub conversions: Vec<HeightConversion>,
+}
+
+/// Prepare source-compatible target bytes and an independently converted verification snapshot.
+pub(crate) fn export_region_with_policy(
+    terrain: &DecodedTerrain,
+    locations: &DecodedLocations,
+    document: &MapDocument,
+    policy: HeightExportPolicy,
+) -> Result<PreparedRegionExport, ExportError> {
+    let (expected, conversions) = height_conversion::convert(terrain, locations, document, policy)?;
+    let region = encode_region(terrain, locations, &expected)?;
+    Ok(PreparedRegionExport {
+        region,
+        expected,
+        conversions,
+    })
+}
+
+fn encode_region(
     terrain: &DecodedTerrain,
     locations: &DecodedLocations,
     document: &MapDocument,

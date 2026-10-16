@@ -1,5 +1,7 @@
 //! Cache-backed definition access for scene assembly.
 
+mod terrain;
+
 use crate::WorldError;
 use osrs_cache::{
     decode::{
@@ -278,11 +280,6 @@ impl WorldDefinitions {
             edits: crate::TerrainEdits::default(),
             loc_edits: crate::LocEdits::default(),
         })
-    }
-
-    /// Record editor changes; later builds of the affected regions include them.
-    pub fn apply_edits(&mut self, edits: &[crate::TileEdit]) {
-        self.edits.apply(edits);
     }
 
     /// Record object edits (removed and added placements); later builds include them.

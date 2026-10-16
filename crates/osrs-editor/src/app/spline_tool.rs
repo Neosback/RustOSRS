@@ -34,11 +34,13 @@ impl EditorApp {
     fn laying_overlay(&self) -> Option<u16> {
         let brush = &self.settings.prefs.brush;
         match brush.overlay.fill {
-            crate::paint::Fill::Set(id) if brush.overlay.armed => Some(id),
+            crate::paint::Fill::Set(id) if brush.overlay.armed && id > 0 => Some(id),
             _ => None,
         }
     }
     pub(super) fn spline_update(&mut self) {
+        self.interaction
+            .prepare_spline_extent(self.session.available_regions(), self.project.generation());
         let overlay = self.laying_overlay();
         let pending = pending_point(self);
         let options = PathOptions::from_settings(&self.settings.prefs.spline);

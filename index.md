@@ -120,6 +120,13 @@ Important current facts:
 - Reference parity closure and external visual proof remain incomplete;
 - M17 and M18 remain active completion umbrellas rather than the earlier M10 entry state.
 
+## Tile appearance and path authoring study
+
+[Tile appearance and paths](docs/research/TILE-APPEARANCE-AND-PATHS.md) traces the pinned
+client's tile pipeline, maps it to current code, documents the exact Eiken path contract and
+ranks subsequent appearance improvements. It is research; the semantic specifications remain
+authoritative.
+
 ## Legacy research corpus
 
 `docs/RUNELITE_*.md` files predate the canonical blueprint and are retained for source discovery and historical reasoning only. Before using any statement from them, read `docs/research/README.md`.

@@ -3,6 +3,8 @@ use super::InteractionRuntime;
 use crate::terrain_path::{self, FittedTile};
 use eframe::egui;
 mod cancel;
+mod extent;
+pub(in crate::app) use extent::PathExtent;
 mod plan;
 #[cfg(not(target_arch = "wasm32"))]
 use plan::PlanWorker;
@@ -15,6 +17,7 @@ use plan::{PlanInput, plan_key};
 pub(super) struct SplineState {
     /// The path's points: tile centres in world tile coordinates, in the order they were clicked.
     points: Vec<(f32, f32)>,
+    extent: Option<PathExtent>,
     error: Option<&'static str>,
     preview: Option<Preview>,
     /// Real terrain colours of the current preview (see [`terrain_path::PathAppearance`]).
@@ -103,6 +106,18 @@ impl InteractionRuntime {
 
     /// Add a point (a tile centre) unless it is where the last one is.
     pub(in crate::app) fn add_spline_point(&mut self, point: (f32, f32)) {
+        let Some(extent) = &self.spline.extent else {
+            return;
+        };
+        if !point.0.is_finite()
+            || !point.1.is_finite()
+            || !extent.contains(osrs_core::coords::MapTile::new(
+                point.0.floor() as i32,
+                point.1.floor() as i32,
+            ))
+        {
+            return;
+        }
         if self.spline.points.last() != Some(&point) {
             self.spline.points.push(point);
             self.spline.desired_key = None;
@@ -111,8 +126,10 @@ impl InteractionRuntime {
 
     /// Replace the whole path (scripts and tests).
     pub(in crate::app) fn replace_spline_points(&mut self, points: Vec<(f32, f32)>) {
-        self.spline.points = points;
-        self.spline.desired_key = None;
+        self.clear_spline_points();
+        for point in points {
+            self.add_spline_point(point);
+        }
     }
 
     pub(in crate::app) fn pop_spline_point(&mut self) {
@@ -126,6 +143,12 @@ impl InteractionRuntime {
         self.spline.desired_key = None;
         self.spline.preview = None;
         self.spline.error = None;
+        self.spline.appearance = None;
+        self.spline.cancelled_key = None;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.spline.worker = None;
+        }
     }
 
     pub(in crate::app) fn spline_preview(&self) -> Option<&Preview> {
@@ -160,7 +183,15 @@ impl InteractionRuntime {
         pending: Option<(f32, f32)>,
         options: PathOptions,
     ) -> Option<PlanInput> {
-        let pending = pending.filter(|p| p.0.is_finite() && p.1.is_finite());
+        let extent = self.spline.extent.as_ref()?;
+        let pending = pending.filter(|p| {
+            p.0.is_finite()
+                && p.1.is_finite()
+                && extent.contains(osrs_core::coords::MapTile::new(
+                    p.0.floor() as i32,
+                    p.1.floor() as i32,
+                ))
+        });
         if self.spline.points.is_empty() && pending.is_none() {
             return None;
         }
@@ -172,11 +203,13 @@ impl InteractionRuntime {
                 overlay_id,
                 self.view_plane,
                 options,
+                extent,
             ),
             points: self.spline.points.clone(),
             pending,
             overlay_id,
             options,
+            extent: extent.clone(),
         })
     }
 

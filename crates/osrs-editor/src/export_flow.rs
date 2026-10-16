@@ -88,6 +88,7 @@ pub(crate) struct PreparedRegion {
     pub files: Vec<(u32, Vec<u8>)>,
     pub changes: ExportChanges,
     pub expected: MapDocument,
+    pub conversions: Vec<crate::session::HeightConversion>,
 }
 
 #[derive(Debug)]

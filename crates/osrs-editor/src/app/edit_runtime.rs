@@ -98,6 +98,10 @@ impl EditRuntime {
         self.session.edit_revision()
     }
 
+    pub(super) fn available_regions(&self) -> impl Iterator<Item = RegionCoord> + '_ {
+        self.session.available_regions()
+    }
+
     /// Regions protected from source streaming because authored/project state has touched them.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(super) fn dirty_regions(&self) -> impl Iterator<Item = RegionCoord> + '_ {

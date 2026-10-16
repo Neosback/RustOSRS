@@ -51,7 +51,7 @@ fn cancelling_paint_preview_restores_channels_without_consuming_redo() {
 }
 
 #[test]
-fn cancelling_height_preview_restores_source_height_encoding_and_existing_overrides() {
+fn cancelling_height_preview_restores_absolute_height_and_existing_overrides() {
     for existing_override in [false, true] {
         let (mut controller, key, before) = gesture_fixture();
         if existing_override {
@@ -72,7 +72,10 @@ fn cancelling_height_preview_restores_source_height_encoding_and_existing_overri
         ));
         controller.stroke = Some(stroke);
         let restored = controller.cancel_stroke(&crate::pick::Infos::new());
-        assert_eq!(restored[0].height, existing_override.then_some(4));
+        assert_eq!(
+            restored[0].height,
+            existing_override.then_some(before.height)
+        );
         assert_eq!(controller.height_edited.contains(&key), existing_override);
         assert_eq!(
             controller.current_tile(&crate::pick::Infos::new(), key),

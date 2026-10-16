@@ -121,11 +121,11 @@ bridge link-below). `crates/osrs-reference/tests/terrain_oracle_diff.rs` compare
 line against the real pinned client on real build-241 Lumbridge terrain (11,247 tiles, 935 shaped,
 40 linked-below) using `reference-fixtures/terrain/lumbridge-3x3.oracle-*`.
 
-Still required before this row is `EXISTING`: the `FriendSystem.addObjects` shadow-grid writer (it
-needs object definitions with `clipped` and placed model heights) and an oracle fixture that
-exercises non-empty shadow input. The shadow-grid loop for clipped game objects is inclusive
-(`0..=size` on both axes), covers a `(size + 1)` square of corner cells, and runs only when
-placement succeeded.
+The production `osrs-world::loc_stage::write_shadow` now contains the clipped-wall and
+clipped-game-object shadow writer, including the inclusive `(size + 1)` footprint and
+successful-placement condition. Its absence in earlier status prose is superseded by current
+code. Still required for full acceptance: an independent oracle fixture exercising non-empty
+placement-shadow input; the core terrain fixture is not proof of that boundary.
 
 ### Correction to the earlier provenance audit
 
@@ -140,7 +140,7 @@ The pinned builder performs, in order relevant to terrain color:
 1. a bounded random walk of global hue and lightness presentation offsets;
 2. per-plane slope-light calculation from neighboring height samples;
 3. subtraction of a placement-derived shadow grid;
-4. separable radius-5 neighborhood accumulation, producing the effective 11x11 underlay blend window;
+4. separable rolling neighborhood accumulation (add `+5`, remove `-5` before emission), producing interior support `[-4,+5]` on each axis;
 5. weighted-hue/saturation/lightness averaging for underlay color;
 6. per-tile underlay and overlay construction;
 7. overlay texture/primary-magenta/secondary-color handling;
@@ -177,7 +177,7 @@ The builder keeps rolling column totals for:
 - hue multiplier;
 - contributing underlay count.
 
-It adds entries at `+5` and removes entries at `-5`, then performs the same rolling operation on the second axis. Do not replace this with a differently rounded generic convolution.
+It adds entries at `+5` and removes entries at `-5` **before** emitting the current tile, then performs the same rolling operation on the second axis. The fully populated interior support is `[-4,+5]` on each axis (10x10), clipped at scene boundaries. Earlier 11x11 descriptions were incorrect for this pinned source. Do not replace this with a symmetric or differently rounded generic convolution.
 
 ### Jitter and 3D terrain determinism
 
@@ -229,7 +229,7 @@ After terrain construction, the builder calls scene normal finalization and appl
 
 1. a production builder that consumes exact decoded floor definitions, heights, settings, placement-derived shadow state, and texture-average inputs;
 2. a pinned executable fixture generated from this exact source revision;
-3. exact tests for slope/shadow arithmetic, 11x11 border cases, underlay weighted-hue accumulation, overlay sentinel/texture/secondary branches, min-plane output, and bridge relinking;
+3. exact tests for slope/shadow arithmetic, rolling-window border cases, underlay weighted-hue accumulation, overlay sentinel/texture/secondary branches, min-plane output, and bridge relinking;
 4. deterministic proof that the 3D face colors do not depend on random hue/lightness state;
 5. a separate explicit contract for any palette/minimap RGB that does depend on jitter.
 

@@ -64,3 +64,11 @@ not authorship of the original implementation.
 OpenRune FileStore and Server 241 were studied as local design references for safe lazy reading,
 incremental packing and future entity codecs; this checkpoint copies no Kotlin source or assets.
 The reviewed paths and SHA-256 identities are recorded in `docs/research/openrune-cache-sources.json`.
+
+## EikenB00m / RSPSi path tool
+
+The path fitter and height-smoothing behavior are ported from the supplied EikenB00m map editor,
+whose LICENSE is MIT, Copyright (c) 2021 RSPSi. Exact source SHA-256 identities and the oracle JDK
+are recorded in `scripts/path_oracle/sources.json`; `scripts/path_oracle/LICENSE-RSPSi` retains
+the complete notice. The oracle executes the original Java algorithms. The local references are
+not modified. See `docs/research/TILE-APPEARANCE-AND-PATHS.md` for scope and evidence.

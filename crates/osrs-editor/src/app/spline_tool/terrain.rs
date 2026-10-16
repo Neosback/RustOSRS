@@ -43,28 +43,86 @@ pub(super) fn rebuild_appearance(app: &mut EditorApp) {
     app.interaction.set_spline_appearance(built);
 }
 
-/// Smooth the terrain under a laid path, as its own undo step, with the tool's terrain settings.
-/// Heights come from the authoritative document.
-pub(super) fn smooth_height(app: &mut EditorApp, line: &[(f64, f64)]) {
+type SmoothedHeights = Vec<((i32, i32), i32)>;
+
+/// Plan source-equivalent smoothing in the fixed local map. Missing interior data is a failure,
+/// not a smaller smoothing neighbourhood. Only the true captured boundary excludes neighbours.
+pub(super) fn height_plan(
+    app: &EditorApp,
+    line: &[(f64, f64)],
+) -> Result<SmoothedHeights, &'static str> {
     use osrs_core::coords::{MapTile, SourcePlane};
     use osrs_edit::HeightVertexCoord;
-    let Some(plane) = SourcePlane::new(app.interaction.view_plane()) else {
-        return;
-    };
+    if !app.settings.prefs.spline.smooth_height {
+        return Ok(Vec::new());
+    }
+    let extent = app
+        .interaction
+        .spline_extent()
+        .ok_or("The path has no captured map")?;
+    let plane = SourcePlane::new(app.interaction.view_plane()).ok_or("Invalid path plane")?;
     let settings = &app.settings.prefs.spline;
     let spec = osrs_edit::PathHeightSpec {
         width: f64::from(settings.width),
         passes: settings.height_passes,
         blend: f64::from(settings.height_blend),
     };
+    let local: Vec<_> = line.iter().map(|&p| extent.local(p)).collect();
+    let world = |v: (i32, i32)| MapTile::new(v.0 + extent.origin.x, v.1 + extent.origin.y);
     let document = app.session.document();
-    let smoothed = osrs_edit::plan_path_height_smoothing(line, spec, &|v| {
-        document.height_at(HeightVertexCoord::new(MapTile::new(v.0, v.1), plane))
-    });
-    if smoothed.is_empty() {
-        app.ui
-            .notify("The terrain under the path is already smooth".to_owned());
-        return;
+    for v in osrs_edit::smoothing_vertices(&local, spec) {
+        if !extent.in_bounds(world(v)) {
+            continue;
+        }
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                let tile = world((v.0 + dx, v.1 + dy));
+                if !extent.in_bounds(tile) {
+                    continue;
+                }
+                if !extent.contains(tile) {
+                    return Err("The path reaches terrain missing from its captured map");
+                }
+                for z in 0..4 {
+                    let p = SourcePlane::new(z).ok_or("Invalid path plane")?;
+                    if document
+                        .height_at(HeightVertexCoord::new(tile, p))
+                        .is_none()
+                        || !tile_available(app, z, tile)
+                    {
+                        return Err(
+                            "Required path terrain is unavailable; return to the captured map and retry",
+                        );
+                    }
+                }
+            }
+        }
     }
-    crate::app::editing::commit_path_height(app, &smoothed);
+    Ok(osrs_edit::plan_path_height_smoothing(&local, spec, &|v| {
+        let tile = world(v);
+        extent
+            .in_bounds(tile)
+            .then(|| document.height_at(HeightVertexCoord::new(tile, plane)))
+            .flatten()
+    })
+    .into_iter()
+    .map(|(v, h)| ((world(v).x, world(v).y), h))
+    .collect())
+}
+
+/// Projection availability is an admission prerequisite only; values always come from MapDocument.
+pub(super) fn tile_available(app: &EditorApp, plane: u8, tile: osrs_core::coords::MapTile) -> bool {
+    let Some(source_plane) = osrs_core::coords::SourcePlane::new(plane) else {
+        return false;
+    };
+    app.session
+        .document()
+        .height_at(osrs_edit::HeightVertexCoord::new(tile, source_plane))
+        .is_some()
+        && app
+            .world
+            .infos()
+            .get(&(tile.x.div_euclid(64), tile.y.div_euclid(64)))
+            .and_then(|info| info.tile(usize::from(plane), (tile.x, tile.y)))
+            .is_some()
 }

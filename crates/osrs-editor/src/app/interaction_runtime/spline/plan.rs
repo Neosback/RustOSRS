@@ -1,6 +1,6 @@
 //! Spline preview planning: the key that identifies a plan, the inputs a fit is made from, and the
 //! background worker that makes it. No semantic mutation.
-use super::Preview;
+use super::{PathExtent, Preview};
 use crate::terrain_path::{self, FittedTile};
 #[cfg(not(target_arch = "wasm32"))]
 use eframe::egui;
@@ -51,13 +51,36 @@ pub(in crate::app) fn fit_points(
     points: &[(f32, f32)],
     pending: Option<(f32, f32)>,
     options: PathOptions,
+    extent: &PathExtent,
 ) -> (Vec<(f64, f64)>, Vec<FittedTile>) {
-    let line = path_line(points, pending, options.smooth_curve);
-    let tiles = terrain_path::fit(
+    // Smooth in the fixed local frame, exactly as in the source editor. Smoothing in world
+    // coordinates changes floating operation order and Java's packed-key hash iteration.
+    let local: Vec<_> = points
+        .iter()
+        .map(|p| {
+            (
+                (p.0 - extent.origin.x as f32),
+                (p.1 - extent.origin.y as f32),
+            )
+        })
+        .collect();
+    let pending = pending.map(|p| (p.0 - extent.origin.x as f32, p.1 - extent.origin.y as f32));
+    let mut line = path_line(&local, pending, options.smooth_curve);
+    let mut tiles = terrain_path::fit_bounded(
         &line,
         f64::from(options.width),
         f64::from(options.edge_smoothing),
+        extent.size,
     );
+    for p in &mut line {
+        p.0 += f64::from(extent.origin.x);
+        p.1 += f64::from(extent.origin.y);
+    }
+    for tile in &mut tiles {
+        tile.tile_x += extent.origin.x;
+        tile.tile_y += extent.origin.y;
+    }
+
     (line, tiles)
 }
 
@@ -77,6 +100,7 @@ pub(super) fn plan_key(
     overlay: u16,
     plane: u8,
     options: PathOptions,
+    extent: &PathExtent,
 ) -> u64 {
     let pending = pending.map_or([0, 0, 0], |p| [1, p.0.to_bits(), p.1.to_bits()]);
     hash_words(
@@ -91,6 +115,12 @@ pub(super) fn plan_key(
                 u32::from(options.smooth_curve),
                 options.edge_smoothing.to_bits(),
                 points.len() as u32,
+                extent.origin.x as u32,
+                extent.origin.y as u32,
+                extent.size.0 as u32,
+                extent.size.1 as u32,
+                extent.generation as u32,
+                (extent.generation >> 32) as u32,
             ]),
     )
 }
@@ -102,11 +132,12 @@ pub(super) struct PlanInput {
     pub(super) pending: Option<(f32, f32)>,
     pub(super) overlay_id: u16,
     pub(super) options: PathOptions,
+    pub(super) extent: PathExtent,
 }
 
 impl PlanInput {
     pub(super) fn make(self) -> Preview {
-        let (line, paints) = fit_points(&self.points, self.pending, self.options);
+        let (line, paints) = fit_points(&self.points, self.pending, self.options, &self.extent);
         Preview {
             key: self.key,
             overlay_id: self.overlay_id,

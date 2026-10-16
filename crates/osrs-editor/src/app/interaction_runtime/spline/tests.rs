@@ -2,7 +2,15 @@ use super::*;
 use crate::camera::FlyCamera;
 
 fn interaction() -> InteractionRuntime {
-    InteractionRuntime::new(FlyCamera::new(0.0, 0.0, 0.0))
+    let mut interaction = InteractionRuntime::new(FlyCamera::new(0.0, 0.0, 0.0));
+    interaction.prepare_spline_extent(
+        [
+            osrs_core::coords::RegionCoord::new(0, 0),
+            osrs_core::coords::RegionCoord::new(50, 50),
+        ],
+        1,
+    );
+    interaction
 }
 
 const OPTIONS: PathOptions = PathOptions {
@@ -138,7 +146,14 @@ fn the_cursor_is_part_of_the_preview_line_but_the_placed_fit_ignores_it() {
         ahead.paints.len() > plain.paints.len(),
         "the preview reaches the cursor"
     );
-    let (_, placed) = fit_points(interaction.spline_points(), None, OPTIONS);
+    let (_, placed) = fit_points(
+        interaction.spline_points(),
+        None,
+        OPTIONS,
+        interaction
+            .spline_extent()
+            .unwrap_or_else(|| unreachable!("valid fixture")),
+    );
     assert_eq!(
         placed, plain.paints,
         "what is laid is the placed points only"
@@ -216,4 +231,86 @@ fn the_line_is_smoothed_only_when_asked_and_only_from_three_points() {
         2 * 12 + 1,
         "the cursor counts"
     );
+}
+
+#[test]
+fn a_gesture_freezes_origin_membership_and_bounds_until_cleared() {
+    use osrs_core::coords::{MapTile, RegionCoord};
+    let mut interaction = interaction();
+    interaction.prepare_spline_extent([RegionCoord::new(50, 50), RegionCoord::new(52, 50)], 2);
+    interaction.add_spline_point((3201.5, 3201.5));
+    let original = interaction
+        .spline_extent()
+        .unwrap_or_else(|| unreachable!("valid fixture"))
+        .clone();
+    interaction.prepare_spline_extent(
+        [
+            RegionCoord::new(50, 50),
+            RegionCoord::new(51, 50),
+            RegionCoord::new(53, 50),
+        ],
+        2,
+    );
+    assert_eq!(interaction.spline_extent(), Some(&original));
+    interaction.add_spline_point((3265.5, 3201.5)); // missing region inside the bounding rectangle
+    interaction.add_spline_point((3393.5, 3201.5)); // newly loaded region outside it
+    assert_eq!(interaction.spline_points(), &[(3201.5, 3201.5)]);
+    assert_eq!(original.origin, MapTile::new(3200, 3200));
+    assert_eq!(original.size, (192, 64));
+    interaction.clear_spline_points();
+    interaction.prepare_spline_extent([RegionCoord::new(53, 50)], 2);
+    assert_eq!(
+        interaction
+            .spline_extent()
+            .unwrap_or_else(|| unreachable!("valid fixture"))
+            .origin,
+        MapTile::new(3392, 3200)
+    );
+}
+
+#[test]
+fn source_replacement_invalidates_points_preview_and_worker() {
+    use osrs_core::coords::RegionCoord;
+    let mut interaction = interaction();
+    interaction.add_spline_point((1.5, 1.5));
+    interaction.plan_spline_now(Some(1), None, OPTIONS);
+    let old_key = interaction
+        .current_spline_preview()
+        .unwrap_or_else(|| unreachable!("valid fixture"))
+        .key;
+    interaction.prepare_spline_extent([RegionCoord::new(0, 0)], 99);
+    assert!(interaction.spline_points().is_empty());
+    assert!(interaction.current_spline_preview().is_none());
+    #[cfg(not(target_arch = "wasm32"))]
+    assert!(interaction.spline.worker.is_none());
+    interaction.add_spline_point((1.5, 1.5));
+    interaction.plan_spline_now(Some(1), None, OPTIONS);
+    assert_ne!(
+        interaction
+            .current_spline_preview()
+            .unwrap_or_else(|| unreachable!("valid fixture"))
+            .key,
+        old_key
+    );
+}
+
+#[test]
+fn fitting_in_the_local_frame_matches_source_tiles_across_a_region_boundary() {
+    use osrs_core::coords::RegionCoord;
+    let extent = PathExtent::capture([RegionCoord::new(50, 50), RegionCoord::new(51, 50)], 1)
+        .unwrap_or_else(|| unreachable!("valid fixture"));
+    let world = [(3262.5, 3204.5), (3265.5, 3210.5), (3270.5, 3204.5)];
+    let (_, paints) = fit_points(&world, None, OPTIONS, &extent);
+    let local = terrain_path::smooth(&[(62.5, 4.5), (65.5, 10.5), (70.5, 4.5)]);
+    let expected: Vec<_> = terrain_path::fit_bounded(&local, 3.0, 1.5, (128, 64))
+        .into_iter()
+        .map(|t| FittedTile {
+            tile_x: t.tile_x + 3200,
+            tile_y: t.tile_y + 3200,
+            ..t
+        })
+        .collect();
+    assert_eq!(paints, expected);
+    assert!(paints.iter().any(|t| t.tile_x < 3264));
+    assert!(paints.iter().any(|t| t.tile_x >= 3264));
 }

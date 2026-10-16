@@ -6,6 +6,7 @@ const GOLDEN: &str = include_str!("../eiken_golden.txt");
 struct Case {
     name: String,
     offset: (i32, i32),
+    size: (i32, i32),
     width: f64,
     edge: f64,
     smooth: bool,
@@ -17,6 +18,7 @@ struct Case {
 fn parse() -> Vec<Case> {
     let mut cases = Vec::new();
     let mut offset = (0, 0);
+    let mut size = (32768, 32768);
     let mut current: Option<Case> = None;
     let value = |word: &str| -> f64 {
         word.split('=')
@@ -28,10 +30,17 @@ fn parse() -> Vec<Case> {
         let words: Vec<&str> = line.split_whitespace().collect();
         match words.as_slice() {
             ["offset", x, y] => offset = (x.parse().unwrap_or(0), y.parse().unwrap_or(0)),
+            ["size", x, y] => {
+                size = (
+                    x.parse().unwrap_or_else(|_| unreachable!("valid fixture")),
+                    y.parse().unwrap_or_else(|_| unreachable!("valid fixture")),
+                )
+            }
             ["case", name, width, edge, smooth] => {
                 current = Some(Case {
                     name: (*name).to_owned(),
                     offset,
+                    size,
                     width: value(width),
                     edge: value(edge),
                     smooth: *smooth == "smooth=true",
@@ -62,35 +71,13 @@ fn parse() -> Vec<Case> {
     cases
 }
 
-/// The order Java's `HashMap<Integer, _>` iterates keys `x << 16 | y` in: by bucket of the spread
-/// hash in a table sized for the number of entries, in insertion order within a bucket.
-fn java_hash_order(tiles: Vec<(i32, i32)>) -> Vec<(i32, i32)> {
-    let mut capacity = 16_usize;
-    while tiles.len() * 4 > capacity * 3 {
-        capacity *= 2;
-    }
-    let bucket = |tile: &(i32, i32)| {
-        let key = (tile.0 as u32) << 16 | tile.1 as u32;
-        ((key ^ (key >> 16)) as usize) & (capacity - 1)
-    };
-    let mut ordered = tiles;
-    // A stable sort by bucket keeps insertion order (the tiles arrive in insertion order).
-    ordered.sort_by_key(bucket);
-    ordered
-}
-
-fn ours(case: &Case, java_order: bool) -> Vec<(i32, i32, u8, u8)> {
+fn ours(case: &Case) -> Vec<(i32, i32, u8, u8)> {
     let line = if case.smooth {
         smooth(&case.points)
     } else {
         case.points.clone()
     };
-    let fitted = if java_order {
-        fit_in_order(&line, case.width, case.edge, java_hash_order)
-    } else {
-        fit(&line, case.width, case.edge)
-    };
-    fitted
+    fit_bounded(&line, case.width, case.edge, case.size)
         .into_iter()
         .map(|t| (t.tile_x, t.tile_y, t.shape + 1, t.orientation))
         .collect()
@@ -99,7 +86,7 @@ fn ours(case: &Case, java_order: bool) -> Vec<(i32, i32, u8, u8)> {
 #[test]
 fn the_golden_file_has_every_case_at_every_offset() {
     let cases = parse();
-    assert_eq!(cases.len(), 3 * 18);
+    assert_eq!(cases.len(), 3 * 18 + 8);
     assert!(
         cases
             .iter()
@@ -114,7 +101,7 @@ fn the_golden_file_has_every_case_at_every_offset() {
 fn the_fit_matches_the_original_editors_output_exactly() {
     let mut report = Vec::new();
     for case in parse() {
-        let (mine, theirs) = (ours(&case, true), &case.tiles);
+        let (mine, theirs) = (ours(&case), &case.tiles);
         if &mine != theirs {
             let differing = mine.iter().filter(|t| !theirs.contains(t)).count();
             report.push(format!(
@@ -126,41 +113,6 @@ fn the_fit_matches_the_original_editors_output_exactly() {
         }
     }
     assert!(report.is_empty(), "{}", report.join("\n"));
-}
-
-/// In tile order (the production order) a path draws the same wherever it is. It can differ from
-/// the original only where equally good outlines tie, such as which phase a repeating edge pattern
-/// starts on, so it must stay close: any tile that differs is on an edge, never in the middle.
-#[test]
-fn in_tile_order_the_fit_differs_only_in_tied_edge_choices() {
-    for case in parse() {
-        let (mine, theirs) = (ours(&case, false), &case.tiles);
-        let differing = mine.iter().filter(|t| !theirs.contains(t)).count();
-        assert!(
-            differing * 10 <= theirs.len() * 3,
-            "{} at {:?}: {differing} of {} tiles differ",
-            case.name,
-            case.offset,
-            theirs.len()
-        );
-        // Whole tiles (shape 1 in the original's numbering) agree exactly: every tile that is
-        // full in one is full in the other.
-        let full = |tiles: &[(i32, i32, u8, u8)]| -> Vec<(i32, i32)> {
-            tiles
-                .iter()
-                .filter(|t| t.2 == 1)
-                .map(|t| (t.0, t.1))
-                .collect()
-        };
-        let (a, b) = (full(&mine), full(theirs));
-        let overlap = a.iter().filter(|t| b.contains(t)).count();
-        assert!(
-            overlap * 10 >= b.len() * 9,
-            "{} at {:?}",
-            case.name,
-            case.offset
-        );
-    }
 }
 
 fn tiles(points: &[(f64, f64)], width: f64, edge: f64) -> Vec<FittedTile> {
@@ -176,22 +128,9 @@ fn nothing_in_nothing_out_and_bad_input_is_ignored() {
 }
 
 #[test]
-fn the_fit_is_deterministic_and_the_same_wherever_it_is_drawn() {
+fn the_fit_is_deterministic() {
     let line = smooth(&[(4.5, 4.5), (14.5, 14.5), (24.5, 4.5)]);
-    let a = tiles(&line, 3.0, 1.5);
-    assert_eq!(a, tiles(&line, 3.0, 1.5));
-    // Translating the path by whole tiles translates the fit.
-    let moved: Vec<_> = line.iter().map(|p| (p.0 + 3000.0, p.1 + 2000.0)).collect();
-    let b = tiles(&moved, 3.0, 1.5);
-    let shifted: Vec<_> = a
-        .iter()
-        .map(|t| FittedTile {
-            tile_x: t.tile_x + 3000,
-            tile_y: t.tile_y + 2000,
-            ..*t
-        })
-        .collect();
-    assert_eq!(b, shifted);
+    assert_eq!(tiles(&line, 3.0, 1.5), tiles(&line, 3.0, 1.5));
 }
 
 #[test]

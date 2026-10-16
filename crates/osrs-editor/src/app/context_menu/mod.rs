@@ -101,6 +101,10 @@ impl EditorApp {
             MenuAction::FillSelection => self.fill_selection(),
             MenuAction::HeightSelection => self.height_on_selection(),
             MenuAction::AddPathPoint(tile) => {
+                self.interaction.prepare_spline_extent(
+                    self.session.available_regions(),
+                    self.project.generation(),
+                );
                 self.interaction
                     .add_spline_point((tile.0 as f32 + 0.5, tile.1 as f32 + 0.5));
             }

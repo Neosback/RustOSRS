@@ -85,6 +85,11 @@ impl EditorSession {
         }
     }
 
+    /// Semantic regions currently available, including authored regions preserved after eviction.
+    pub fn available_regions(&self) -> impl Iterator<Item = RegionCoord> + '_ {
+        self.loaded_regions.union(&self.dirty_regions).copied()
+    }
+
     /// Regions an interactive edit has touched (and that therefore keep their document state).
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub fn dirty_regions(&self) -> impl Iterator<Item = RegionCoord> + '_ {

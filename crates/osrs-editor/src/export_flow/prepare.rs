@@ -1,5 +1,7 @@
 use super::*;
-use crate::session::{ExportError, baseline_document, diff_region, export_region};
+use crate::session::{
+    ExportError, HeightExportPolicy, baseline_document, diff_region, export_region_with_policy,
+};
 use osrs_cache::decode::{ArchiveFileProvenance, DecoderContext, decode_locations, decode_terrain};
 use osrs_world::{SourceSquare, SourceSquares};
 
@@ -62,7 +64,16 @@ pub(crate) fn prepare_with(
                 })
                 .and_then(|square| prepare_region(&snapshot, square));
         match result {
-            Ok(Some(region)) => prepared.regions.push(region),
+            Ok(Some(region)) => {
+                for change in &region.conversions {
+                    prepared.issues.push(ExportIssue {
+                        severity: IssueSeverity::Warning, code: "height-conversion", region: Some(region.region), location: Some(change.position),
+                        message: format!("Height {} exports/reloads as {} using EikenB00m truncation (including byte 1). The project keeps its exact height.", change.authored, change.reloaded),
+                        remedy: "Save the project to retain full editing precision.".to_owned(),
+                    });
+                }
+                prepared.regions.push(region);
+            }
             Ok(None) => prepared.unchanged += 1,
             Err(mut issue) => {
                 issue.region = Some(region);
@@ -115,7 +126,7 @@ fn prepare_region(
     expected
         .apply_patch(&diff.to_patch(&expected))
         .map_err(semantic_issue)?;
-    let exported = export_region(&square.terrain, &square.locations, &expected).map_err(|e| {
+    let converted = export_region_with_policy(&square.terrain, &square.locations, &expected, HeightExportPolicy::EikenTruncate).map_err(|e| {
         let mut issue = semantic_issue(&e);
         if let ExportError::HeightNotStorable { position, .. } = e {
             issue.code = "height-not-storable";
@@ -124,7 +135,8 @@ fn prepare_region(
         }
         issue
     })?;
-    let Some(exported) = exported else {
+    let expected = converted.expected;
+    let Some(exported) = converted.region else {
         return Ok(None);
     };
     let mut files = square.files;
@@ -151,6 +163,7 @@ fn prepare_region(
         group: square.group_id,
         files,
         changes: exported.changes,
+        conversions: converted.conversions,
         expected,
     }))
 }

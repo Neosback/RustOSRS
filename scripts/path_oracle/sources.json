@@ -1,0 +1,19 @@
+{
+  "source": "EikenB00m map editor local snapshot",
+  "java_version_line": "openjdk version \"25.0.4\" 2026-07-21",
+  "sha256": {
+    "Client/src/main/java/com/rspsi/tools/PathOverlayFitter.java": "d17236441985c4b4558ec5eb1adfc6f2b6a31db658f2f76fcc17f785ab6a018a",
+    "Client/src/main/java/com/jagex/map/tile/ShapedTile.java": "719d9574ff4013ff238ad3205e994cab91d31c57f4a3d8abe004a5d8d81cd617",
+    "Client/src/main/java/com/jagex/map/SceneGraph.java": "341c5976019a21f8aa217ad6d1aaa2d3eb55c88727ff341962cc8688b3e706f3",
+    "Client/src/main/java/com/jagex/map/MapRegion.java": "19201dfc0b6a9c322cdcac522b7cfe072dc25af113287fc6d96f9573c388e6a0",
+    "Client/src/main/java/com/rspsi/options/Options.java": "966c6d3ff5db03e03fcb34088270f229dc1fc529e44b041ea8fb6dd5f2567c8d",
+    "Editor/src/main/java/com/rspsi/controllers/MainController.java": "7d5c222b265f18802c0ff038322ebdbd7d7716f20ace4b6c8bdd2534dd755bb8",
+    "LICENSE": "a498004da721078ad56f76d252c20d970d242dfdea189730441698e6134a6bbc"
+  },
+  "oracle_scope": "Original PathOverlayFitter and extracted SceneGraph.smoothPathHeights; UI, history and redraw adapters are inert. Source Java is never modified.",
+  "fixtures": {
+    "fit_cases": 62,
+    "integer_iteration_sequences": 6,
+    "height_cases": 16
+  }
+}

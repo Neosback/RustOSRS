@@ -7,8 +7,11 @@
 
 mod appearance;
 mod fit;
+mod java_order;
 mod shapes;
 
 pub use appearance::{PathAppearance, path_appearance, reference_palette};
-pub use fit::{FittedTile, fit, smooth};
+#[cfg(test)]
+pub use fit::fit;
+pub use fit::{FittedTile, fit_bounded, smooth};
 pub use shapes::{overlay_triangles, shape_triangles};

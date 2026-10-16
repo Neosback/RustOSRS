@@ -10,9 +10,7 @@
 //! terrain tables ([`super::overlay_triangles`]), so any shape the overlay painter can produce is
 //! a candidate. It is compared with the original's output in `eiken_golden.txt`.
 //!
-//! The one deliberate difference: the original refines tiles in Java `HashMap` order, which
-//! depends on the map coordinates by accident. Tiles are refined in `(x, y)` order here, so a path
-//! gives the same fit wherever it is drawn.
+//! Refinement uses the source Java integer-key iteration order, including tree bins.
 
 use super::overlay_triangles;
 use std::collections::BTreeMap;
@@ -82,20 +80,23 @@ fn catmull_rom(p0: f64, p1: f64, p2: f64, p3: f64, t: f64, t2: f64, t3: f64) -> 
 /// The overlay tiles for a polyline of tile coordinates (a tile `(x, y)` spans `[x, x + 1]` on
 /// both axes) drawn `width` tiles wide, sorted by tile. `edge_weight` is how strongly neighbouring
 /// tiles are made to line up; zero fits every tile on its own.
+#[cfg(test)]
 pub fn fit(line: &[(f64, f64)], width: f64, edge_weight: f64) -> Vec<FittedTile> {
-    fit_in_order(line, width, edge_weight, |tiles| tiles)
+    fit_bounded(line, width, edge_weight, (32768, 32768))
 }
 
-/// [`fit`] with the order tiles are refined in chosen by `order`, which is given the touched tiles
-/// in `(x, y)` order. Refining in place makes ties between equally good outlines (a path edge that
-/// could start on either phase of a repeating pattern) depend on the order.
-fn fit_in_order(
+/// Fit inside the source editor's local map rectangle. Coordinates are local and non-negative.
+pub fn fit_bounded(
     line: &[(f64, f64)],
     width: f64,
     edge_weight: f64,
-    order: impl FnOnce(Vec<(i32, i32)>) -> Vec<(i32, i32)>,
+    size: (i32, i32),
 ) -> Vec<FittedTile> {
-    if line.is_empty()
+    if size.0 <= 0
+        || size.1 <= 0
+        || size.0 > 65536
+        || size.1 > 65536
+        || line.is_empty()
         || !width.is_finite()
         || line.iter().any(|p| !p.0.is_finite() || !p.1.is_finite())
     {
@@ -111,7 +112,10 @@ fn fit_in_order(
         ((min.0 - half).floor() as i32).max(0),
         ((min.1 - half).floor() as i32).max(0),
     );
-    let end = ((max.0 + half).ceil() as i32, (max.1 + half).ceil() as i32);
+    let end = (
+        ((max.0 + half).ceil() as i32).min(size.0 - 1),
+        ((max.1 + half).ceil() as i32).min(size.1 - 1),
+    );
     let candidates = candidates();
 
     // 1. The ideal coverage of every tile the path can touch, and a first guess for each.
@@ -144,7 +148,7 @@ fn fit_in_order(
 
     // 2. Let neighbouring tiles agree on their shared edges.
     if edge_weight > 0.0 {
-        let order = order(ideals.keys().copied().collect());
+        let order = super::java_order::java_order(ideals.keys().copied().collect());
         for _ in 0..REFINE_PASSES {
             let mut changed = false;
             for tile in &order {

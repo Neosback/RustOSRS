@@ -192,13 +192,13 @@ fn semantic_path_projection_tracks_undo_redo_and_the_separate_height_step() {
 
     // Smoothing the terrain is its own step.
     let heights =
-        osrs_edit::build_path_height_patch(session.document(), plane(0), &[((3200, 3200), -32)])
+        osrs_edit::build_path_height_patch(session.document(), plane(0), &[((3200, 3200), -53)])
             .unwrap_or_else(|error| unreachable!("valid height patch: {error:?}"));
     assert!(session.commit(heights).is_ok());
     assert_eq!(session.revision(), 2, "overlay and height are two steps");
     let smoothed = project_semantic_path_values(session.document(), key, laid, true)
         .unwrap_or_else(|| unreachable!("semantic Path state is projectable"));
-    assert_eq!(smoothed.height, -32);
+    assert_eq!(smoothed.height, -53);
 
     assert!(session.undo().is_ok());
     let undone_height = project_semantic_path_values(session.document(), key, smoothed, true)

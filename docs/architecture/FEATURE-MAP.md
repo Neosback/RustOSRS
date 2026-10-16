@@ -18,6 +18,14 @@ UI/input → controller intent → pure MapQuery planner → MapPatch
 
 Application paths are relative to `crates/osrs-editor/src`. `osrs-edit` paths are relative to `crates`.
 
+The Spline gesture freezes available semantic region membership, origin and map dimensions at
+its first point. Production fitting uses the source Java integer-map iteration order. Committed
+heights retain single-unit precision through semantic history, projects and absolute worker
+projections; target export is the explicit lossy boundary. Laying the overlay and optional height
+smoothing are two source-defined operations and two undo steps. See
+[the tile/path study](../research/TILE-APPEARANCE-AND-PATHS.md) and the pinned oracle under
+`scripts/path_oracle/` for the source contract and differential cases.
+
 ## Runtime ownership
 
 | Owner | State and behavior | Must not own |

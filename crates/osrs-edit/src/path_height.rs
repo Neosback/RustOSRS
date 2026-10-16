@@ -3,7 +3,7 @@
 //! EikenB00m map editor (`SceneGraph.smoothPathHeights`).
 //!
 //! The planner is pure: it reads heights through a closure and returns the new height of each
-//! vertex it changes. The patch builder then quantises them to what the map file stores, carries
+//! vertex it changes. The patch builder preserves their single-unit precision, carries
 //! the planes above along (they keep their offset from the plane below) and emits one reversible
 //! `MapPatch`.
 //!
@@ -147,7 +147,7 @@ pub fn plan_path_height_smoothing(
 }
 
 /// One reversible patch for smoothed heights on `plane` (as [`plan_path_height_smoothing`]
-/// returns them). Each height is quantised to what the map file stores. The planes above move by
+/// returns them). Heights retain single-unit precision. The planes above move by
 /// the same amount, so they keep their offset from the plane below, and never end up higher than
 /// the plane under them.
 pub fn build_path_height_patch(
@@ -161,35 +161,35 @@ pub fn build_path_height_patch(
         let missing = || PathCommitError::MissingHeight { tile };
         let vertex = HeightVertexCoord::new(tile, plane);
         let before = query.height_at(vertex).ok_or_else(missing)?;
-        let after = crate::height::commit::quantize_height(query, plane, tile, desired)
-            .map_err(|_| missing())?;
-        if after == before {
-            continue;
-        }
-        ops.push(MapOp::SetHeight {
-            coord: vertex,
-            before,
-            after,
-        });
+        let after = desired.min(0);
         let shift = after - before;
-        let mut below = after;
-        for upper in plane.index().get() + 1..4 {
-            let Some(upper_plane) = SourcePlane::new(upper) else {
-                break;
+        // The source carries upper planes, then enforces ordering on every plane, even below the
+        // edited one. Query values stay authoritative and the complete result is one patch.
+        let mut below = None;
+        for z in 0..4 {
+            let source = SourcePlane::new(z).ok_or_else(missing)?;
+            let coord = HeightVertexCoord::new(tile, source);
+            let Some(current) = query.height_at(coord) else {
+                continue;
             };
-            let upper_vertex = HeightVertexCoord::new(tile, upper_plane);
-            let Some(current) = query.height_at(upper_vertex) else {
-                break;
+            let mut moved = if z == plane.index().get() {
+                after
+            } else if z > plane.index().get() {
+                current + shift
+            } else {
+                current
             };
-            let moved = (current + shift).min(below);
+            if let Some(lower) = below {
+                moved = moved.min(lower);
+            }
             if moved != current {
                 ops.push(MapOp::SetHeight {
-                    coord: upper_vertex,
+                    coord,
                     before: current,
                     after: moved,
                 });
             }
-            below = moved;
+            below = Some(moved);
         }
     }
     Ok(MapPatch::new(ops))

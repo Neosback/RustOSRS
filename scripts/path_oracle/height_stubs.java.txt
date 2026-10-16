@@ -1,0 +1,27 @@
+import java.util.*;
+import com.rspsi.tools.PathOverlayFitter;
+class NumberOption { double value; double get() { return value; } }
+class ToolOption { ToolType get() { return ToolType.MODIFY_HEIGHT; } void set(ToolType value) {} }
+class Options {
+    static final NumberOption pathWidth = new NumberOption(), pathHeightSmoothing = new NumberOption(), pathHeightBlend = new NumberOption();
+    static final ToolOption currentTool = new ToolOption();
+}
+enum ToolType { MODIFY_HEIGHT }
+class HeightState { HeightState(int x, int y, int z) {} void preserve() {} }
+class TileChange<T> { void preserveTileState(T state) {} }
+class Tile { boolean hasUpdated; }
+class MapRegion {
+    int[][][] tileHeights; byte[][][] manualTileHeight;
+    MapRegion(int x, int y) { tileHeights = new int[4][x][y]; manualTileHeight = new byte[4][x][y]; }
+    void setHeights() {} void updateTiles() {}
+}
+class SceneGraph {
+    final int width, length; final MapRegion region; final Tile[][][] tiles;
+    final Optional<TileChange<HeightState>> currentState = Optional.empty();
+    final List<Object> tileQueue = new ArrayList<>();
+    SceneGraph(int x, int y) { width = x; length = y; region = new MapRegion(x, y); tiles = new Tile[4][x][y]; }
+    MapRegion getMapRegion() { return region; }
+    boolean currentStateCorrect() { return true; } void initChanges() {}
+    static void commitChanges() {} void shadeObjects(int a, int b, int c, int d, int e) {}
+    void updateHeights(int a, int b, int c, int d) {}
+// The original method body is inserted here, unchanged; only its visibility is opened for the harness.
