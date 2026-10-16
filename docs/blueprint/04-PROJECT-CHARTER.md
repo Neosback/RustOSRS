@@ -135,7 +135,7 @@ Canonical precedence for this project:
 2. accepted ADRs under `docs/adr/`
 3. architecture/blueprint documents under `docs/blueprint/`
 4. executable verification metadata under `docs/verification/`
-5. root-level `RUNELITE_*.md` research notes
+5. `docs/RUNELITE_*.md` research notes
 
 If an old research note conflicts with a canonical spec or ADR, the canonical document wins and the old note must eventually be marked obsolete or reconciled.
 

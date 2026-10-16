@@ -5,7 +5,7 @@ Serves the workspace's own reference material over MCP stdio (JSON-RPC 2.0,
 newline-delimited), so any MCP-capable agent/IDE can query it:
   * runelite-api sources (local Oct-2026 snapshot): class/method/field lookup
   * staged shaders in reference-shaders/runelite-gpu
-  * the RUNELITE_*.md guides in the workspace root
+   * the RUNELITE_*.md guides in docs/
 
 Stdlib only (json, sys, os, re). No network use at runtime; apidocs URLs are
 included as links only.
@@ -385,12 +385,12 @@ TOOLS = [
          "limit": {"type": "integer", "default": 200}},
       "required": ["path"], "additionalProperties": False}},
     {"name": "doc_list",
-     "description": "List the RUNELITE_*.md guides in the workspace root.",
+      "description": "List the RUNELITE_*.md guides in docs/.",
      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
     {"name": "doc_read",
-     "description": "Read a workspace guide (RUNELITE_*.md or reference-shaders/README.md), with optional line offset/limit.",
+      "description": "Read a workspace guide (docs/RUNELITE_*.md or reference-shaders/README.md), with optional line offset/limit.",
      "inputSchema": {"type": "object", "properties": {
-         "name": {"type": "string", "description": "File name, e.g. RUNELITE_RUNTIME_RULES.md"},
+          "name": {"type": "string", "description": "File name, e.g. docs/RUNELITE_RUNTIME_RULES.md"},
          "offset": {"type": "integer", "default": 1},
          "limit": {"type": "integer", "default": 200}},
       "required": ["name"], "additionalProperties": False}},
@@ -504,8 +504,12 @@ def tool_shader_read(args):
 
 def tool_doc_list(_args):
     out = ["index.md"]
-    out += sorted(f for f in os.listdir(WORKSPACE)
-                  if f.startswith("RUNELITE_") and f.endswith(".md"))
+    docs_dir = os.path.join(WORKSPACE, "docs")
+    try:
+        out += sorted("docs/" + f for f in os.listdir(docs_dir)
+                      if f.startswith("RUNELITE_") and f.endswith(".md"))
+    except OSError:
+        pass
     out.append("reference-shaders/README.md")
     api_dir = os.path.join(WORKSPACE, "docs", "api")
     try:
@@ -518,6 +522,11 @@ def tool_doc_list(_args):
 def tool_doc_read(args):
     name = args.get("name", "")
     p = _safe_join(WORKSPACE, name)
+    if (p is None or not os.path.isfile(p)) and os.path.basename(name).startswith("RUNELITE_"):
+        # Backward compatibility: bare RUNELITE_*.md names resolve under docs/.
+        fallback = _safe_join(WORKSPACE, os.path.join("docs", os.path.basename(name)))
+        if fallback is not None and os.path.isfile(fallback):
+            p = fallback
     if p is None or not os.path.isfile(p):
         return {"error": "not found: %s" % name}
     off = max(int(args.get("offset") or 1), 1)

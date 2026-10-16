@@ -4,7 +4,7 @@ Status: **Checkpoint 4 canonical specification set**
 
 This directory contains the normative OSRS semantic contracts for RustOSRS. These files are implementation requirements for reusable OSRS crates only to the extent allowed by each specification's evidence status.
 
-Root `RUNELITE_*.md` files are research material. `docs/blueprint/09-SEMANTIC-AUDIT.md` and `10-TERRAIN-MATERIAL-PLANE-AUDIT.md` are source-audit records. This directory is where audited behavior becomes an implementation contract.
+`docs/RUNELITE_*.md` files are research material. `docs/blueprint/09-SEMANTIC-AUDIT.md` and `10-TERRAIN-MATERIAL-PLANE-AUDIT.md` are source-audit records. This directory is where audited behavior becomes an implementation contract.
 
 ## Specification rule
 

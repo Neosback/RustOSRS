@@ -2,7 +2,7 @@
 
 Start here.
 
-RustOSRS has a canonical blueprint/specification system plus a current operational status layer. The older root-level `RUNELITE_*.md` files remain useful research, but they are **not implementation authority**.
+RustOSRS has a canonical blueprint/specification system plus a current operational status layer. The older `docs/RUNELITE_*.md` files remain useful research, but they are **not implementation authority**.
 
 ## Current implementation status
 
@@ -122,7 +122,7 @@ Important current facts:
 
 ## Legacy research corpus
 
-Root `RUNELITE_*.md` files predate the canonical blueprint and are retained for source discovery and historical reasoning only. Before using any statement from them, read `docs/research/README.md`.
+`docs/RUNELITE_*.md` files predate the canonical blueprint and are retained for source discovery and historical reasoning only. Before using any statement from them, read `docs/research/README.md`.
 
 Known superseded legacy claims include no cross-model normal merging, one universal bridge-adjusted plane, generic floor-decoration lifting, `TEXTURE_COUNT = 256` as semantic truth, stale terrain-builder attribution, and older dependency/crate proposals.
 

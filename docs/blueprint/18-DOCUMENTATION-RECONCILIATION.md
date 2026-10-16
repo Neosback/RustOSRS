@@ -18,7 +18,7 @@ RustOSRS documentation is now separated by ownership.
 | `docs/blueprint/` | system, renderer, editor, verification architecture, roadmap | Yes for project architecture/planning |
 | `docs/verification/` | source pins, fixture ownership, parity coverage, golden scenes, CI policy | Yes for verification governance |
 | `docs/research/` | legacy/research classification | Governance only |
-| root `RUNELITE_*.md` | historical research/source discovery | No |
+| `docs/RUNELITE_*.md` | historical research/source discovery | No |
 | imported source trees / shaders / generated API docs | primary/reference evidence | Evidence only; authority depends on exact pin and owning spec |
 
 ## 2. Root index reconciliation
@@ -45,7 +45,7 @@ The root `index.md` is now the canonical navigation hub and routes implementatio
 
 ## 3. Legacy corpus policy
 
-The old root `RUNELITE_*.md` files remain substantially unchanged for provenance.
+The old `docs/RUNELITE_*.md` files remain substantially unchanged for provenance.
 
 They are intentionally **not cleaned up line-by-line** because doing so would blur the difference between:
 

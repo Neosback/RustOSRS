@@ -16,7 +16,7 @@ Staged copies. Do not edit — port from these into `editor_render` WGSL.
   `cl_types.cl`:
   `/Users/tylercovalt/Documents/ChatGPT/RSPSi-resources/RuneLite-melxin/runelite-client/src/main/resources/net/runelite/client/plugins/gpu/`
   (Jan 2026 tree — the Oct 2026 snapshot does not ship these files on disk;
-  neither tree's Java loads them by name, see `RUNELITE_RENDER_SOURCES.md`
+   neither tree's Java loads them by name, see `../docs/RUNELITE_RENDER_SOURCES.md`
   Group B; kept here as priority-math documentation for the CPU sorter).
 
 RuneLite is BSD 2-clause licensed. These files remain property of their

@@ -267,7 +267,7 @@ The project currently has no promoted external V3 visual oracle.
 
 ## Documentation quarantine
 
-Root `RUNELITE_*.md` files remain non-normative research. Git history preserves the original research text; current root files may be reduced to corrected research indexes when stale prose poses a material implementation risk.
+`docs/RUNELITE_*.md` files remain non-normative research. Git history preserves the original research text; current legacy files may be reduced to corrected research indexes when stale prose poses a material implementation risk.
 
 ## Resolution workflow
 

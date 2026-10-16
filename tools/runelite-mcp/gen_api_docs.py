@@ -142,7 +142,7 @@ def main():
         os.makedirs(OUT_DIR, exist_ok=True)
     index_lines = ["# API Reference (render subset)", "",
                    "%d classes needed for full map-scene rendering, generated "
-                   "from the local snapshot. See `RUNELITE_RENDER_SOURCES.md` "
+                    "from the local snapshot. See `../RUNELITE_RENDER_SOURCES.md` "
                    "Groups C/D (§-refs) for why each exists." % len(NEEDED), ""]
     dirty = False
     for name, section, why in NEEDED:

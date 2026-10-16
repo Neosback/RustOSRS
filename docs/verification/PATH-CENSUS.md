@@ -1,0 +1,31 @@
+# Path census of the pinned build-241 map
+
+Reproduce: `cargo run --release -p osrs-world --example path_census -- $RUSTOSRS_TARGET_CACHE_DIR target/census/paths.json` (about 4 s). It reads every map square (2,936 squares), plane 0 only, and analyses *path-like* overlay components. The JSON holds the full tables (overlay catalogue, neighbourhood prior, per-overlay underlays and widths); this page records what was measured and what it does and does not show.
+
+**Definition.** A path-like component is a 4-connected set of tiles with one overlay id, at least 10 tiles, at least 6 medial-axis ("ridge") tiles, mean width at most 10 tiles and area / width² at least 3. Components touching a map-square edge are skipped (they are cut by the square). Widths come from a chamfer distance transform (`2·d − 1`), so they are approximate and favour odd values. Heights are the final vertex heights from the terrain loader. 3,321 components qualify. Overlay 42 (the hidden magenta overlay, 819k tiles) is not a path and must be ignored in any use of the catalogue.
+
+## Findings
+
+| Question | Result | Confidence |
+|---|---|---|
+| How wide are paths? | Median ridge width per component: 1 tile 58.5%, 2 tiles 7.9%, **3 tiles 21.7%**, 4 tiles 3.1%, 5 tiles 5.7%, 7+ tiles 3%. Narrow trails dominate; roads are mostly 3. By overlay it varies (overlay 228: 88% width 1; overlay 81: 42% width 3). | Medium: width estimator is approximate |
+| Does width change along a path? | Yes. Coefficient of variation per component: median 0.24, p75 0.44, p90 0.59 (many 1-wide trails are constant). A global width cannot reproduce this. | Medium |
+| How long are they? | Median 16 ridge tiles (p75 28, p90 56, p99 193); median area 47 tiles. | High |
+| How are edges tiled? | 44.7% of boundary tiles are partial shapes against 4.7% of interior tiles. Given the 8-neighbour pattern (232 distinct patterns), the single most common (shape, rotation) explains **74.9%** of tiles. Straight edges (e.g. masks 199, 124, 31, 241) are **full tiles ~77% of the time**; partial shape 6 appears ~13%. Fully enclosed tiles are full 99%. | High (large counts) |
+| How do paths end? | Medial-axis endpoints are a full tile (0,0) in 16,774 of 19,616 cases (85%): ends are square, not tapered. | Medium (ridge endpoints include 1-wide strips) |
+| What lies beneath? | Underlay under path tiles: none 16.6%, same as the modal surrounding underlay 47.4%, a different one 36.0%. Overlays have typical partners but with spread (overlay 14: underlay 63 in 51%; overlay 11: underlay 96 in 33%; overlay 26: underlay 61 in 68%). | High |
+| How do paths meet other overlays? | Pair-specific. Many pairs meet with full tiles on both sides ("hard", e.g. 445↔448 1,988 hard vs 6 soft); a few interlock with partial shapes ("soft", e.g. 110↔42). Majority hard. | Medium |
+| Are paths graded (cut/filled)? | **No evidence of it.** Bed height minus the ground 4–6 tiles out: median 0, p25 −31, p75 +16 (units; 128 = a tile). Slope along path per tile: p50 0, p90 40, p99 226, against p90 24, p99 128 for terrain anywhere (paths run on steeper than average ground). Second difference along the axis: p75 0 against 8 anywhere (smoother in the bulk) but p99 240 against 136 (occasional abrupt steps). | High for "follows the ground"; the smoothing observation is weak |
+| Are wide paths level across their width? | **No.** Height difference one tile either side of the axis (paths ≥ 3 wide): p50 0, p75 8, p90 208, p99 512, against p90 48, p99 232 for two vertices apart anywhere. Wide paths sit on steeper cross-slopes than ordinary ground, not flatter. | High |
+
+## What this means for the Spline tool
+
+- Real paths **follow the terrain**. Defaulting to a level, graded bed is not how this map is built; grading should stay off by default and be an explicit "fix this ground" action, not a style.
+- The strongest rule in the data is the **edge-pattern prior**: choose the most common (shape, rotation) for each neighbourhood. It prefers full tiles on straight edges and square ends, and reproduces the real map's look better than maximising area match.
+- Keep the **existing underlay** beneath a path unless the user chooses otherwise: that matches 47% of the real map and the other 36% were already different.
+- Width should be **per point** (or a preset: trail 1, path 3, road 5), not one global value.
+- Where a path meets a different overlay the real map mostly abuts with full tiles; a path should not blend into a non-path overlay.
+
+## Limits
+
+Components are cut at map-square edges (long roads are counted as several), plane 0 only, bridges and stairs are not distinguished, and "path-like" is a geometric guess, not a label: some large rivers' banks or paving qualify. Widths are approximate. Nothing here says which overlays *should* be paths; it measures how the existing map uses them.

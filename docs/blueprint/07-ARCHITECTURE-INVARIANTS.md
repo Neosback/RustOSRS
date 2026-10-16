@@ -9,7 +9,7 @@ These invariants are guardrails for future implementation and review. A code cha
 
 ### A1. Research is not specification
 
-No implementation requirement may terminate its evidence chain in a root-level `RUNELITE_*.md` document.
+No implementation requirement may terminate its evidence chain in a `docs/RUNELITE_*.md` document.
 
 ### A2. Generated docs are navigation only
 

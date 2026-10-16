@@ -2,7 +2,7 @@
 
 Status: **Historical research only, reconciled through the M10 foundation audit**
 
-The root-level `RUNELITE_*.md` files predate the canonical RustOSRS blueprint. They remain useful for source discovery and historical reasoning, but they are **not implementation specifications**.
+The `docs/RUNELITE_*.md` files predate the canonical RustOSRS blueprint. They remain useful for source discovery and historical reasoning, but they are **not implementation specifications**.
 
 ## Authority rule
 
@@ -13,7 +13,7 @@ When research text conflicts with current canonical documentation, the canonical
 3. `docs/blueprint/` for architecture and roadmap;
 4. `docs/verification/` for source pins, parity status, fixture ownership, and CI policy.
 
-A root research statement must never be the terminal authority for production code or a regression test.
+A legacy research statement must never be the terminal authority for production code or a regression test.
 
 ## M10 foundation-audit correction
 
@@ -116,7 +116,7 @@ Canonical owner: `docs/blueprint/16-VERIFICATION-ARCHITECTURE.md`.
 
 ## Historical-content policy
 
-Git history is the archive for original research conclusions. When stale root prose creates a material implementation risk, the current file may be replaced by a corrected non-normative research index while the original remains recoverable from Git history.
+Git history is the archive for original research conclusions. When stale legacy prose creates a material implementation risk, the current file may be replaced by a corrected non-normative research index while the original remains recoverable from Git history.
 
 That is what the M10 foundation audit does for the highest-risk root notes. This does not promote those root files to specification authority.
 

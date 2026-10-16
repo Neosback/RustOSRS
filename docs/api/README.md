@@ -1,6 +1,6 @@
 # API Reference (render subset)
 
-49 classes needed for full map-scene rendering, generated from the local snapshot. See `RUNELITE_RENDER_SOURCES.md` Groups C/D (§-refs) for why each exists.
+49 classes needed for full map-scene rendering, generated from the local snapshot. See `../RUNELITE_RENDER_SOURCES.md` Groups C/D (§-refs) for why each exists.
 
 - [Scene](Scene.md) — §C1 — Scene root: extended tiles/settings/heights/shapes/roofs/WorldView.
 - [Tile](Tile.md) — §C2 — Per-tile slots + bridge/render-level contract.

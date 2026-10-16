@@ -194,7 +194,7 @@ Final verification design should preserve raw oracle output while also exposing 
 
 ## 6. Research document relationship
 
-The root `RUNELITE_*.md` set is not discarded. It becomes a navigation and derivation layer.
+The `docs/RUNELITE_*.md` set is not discarded. It becomes a navigation and derivation layer.
 
 During later checkpoints each useful claim will be one of:
 

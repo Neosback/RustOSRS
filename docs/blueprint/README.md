@@ -2,7 +2,7 @@
 
 This directory is the canonical architecture/specification system for RustOSRS.
 
-Root-level `RUNELITE_*.md` files are retained historical research, not implementation authority. See `docs/research/README.md` and `18-DOCUMENTATION-RECONCILIATION.md` before relying on them.
+`docs/RUNELITE_*.md` files are retained historical research, not implementation authority. See `docs/research/README.md` and `18-DOCUMENTATION-RECONCILIATION.md` before relying on them.
 
 ## Current implementation note
 

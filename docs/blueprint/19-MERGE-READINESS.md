@@ -29,7 +29,7 @@ The documentation system has clear entry points:
 - `docs/verification/README.md` — verification/provenance registry;
 - `docs/research/README.md` — legacy research quarantine and supersession map.
 
-No root `RUNELITE_*.md` document is implementation authority.
+No `docs/RUNELITE_*.md` document is implementation authority.
 
 ## 3. Scope validation
 

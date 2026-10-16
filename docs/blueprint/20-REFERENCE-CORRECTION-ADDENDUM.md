@@ -2,7 +2,7 @@
 
 Status: **Normative blueprint addendum, 2026-10-10**
 
-This addendum supersedes conflicting statements in blueprint documents 10, 12, and 16, and in root `RUNELITE_*.md` research notes. It does not replace unaffected sections of those documents.
+This addendum supersedes conflicting statements in blueprint documents 10, 12, and 16, and in `docs/RUNELITE_*.md` research notes. It does not replace unaffected sections of those documents.
 
 Primary correction record:
 
