@@ -66,6 +66,17 @@ Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md`
 
 Do not describe this program as complete merely because its foundations or self-generated regression images pass. Viewing distance, resolution and visual settings remain fixed in performance comparisons. Client networking/accounts and full combat/economy are outside scope.
 
+## First-class filestore and OpenRune cache checkpoint
+
+- Completed locally on `main`: `8353a5b1322700a7d81ee463e190529a80dc958a` (`cache: promote filestore and verify incremental repacks`). The concurrent `94d3ed16` path-tool commit already included early cache edits; this checkpoint finishes the workspace manifests/lockfile, ownership enforcement, old vendor removal and verification. No branch/worktree/PR was created and nothing was published.
+- `vendor/rune-fs` was the active JS5 transport. Its maintained fork is now `crates/osrs-filestore`, a default workspace member with workspace lints/MSRV, native/WASM checks and retained MIT attribution. Only `osrs-cache` may consume it in production. Removed the blanket Clippy exemption, unsafe native mmap, unused upstream file splitter, package marker and nested upstream CI workflow. Native reads use safe positional I/O with a bounded 8,320-byte per-group window; owned/WASM reads borrow bytes directly. No raw-byte cache persists between groups.
+- Studied both supplied Desktop OpenRune trees: reading, sparse IDs, incremental build verification/recording, pack-module isolation, stable custom IDs and server response storage. Reviewed-file SHA-256 pins and adoption/defer decisions are in `docs/research/OPENRUNE-CACHE.md` and `openrune-cache-sources.json`. No Kotlin source/assets were copied. Entity codecs and a persistent pack-task dependency database remain future work.
+- `repack_changed_groups` verifies stored CRC/sizes/version and compares decoded bytes before skipping. Identical groups keep every physical byte and version. Force repacking still increments versions. Both paths prepare every affected group/table before writing, reject duplicate targets, and reject unsupported extra digest columns instead of retaining stale digests. They require a staging cache and one writer; preflight is not I/O rollback or atomic publication. Existing verified export remains the publication boundary.
+- Local verification against the checkpoint's production code: **866 workspace tests passed, 0 failed, 18 ignored** (existing external prerequisites); formatting, locked workspace/all-target/all-feature check and strict Clippy, lower-crate WASM check, strict WASM editor Clippy and all-feature filestore WASM Clippy passed. Architecture guard + **26** tests and editor-ownership **11** tests passed. Filestore doctests **3** passed. Reference-regeneration still explicitly skips **5** missing-tool tests; deob harness-blob check still skips missing tooling. HD pins verify with **98 entries still awaiting audit**. No remote CI certification is claimed.
+- Explicit optimized build-241 source-shape/fingerprint test passed using `/Users/tylercovalt/RustOSRS-cache/b241/cache`: **117,584 groups**, canonical fingerprint `ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38`. Old/new readers also returned identical aggregate encoded bytes across all groups in four rounds each. Raw samples, source hashes, harness and limitations: `docs/verification/FILESTORE-PROMOTION.md` and `filestore-io-2026-10-15.json`.
+- Reported tradeoff: warm full-cache read+hash median **0.616737 s** for safe positional reads versus **0.570321 s** for former mmap (**8.1% slower**, ~46 ms). The final microbenchmark had no compiler processes, but the workspace test runner remained active. This is not an editor baseline or evidence of reduced CPU/GPU/RAM. Application workload baselines, memory/CPU profiling, playtesting and remaining HD implementation/independent visual proof are still pending.
+- Other pre-existing deletions in the shared working tree were left outside this commit. Recheck live Git before further work. Stay on `main` unless the user explicitly requests another branch.
+
 ## Previously completed ownership changes (PR #56)
 
 1. Moved Paint, Height and Path semantic planners plus their existing cases into `osrs-edit`; reused canonical brush/Height setting types without changing settings/project wire shapes. Domain intents use `MapTile`.
@@ -85,14 +96,14 @@ Do not describe this program as complete merely because its foundations or self-
 
 ## Validation
 
-Latest full run (path grading/curve/cursor work on top of `7757ff4a`; local results, not remote CI certification), Python 3.14.8 (`/opt/homebrew/bin/python3`):
+Historical full run before the filestore checkpoint (path grading/curve/cursor work on top of `7757ff4a`; local results, not remote CI certification), Python 3.14.8 (`/opt/homebrew/bin/python3`):
 
 - Architecture guard and its tests, editor-ownership tests, reference-regeneration tests, golden-index check, HD source pins (98 entries awaiting audit), HD-source tests and `test_performance.py`: passed.
 - `cargo fmt --all --check`; locked workspace/all-target/all-feature `cargo check` and strict Clippy; WASM lower-crate check and strict editor Clippy: passed.
 - Locked full workspace/all-target/all-feature tests: **861 passed, 0 failed, 18 ignored** (the two guard scripts above fail for the reason given) (ignored tests keep their external cache/GPU/oracle prerequisites).
 - With the pinned cache: terrain oracle (`terrain_oracle_diff`) and the Reference pixel golden passed; `region_capture` Reference hashes were identical before and after checkpoint 2a. HD captures vary by up to one channel level in a few hundred pixels between identical runs, so HD comparisons use a tolerance.
 
-Earlier figures (805 at `41d0c020`, 793 for PR #56) are superseded. Historical CI results only certify the SHAs they name. Cargo emits the existing vendored `rune-fs` MSRV-metadata warning.
+Earlier figures (805 at `41d0c020`, 793 for PR #56) are superseded. Historical CI results only certify the SHAs they name. The former vendored `rune-fs` MSRV warning is removed by the current workspace-owned manifest.
 
 ## Subsequent work
 
