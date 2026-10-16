@@ -1,0 +1,26 @@
+[package]
+name = "osrs-filestore"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+authors = ["jimvdl <jimvdlind@gmail.com>"]
+license = "MIT"
+description = "RustOSRS low-level JS5 sector, index and container storage"
+
+[features]
+rs3 = ["dep:lzma-rs"]
+serde = ["dep:serde", "dep:serde-big-array"]
+
+[dependencies]
+bzip2 = "0.6.0"
+flate2 = "1.0.27"
+itertools = "0.14"
+lzma-rs = { version = "0.3", optional = true }
+nom = "8.0.0"
+serde = { workspace = true, optional = true }
+serde-big-array = { version = "0.5", optional = true }
+thiserror = "2"
+
+[lints]
+workspace = true

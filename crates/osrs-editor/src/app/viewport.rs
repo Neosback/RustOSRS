@@ -53,10 +53,7 @@ impl EditorApp {
                 .get(&object.region)
                 .and_then(|info| info.locs.get(object.index))
         {
-            hover.tile = Some(pick::TilePick {
-                tile: loc.tile,
-                at: (loc.tile.0 as f32 + 0.5, loc.tile.1 as f32 + 0.5),
-            });
+            hover.tile = Some(pick::TilePick { tile: loc.tile });
         }
         self.interaction.set_hover(hover);
         // The brush tools keep the left button for painting; Select clicks and boxes.

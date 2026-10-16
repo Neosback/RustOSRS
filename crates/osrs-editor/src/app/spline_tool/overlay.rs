@@ -22,8 +22,7 @@ fn path_vertex_color(rgb: i32, texture_rgb: Option<i32>, alpha: u8) -> Color32 {
 }
 
 impl EditorApp {
-    /// The path preview: the planned tiles, the centre line, a ghost segment to the cursor, the
-    /// control points.
+    /// The path preview: the fitted tiles (to the cursor's tile), the centre line, the points.
     pub(in crate::app) fn draw_spline(
         &self,
         painter: &egui::Painter,
@@ -49,27 +48,11 @@ impl EditorApp {
                 + corners[3][1] * (1.0 - u) * v;
             project([f64::from(p.0) * 128.0, y - lift, f64::from(p.1) * 128.0])
         };
-        let cursor = self.interaction.hover().tile.map(|pick| pick.at);
+        let cursor = super::pending_point(self);
         let outline = self.settings.prefs.colors.get(ColorKey::PathLine);
         let ghost = self.settings.prefs.colors.get(ColorKey::PathGhost);
 
-        if self.interaction.spline_points().is_empty() {
-            if let Some(at) = cursor
-                && let Some(position) = ground(at, 8.0)
-            {
-                painter.circle_stroke(position, 9.0, Stroke::new(2.0, ghost));
-                painter.text(
-                    position + egui::vec2(14.0, -12.0),
-                    egui::Align2::LEFT_CENTER,
-                    "Click to start the path",
-                    egui::FontId::proportional(12.0),
-                    Color32::WHITE,
-                );
-            }
-            return;
-        }
-
-        // The planned tiles. While a replacement plan is running, retain the last tiles as a
+        // The fitted tiles. While a replacement plan is running, retain the last tiles as a
         // faint spatial reference instead of flashing the whole preview off.
         let base_overlay_color = self.settings.prefs.colors.get(ColorKey::PathFill);
         let base_edge_color = self.settings.prefs.colors.get(ColorKey::PathEdge);
@@ -90,55 +73,6 @@ impl EditorApp {
                 .spline_appearance()
                 .filter(|a| a.key == preview.key && !a.tiles.is_empty());
             let alpha = if current { 235 } else { 80 };
-            let tile_polygon = |tile: (i32, i32), shape: u8, rotation: u8, fill: Color32| {
-                let Some(corners) = interact::tile_corners(self.world.infos(), tile, plane) else {
-                    return;
-                };
-                // Map a tile-local (u, v) in 0..1 to the tile's four corners (bilinear).
-                let at = |u: f32, v: f32| -> Option<Pos2> {
-                    let (u, v) = (f64::from(u), f64::from(v));
-                    let lerp = |a: [f64; 3], b: [f64; 3], t: f64| {
-                        [
-                            a[0] + (b[0] - a[0]) * t,
-                            a[1] + (b[1] - a[1]) * t,
-                            a[2] + (b[2] - a[2]) * t,
-                        ]
-                    };
-                    let south = lerp(corners[0], corners[1], u);
-                    let north = lerp(corners[3], corners[2], u);
-                    project(lerp(south, north, v))
-                };
-                for triangle in terrain_path::overlay_triangles(shape, rotation) {
-                    if let (Some(a), Some(b), Some(c)) = (
-                        at(triangle[0][0], triangle[0][1]),
-                        at(triangle[1][0], triangle[1][1]),
-                        at(triangle[2][0], triangle[2][1]),
-                    ) {
-                        painter.add(egui::Shape::convex_polygon(vec![a, b, c], fill, edge));
-                    }
-                }
-            };
-            // The segment up to the cursor: what the next click adds, drawn faintly underneath.
-            if let Some(ahead) = preview
-                .ahead
-                .as_ref()
-                .filter(|ahead| super::pending_point(self) == Some(ahead.pending))
-            {
-                let faint = Color32::from_rgba_unmultiplied(
-                    base_overlay_color.r(),
-                    base_overlay_color.g(),
-                    base_overlay_color.b(),
-                    base_overlay_color.a() / 2,
-                );
-                for paint in &ahead.paints {
-                    tile_polygon(
-                        (paint.tile_x, paint.tile_y),
-                        paint.shape,
-                        paint.orientation,
-                        faint,
-                    );
-                }
-            }
             if let Some(real) = real {
                 let mut mesh = egui::Mesh::default();
                 for tile in &real.tiles {
@@ -168,45 +102,61 @@ impl EditorApp {
                 painter.add(egui::Shape::mesh(mesh));
             } else {
                 for paint in &preview.paints {
-                    tile_polygon(
-                        (paint.tile_x, paint.tile_y),
-                        paint.shape,
-                        paint.orientation,
-                        overlay_color,
-                    );
-                }
-            }
-        }
-
-        // Tiles the path covers but leaves alone because another overlay is there.
-        if let Some(preview) = self.interaction.current_spline_preview() {
-            let red = Color32::from_rgba_unmultiplied(220, 70, 70, 90);
-            for tile in &preview.clipped {
-                if let Some(corners) = interact::tile_corners(self.world.infos(), *tile, plane) {
-                    let points: Vec<Pos2> = corners
-                        .iter()
-                        .filter_map(|c| project([c[0], c[1] - 3.0, c[2]]))
-                        .collect();
-                    if points.len() == 4 {
-                        painter.add(egui::Shape::convex_polygon(
-                            points,
-                            red,
-                            Stroke::new(1.0, Color32::from_rgb(220, 70, 70)),
-                        ));
+                    let tile = (paint.tile_x, paint.tile_y);
+                    let Some(corners) = interact::tile_corners(self.world.infos(), tile, plane)
+                    else {
+                        continue;
+                    };
+                    // Map a tile-local (u, v) in 0..1 to the tile's four corners (bilinear).
+                    let at = |u: f32, v: f32| -> Option<Pos2> {
+                        let (u, v) = (f64::from(u), f64::from(v));
+                        let lerp = |a: [f64; 3], b: [f64; 3], t: f64| {
+                            [
+                                a[0] + (b[0] - a[0]) * t,
+                                a[1] + (b[1] - a[1]) * t,
+                                a[2] + (b[2] - a[2]) * t,
+                            ]
+                        };
+                        let south = lerp(corners[0], corners[1], u);
+                        let north = lerp(corners[3], corners[2], u);
+                        project(lerp(south, north, v))
+                    };
+                    for triangle in terrain_path::overlay_triangles(paint.shape, paint.orientation)
+                    {
+                        if let (Some(a), Some(b), Some(c)) = (
+                            at(triangle[0][0], triangle[0][1]),
+                            at(triangle[1][0], triangle[1][1]),
+                            at(triangle[2][0], triangle[2][1]),
+                        ) {
+                            painter.add(egui::Shape::convex_polygon(
+                                vec![a, b, c],
+                                overlay_color,
+                                edge,
+                            ));
+                        }
                     }
                 }
             }
         }
 
-        // The centre line.
+        // The centre line the path was fitted along.
         let drawn: Vec<(f32, f32)> = match self.interaction.current_spline_preview() {
-            Some(preview) if !preview.line.is_empty() => {
-                preview.line.iter().map(|s| (s.x, s.y)).collect()
-            }
-            _ => terrain_path::smooth_path(&self.interaction.spline_controls())
+            Some(preview) if !preview.line.is_empty() => preview
+                .line
                 .iter()
-                .map(|s| (s.x, s.y))
+                .map(|p| (p.0 as f32, p.1 as f32))
                 .collect(),
+            _ => terrain_path::smooth(
+                &self
+                    .interaction
+                    .spline_points()
+                    .iter()
+                    .map(|p| (f64::from(p.0), f64::from(p.1)))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .map(|p| (p.0 as f32, p.1 as f32))
+            .collect(),
         };
         let screen: Vec<Pos2> = drawn.iter().filter_map(|p| ground(*p, 10.0)).collect();
         if screen.len() >= 2 {
@@ -216,43 +166,17 @@ impl EditorApp {
             ));
             painter.add(egui::Shape::line(screen, Stroke::new(2.5, outline)));
         }
-        // A ghost stretch from the last point to the cursor while no point is being dragged.
-        if self.interaction.spline_drag().is_none()
-            && let (Some(last), Some(at)) = (self.interaction.spline_points().last(), cursor)
-            && let (Some(a), Some(b)) = (ground(*last, 10.0), ground(at, 10.0))
+        // Where the next click lands.
+        if let Some(at) = cursor
+            && let Some(b) = ground(at, 10.0)
         {
-            painter.add(egui::Shape::dashed_line(
-                &[a, b],
-                Stroke::new(1.5, ghost),
-                6.0,
-                5.0,
-            ));
             painter.circle_stroke(b, 5.0, Stroke::new(1.5, ghost));
         }
-        // The control points: round when the path curves through them, square for corners.
+        // The points, numbered in the order they were clicked.
         for (index, point) in self.interaction.spline_points().iter().enumerate() {
             if let Some(position) = ground(*point, 12.0) {
-                let active = self.interaction.spline_drag() == Some(index);
-                let corner = self
-                    .interaction
-                    .spline_attrs()
-                    .get(index)
-                    .is_some_and(|attr| attr.corner);
-                let radius = if active { 8.0 } else { 6.5 };
-                if corner {
-                    let half = egui::vec2(radius, radius);
-                    let rect = Rect::from_center_size(position, half * 2.0);
-                    painter.rect_filled(rect, 2.0, Color32::WHITE);
-                    painter.rect_stroke(
-                        rect.expand(1.0),
-                        2.0,
-                        Stroke::new(2.0, outline),
-                        egui::StrokeKind::Outside,
-                    );
-                } else {
-                    painter.circle_filled(position, radius, Color32::WHITE);
-                    painter.circle_stroke(position, radius + 1.0, Stroke::new(2.0, outline));
-                }
+                painter.circle_filled(position, 6.5, Color32::WHITE);
+                painter.circle_stroke(position, 7.5, Stroke::new(2.0, outline));
                 painter.text(
                     position + egui::vec2(11.0, -11.0),
                     egui::Align2::LEFT_CENTER,

@@ -83,12 +83,12 @@
       "symbol": "apply_terrain_path"
     },
     "planning_test": {
-      "file": "crates/osrs-edit/src/path.rs",
+      "file": "crates/osrs-edit/src/path/tests.rs",
       "symbol": "duplicate_tile_intents_collapse_to_one_final_terrain_op"
     },
     "cancellation_test": {
       "file": "crates/osrs-editor/src/app/interaction_runtime/spline/tests.rs",
-      "symbol": "spline_remove_pop_and_clear_mutate_points_through_runtime"
+      "symbol": "remove_last_and_clear_reset_the_preview_state"
     },
     "commit_test": {
       "file": "crates/osrs-editor/src/app/editing/path/tests.rs",
@@ -96,7 +96,7 @@
     },
     "undo_test": {
       "file": "crates/osrs-editor/src/app/editing/path/tests.rs",
-      "symbol": "semantic_path_projection_tracks_undo_redo_and_optional_height"
+      "symbol": "semantic_path_projection_tracks_undo_redo_and_the_separate_height_step"
     }
   },
   "Objects": {

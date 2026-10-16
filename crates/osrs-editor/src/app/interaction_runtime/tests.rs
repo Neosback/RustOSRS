@@ -35,10 +35,7 @@ fn hover_bookkeeping_latches_last_tile_and_clear_preserves_it() {
     let mut interaction = runtime();
     interaction.set_hover(Pick {
         object: Some(object((1, 2), 3)),
-        tile: Some(TilePick {
-            tile: (10, 11),
-            at: (10.5, 11.5),
-        }),
+        tile: Some(TilePick { tile: (10, 11) }),
     });
 
     assert_eq!(interaction.last_hover_tile, Some((10, 11)));
@@ -56,18 +53,12 @@ fn context_pick_captures_hover_snapshot() {
     let mut interaction = runtime();
     interaction.set_hover(Pick {
         object: Some(object((1, 2), 3)),
-        tile: Some(TilePick {
-            tile: (10, 11),
-            at: (10.5, 11.5),
-        }),
+        tile: Some(TilePick { tile: (10, 11) }),
     });
     interaction.capture_context_pick();
     interaction.set_hover(Pick {
         object: Some(object((4, 5), 6)),
-        tile: Some(TilePick {
-            tile: (12, 13),
-            at: (12.5, 13.5),
-        }),
+        tile: Some(TilePick { tile: (12, 13) }),
     });
 
     assert_eq!(

@@ -1,7 +1,7 @@
 //! Cache-transport-independent target/profile provenance values.
 //!
 //! These types carry the identity established by M1 into canonical semantic
-//! artifacts without exposing YAML, filesystem, OpenRS2, or `rune-fs` types.
+//! artifacts without exposing YAML, filesystem, OpenRS2, or `osrs-filestore` types.
 
 use core::fmt;
 

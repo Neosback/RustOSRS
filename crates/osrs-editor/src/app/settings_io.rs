@@ -11,7 +11,28 @@ fn sanitize_loaded_settings(settings: Settings) -> Settings {
     let mut settings = settings.sanitized();
     let defaults = crate::paint::SplineSettings::default();
     let spline = &mut settings.spline;
-    spline.width = finite_f32_or(spline.width, defaults.width).clamp(0.5, 24.0);
+    let clamp = |value: f32, fallback: f32, range: std::ops::RangeInclusive<f32>| {
+        finite_f32_or(value, fallback).clamp(*range.start(), *range.end())
+    };
+    spline.width = clamp(
+        spline.width,
+        defaults.width,
+        crate::paint::SplineSettings::WIDTH,
+    );
+    spline.edge_smoothing = clamp(
+        spline.edge_smoothing,
+        defaults.edge_smoothing,
+        crate::paint::SplineSettings::EDGE,
+    );
+    spline.height_blend = clamp(
+        spline.height_blend,
+        defaults.height_blend,
+        crate::paint::SplineSettings::BLEND,
+    );
+    spline.height_passes = spline.height_passes.clamp(
+        *crate::paint::SplineSettings::PASSES.start(),
+        *crate::paint::SplineSettings::PASSES.end(),
+    );
     settings
 }
 
@@ -75,25 +96,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn loaded_spline_settings_are_clamped_to_simple_fitter_ranges() {
+    fn loaded_spline_settings_are_clamped_to_the_sliders_ranges() {
         let mut settings = Settings::default();
         settings.spline.width = 999.0;
-        settings.spline.smooth_ground = true;
+        settings.spline.edge_smoothing = -3.0;
+        settings.spline.height_passes = 100_000;
+        settings.spline.height_blend = 500.0;
+        settings.spline.smooth_height = true;
 
         let settings = sanitize_loaded_settings(settings);
 
-        assert_eq!(settings.spline.width, 24.0);
-        assert!(settings.spline.smooth_ground);
+        assert_eq!(settings.spline.width, 20.0);
+        assert_eq!(settings.spline.edge_smoothing, 0.0);
+        assert_eq!(settings.spline.height_passes, 250);
+        assert_eq!(settings.spline.height_blend, 30.0);
+        assert!(settings.spline.smooth_height);
+        let mut low = Settings::default();
+        low.spline.height_passes = 0;
+        low.spline.width = 0.1;
+        let low = sanitize_loaded_settings(low);
+        assert_eq!((low.spline.height_passes, low.spline.width), (1, 1.0));
     }
 
     #[test]
     fn loaded_spline_settings_recover_from_non_finite_values() {
         let mut settings = Settings::default();
         settings.spline.width = f32::NAN;
+        settings.spline.edge_smoothing = f32::INFINITY;
+        settings.spline.height_blend = f32::NAN;
         let defaults = crate::paint::SplineSettings::default();
 
         let settings = sanitize_loaded_settings(settings);
 
         assert_eq!(settings.spline.width, defaults.width);
+        assert_eq!(settings.spline.edge_smoothing, defaults.edge_smoothing);
+        assert_eq!(settings.spline.height_blend, defaults.height_blend);
+    }
+
+    #[test]
+    fn spline_settings_from_older_versions_load_with_defaults() -> Result<(), serde_json::Error> {
+        // The per-point and census-era fields are gone; files that still name them load.
+        let settings: crate::paint::SplineSettings = serde_json::from_str(
+            r#"{ "width": 5.0, "smooth_ground": true, "wander": "Natural" }"#,
+        )?;
+        assert_eq!(settings.width, 5.0);
+        assert!(settings.smooth_curve && !settings.smooth_height);
+        Ok(())
     }
 }

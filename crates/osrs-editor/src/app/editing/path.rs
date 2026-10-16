@@ -6,13 +6,10 @@
 
 use super::{EditStep, EditorApp, PathTile, TileKey};
 use crate::app::edit_runtime::{EditExecution, EditExecutionError};
-#[cfg(test)]
-use crate::app::path_commit::build_terrain_path_patch;
-use crate::app::path_commit::{build_terrain_path_patch_with_grade, path_intent};
-use crate::heights::{decode_height, encode_height};
+use crate::app::path_commit::{build_terrain_path_patch, path_intent};
 use crate::paint::TileValues;
 use osrs_core::coords::{MapTile, SourcePlane};
-use osrs_edit::{HeightVertexCoord, MapPosition, MapQuery, TerrainTile};
+use osrs_edit::{HeightVertexCoord, MapOp, MapPatch, MapPosition, MapQuery, TerrainTile};
 use std::collections::HashSet;
 
 /// One already-validated Path projection from authoritative semantic state into the transitional
@@ -79,34 +76,10 @@ fn plan_path_projection(
     Ok(projected)
 }
 
-fn quantize_path_height(
-    query: &impl MapQuery,
-    plane: SourcePlane,
-    tile: MapTile,
-    desired: i32,
-) -> Result<i32, &'static str> {
-    let plane_index = plane.index().get();
-    let base = if plane_index == 0 {
-        0
-    } else {
-        let below = SourcePlane::new(plane_index - 1)
-            .unwrap_or_else(|| unreachable!("a non-zero source plane always has a lower plane"));
-        query
-            .height_at(HeightVertexCoord::new(tile, below))
-            .ok_or("the semantic lower-plane height is missing")?
-    };
-    Ok(decode_height(base, encode_height(base, desired)))
-}
-
 impl EditorApp {
-    /// Lay one fitted terrain path as one persistent semantic transaction. `grade` lists the
-    /// vertices the path also grades (see `osrs_edit::plan_path_grade`) and their new heights; they
-    /// are part of the same patch, so one undo restores the overlay and the terrain together.
-    pub(in crate::app) fn apply_terrain_path(
-        &mut self,
-        tiles: &[PathTile],
-        grade: &[((i32, i32), i32)],
-    ) -> usize {
+    /// Lay one fitted terrain path (the overlay, shape and rotation of every tile) as one
+    /// persistent semantic transaction.
+    pub(in crate::app) fn apply_terrain_path(&mut self, tiles: &[PathTile]) -> usize {
         if tiles.is_empty() {
             return 0;
         }
@@ -115,62 +88,22 @@ impl EditorApp {
                 .notify("The path uses an invalid source plane".to_owned());
             return 0;
         };
-
-        let brush = self.settings.prefs.brush.clone();
-        // Only vertices the worker mirror holds can be projected; the same rule skips path tiles.
         let view_plane = self.interaction.view_plane();
-        let grade: Vec<((i32, i32), i32)> = grade
-            .iter()
-            .copied()
-            .filter(|((x, y), _)| self.current_tile((view_plane, *x, *y)).is_some())
-            .collect();
-        // A graded bed replaces the Paint brush's flat height.
-        let flat_height = brush.height.armed && grade.is_empty();
-        let include_height = flat_height || !grade.is_empty();
         let mut intents = Vec::new();
         for path_tile in tiles {
-            let key = (
-                self.interaction.view_plane(),
-                path_tile.tile.0,
-                path_tile.tile.1,
-            );
-            if self.current_tile(key).is_none() {
+            // Only tiles the worker mirror holds can be projected.
+            if self
+                .current_tile((view_plane, path_tile.tile.0, path_tile.tile.1))
+                .is_none()
+            {
                 continue;
             }
-            let map_tile = MapTile::new(path_tile.tile.0, path_tile.tile.1);
-            let height = if flat_height {
-                match quantize_path_height(
-                    self.session.document(),
-                    plane,
-                    map_tile,
-                    brush.height.value,
-                ) {
-                    Ok(height) => Some(height),
-                    Err(message) => {
-                        self.ui.notify(format!(
-                            "The path was not laid at {:?}: {message}",
-                            path_tile.tile
-                        ));
-                        return 0;
-                    }
-                }
-            } else {
-                None
-            };
-            let flags = brush.flags.armed.then_some(brush.flags.bits);
-            intents.push(path_intent(*path_tile, height, flags));
+            intents.push(path_intent(*path_tile));
         }
-
         if intents.is_empty() {
             return 0;
         }
-
-        let patch = match build_terrain_path_patch_with_grade(
-            self.session.document(),
-            plane,
-            &intents,
-            &grade,
-        ) {
+        let patch = match build_terrain_path_patch(self.session.document(), plane, &intents) {
             Ok(patch) => patch,
             Err(error) => {
                 self.ui.notify(format!(
@@ -179,114 +112,165 @@ impl EditorApp {
                 return 0;
             }
         };
-        if patch.is_empty() {
-            self.ui
+        let mut seen = HashSet::new();
+        let keys: Vec<TileKey> = intents
+            .iter()
+            .filter(|intent| seen.insert(intent.tile))
+            .map(|intent| (view_plane, intent.tile.x, intent.tile.y))
+            .collect();
+        commit_semantic_path(self, patch, keys, false, |count| {
+            format!(
+                "Changed {count} path tile{}",
+                if count == 1 { "" } else { "s" }
+            )
+        })
+    }
+}
+
+/// Smooth the terrain under a laid path as its own transaction (one more undo step, as in the
+/// original editor): `smoothed` is the new height of each vertex on the viewed plane, and the
+/// planes above move with it. Returns how many vertices changed.
+pub(in crate::app) fn commit_path_height(
+    app: &mut EditorApp,
+    smoothed: &[((i32, i32), i32)],
+) -> usize {
+    let view_plane = app.interaction.view_plane();
+    let Some(plane) = SourcePlane::new(view_plane) else {
+        app.ui
+            .notify("The path uses an invalid source plane".to_owned());
+        return 0;
+    };
+    // Only vertices the worker mirror holds can be projected.
+    let loaded: Vec<((i32, i32), i32)> = smoothed
+        .iter()
+        .copied()
+        .filter(|((x, y), _)| app.current_tile((view_plane, *x, *y)).is_some())
+        .collect();
+    if loaded.is_empty() {
+        return 0;
+    }
+    let patch = match osrs_edit::build_path_height_patch(app.session.document(), plane, &loaded) {
+        Ok(patch) => patch,
+        Err(error) => {
+            app.ui.notify(format!(
+                "The terrain was not smoothed: invalid semantic commit data ({error:?})"
+            ));
+            return 0;
+        }
+    };
+    let keys = height_keys(&patch);
+    commit_semantic_path(app, patch, keys, true, |count| {
+        format!(
+            "Smoothed the height of {count} vertex{}",
+            if count == 1 { "" } else { "es" }
+        )
+    })
+}
+
+/// The `(plane, x, y)` of every vertex a patch gives a new height.
+fn height_keys(patch: &MapPatch) -> Vec<TileKey> {
+    let mut seen = HashSet::new();
+    patch
+        .ops()
+        .iter()
+        .filter_map(|op| match op {
+            MapOp::SetHeight { coord, .. } => {
+                Some((coord.plane.index().get(), coord.corner.x, coord.corner.y))
+            }
+            _ => None,
+        })
+        .filter(|key| seen.insert(*key))
+        .collect()
+}
+
+/// Commit `patch` through the session and project it into the transitional mirrors for `keys`;
+/// `include_height` says whether heights are projected too. Returns how many keys changed.
+fn commit_semantic_path(
+    app: &mut EditorApp,
+    patch: MapPatch,
+    keys: Vec<TileKey>,
+    include_height: bool,
+    summary: impl FnOnce(usize) -> String,
+) -> usize {
+    if patch.is_empty() {
+        app.ui
+            .notify("The path made no semantic changes".to_owned());
+        return 0;
+    }
+    // Snapshot only the transitional values required for projection.
+    let mut projection_input = Vec::with_capacity(keys.len());
+    for key in &keys {
+        let Some(before) = app.current_tile(*key) else {
+            app.ui.notify(format!(
+                "The path was not laid: tile ({}, {}) disappeared before projection",
+                key.1, key.2
+            ));
+            return 0;
+        };
+        projection_input.push((*key, before));
+    }
+    let route_keys = keys;
+    let execution = app.session.execute_named("path", patch, |document| {
+        plan_path_projection(document, &projection_input, include_height)
+    });
+    let (receipt, projection) = match execution {
+        Ok(EditExecution::Committed {
+            receipt,
+            projection,
+        }) => (receipt, projection),
+        Ok(EditExecution::NoChange) => {
+            app.ui
                 .notify("The path made no semantic changes".to_owned());
             return 0;
         }
-
-        // Snapshot only the transitional values required for projection. Duplicate fitted path tiles
-        // share one route key and one worker projection, matching the previous preflight behavior.
-        let mut seen = HashSet::new();
-        let mut projection_input = Vec::new();
-        for intent in &intents {
-            if !seen.insert(intent.tile) {
-                continue;
-            }
-            let key = (self.interaction.view_plane(), intent.tile.x, intent.tile.y);
-            let Some(before) = self.current_tile(key) else {
-                self.ui.notify(format!(
-                    "The path was not laid: tile {:?} disappeared before projection",
-                    intent.tile
-                ));
-                return 0;
-            };
-            projection_input.push((key, before));
+        Err(EditExecutionError::Semantic(error)) => {
+            app.ui.notify(format!(
+                "The path was rejected by the semantic session: {error:?}"
+            ));
+            return 0;
         }
-        let path_tiles = projection_input.len();
-        for ((x, y), _) in &grade {
-            let key = (self.interaction.view_plane(), *x, *y);
-            if !seen.insert(MapTile::new(*x, *y)) {
-                continue;
-            }
-            let Some(before) = self.current_tile(key) else {
-                continue;
-            };
-            projection_input.push((key, before));
+        Err(EditExecutionError::Projection(key)) => {
+            app.ui.notify(format!(
+                "The path commit was rolled back: semantic state at ({}, {}) cannot be represented by the legacy projection",
+                key.1, key.2
+            ));
+            return 0;
         }
-        let route_keys: Vec<_> = projection_input.iter().map(|(key, _)| *key).collect();
-
-        let execution = self.session.execute_named("path", patch, |document| {
-            plan_path_projection(document, &projection_input, include_height)
-        });
-        let (receipt, projection) = match execution {
-            Ok(EditExecution::Committed {
-                receipt,
-                projection,
-            }) => (receipt, projection),
-            Ok(EditExecution::NoChange) => {
-                self.ui
-                    .notify("The path made no semantic changes".to_owned());
-                return 0;
-            }
-            Err(EditExecutionError::Semantic(error)) => {
-                self.ui.notify(format!(
-                    "The path was rejected by the semantic session: {error:?}"
-                ));
-                return 0;
-            }
-            Err(EditExecutionError::Projection(key)) => {
-                self.ui.notify(
-                    format!(
-                        "The path commit was rolled back: semantic state at ({}, {}) cannot be represented by the legacy projection",
-                        key.1, key.2
-                    ));
-                return 0;
-            }
-            Err(EditExecutionError::Rollback {
-                projection: key,
-                rollback,
-            }) => {
-                self.ui.notify(format!(
-                    "Path projection failed at ({}, {}) and semantic rollback failed: {rollback:?}",
-                    key.1, key.2
-                ));
-                return 0;
-            }
-            Err(EditExecutionError::Finalize(error)) => {
-                self.ui.notify(format!(
-                    "Path projection succeeded but semantic finalize failed: {error:?}"
-                ));
-                return 0;
-            }
-        };
-
-        let mut edits = Vec::with_capacity(projection.len());
-        for (key, before, after) in &projection {
-            if after == before {
-                continue;
-            }
-            if after.height != before.height {
-                self.terrain.height_edited.insert(*key);
-            }
-            self.terrain.edited.insert(*key, *after);
-            edits.push(self.edit_for(*key, *after));
+        Err(EditExecutionError::Rollback {
+            projection: key,
+            rollback,
+        }) => {
+            app.ui.notify(format!(
+                "Path projection failed at ({}, {}) and semantic rollback failed: {rollback:?}",
+                key.1, key.2
+            ));
+            return 0;
         }
-        let count = path_tiles;
-        self.world.project_tile_edits(edits);
-        self.world.invalidate_semantic_edit(&receipt);
-        self.push_step(EditStep::semantic_path(route_keys, include_height));
-        let graded = if grade.is_empty() {
-            String::new()
-        } else {
-            format!(" and graded {} vertices", grade.len())
-        };
-        self.ui.notify(format!(
-            "Changed {count} path tile{}{graded}",
-            if count == 1 { "" } else { "s" }
-        ));
-        count
+        Err(EditExecutionError::Finalize(error)) => {
+            app.ui.notify(format!(
+                "Path projection succeeded but semantic finalize failed: {error:?}"
+            ));
+            return 0;
+        }
+    };
+
+    let mut edits = Vec::with_capacity(projection.len());
+    for (key, before, after) in &projection {
+        if after == before {
+            continue;
+        }
+        if after.height != before.height {
+            app.terrain.height_edited.insert(*key);
+        }
+        app.terrain.edited.insert(*key, *after);
+        edits.push(app.edit_for(*key, *after));
     }
+    let count = route_keys.len();
+    app.world.project_tile_edits(edits);
+    app.world.invalidate_semantic_edit(&receipt);
+    app.push_step(EditStep::semantic_path(route_keys, include_height));
+    app.ui.notify(summary(count));
+    count
 }
 
 #[cfg(test)]

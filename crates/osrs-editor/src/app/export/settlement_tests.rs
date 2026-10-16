@@ -52,18 +52,11 @@ fn settlement_creation_save_reopen_export_and_inspection_preserve_the_captured_m
     )
     .unwrap_or_else(|e| unreachable!("{e:?}"));
     commit(&mut authoring, patch);
-    let fitted = crate::terrain_path::fit_path_overlay(
-        &crate::terrain_path::smooth_path(&[
-            crate::terrain_path::ControlPoint::new(3261.5, 3208.5, 1.5),
-            crate::terrain_path::ControlPoint::new(3266.5, 3208.5, 1.5),
-        ]),
-        &crate::terrain_path::FitOptions {
-            edge_weight: 0.8,
-            prior_weight: 0.0,
-            blocked: &|_| false,
-        },
-    )
-    .tiles;
+    let fitted = crate::terrain_path::fit(
+        &crate::terrain_path::smooth(&[(3261.5, 3208.5), (3266.5, 3208.5)]),
+        3.0,
+        0.8,
+    );
     assert!(fitted.iter().any(|t| t.tile_x == 3263) && fitted.iter().any(|t| t.tile_x == 3264));
     let intents: Vec<_> = fitted
         .iter()
@@ -72,8 +65,6 @@ fn settlement_creation_save_reopen_export_and_inspection_preserve_the_captured_m
             overlay: Some(2),
             shape: t.shape,
             rotation: t.orientation,
-            height: None,
-            flags: None,
         })
         .collect();
     let patch = build_terrain_path_patch(authoring.document(), plane(0), &intents)

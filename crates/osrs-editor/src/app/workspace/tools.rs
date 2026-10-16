@@ -311,23 +311,11 @@ impl EditorApp {
         if drawer && self.settings.prefs.tool.has_drawer() {
             self.settings.prefs.drawer_open = !self.settings.prefs.drawer_open;
         }
-        // In the Spline tool the brush-size keys make the selected point (or the whole path)
-        // narrower or wider; elsewhere they resize the brush.
-        let spline = self.settings.prefs.tool == Tool::Spline;
         if smaller {
-            if spline {
-                self.interaction.nudge_spline_width(-1.0);
-            } else {
-                self.settings.prefs.brush.radius =
-                    self.settings.prefs.brush.radius.saturating_sub(1);
-            }
+            self.settings.prefs.brush.radius = self.settings.prefs.brush.radius.saturating_sub(1);
         }
         if bigger {
-            if spline {
-                self.interaction.nudge_spline_width(1.0);
-            } else {
-                self.settings.prefs.brush.radius = (self.settings.prefs.brush.radius + 1).min(16);
-            }
+            self.settings.prefs.brush.radius = (self.settings.prefs.brush.radius + 1).min(16);
         }
         if eyedrop
             && let Some(tile) = self.interaction.hover().tile.map(|pick| pick.tile)

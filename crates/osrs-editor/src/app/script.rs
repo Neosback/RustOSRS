@@ -273,27 +273,28 @@ impl EditorApp {
                     .transpose()?;
                 self.interaction.set_camera_pose(yaw, pitch, height);
             }
-            "spline" => {
-                let width = self.settings.prefs.spline.width;
-                let controls = path::controls(words, width)?;
-                self.interaction.replace_spline_controls(controls);
-            }
+            "spline" => self.interaction.replace_spline_points(path::points(words)?),
             "width" => {
                 self.settings.prefs.spline.width = number::<f32>(words.next(), "width")?;
             }
-            "ground" => {
-                self.settings.prefs.spline.smooth_ground = path::smooth_ground(words.next())?
+            "curve" => {
+                self.settings.prefs.spline.smooth_curve = path::on_off(words.next(), "curve")?
             }
+            "edge" => {
+                self.settings.prefs.spline.edge_smoothing = number::<f32>(words.next(), "edge")?;
+            }
+            "height" => path::height(words, &mut self.settings.prefs.spline)?,
             "lay" => {
                 if self.interaction.spline_points().is_empty() {
                     return Err("no path points".to_owned());
                 }
                 self.spline_update();
-                match self.interaction.spline_status() {
-                    super::interaction_runtime::SplineStatus::Updating => return Ok(Step::Retry),
-                    super::interaction_runtime::SplineStatus::Ready { .. } => self.commit_spline(),
-                    status => return Err(format!("path is not ready: {status:?}")),
+                if !self.interaction.spline_can_lay() {
+                    return Err(
+                        "choose an overlay (paint overlay armed) to lay the path".to_owned()
+                    );
                 }
+                self.commit_spline();
             }
             "select" => match words.next() {
                 Some("object") => {
@@ -327,10 +328,7 @@ impl EditorApp {
                     .infos()
                     .get(&object.region)
                     .and_then(|info| info.locs.get(object.index))
-                    .map(|loc| crate::pick::TilePick {
-                        tile: loc.tile,
-                        at: (loc.tile.0 as f32 + 0.5, loc.tile.1 as f32 + 0.5),
-                    });
+                    .map(|loc| crate::pick::TilePick { tile: loc.tile });
                 self.interaction.set_context_pick(crate::pick::Pick {
                     object: Some(object),
                     tile: anchor,

@@ -12,7 +12,7 @@ UI/input → controller intent → pure MapQuery planner → MapPatch
 | Select | `app/interaction_runtime.rs`, `app/selection.rs` | No semantic mutation | Selection/marquee transitions |
 | Paint | `app/editing.rs` | `osrs-edit/src/paint.rs` | `app/editing/commit.rs` |
 | Height | `app/editing.rs` | `osrs-edit/src/height/commit.rs` | `app/editing/commit.rs` |
-| Spline / Path | `app/spline_tool/input.rs`, `app/interaction_runtime/spline.rs` | `osrs-edit/src/path.rs` | `app/editing/path.rs` |
+| Spline / Path | `app/spline_tool/input.rs`, `app/interaction_runtime/spline.rs` (fit in `terrain_path/fit.rs`) | `osrs-edit/src/path.rs`, `osrs-edit/src/path_height.rs` | `app/editing/path.rs` |
 | Objects | `app/object_tool.rs`, `app/gizmo.rs` | `osrs-edit/src/object_edit.rs` | `app/object_tool/commit.rs` |
 | Tile paste | `app/editing/paste.rs`, `app/tile_clipboard.rs` | Paint planner | Existing Path history projection |
 

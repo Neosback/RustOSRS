@@ -313,67 +313,22 @@ pub fn repack_groups(
     dir: impl AsRef<Path>,
     updates: &[GroupUpdate],
 ) -> Result<RepackReport, StoreError> {
-    let store = CacheStore::open(dir);
-    let mut report = RepackReport::default();
-    let mut indices: Vec<u8> = updates.iter().map(|update| update.index_id).collect();
-    indices.sort_unstable();
-    indices.dedup();
-
-    for index_id in indices {
-        let table_raw = store
-            .read_raw_group(REFERENCE_TABLE_INDEX, u32::from(index_id))?
-            .ok_or(StoreError::MissingTable { index_id })?;
-        let table_compression = compression_of(&table_raw)?;
-        let table_body = container_body_len(&table_raw).ok_or(StoreError::CorruptSector {
-            sector: 0,
-            detail: "reference table container is truncated",
-        })?;
-        let table_suffix = table_raw[table_body..].to_vec();
-        let mut table = ReferenceTable::parse(&decode_container(table_raw)?)?;
-
-        for update in updates.iter().filter(|update| update.index_id == index_id) {
-            let old = store.read_raw_group(index_id, update.group_id)?;
-            let compression = match &old {
-                Some(raw) => compression_of(raw)?,
-                None => ContainerCompression::Gzip,
-            };
-            let had_suffix = old.as_ref().is_some_and(|raw| {
-                container_body_len(raw).is_some_and(|body| raw.len() == body + 2)
-            });
-
-            let mut container = encode_container(update.payload.clone(), compression, None)?;
-            let entry = table
-                .group_mut(update.group_id)
-                .ok_or(StoreError::UnknownGroup {
-                    index_id,
-                    group_id: update.group_id,
-                })?;
-            let next_version = entry
-                .version
-                .checked_add(1)
-                .ok_or(StoreError::VersionOverflow {
-                    index_id,
-                    group_id: update.group_id,
-                })?;
-            entry.crc = crc32(&container);
-            if entry.sizes.is_some() {
-                entry.sizes = Some((container.len() as u32, update.payload.len() as u32));
-            }
-            entry.version = next_version;
-            if had_suffix {
-                container.extend_from_slice(&(entry.version as u16).to_be_bytes());
-            }
-            store.write_raw_group(index_id, update.group_id, &container)?;
-            report.groups += 1;
-        }
-
-        let mut encoded = encode_container(table.encode()?, table_compression, None)?;
-        encoded.extend_from_slice(&table_suffix);
-        store.write_raw_group(REFERENCE_TABLE_INDEX, u32::from(index_id), &encoded)?;
-        report.tables += 1;
-    }
-    Ok(report)
+    repack::repack(dir.as_ref(), updates, false)
 }
+
+/// Repack only groups whose decoded payload changed, verifying stored CRC, sizes and version first.
+/// Identical groups keep their exact sectors, table bytes and versions. All semantic/container
+/// validation finishes before writing; use verified export for publication and I/O rollback.
+pub fn repack_changed_groups(
+    dir: impl AsRef<Path>,
+    updates: &[GroupUpdate],
+) -> Result<RepackReport, StoreError> {
+    repack::repack(dir.as_ref(), updates, true)
+}
+
+mod repack;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod incremental_tests;

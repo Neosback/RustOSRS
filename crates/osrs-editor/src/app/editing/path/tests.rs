@@ -44,22 +44,9 @@ fn path_patch(runtime: &EditRuntime, tile: MapTile) -> MapPatch {
         overlay: Some(7),
         shape: 0,
         rotation: 0,
-        height: None,
-        flags: None,
     };
     build_terrain_path_patch(runtime.document(), plane(0), &[intent])
         .unwrap_or_else(|error| unreachable!("valid Path patch: {error:?}"))
-}
-
-#[test]
-fn upper_plane_path_height_requires_the_semantic_lower_plane_base() {
-    let tile = MapTile::new(3200, 3200);
-    let document = MapDocument::from_parts([], [(HeightVertexCoord::new(tile, plane(1)), 100)], []);
-
-    assert_eq!(
-        quantize_path_height(&document, plane(1), tile, 64),
-        Err("the semantic lower-plane height is missing")
-    );
 }
 
 #[test]
@@ -147,8 +134,6 @@ fn one_path_patch_is_one_persistent_session_revision() {
         overlay: Some(7),
         shape: 0,
         rotation: 0,
-        height: None,
-        flags: None,
     };
     let patch = build_terrain_path_patch(session.document(), plane(0), &[intent])
         .unwrap_or_else(|error| unreachable!("valid path patch: {error:?}"));
@@ -165,7 +150,7 @@ fn one_path_patch_is_one_persistent_session_revision() {
 }
 
 #[test]
-fn semantic_path_projection_tracks_undo_redo_and_optional_height() {
+fn semantic_path_projection_tracks_undo_redo_and_the_separate_height_step() {
     let tile = MapTile::new(3200, 3200);
     let key = (0, 3200, 3200);
     let coord = MapPosition::new(tile, plane(0));
@@ -191,34 +176,44 @@ fn semantic_path_projection_tracks_undo_redo_and_optional_height() {
         overlay: Some(7),
         shape: 4,
         rotation: 2,
-        height: Some(-32),
-        flags: Some(5),
     };
     let patch = build_terrain_path_patch(session.document(), plane(0), &[intent])
         .unwrap_or_else(|error| unreachable!("valid path patch: {error:?}"));
     assert!(session.commit(patch).is_ok());
 
-    let terrain_only = project_semantic_path_values(session.document(), key, before, false)
+    // The overlay step keeps the tile's flags and height.
+    let laid = project_semantic_path_values(session.document(), key, before, false)
         .unwrap_or_else(|| unreachable!("semantic Path terrain is projectable"));
-    assert_eq!(terrain_only.overlay, 7);
-    assert_eq!(terrain_only.shape, 4);
-    assert_eq!(terrain_only.rotation, 2);
-    assert_eq!(terrain_only.flags, 5);
-    assert_eq!(terrain_only.height, -96);
+    assert_eq!(laid.overlay, 7);
+    assert_eq!(laid.shape, 4);
+    assert_eq!(laid.rotation, 2);
+    assert_eq!(laid.flags, 1);
+    assert_eq!(laid.height, -96);
 
-    let committed = project_semantic_path_values(session.document(), key, before, true)
+    // Smoothing the terrain is its own step.
+    let heights =
+        osrs_edit::build_path_height_patch(session.document(), plane(0), &[((3200, 3200), -32)])
+            .unwrap_or_else(|error| unreachable!("valid height patch: {error:?}"));
+    assert!(session.commit(heights).is_ok());
+    assert_eq!(session.revision(), 2, "overlay and height are two steps");
+    let smoothed = project_semantic_path_values(session.document(), key, laid, true)
         .unwrap_or_else(|| unreachable!("semantic Path state is projectable"));
-    assert_eq!(committed.height, -32);
+    assert_eq!(smoothed.height, -32);
 
     assert!(session.undo().is_ok());
-    let undone = project_semantic_path_values(session.document(), key, committed, true)
+    let undone_height = project_semantic_path_values(session.document(), key, smoothed, true)
+        .unwrap_or_else(|| unreachable!("semantic height undo is projectable"));
+    assert_eq!(undone_height, laid);
+    assert!(session.undo().is_ok());
+    let undone = project_semantic_path_values(session.document(), key, undone_height, true)
         .unwrap_or_else(|| unreachable!("semantic Path undo is projectable"));
     assert_eq!(undone, before);
 
     assert!(session.redo().is_ok());
+    assert!(session.redo().is_ok());
     let redone = project_semantic_path_values(session.document(), key, undone, true)
         .unwrap_or_else(|| unreachable!("semantic Path redo is projectable"));
-    assert_eq!(redone, committed);
+    assert_eq!(redone, smoothed);
 }
 
 #[test]
@@ -251,16 +246,12 @@ fn consecutive_path_transactions_follow_semantic_history_order() {
         overlay: Some(7),
         shape: 1,
         rotation: 0,
-        height: None,
-        flags: None,
     };
     let second = TerrainPathIntent {
         tile: osrs_core::coords::MapTile::new(3200, 3200),
         overlay: Some(8),
         shape: 2,
         rotation: 3,
-        height: Some(-32),
-        flags: Some(5),
     };
 
     let first_patch = build_terrain_path_patch(session.document(), plane(0), &[first])
@@ -277,7 +268,7 @@ fn consecutive_path_transactions_follow_semantic_history_order() {
             .map(|overlay| overlay.id.get()),
         Some(8)
     );
-    assert_eq!(session.document().height_at(vertex), Some(-32));
+    assert_eq!(session.document().height_at(vertex), Some(0));
 
     assert!(session.undo().is_ok());
     assert_eq!(
@@ -288,7 +279,6 @@ fn consecutive_path_transactions_follow_semantic_history_order() {
             .map(|overlay| overlay.id.get()),
         Some(7)
     );
-    assert_eq!(session.document().height_at(vertex), Some(0));
 
     assert!(session.undo().is_ok());
     assert_eq!(session.document().terrain_at(coord), TerrainTile::default());
@@ -311,74 +301,6 @@ fn consecutive_path_transactions_follow_semantic_history_order() {
             .map(|overlay| overlay.id.get()),
         Some(8)
     );
-    assert_eq!(session.document().height_at(vertex), Some(-32));
-}
-
-#[test]
-fn graded_path_commits_once_and_one_undo_restores_overlay_and_terrain() {
-    // Ground rising 16 units per tile toward +y, over a 20 x 20 area.
-    let heights: Vec<_> = (3190..=3210)
-        .flat_map(|x| {
-            (3190..=3210).map(move |y| {
-                (
-                    HeightVertexCoord::new(MapTile::new(x, y), plane(0)),
-                    -16 * (y - 3190) + if x % 6 == 0 { -96 } else { 0 },
-                )
-            })
-        })
-        .collect();
-    let mut session = EditorSession::new(MapDocument::from_parts([], heights, []));
-    let original = session.document().clone();
-    let line = [
-        osrs_edit::GradePoint {
-            x: 3194.0,
-            y: 3200.0,
-            half: 1.5,
-            weight: 1.0,
-        },
-        osrs_edit::GradePoint {
-            x: 3206.0,
-            y: 3200.0,
-            half: 1.5,
-            weight: 1.0,
-        },
-    ];
-    let grade = osrs_edit::plan_path_grade(&line, osrs_edit::PathGradeSpec::default(), &|v| {
-        session
-            .document()
-            .height_at(HeightVertexCoord::new(MapTile::new(v.0, v.1), plane(0)))
-    });
-    assert!(!grade.is_empty(), "bumps along a path are smoothed");
-    let intent = TerrainPathIntent {
-        tile: MapTile::new(3200, 3200),
-        overlay: Some(7),
-        shape: 0,
-        rotation: 0,
-        height: None,
-        flags: None,
-    };
-    let patch =
-        build_terrain_path_patch_with_grade(session.document(), plane(0), &[intent], &grade)
-            .unwrap_or_else(|error| unreachable!("valid graded patch: {error:?}"));
-
-    assert!(session.commit(patch).is_ok());
-    assert_eq!(session.revision(), 1, "overlay and grade are one commit");
-    assert_ne!(*session.document(), original);
-    // The bumps along the centre line are smaller than before.
-    let spread = |document: &MapDocument| {
-        let values: Vec<i32> = (3195..=3205)
-            .filter_map(|x| {
-                document.height_at(HeightVertexCoord::new(MapTile::new(x, 3200), plane(0)))
-            })
-            .collect();
-        values.iter().max().copied().unwrap_or(0) - values.iter().min().copied().unwrap_or(0)
-    };
-    assert!(spread(session.document()) < spread(&original));
-
-    assert!(session.undo().is_ok());
-    assert_eq!(*session.document(), original);
-    assert!(session.redo().is_ok());
-    assert_eq!(session.revision(), 3, "undo and redo are single steps too");
 }
 
 #[test]

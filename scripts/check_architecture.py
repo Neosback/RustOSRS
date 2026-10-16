@@ -26,7 +26,8 @@ ALLOWED_INTERNAL: dict[str, set[str]] = {
     "osrs-core": set(),
     # Headless editable-map semantics may reuse only the canonical value vocabulary.
     "osrs-edit": {"osrs-core"},
-    "osrs-cache": {"osrs-core"},
+    "osrs-filestore": set(),
+    "osrs-cache": {"osrs-core", "osrs-filestore"},
     "osrs-scene": {"osrs-core"},
     # 117HD data/settings are reusable renderer inputs and do not depend on renderer/world/editor.
     "osrs-hd": set(),

@@ -102,8 +102,7 @@ impl EditorApp {
             MenuAction::HeightSelection => self.height_on_selection(),
             MenuAction::AddPathPoint(tile) => {
                 self.interaction
-                    .append_spline_point_and_drag((tile.0 as f32 + 0.5, tile.1 as f32 + 0.5));
-                self.interaction.finish_spline_drag();
+                    .add_spline_point((tile.0 as f32 + 0.5, tile.1 as f32 + 0.5));
             }
             MenuAction::LayPath => self.commit_spline(),
             MenuAction::ClearPath => self.interaction.clear_spline_points(),

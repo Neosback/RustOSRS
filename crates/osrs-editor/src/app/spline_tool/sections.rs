@@ -1,7 +1,7 @@
 //! The Spline workflow as sections shared by the drawer, the side shelf and the quick HUD:
-//! appearance, shape, control points, preview status and actions. Pure widgets: they read a view
-//! of the interaction state and return actions; the caller applies them to their owners.
-use super::panel::{self, PointAction};
+//! appearance, shape and terrain settings, preview status and actions. Pure widgets: they read a
+//! view of the interaction state and return actions; the caller applies them to their owners.
+use super::panel;
 use crate::app::interaction_runtime::SplineStatus;
 use crate::paint::SplineSettings;
 use eframe::egui;
@@ -11,7 +11,7 @@ use eframe::egui;
 pub(in crate::app) struct SplineSections {
     pub appearance: bool,
     pub shape: bool,
-    pub points: bool,
+    pub help: bool,
     pub preview: bool,
 }
 
@@ -19,35 +19,28 @@ impl SplineSections {
     pub(in crate::app) const FULL: Self = Self {
         appearance: true,
         shape: true,
-        points: true,
+        help: true,
         preview: true,
     };
-    /// The quick HUD: everything needed to lay a path except the point list.
+    /// The quick HUD: everything needed to lay a path except the how-to.
     pub(in crate::app) const COMPACT: Self = Self {
         appearance: true,
         shape: true,
-        points: false,
+        help: false,
         preview: true,
     };
 }
 
-/// What laying the path will also change besides the overlay (the armed Paint channels).
-#[derive(Clone, Copy, Default, PartialEq, Debug)]
-pub(in crate::app) struct AlsoApplies {
-    pub height: Option<i32>,
-    pub flags: Option<u8>,
-}
-
-pub(in crate::app) struct SplineView<'a> {
-    pub points: &'a [crate::terrain_path::ControlPoint],
-    pub selected: Option<usize>,
+pub(in crate::app) struct SplineView {
+    /// Points placed so far.
+    pub points: usize,
     pub status: SplineStatus,
-    pub also: AlsoApplies,
+    /// There is a point and an overlay to lay it with.
+    pub can_lay: bool,
 }
 
 #[derive(Debug, PartialEq)]
 pub(in crate::app) enum SplineAction {
-    Point(PointAction),
     Lay,
     RemoveLast,
     Clear,
@@ -56,22 +49,14 @@ pub(in crate::app) enum SplineAction {
     CopyDetails,
 }
 
-/// Laying needs a current, valid, non-empty preview: never a stale, cancelled or failed one.
-pub(in crate::app) fn can_lay(status: SplineStatus) -> bool {
-    matches!(status, SplineStatus::Ready { .. })
-}
-
 /// Human-readable text of a status, shared by every surface and the tests.
 pub(in crate::app) fn status_text(status: SplineStatus) -> String {
     match status {
-        SplineStatus::NeedsPoints => "Add at least two control points".to_owned(),
+        SplineStatus::NeedsPoints => "Click points on the terrain".to_owned(),
         SplineStatus::NeedsOverlay => "Choose and enable an overlay".to_owned(),
         SplineStatus::Updating => "Planning the preview…".to_owned(),
         SplineStatus::Cancelled => "Planning cancelled".to_owned(),
-        SplineStatus::Ready { tiles, clipped: 0 } => format!("Ready · {tiles} tiles"),
-        SplineStatus::Ready { tiles, clipped } => {
-            format!("Ready · {tiles} tiles · {clipped} left alone (other overlays)")
-        }
+        SplineStatus::Ready { tiles } => format!("Preview · {tiles} tiles"),
         SplineStatus::Empty => "The fitted path contains no tiles".to_owned(),
         SplineStatus::Failed(reason) => reason.to_owned(),
     }
@@ -86,14 +71,13 @@ const TWO_COLUMNS: f32 = 640.0;
 /// Draw the selected sections. `appearance` draws the overlay chooser, which needs the app's
 /// palette; everything else is self-contained.
 ///
-/// Order: appearance, shape, then the preview status and actions (so "Lay path" is never below the
-/// fold of a short drawer), then the control points. Wide panels put the first two and the next
-/// two side by side.
+/// Order: appearance, shape and terrain settings, then the preview status and actions. Wide
+/// panels put the first two and the last two side by side.
 pub(in crate::app) fn show(
     ui: &mut egui::Ui,
     sections: SplineSections,
     settings: &mut SplineSettings,
-    view: &SplineView<'_>,
+    view: &SplineView,
     appearance: impl FnOnce(&mut egui::Ui),
 ) -> Vec<SplineAction> {
     let mut actions = Vec::new();
@@ -104,7 +88,7 @@ pub(in crate::app) fn show(
                 ui.horizontal_wrapped(appearance);
             }
             if sections.shape {
-                crate::theme::section_heading(ui, "Shape");
+                crate::theme::section_heading(ui, "Path");
                 panel::settings(ui, settings);
             }
         };
@@ -114,30 +98,45 @@ pub(in crate::app) fn show(
     if ui.available_width() >= TWO_COLUMNS && sections.preview {
         ui.columns(2, |columns| {
             setup(&mut columns[0], appearance, settings);
-            preview_sections(&mut columns[1], view, &mut actions);
+            preview_sections(&mut columns[1], sections, view, &mut actions);
         });
     } else {
         setup(ui, appearance, settings);
         if sections.preview {
-            preview_sections(ui, view, &mut actions);
+            preview_sections(ui, sections, view, &mut actions);
         }
-    }
-    if sections.points
-        && let Some(action) = panel::points(ui, view.points, view.selected)
-    {
-        actions.push(SplineAction::Point(action));
     }
     actions
 }
 
-fn preview_sections(ui: &mut egui::Ui, view: &SplineView<'_>, actions: &mut Vec<SplineAction>) {
+fn preview_sections(
+    ui: &mut egui::Ui,
+    sections: SplineSections,
+    view: &SplineView,
+    actions: &mut Vec<SplineAction>,
+) {
     crate::theme::section_heading(ui, "Preview");
     status_row(ui, view, actions);
     crate::theme::section_heading(ui, "Actions");
     action_row(ui, view, actions);
+    if sections.help {
+        egui::CollapsingHeader::new("How to draw the path")
+            .id_salt("spline_how_to")
+            .default_open(true)
+            .show(ui, |ui| {
+                for line in [
+                    "Click: add a point (the tile's centre)",
+                    "Enter: lay the path · Esc: cancel it",
+                    "Backspace: remove the last point",
+                    "The overlay comes from the Paint tool's Overlay",
+                ] {
+                    ui.label(line);
+                }
+            });
+    }
 }
 
-fn status_row(ui: &mut egui::Ui, view: &SplineView<'_>, actions: &mut Vec<SplineAction>) {
+fn status_row(ui: &mut egui::Ui, view: &SplineView, actions: &mut Vec<SplineAction>) {
     ui.horizontal_wrapped(|ui| {
         match view.status {
             SplineStatus::Updating => {
@@ -168,26 +167,13 @@ fn status_row(ui: &mut egui::Ui, view: &SplineView<'_>, actions: &mut Vec<Spline
             }
         };
     });
-    let mut also = Vec::new();
-    if let Some(height) = view.also.height {
-        also.push(format!("sets height {height}"));
-    }
-    if let Some(flags) = view.also.flags {
-        also.push(format!("sets tile flags {flags}"));
-    }
-    if !also.is_empty() {
-        ui.weak(format!(
-            "Lay path also {} (armed in the Paint tool). The preview shows current heights.",
-            also.join(" and ")
-        ));
-    }
 }
 
-fn action_row(ui: &mut egui::Ui, view: &SplineView<'_>, actions: &mut Vec<SplineAction>) {
-    let any = !view.points.is_empty();
+fn action_row(ui: &mut egui::Ui, view: &SplineView, actions: &mut Vec<SplineAction>) {
+    let any = view.points > 0;
     ui.horizontal_wrapped(|ui| {
         if ui
-            .add_enabled(can_lay(view.status), egui::Button::new("Lay path"))
+            .add_enabled(view.can_lay, egui::Button::new("Lay path"))
             .on_hover_text("Enter · one undo step")
             .clicked()
         {
@@ -214,20 +200,6 @@ fn action_row(ui: &mut egui::Ui, view: &SplineView<'_>, actions: &mut Vec<Spline
             actions.push(SplineAction::CopyDetails);
         }
     });
-    egui::CollapsingHeader::new("How to edit the path")
-        .id_salt("spline_how_to")
-        .show(ui, |ui| {
-            for line in [
-                "Click: add a point",
-                "Drag: move a point",
-                "Shift-click a segment: insert",
-                "Cmd-click or Delete: remove a point",
-                "Backspace: remove the last point",
-                "Enter: lay the preview · Esc: cancel",
-            ] {
-                ui.label(line);
-            }
-        });
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use runefs::codec::{Buffer, Compression, Decoded, Encoded};
+use osrs_filestore::codec::{Buffer, Compression, Decoded, Encoded};
 use std::fmt;
 
 /// Container compression applied around a packed group (the compression byte of the JS5

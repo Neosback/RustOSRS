@@ -20,8 +20,6 @@ const MAX_WINDOW_TILES: i32 = 160;
 pub struct PathAppearance {
     pub key: u64,
     pub infos_version: u64,
-    /// Identity of the grade the heights were built with (zero when not grading).
-    pub grade_key: u64,
     /// World tile of the build window's origin; vertex positions are relative to it.
     pub origin: (i32, i32),
     /// Empty when the window could not be built (missing data, too long); drawing then falls back.
@@ -36,8 +34,7 @@ pub fn reference_palette() -> &'static [i32] {
     })
 }
 
-/// Terrain appearance of every tile `paints` would lay overlay `overlay_id` on, on `plane`, and of
-/// every tile whose corner `graded` moves (they keep their current floor, at the new heights).
+/// Terrain appearance of every tile `paints` would lay overlay `overlay_id` on, on `plane`.
 ///
 /// `tile_at` supplies the current terrain of a world tile. Returns the window origin and the
 /// tiles' triangles, or `None` when the window is too large or a painted tile is unknown.
@@ -45,18 +42,12 @@ pub fn path_appearance<F: FloorLookup>(
     plane: u8,
     overlay_id: u16,
     paints: &[FittedTile],
-    graded: &[((i32, i32), i32)],
     tile_at: impl Fn((i32, i32)) -> Option<TileInfo>,
     floors: &F,
     palette: &[i32],
 ) -> Option<((i32, i32), Vec<TileAppearance>)> {
-    // Tiles whose appearance is returned: painted ones and those a graded vertex touches.
-    let mut shown: HashSet<(i32, i32)> = paints.iter().map(|p| (p.tile_x, p.tile_y)).collect();
-    for ((x, y), _) in graded {
-        for tile in [(*x - 1, *y - 1), (*x, *y - 1), (*x - 1, *y), (*x, *y)] {
-            shown.insert(tile);
-        }
-    }
+    // Tiles whose appearance is returned: the painted ones.
+    let shown: HashSet<(i32, i32)> = paints.iter().map(|p| (p.tile_x, p.tile_y)).collect();
     let min_x = shown.iter().map(|t| t.0).min()?;
     let max_x = shown.iter().map(|t| t.0).max()?;
     let min_y = shown.iter().map(|t| t.1).min()?;
@@ -69,13 +60,12 @@ pub fn path_appearance<F: FloorLookup>(
     }
     let by_tile: HashMap<(i32, i32), &FittedTile> =
         paints.iter().map(|p| ((p.tile_x, p.tile_y), p)).collect();
-    let graded: HashMap<(i32, i32), i32> = graded.iter().copied().collect();
     let mut grid = TerrainLoadGrid::new(size_x as usize, size_y as usize).ok()?;
     for wx in 0..size_x {
         for wy in 0..size_y {
             let tile = (origin.0 + wx, origin.1 + wy);
             let info = tile_at(tile);
-            let mut resolved = match (by_tile.get(&tile), info) {
+            let resolved = match (by_tile.get(&tile), info) {
                 (Some(paint), Some(info)) => ResolvedTile {
                     overlay_raw: overlay_id,
                     shape: paint.shape,
@@ -86,13 +76,6 @@ pub fn path_appearance<F: FloorLookup>(
                 (None, Some(info)) => resolved(&info),
                 (None, None) => continue,
             };
-            // Corners `[southwest, southeast, northeast, northwest]` are the vertices at the
-            // tile's own and next coordinates; a graded vertex replaces the current height.
-            for (corner, (dx, dy)) in [(0, 0), (1, 0), (1, 1), (0, 1)].into_iter().enumerate() {
-                if let Some(height) = graded.get(&(tile.0 + dx, tile.1 + dy)) {
-                    resolved.heights[corner] = *height;
-                }
-            }
             grid.set_resolved_tile(usize::from(plane), wx as usize, wy as usize, resolved);
         }
     }
@@ -155,7 +138,6 @@ mod tests {
             0,
             7,
             &paints,
-            &[],
             flat,
             &FloorTable::default(),
             reference_palette(),
@@ -191,7 +173,6 @@ mod tests {
             0,
             7,
             &[paint(3200, 3210, 2)],
-            &[],
             flat,
             &FloorTable::default(),
             reference_palette(),
@@ -212,7 +193,6 @@ mod tests {
                 0,
                 7,
                 &paints,
-                &[],
                 missing,
                 &FloorTable::default(),
                 reference_palette()
@@ -225,76 +205,11 @@ mod tests {
                 0,
                 7,
                 &long,
-                &[],
                 flat,
                 &FloorTable::default(),
                 reference_palette()
             )
             .is_none()
         );
-    }
-
-    #[test]
-    fn graded_vertices_move_the_tiles_they_touch_and_add_them_to_the_preview() {
-        let paints = [paint(3200, 3210, 0)];
-        // Lift the vertex at the south-west corner of an unpainted neighbour to the east.
-        let graded = [((3202, 3210), -64)];
-        let Some((origin, tiles)) = path_appearance(
-            0,
-            7,
-            &paints,
-            &graded,
-            flat,
-            &FloorTable::default(),
-            reference_palette(),
-        ) else {
-            unreachable!("the window builds")
-        };
-        // Painted tile plus the four tiles that share the graded vertex.
-        let world: std::collections::BTreeSet<_> = tiles
-            .iter()
-            .map(|t| (origin.0 + t.tile.x as i32, origin.1 + t.tile.y as i32))
-            .collect();
-        for tile in [
-            (3200, 3210),
-            (3201, 3209),
-            (3202, 3209),
-            (3201, 3210),
-            (3202, 3210),
-        ] {
-            assert!(world.contains(&tile), "{tile:?} missing from {world:?}");
-        }
-        // The tile whose south-west corner is graded has a vertex at the new height.
-        let touched = tiles
-            .iter()
-            .find(|t| (origin.0 + t.tile.x as i32, origin.1 + t.tile.y as i32) == (3202, 3210));
-        let Some(touched) = touched else {
-            unreachable!("graded tile is shown")
-        };
-        assert!(
-            touched
-                .triangles
-                .iter()
-                .flat_map(|t| t.vertices)
-                .any(|v| v.position[1] == -64)
-        );
-        // Without the grade the same tile has no such vertex.
-        let Some((_, plain)) = path_appearance(
-            0,
-            7,
-            &paints,
-            &[],
-            flat,
-            &FloorTable::default(),
-            reference_palette(),
-        ) else {
-            unreachable!("the window builds")
-        };
-        assert!(plain.iter().all(|t| {
-            t.triangles
-                .iter()
-                .flat_map(|t| t.vertices)
-                .all(|v| v.position[1] != -64)
-        }));
     }
 }

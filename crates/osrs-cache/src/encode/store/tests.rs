@@ -2,7 +2,7 @@ use super::*;
 use crate::encode::{GroupEntry, pack_group, split_group};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-fn temp_dir(name: &str) -> PathBuf {
+pub(super) fn temp_dir(name: &str) -> PathBuf {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let dir = std::env::temp_dir().join(format!(
         "rustosrs-store-{}-{}-{name}",
@@ -20,14 +20,14 @@ fn files_for(group: u32) -> Vec<Vec<u8>> {
     ]
 }
 
-fn pack(group: u32) -> Vec<u8> {
+pub(super) fn pack(group: u32) -> Vec<u8> {
     let files = files_for(group);
     let parts: Vec<&[u8]> = files.iter().map(Vec::as_slice).collect();
     pack_group(&parts).unwrap_or_else(|e| unreachable!("{e}"))
 }
 
 /// A small synthetic index 5 with groups 0, 1, 2 (two files each, version suffixes, sizes column).
-fn build_cache(dir: &Path) -> CacheStore {
+pub(super) fn build_cache(dir: &Path) -> CacheStore {
     let store = CacheStore::create(dir).unwrap_or_else(|e| unreachable!("{e}"));
     let mut groups = Vec::new();
     for id in 0..3u32 {
@@ -68,7 +68,7 @@ fn build_cache(dir: &Path) -> CacheStore {
     store
 }
 
-fn table_of(store: &CacheStore) -> ReferenceTable {
+pub(super) fn table_of(store: &CacheStore) -> ReferenceTable {
     let raw = store
         .read_raw_group(REFERENCE_TABLE_INDEX, 5)
         .unwrap_or_else(|e| unreachable!("{e}"))
@@ -182,8 +182,8 @@ fn rewriting_a_group_repoints_it_and_leaves_other_groups_alone() {
 fn the_independent_vendored_reader_agrees_with_what_was_written() {
     let dir = temp_dir("vendored");
     let store = build_cache(&dir);
-    let indices = runefs::Indices::new(&dir).unwrap_or_else(|e| unreachable!("{e:?}"));
-    let dat = runefs::Dat2::new(dir.join(DATA_FILE)).unwrap_or_else(|e| unreachable!("{e:?}"));
+    let indices = osrs_filestore::Indices::new(&dir).unwrap_or_else(|e| unreachable!("{e:?}"));
+    let dat = osrs_filestore::Dat2::new(dir.join(DATA_FILE)).unwrap_or_else(|e| unreachable!("{e:?}"));
     let index = indices.get(&5).unwrap_or_else(|| unreachable!("index 5"));
     for id in 0..3u32 {
         let archive_ref = index
@@ -267,8 +267,8 @@ fn repacking_updates_the_group_and_keeps_its_table_row_consistent() {
         "untouched groups keep their bytes"
     );
 
-    // The vendored reader sees the updated table (crc and version) too.
-    let indices = runefs::Indices::new(&dir).unwrap_or_else(|e| unreachable!("{e:?}"));
+    // The filestore reader sees the updated table (crc and version) too.
+    let indices = osrs_filestore::Indices::new(&dir).unwrap_or_else(|e| unreachable!("{e:?}"));
     let rows: Vec<_> = indices
         .get(&5)
         .unwrap_or_else(|| unreachable!("index"))

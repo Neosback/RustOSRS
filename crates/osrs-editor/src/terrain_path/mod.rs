@@ -1,23 +1,14 @@
-//! Deterministic terrain-path overlay fitting for the Spline tool.
+//! The path tool's tile fitting and preview colours.
 //!
-//! The path tool intentionally has no obstacle routing, network pathfinding, walls, noise, or
-//! auto-connect behavior. It smooths the user's control points (each with its own width and an
-//! optional corner) and fits the exact OSRS overlay shape geometry to that band, preferring what
-//! the real map does (`census`).
+//! The path tool follows the EikenB00m map editor's: click points, optionally smooth them into a
+//! Catmull-Rom curve, and fit the real OSRS overlay shapes to a band of the chosen width
+//! ([`fit()`]). There is deliberately no obstacle routing, per-point settings or map-specific
+//! tuning. This module only plans; committing is `osrs-edit`'s `path` and `path_height`.
 
 mod appearance;
-mod census;
-mod fitter;
-mod occupancy;
-#[cfg(test)]
-mod quality;
+mod fit;
 mod shapes;
-mod smooth;
-mod wander;
 
 pub use appearance::{PathAppearance, path_appearance, reference_palette};
-pub use census::is_path_overlay;
-pub use fitter::{EDGE_WEIGHT, Fit, FitOptions, FittedTile, PRIOR_WEIGHT, fit_path_overlay};
+pub use fit::{FittedTile, fit, smooth};
 pub use shapes::{overlay_triangles, shape_triangles};
-pub use smooth::{ControlPoint, PathSample, smooth_path};
-pub use wander::Wander;

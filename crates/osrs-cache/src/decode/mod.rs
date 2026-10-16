@@ -1,7 +1,7 @@
 //! Revision-aware RustOSRS decoder infrastructure.
 //!
 //! This module owns cache-byte decoding mechanics and provenance. It must not
-//! leak `rune-fs` transport types or move scene/render/editor semantics into the
+//! leak `osrs-filestore` transport types or move scene/render/editor semantics into the
 //! cache layer.
 
 mod animation;

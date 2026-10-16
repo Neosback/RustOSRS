@@ -1,6 +1,6 @@
 //! RustOSRS-owned read-only cache transport and logical-file repository API.
 //!
-//! `rune-fs` is deliberately confined to this module. Public callers receive
+//! `osrs-filestore` is deliberately confined to this module. Public callers receive
 //! RustOSRS-owned metadata, byte containers, provenance, and typed errors.
 
 use crate::decode::{
@@ -10,8 +10,8 @@ use crate::decode::{
 use crate::profile::TargetProfile;
 use crate::source::CacheSource;
 use osrs_core::coords::RegionCoord;
-use runefs::codec::{Buffer, Encoded};
-use runefs::{Dat2, Indices, MAIN_DATA, REFERENCE_TABLE_ID};
+use osrs_filestore::codec::{Buffer, Encoded};
+use osrs_filestore::{Dat2, Indices, MAIN_DATA, REFERENCE_TABLE_ID};
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -137,7 +137,7 @@ pub enum CacheErrorKind {
     },
 }
 
-/// Provenance-rich transport/repository failure. No `rune-fs` type is exposed.
+/// Provenance-rich transport/repository failure. No `osrs-filestore` type is exposed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CacheError {
     profile_id: String,
@@ -1004,8 +1004,8 @@ enum TransportError {
     MalformedContainer(String),
 }
 
-impl From<runefs::Error> for TransportError {
-    fn from(value: runefs::Error) -> Self {
+impl From<osrs_filestore::Error> for TransportError {
+    fn from(value: osrs_filestore::Error) -> Self {
         Self::Dependency(value.to_string())
     }
 }
@@ -1142,7 +1142,7 @@ impl CacheTransport {
         })
     }
 
-    fn archive_ref(&self, index_id: u8, group_id: u32) -> TransportResult<&runefs::ArchiveRef> {
+    fn archive_ref(&self, index_id: u8, group_id: u32) -> TransportResult<&osrs_filestore::ArchiveRef> {
         let index = self
             .indices
             .get(&index_id)
@@ -1234,7 +1234,7 @@ fn prepare_encoded_container_for_decode(
 ) -> TransportResult<Vec<u8>> {
     validate_encoded_container_envelope(&encoded, max_encoded_bytes)?;
     if let Some(keys) = xtea {
-        runefs::xtea::decipher(&mut encoded[5..], &keys);
+        osrs_filestore::xtea::decipher(&mut encoded[5..], &keys);
     }
     validate_encoded_container(&encoded, max_encoded_bytes, max_decoded_bytes)?;
     Ok(encoded)

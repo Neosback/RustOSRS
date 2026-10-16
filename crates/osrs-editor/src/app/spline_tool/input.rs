@@ -1,12 +1,12 @@
 //! Spline tool pointer input and semantic commit routing.
 use super::*;
+use crate::app::interaction_runtime::fit_points;
 
 impl EditorApp {
-    /// Add, move, insert and remove control points; Enter lays the path.
+    /// Click adds a point on the tile under the cursor; Enter lays the path.
     pub(in crate::app) fn spline_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
         self.interaction.register_spline_repaint(ctx);
         if self.settings.prefs.tool != Tool::Spline {
-            self.interaction.cancel_spline_drag();
             return;
         }
         self.spline_update();
@@ -21,106 +21,56 @@ impl EditorApp {
                 self.interaction.pop_spline_point();
             }
         }
-        let Some(hit) = self.interaction.hover().tile else {
-            if !ctx.input(|i| i.pointer.primary_down()) {
-                self.interaction.finish_spline_drag();
-            }
+        let Some(point) = pending_point(self) else {
             return;
         };
-        let at = hit.at;
-        let modifiers = ctx.input(|i| i.modifiers);
-        let nearest = self
-            .interaction
-            .spline_points()
-            .iter()
-            .enumerate()
-            .map(|(i, p)| (i, distance(*p, at)))
-            .filter(|(_, d)| *d <= GRAB_DISTANCE)
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-            .map(|(i, _)| i);
-        if !self.keys_blocked(ctx) && ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
-            match nearest {
-                Some(index) => self.interaction.remove_spline_point(index),
-                None => self.interaction.pop_spline_point(),
-            }
-        }
-        // Double-clicking a point makes it a corner, or makes a corner smooth again.
-        if response.double_clicked()
-            && let Some(index) = nearest
+        if ctx.input(|i| i.pointer.primary_pressed())
+            && response.is_pointer_button_down_on()
+            && !ctx.input(|i| i.modifiers.alt)
         {
-            self.interaction.toggle_spline_corner(index);
-            return;
-        }
-        if ctx.input(|i| i.pointer.primary_pressed()) && response.is_pointer_button_down_on() {
-            if modifiers.alt {
-                return;
-            }
-            match nearest {
-                Some(index) if modifiers.command => {
-                    self.interaction.remove_spline_point(index);
-                }
-                Some(index) => self.interaction.begin_spline_drag(index),
-                None if modifiers.shift && self.interaction.spline_points().len() >= 2 => {
-                    // Insert on the stretch of the control polygon nearest the click.
-                    let points = self.interaction.spline_points();
-                    let mut best = (f32::MAX, 0);
-                    for i in 0..points.len() - 1 {
-                        let d = segment_distance(at, points[i], points[i + 1]);
-                        if d < best.0 {
-                            best = (d, i);
-                        }
-                    }
-                    self.interaction
-                        .insert_spline_point_and_drag(best.1 + 1, at);
-                }
-                None => self.interaction.append_spline_point_and_drag(at),
-            }
-        }
-        if ctx.input(|i| i.pointer.primary_down()) {
-            self.interaction.update_spline_drag(at);
-        } else {
-            self.interaction.finish_spline_drag();
+            self.interaction.add_spline_point(point);
         }
     }
 
-    /// Lay the previewed fitted path as one semantic patch / one undo step.
+    /// Lay the path as one semantic patch / one undo step, then (when asked) smooth the terrain
+    /// under it as a second one. The path is fitted again from the placed points, so the cursor's
+    /// preview is never part of what is laid.
     pub(in crate::app) fn commit_spline(&mut self) {
         if self.laying_overlay().is_none() {
             self.ui
                 .notify("Choose an overlay to lay the path with".to_owned());
             return;
         }
-        self.spline_update();
-        if !matches!(
-            self.interaction.spline_status(),
-            crate::app::interaction_runtime::SplineStatus::Ready { .. }
-        ) {
+        let points = self.interaction.spline_points().to_vec();
+        if points.is_empty() {
             self.ui
-                .notify("Wait for a current, non-empty path preview before laying it".to_owned());
+                .notify("Click at least one point on the terrain first".to_owned());
             return;
         }
-        let Some(preview) = self.interaction.current_spline_preview().cloned() else {
+        let Some(overlay_id) = self.laying_overlay() else {
             return;
         };
-        if preview.paints.is_empty() {
+        let options = PathOptions::from_settings(&self.settings.prefs.spline);
+        let (line, paints) = fit_points(&points, None, options);
+        if paints.is_empty() {
             self.ui
                 .notify("The fitted path has no overlay tiles".to_owned());
             return;
         }
-        let tiles: Vec<PathTile> = preview
-            .paints
+        let tiles: Vec<PathTile> = paints
             .iter()
             .map(|paint| PathTile {
                 tile: (paint.tile_x, paint.tile_y),
-                overlay: Some(preview.overlay_id),
+                overlay: Some(overlay_id),
                 shape: paint.shape,
                 rotation: paint.orientation,
             })
             .collect();
-        let grade = super::terrain::commit_grade(self, &preview);
-        let changed = self.apply_terrain_path(&tiles, &grade);
+        let changed = self.apply_terrain_path(&tiles);
+        if self.settings.prefs.spline.smooth_height {
+            terrain::smooth_height(self, &line);
+        }
         self.interaction.clear_spline_points();
-        self.ui
-            .notify(format!("Laid a fitted path over {changed} tiles"));
+        self.ui.notify(format!("Laid a path over {changed} tiles"));
     }
 }

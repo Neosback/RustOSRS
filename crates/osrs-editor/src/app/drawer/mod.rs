@@ -225,10 +225,9 @@ impl EditorApp {
     /// its own title row; compact surfaces (the quick HUD) pass fewer. Pure widgets emit actions
     /// that are applied here to their owners.
     pub(in crate::app) fn spline_drawer(&mut self, ui: &mut egui::Ui, sections: SplineSections) {
-        use super::spline_tool::panel::PointAction;
-        use super::spline_tool::sections::{self, AlsoApplies, SplineAction, SplineView};
+        use super::spline_tool::sections::{self, SplineAction, SplineView};
         let ctx = ui.ctx().clone();
-        if sections.points {
+        if sections.help {
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Path").strong());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -237,19 +236,10 @@ impl EditorApp {
             });
         }
         self.spline_update();
-        let points = self.interaction.spline_controls();
-        let brush = &self.settings.prefs.brush;
-        let also = AlsoApplies {
-            // A graded bed replaces the Paint brush's flat height.
-            height: (brush.height.armed && !points.iter().any(|p| p.smooth_ground))
-                .then_some(brush.height.value),
-            flags: brush.flags.armed.then_some(brush.flags.bits),
-        };
         let view = SplineView {
-            points: &points,
-            selected: self.interaction.selected_spline_point(),
+            points: self.interaction.spline_points().len(),
             status: self.interaction.spline_status(),
-            also,
+            can_lay: self.interaction.spline_can_lay(),
         };
         let mut spline_settings = self.settings.prefs.spline.clone();
         let actions = sections::show(ui, sections, &mut spline_settings, &view, |ui| {
@@ -286,42 +276,9 @@ impl EditorApp {
                 "Paint overlay",
             );
         });
-        // A new width preset applies to the selected point, or to every point and new ones.
-        if spline_settings.width != self.settings.prefs.spline.width {
-            self.interaction.apply_spline_width(spline_settings.width);
-        }
         self.settings.prefs.spline = spline_settings;
         for action in actions {
             match action {
-                SplineAction::Point(PointAction::Select(index)) => {
-                    self.interaction.select_spline_point(index)
-                }
-                SplineAction::Point(PointAction::Move(index, point)) => {
-                    self.interaction.move_spline_point(index, point)
-                }
-                SplineAction::Point(PointAction::Remove(index)) => {
-                    self.interaction.remove_spline_point(index)
-                }
-                SplineAction::Point(PointAction::Width(index, width)) => {
-                    self.interaction.set_spline_point_width(index, width)
-                }
-                SplineAction::Point(PointAction::ToggleCorner(index)) => {
-                    self.interaction.toggle_spline_corner(index)
-                }
-                SplineAction::Point(PointAction::CycleWander(index)) => {
-                    let current = self
-                        .interaction
-                        .spline_controls()
-                        .get(index)
-                        .map(|c| c.wander);
-                    if let Some(current) = current {
-                        self.interaction
-                            .set_spline_point_wander(index, current.next());
-                    }
-                }
-                SplineAction::Point(PointAction::ToggleGround(index)) => {
-                    self.interaction.toggle_spline_point_ground(index)
-                }
                 SplineAction::Lay => self.commit_spline(),
                 SplineAction::RemoveLast => self.interaction.pop_spline_point(),
                 SplineAction::Clear => self.interaction.clear_spline_points(),

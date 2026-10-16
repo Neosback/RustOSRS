@@ -1,151 +1,75 @@
-//! Shared Spline widgets. Drawing emits point actions; the interaction owner applies them.
-use crate::paint::{PathStyle, SplineSettings};
-use crate::terrain_path::{ControlPoint, Wander};
+//! Shared Spline widgets: the path tool's settings, the same as the EikenB00m editor's. Drawing
+//! edits the settings; the owner applies them.
+use crate::paint::SplineSettings;
 use eframe::egui;
 
-/// The path's style and ground option. Width is a preset (Trail, Path, Road); with a point
-/// selected the preset applies to that point, otherwise to every point and to new ones. Everything
-/// else is decided by how the real map is built.
-pub(in crate::app) fn settings(ui: &mut egui::Ui, settings: &mut SplineSettings) {
-    ui.horizontal_wrapped(|ui| {
-        ui.label("Width");
-        for style in PathStyle::ALL {
-            let selected = settings.width == style.width();
-            if ui
-                .selectable_label(selected, style.label())
-                .on_hover_text(format!(
-                    "{} tile{} wide. Applies to the selected point, or to all points and new ones.",
-                    style.width(),
-                    if style.width() == 1.0 { "" } else { "s" }
-                ))
-                .clicked()
-            {
-                settings.width = style.width();
-            }
-        }
-    });
-    ui.horizontal_wrapped(|ui| {
-        ui.label("Route");
-        for wander in [Wander::Off, Wander::Gentle, Wander::Natural] {
-            ui.selectable_value(&mut settings.wander, wander, wander.short_label())
-                .on_hover_text(
-                    "How the path drifts between points. Applies to the selected point's stretch, or to all stretches and new ones.",
-                );
-        }
-    });
-    ui.checkbox(&mut settings.smooth_ground, "Smooth ground along the path")
-        .on_hover_text(
-            "Ease bumps and too-steep stretches along the path. Off: the path follows the ground, as the real map's paths do. Applies to the selected point's stretch, or to all stretches and new ones.",
-        );
-}
-
-#[derive(Debug, PartialEq)]
-pub(in crate::app) enum PointAction {
-    Select(usize),
-    Move(usize, (f32, f32)),
-    Remove(usize),
-    Width(usize, f32),
-    ToggleCorner(usize),
-    /// Cycle how the stretch after a point wanders.
-    CycleWander(usize),
-    ToggleGround(usize),
-}
-
-pub(in crate::app) fn points(
+/// A labelled slider as wide as the panel allows.
+fn slider<T: egui::emath::Numeric>(
     ui: &mut egui::Ui,
-    points: &[ControlPoint],
-    selected: Option<usize>,
-) -> Option<PointAction> {
-    let mut action = None;
-    egui::CollapsingHeader::new(format!("Control points ({})", points.len()))
-        .id_salt("spline_control_points")
-        .show(ui, |ui| {
-            if points.is_empty() {
-                ui.weak("Click the terrain to add the first point.");
-            }
-            egui::ScrollArea::vertical()
-                .id_salt("spline_points_scroll")
-                .max_height(160.0)
-                .show(ui, |ui| {
-                    for (index, point) in points.iter().copied().enumerate() {
-                        ui.horizontal_wrapped(|ui| {
-                            if ui
-                                .selectable_label(selected == Some(index), format!("{}", index + 1))
-                                .clicked()
-                            {
-                                action = Some(PointAction::Select(index));
-                            }
-                            let mut position = (point.x, point.y);
-                            let x = ui.add(
-                                egui::DragValue::new(&mut position.0)
-                                    .speed(0.1)
-                                    .prefix("X "),
-                            );
-                            let z = ui.add(
-                                egui::DragValue::new(&mut position.1)
-                                    .speed(0.1)
-                                    .prefix("Z "),
-                            );
-                            if x.changed() || z.changed() {
-                                action = Some(PointAction::Move(index, position));
-                            }
-                            let mut width = point.width;
-                            if ui
-                                .add(
-                                    egui::DragValue::new(&mut width)
-                                        .range(1.0..=24.0)
-                                        .speed(0.1)
-                                        .prefix("W "),
-                                )
-                                .on_hover_text("Width at this point, in tiles")
-                                .changed()
-                            {
-                                action = Some(PointAction::Width(index, width));
-                            }
-                            if ui
-                                .selectable_label(point.corner, egui_phosphor::regular::SQUARE)
-                                .on_hover_text(
-                                    "Corner: the path bends sharply here (double-click the point)",
-                                )
-                                .clicked()
-                            {
-                                action = Some(PointAction::ToggleCorner(index));
-                            }
-                            if ui
-                                .selectable_label(
-                                    point.wander != Wander::Off,
-                                    egui_phosphor::regular::WAVE_SINE,
-                                )
-                                .on_hover_text(format!(
-                                    "{} after this point (click to change)",
-                                    point.wander.label()
-                                ))
-                                .clicked()
-                            {
-                                action = Some(PointAction::CycleWander(index));
-                            }
-                            if ui
-                                .selectable_label(
-                                    point.smooth_ground,
-                                    egui_phosphor::regular::MOUNTAINS,
-                                )
-                                .on_hover_text("Smooth the ground after this point")
-                                .clicked()
-                            {
-                                action = Some(PointAction::ToggleGround(index));
-                            }
-                            if ui
-                                .small_button(egui_phosphor::regular::TRASH)
-                                .on_hover_text("Remove this control point")
-                                .clicked()
-                            {
-                                action = Some(PointAction::Remove(index));
-                            }
-                        });
-                    }
-                });
-        });
-    action
+    label: &str,
+    value: &mut T,
+    range: std::ops::RangeInclusive<T>,
+    step: f64,
+    suffix: &str,
+    hint: &str,
+) {
+    ui.label(label).on_hover_text(hint);
+    ui.scope(|ui| {
+        ui.spacing_mut().slider_width = (ui.available_width() - 100.0).clamp(40.0, 260.0);
+        ui.add(egui::Slider::new(value, range).step_by(step).suffix(suffix))
+            .on_hover_text(hint);
+    });
+}
+
+/// The path's shape and terrain options. Terrain sliders are available once "Smooth terrain
+/// height" is on.
+pub(in crate::app) fn settings(ui: &mut egui::Ui, settings: &mut SplineSettings) {
+    slider(
+        ui,
+        "Width",
+        &mut settings.width,
+        SplineSettings::WIDTH,
+        0.5,
+        " tiles",
+        "How wide the path is. 1 is a single tile.",
+    );
+    ui.checkbox(&mut settings.smooth_curve, "Smooth curve")
+        .on_hover_text(
+            "On: the path flows as a smooth curve through your points. Off: straight lines between points.",
+        );
+    slider(
+        ui,
+        "Edge smoothing",
+        &mut settings.edge_smoothing,
+        SplineSettings::EDGE,
+        0.5,
+        "",
+        "Makes the shapes of neighbouring tiles line up on their edges. Higher gives a cleaner outline, 0 fits every tile on its own.",
+    );
+    ui.checkbox(&mut settings.smooth_height, "Smooth terrain height")
+        .on_hover_text(
+            "Evens out the height under the path so it has no steep steps. Applied together with the path and undone separately (Ctrl+Z twice).",
+        );
+    ui.add_enabled_ui(settings.smooth_height, |ui| {
+        slider(
+            ui,
+            "Height smoothing",
+            &mut settings.height_passes,
+            SplineSettings::PASSES,
+            1.0,
+            " passes",
+            "Number of smoothing passes. Higher values flatten the terrain more along the path; start low and increase if it is still too steep.",
+        );
+        slider(
+            ui,
+            "Blend distance",
+            &mut settings.height_blend,
+            SplineSettings::BLEND,
+            1.0,
+            " tiles",
+            "How many tiles around the path are blended into the surrounding terrain. Use a larger distance on steep hillsides so the slope next to the path becomes gradual instead of a sudden wall.",
+        );
+    });
 }
 
 #[cfg(test)]
@@ -166,15 +90,15 @@ mod tests {
                 };
                 let mut output = ctx.run_ui(input, |ui| {
                     let right = ui.max_rect().right();
-                    for smooth_ground in [false, true] {
+                    for smooth_height in [false, true] {
                         let mut value = SplineSettings {
-                            smooth_ground,
+                            smooth_height,
                             ..SplineSettings::default()
                         };
                         let response = ui.scope(|ui| settings(ui, &mut value));
                         assert!(
                             response.response.rect.right() <= right + 0.5,
-                            "width {width}, scale {scale}, smooth {smooth_ground}: {:?}",
+                            "width {width}, scale {scale}, height {smooth_height}: {:?}",
                             response.response.rect
                         );
                     }

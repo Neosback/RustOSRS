@@ -152,55 +152,42 @@ impl SelectMode {
     }
 }
 
-/// The Spline tool's settings: only what a path cannot work out for itself. Everything else
-/// (edge tiling, how paths meet other overlays and underlays, curves and corners, per-point widths)
-/// follows how the real map is built (see `docs/verification/PATH-CENSUS.md`).
+/// The Spline (path) tool's settings, the same as the EikenB00m map editor's path tool: the
+/// path's shape and, optionally, smoothing the terrain under it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SplineSettings {
-    /// Width new control points start with, in tiles: the Trail / Path / Road preset.
+    /// How wide the path is, in tiles (1 is a single tile).
     pub width: f32,
-    /// Also smooth the ground along the path when laying it (off: the path follows the ground,
-    /// as the real map's paths do). Laid in the same undo step.
-    pub smooth_ground: bool,
-    /// How much the stretches between points wander (new points, and the selected point or all).
-    pub wander: crate::terrain_path::Wander,
+    /// On: the path flows as a smooth curve through the points. Off: straight lines between them.
+    pub smooth_curve: bool,
+    /// How strongly the shapes of neighbouring tiles are made to line up on their edges; 0 fits
+    /// every tile on its own.
+    pub edge_smoothing: f32,
+    /// Also even out the ground height under the path (its own undo step).
+    pub smooth_height: bool,
+    /// How many smoothing passes the height gets.
+    pub height_passes: u32,
+    /// Tiles around the path blended into the surrounding terrain.
+    pub height_blend: f32,
+}
+
+impl SplineSettings {
+    pub const WIDTH: std::ops::RangeInclusive<f32> = 1.0..=20.0;
+    pub const EDGE: std::ops::RangeInclusive<f32> = 0.0..=4.0;
+    pub const PASSES: std::ops::RangeInclusive<u32> = 1..=250;
+    pub const BLEND: std::ops::RangeInclusive<f32> = 0.0..=30.0;
 }
 
 impl Default for SplineSettings {
     fn default() -> Self {
         Self {
-            width: PathStyle::Path.width(),
-            smooth_ground: false,
-            wander: crate::terrain_path::Wander::Off,
-        }
-    }
-}
-
-/// The three widths real paths come in: a one-tile trail, a three-tile path, a five-tile road.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PathStyle {
-    Trail,
-    Path,
-    Road,
-}
-
-impl PathStyle {
-    pub const ALL: [Self; 3] = [Self::Trail, Self::Path, Self::Road];
-
-    pub const fn width(self) -> f32 {
-        match self {
-            Self::Trail => 1.0,
-            Self::Path => 3.0,
-            Self::Road => 5.0,
-        }
-    }
-
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Trail => "Trail",
-            Self::Path => "Path",
-            Self::Road => "Road",
+            width: 3.0,
+            smooth_curve: true,
+            edge_smoothing: 1.5,
+            smooth_height: false,
+            height_passes: 5,
+            height_blend: 4.0,
         }
     }
 }

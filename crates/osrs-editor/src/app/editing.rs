@@ -27,6 +27,7 @@ pub(super) use history::EditStep;
 use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::HeightVertexCoord;
 use osrs_world::TileEdit;
+pub(super) use path::commit_path_height;
 use plan::{build_paint_stroke_patch, project_height_values, project_paint_values};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;

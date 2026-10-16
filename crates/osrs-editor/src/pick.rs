@@ -139,8 +139,6 @@ pub struct ObjectPick {
 #[derive(Clone, Copy)]
 pub struct TilePick {
     pub tile: (i32, i32),
-    /// The exact point under the cursor in world tile units (`tile` is its floor).
-    pub at: (f32, f32),
 }
 
 #[derive(Clone, Default)]
@@ -158,7 +156,6 @@ pub fn pick(infos: &Infos, ray: &Ray, view_plane: u8) -> Pick {
         let z = ray.origin[2] + ray.dir[2] * distance;
         TilePick {
             tile: ((x / 128.0).floor() as i32, (z / 128.0).floor() as i32),
-            at: ((x / 128.0) as f32, (z / 128.0) as f32),
         }
     });
 
