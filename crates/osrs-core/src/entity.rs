@@ -49,6 +49,60 @@ impl ActorSequenceState {
     pub const fn is_active(self) -> bool {
         self.sequence.is_some()
     }
+
+    /// Deactivate the slot without rewriting its frame bookkeeping.
+    ///
+    /// The pinned client's `AnimationSequence.clear()` only replaces the
+    /// sequence id with its inactive sentinel. Keeping the remaining fields
+    /// intact matters because clearing and resetting a frame are distinct
+    /// source operations.
+    pub fn clear(&mut self) {
+        self.sequence = None;
+    }
+
+    /// Reset per-play frame state while preserving sequence and frame count.
+    ///
+    /// This mirrors `AnimationSequence.resetFrame()`. Rust uses `Some(0)` for
+    /// the source's active frame zero rather than conflating it with the
+    /// inactive/default `None` representation.
+    pub fn reset_frame(&mut self) {
+        self.frame = Some(0);
+        self.frame_cycle = 0;
+        self.loop_count = 0;
+    }
+
+    /// Change the slot's sequence using the pinned client's lifecycle rule.
+    ///
+    /// In the source, `setSequence` first asks the previous sequence to reset
+    /// any cached-model resource state. If that external reset succeeds, the
+    /// frame fields are intentionally preserved; otherwise `resetFrame()` is
+    /// applied. Resource lookup/reset does not belong in `osrs-core`, so the
+    /// caller supplies that audited outcome as `previous_cached_model_reset`.
+    /// Supplying the current sequence is a no-op, matching the source.
+    pub fn set_sequence(
+        &mut self,
+        sequence: Option<SequenceId>,
+        previous_cached_model_reset: bool,
+    ) {
+        if self.sequence == sequence {
+            return;
+        }
+
+        self.sequence = sequence;
+        if !previous_cached_model_reset {
+            self.reset_frame();
+        }
+    }
+
+    /// Set a sequence only while the slot is inactive.
+    ///
+    /// An inactive source slot has no previous cached-model sequence to reset,
+    /// so activation follows the ordinary frame-reset path.
+    pub fn set_sequence_if_inactive(&mut self, sequence: Option<SequenceId>) {
+        if !self.is_active() {
+            self.set_sequence(sequence, false);
+        }
+    }
 }
 
 /// Player/NPC-owned animation slots before model assembly.
@@ -201,6 +255,16 @@ mod tests {
         }
     }
 
+    fn advanced_actor_slot(sequence: SequenceId) -> ActorSequenceState {
+        ActorSequenceState {
+            sequence: Some(sequence),
+            frame: Some(7),
+            frame_cycle: 8,
+            frame_count: 9,
+            loop_count: 10,
+        }
+    }
+
     #[test]
     fn entity_scale_identity_matches_reference_definition_default() {
         assert_eq!(EntityScale::IDENTITY.horizontal, 128);
@@ -216,6 +280,89 @@ mod tests {
         assert_eq!(slot.frame_cycle, 0);
         assert_eq!(slot.frame_count, 0);
         assert_eq!(slot.loop_count, 0);
+    }
+
+    #[test]
+    fn actor_sequence_clear_only_deactivates_slot() {
+        let mut slot = advanced_actor_slot(SequenceId::new(100));
+        slot.clear();
+
+        assert_eq!(slot.sequence, None);
+        assert_eq!(slot.frame, Some(7));
+        assert_eq!(slot.frame_cycle, 8);
+        assert_eq!(slot.frame_count, 9);
+        assert_eq!(slot.loop_count, 10);
+    }
+
+    #[test]
+    fn actor_sequence_reset_frame_preserves_sequence_and_frame_count() {
+        let sequence = SequenceId::new(100);
+        let mut slot = advanced_actor_slot(sequence);
+        slot.reset_frame();
+
+        assert_eq!(slot.sequence, Some(sequence));
+        assert_eq!(slot.frame, Some(0));
+        assert_eq!(slot.frame_cycle, 0);
+        assert_eq!(slot.frame_count, 9);
+        assert_eq!(slot.loop_count, 0);
+    }
+
+    #[test]
+    fn actor_sequence_set_same_sequence_is_noop() {
+        let sequence = SequenceId::new(100);
+        let mut slot = advanced_actor_slot(sequence);
+        let original = slot;
+        slot.set_sequence(Some(sequence), false);
+
+        assert_eq!(slot, original);
+    }
+
+    #[test]
+    fn actor_sequence_change_resets_frame_without_cached_model_reset() {
+        let mut slot = advanced_actor_slot(SequenceId::new(100));
+        slot.set_sequence(Some(SequenceId::new(200)), false);
+
+        assert_eq!(slot.sequence, Some(SequenceId::new(200)));
+        assert_eq!(slot.frame, Some(0));
+        assert_eq!(slot.frame_cycle, 0);
+        assert_eq!(slot.frame_count, 9);
+        assert_eq!(slot.loop_count, 0);
+    }
+
+    #[test]
+    fn actor_sequence_change_preserves_frame_after_cached_model_reset() {
+        let mut slot = advanced_actor_slot(SequenceId::new(100));
+        slot.set_sequence(Some(SequenceId::new(200)), true);
+
+        assert_eq!(slot.sequence, Some(SequenceId::new(200)));
+        assert_eq!(slot.frame, Some(7));
+        assert_eq!(slot.frame_cycle, 8);
+        assert_eq!(slot.frame_count, 9);
+        assert_eq!(slot.loop_count, 10);
+    }
+
+    #[test]
+    fn actor_sequence_set_if_inactive_only_initializes_empty_slot() {
+        let sequence = SequenceId::new(100);
+        let mut inactive = ActorSequenceState {
+            frame: Some(7),
+            frame_cycle: 8,
+            frame_count: 9,
+            loop_count: 10,
+            ..ActorSequenceState::default()
+        };
+        inactive.set_sequence_if_inactive(Some(sequence));
+
+        assert_eq!(inactive.sequence, Some(sequence));
+        assert_eq!(inactive.frame, Some(0));
+        assert_eq!(inactive.frame_cycle, 0);
+        assert_eq!(inactive.frame_count, 9);
+        assert_eq!(inactive.loop_count, 0);
+
+        let mut active = advanced_actor_slot(sequence);
+        let original = active;
+        active.set_sequence_if_inactive(Some(SequenceId::new(200)));
+        assert_eq!(active, original);
     }
 
     #[test]
