@@ -1,4 +1,4 @@
-//! Cache-independent entity definition inputs for actor/effect rendering.
+//! Cache-independent entity definition and actor-runtime inputs.
 //!
 //! These types intentionally describe semantic data, not revision-specific
 //! config opcodes. The checked-in RuneLite source used for the current actor
@@ -24,6 +24,50 @@ impl EntityScale {
         horizontal: 128,
         vertical: 128,
     };
+}
+
+/// One live actor animation-sequence slot.
+///
+/// This mirrors the cache-independent state shape of the pinned client's
+/// `AnimationSequence`: sequence identity plus per-instance frame/cycle/count
+/// state. Shared [`crate::definitions::SequenceDefinition`] data stays outside
+/// the slot and is resolved by sequence id.
+///
+/// Runtime mutation/advancement belongs to the future playtest owner. This type
+/// deliberately does not reuse [`crate::animation::SequencePlaybackState`],
+/// whose current contract is the audited dynamic-loc progression path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct ActorSequenceState {
+    pub sequence: Option<SequenceId>,
+    pub frame: Option<u32>,
+    pub frame_cycle: i32,
+    pub frame_count: i32,
+    pub loop_count: i32,
+}
+
+impl ActorSequenceState {
+    pub const fn is_active(self) -> bool {
+        self.sequence.is_some()
+    }
+}
+
+/// Player/NPC-owned animation slots before model assembly.
+///
+/// The pinned `Actor` owns three independent `AnimationSequence` instances:
+/// `poseAnimationSequence`, `animationSequence`, and the still-obfuscated
+/// `field1015`. The first two are kept as `pose` and `action`; the third remains
+/// neutrally named `auxiliary` until target-revision/JTS evidence pins its full
+/// lifecycle semantics. `action_delay_cycles` mirrors the source field that
+/// gates action-sequence participation in model selection.
+///
+/// The renderer consumes resolved/posed output and must never own or advance
+/// this state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct ActorAnimationState {
+    pub pose: ActorSequenceState,
+    pub action: ActorSequenceState,
+    pub auxiliary: ActorSequenceState,
+    pub action_delay_cycles: i32,
 }
 
 /// Movement/idle sequence references authored by an NPC definition.
@@ -107,6 +151,44 @@ mod tests {
     fn entity_scale_identity_matches_reference_definition_default() {
         assert_eq!(EntityScale::IDENTITY.horizontal, 128);
         assert_eq!(EntityScale::IDENTITY.vertical, 128);
+    }
+
+    #[test]
+    fn actor_sequence_default_matches_inactive_reference_slot() {
+        let slot = ActorSequenceState::default();
+        assert!(!slot.is_active());
+        assert_eq!(slot.sequence, None);
+        assert_eq!(slot.frame, None);
+        assert_eq!(slot.frame_cycle, 0);
+        assert_eq!(slot.frame_count, 0);
+        assert_eq!(slot.loop_count, 0);
+    }
+
+    #[test]
+    fn actor_animation_state_keeps_three_independent_slots() {
+        let state = ActorAnimationState {
+            pose: ActorSequenceState {
+                sequence: Some(SequenceId::new(100)),
+                frame: Some(1),
+                ..ActorSequenceState::default()
+            },
+            action: ActorSequenceState {
+                sequence: Some(SequenceId::new(200)),
+                frame: Some(2),
+                ..ActorSequenceState::default()
+            },
+            auxiliary: ActorSequenceState {
+                sequence: Some(SequenceId::new(300)),
+                frame: Some(3),
+                ..ActorSequenceState::default()
+            },
+            action_delay_cycles: 4,
+        };
+
+        assert_eq!(state.pose.sequence, Some(SequenceId::new(100)));
+        assert_eq!(state.action.sequence, Some(SequenceId::new(200)));
+        assert_eq!(state.auxiliary.sequence, Some(SequenceId::new(300)));
+        assert_eq!(state.action_delay_cycles, 4);
     }
 
     #[test]
