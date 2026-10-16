@@ -8,21 +8,21 @@
 //! outline turns.
 
 use super::census::{self, NeighbourMask};
+use super::occupancy::{Occupancy, occupy};
 use super::shapes::overlay_triangles;
 use super::smooth::PathSample;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-const SAMPLE_GRID: usize = 8;
-const SAMPLE_COUNT: usize = SAMPLE_GRID * SAMPLE_GRID;
+pub(super) const SAMPLE_GRID: usize = 8;
+pub(super) const SAMPLE_COUNT: usize = SAMPLE_GRID * SAMPLE_GRID;
 const REFINE_PASSES: usize = 6;
-const CENTER_REJECT_MARGIN: f32 = 0.75;
 const WEST: usize = 0;
 const EAST: usize = 1;
 const SOUTH: usize = 2;
 const NORTH: usize = 3;
 /// 8-neighbour offsets, bit i of a [`NeighbourMask`]: N, NE, E, SE, S, SW, W, NW (y grows north).
-const NEIGHBOURS: [(i32, i32); 8] = [
+pub(super) const NEIGHBOURS: [(i32, i32); 8] = [
     (0, 1),
     (1, 1),
     (1, 0),
@@ -46,7 +46,7 @@ pub struct FittedTile {
 /// How strongly shared edges line up, and how strongly the real map's usual shape for a
 /// neighbourhood is preferred. Fixed: the real map decides, not a slider.
 pub const EDGE_WEIGHT: f32 = 0.75;
-pub const PRIOR_WEIGHT: f32 = 18.0;
+pub const PRIOR_WEIGHT: f32 = 30.0;
 
 /// How the fit is steered.
 pub struct FitOptions<'a> {
@@ -78,6 +78,8 @@ struct Candidate {
 #[derive(Debug, Clone)]
 struct TileState {
     ideal: [bool; SAMPLE_COUNT],
+    /// The 8-neighbour occupancy of the tile (fixed once the occupancy is decided).
+    mask: NeighbourMask,
     candidate: usize,
 }
 
@@ -101,26 +103,25 @@ pub fn fit_path_overlay(line: &[PathSample], options: &FitOptions<'_>) -> Fit {
         0.0
     };
     let candidates = candidates();
+    // 1. Which tiles carry the overlay (full or partial): the band rasterised onto the grid and
+    //    cleaned into regular edges.
+    let Occupancy { tiles, clipped } = occupy(line, options.blocked);
+    // 2. Each occupied tile's shape from its neighbourhood bitmask (the real map's usual choice),
+    //    then neighbours' edges made to agree.
     let mut states = BTreeMap::<(i32, i32), TileState>::new();
-    let mut clipped = Vec::new();
-
-    for tile in candidate_tiles(line) {
-        let center = (tile.0 as f32 + 0.5, tile.1 as f32 + 0.5);
-        if path_margin(center, line) > CENTER_REJECT_MARGIN {
-            continue;
-        }
+    for &tile in &tiles {
         let ideal = ideal_mask(tile, line);
-        if !ideal.iter().any(|covered| *covered) {
-            continue;
-        }
-        if (options.blocked)(tile) {
-            clipped.push(tile);
-            continue;
-        }
-        let candidate = best_independent(&ideal, candidates);
-        states.insert(tile, TileState { ideal, candidate });
+        let mask = neighbour_mask(tile, &tiles);
+        let candidate = initial_candidate(&ideal, mask, candidates, prior_weight);
+        states.insert(
+            tile,
+            TileState {
+                ideal,
+                mask,
+                candidate,
+            },
+        );
     }
-
     if edge_weight > 0.0 || prior_weight > 0.0 {
         let keys: Vec<_> = states.keys().copied().collect();
         for _ in 0..REFINE_PASSES {
@@ -141,7 +142,7 @@ pub fn fit_path_overlay(line: &[PathSample], options: &FitOptions<'_>) -> Fit {
         }
     }
 
-    let tiles = states
+    let tiles: Vec<FittedTile> = states
         .into_iter()
         .filter_map(|((tile_x, tile_y), state)| {
             let candidate = &candidates[state.candidate];
@@ -156,7 +157,7 @@ pub fn fit_path_overlay(line: &[PathSample], options: &FitOptions<'_>) -> Fit {
     Fit { tiles, clipped }
 }
 
-fn candidate_tiles(line: &[PathSample]) -> BTreeSet<(i32, i32)> {
+pub(super) fn candidate_tiles(line: &[PathSample]) -> BTreeSet<(i32, i32)> {
     let mut tiles = BTreeSet::new();
     if line.len() == 1 {
         add_box(
@@ -191,7 +192,7 @@ fn add_box(tiles: &mut BTreeSet<(i32, i32)>, a: (f32, f32), b: (f32, f32), pad: 
     }
 }
 
-fn ideal_mask(tile: (i32, i32), line: &[PathSample]) -> [bool; SAMPLE_COUNT] {
+pub(super) fn ideal_mask(tile: (i32, i32), line: &[PathSample]) -> [bool; SAMPLE_COUNT] {
     let mut ideal = [false; SAMPLE_COUNT];
     for sy in 0..SAMPLE_GRID {
         for sx in 0..SAMPLE_GRID {
@@ -216,7 +217,7 @@ fn path_margin(point: (f32, f32), line: &[PathSample]) -> f32 {
         .fold(f32::INFINITY, f32::min)
 }
 
-fn distance(a: (f32, f32), b: (f32, f32)) -> f32 {
+pub(super) fn distance(a: (f32, f32), b: (f32, f32)) -> f32 {
     ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()
 }
 
@@ -308,11 +309,19 @@ fn point_in_triangle(point: (f32, f32), triangle: [[f32; 2]; 3]) -> bool {
     !(has_negative && has_positive)
 }
 
-fn best_independent(ideal: &[bool; SAMPLE_COUNT], candidates: &[Candidate]) -> usize {
-    let mut best = 0;
-    let mut best_score = agreement(ideal, &candidates[0].covered);
+/// The first choice for a tile: the candidate that best trades the band against the real map's
+/// usual shape for its neighbourhood. "No overlay" is not a choice: the tile is occupied.
+fn initial_candidate(
+    ideal: &[bool; SAMPLE_COUNT],
+    mask: NeighbourMask,
+    candidates: &[Candidate],
+    prior_weight: f32,
+) -> usize {
+    let penalty = census::penalty(mask);
+    let mut best = 1;
+    let mut best_score = f32::NEG_INFINITY;
     for (index, candidate) in candidates.iter().enumerate().skip(1) {
-        let score = agreement(ideal, &candidate.covered);
+        let score = agreement(ideal, &candidate.covered) as f32 - prior_weight * penalty[index];
         if score > best_score {
             best = index;
             best_score = score;
@@ -331,16 +340,12 @@ fn best_with_neighbors(
     let Some(state) = states.get(&key) else {
         return 0;
     };
-    // The neighbourhood is read once: which neighbours currently carry the overlay.
-    let mask = neighbour_mask(key, states);
-    let penalty = census::penalty(mask);
-    let mut best = 0;
+    let penalty = census::penalty(state.mask);
+    let mut best = 1;
     let mut best_score = f32::NEG_INFINITY;
-    for (index, extra) in penalty.iter().enumerate().take(candidates.len()) {
-        let mut score = score_candidate(key, state, index, states, candidates, edge_weight);
-        if index > 0 {
-            score -= prior_weight * extra;
-        }
+    for (index, extra) in penalty.iter().enumerate().take(candidates.len()).skip(1) {
+        let score = score_candidate(key, state, index, states, candidates, edge_weight)
+            - prior_weight * extra;
         if score > best_score {
             best = index;
             best_score = score;
@@ -349,14 +354,11 @@ fn best_with_neighbors(
     best
 }
 
-/// Which of the eight neighbours currently carry the overlay.
-fn neighbour_mask(key: (i32, i32), states: &BTreeMap<(i32, i32), TileState>) -> NeighbourMask {
+/// Which of the eight neighbours carry the overlay.
+fn neighbour_mask(key: (i32, i32), tiles: &BTreeSet<(i32, i32)>) -> NeighbourMask {
     let mut mask = 0;
     for (bit, (dx, dy)) in NEIGHBOURS.iter().enumerate() {
-        if states
-            .get(&(key.0 + dx, key.1 + dy))
-            .is_some_and(|neighbor| neighbor.candidate != 0)
-        {
+        if tiles.contains(&(key.0 + dx, key.1 + dy)) {
             mask |= 1 << bit;
         }
     }

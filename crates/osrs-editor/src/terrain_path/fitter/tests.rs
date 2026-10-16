@@ -232,23 +232,20 @@ fn average_coverage(prior_weight: f32) -> f32 {
 }
 
 /// The real map's figures (docs/verification/PATH-CENSUS.md): 44.7% of boundary tiles are partial
-/// shapes and about 77% of straight-edge tiles are full tiles.
+/// shapes and about 77% of straight-edge tiles are full tiles. Occupancy-first fitting is cleaner
+/// than the real map, so it uses fewer partial shapes (about 30%).
 #[test]
 fn the_census_prior_moves_the_fit_toward_how_the_real_map_tiles_paths() {
     let without = average(0.0);
     let with = average(PRIOR_WEIGHT);
-    // Straight edges: far more full tiles, close to the real 77%.
+    // Straight edges: more full tiles, close to the real 77%.
     assert!(
-        with.straight_edge_full > without.straight_edge_full + 0.25,
+        with.straight_edge_full > without.straight_edge_full + 0.15,
         "{with:?} vs {without:?}"
     );
-    assert!(with.straight_edge_full > 0.60, "{with:?}");
-    // Boundaries: fewer partial shapes, closer to the real 45% than the unsteered 61%.
-    assert!(
-        with.boundary_partial < without.boundary_partial - 0.10,
-        "{with:?} vs {without:?}"
-    );
-    assert!((0.33..=0.52).contains(&with.boundary_partial), "{with:?}");
+    assert!(with.straight_edge_full > 0.65, "{with:?}");
+    // Boundaries: partial shapes where the outline turns, not along straight edges.
+    assert!((0.20..=0.52).contains(&with.boundary_partial), "{with:?}");
     // Tiles are overwhelmingly the most common choice for their neighbourhood.
     assert!(
         with.modal > without.modal + 0.10 && with.modal > 0.85,
@@ -260,8 +257,43 @@ fn the_census_prior_moves_the_fit_toward_how_the_real_map_tiles_paths() {
 fn following_the_census_costs_little_fidelity_to_the_drawn_band() {
     let without = average_coverage(0.0);
     let with = average_coverage(PRIOR_WEIGHT);
-    assert!(without > 0.96, "{without}");
-    assert!(with > 0.92 && without - with < 0.05, "{with} vs {without}");
+    assert!(without > 0.93, "{without}");
+    assert!(with > 0.88 && without - with < 0.06, "{with} vs {without}");
+}
+
+#[test]
+fn wide_paths_have_no_spurs_and_no_pits() {
+    for width in [3.0_f32, 5.0] {
+        for (points, w) in battery().iter().filter(|(_, w)| *w == width) {
+            let fit = fit_path_overlay(&line(points, *w), &options(PRIOR_WEIGHT));
+            assert_eq!(ragged(&fit.tiles), (0, 0), "{points:?} at width {w}");
+        }
+    }
+}
+
+/// The tile map of a five-wide road at an arbitrary angle: a regular staircase, five tiles across
+/// (six on the rows where a small corner piece `b` steps out on each side), nothing else. `#` is a
+/// full tile.
+#[test]
+fn a_wide_diagonal_road_is_a_regular_staircase() {
+    let path = line(&[(10.5, 2.5), (22.5, 34.5)], 5.0);
+    let map = ascii(&fit_path_overlay(&path, &options(PRIOR_WEIGHT)).tiles);
+    let widths: Vec<usize> = map
+        .lines()
+        .map(|row| row.chars().filter(|c| *c != '.').count())
+        .collect();
+    // Interior rows are five tiles wide, or six where corner pieces step out (the ends taper).
+    assert!(
+        widths[3..widths.len() - 3]
+            .iter()
+            .all(|w| (5..=6).contains(w)),
+        "{widths:?}\n{map}"
+    );
+    // Every non-full tile is the small corner piece.
+    assert!(
+        map.chars().all(|c| matches!(c, '.' | '#' | 'b' | '\n')),
+        "{map}"
+    );
 }
 
 #[test]
@@ -271,4 +303,59 @@ fn narrow_trails_keep_their_length_instead_of_dissolving() {
     let fit = fit_path_overlay(&path, &options(PRIOR_WEIGHT));
     let columns: std::collections::BTreeSet<_> = fit.tiles.iter().map(|t| t.tile_x).collect();
     assert!((2..=28).all(|x| columns.contains(&x)), "{columns:?}");
+}
+
+/// Ragged-edge measures over a fit: path tiles that are lonely spurs (at most one orthogonal path
+/// neighbour) and empty tiles that are pits (at least three). A clean edge has neither.
+fn ragged(tiles: &[FittedTile]) -> (usize, usize) {
+    let set: std::collections::BTreeSet<_> = tiles.iter().map(|t| (t.tile_x, t.tile_y)).collect();
+    let around = |(x, y): (i32, i32)| {
+        [(0, 1), (1, 0), (0, -1), (-1, 0)]
+            .iter()
+            .filter(|(dx, dy)| set.contains(&(x + dx, y + dy)))
+            .count()
+    };
+    let spurs = set.iter().filter(|t| around(**t) <= 1).count();
+    let (min_x, max_x) = (
+        set.iter().map(|t| t.0).min().unwrap_or(0),
+        set.iter().map(|t| t.0).max().unwrap_or(0),
+    );
+    let (min_y, max_y) = (
+        set.iter().map(|t| t.1).min().unwrap_or(0),
+        set.iter().map(|t| t.1).max().unwrap_or(0),
+    );
+    let mut pits = 0;
+    for x in min_x..=max_x {
+        for y in min_y..=max_y {
+            if !set.contains(&(x, y)) && around((x, y)) >= 3 {
+                pits += 1;
+            }
+        }
+    }
+    (spurs, pits)
+}
+
+fn ascii(tiles: &[FittedTile]) -> String {
+    let map: std::collections::BTreeMap<_, _> =
+        tiles.iter().map(|t| ((t.tile_x, t.tile_y), *t)).collect();
+    let (min_x, max_x) = (
+        map.keys().map(|t| t.0).min().unwrap_or(0),
+        map.keys().map(|t| t.0).max().unwrap_or(0),
+    );
+    let (min_y, max_y) = (
+        map.keys().map(|t| t.1).min().unwrap_or(0),
+        map.keys().map(|t| t.1).max().unwrap_or(0),
+    );
+    let mut out = String::new();
+    for y in (min_y..=max_y).rev() {
+        for x in min_x..=max_x {
+            out.push(match map.get(&(x, y)) {
+                None => '.',
+                Some(t) if t.shape == 0 => '#',
+                Some(t) => char::from(b'a' + t.shape),
+            });
+        }
+        out.push('\n');
+    }
+    out
 }

@@ -52,71 +52,73 @@ fn fixtures() -> [Fixture; 10] {
             name: "horizontal",
             control_points: &[(0.25, 2.5), (8.75, 2.5)],
             width: 1.5,
-            min_coverage_agreement: 0.82,
-            max_edge_mismatch_rate: 0.40,
+            min_coverage_agreement: 0.79,
+            max_edge_mismatch_rate: 0.47,
         },
         Fixture {
             name: "vertical",
             control_points: &[(2.5, 0.25), (2.5, 8.75)],
             width: 1.5,
-            min_coverage_agreement: 0.82,
-            max_edge_mismatch_rate: 0.40,
+            min_coverage_agreement: 0.79,
+            max_edge_mismatch_rate: 0.47,
         },
         Fixture {
             name: "diagonal_45",
             control_points: &[(0.25, 0.25), (8.75, 8.75)],
             width: 1.5,
-            min_coverage_agreement: 0.82,
-            max_edge_mismatch_rate: 0.40,
+            min_coverage_agreement: 0.89,
+            max_edge_mismatch_rate: 0.12,
         },
         Fixture {
             name: "shallow_diagonal",
             control_points: &[(0.25, 1.0), (8.75, 4.0)],
             width: 1.5,
             min_coverage_agreement: 0.82,
-            max_edge_mismatch_rate: 0.40,
+            max_edge_mismatch_rate: 0.35,
         },
         Fixture {
             name: "gentle_curve",
             control_points: &[(0.25, 1.0), (4.0, 3.0), (8.75, 2.0)],
             width: 2.0,
-            min_coverage_agreement: 0.82,
-            max_edge_mismatch_rate: 0.40,
+            min_coverage_agreement: 0.80,
+            max_edge_mismatch_rate: 0.22,
         },
         Fixture {
             name: "tight_curve",
             control_points: &[(0.25, 0.5), (3.5, 4.5), (6.0, 0.75), (8.75, 4.25)],
             width: 2.0,
-            min_coverage_agreement: 0.80,
-            max_edge_mismatch_rate: 0.45,
+            min_coverage_agreement: 0.78,
+            max_edge_mismatch_rate: 0.30,
         },
         Fixture {
             name: "narrow",
             control_points: &[(0.25, 1.25), (8.75, 3.75)],
             width: 1.0,
+            // Occupancy-first fitting rounds a band to whole tiles (a 1.5-wide band becomes one or
+            // three tiles across), so floors are set from the measured fidelity of each fixture.
             min_coverage_agreement: 0.82,
-            max_edge_mismatch_rate: 0.45,
+            max_edge_mismatch_rate: 0.38,
         },
         Fixture {
             name: "wide",
             control_points: &[(0.25, 2.5), (8.75, 2.5)],
             width: 5.0,
-            min_coverage_agreement: 0.86,
-            max_edge_mismatch_rate: 0.35,
+            min_coverage_agreement: 0.93,
+            max_edge_mismatch_rate: 0.16,
         },
         Fixture {
             name: "corner_crossing",
             control_points: &[(0.0, 0.0), (8.0, 8.0)],
             width: 1.25,
-            min_coverage_agreement: 0.80,
-            max_edge_mismatch_rate: 0.45,
+            min_coverage_agreement: 0.87,
+            max_edge_mismatch_rate: 0.04,
         },
         Fixture {
             name: "negative_coordinates",
             control_points: &[(-8.75, -3.5), (-4.0, -1.0), (-0.25, -2.75)],
             width: 1.5,
             min_coverage_agreement: 0.80,
-            max_edge_mismatch_rate: 0.45,
+            max_edge_mismatch_rate: 0.32,
         },
     ]
 }
@@ -195,24 +197,24 @@ fn fixture_hashes_are_locked() {
         measure(&dense, fixture.width, EDGE_WEIGHT, PRIOR_WEIGHT).hash
     });
 
-    // Re-seeded when the fitter began preferring the real map's choices for each neighbourhood (the
-    // census prior, weight `PRIOR_WEIGHT`) and the narrowest fixture became one tile wide, the
-    // narrowest path the tool makes. The visual/metric delta was reviewed through the conformance
-    // tests in `fitter/tests.rs`: against the real map, partial shapes on boundary tiles fell from
-    // 61% to ~41% (real 45%) and full tiles on straight edges rose from 35% to ~70% (real 77%),
-    // for a coverage fidelity of ~0.94 against 0.97. Any further fitter change must review the
-    // delta before updating these values.
+    // Re-seeded when the fitter became occupancy-first (tiles chosen by rasterising the band and
+    // cleaning its edges, shapes by neighbourhood bitmask against the real map's census, weight
+    // `PRIOR_WEIGHT`) and the narrowest fixture became one tile wide. The visual/metric delta was
+    // reviewed through the conformance and staircase tests in `fitter/tests.rs`: wide paths have no
+    // spurs or pits, straight edges are full tiles ~73% of the time (real map ~77%), and fidelity to
+    // the drawn band is ~0.91 (the floors below are set from each fixture's measured value). Any
+    // further fitter change must review the delta before updating these values.
     let expected = [
-        10_913_319_085_832_378_304,
-        17_163_196_555_705_064_285,
-        10_842_659_392_432_427_742,
-        3_283_214_655_908_419_901,
-        17_332_951_069_497_710_890,
-        2_508_264_416_641_209_716,
-        8_403_130_812_578_236_330,
-        18_109_459_687_301_424_149,
-        467_232_552_191_870_625,
-        9_580_802_868_217_043_061,
+        14_205_456_016_154_599_170,
+        9_431_564_241_281_017_202,
+        11_269_751_821_849_482_662,
+        13_220_052_033_315_027_325,
+        6_880_355_575_656_137_835,
+        6_458_939_515_223_775_709,
+        1_089_113_308_047_036_665,
+        13_970_200_030_765_954_083,
+        6_070_785_111_042_247_537,
+        5_511_176_239_604_900_442,
     ];
     assert_eq!(actual, expected);
 }

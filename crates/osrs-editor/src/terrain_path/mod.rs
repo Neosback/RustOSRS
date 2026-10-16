@@ -8,6 +8,7 @@
 mod appearance;
 mod census;
 mod fitter;
+mod occupancy;
 #[cfg(test)]
 mod quality;
 mod shapes;
