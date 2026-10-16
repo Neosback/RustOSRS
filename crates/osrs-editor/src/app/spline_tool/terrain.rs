@@ -25,6 +25,7 @@ fn grade_line(line: &[terrain_path::PathSample]) -> Vec<osrs_edit::GradePoint> {
             x: p.x,
             y: p.y,
             half: p.half,
+            weight: if p.smooth { 1.0 } else { 0.0 },
         })
         .collect()
 }
@@ -95,13 +96,14 @@ pub(super) fn refresh_blocked(
 /// ground option or the terrain under the path changed.
 pub(super) fn rebuild_appearance(app: &mut EditorApp) {
     let version = app.world.infos_version();
-    let smooth = app.settings.prefs.spline.smooth_ground;
-    let grade_key = u64::from(smooth);
     let (Some(preview), Some(floors)) =
         (app.interaction.current_spline_preview(), app.world.floors())
     else {
         return;
     };
+    // Which stretches smooth the ground is part of the preview's key already.
+    let smooth = preview.line.iter().any(|p| p.smooth);
+    let grade_key = u64::from(smooth);
     let fresh = app.interaction.spline_appearance().is_some_and(|a| {
         a.key == preview.key && a.infos_version == version && a.grade_key == grade_key
     });
@@ -152,7 +154,7 @@ pub(super) fn commit_grade(
     let Some(plane) = SourcePlane::new(app.interaction.view_plane()) else {
         return Vec::new();
     };
-    if !app.settings.prefs.spline.smooth_ground || preview.line.is_empty() {
+    if !preview.line.iter().any(|p| p.smooth) {
         return Vec::new();
     }
     let document = app.session.document();

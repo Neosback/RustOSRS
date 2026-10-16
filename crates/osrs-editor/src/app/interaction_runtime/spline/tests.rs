@@ -365,3 +365,59 @@ fn tiles_with_other_overlays_are_left_alone_reported_and_change_the_key() {
     assert!(!walled.clipped.is_empty());
     assert!(open.clipped.is_empty());
 }
+
+#[test]
+fn wander_and_ground_apply_to_the_selection_or_all_and_become_the_defaults() {
+    use crate::terrain_path::Wander;
+    let mut interaction = interaction();
+    interaction.replace_spline_points(vec![(0.5, 0.5), (5.5, 0.5), (10.5, 0.5)]);
+    let seeds: Vec<u32> = interaction.spline_attrs().iter().map(|a| a.seed).collect();
+    assert!(
+        seeds[0] != seeds[1] && seeds[1] != seeds[2] && seeds[0] != seeds[2],
+        "every point has its own seed: {seeds:?}"
+    );
+    let before = input_for(&interaction, None).key;
+
+    interaction.select_spline_point(1);
+    interaction.sync_spline_defaults(Wander::Natural, false);
+    let wanders: Vec<Wander> = interaction
+        .spline_attrs()
+        .iter()
+        .map(|a| a.wander)
+        .collect();
+    assert_eq!(
+        wanders,
+        [Wander::Off, Wander::Natural, Wander::Off],
+        "selected point only"
+    );
+    assert_ne!(before, input_for(&interaction, None).key, "wander replans");
+
+    // Syncing unchanged toggles does not overwrite a point edited by hand.
+    interaction.set_spline_point_wander(2, Wander::Gentle);
+    interaction.sync_spline_defaults(Wander::Natural, false);
+    assert_eq!(interaction.spline_attrs()[2].wander, Wander::Gentle);
+
+    // A point added afterwards starts with the toggles' setting; an inserted one with its neighbour's.
+    interaction.append_spline_point_and_drag((15.5, 0.5));
+    interaction.finish_spline_drag();
+    assert_eq!(interaction.spline_attrs()[3].wander, Wander::Natural);
+    interaction.insert_spline_point_and_drag(3, (13.5, 0.5));
+    interaction.finish_spline_drag();
+    assert_eq!(interaction.spline_attrs()[3].wander, Wander::Gentle);
+
+    // With nothing selected a changed toggle applies to every stretch.
+    interaction.spline.selected = None;
+    interaction.sync_spline_defaults(Wander::Off, true);
+    assert!(
+        interaction
+            .spline_attrs()
+            .iter()
+            .all(|a| a.wander == Wander::Off && a.smooth_ground)
+    );
+
+    // The ground flag of one point can be flipped on its own and replans.
+    let key = input_for(&interaction, None).key;
+    interaction.toggle_spline_point_ground(0);
+    assert!(!interaction.spline_attrs()[0].smooth_ground);
+    assert_ne!(key, input_for(&interaction, None).key);
+}

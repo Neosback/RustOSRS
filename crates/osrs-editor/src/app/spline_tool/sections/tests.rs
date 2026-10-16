@@ -24,6 +24,9 @@ fn points(count: usize) -> Vec<crate::terrain_path::ControlPoint> {
             y: 3210.5 + i as f32 * 3.5,
             width: 1.0 + (i % 5) as f32 * 2.0,
             corner: i % 3 == 1,
+            wander: crate::terrain_path::Wander::Off,
+            seed: i as u32,
+            smooth_ground: false,
         })
         .collect()
 }

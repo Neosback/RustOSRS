@@ -3,7 +3,7 @@
 //! mutation.
 use super::InteractionRuntime;
 use super::plan::{BlockedTiles, blocked_key};
-use crate::terrain_path::ControlPoint;
+use crate::terrain_path::{ControlPoint, Wander};
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -15,6 +15,12 @@ pub(in crate::app) const MAX_WIDTH: f32 = 24.0;
 pub(in crate::app) struct PointAttr {
     pub(in crate::app) width: f32,
     pub(in crate::app) corner: bool,
+    /// How the stretch after this point wanders.
+    pub(in crate::app) wander: Wander,
+    /// Whether the ground is smoothed along the stretch after this point.
+    pub(in crate::app) smooth_ground: bool,
+    /// Identity of this point's wander, kept while other points move.
+    pub(in crate::app) seed: u32,
 }
 
 fn clamp_width(width: f32) -> f32 {
@@ -46,6 +52,9 @@ impl InteractionRuntime {
                 y: point.1,
                 width: attr.width,
                 corner: attr.corner,
+                wander: attr.wander,
+                seed: attr.seed,
+                smooth_ground: attr.smooth_ground,
             })
             .collect()
     }
@@ -98,16 +107,99 @@ impl InteractionRuntime {
         }
     }
 
+    /// Follow the tool's toggles: when one changed, apply it to the selected point's stretch (or
+    /// all of them) and to new points. Points edited by hand keep their own setting until a
+    /// toggle changes again.
+    pub(in crate::app) fn sync_spline_defaults(&mut self, wander: Wander, smooth_ground: bool) {
+        if wander != self.spline.default_wander {
+            self.apply_spline_wander(wander);
+        }
+        if smooth_ground != self.spline.default_smooth {
+            self.apply_spline_smooth_ground(smooth_ground);
+        }
+    }
+
+    /// Set how the stretch after the selected point wanders, or after every point when none is
+    /// selected. The setting also becomes the default for new points.
+    pub(in crate::app) fn apply_spline_wander(&mut self, wander: Wander) {
+        self.spline.default_wander = wander;
+        let range = match self.spline.selected {
+            Some(index) => index..index + 1,
+            None => 0..self.spline.attrs.len(),
+        };
+        for attr in self.spline.attrs.get_mut(range).into_iter().flatten() {
+            if attr.wander != wander {
+                attr.wander = wander;
+                self.spline.desired_key = None;
+            }
+        }
+    }
+
+    /// As [`Self::apply_spline_wander`], for smoothing the ground.
+    pub(in crate::app) fn apply_spline_smooth_ground(&mut self, smooth: bool) {
+        self.spline.default_smooth = smooth;
+        let range = match self.spline.selected {
+            Some(index) => index..index + 1,
+            None => 0..self.spline.attrs.len(),
+        };
+        for attr in self.spline.attrs.get_mut(range).into_iter().flatten() {
+            if attr.smooth_ground != smooth {
+                attr.smooth_ground = smooth;
+                self.spline.desired_key = None;
+            }
+        }
+    }
+
+    /// Give a new wander to the stretch after one point (the points list).
+    pub(in crate::app) fn set_spline_point_wander(&mut self, index: usize, wander: Wander) {
+        if let Some(attr) = self.spline.attrs.get_mut(index)
+            && attr.wander != wander
+        {
+            attr.wander = wander;
+            self.spline.desired_key = None;
+        }
+    }
+
+    pub(in crate::app) fn toggle_spline_point_ground(&mut self, index: usize) {
+        if let Some(attr) = self.spline.attrs.get_mut(index) {
+            attr.smooth_ground = !attr.smooth_ground;
+            self.spline.desired_key = None;
+        }
+    }
+
+    /// A new point's attributes: the tool's defaults, and a seed that is not shared with any
+    /// other point so each stretch wanders differently.
+    pub(in crate::app) fn new_spline_attr(&mut self, width: f32) -> PointAttr {
+        self.spline.next_seed = self.spline.next_seed.wrapping_add(1);
+        PointAttr {
+            width,
+            corner: false,
+            wander: self.spline.default_wander,
+            smooth_ground: self.spline.default_smooth,
+            seed: self.spline.next_seed,
+        }
+    }
+
     /// Replace the whole path (scripts).
     pub(in crate::app) fn replace_spline_controls(&mut self, controls: Vec<ControlPoint>) {
         self.spline.points = controls.iter().map(|c| (c.x, c.y)).collect();
-        self.spline.attrs = controls
-            .iter()
-            .map(|c| PointAttr {
+        let mut attrs = Vec::with_capacity(controls.len());
+        for c in &controls {
+            // Seed 0 means "none given": hand out the next free one.
+            let seed = if c.seed == 0 {
+                self.new_spline_attr(c.width).seed
+            } else {
+                c.seed
+            };
+            attrs.push(PointAttr {
                 width: clamp_width(c.width),
                 corner: c.corner,
-            })
-            .collect();
+                wander: c.wander,
+                smooth_ground: c.smooth_ground,
+                seed,
+            });
+        }
+        self.spline.attrs = attrs;
         self.spline.drag = None;
         self.spline.selected = None;
         self.spline.desired_key = None;

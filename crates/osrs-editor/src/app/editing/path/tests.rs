@@ -334,11 +334,13 @@ fn graded_path_commits_once_and_one_undo_restores_overlay_and_terrain() {
             x: 3194.0,
             y: 3200.0,
             half: 1.5,
+            weight: 1.0,
         },
         osrs_edit::GradePoint {
             x: 3206.0,
             y: 3200.0,
             half: 1.5,
+            weight: 1.0,
         },
     ];
     let grade = osrs_edit::plan_path_grade(&line, osrs_edit::PathGradeSpec::default(), &|v| {

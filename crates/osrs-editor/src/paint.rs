@@ -163,6 +163,8 @@ pub struct SplineSettings {
     /// Also smooth the ground along the path when laying it (off: the path follows the ground,
     /// as the real map's paths do). Laid in the same undo step.
     pub smooth_ground: bool,
+    /// How much the stretches between points wander (new points, and the selected point or all).
+    pub wander: crate::terrain_path::Wander,
 }
 
 impl Default for SplineSettings {
@@ -170,6 +172,7 @@ impl Default for SplineSettings {
         Self {
             width: PathStyle::Path.width(),
             smooth_ground: false,
+            wander: crate::terrain_path::Wander::Off,
         }
     }
 }

@@ -30,6 +30,9 @@ pub struct GradePoint {
     pub x: f32,
     pub y: f32,
     pub half: f32,
+    /// How much the ground is smoothed here, from `0` (follow the ground) to `1` (fully
+    /// smoothed). It is blurred along the path like the profile, so a change is gradual.
+    pub weight: f32,
 }
 
 /// How the ground is smoothed along a path. The defaults come from the real map: its paths have a
@@ -92,6 +95,7 @@ fn resample(line: &[GradePoint]) -> Vec<GradePoint> {
                 x: a.x + (b.x - a.x) * t,
                 y: a.y + (b.y - a.y) * t,
                 half: a.half + (b.half - a.half) * t,
+                weight: a.weight + (b.weight - a.weight) * t,
             });
             at += STEP;
         }
@@ -197,9 +201,13 @@ pub fn plan_path_grade(
     height: &dyn Fn((i32, i32)) -> Option<i32>,
 ) -> Vec<((i32, i32), i32)> {
     if line.is_empty()
-        || line
-            .iter()
-            .any(|p| !p.x.is_finite() || !p.y.is_finite() || !p.half.is_finite() || p.half <= 0.0)
+        || line.iter().any(|p| {
+            !p.x.is_finite()
+                || !p.y.is_finite()
+                || !p.half.is_finite()
+                || p.half <= 0.0
+                || !p.weight.is_finite()
+        })
     {
         return Vec::new();
     }
@@ -218,7 +226,17 @@ pub fn plan_path_grade(
         (spec.smoothing_tiles / STEP / 2.0).round() as usize,
     );
     limit_slope(&mut bed, spec.max_slope * STEP);
-    let correction: Vec<f32> = bed.iter().zip(&raw).map(|(bed, raw)| bed - raw).collect();
+    let mut weight: Vec<f32> = samples.iter().map(|p| p.weight.clamp(0.0, 1.0)).collect();
+    blur(
+        &mut weight,
+        (spec.smoothing_tiles / STEP / 2.0).round() as usize,
+    );
+    let correction: Vec<f32> = bed
+        .iter()
+        .zip(&raw)
+        .zip(&weight)
+        .map(|((bed, raw), weight)| (bed - raw) * weight)
+        .collect();
 
     let widest = samples.iter().map(|p| p.half).fold(0.0_f32, f32::max);
     let reach = widest + spec.blend_tiles;

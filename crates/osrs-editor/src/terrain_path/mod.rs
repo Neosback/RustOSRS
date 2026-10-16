@@ -13,9 +13,11 @@ mod occupancy;
 mod quality;
 mod shapes;
 mod smooth;
+mod wander;
 
 pub use appearance::{PathAppearance, path_appearance, reference_palette};
 pub use census::is_path_overlay;
 pub use fitter::{EDGE_WEIGHT, Fit, FitOptions, FittedTile, PRIOR_WEIGHT, fit_path_overlay};
 pub use shapes::{overlay_triangles, shape_triangles};
 pub use smooth::{ControlPoint, PathSample, smooth_path};
+pub use wander::Wander;

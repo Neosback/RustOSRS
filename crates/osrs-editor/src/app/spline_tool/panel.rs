@@ -1,6 +1,6 @@
 //! Shared Spline widgets. Drawing emits point actions; the interaction owner applies them.
 use crate::paint::{PathStyle, SplineSettings};
-use crate::terrain_path::ControlPoint;
+use crate::terrain_path::{ControlPoint, Wander};
 use eframe::egui;
 
 /// The path's style and ground option. Width is a preset (Trail, Path, Road); with a point
@@ -24,9 +24,18 @@ pub(in crate::app) fn settings(ui: &mut egui::Ui, settings: &mut SplineSettings)
             }
         }
     });
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Route");
+        for wander in [Wander::Off, Wander::Gentle, Wander::Natural] {
+            ui.selectable_value(&mut settings.wander, wander, wander.short_label())
+                .on_hover_text(
+                    "How the path drifts between points. Applies to the selected point's stretch, or to all stretches and new ones.",
+                );
+        }
+    });
     ui.checkbox(&mut settings.smooth_ground, "Smooth ground along the path")
         .on_hover_text(
-            "Ease bumps and too-steep stretches along the path. Off: the path follows the ground, as the real map's paths do.",
+            "Ease bumps and too-steep stretches along the path. Off: the path follows the ground, as the real map's paths do. Applies to the selected point's stretch, or to all stretches and new ones.",
         );
 }
 
@@ -37,6 +46,9 @@ pub(in crate::app) enum PointAction {
     Remove(usize),
     Width(usize, f32),
     ToggleCorner(usize),
+    /// Cycle how the stretch after a point wanders.
+    CycleWander(usize),
+    ToggleGround(usize),
 }
 
 pub(in crate::app) fn points(
@@ -98,6 +110,29 @@ pub(in crate::app) fn points(
                                 .clicked()
                             {
                                 action = Some(PointAction::ToggleCorner(index));
+                            }
+                            if ui
+                                .selectable_label(
+                                    point.wander != Wander::Off,
+                                    egui_phosphor::regular::WAVE_SINE,
+                                )
+                                .on_hover_text(format!(
+                                    "{} after this point (click to change)",
+                                    point.wander.label()
+                                ))
+                                .clicked()
+                            {
+                                action = Some(PointAction::CycleWander(index));
+                            }
+                            if ui
+                                .selectable_label(
+                                    point.smooth_ground,
+                                    egui_phosphor::regular::MOUNTAINS,
+                                )
+                                .on_hover_text("Smooth the ground after this point")
+                                .clicked()
+                            {
+                                action = Some(PointAction::ToggleGround(index));
                             }
                             if ui
                                 .small_button(egui_phosphor::regular::TRASH)

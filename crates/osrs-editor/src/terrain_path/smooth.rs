@@ -1,7 +1,10 @@
 //! The centre line of a path: control points with their own width and a corner flag, turned into a
 //! dense polyline that carries the local half-width.
 
-/// One control point of a path.
+use super::wander::{Wander, wander_segment};
+
+/// One control point of a path. Its width, wander and ground flag describe the path *from this
+/// point to the next* (width is also interpolated toward the next point's width).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ControlPoint {
     pub x: f32,
@@ -10,6 +13,12 @@ pub struct ControlPoint {
     pub width: f32,
     /// A corner keeps the path from curving through this point: the line bends sharply here.
     pub corner: bool,
+    /// How the stretch after this point wanders.
+    pub wander: Wander,
+    /// Identity of this point's wander: it keeps its drift while other points move.
+    pub seed: u32,
+    /// Whether the ground is smoothed along the stretch after this point.
+    pub smooth_ground: bool,
 }
 
 impl ControlPoint {
@@ -19,6 +28,9 @@ impl ControlPoint {
             y,
             width,
             corner: false,
+            wander: Wander::Off,
+            seed: 0,
+            smooth_ground: false,
         }
     }
 }
@@ -29,73 +41,83 @@ pub struct PathSample {
     pub x: f32,
     pub y: f32,
     pub half: f32,
+    /// Whether the ground is smoothed here.
+    pub smooth: bool,
 }
 
 const STEPS: usize = 12;
 const MIN_HALF_WIDTH: f32 = 0.25;
 
+fn half_of(width: f32) -> f32 {
+    if width.is_finite() {
+        (width / 2.0).max(MIN_HALF_WIDTH)
+    } else {
+        0.5
+    }
+}
+
+fn sample_at(p: &ControlPoint) -> PathSample {
+    PathSample {
+        x: p.x,
+        y: p.y,
+        half: half_of(p.width),
+        smooth: p.smooth_ground,
+    }
+}
+
 /// The smooth centre line through `points`: a Catmull-Rom curve (clamped ends, twelve samples per
 /// segment) in each run between corners, with the width interpolated along it. Two points are a
-/// straight segment; corners join runs without rounding. Non-finite widths fall back to one tile.
+/// straight segment; corners join runs without rounding. Each segment then wanders as its start
+/// point says. Non-finite widths fall back to one tile.
 pub fn smooth_path(points: &[ControlPoint]) -> Vec<PathSample> {
-    let half = |width: f32| {
-        if width.is_finite() {
-            (width / 2.0).max(MIN_HALF_WIDTH)
-        } else {
-            0.5
-        }
-    };
     if points.len() == 1 {
-        let p = points[0];
-        return vec![PathSample {
-            x: p.x,
-            y: p.y,
-            half: half(p.width),
-        }];
+        return vec![sample_at(&points[0])];
     }
-    let mut out = Vec::with_capacity((points.len().saturating_sub(1)) * STEPS + 1);
+    // One sample list per segment (from its start point, up to but not including its end).
+    let mut segments: Vec<Vec<PathSample>> = vec![Vec::new(); points.len() - 1];
     let mut start = 0;
     for end in 1..points.len() {
-        let run_ends = end == points.len() - 1 || points[end].corner;
-        if !run_ends {
-            continue;
+        if end == points.len() - 1 || points[end].corner {
+            run(&points[start..=end], &mut segments[start..end]);
+            start = end;
         }
-        run(&points[start..=end], &mut out, half);
-        out.pop(); // the next run starts at this point
-        start = end;
     }
-    let last = points[points.len() - 1];
-    out.push(PathSample {
-        x: last.x,
-        y: last.y,
-        half: half(last.width),
-    });
+    let mut out = Vec::with_capacity(points.len() * STEPS + 1);
+    for (k, samples) in segments.into_iter().enumerate() {
+        if points[k].wander == Wander::Off {
+            out.extend(samples);
+        } else {
+            let mut stretch = samples;
+            stretch.push(sample_at(&points[k + 1]));
+            out.extend(wander_segment(&stretch, points[k].wander, points[k].seed));
+        }
+    }
+    let mut last = sample_at(&points[points.len() - 1]);
+    // The final point carries the last stretch's ground flag, so it is not a one-sample island.
+    last.smooth = points[points.len() - 2].smooth_ground;
+    out.push(last);
     out
 }
 
-/// One corner-free run: samples from its first point up to, not including, its last.
-fn run(points: &[ControlPoint], out: &mut Vec<PathSample>, half: impl Fn(f32) -> f32) {
+/// One corner-free run: fills each of its segments with samples from the segment's start point up
+/// to, not including, its end.
+fn run(points: &[ControlPoint], segments: &mut [Vec<PathSample>]) {
     for i in 0..points.len() - 1 {
         let p0 = points[i.saturating_sub(1)];
         let (p1, p2) = (points[i], points[i + 1]);
         let p3 = points[(i + 2).min(points.len() - 1)];
-        let (h1, h2) = (half(p1.width), half(p2.width));
+        let (h1, h2) = (half_of(p1.width), half_of(p2.width));
         for step in 0..STEPS {
             let t = step as f32 / STEPS as f32;
             let (t2, t3) = (t * t, t * t * t);
-            out.push(PathSample {
+            segments[i].push(PathSample {
                 x: catmull(p0.x, p1.x, p2.x, p3.x, t, t2, t3),
                 y: catmull(p0.y, p1.y, p2.y, p3.y, t, t2, t3),
                 half: h1 + (h2 - h1) * t,
+                smooth: p1.smooth_ground,
             });
         }
     }
-    let last = points[points.len() - 1];
-    out.push(PathSample {
-        x: last.x,
-        y: last.y,
-        half: half(last.width),
-    });
 }
 
 fn catmull(p0: f32, p1: f32, p2: f32, p3: f32, t: f32, t2: f32, t3: f32) -> f32 {
@@ -178,5 +200,38 @@ mod tests {
         assert_eq!(line[0].half, 0.5);
         assert_eq!(line[line.len() - 1].half, MIN_HALF_WIDTH);
         assert_eq!(smooth_path(&[ControlPoint::new(2.0, 2.0, 3.0)]).len(), 1);
+    }
+
+    #[test]
+    fn a_wandering_stretch_leaves_other_stretches_and_the_control_points_alone() {
+        let mut points = pts(&[(0.0, 0.0), (30.0, 0.0), (60.0, 0.0)], 3.0);
+        let plain = smooth_path(&points);
+        points[0].wander = Wander::Natural;
+        points[0].seed = 5;
+        let wandered = smooth_path(&points);
+        // The control points themselves do not move.
+        let find = |line: &[PathSample], x: f32| line.iter().any(|s| s.x == x && s.y == 0.0);
+        assert!(find(&wandered, 0.0) && find(&wandered, 30.0) && find(&wandered, 60.0));
+        // The first stretch drifts; the second (which starts at point 1, not wandering) does not.
+        assert!(
+            wandered
+                .iter()
+                .take_while(|s| s.x < 30.0)
+                .any(|s| s.y.abs() > 0.3)
+        );
+        let second: Vec<_> = wandered.iter().filter(|s| s.x > 30.0).collect();
+        assert!(second.iter().all(|s| s.y == 0.0));
+        // And the second stretch's samples are unchanged from the plain path.
+        let plain_second: Vec<_> = plain.iter().filter(|s| s.x > 30.0).collect();
+        assert_eq!(second.len(), plain_second.len());
+    }
+
+    #[test]
+    fn the_ground_flag_follows_each_stretch() {
+        let mut points = pts(&[(0.0, 0.0), (10.0, 0.0), (20.0, 0.0)], 3.0);
+        points[0].smooth_ground = true;
+        let line = smooth_path(&points);
+        assert!(line.iter().filter(|s| s.x < 10.0).all(|s| s.smooth));
+        assert!(line.iter().filter(|s| s.x >= 10.0).all(|s| !s.smooth));
     }
 }

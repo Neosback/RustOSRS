@@ -55,6 +55,9 @@ pub(super) fn plan_key(key: &PlanKey<'_>) -> u64 {
                     c.y.to_bits(),
                     c.width.to_bits(),
                     u32::from(c.corner),
+                    c.wander as u32,
+                    c.seed,
+                    u32::from(c.smooth_ground),
                 ]
             })
             .chain([

@@ -23,6 +23,11 @@ pub(super) struct SplineState {
     attrs: Vec<PointAttr>,
     /// The width new points start with (the Path preset until the app says otherwise).
     default_width: Option<f32>,
+    /// What new points (and the stretch after them) start with.
+    default_wander: crate::terrain_path::Wander,
+    default_smooth: bool,
+    /// Seeds are handed out in order so no two points share one.
+    next_seed: u32,
     /// Tiles the path must not paint over, from the loaded terrain.
     blocked: BlockedTiles,
     blocked_scope: Option<attrs::BlockedScope>,
@@ -148,10 +153,8 @@ impl InteractionRuntime {
 
     pub(in crate::app) fn append_spline_point_and_drag(&mut self, point: (f32, f32)) {
         self.spline.points.push(point);
-        self.spline.attrs.push(PointAttr {
-            width: self.spline.default_width(),
-            corner: false,
-        });
+        let attr = self.new_spline_attr(self.spline.default_width());
+        self.spline.attrs.push(attr);
         self.spline.drag = Some(self.spline.points.len() - 1);
         self.spline.selected = self.spline.drag;
         self.spline.desired_key = None;
@@ -165,13 +168,13 @@ impl InteractionRuntime {
             (Some(before), Some(after)) => (self.spline.attrs[before].width + after.width) / 2.0,
             _ => self.spline.default_width(),
         };
-        self.spline.attrs.insert(
-            index,
-            PointAttr {
-                width,
-                corner: false,
-            },
-        );
+        // ...and its wander and ground setting too.
+        let mut attr = self.new_spline_attr(width);
+        if let Some(before) = index.checked_sub(1).and_then(|i| self.spline.attrs.get(i)) {
+            attr.wander = before.wander;
+            attr.smooth_ground = before.smooth_ground;
+        }
+        self.spline.attrs.insert(index, attr);
         self.spline.drag = Some(index);
         self.spline.selected = Some(index);
         self.spline.desired_key = None;

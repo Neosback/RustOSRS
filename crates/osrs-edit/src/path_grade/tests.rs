@@ -19,11 +19,13 @@ fn straight(half: f32) -> Vec<GradePoint> {
             x: -20.0,
             y: 0.0,
             half,
+            weight: 1.0,
         },
         GradePoint {
             x: 20.0,
             y: 0.0,
             half,
+            weight: 1.0,
         },
     ]
 }
@@ -156,21 +158,25 @@ fn a_wider_stretch_reaches_further_than_a_narrow_one() {
             x: -20.0,
             y: 0.0,
             half: 0.5,
+            weight: 1.0,
         },
         GradePoint {
             x: -1.0,
             y: 0.0,
             half: 0.5,
+            weight: 1.0,
         },
         GradePoint {
             x: 1.0,
             y: 0.0,
             half: 4.0,
+            weight: 1.0,
         },
         GradePoint {
             x: 20.0,
             y: 0.0,
             half: 4.0,
+            weight: 1.0,
         },
     ];
     let changes = grade(&line, spec, &heights);
@@ -228,7 +234,8 @@ fn degenerate_input_is_rejected_without_panicking() {
         go(&[GradePoint {
             x: f32::NAN,
             y: 0.0,
-            half: 1.0
+            half: 1.0,
+            weight: 1.0,
         }])
         .is_empty()
     );
@@ -236,5 +243,52 @@ fn degenerate_input_is_rejected_without_panicking() {
         x: 0.0,
         y: 0.0,
         half: 1.0,
+        weight: 1.0,
     }]);
+}
+
+#[test]
+fn weight_zero_leaves_the_ground_and_a_partial_weight_is_in_between() {
+    let bumpy = field(40, |x, _| if x % 6 == 0 { -96 } else { 0 });
+    let mut line = straight(1.5);
+    for point in &mut line {
+        point.weight = 0.0;
+    }
+    assert!(grade(&line, NO_BLEND, &bumpy).is_empty());
+    let full = grade(&straight(1.5), NO_BLEND, &bumpy);
+    for point in &mut line {
+        point.weight = 0.5;
+    }
+    let half = grade(&line, NO_BLEND, &bumpy);
+    let size = |changes: &Heights| -> i64 {
+        changes
+            .iter()
+            .map(|(v, h)| i64::from((h - bumpy[v]).abs()))
+            .sum()
+    };
+    assert!(size(&full) > 0);
+    let (full_size, half_size) = (size(&full), size(&half));
+    assert!(
+        half_size * 3 > full_size && half_size * 3 < full_size * 2 + full_size / 2,
+        "half {half_size} of full {full_size}"
+    );
+}
+
+#[test]
+fn a_stretch_with_weight_zero_is_only_gradually_smoothed_at_its_edge() {
+    let bumpy = field(40, |x, _| if x % 6 == 0 { -96 } else { 0 });
+    let mut line = straight(1.5);
+    line[0].weight = 0.0; // follow the ground at the start, smooth by the end
+    let changes = grade(&line, NO_BLEND, &bumpy);
+    let near_start: i64 = changes
+        .iter()
+        .filter(|(v, _)| v.0 < -14)
+        .map(|(v, h)| i64::from((h - bumpy[v]).abs()))
+        .sum();
+    let near_end: i64 = changes
+        .iter()
+        .filter(|(v, _)| v.0 > 14)
+        .map(|(v, h)| i64::from((h - bumpy[v]).abs()))
+        .sum();
+    assert!(near_start < near_end, "start {near_start} end {near_end}");
 }

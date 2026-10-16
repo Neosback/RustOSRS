@@ -72,6 +72,10 @@ impl EditorApp {
         let pending = pending_point(self);
         self.interaction
             .set_spline_default_width(self.settings.prefs.spline.width);
+        self.interaction.sync_spline_defaults(
+            self.settings.prefs.spline.wander,
+            self.settings.prefs.spline.smooth_ground,
+        );
         terrain::refresh_blocked(self, overlay, pending);
         self.interaction.update_spline_preview(overlay, pending);
         terrain::rebuild_appearance(self);
@@ -84,11 +88,17 @@ impl EditorApp {
             .iter()
             .map(|c| {
                 format!(
-                    "{:.3},{:.3}:{:.1}{}",
+                    "{:.3},{:.3}:{:.1}{}{}{}",
                     c.x,
                     c.y,
                     c.width,
-                    if c.corner { "!" } else { "" }
+                    if c.corner { "!" } else { "" },
+                    match c.wander {
+                        crate::terrain_path::Wander::Off => "",
+                        crate::terrain_path::Wander::Gentle => "~",
+                        crate::terrain_path::Wander::Natural => "~~",
+                    },
+                    if c.smooth_ground { "^" } else { "" },
                 )
             })
             .collect();

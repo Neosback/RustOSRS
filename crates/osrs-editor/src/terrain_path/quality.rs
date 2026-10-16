@@ -231,6 +231,7 @@ fn measure(
             x,
             y,
             half: width * 0.5,
+            smooth: false,
         })
         .collect();
     let fitted = fit_path_overlay(

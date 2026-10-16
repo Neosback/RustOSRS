@@ -241,7 +241,7 @@ impl EditorApp {
         let brush = &self.settings.prefs.brush;
         let also = AlsoApplies {
             // A graded bed replaces the Paint brush's flat height.
-            height: (brush.height.armed && !self.settings.prefs.spline.smooth_ground)
+            height: (brush.height.armed && !points.iter().any(|p| p.smooth_ground))
                 .then_some(brush.height.value),
             flags: brush.flags.armed.then_some(brush.flags.bits),
         };
@@ -307,6 +307,20 @@ impl EditorApp {
                 }
                 SplineAction::Point(PointAction::ToggleCorner(index)) => {
                     self.interaction.toggle_spline_corner(index)
+                }
+                SplineAction::Point(PointAction::CycleWander(index)) => {
+                    let current = self
+                        .interaction
+                        .spline_controls()
+                        .get(index)
+                        .map(|c| c.wander);
+                    if let Some(current) = current {
+                        self.interaction
+                            .set_spline_point_wander(index, current.next());
+                    }
+                }
+                SplineAction::Point(PointAction::ToggleGround(index)) => {
+                    self.interaction.toggle_spline_point_ground(index)
                 }
                 SplineAction::Lay => self.commit_spline(),
                 SplineAction::RemoveLast => self.interaction.pop_spline_point(),
