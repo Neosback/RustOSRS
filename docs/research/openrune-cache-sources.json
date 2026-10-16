@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "reviewed_on": "2026-10-15",
+  "roots": {
+    "filestore": "/Users/tylercovalt/Desktop/OpenRune/OpenRune-FileStore-main",
+    "server": "/Users/tylercovalt/Desktop/OpenRune/OpenRune-Server-241"
+  },
+  "files": [
+    {
+      "root": "filestore",
+      "path": "filesystem/src/main/kotlin/dev/openrune/filesystem/FileCache.kt",
+      "sha256": "f95b9dde7e3f786da27fdd7573f10ebf3d4a7f83ffe58e43e4a61d9f46d424bc"
+    },
+    {
+      "root": "filestore",
+      "path": "filesystem/src/main/kotlin/dev/openrune/filesystem/ReadOnlyCache.kt",
+      "sha256": "7f52d587f40f853d7bea7a67ec97349e0583a19760502e70d3e1f581dff6cfab"
+    },
+    {
+      "root": "filestore",
+      "path": "filesystem/src/main/kotlin/dev/openrune/filesystem/util/secure/VersionTableBuilder.kt",
+      "sha256": "cc6e93705479c638b6778e33012640823f203ae9398119d7125668ad155c7997"
+    },
+    {
+      "root": "filestore",
+      "path": "tools/src/main/kotlin/dev/openrune/cache/tools/incremental/IncrementalSession.kt",
+      "sha256": "8efd84ed9b22f856d3d4668155961a54e5535c9ffc4cd07966b86893f389193c"
+    },
+    {
+      "root": "filestore",
+      "path": "tools/src/main/kotlin/dev/openrune/cache/tools/incremental/IncrementalBuild.kt",
+      "sha256": "b866d11728017f2a19cd53f9f67342f92b6ee78e6a58cc9afcc21a49d9604996"
+    },
+    {
+      "root": "filestore",
+      "path": "tools/src/main/kotlin/dev/openrune/cache/tools/incremental/RecordingCache.kt",
+      "sha256": "46d781f9b93acabf897d4a1131e8d7b53e22a2661e1648436448275fede82477"
+    },
+    {
+      "root": "filestore",
+      "path": "tools/src/main/kotlin/dev/openrune/cache/tools/incremental/PackState.kt",
+      "sha256": "a816443b8b2bd13179accde0cb9f5abbfff0ed71c2034d977a4a8d1568318a7a"
+    },
+    {
+      "root": "server",
+      "path": "or-cache/build.gradle.kts",
+      "sha256": "a322999105957e31bd2562acfb10fe4c78b8fced8b028b0b049ec3920c196bf5"
+    },
+    {
+      "root": "server",
+      "path": "or-cache/src/main/kotlin/dev/openrune/net/CacheJs5GroupProvider.kt",
+      "sha256": "b6dd0a78de704e5dbfe633ad5381d639747d7098d8f8db3b8222b0a2c12ff618"
+    },
+    {
+      "root": "server",
+      "path": "or-cache/src/main/kotlin/dev/openrune/ServerCacheManager.kt",
+      "sha256": "dc1653477b015bfc2d43f91fb3034a34ac8f7ef4cc1eecd8bfd427a7ced37ef5"
+    },
+    {
+      "root": "server",
+      "path": "or-cache/src/main/kotlin/dev/openrune/gamevals/GameValMaxIdManifest.kt",
+      "sha256": "043ce91751fe3d51c0cdd51b2fd9dc30cdc6ecc5922a61c0a2f0beaefc527e88"
+    },
+    {
+      "root": "server",
+      "path": "or-cache/src/main/kotlin/dev/openrune/pack/PluginPacks.kt",
+      "sha256": "f3550746c570e73894fec5d71946b0f0f828440860543b59ebe6e3f59b4f0d38"
+    },
+    {
+      "root": "server",
+      "path": "or-cache/src/main/kotlin/dev/openrune/tools/PackServerConfigOSRS.kt",
+      "sha256": "d9d2de00aa7316496bb6a8a33c4bdf5f81a6a2960e315e61702f02186393799d"
+    },
+    {
+      "root": "server",
+      "path": "gradle/libs.versions.toml",
+      "sha256": "da5ab7afaebd012b062e5c5515807414f9a0738d31cae4522f187bf933a1bb9f"
+    },
+    {
+      "root": "server",
+      "path": "LICENSE.md",
+      "sha256": "4f1fbb2904ab126c4ef03c02df9822d5b4119ea166745bce21752bb03d88500b"
+    }
+  ]
+}

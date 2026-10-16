@@ -52,3 +52,15 @@ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR P
 INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
 TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+## JS5 filestore — `crates/osrs-filestore/`
+
+Derived from rune-fs 0.2.0 by jimvdl (<https://github.com/jimvdl/rune-fs>), formerly
+`vendor/rune-fs`. RustOSRS maintains the fork as a first-class workspace crate. Original MIT
+copyright and permission notice: [crates/osrs-filestore/LICENSE](crates/osrs-filestore/LICENSE).
+Retain that notice in source and binary distributions. Promotion changes maintenance ownership,
+not authorship of the original implementation.
+
+OpenRune FileStore and Server 241 were studied as local design references for safe lazy reading,
+incremental packing and future entity codecs; this checkpoint copies no Kotlin source or assets.
+The reviewed paths and SHA-256 identities are recorded in `docs/research/openrune-cache-sources.json`.

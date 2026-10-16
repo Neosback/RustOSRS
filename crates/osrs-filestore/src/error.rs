@@ -5,7 +5,7 @@ use thiserror::Error;
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
-/// Super error type for all runefs errors.
+/// Storage, parsing and compression failures.
 #[derive(Error, Debug)]
 pub enum Error {
     /// Wrapper for the std::io::Error type.

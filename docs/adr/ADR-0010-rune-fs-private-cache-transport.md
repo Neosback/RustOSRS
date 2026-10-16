@@ -1,6 +1,6 @@
 # ADR-0010: Use `rune-fs` Privately for Read-Only Cache Transport
 
-Status: **Accepted**  
+Status: **Superseded in dependency ownership by [ADR-0012](ADR-0012-first-class-filestore.md); semantic boundaries retained**
 Date: **2026-10-07**
 
 ## Context
@@ -126,4 +126,4 @@ If `rune-fs` later blocks required target support or safety/error guarantees, a 
 
 ## Supersedes / superseded by
 
-None.
+Dependency ownership superseded by ADR-0012. Historical spike evidence above is unchanged.

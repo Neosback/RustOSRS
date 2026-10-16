@@ -125,10 +125,10 @@ def check_workspace(crates_root: Path = CRATES) -> list[str]:
         if crate != "osrs-reference" and "osrs-reference" in dependencies:
             errors.append(f"{crate}: production crates must never depend on osrs-reference")
 
-        if crate == "osrs-edit":
+        if crate in {"osrs-edit", "osrs-filestore"}:
             forbidden = sorted(dependencies & EDIT_FORBIDDEN)
             if forbidden:
-                errors.append("osrs-edit: UI/GPU/platform dependency leakage: " + ", ".join(forbidden))
+                errors.append(f"{crate}: UI/GPU/platform dependency leakage: " + ", ".join(forbidden))
 
         if crate == "osrs-core":
             forbidden = sorted(dependencies & CORE_FORBIDDEN)

@@ -1,9 +1,10 @@
 //! Append-only writing of a JS5 disk cache (`main_file_cache.dat2` + `.idxN`).
 //!
-//! The store never edits sectors in place: a written group is appended as a fresh sector chain and
-//! its `.idx` entry is repointed, so a failed write can only leave unreferenced garbage at the end
-//! of `.dat2`, never a half-overwritten group. `repack_groups` replaces groups of one cache folder
-//! and keeps each affected reference table consistent (checksum, sizes, version).
+//! The store appends fresh sector chains before repointing `.idx` entries. This preserves old
+//! payload sectors but is not crash-atomic: an I/O failure can interrupt index/table updates.
+//! Use one writer on a disposable staging cache and verified export before publication.
+//! Repacking prepares all groups/tables before writing and keeps checksums, sizes and versions
+//! consistent. `repack_changed_groups` additionally preserves identical groups byte for byte.
 
 use super::{
     ContainerCompression, ContainerError, ReferenceTable, ReferenceTableError, crc32,
@@ -329,6 +330,6 @@ pub fn repack_changed_groups(
 mod repack;
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod incremental_tests;
+#[cfg(test)]
+mod tests;

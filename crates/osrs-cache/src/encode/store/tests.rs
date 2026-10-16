@@ -179,11 +179,12 @@ fn rewriting_a_group_repoints_it_and_leaves_other_groups_alone() {
 }
 
 #[test]
-fn the_independent_vendored_reader_agrees_with_what_was_written() {
+fn the_filestore_reader_agrees_with_what_was_written() {
     let dir = temp_dir("vendored");
     let store = build_cache(&dir);
     let indices = osrs_filestore::Indices::new(&dir).unwrap_or_else(|e| unreachable!("{e:?}"));
-    let dat = osrs_filestore::Dat2::new(dir.join(DATA_FILE)).unwrap_or_else(|e| unreachable!("{e:?}"));
+    let dat =
+        osrs_filestore::Dat2::new(dir.join(DATA_FILE)).unwrap_or_else(|e| unreachable!("{e:?}"));
     let index = indices.get(&5).unwrap_or_else(|| unreachable!("index 5"));
     for id in 0..3u32 {
         let archive_ref = index

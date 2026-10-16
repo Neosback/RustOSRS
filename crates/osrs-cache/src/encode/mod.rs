@@ -23,5 +23,6 @@ pub use reference_table::{GroupEntry, ReferenceTable, ReferenceTableError};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use store::{
-    CacheStore, GroupUpdate, REFERENCE_TABLE_INDEX, RepackReport, StoreError, repack_changed_groups, repack_groups,
+    CacheStore, GroupUpdate, REFERENCE_TABLE_INDEX, RepackReport, StoreError,
+    repack_changed_groups, repack_groups,
 };

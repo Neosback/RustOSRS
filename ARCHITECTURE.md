@@ -64,6 +64,7 @@ Keep the current workspace crates and sharpen their responsibilities.
 crates/
 ├── osrs-core/       # canonical IDs, typed coordinates, planes, tiny shared value types
 ├── osrs-edit/       # authoritative editable domain, patches, history, queries, validation
+├── osrs-filestore/  # low-level JS5 sectors, indices, compression and XTEA primitives
 ├── osrs-cache/      # cache codecs, archive definitions, cache-source abstractions
 ├── osrs-scene/      # OSRS scene semantics, terrain/object construction, collision/bridge rules
 ├── osrs-hd/         # reusable 117HD data/settings/material/environment semantics
@@ -92,6 +93,10 @@ Dependency direction:
 ```
 
 The exact allowed dependency matrix is CI-enforced. A lower-level crate may never depend upward merely because it needs one type. Move the type to the lowest semantically correct owner instead.
+
+`osrs-filestore` has no internal workspace dependencies. Only `osrs-cache` consumes it in production;
+semantic models, profiles, provenance, file splitting limits and verified export remain in `osrs-cache`.
+See [ADR-0012](docs/adr/ADR-0012-first-class-filestore.md) for promotion from the former vendored transport.
 
 `osrs-reference` is validation infrastructure. Production crates must never depend on it.
 
@@ -538,7 +543,7 @@ Renderer rules:
 2. Renderer does not edit `MapDocument`.
 3. Picking results identify domain coordinates/objects but are not domain truth.
 4. Shader/material features remain isolated from editor transaction logic.
-5. 117HD work remains a separate subsystem/branch unless a narrowly required adapter change is documented.
+5. Keep 117HD behavior behind its subsystem boundaries and document required adapter changes. Work on `main` unless the user explicitly asks for a branch.
 
 ## 14. Cache decoding, encoding, and losslessness
 

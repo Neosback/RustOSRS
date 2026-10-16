@@ -40,7 +40,10 @@ impl Dat2 {
     /// Open the `.dat2` file without loading it into process-owned memory.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn new<P: AsRef<Path>>(path: P) -> crate::Result<Self> {
-        Ok(Self(Backing::File(std::fs::File::open(path)?)))
+        let file = std::fs::File::open(path)?;
+        #[cfg(not(any(unix, windows)))]
+        let file = std::sync::Mutex::new(file);
+        Ok(Self(Backing::File(file)))
     }
 
     /// Browser callers supply bytes through [`Dat2::from_bytes`].
@@ -60,6 +63,9 @@ impl Dat2 {
 
     /// Read all the data that belongs to the `ArchiveRef`.
     pub fn read(&self, archive_ref: &ArchiveRef) -> crate::Result<Buffer<Encoded>> {
+        if archive_ref.length > 0x00ff_ffff {
+            return Err(ParseError::Archive(archive_ref.id).into());
+        }
         let mut buffer = Buffer::from(Vec::with_capacity(archive_ref.length));
         self.read_into_writer(archive_ref, &mut buffer)?;
 
@@ -71,16 +77,20 @@ impl Dat2 {
     where
         W: Write,
     {
+        if archive_ref.length > 0x00ff_ffff {
+            return Err(ParseError::Archive(archive_ref.id).into());
+        }
         let mut current = archive_ref.sector;
         let header_size = SectorHeaderSize::from(archive_ref);
-        let mut raw = [0; SECTOR_SIZE];
+        let mut reader = source::SectorReader::new(&self.0);
+        let mut remaining: usize = archive_ref.data_blocks().sum();
 
         for (chunk, data_len) in archive_ref.data_blocks().enumerate() {
-            let offset = current.checked_mul(SECTOR_SIZE)
+            let offset = current
+                .checked_mul(SECTOR_SIZE)
                 .filter(|_| current != 0)
                 .ok_or(ParseError::Sector(current))?;
-            let data_block = raw.get_mut(..data_len).ok_or(ParseError::Sector(current))?;
-            self.0.read_exact_at(offset, data_block)?;
+            let data_block = reader.sector(offset, data_len, remaining)?;
             match Sector::new(data_block, &header_size) {
                 Ok(sector) => {
                     sector
@@ -88,6 +98,7 @@ impl Dat2 {
                         .validate(archive_ref.id, chunk, archive_ref.index_id)?;
                     current = sector.header.next;
                     writer.write_all(sector.data_block)?;
+                    remaining -= data_len;
                 }
                 Err(_) => return Err(ParseError::Sector(archive_ref.sector).into()),
             };

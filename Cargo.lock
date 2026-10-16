@@ -2391,7 +2391,7 @@ name = "osrs-cache"
 version = "0.0.0"
 dependencies = [
  "osrs-core",
- "rune-fs",
+ "osrs-filestore",
  "serde",
  "serde_yaml_ng",
  "sha2",
@@ -2440,6 +2440,20 @@ dependencies = [
  "web-sys",
  "web-time",
  "wgpu",
+]
+
+[[package]]
+name = "osrs-filestore"
+version = "0.0.0"
+dependencies = [
+ "bzip2",
+ "flate2",
+ "itertools 0.14.0",
+ "lzma-rs",
+ "nom",
+ "serde",
+ "serde-big-array",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2866,21 +2880,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "rune-fs"
-version = "0.2.0"
-dependencies = [
- "bzip2",
- "flate2",
- "itertools 0.14.0",
- "lzma-rs",
- "memmap2",
- "nom",
- "serde",
- "serde-big-array",
- "thiserror 2.0.21",
 ]
 
 [[package]]

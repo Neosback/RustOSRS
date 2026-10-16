@@ -1,5 +1,3 @@
-use std::slice::{Iter, IterMut};
-
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "serde")]
@@ -37,6 +35,9 @@ impl ArchiveRef {
     ///
     /// Will fail if the buffer is not exactly 6 bytes in length.
     pub fn from_buffer(id: u32, index_id: u8, buffer: &[u8]) -> crate::Result<Self> {
+        if buffer.len() != ARCHIVE_REF_LEN {
+            return Err(crate::error::ParseError::Archive(id).into());
+        }
         let (buffer, len) = be_u24(buffer)?;
         let (_, sec) = be_u24(buffer)?;
 
@@ -117,89 +118,6 @@ pub struct ArchiveMetadata {
     pub version: u32,
     pub entry_count: usize,
     pub valid_ids: Vec<u32>,
-}
-
-/// Holds an archive file id with its data.
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
-pub struct ArchiveFileData {
-    pub id: u32,
-    pub data: Vec<u8>,
-}
-
-/// Holds all of the archive files that belong to a single archive.
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
-pub struct ArchiveFileGroup(Vec<ArchiveFileData>);
-
-impl ArchiveFileGroup {
-    /// Format a raw buffer into a list of `ArchiveFileData`'s.
-    ///
-    /// # Panics
-    ///
-    /// Whenever the buffer has a wrong format no files can be constructed.
-    pub fn from_buffer(buffer: &[u8], entry_count: usize) -> Self {
-        let chunks = buffer[buffer.len() - 1] as usize;
-        let mut data = Vec::with_capacity(chunks);
-        let mut cached_chunks = Vec::with_capacity(chunks);
-        let mut read_ptr = buffer.len() - 1 - chunks * entry_count * 4;
-
-        for _ in 0..chunks {
-            let mut chunk_size = 0;
-
-            for entry_id in 0..entry_count {
-                let mut bytes = [0; 4];
-                bytes.copy_from_slice(&buffer[read_ptr..read_ptr + 4]);
-                let delta = i32::from_be_bytes(bytes);
-                read_ptr += 4;
-                chunk_size += delta;
-
-                cached_chunks.push((entry_id as u32, chunk_size as usize));
-            }
-        }
-        read_ptr = 0;
-        for (entry_id, chunk_size) in cached_chunks {
-            let buf = buffer[read_ptr..read_ptr + chunk_size].to_vec();
-
-            data.push(ArchiveFileData {
-                id: entry_id,
-                data: buf,
-            });
-            read_ptr += chunk_size;
-        }
-
-        Self(data)
-    }
-
-    #[inline]
-    pub fn iter(&self) -> Iter<'_, ArchiveFileData> {
-        self.0.iter()
-    }
-
-    #[inline]
-    pub fn iter_mut(&mut self) -> IterMut<'_, ArchiveFileData> {
-        self.0.iter_mut()
-    }
-}
-
-impl IntoIterator for ArchiveFileGroup {
-    type Item = ArchiveFileData;
-    type IntoIter = std::vec::IntoIter<ArchiveFileData>;
-
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl<'a> IntoIterator for &'a ArchiveFileGroup {
-    type Item = &'a ArchiveFileData;
-    type IntoIter = Iter<'a, ArchiveFileData>;
-
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
 }
 
 #[test]

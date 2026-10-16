@@ -1,21 +1,34 @@
-# rune-fs
+# osrs-filestore
 
-[![Build](https://github.com/jimvdl/rune-fs/workflows/build/badge.svg)](https://github.com/jimvdl/rune-fs)
-[![API](https://docs.rs/rune-fs/badge.svg)](https://docs.rs/rune-fs)
-[![Crate](https://img.shields.io/crates/v/rune-fs)](https://crates.io/crates/rune-fs)
-[![dependency status](https://deps.rs/repo/github/jimvdl/rune-fs/status.svg)](https://deps.rs/repo/github/jimvdl/rune-fs)
+RustOSRS owns and maintains this low-level JS5 storage crate as a normal workspace member.
+It is derived from [rune-fs 0.2.0](https://github.com/jimvdl/rune-fs) by jimvdl;
+the original MIT notice is retained in `LICENSE`. The former local path was `vendor/rune-fs`.
 
-Read-only, low level, virtual file types for the RuneScape file system.
+## Ownership
 
-This crate supplies all of the backing types for [rs-cache](https://docs.rs/rs-cache). Many of these
-types were private but are now publicly available. rs-cache is a high level api for both the OSRS and RS3 
-caches and exposing these low level virtual types didn't make sense, hence this crate.
+Inputs: immutable native `.dat2`/`.idxN` sources or shared owned bytes (including WASM).
+Outputs: validated sector-chain bytes, index metadata, encoded/decoded containers and XTEA primitives.
+The unused upstream `ArchiveFileGroup` splitter was removed; `osrs-cache` owns the bounded,
+sparse-ID-aware splitter rather than maintaining two versions.
+Only `osrs-cache` consumes this crate in production. Revision-aware semantic decoding,
+source fingerprints, read limits, logical-file splitting and verified export belong there.
+No editor, scene or GPU dependencies are permitted.
 
-A word of caution, these types are highly experimental, I have done my best to document and test as
-much as I can, but there might still be the weird occasional edge-case. With that said, whenever you find
-a bug or missing feature; or even unsoundness don't hesitate to 
-[open an issue](https://github.com/jimvdl/rune-fs/issues/new).
+Native reads use safe positional I/O on Unix/Windows, with serialized file access on other native
+platforms. They do not copy the complete `.dat2` into RAM. Each read has a bounded 8,320-byte read-ahead window
+plus its output allocation. Sources must not be modified during normal use; truncation returns an
+I/O error. Browser sources use `Arc<Vec<u8>>`. No unsafe code or blanket lint exemptions are permitted.
+This replaces the original native mmap and needs workload measurement before claiming a speedup.
 
-Useful links:\
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img src="https://oldschool.runescape.wiki/images/thumb/5/5d/Fire_rune_detail.png/800px-Fire_rune_detail.png?07ed5" width="10"> &nbsp;[Releases](https://github.com/jimvdl/rune-fs/tags)\
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img src="https://oldschool.runescape.wiki/images/thumb/7/74/Water_rune_detail.png/800px-Water_rune_detail.png?4e790" width="10"> &nbsp;[Documentation](https://docs.rs/rune-fs)
+## Verification
+
+```sh
+cargo test --locked -p osrs-filestore --all-features
+cargo clippy --locked -p osrs-filestore --all-targets --all-features -- -D warnings
+cargo check --locked -p osrs-filestore --all-features --target wasm32-unknown-unknown
+```
+
+Storage tests cover normal/expanded headers, unpadded last sectors, malformed chains, truncated
+index entries, native/owned byte equivalence, concurrent reads and truncation after opening.
+Existing `osrs-cache` fixtures retain full logical fingerprint and semantic decoder checks.
+Optional `rs3` and `serde` are retained; they do not imply that RustOSRS supports RS3 editing.

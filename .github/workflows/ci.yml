@@ -56,7 +56,7 @@ jobs:
       - name: WebAssembly portability gate
         run: |
           cargo check --locked --target wasm32-unknown-unknown \
-            -p osrs-core -p osrs-edit -p osrs-cache -p osrs-scene -p osrs-hd -p osrs-render -p osrs-world
+            -p osrs-core -p osrs-edit -p osrs-filestore -p osrs-cache -p osrs-scene -p osrs-hd -p osrs-render -p osrs-world
           cargo clippy --locked --target wasm32-unknown-unknown -p osrs-editor -- -D warnings
 
   tier-b:

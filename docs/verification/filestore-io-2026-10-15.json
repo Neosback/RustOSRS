@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "recorded_on": "2026-10-15",
+  "workload": "sorted full-cache encoded group read plus SHA-256; no decompression or rendering",
+  "baseline_source": "94d3ed16f4185cbc16f8af8e5e1cc32ff0740c39:vendor/rune-fs",
+  "candidate_source_files": {
+    "crates/osrs-filestore/src/archive.rs": "182650f46d7f7f5dc5117e6536c7bbbb6b5116a93d96cdf0b8421305acd36e38",
+    "crates/osrs-filestore/src/codec.rs": "09d42d7f8081945caaff5a3a70052c4e2d620f012edc1013769555107ad847e5",
+    "crates/osrs-filestore/src/error.rs": "5ec8ea3d222103fe5afbadfcffff6fd331cf6a8c82f677ce5d6412e3eb10cba1",
+    "crates/osrs-filestore/src/index.rs": "469b1ef747e683dee201f237ec2732e3beb30e15893ccd69c5d16de5d3865008",
+    "crates/osrs-filestore/src/lib.rs": "e2200985e2269c21e40d434ea94a5ab3ce736a43e3fe55532479fe086f019946",
+    "crates/osrs-filestore/src/parse.rs": "4a712d165a10eba79132b840625053eb631ebfb5815bd32e5e6babc374314cff",
+    "crates/osrs-filestore/src/sector.rs": "9874913be3161527e5d73762ef15fb5794a32b7c4c40997ebe7ad81460d3d390",
+    "crates/osrs-filestore/src/source.rs": "99671571c475c030ab92a9227717bcc5cf85210696620ca531c82776842cc425",
+    "crates/osrs-filestore/src/xtea.rs": "7e0c65e2d4512375d05675e6bfbe0652000e690e46b2a7cec536cc2e5db2268c",
+    "crates/osrs-filestore/tests/storage.rs": "7363a58a3bdc39b79abe6b35016e8028a1b68e83d1f22d211d80f010fb0ed61d"
+  },
+  "hardware": {
+    "model": "Mac14,15",
+    "cpu": "Apple M2",
+    "memory_bytes": 8589934592,
+    "os": "macOS 26.5.1"
+  },
+  "cache": {
+    "build": 241,
+    "path": "/Users/tylercovalt/RustOSRS-cache/b241/cache",
+    "logical_fingerprint_v1": "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38"
+  },
+  "profile": "release",
+  "warmup": "round 0 excluded from medians",
+  "ordering": "alternating baseline/candidate per round",
+  "raw_samples": [
+    {
+      "reader": "mapped",
+      "round": 0,
+      "setup_s": 0.057799,
+      "read_hash_s": 0.978772,
+      "groups": 117584,
+      "bytes": 189745919,
+      "sha256": "da2258d3709754a7123b3a9e03654d21f2244ab6aec6c2e4caa8bf0c9d0ca800"
+    },
+    {
+      "reader": "positional",
+      "round": 0,
+      "setup_s": 0.045698,
+      "read_hash_s": 0.629864,
+      "groups": 117584,
+      "bytes": 189745919,
+      "sha256": "da2258d3709754a7123b3a9e03654d21f2244ab6aec6c2e4caa8bf0c9d0ca800"
+    },
+    {
+      "reader": "positional",
+      "round": 1,
+      "setup_s": 0.043827,
+      "read_hash_s": 0.631632,
+      "groups": 117584,
+      "bytes": 189745919,
+      "sha256": "da2258d3709754a7123b3a9e03654d21f2244ab6aec6c2e4caa8bf0c9d0ca800"
+    },
+    {
+      "reader": "mapped",
+      "round": 1,
+      "setup_s": 0.044928,
+      "read_hash_s": 0.570321,
+      "groups": 117584,
+      "bytes": 189745919,
+      "sha256": "da2258d3709754a7123b3a9e03654d21f2244ab6aec6c2e4caa8bf0c9d0ca800"
+    },
+    {
+      "reader": "mapped",
+      "round": 2,
+      "setup_s": 0.04534,
+      "read_hash_s": 0.563237,
+      "groups": 117584,
+      "bytes": 189745919,
+      "sha256": "da2258d3709754a7123b3a9e03654d21f2244ab6aec6c2e4caa8bf0c9d0ca800"
+    },
+    {
+      "reader": "positional",
+      "round": 2,
+      "setup_s": 0.041687,
+      "read_hash_s": 0.616737,
+      "groups": 117584,
+      "bytes": 189745919,
+      "sha256": "da2258d3709754a7123b3a9e03654d21f2244ab6aec6c2e4caa8bf0c9d0ca800"
+    },
+    {
+      "reader": "positional",
+      "round": 3,
+      "setup_s": 0.042463,
+      "read_hash_s": 0.613395,
+      "groups": 117584,
+      "bytes": 189745919,
+      "sha256": "da2258d3709754a7123b3a9e03654d21f2244ab6aec6c2e4caa8bf0c9d0ca800"
+    },
+    {
+      "reader": "mapped",
+      "round": 3,
+      "setup_s": 0.042659,
+      "read_hash_s": 0.572093,
+      "groups": 117584,
+      "bytes": 189745919,
+      "sha256": "da2258d3709754a7123b3a9e03654d21f2244ab6aec6c2e4caa8bf0c9d0ca800"
+    }
+  ],
+  "warm_median_read_hash_seconds": {
+    "mapped": 0.570321,
+    "positional": 0.616737
+  },
+  "candidate_relative_wall_time_change_percent": 8.138574592203351,
+  "unavailable": [
+    "CPU time",
+    "allocations",
+    "RSS/peak memory",
+    "GPU timing (headless storage workload)"
+  ],
+  "limitations": [
+    "Three measured warm samples per reader; not an editor performance baseline.",
+    "Final sample run had no rustc processes; the workspace test runner was still active.",
+    "Initial one-sector pilot overlapped compilation and is excluded from performance conclusions.",
+    "No application CPU/GPU/memory reduction or visual parity claim follows from this microbenchmark."
+  ]
+}

@@ -4,6 +4,7 @@ members = [
     "crates/osrs-core",
     "crates/osrs-edit",
     "crates/osrs-cache",
+    "crates/osrs-filestore",
     "crates/osrs-scene",
     "crates/osrs-render",
     "crates/osrs-reference",
@@ -15,6 +16,7 @@ default-members = [
     "crates/osrs-core",
     "crates/osrs-edit",
     "crates/osrs-cache",
+    "crates/osrs-filestore",
     "crates/osrs-scene",
     "crates/osrs-render",
     "crates/osrs-reference",
@@ -31,7 +33,7 @@ rust-version = "1.99"
 bytemuck = { version = "1.25", features = ["derive"] }
 pollster = "1.0"
 wgpu = "30"
-rune-fs = { path = "vendor/rune-fs" }
+osrs-filestore = { path = "crates/osrs-filestore" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_yaml_ng = "0.10.0"
 sha2 = "0.10"

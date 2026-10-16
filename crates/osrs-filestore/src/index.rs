@@ -148,8 +148,13 @@ impl Index {
             .unwrap_or("nothing");
 
         if extension != index_extension {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput,
-                format!("index extension mismatch: expected {index_extension} but found {extension}")).into());
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "index extension mismatch: expected {index_extension} but found {extension}"
+                ),
+            )
+            .into());
         }
 
         let mut file = File::open(path)?;
@@ -165,9 +170,7 @@ impl Index {
             return Err(ParseError::Archive((buffer.len() / ARCHIVE_REF_LEN) as u32).into());
         }
 
-        for (archive_id, archive_data) in buffer
-            .as_chunks::<ARCHIVE_REF_LEN>().0.iter()
-            .enumerate()
+        for (archive_id, archive_data) in buffer.as_chunks::<ARCHIVE_REF_LEN>().0.iter().enumerate()
         {
             let archive_id = archive_id as u32;
 

@@ -1,6 +1,6 @@
 //! RustOSRS-owned read-only cache transport and logical-file repository API.
 //!
-//! `osrs-filestore` is deliberately confined to this module. Public callers receive
+//! `osrs-filestore` types stay behind the transport and encoding modules. Public callers receive
 //! RustOSRS-owned metadata, byte containers, provenance, and typed errors.
 
 use crate::decode::{
@@ -1142,7 +1142,11 @@ impl CacheTransport {
         })
     }
 
-    fn archive_ref(&self, index_id: u8, group_id: u32) -> TransportResult<&osrs_filestore::ArchiveRef> {
+    fn archive_ref(
+        &self,
+        index_id: u8,
+        group_id: u32,
+    ) -> TransportResult<&osrs_filestore::ArchiveRef> {
         let index = self
             .indices
             .get(&index_id)

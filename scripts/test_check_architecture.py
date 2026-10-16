@@ -12,6 +12,31 @@ import check_architecture
 
 
 class ArchitectureGuardTests(unittest.TestCase):
+    def test_filestore_boundary_is_enforced(self) -> None:
+        for owner, dependency in [
+            ("osrs-filestore", "osrs-core"),
+            ("osrs-filestore", "osrs-cache"),
+            ("osrs-editor", "osrs-filestore"),
+            ("osrs-edit", "osrs-filestore"),
+        ]:
+            with (
+                self.subTest(owner=owner, dependency=dependency),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                self.write_manifest(root, owner, f'[dependencies]\n{dependency} = "0.0.0"\n')
+                errors = check_architecture.check_workspace(root)
+                self.assertTrue(any(
+                    f"illegal internal dependencies: {dependency}" in error for error in errors
+                ))
+
+    def test_filestore_rejects_ui_and_gpu_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_manifest(root, "osrs-filestore", '[dependencies]\nwgpu = "30"\negui = "0.36"\n')
+            errors = check_architecture.check_workspace(root)
+            self.assertTrue(any("osrs-filestore: UI/GPU/platform dependency leakage: egui, wgpu" in error for error in errors))
+
     def write_manifest(self, root: Path, crate: str, body: str) -> None:
         crate_dir = root / crate
         crate_dir.mkdir(parents=True, exist_ok=True)
