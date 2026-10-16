@@ -96,14 +96,12 @@ impl ActorAnimationState {
         action_model_usable: bool,
         pose_model_usable: bool,
     ) -> ActorAnimationSelection {
-        let action = if self.action_delay_cycles == 0
-            && self.action.is_active()
-            && action_model_usable
-        {
-            Some(self.action)
-        } else {
-            None
-        };
+        let action =
+            if self.action_delay_cycles == 0 && self.action.is_active() && action_model_usable {
+                Some(self.action)
+            } else {
+                None
+            };
 
         let pose = if self.pose.is_active()
             && pose_model_usable
@@ -268,10 +266,7 @@ mod tests {
             .action,
             None
         );
-        assert_eq!(
-            state.select_action_and_pose(None, false, true).action,
-            None
-        );
+        assert_eq!(state.select_action_and_pose(None, false, true).action, None);
         assert_eq!(
             ActorAnimationState {
                 action: ActorSequenceState::default(),
