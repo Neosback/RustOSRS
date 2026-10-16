@@ -124,7 +124,7 @@ pub(super) fn place_section(app: &mut EditorApp, ui: &mut egui::Ui) {
 }
 
 pub(super) fn selection_section(app: &mut EditorApp, ui: &mut egui::Ui) {
-    crate::theme::section_heading(ui, "Selected");
+    crate::theme::section_heading(ui, "NPC");
     let Some(id) = app.npcs.selection else {
         ui.weak("Click an NPC marker in the viewport, or place a new one.");
         return;
@@ -174,6 +174,31 @@ pub(super) fn selection_section(app: &mut EditorApp, ui: &mut egui::Ui) {
         .and_then(|a| a.npcs.get(&committed.npc))
         .map_or(1, |d| d.size);
     ui.weak(format!("footprint {size}\u{d7}{size}"));
+    if let Some(definition) = app
+        .npcs
+        .assets()
+        .and_then(|a| a.npcs.get(&committed.npc))
+        .cloned()
+    {
+        let actions: Vec<&str> = definition
+            .actions
+            .iter()
+            .flatten()
+            .map(String::as_str)
+            .collect();
+        ui.weak(format!(
+            "{}{} model(s){}",
+            definition
+                .combat_level
+                .map_or(String::new(), |level| format!("level {level} \u{b7} ")),
+            definition.body_models.len(),
+            if actions.is_empty() {
+                String::new()
+            } else {
+                format!(" \u{b7} {}", actions.join(", "))
+            }
+        ));
+    }
 
     let mut settle = false;
     let mut delete = false;

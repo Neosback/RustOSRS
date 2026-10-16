@@ -45,6 +45,7 @@ mod settings_runtime;
 mod settings_window;
 mod shelf;
 mod sound_panel;
+mod splash;
 mod spline_tool;
 mod status;
 mod streaming;
@@ -279,6 +280,7 @@ impl eframe::App for EditorApp {
             self.teleport_to(destination);
         }
         self.autosave_settings();
+        splash::draw(self, &ctx);
         self.diagnostics.phase("windows", phase);
         self.diagnostics.end_frame(frame_started);
         self.diagnostics.finish_frame(&ctx);

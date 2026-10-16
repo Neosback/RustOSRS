@@ -10,12 +10,14 @@
 mod files;
 mod import;
 mod navigation;
+mod types;
 
 pub(super) use files::{OpenTask, SaveTask, open_text, save_text};
 pub(super) use import::{ImportEvent, ImportJob, ImportPreview, InstallationData};
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) use import::{preview_import, read_installation};
 pub(super) use navigation::WorldNavigation;
+pub(super) use types::{Arm, AutoLoad, ExportPreview, NpcDisplay, OpenKind, SourceBinding};
 
 use super::{
     edit_runtime::EditRuntime, render_runtime::RenderRuntime, world_runtime::WorldRuntime,
@@ -42,16 +44,7 @@ pub(super) const NPC_KEY: (i32, i32) = (i32::MIN + 1, i32::MIN + 1);
 /// Most simulated client cycles run in one frame, so a stalled window cannot freeze the editor
 /// catching up (the clock simply falls behind).
 const MAX_CYCLES_PER_FRAME: u32 = 50;
-/// Most actors extracted into one geometry request.
-const MAX_RENDERED_ACTORS: usize = 512;
 const MAX_DIAGNOSTICS: usize = 64;
-
-/// The open cache the scenario is bound to.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct SourceBinding {
-    pub fingerprint: String,
-    pub build: u32,
-}
 
 /// Whether a stamped result belongs to the state it was requested for.
 pub(super) fn identity_current(result: PlaytestIdentity, current: PlaytestIdentity) -> bool {
@@ -72,24 +65,13 @@ struct SentKey {
     camera: (i32, i32),
 }
 
-/// A pending viewport gesture armed from the panel.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(super) enum Arm {
-    #[default]
-    None,
-    /// Place an NPC of this definition on the next tile click.
-    Place { npc: NpcId, symbol: String },
-    /// Send the selected actor to the next clicked tile (`route`: full routing, else step rules).
-    Destination { route: bool },
-}
-
 pub(super) struct NpcHost<'a> {
     pub session: &'a EditRuntime,
     pub world: &'a WorldRuntime,
     pub renderer: &'a mut RenderRuntime,
     pub dt: f32,
     pub camera: (i32, i32),
-    pub radius_tiles: i32,
+    pub display: NpcDisplay,
     pub varps: BTreeMap<VarpId, i32>,
 }
 
@@ -125,21 +107,10 @@ pub(super) struct NpcRuntime {
     pub(super) search: String,
     pub(super) arm: Arm,
     pub(super) notice: Option<String>,
+    pub(super) auto: AutoLoad,
     pub(super) open_task: Option<(OpenKind, OpenTask)>,
     pub(super) save_task: Option<SaveTask>,
     pub(super) export_preview: Option<ExportPreview>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum OpenKind {
-    Scenario,
-}
-
-/// A reviewed OpenRune export; files are written only after this is shown.
-pub(super) struct ExportPreview {
-    pub spawns_toml: String,
-    pub behaviors_toml: String,
-    pub error: Option<String>,
 }
 
 impl NpcRuntime {
@@ -330,14 +301,25 @@ impl NpcRuntime {
         if self.source.is_none() {
             return false;
         }
+        if !host.display.enabled {
+            // Off: nothing is drawn and nothing moves. The spawn list itself is kept.
+            if let Some(live) = self.live.as_mut()
+                && live.sim.running()
+            {
+                let navigation = WorldNavigation {
+                    world: host.world,
+                    map: host.session.document(),
+                };
+                let _ = live.sim.command(RuntimeCommand::Pause, &navigation);
+            }
+            self.hide(host.renderer);
+            self.queued.clear();
+            return false;
+        }
         let scenario = host.session.scenario();
         let Some(definition) = scenario.definition() else {
-            if self.live.take().is_some() || self.geometry_shown {
-                host.renderer
-                    .upload_transient(NPC_KEY, &SceneGeometry::default());
-                self.geometry_shown = false;
-                self.geometry_sent = None;
-            }
+            self.live = None;
+            self.hide(host.renderer);
             self.queued.clear();
             return false;
         };
@@ -433,7 +415,20 @@ impl NpcRuntime {
         }
     }
 
-    fn request_geometry(&mut self, host: &NpcHost<'_>) {
+    /// Remove the entity layer from the screen (once).
+    fn hide(&mut self, renderer: &mut RenderRuntime) {
+        if self.geometry_shown {
+            renderer.upload_transient(NPC_KEY, &SceneGeometry::default());
+            self.geometry_shown = false;
+        }
+        self.geometry_sent = None;
+    }
+
+    fn request_geometry(&mut self, host: &mut NpcHost<'_>) {
+        if !host.display.models {
+            self.hide(host.renderer);
+            return;
+        }
         let Some(live) = &self.live else {
             return;
         };
@@ -449,19 +444,19 @@ impl NpcRuntime {
             return;
         }
         let (cx, cy) = host.camera;
-        let radius = i64::from(host.radius_tiles);
+        let radius = i64::from(host.display.distance_tiles);
         let mut snapshot = live.sim.snapshot_where(|actor| {
             let dx = i64::from(actor.location.tile.x - cx);
             let dy = i64::from(actor.location.tile.y - cy);
             dx * dx + dy * dy <= radius * radius
         });
-        if snapshot.actors.len() > MAX_RENDERED_ACTORS {
+        if snapshot.actors.len() > host.display.max_drawn {
             snapshot.actors.sort_by_key(|actor| {
                 let dx = i64::from(actor.location.tile.x - cx);
                 let dy = i64::from(actor.location.tile.y - cy);
                 dx * dx + dy * dy
             });
-            snapshot.actors.truncate(MAX_RENDERED_ACTORS);
+            snapshot.actors.truncate(host.display.max_drawn);
         }
         let ground_heights = snapshot
             .actors

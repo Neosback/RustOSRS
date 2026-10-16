@@ -29,9 +29,10 @@ Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md`
 - **Names** (`app/names`): when the open cache is an OpenRune `.data/cache/LIVE`, gameval symbols name objects (every loc has one), NPCs, items, animations and 205 sounds. Used where the cache has no name. Hints only; nothing keys on them.
 - **Sound panel**: Sounds/Objects/Object pages, Play buttons, "Sounds in the world" setting (also overlays menu, View panel), marker click / Shift+right-click opens the Object page. The owner has asked to leave further Sound panel rework until the web UI.
 - **Pickers and toolbar**: choosing a picker cancels an armed NPC placement or object placement; the picker rail shows the last three tools used and an armed NPC gesture.
-- **NPC panel** reorganised around "Read spawns from OpenRune-Server"; editing and file/export moved under collapsed sections. A further rework (switch-driven spawn loading, no "scenario" wording) is planned.
+- **NPC panel** is an info/edit/place tool led by a "Show OpenRune spawns" switch (`settings.npc`): on loads every spawn from the installation the open cache belongs to (25,801 spawns measured at 60 fps, NPC phase about 0.5 ms; only actors within `npc.distance` tiles, nearest `npc.max_drawn`, are extracted); off hides everything and pauses the simulation but keeps the list. Folder/file choice, reload, view settings, spawn-edit files and OpenRune export are under Advanced. The UI never says "scenario"; the file format identifier is unchanged. Not exercised with a real mouse.
+- **Loading splash** (`app/splash.rs`): "OpenRune" filled by a two-layer wave, driven by cache-ready and region residency; fades when built. Seen mid-fill in a screenshot; fade-out and the cancel path are covered by unit tests only.
 - **Proposed ADR-0013** (egui and Svelte shells over one typed UI contract). Not accepted; needs a spike.
-- Local gates for this work: locked workspace tests **954 passed, 0 failed, 21 ignored**; fmt; strict workspace Clippy; lower-crate WASM check; strict WASM editor Clippy; architecture guard + editor-ownership tests: passed.
+- Local gates for this work: locked workspace tests **959 passed, 0 failed, 21 ignored**; fmt; strict workspace Clippy; lower-crate WASM check; strict WASM editor Clippy; architecture guard + editor-ownership tests: passed.
 
 ## Object semantics slice (2026-10-16)
 

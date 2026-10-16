@@ -1,6 +1,6 @@
 //! Armed viewport gestures and the world overlay (anchors, footprints, routes, reasons).
 
-use super::{DRAW_RADIUS_TILES, actor_location, authoring::status_text, scenario::plan_and_commit};
+use super::{actor_location, authoring::status_text, scenario::plan_and_commit};
 use crate::app::{
     EditorApp,
     npc_runtime::{Arm, WorldNavigation},
@@ -18,6 +18,10 @@ use osrs_playtest::{
 /// Armed gestures own the viewport click. Returns true when the click was consumed or an armed
 /// gesture is pending, so the active tool ignores this frame's pointer.
 pub(in crate::app) fn armed_input(app: &mut EditorApp, response: &egui::Response) -> bool {
+    if !app.settings.prefs.npc.spawns {
+        app.npcs.cancel_gesture();
+        return false;
+    }
     let ctx = response.ctx.clone();
     if app.npcs.arm == Arm::None {
         // With the panel open a plain click selects the NPC on the hovered tile.
@@ -111,11 +115,15 @@ pub(in crate::app) fn draw_world(
     width: u32,
     height: u32,
 ) {
+    if !app.settings.prefs.npc.spawns {
+        return;
+    }
     let Some(definition) = app.session.scenario().definition() else {
         return;
     };
     let plane = app.interaction.view_plane();
     let (cx, cy) = app.camera_tile();
+    let reach = i32::from(app.settings.prefs.npc.distance);
     let project = |p: [f64; 3], lift: f64| {
         app.screen_point(
             [p[0], p[1] - lift, p[2]],
@@ -162,19 +170,21 @@ pub(in crate::app) fn draw_world(
     for spawn in &definition.spawns {
         let tile = (spawn.location.tile.x, spawn.location.tile.y);
         if spawn.location.plane.get() != plane
-            || (tile.0 - cx).abs() > DRAW_RADIUS_TILES
-            || (tile.1 - cy).abs() > DRAW_RADIUS_TILES
+            || (tile.0 - cx).abs() > reach
+            || (tile.1 - cy).abs() > reach
         {
             continue;
         }
         let selected = app.npcs.selection == Some(spawn.id);
         let colour = if selected { selected_colour } else { anchor };
-        outline(
-            tile,
-            size_of(spawn),
-            colour,
-            if selected { 2.5 } else { 1.0 },
-        );
+        if selected || app.settings.prefs.npc.footprints {
+            outline(
+                tile,
+                size_of(spawn),
+                colour,
+                if selected { 2.5 } else { 1.0 },
+            );
+        }
         if !selected {
             continue;
         }

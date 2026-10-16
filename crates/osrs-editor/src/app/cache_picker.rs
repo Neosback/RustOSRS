@@ -104,6 +104,7 @@ impl EditorApp {
 
     /// Replace streamer/assets and clear every resident projection tied to the previous source.
     fn replace_source(&mut self, source: CacheSource, label: PathBuf) {
+        self.ui.begin_loading();
         self.exports.reset_source();
         let dir = label;
         self.project.replace_source(source.clone(), dir.clone());

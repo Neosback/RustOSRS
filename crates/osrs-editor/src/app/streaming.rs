@@ -165,6 +165,7 @@ impl EditorApp {
                 StreamEvent::InitFailed(_) if self.project.cache_label().as_os_str().is_empty() => {
                 }
                 StreamEvent::InitFailed(error) => {
+                    self.ui.cancel_loading();
                     // The card explains it; the status bar stays quiet.
                     self.project.set_cache_error(if error.contains("No such file") {
                         "The cache files could not be read. Is this the folder that holds main_file_cache.dat2?".to_owned()

@@ -27,6 +27,7 @@ pub(super) struct UiRuntime {
     pub(super) sound: super::sound_panel::SoundPanel,
     /// The editing tools used most recently, newest first (the picker rail shows them).
     recent_tools: Vec<crate::paint::Tool>,
+    splash: super::splash::Splash,
     notice: Option<(String, Instant)>,
     status: Option<String>,
 }
@@ -51,6 +52,7 @@ impl UiRuntime {
             teleport: crate::hud::TeleportWindow::new(),
             sound: super::sound_panel::SoundPanel::default(),
             recent_tools: Vec::new(),
+            splash: super::splash::Splash::default(),
             notice: None,
             status: None,
         }
@@ -66,6 +68,19 @@ impl UiRuntime {
     }
     pub(super) fn recent_tools(&self) -> &[crate::paint::Tool] {
         &self.recent_tools
+    }
+    pub(super) fn splash_active(&self) -> bool {
+        self.splash.is_active()
+    }
+    pub(super) fn splash_step(&mut self, dt: f32, target: f32) -> Option<(f32, f32)> {
+        self.splash.step(dt, target)
+    }
+    /// Show the loading screen (a cache is being opened).
+    pub(super) fn begin_loading(&mut self) {
+        self.splash.begin();
+    }
+    pub(super) fn cancel_loading(&mut self) {
+        self.splash.cancel();
     }
     pub(super) fn notify(&mut self, message: impl Into<String>) {
         self.notice = Some((message.into(), Instant::now()));

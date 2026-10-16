@@ -100,6 +100,9 @@ impl EditorApp {
         }
         if authoring {
             app.init_settings(ctx);
+            if cache_picker::looks_like_cache(&initial_dir) {
+                app.ui.begin_loading();
+            }
         }
         // Start-up script (`RUSTOSRS_SCRIPT="wait 120; tool paint; radius 2"`), for smoke tests.
         let script = Self::env_script();

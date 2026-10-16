@@ -24,7 +24,7 @@ pub(super) fn commit(app: &mut EditorApp, patch: ScenarioPatch) -> bool {
         }
         Ok(EditExecution::NoChange) => false,
         Err(error) => {
-            app.npcs.notice = Some(format!("Scenario change rejected: {error:?}"));
+            app.npcs.notice = Some(format!("Spawn change rejected: {error:?}"));
             false
         }
     }
@@ -68,7 +68,7 @@ pub(super) fn load_sidecar(app: &mut EditorApp, name: &str, text: &str) {
         Ok(sidecar) if sidecar.format == SIDECAR_FORMAT => sidecar,
         Ok(sidecar) => {
             app.npcs.notice = Some(format!(
-                "Not a scenario sidecar (format {:?})",
+                "Not a spawn-edits file (format {:?})",
                 sidecar.format
             ));
             return;
@@ -89,13 +89,13 @@ fn install_scenario(app: &mut EditorApp, scenario: ScenarioDefinition, label: &s
     };
     if scenario.client_fingerprint != source.fingerprint {
         app.npcs.notice = Some(
-            "This scenario was made for a different cache and cannot be used with the open one"
+            "These spawn edits were made for a different cache and cannot be used with the open one"
                 .into(),
         );
         return;
     }
     if let Err(error) = scenario.validate() {
-        app.npcs.notice = Some(format!("Scenario rejected: {error}"));
+        app.npcs.notice = Some(format!("Spawn edits rejected: {error}"));
         return;
     }
     let count = scenario.spawns.len();
@@ -129,7 +129,7 @@ pub(super) fn apply_import(app: &mut EditorApp) {
     }
     let seed = seed_for(&source.fingerprint);
     match preview.into_scenario(source.build, source.fingerprint.clone(), seed) {
-        Ok(scenario) => install_scenario(app, scenario, "Imported"),
+        Ok(scenario) => install_scenario(app, scenario, "Loaded OpenRune spawns"),
         Err(errors) => {
             app.npcs.notice = Some(format!(
                 "Import has {} errors; nothing was replaced",
@@ -148,7 +148,7 @@ fn save_scenario(app: &mut EditorApp) {
         scenario: definition.clone(),
     };
     match serde_json::to_string_pretty(&sidecar) {
-        Ok(text) => app.npcs.save_task = Some(save_text("scenario.rustosrs-npc.json", text)),
+        Ok(text) => app.npcs.save_task = Some(save_text("spawn-edits.rustosrs-npc.json", text)),
         Err(error) => app.npcs.notice = Some(error.to_string()),
     }
 }
@@ -171,62 +171,79 @@ pub(super) fn preview_export(app: &mut EditorApp) {
     });
 }
 
-pub(super) fn scenario_section(app: &mut EditorApp, ui: &mut egui::Ui) {
-    crate::theme::section_heading(ui, "OpenRune spawns");
-    let summary = app.session.scenario().definition().map(|d| {
-        (
-            d.spawns.len(),
-            d.build,
-            d.client_fingerprint.get(..8).unwrap_or("").to_owned(),
-        )
-    });
-    match &summary {
-        Some((count, build, fingerprint)) => {
-            ui.horizontal_wrapped(|ui| {
-                ui.label(format!(
-                    "{count} spawns \u{b7} build {build} \u{b7} cache {fingerprint}"
-                ));
-                if ui
-                    .small_button("Remove all")
-                    .on_hover_text("Remove every spawn (undoable)")
-                    .clicked()
-                {
-                    plan_and_commit(app, |doc| plan_replace_scenario(doc, None));
-                    app.npcs.selection = None;
-                }
-            });
-        }
-        None => {
-            ui.weak("Load the spawns an OpenRune server places, then press Play.");
-        }
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    import_ui(app, ui);
-    #[cfg(target_arch = "wasm32")]
-    ui.weak("Loading OpenRune spawn files needs the native editor; the browser opens saved scenario files below.");
-    egui::CollapsingHeader::new("Scenario files and export")
-        .id_salt("npc-files")
+/// Everything beyond the switch: where spawns come from, how much to draw, and files.
+pub(super) fn advanced_section(app: &mut EditorApp, ui: &mut egui::Ui) {
+    egui::CollapsingHeader::new("Advanced")
+        .id_salt("npc-advanced")
         .show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                if summary.is_none() && ui.button("New empty").clicked() {
-                    new_scenario(app);
-                }
-                if ui.button("Open...").clicked() && app.npcs.open_task.is_none() {
-                    app.npcs.open_task = Some((
-                        OpenKind::Scenario,
-                        open_text("Open an NPC scenario", "json"),
-                    ));
-                }
-                if summary.is_some() {
-                    if ui.button("Save...").clicked() {
-                        save_scenario(app);
+            let count = app.session.scenario().definition().map(|d| d.spawns.len());
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let detected =
+                    crate::app::names::installation_of(app.project.cache_label()).is_some();
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .add_enabled(
+                            detected && app.npcs.import_job.is_none(),
+                            egui::Button::new("Reload from OpenRune"),
+                        )
+                        .on_hover_text(
+                            "Read every spawn again from the installation. Replaces spawns you changed.",
+                        )
+                        .clicked()
+                    {
+                        super::begin_loading(app);
                     }
-                    if ui.button("OpenRune export...").clicked() {
-                        preview_export(app);
+                    if count.is_some() && ui.button("Remove all spawns").clicked() {
+                        plan_and_commit(app, |doc| plan_replace_scenario(doc, None));
+                        app.npcs.selection = None;
+                        app.npcs.auto = crate::app::npc_runtime::AutoLoad::Idle;
                     }
+                });
+                if !detected {
+                    ui.weak("The open cache is not an OpenRune LIVE cache; choose the OpenRune folder below.");
                 }
-            });
-            export_preview_ui(app, ui);
+            }
+            crate::theme::section_heading(ui, "What to draw");
+            let prefs = &mut app.settings.prefs;
+            let mut distance = i32::from(prefs.npc.distance);
+            ui.add(egui::Slider::new(&mut distance, 8..=184).text("distance (tiles)"));
+            prefs.npc.distance = distance as u16;
+            let mut most = i32::from(prefs.npc.max_drawn);
+            ui.add(
+                egui::Slider::new(&mut most, 10..=2000)
+                    .logarithmic(true)
+                    .text("most NPCs"),
+            );
+            prefs.npc.max_drawn = most as u16;
+            ui.checkbox(&mut prefs.npc.footprints, "Outline each spawn's tiles");
+            ui.checkbox(&mut prefs.npc.models, "Draw the NPC models");
+            #[cfg(not(target_arch = "wasm32"))]
+            import_ui(app, ui);
+            egui::CollapsingHeader::new("Spawn edits and export")
+                .id_salt("npc-files")
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        if count.is_none() && ui.button("New empty list").clicked() {
+                            new_scenario(app);
+                        }
+                        if ui.button("Open spawn edits...").clicked() && app.npcs.open_task.is_none() {
+                            app.npcs.open_task = Some((
+                                OpenKind::Scenario,
+                                open_text("Open spawn edits", "json"),
+                            ));
+                        }
+                        if count.is_some() {
+                            if ui.button("Save spawn edits...").clicked() {
+                                save_scenario(app);
+                            }
+                            if ui.button("Export to OpenRune...").clicked() {
+                                preview_export(app);
+                            }
+                        }
+                    });
+                    export_preview_ui(app, ui);
+                });
         });
 }
 
@@ -428,7 +445,7 @@ fn import_ui(app: &mut EditorApp, ui: &mut egui::Ui) {
                 ui.horizontal_wrapped(|ui| {
                     let ready = preview.report.errors.is_empty() && matches_open && missing == 0;
                     apply = ui
-                        .add_enabled(ready, egui::Button::new("Replace scenario"))
+                        .add_enabled(ready, egui::Button::new("Load these spawns"))
                         .on_hover_text("One undoable step; resolve errors first")
                         .clicked();
                     discard = ui.button("Discard preview").clicked();

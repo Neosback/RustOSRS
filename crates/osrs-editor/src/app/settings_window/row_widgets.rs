@@ -109,6 +109,29 @@ impl EditorApp {
                     "Mark objects that play a sound, even with the Sound panel closed",
                 );
             }
+            Row::NpcSpawns => {
+                crate::theme::toggle(
+                    ui,
+                    &mut prefs.npc.spawns,
+                    "Load and show the NPCs OpenRune places",
+                );
+            }
+            Row::NpcDistance => {
+                let mut value = i32::from(prefs.npc.distance);
+                ui.add(egui::Slider::new(&mut value, 8..=184).suffix(" tiles"));
+                prefs.npc.distance = value as u16;
+            }
+            Row::NpcMaxDrawn => {
+                let mut value = i32::from(prefs.npc.max_drawn);
+                ui.add(egui::Slider::new(&mut value, 10..=2000).logarithmic(true));
+                prefs.npc.max_drawn = value as u16;
+            }
+            Row::NpcFootprints => {
+                crate::theme::toggle(ui, &mut prefs.npc.footprints, "Outline each spawn's tiles");
+            }
+            Row::NpcModels => {
+                crate::theme::toggle(ui, &mut prefs.npc.models, "Draw the NPC models");
+            }
             Row::ObjectGizmo => {
                 crate::theme::toggle(
                     ui,

@@ -23,6 +23,7 @@ pub(in crate::app) fn command(
     words: &mut SplitWhitespace<'_>,
 ) -> Result<bool, String> {
     match words.next().unwrap_or_default() {
+        verb @ ("on" | "off") => app.settings.prefs.npc.spawns = verb == "on",
         "new" => {
             if app.npcs.source().is_none() {
                 return Ok(false);
@@ -146,7 +147,7 @@ pub(in crate::app) fn command(
         "save" => {
             let path: Vec<&str> = words.collect();
             let Some(definition) = app.session.scenario().definition() else {
-                return Err("no scenario".into());
+                return Err("no spawns loaded".into());
             };
             let text = serde_json::to_string_pretty(&Sidecar {
                 format: SIDECAR_FORMAT.into(),

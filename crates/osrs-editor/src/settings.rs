@@ -8,70 +8,10 @@ use osrs_render::gpu::{Colorblind, ColorblindMode, Fog, HdParams, RenderProfile}
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, io, path::PathBuf};
 
-/// Categories on the dock's icon rail; each swaps the dock panel's contents.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum RailTab {
-    /// The selected object and the hovered tile. (Plugins used to be a rail tab; it is a menu-bar
-    /// window now, so old settings files naming it land here.)
-    #[default]
-    #[serde(alias = "Plugins")]
-    Inspect,
-    /// Camera, world, interface and graphics options used while working (tabs inside).
-    View,
-    /// Retired as a button (it is a tab of View); old settings files may still name it.
-    Graphics,
-    /// The objects that make sounds in the current map square.
-    Sound,
-    /// A mock player: stats, look, worn items and game variables to play with.
-    Player,
-    /// Offline NPC scenarios: import, place, edit and playtest.
-    Npc,
-}
-
-impl RailTab {
-    pub const ALL: [Self; 5] = [
-        Self::Inspect,
-        Self::View,
-        Self::Sound,
-        Self::Player,
-        Self::Npc,
-    ];
-
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Inspect => "Inspector",
-            Self::View => "View",
-            Self::Graphics => "Graphics",
-            Self::Sound => "Sound",
-            Self::Player => "Player",
-            Self::Npc => "NPCs",
-        }
-    }
-}
-
-/// Tabs inside the View category.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum ViewTab {
-    /// Camera, world and interface.
-    #[default]
-    Scene,
-    /// Render profile, lighting, fog and shadows.
-    Graphics,
-    /// What the viewport shows: HUDs, indicators, the grid, map icons.
-    Overlays,
-}
-
-impl ViewTab {
-    pub const ALL: [Self; 3] = [Self::Scene, Self::Graphics, Self::Overlays];
-
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Scene => "Scene",
-            Self::Graphics => "Graphics",
-            Self::Overlays => "Overlays",
-        }
-    }
-}
+mod npc;
+mod tabs;
+pub use npc::NpcSettings;
+pub use tabs::{RailTab, ViewTab};
 
 /// Pages of the settings window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -283,6 +223,8 @@ pub struct Settings {
     /// Sound markers (and the selected sound's range) in the world even with the Sound panel
     /// closed; with it open they always show.
     pub sound_overlay: bool,
+    /// The NPC spawn layer.
+    pub npc: NpcSettings,
     /// The Objects tool's transform gizmo (arrows and a turn ring on the selection).
     pub object_gizmo: bool,
     /// The Inspector's tile follows the cursor (off: it shows the selected tile).
@@ -371,6 +313,7 @@ impl Default for Settings {
             tile_info_hud: true,
             map_icons_3d: false,
             sound_overlay: false,
+            npc: NpcSettings::default(),
             object_gizmo: true,
             inspector_follow: false,
             render_scale: 1.0,
@@ -469,6 +412,7 @@ impl Settings {
         self.fov_degrees = self.fov_degrees.clamp(30.0, 100.0);
         self.render_scale = self.render_scale.clamp(0.5, 2.0);
         self.fly_speed = self.fly_speed.clamp(50.0, 20_000.0);
+        self.npc = self.npc.clamped();
         self
     }
 
