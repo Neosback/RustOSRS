@@ -31,6 +31,7 @@ python3 scripts/test_check_architecture.py
 python3 scripts/test_editor_architecture.py
 python3 scripts/test_reference_regeneration.py
 python3 scripts/test_deob_golden_index.py
+python3 scripts/test_performance.py
 cargo fmt --all --check
 cargo check --locked --workspace --all-targets --all-features
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings

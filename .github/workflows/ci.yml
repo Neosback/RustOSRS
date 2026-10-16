@@ -44,6 +44,9 @@ jobs:
           python3 scripts/check_hd_sources.py
           python3 scripts/test_hd_sources.py
 
+      - name: Test performance report tooling
+        run: python3 scripts/test_performance.py
+
       - name: Check formatting
         run: cargo fmt --all --check
 

@@ -21,6 +21,13 @@ def fmt(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.3f}"
 
 
+def load(directory: Path) -> dict:
+    try:
+        return perf_report.load_runs(directory)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError(f"{directory}: {error}") from error
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("before", type=Path)
@@ -28,23 +35,29 @@ def main() -> int:
     parser.add_argument("--json", type=Path, help="write the comparison rows here")
     parser.add_argument("--summary", action="store_true", help="markdown medians of one directory")
     args = parser.parse_args()
-    if args.summary or args.after is None:
-        runs = perf_report.load_runs(args.before)
-        if not runs:
-            print("no schema-2 reports found", file=sys.stderr)
+    try:
+        if args.summary or args.after is None:
+            runs = load(args.before)
+            if not runs:
+                print("no schema-2 certification reports found", file=sys.stderr)
+                return 2
+            print(perf_report.markdown_summary(runs))
+            return 0
+        before, after = load(args.before), load(args.after)
+        if not before or not after:
+            print("no schema-2 certification reports found in one of the directories", file=sys.stderr)
             return 2
-        print(perf_report.markdown_summary(runs))
-        return 0
-    before, after = perf_report.load_runs(args.before), perf_report.load_runs(args.after)
-    if not before or not after:
-        print("no schema-2 reports found in one of the directories", file=sys.stderr)
+        rows = perf_report.compare(before, after)
+    except ValueError as error:
+        print(f"invalid performance report set: {error}", file=sys.stderr)
         return 2
-    rows = perf_report.compare(before, after)
-    shared = {(r["workload"], r["profile"]) for r in rows}
-    for workload, profile in sorted(shared):
-        print(f"\n== {workload} / {profile} (runs: before {len(before[(workload, profile)])},"
-              f" after {len(after[(workload, profile)])})")
-        for row in (r for r in rows if (r["workload"], r["profile"]) == (workload, profile)):
+    shared = {(r["workload"], r["profile"], r["sync"]) for r in rows}
+    for workload, profile, sync in sorted(shared):
+        key = (workload, profile, sync)
+        print(f"\n== {workload} / {profile} / {sync} (runs: before {len(before[key])},"
+              f" after {len(after[key])})")
+        for row in (r for r in rows
+                    if (r["workload"], r["profile"], r["sync"]) == key):
             delta = "" if row["delta_pct"] is None else f"{row['delta_pct']:+7.1f}%"
             flag = "  REGRESSION?" if row["regression"] else ""
             print(f"  {row['metric']:<26} {fmt(row['before']):>12} -> {fmt(row['after']):>12} {delta}{flag}")

@@ -90,6 +90,11 @@ def metadata(binary: Path, workload: str, profile: str, vsync: bool) -> dict:
     }
 
 
+def run_name(workload: str, profile: str, vsync: bool, repetition: int) -> str:
+    sync = "capped" if vsync else "uncapped"
+    return f"{workload}-{profile}-{sync}-{repetition}"
+
+
 def footprint_mib(pid: int) -> float | None:
     """Physical footprint of a running process via the macOS `footprint` tool (None elsewhere)."""
     if sys.platform != "darwin":
@@ -172,10 +177,13 @@ def main() -> int:
                 if not first and args.cooldown > 0:
                     time.sleep(args.cooldown)
                 first = False
-                name = f"{workload}-{profile}-{repetition}"
+                name = run_name(workload, profile, args.vsync, repetition)
                 settings = output / f"{name}.settings.json"
                 settings.write_text(json.dumps({"render_profile": profile, **BASE_SETTINGS, **spec["settings"]}))
                 meta = metadata(binary, workload, profile, args.vsync)
+                meta["workload_settings"] = spec["settings"]
+                meta["workload_script"] = spec.get("script", "")
+                meta["fixed_time_seconds"] = spec.get("fixed_time")
                 meta["viewport_reuse"] = args.reuse
                 meta["cache_path"] = str(args.cache.resolve())
                 meta["run_seconds"] = seconds
@@ -194,13 +202,16 @@ def main() -> int:
                 })
                 if "fixed_time" in spec:
                     env["RUSTOSRS_FIXED_TIME_SECONDS"] = spec["fixed_time"]
+                capture_path = output / f"{name}.png"
                 if args.capture:
-                    env["RUSTOSRS_SCREENSHOT"] = str(output / f"{name}.png")
+                    env["RUSTOSRS_SCREENSHOT"] = str(capture_path)
                     env["RUSTOSRS_SCREENSHOT_FRAME"] = str(args.capture_frame)
                 outcome = None
                 for attempt in range(args.retries + 1):
                     report_path = output / f"{name}.json"
                     report_path.unlink(missing_ok=True)
+                    if args.capture:
+                        capture_path.unlink(missing_ok=True)
                     with (output / f"{name}.log").open("w") as log:
                         code, footprint = run_process(
                             [str(binary), str(args.cache.resolve())], env, log, seconds + 120)
@@ -224,7 +235,7 @@ def main() -> int:
                     print(f"{name}: giving up after {args.retries + 1} attempts: {outcome}", file=sys.stderr)
                     failures.append(name)
                     continue
-                if args.capture and not (output / f"{name}.png").exists():
+                if args.capture and not capture_path.exists():
                     print(f"{name}: requested capture did not arrive", file=sys.stderr)
                     failures.append(name)
                     continue
