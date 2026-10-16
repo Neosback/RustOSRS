@@ -1,8 +1,19 @@
-# Legacy Research Corpus
+# Research Index and Legacy Corpus
 
-Status: **Historical research only, reconciled through the M10 foundation audit**
+Status: **Source walkthroughs and historical research; canonical specifications remain authoritative**
 
 The `docs/RUNELITE_*.md` files predate the canonical RustOSRS blueprint. They remain useful for source discovery and historical reasoning, but they are **not implementation specifications**.
+
+## Current source studies
+
+These dated source walkthroughs record evidence and open work; they do not supersede canonical
+specifications or certify implementation parity. `index.md` defines the repository authority order.
+
+- [RuneLite / OSRS object system](RUNELITE-OBJECT-SYSTEM.md): definitions, placements, models,
+  morphs, animation, sound, map graphics, textures and related renderable families.
+- [Filestore and cache needs](RUNELITE-FILESTORE-NEEDS.md): existing capabilities, reproduced
+  metadata-parser findings, priorities, ownership and acceptance cases from that study.
+- [OpenRune cache design review](OPENRUNE-CACHE.md): reading/packing ideas and adoption decisions.
 
 ## Authority rule
 

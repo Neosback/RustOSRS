@@ -1,0 +1,902 @@
+{
+  "schema": 1,
+  "reviewed_on": "2026-10-15",
+  "scope": "Relevant source methods and local-code comparison; no Java execution or visual/audio certification.",
+  "roots": {
+    "rl": {
+      "path": "/Users/tylercovalt/Documents/ChatGPT/RSPSi-resources/RuneLite-melxin",
+      "commit": "1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc",
+      "dirty_entry_counts": {
+        " D": 1
+      },
+      "reviewed_file_changes": [],
+      "declared_versions": {
+        "game_revision": 235,
+        "runelite": "1.12.14",
+        "openosrs": "4.31.2",
+        "cacheversion_constant": 165
+      }
+    },
+    "rust": {
+      "path": "/Users/tylercovalt/Documents/RustOSRS",
+      "commit": "1c6a9ec36b3c686485b072ad9d8cd86b27f570a7",
+      "dirty_entry_counts": {
+        " M": 43,
+        " D": 442,
+        "??": 19
+      },
+      "reviewed_file_changes": []
+    }
+  },
+  "files": [
+    {
+      "root": "rl",
+      "path": "buildSrc/src/main/kotlin/Dependencies.kt",
+      "sha256": "951cd1b6737a65d220c80d00b9ffccaeccab0b82c05b30dd4c16680f484781b3"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/ConfigType.java",
+      "sha256": "04e76c9e77ef58b621546f69907e568b9192ed7134c1174efc6490fa1ae6bc0b"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/IndexType.java",
+      "sha256": "99c9a8144cec4306b350cf215c96e15aed9846f4c5a8272400780bc8f5bb081a"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/ObjectManager.java",
+      "sha256": "3ade1907abb3d3564a4dbbbfdc88de1a6267da94e96fc68ffe9b9f15bba70f71"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/definitions/ObjectDefinition.java",
+      "sha256": "d73d32b10b7ea72c16f2bf161b6de20ae260f966dfba647c81b254d8b6e6f34c"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/definitions/loaders/LocationsLoader.java",
+      "sha256": "b16bf7bd8fb34b1243bef2f1bc785780d8a73a34ca6ee153c96cad5de04f6026"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/definitions/loaders/ObjectLoader.java",
+      "sha256": "b8cadd6d1433a307e2889619978cf91f3a71f3828c3d5129c5e9b730a80bf05f"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/definitions/loaders/TextureLoader.java",
+      "sha256": "ef1493e29b865ac9e5c48d32ad8496bb8f522c76bb5c10d7222b3251d684e343"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/fs/Archive.java",
+      "sha256": "7d3c4a6de3c70df1d3a7c251fda6d7f8321170bbf4694e56081e19ac15439b65"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/fs/ArchiveFiles.java",
+      "sha256": "a9e0e288b562a5f1789f50894f451447b66fa3b93641cbd5cec78b0fec53fcbd"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/fs/Container.java",
+      "sha256": "58fd9f2c122445babb0fd416b453439798468448a07698002d3a620a729707c9"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/fs/Index.java",
+      "sha256": "e88103e47d234465094811bd583aaff4527d32e63dbfffc320a09e15d43fa36c"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/fs/jagex/DataFile.java",
+      "sha256": "3ddf6201c2a90a42bb23f7a58cead3fd38d8f6de3876638abcdab007cd3fd7c8"
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/index/IndexData.java",
+      "sha256": "97c3a3766383f69b148b08519c7de083e198a2f75800b59e40e395e60492a030"
+    },
+    {
+      "root": "rl",
+      "path": "runelite-mixins/src/main/java/net/runelite/mixins/RSDynamicObjectMixin.java",
+      "sha256": "fa206289efd34167466b0a00616848fd3b8657f8f03d5252f518094d3f03450d"
+    },
+    {
+      "root": "rl",
+      "path": "runelite-mixins/src/main/java/net/runelite/mixins/RSObjectCompositionMixin.java",
+      "sha256": "a100a388c38d5ce033bccff751b42818b472e802619228f6a9d8c6c5326888de"
+    },
+    {
+      "root": "rl",
+      "path": "runelite-mixins/src/main/java/net/runelite/mixins/RSTileMixin.java",
+      "sha256": "fb703974b25112c36c75988b20d64fea46159e6652b719fe5347e3e822bd1114"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/AbstractArchive.java",
+      "sha256": "93a11e2d0ca6c0f27620cc5a95c642b3dcd64de2a18751715089b46f3cd5725e"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/AnimationSequence.java",
+      "sha256": "d6bbc39f73eb13344744cfc27f9c9af981478a770cab91b4acb092f7afddce25"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/AsyncHttpResponse.java",
+      "sha256": "38b90b668bb7cac124cf7eb4d2559f03aacf5eb485babaef69539e216b8c79dd"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/Coord.java",
+      "sha256": "37f9ccdba3c0390e35354a60074fdbd3ed938815d55570ffe9a126dd63be3362"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/DynamicObject.java",
+      "sha256": "069dba100c4dc733c725f323ff569ef2194bc2ae3b4e3ce9c2cb9e9d58b4f89f"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/FriendSystem.java",
+      "sha256": "54ebf39399f7fee379204eebe220771188b1c12908b3a9b909e2d15d223af585"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/GraphicsObject.java",
+      "sha256": "39a0ddb042a2bf76f9e3b7dc178bc17fc198283f56bff865a19dbff40a05a299"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/HealthBarDefinition.java",
+      "sha256": "7b3a79d0faa571a8ef1558bc01ccd729eb7b72a83866166fe6bf53b622957e88"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ModelData.java",
+      "sha256": "109cf564713fecfe15f91c62e5f8bf69f9707d9df0acd25c2af08b60fb4ca94a"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/NPC.java",
+      "sha256": "78b50e6c35307a0595774975b6e9cf56b730d9bf25ac5fd2cb21befa5f663985"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectComposition.java",
+      "sha256": "9de683c9af60d96481ddf02dc9caf239f43bc64d9616af482e378fa483811996"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectSound.java",
+      "sha256": "3ba263c8f5281bc52bcf0f2c3d0650ed9c0c7ba44425cc56c62f990f263cc650"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ParamComposition.java",
+      "sha256": "7cd6f612e0e8b6ab02e01e96d665e6edf8f76959978dee39745f7bd57ea99dd5"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/Player.java",
+      "sha256": "e7d5fd788930af190757443ba410eb964b21203af3288ec4cadaaa921bf1cf83"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/Projectile.java",
+      "sha256": "a85b9c8c7ef68a7fde074507350a7877adbd398bf85bc4775313736f6de370b9"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/RuneLiteObject.java",
+      "sha256": "4a7e8c8f757b365ba68e904cd534ed6372cc7275b9ba2678e48d3ad4e6a49462"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/SecureRandomCallable.java",
+      "sha256": "ac4f38b0454aac8d7beca95e9444e801fc7edda057c29feccb0ae8cf6945214c"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/SequenceDefinition.java",
+      "sha256": "d415018661f8e4e59a5dceae840b6bef6933b74790149b41b7d93bbc4b0b2928"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/SoundEffect.java",
+      "sha256": "35915431c300a4a0935d93c836bfb9c8e83d82417be032b99e9165b279782e45"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/SpotAnimationDefinition.java",
+      "sha256": "a82a7ea379d3243549f4cb77bc843ab4044f48856b605738e9422e00473861bc"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/Texture.java",
+      "sha256": "e89499624786e11ead876938c9e1087d83e6b7d108024e4a190381e4ec002a49"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/TextureProvider.java",
+      "sha256": "e3436073956f81c33543aa91d697eb9d000b456adb810915703689827bc2a824"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/TileItem.java",
+      "sha256": "b91568f29e18d52c92a439c60675176c96ce44c0391ecf7a97b3b612eee3f395"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/WorldMapElement.java",
+      "sha256": "300097fe70cae8bb0dc6261a5588250a3d35a4fcf1632bc083fbbf01ce002a95"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/WorldMapIcon_1.java",
+      "sha256": "8bee4818b7e97b4d381ef27c98c836e7d9e7ec9d9b5d668be3f410fc6f58d3d2"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/WorldMapRegion.java",
+      "sha256": "bfe9f38b9405c6946c0e88f30c3663bbc477ec303b9ace186369a6b51cf7d558"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/WorldView.java",
+      "sha256": "9ddccb593cc81036d9a07c611f4e3088e0bd08fde93ea237645c2816010ccb4c"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/class146.java",
+      "sha256": "d66fd15b543ecf184f71d9dd173951b8d84750609a034cf95211f84db0327156"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/class147.java",
+      "sha256": "a92944d51d4d1ff4ba786fb41eaa1d11b2d15a58ae1432cf31b64ffc4c22b9e2"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/class150.java",
+      "sha256": "8c117349e67e63fc4610f13843caa17001e1d5bd3a10f1c0e7089b7fe5fd3eb5"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/class190.java",
+      "sha256": "816170078781e3098e48cdb3fa721abd7616c215102d2091c08d895c4c0101ba"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/class204.java",
+      "sha256": "029c8a2676783b3f63a514676204758bcb1bd8d9a59aa1e078e4c7c142c0ea5e"
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/class402.java",
+      "sha256": "f789b9dea299ad647df382d2ecda6370f23015e5519864c99ba102a6178ef4bd"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/decode/object.rs",
+      "sha256": "449486d4f2895caaaab237732d11b7b552a40af7c7150b6e562eac1b7e35a96e"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/decode/sequence.rs",
+      "sha256": "0d221c96001c71727f11dd23594cdd4ab42880a40f133122532bb34d2b295d90"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/decode/texture.rs",
+      "sha256": "0568d7328c904563f19010cfa78d9cba5f06da5013f8f29be8a7445f2322249d"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/encode/reference_table.rs",
+      "sha256": "5856b5733a47858ea814328960e9459b44a94baa1427abce4171e8fbcba7e841"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/encode/store.rs",
+      "sha256": "92394d3bf8f5076393b6f05abc058bf996522d43524680de6a9801a2068a57d5"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/encode/store/repack.rs",
+      "sha256": "80e34688aa0586c4d58b6965a7d85cf38ccbd37987f49c9f228329fc8f86f295"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/model_repository.rs",
+      "sha256": "fceb9350aff13d9a6dbea15eb675e1b176aa79aff17f7625098319cccf66a66d"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/transport.rs",
+      "sha256": "e2fc222e5baad9003530cca7a014255295c3fe1927ed5917594927158f9a277a"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/verified_export.rs",
+      "sha256": "8ecfc36303c1d80503431dc4fe125965f05922f9ab5eab8b63dbd1fe52daa930"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-core/src/definitions.rs",
+      "sha256": "0195f04867b823285707c7ecda14e571c818eca578faf9aad4d993d380b1cd51"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-editor/src/sound/mod.rs",
+      "sha256": "8c852cd254b727e3ab4b9725f850b083a5b700fe242103c86efa434df8db0943"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-filestore/src/codec.rs",
+      "sha256": "09d42d7f8081945caaff5a3a70052c4e2d620f012edc1013769555107ad847e5"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-filestore/src/index.rs",
+      "sha256": "469b1ef747e683dee201f237ec2732e3beb30e15893ccd69c5d16de5d3865008"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-filestore/src/lib.rs",
+      "sha256": "e2200985e2269c21e40d434ea94a5ab3ce736a43e3fe55532479fe086f019946"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-filestore/src/source.rs",
+      "sha256": "99671571c475c030ab92a9227717bcc5cf85210696620ca531c82776842cc425"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-world/src/animation.rs",
+      "sha256": "daf82e459d0431646427937141ed4967b3c7befc1ac061515872439c6c6fb786"
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-world/src/worldmap/mod.rs",
+      "sha256": "37d14f552fab9949d3832ef7a3ff3f429fccfa5f7783ad2187ad56d2b06d20fb"
+    }
+  ],
+  "anchors": [
+    {
+      "root": "rl",
+      "path": "buildSrc/src/main/kotlin/Dependencies.kt",
+      "contains": "object ProjectVersions {",
+      "line": 26
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/IndexType.java",
+      "contains": "public enum IndexType",
+      "line": 28
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/ConfigType.java",
+      "contains": "public enum ConfigType",
+      "line": 28
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/AsyncHttpResponse.java",
+      "contains": "public static ObjectComposition getObjectDefinition(int var0) {",
+      "line": 119
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/TextureProvider.java",
+      "contains": "public TextureProvider(AbstractArchive var1, AbstractArchive var2, int var3, double var4, int var6) {",
+      "line": 53
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/class146.java",
+      "contains": "public class146(AbstractArchive var1, AbstractArchive var2, int var3) {",
+      "line": 58
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectComposition.java",
+      "contains": "ObjectComposition() {",
+      "line": 319
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectComposition.java",
+      "contains": "void postDecode() {",
+      "line": 370
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/AsyncHttpResponse.java",
+      "contains": "public static ObjectComposition getObjectDefinition(int var0) {",
+      "line": 119
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectComposition.java",
+      "contains": "void decodeNext(Buffer var1, int var2) {",
+      "line": 413
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/definitions/loaders/ObjectLoader.java",
+      "contains": "private void processOp(int opcode, ObjectDefinition def, InputStream is)",
+      "line": 73
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/ObjectManager.java",
+      "contains": "public void load() throws IOException",
+      "line": 54
+    },
+    {
+      "root": "rl",
+      "path": "runelite-mixins/src/main/java/net/runelite/mixins/RSObjectCompositionMixin.java",
+      "contains": "public void postDecode()",
+      "line": 40
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/DynamicObject.java",
+      "contains": "static final void method2054(WorldView var0, byte[] var1, int var2, int var3) {",
+      "line": 218
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/definitions/loaders/LocationsLoader.java",
+      "contains": "private void loadLocations(LocationsDefinition loc, byte[] b)",
+      "line": 43
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/FriendSystem.java",
+      "contains": "static final void addObjects(WorldView var0, int var1, int var2, int var3, int var4, int var5, int var6, CollisionMap var7) {",
+      "line": 358
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/class150.java",
+      "contains": "static final void addPendingSpawnToScene(WorldView var0, int var1, int var2, int var3, int var4, int var5, int var6, int var7, int var8) {",
+      "line": 135
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/WorldView.java",
+      "contains": "void method2773(int var1, int var2, int var3, ObjectComposition var4, int var5) {",
+      "line": 262
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectComposition.java",
+      "contains": "final ModelData getModelData(int var1, int var2) {",
+      "line": 776
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ModelData.java",
+      "contains": "ModelData(byte[] var1) {",
+      "line": 322
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/model_repository.rs",
+      "contains": "pub struct RawModelCacheKey {",
+      "line": 31
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectComposition.java",
+      "contains": "ObjectDefinition_cached = new EvictingDualNodeHashTable(4096);",
+      "line": 311
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectComposition.java",
+      "contains": "public final Renderable getEntity(int var1, int var2, int[][] var3, int var4, int var5, int var6) {",
+      "line": 654
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectComposition.java",
+      "contains": "public final Model getModelDynamic(int var1, int var2, int[][] var3, int var4, int var5, int var6, SequenceDefinition var7, int var8) {",
+      "line": 734
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/DynamicObject.java",
+      "contains": "DynamicObject(WorldView var1, int var2, int var3, int var4, int var5, int var6, int var7, int var8, boolean var9, Renderable var10) {",
+      "line": 73
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectComposition.java",
+      "contains": "public final ObjectComposition transform() {",
+      "line": 917
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/AnimationSequence.java",
+      "contains": "public void method9880() {",
+      "line": 245
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/SequenceDefinition.java",
+      "contains": "Model transformObjectModel(Model var1, int var2, int var3) {",
+      "line": 467
+    },
+    {
+      "root": "rl",
+      "path": "runelite-mixins/src/main/java/net/runelite/mixins/RSDynamicObjectMixin.java",
+      "contains": "public RSModel copy$getModel()",
+      "line": 54
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/class190.java",
+      "contains": "public static int method4416(int var0, int var1) {",
+      "line": 36
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/AbstractArchive.java",
+      "contains": "public int getGroupFileCount(int var1) {",
+      "line": 475
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectComposition.java",
+      "contains": "public boolean hasSound() {",
+      "line": 961
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectSound.java",
+      "contains": "ObjectSound(int var1, int var2, int var3, int var4, int var5, ObjectComposition var6) {",
+      "line": 154
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/class204.java",
+      "contains": "static int method4559(int var0, int var1, ObjectSound var2) {",
+      "line": 97
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/class147.java",
+      "contains": "public static int method3941(int var0, int var1, int var2, int var3, int var4, int var5) {",
+      "line": 91
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ParamComposition.java",
+      "contains": "public static final synchronized long method4708() {",
+      "line": 105
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/SoundEffect.java",
+      "contains": "public static SoundEffect readSoundEffect(AbstractArchive var0, int var1, int var2) {",
+      "line": 194
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/WorldView.java",
+      "contains": "void method2773(int var1, int var2, int var3, ObjectComposition var4, int var5) {",
+      "line": 262
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/WorldMapElement.java",
+      "contains": "void decodeNext(Buffer var1, int var2) {",
+      "line": 164
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/WorldMapRegion.java",
+      "contains": "void getIconsForTiles(int var1, int var2, int var3, int var4, AbstractWorldMapData var5) {",
+      "line": 139
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/WorldMapIcon_1.java",
+      "contains": "void init() {",
+      "line": 63
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/HealthBarDefinition.java",
+      "contains": "static final void drawObject(int var0, int var1, int var2, int var3, int var4) {",
+      "line": 214
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/SecureRandomCallable.java",
+      "contains": "class39.mapIconCount = 0;",
+      "line": 88
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/Texture.java",
+      "contains": "Texture(Buffer var1) {",
+      "line": 37
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/TextureProvider.java",
+      "contains": "public int[] getTexturePixels(int var1) {",
+      "line": 123
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/definitions/loaders/TextureLoader.java",
+      "contains": "public TextureDefinition load(int id, byte[] b)",
+      "line": 38
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/TileItem.java",
+      "contains": "protected final Model getModel() {",
+      "line": 102
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/NPC.java",
+      "contains": "protected final Model getModel() {",
+      "line": 89
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/Player.java",
+      "contains": "protected final Model getModel() {",
+      "line": 398
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/Projectile.java",
+      "contains": "protected final Model getModel() {",
+      "line": 159
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/GraphicsObject.java",
+      "contains": "protected final Model getModel() {",
+      "line": 118
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/SpotAnimationDefinition.java",
+      "contains": "public final Model getModel(int var1) {",
+      "line": 178
+    },
+    {
+      "root": "rl",
+      "path": "runescape-client/src/main/java/RuneLiteObject.java",
+      "contains": "public void setActive(boolean active) {",
+      "line": 27
+    },
+    {
+      "root": "rl",
+      "path": "runelite-mixins/src/main/java/net/runelite/mixins/RSTileMixin.java",
+      "contains": "@FieldHook(\"boundaryObject\")",
+      "line": 397
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/decode/object.rs",
+      "contains": "pub fn decode_object_definition(",
+      "line": 19
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/decode/sequence.rs",
+      "contains": "pub fn decode_sequence_definition(",
+      "line": 14
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-world/src/animation.rs",
+      "contains": "//! Skeletal sequences (a small minority of animated objects) are not posed; those locs render",
+      "line": 8
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-world/src/worldmap/mod.rs",
+      "contains": "fn object_icon(definitions: &mut WorldDefinitions, object: i32) -> Option<u32> {",
+      "line": 1208
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-editor/src/sound/mod.rs",
+      "contains": "pub fn collect(infos: &Infos, scope: Scope, plane: Option<u8>) -> (Vec<AreaSound>, usize) {",
+      "line": 122
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-filestore/src/lib.rs",
+      "contains": "pub struct Dat2(Backing);",
+      "line": 37
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/transport.rs",
+      "contains": "pub struct CacheRepository {",
+      "line": 356
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/encode/reference_table.rs",
+      "contains": "pub struct ReferenceTable {",
+      "line": 56
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/encode/store/repack.rs",
+      "contains": "pub(super) fn repack(",
+      "line": 12
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-filestore/src/index.rs",
+      "contains": "pub(crate) fn from_slice(buffer: &[u8]) -> crate::Result<Self> {",
+      "line": 228
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-filestore/src/index.rs",
+      "contains": "fn parse_ids(",
+      "line": 403
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/encode/reference_table.rs",
+      "contains": "pub fn parse(bytes: &[u8]) -> Result<Self, ReferenceTableError> {",
+      "line": 125
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/index/IndexData.java",
+      "contains": "public void load(byte[] data)",
+      "line": 45
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-filestore/src/index.rs",
+      "contains": "pub fn new<P: AsRef<Path>>(path: P) -> crate::Result<Self> {",
+      "line": 50
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-filestore/src/lib.rs",
+      "contains": "pub fn metadata(&self, archive_ref: &ArchiveRef) -> crate::Result<IndexMetadata> {",
+      "line": 110
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/transport.rs",
+      "contains": "pub fn read_decoded_group(",
+      "line": 586
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-filestore/src/codec.rs",
+      "contains": "fn decompress_gzip(buffer: &[u8], len: usize) -> crate::Result<(Option<i16>, Vec<u8>)> {",
+      "line": 299
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/fs/Archive.java",
+      "contains": "public byte[] decompress(byte[] data, int[] keys) throws IOException",
+      "line": 78
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/fs/Container.java",
+      "contains": "public static Container decompress(byte[] b, int[] keys) throws IOException",
+      "line": 93
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/transport.rs",
+      "contains": "pub fn read_decoded_group(",
+      "line": 586
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/encode/store/repack.rs",
+      "contains": "fn verify_existing(raw: &[u8], entry: &super::super::GroupEntry) -> Result<(), StoreError> {",
+      "line": 126
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/encode/store.rs",
+      "contains": "pub fn write_raw_group(",
+      "line": 207
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/fs/jagex/DataFile.java",
+      "contains": "public synchronized byte[] read(int indexId, int archiveId, int sector, int size) throws IOException",
+      "line": 69
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/verified_export.rs",
+      "contains": "pub fn validate(",
+      "line": 75
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/transport.rs",
+      "contains": "pub fn group_metadata(",
+      "line": 529
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-filestore/src/index.rs",
+      "contains": "fn parse_hashes(",
+      "line": 319
+    },
+    {
+      "root": "rl",
+      "path": "cache/src/main/java/net/runelite/cache/fs/Index.java",
+      "contains": "private int findArchiveIndex(int id)",
+      "line": 100
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/decode/object.rs",
+      "contains": "249 => consume_parameters(&mut reader)?,",
+      "line": 187
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-core/src/definitions.rs",
+      "contains": "pub struct ObjectDefinition {",
+      "line": 198
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-cache/src/decode/sequence.rs",
+      "contains": "// Build 241 skeletal event map. Each entry is:",
+      "line": 109
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-world/src/animation.rs",
+      "contains": "//! Skeletal sequences (a small minority of animated objects) are not posed; those locs render",
+      "line": 8
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-world/src/worldmap/mod.rs",
+      "contains": "fn object_icon(definitions: &mut WorldDefinitions, object: i32) -> Option<u32> {",
+      "line": 1208
+    },
+    {
+      "root": "rust",
+      "path": "crates/osrs-editor/src/sound/mod.rs",
+      "contains": "pub fn collect(infos: &Infos, scope: Scope, plane: Option<u8>) -> (Vec<AreaSound>, usize) {",
+      "line": 122
+    }
+  ],
+  "metadata_probe": {
+    "source_sha256": "0b798dbe8c6892a24c13f06c7f3776a8be31bd9a2e62fcfbf6f0803590a8c8c6",
+    "command": "cargo run --offline --quiet --manifest-path target/research/filestore-audit/Cargo.toml",
+    "output": [
+      "truncated_one_group: hex=05000001 reader=Ok(0) round_trip_codec=Err(Truncated { what: \"group id\" })",
+      "unsupported_protocol_8: hex=0800000000000000 reader=Ok(0) round_trip_codec=Ok(0)",
+      "missing_file_name_hash: hex=05010001000000000000000000010000000100010000 reader=Ok(1) round_trip_codec=Err(Truncated { what: \"file name hash\" })"
+    ],
+    "note": "Scratch executable probe; observations are undesired acceptance, not regression-test expectations."
+  }
+}
