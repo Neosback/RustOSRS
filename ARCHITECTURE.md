@@ -100,6 +100,12 @@ See [ADR-0012](docs/adr/ADR-0012-first-class-filestore.md) for promotion from th
 
 `osrs-reference` is validation infrastructure. Production crates must never depend on it.
 
+`osrs-hd` may consume `osrs-core` for canonical appearance-rule coordinates and identifiers.
+Reusable theme definitions/validation remain GPU-free. At the application boundary, `EditorSession`
+composes authored appearance with the existing `osrs-edit::WorkspaceDocument` using the same generic
+patch-history implementation. Appearance does not advance map revision or modify cache export.
+See [ADR-0014](docs/adr/ADR-0014-authored-appearance.md); `osrs-edit` gains no HD/UI dependency.
+
 ## 4. Edit domain: CQRS without replacing MapPatch
 
 Do not replace the existing reversible `MapPatch` model with `Vec<Box<dyn Command>>`, a generic command hierarchy, or a second history mechanism.

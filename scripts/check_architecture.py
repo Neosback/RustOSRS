@@ -31,7 +31,7 @@ ALLOWED_INTERNAL: dict[str, set[str]] = {
     "osrs-cache": {"osrs-core", "osrs-filestore"},
     "osrs-scene": {"osrs-core"},
     # 117HD data/settings are reusable renderer inputs and do not depend on renderer/world/editor.
-    "osrs-hd": set(),
+    "osrs-hd": {"osrs-core"},
     "osrs-render": {"osrs-core", "osrs-scene", "osrs-hd"},
     # Runtime world composition/orchestration may consume the reusable decode,
     # semantic-scene, renderer, and HD-data layers, but none of those layers may depend back on it.

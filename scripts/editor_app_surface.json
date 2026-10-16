@@ -21,6 +21,7 @@
     "started",
     "terrain",
     "ui",
+    "viewer",
     "web_pick",
     "world"
   ],

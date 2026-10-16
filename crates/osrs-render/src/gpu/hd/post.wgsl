@@ -10,6 +10,10 @@ struct Frame {
     vignette: f32,
     width: f32,
     height: f32,
+    time: f32,
+    _padding0: f32,
+    _padding1: f32,
+    _padding2: f32,
 };
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -35,6 +39,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     var color = texel.rgb * frame.exposure;
     let uv = input.clip.xy / vec2<f32>(frame.width, frame.height);
     let edge = length(uv - vec2<f32>(0.5, 0.5)) * 1.41421356;
+    color = theme_post(color, vec3<f32>(uv, 0.0), frame.time);
     color = color * (1.0 - frame.vignette * smoothstep(0.4, 1.0, edge));
     return vec4<f32>(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), clamp(texel.a, 0.0, 1.0));
 }

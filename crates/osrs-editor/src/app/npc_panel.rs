@@ -23,7 +23,8 @@ use osrs_core::{
 
 use crate::app::npc_runtime::{AutoLoad, NpcDisplay};
 use authoring::{place_section, playback_section, selection_section};
-use scenario::{advanced_section, load_sidecar};
+use scenario::advanced_section;
+pub(in crate::app) use scenario::load_sidecar;
 pub(super) use viewport::{armed_input, draw_world};
 
 const SIDECAR_FORMAT: &str = "rustosrs-npc-scenario";

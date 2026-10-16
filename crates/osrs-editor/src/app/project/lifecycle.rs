@@ -39,9 +39,13 @@ impl EditorApp {
                 self.session.reset();
                 self.open_source(source, label, ctx);
             }
-            LifecycleTransition::Project { path, diffs } => {
+            LifecycleTransition::Project {
+                path,
+                diffs,
+                appearance,
+            } => {
                 let count = diffs.len();
-                self.activate_project(path, diffs);
+                self.activate_project(path, diffs, *appearance);
                 self.ui.notify(format!(
                     "Opening project: {count} edited region{}",
                     super::plural(count)

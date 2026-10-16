@@ -35,6 +35,9 @@ For implementation work, read in this order:
 
 The canonical blueprint registry is `docs/blueprint/README.md`.
 
+The authorized [Theme Studio and stock-HD completion program](docs/plans/THEME-STUDIO.md) records
+the current appearance-authoring checkpoint and the remaining stock/530 implementation and evidence.
+
 ## Authority hierarchy
 
 | Question | Canonical authority |

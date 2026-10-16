@@ -62,7 +62,7 @@ pub(super) fn seed_for(fingerprint: &str) -> u64 {
     u64::from_str_radix(fingerprint.get(..16).unwrap_or("0"), 16).unwrap_or(0)
 }
 
-pub(super) fn load_sidecar(app: &mut EditorApp, name: &str, text: &str) {
+pub(in crate::app) fn load_sidecar(app: &mut EditorApp, name: &str, text: &str) {
     let parsed: Result<Sidecar, _> = serde_json::from_str(text);
     let sidecar = match parsed {
         Ok(sidecar) if sidecar.format == SIDECAR_FORMAT => sidecar,

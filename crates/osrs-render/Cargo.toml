@@ -13,6 +13,7 @@ bytemuck.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 pollster.workspace = true
 wgpu.workspace = true
+naga = { version = "30", features = ["wgsl-in"] }
 
 [lints]
 workspace = true

@@ -45,6 +45,7 @@ impl RailTab {
 /// Tabs inside the View category.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ViewTab {
+    ThemeStudio,
     /// Camera, world and interface.
     #[default]
     Scene,
@@ -55,10 +56,16 @@ pub enum ViewTab {
 }
 
 impl ViewTab {
-    pub const ALL: [Self; 3] = [Self::Scene, Self::Graphics, Self::Overlays];
+    pub const ALL: [Self; 4] = [
+        Self::Scene,
+        Self::Graphics,
+        Self::Overlays,
+        Self::ThemeStudio,
+    ];
 
     pub const fn label(self) -> &'static str {
         match self {
+            Self::ThemeStudio => "Theme Studio",
             Self::Scene => "Scene",
             Self::Graphics => "Graphics",
             Self::Overlays => "Overlays",

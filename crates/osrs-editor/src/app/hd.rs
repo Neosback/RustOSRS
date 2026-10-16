@@ -17,6 +17,7 @@ pub struct HdRuntime {
     state: EnvironmentState,
     started: Instant,
     last_update: Instant,
+    resolved: osrs_hd::theme::ThemeOverrides,
 }
 
 impl HdRuntime {
@@ -26,7 +27,18 @@ impl HdRuntime {
             state: EnvironmentState::new(),
             started: Instant::now(),
             last_update: Instant::now(),
+            resolved: Default::default(),
         }
+    }
+
+    pub(super) fn params(
+        &self,
+        mut base: osrs_render::gpu::HdParams,
+    ) -> osrs_render::gpu::HdParams {
+        if let Some(value) = self.resolved.exposure {
+            base.exposure = value.get();
+        }
+        base
     }
 
     /// Install the environment table once the plugin data has loaded.
@@ -71,26 +83,59 @@ impl EditorApp {
         ];
         let mut settings = self.settings.prefs.hd_environment;
         settings.host_sky = self.settings.prefs.sky_color;
-        let elapsed = f64::from(
+        let mut elapsed = f64::from(
             self.diagnostics
                 .scene_seconds(now.duration_since(self.hd.started).as_secs_f32()),
         );
+        if self.ui.themes.compare && self.ui.themes.preview_time.is_none() {
+            self.ui.themes.preview_time = Some(elapsed as f32);
+        }
+        if let Some(time) = self.ui.themes.preview_time {
+            elapsed = f64::from(time);
+        }
         self.hd
             .state
             .update(&set, &settings, focal, &NoVariables, elapsed, delta);
         self.renderer.set_hd_shadows(self.settings.prefs.hd_shadows);
+        let query = osrs_hd::theme::AppearanceQuery {
+            tile: osrs_core::coords::MapTile::new(focal[0], focal[1]),
+            plane: osrs_core::coords::PlaneIndex::new(self.interaction.view_plane())
+                .unwrap_or_else(|| unreachable!("view plane is clamped to 0–3")),
+            underlay: None,
+            overlay: None,
+            object: None,
+            kind: None,
+            orientation: None,
+        };
+        let values = self.ui.themes.values(self.session.appearance(), &query);
+        let mut lighting = self.hd.state.lighting(
+            &set,
+            &settings,
+            self.settings.prefs.draw_distance_tiles as f32,
+        );
+        values.apply_lighting(
+            &mut lighting,
+            self.settings.prefs.draw_distance_tiles as f32,
+        );
         self.renderer.set_hd_lighting(HdLighting {
-            lighting: self.hd.state.lighting(
-                &set,
-                &settings,
-                self.settings.prefs.draw_distance_tiles as f32,
-            ),
-            normal_mapping: self.settings.prefs.hd_normal_mapping,
-            parallax_mapping: self.settings.prefs.hd_parallax_mapping,
-            underwater_caustics: self.settings.prefs.hd_underwater_caustics,
-            gamma: 100.0 / self.settings.prefs.hd_brightness.max(1.0),
+            lighting,
+            normal_mapping: values
+                .normal_mapping
+                .unwrap_or(self.settings.prefs.hd_normal_mapping),
+            parallax_mapping: values
+                .parallax_mapping
+                .unwrap_or(self.settings.prefs.hd_parallax_mapping),
+            underwater_caustics: values
+                .underwater_caustics
+                .unwrap_or(self.settings.prefs.hd_underwater_caustics),
+            gamma: 100.0
+                / values
+                    .brightness
+                    .map_or(self.settings.prefs.hd_brightness, |n| n.get())
+                    .max(1.0),
             elapsed_seconds: (elapsed % 4096.0) as f32,
             debug_view: 0,
         });
+        self.hd.resolved = values;
     }
 }

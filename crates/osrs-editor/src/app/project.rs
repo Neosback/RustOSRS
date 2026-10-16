@@ -33,8 +33,7 @@ impl EditorApp {
     }
 
     fn has_project_changes(&self) -> bool {
-        self.project
-            .has_changes(self.session.dirty_regions().next().is_some())
+        self.project.has_changes(self.session.edit_revision() != 0)
     }
 
     /// File menu entries.
@@ -135,9 +134,9 @@ impl EditorApp {
                     .to_owned(),
             ),
             "open" => {
-                let diffs = self.load_project(Path::new(path))?;
+                let (diffs, appearance) = self.load_project(Path::new(path))?;
                 let count = diffs.len();
-                self.activate_project(PathBuf::from(path), diffs);
+                self.activate_project(PathBuf::from(path), diffs, appearance);
                 Ok(format!(
                     "Opening project: {count} edited region{}",
                     plural(count)
@@ -155,7 +154,7 @@ impl EditorApp {
         else {
             return;
         };
-        let diffs = match self.load_project(&path) {
+        let (diffs, appearance) = match self.load_project(&path) {
             Ok(diffs) => diffs,
             Err(error) => {
                 self.ui.notify(format!("Could not open project: {error}"));
@@ -163,13 +162,20 @@ impl EditorApp {
             }
         };
         self.request_transition(
-            super::project_runtime::LifecycleTransition::Project { path, diffs },
+            super::project_runtime::LifecycleTransition::Project {
+                path,
+                diffs,
+                appearance: Box::new(appearance),
+            },
             ctx,
         );
     }
 
     /// Read and validate a project against the currently open cache.
-    fn load_project(&self, path: &Path) -> Result<Vec<RegionDiff>, String> {
+    fn load_project(
+        &self,
+        path: &Path,
+    ) -> Result<(Vec<RegionDiff>, osrs_hd::theme::ThemePack), String> {
         let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
         let file = ProjectFile::from_json(&text).map_err(|error| format!("{error:?}"))?;
         let profile = self
@@ -185,13 +191,22 @@ impl EditorApp {
             ));
         }
         debug_assert_eq!(file.format, PROJECT_FORMAT);
-        file.into_diffs().map_err(|error| format!("{error:?}"))
+        let appearance = file.appearance.clone();
+        file.into_diffs()
+            .map(|diffs| (diffs, appearance))
+            .map_err(|error| format!("{error:?}"))
     }
 
     /// Replace the current editing session with `diffs` from the pristine current cache source.
-    fn activate_project(&mut self, path: PathBuf, diffs: Vec<RegionDiff>) {
+    fn activate_project(
+        &mut self,
+        path: PathBuf,
+        diffs: Vec<RegionDiff>,
+        appearance: osrs_hd::theme::ThemePack,
+    ) {
         self.project
             .prepare_replacement(&mut self.session, path, diffs);
+        self.project.queue_appearance(appearance);
         // Restarting the source clears worker-side edit projections as well as all resident legacy
         // projections. Project diffs are then applied only to fresh source regions as they arrive.
         self.restart_current_source();

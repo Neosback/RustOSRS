@@ -17,6 +17,7 @@ use std::{
 pub(super) struct ProjectPersistence {
     /// Diffs from an opened project whose region has not been applied and projected yet.
     pending: BTreeMap<RegionCoord, RegionDiff>,
+    pending_appearance: Option<osrs_hd::theme::ThemePack>,
     /// The file Save writes to.
     path: Option<PathBuf>,
     save: Option<Receiver<Result<(PathBuf, usize), String>>>,
@@ -45,6 +46,7 @@ pub(in crate::app) enum LifecycleTransition {
     Project {
         path: PathBuf,
         diffs: Vec<RegionDiff>,
+        appearance: Box<osrs_hd::theme::ThemePack>,
     },
 }
 
@@ -65,6 +67,12 @@ pub(in crate::app) enum LifecycleChoice {
 }
 
 impl ProjectRuntime {
+    pub(in crate::app) fn queue_appearance(&mut self, pack: osrs_hd::theme::ThemePack) {
+        self.persistence.pending_appearance = Some(pack);
+    }
+    pub(in crate::app) fn take_pending_appearance(&mut self) -> Option<osrs_hd::theme::ThemePack> {
+        self.persistence.pending_appearance.take()
+    }
     pub(in crate::app) fn has_pending_exports(&self) -> bool {
         !self.persistence.pending.is_empty()
     }

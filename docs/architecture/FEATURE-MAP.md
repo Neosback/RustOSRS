@@ -15,6 +15,7 @@ UI/input → controller intent → pure MapQuery planner → MapPatch
 | Spline / Path | `app/spline_tool/input.rs`, `app/interaction_runtime/spline.rs` (fit in `terrain_path/fit.rs`) | `osrs-edit/src/path.rs`, `osrs-edit/src/path_height.rs` | `app/editing/path.rs` |
 | Objects | `app/object_tool.rs`, `app/gizmo.rs` | `osrs-edit/src/object_edit.rs` | `app/object_tool/commit.rs` |
 | NPC scenarios (rail tab, not a `Tool`) | `app/npc_runtime.rs`, `app/npc_panel/` | `osrs-edit/src/scenario.rs`, `osrs-playtest` | `EditRuntime::execute_scenario`, chronological `WorkspaceHistory` |
+| Appearance (View tab, not a `Tool`) | `app/theme_studio/`, UI drafts in `UiRuntime` | `osrs-hd::theme::ThemePatch` | `EditRuntime::execute_appearance`, same generic chronological history |
 | Tile paste | `app/editing/paste.rs`, `app/tile_clipboard.rs` | Paint planner | Existing Path history projection |
 
 Application paths are relative to `crates/osrs-editor/src`. `osrs-edit` paths are relative to `crates`.
@@ -74,3 +75,12 @@ Build observations include source generation, request ID, semantic revision at s
 Follow an existing tool's registered flow. Keep the planner deterministic and headless, preview state transient, cancellation reversible, and a completed gesture a single gateway transaction. Test atomic failure, no-op/redo preservation and exact undo/redo. Reuse the generic receipt/invalidation flow.
 
 Extend the registry with real tests and run its guard. New behavior belongs on its controller/runtime; the application method ratchet prevents casually adding another broad `impl EditorApp`. A deliberate interface change must be reviewed alongside its owning architecture decision, not hidden in a baseline update.
+
+Registry entries default to `kind: tool`, which must match the `Tool` enum exactly. A `kind: workspace`
+entry registers an authored feature outside that enum and still requires the same planner, gateway
+and four real behavior tests. It cannot relabel an existing tool to evade completeness checks.
+
+Authored appearance is owned by `EditorSession`; `HdRuntime` retains only resolved lighting and
+environment transition state. The current renderer accepts global/area environment rules and WGSL
+hooks; image-material/terrain/object selectors are rejected until their projections are implemented.
+See `docs/plans/THEME-STUDIO.md` for the explicit incomplete boundary.

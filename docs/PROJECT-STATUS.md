@@ -115,6 +115,11 @@ Substantial 117HD functionality is already implemented:
 
 The 117HD port is advanced, but it is not complete. See section 4.
 
+The in-progress [Theme Studio program](plans/THEME-STUDIO.md) adds authored appearance/history,
+native portable packs and project snapshots, area environment controls and validated WGSL hooks.
+It does not complete the missing stock systems or the 530 importer. Image-material authoring and
+terrain/object appearance projections remain pending. See `DEV_HANDOFF.md` for current verification.
+
 ## 3. Current ownership implementation
 
 The ownership refinement merged to `main` as PR #56 (`63d2721e3fa30dc2eaecff140d6b27886e4dff2f`); its feature branch is retired. See `DEV_HANDOFF.md` for current integration and exact validation status. This updates the earlier audit's architecture assessment; it does not recertify its historical branch/CI metadata.

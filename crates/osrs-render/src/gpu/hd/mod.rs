@@ -9,6 +9,7 @@ pub mod layout;
 pub mod materials;
 pub(super) mod post;
 pub mod shadow;
+pub(super) mod sky;
 
 /// Colour format of the HD offscreen scene target.
 pub const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;

@@ -1,5 +1,19 @@
 use super::*;
 
+#[test]
+fn old_projects_load_with_stock_appearance_and_new_projects_preserve_custom_looks() {
+    let old = r#"{"format":"rustosrs-project-v1","profile":"p","regions":[]}"#;
+    let mut file = ProjectFile::from_json(old).unwrap_or_else(|e| unreachable!("{e:?}"));
+    assert_eq!(file.format, PROJECT_FORMAT);
+    assert_eq!(file.appearance, osrs_hd::theme::ThemePack::default());
+    file.appearance.definition = file
+        .appearance
+        .definition
+        .duplicate("my-theme".into(), "Dusk".into());
+    let saved = ProjectFile::from_json(&file.to_json()).unwrap_or_else(|e| unreachable!("{e:?}"));
+    assert_eq!(saved.appearance, file.appearance);
+}
+
 fn plane0() -> SourcePlane {
     SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))
 }

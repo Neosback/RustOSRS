@@ -1,5 +1,6 @@
 //! GPU renderer, viewport targets, and frame submission owned by the editor runtime.
 mod reuse;
+mod theme;
 
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_hd::shadows::ShadowSettings;
@@ -51,6 +52,10 @@ pub(super) struct RenderRuntime {
     region_zones: BTreeMap<RegionKey, BTreeSet<ZoneKey>>,
     targets: Option<ViewportTargets>,
     reuse: reuse::ViewportReuse,
+    theme_preparation: Option<osrs_render::gpu::theme::ThemeShaderPreparation>,
+    theme_shaders: Vec<osrs_hd::theme::shader::ShaderExtension>,
+    prepared_theme_shaders: Vec<osrs_hd::theme::shader::ShaderExtension>,
+    rejected_theme_shaders: Option<Vec<osrs_hd::theme::shader::ShaderExtension>>,
     reuse_enabled: bool,
 }
 
@@ -70,6 +75,10 @@ impl RenderRuntime {
             region_zones: BTreeMap::new(),
             targets: None,
             reuse: reuse::ViewportReuse::default(),
+            theme_preparation: None,
+            theme_shaders: Vec::new(),
+            prepared_theme_shaders: Vec::new(),
+            rejected_theme_shaders: None,
             reuse_enabled: std::env::var("RUSTOSRS_VIEWPORT_REUSE")
                 .map_or(true, |value| value != "0"),
         }

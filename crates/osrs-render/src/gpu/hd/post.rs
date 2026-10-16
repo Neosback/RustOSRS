@@ -11,6 +11,7 @@ pub(in crate::gpu) struct PostIo<'a> {
     /// `COLOR_FORMAT` destination.
     pub target: &'a wgpu::TextureView,
     pub size: (u32, u32),
+    pub elapsed_seconds: f32,
     pub timestamps: Option<wgpu::RenderPassTimestampWrites<'a>>,
 }
 
@@ -21,10 +22,10 @@ pub(in crate::gpu) struct PostPass {
 }
 
 impl PostPass {
-    pub(in crate::gpu) fn new(device: &wgpu::Device) -> Self {
+    pub(in crate::gpu) fn with_source(device: &wgpu::Device, source: &str) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("hd/post.wgsl"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("post.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(source.into()),
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("hd-post"),
@@ -88,6 +89,8 @@ impl PostPass {
                 vignette: 0.0,
                 width: 1.0,
                 height: 1.0,
+                time: 0.0,
+                padding: [0.0; 3],
             }),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -111,6 +114,7 @@ impl PostPass {
             hdr,
             target,
             size,
+            elapsed_seconds,
             timestamps,
         } = io;
         queue.write_buffer(
@@ -121,6 +125,8 @@ impl PostPass {
                 vignette: params.placeholder_vignette,
                 width: size.0 as f32,
                 height: size.1 as f32,
+                time: elapsed_seconds,
+                padding: [0.0; 3],
             }),
         );
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {

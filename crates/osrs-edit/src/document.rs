@@ -21,6 +21,10 @@ pub struct MapDocument {
 /// Why a patch could not be applied to the current authoritative state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PatchApplyError {
+    /// An application-owned authored document rejected its expected before-state.
+    AuthoringMismatch {
+        op_index: usize,
+    },
     ScenarioMismatch {
         op_index: usize,
     },
@@ -57,7 +61,8 @@ pub enum PatchApplyError {
 impl PatchApplyError {
     pub const fn op_index(self) -> usize {
         match self {
-            Self::ScenarioMismatch { op_index }
+            Self::AuthoringMismatch { op_index }
+            | Self::ScenarioMismatch { op_index }
             | Self::InvalidScenario { op_index }
             | Self::TerrainMismatch { op_index, .. }
             | Self::HeightMissing { op_index, .. }

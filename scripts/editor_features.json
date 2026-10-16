@@ -129,5 +129,37 @@
       "file": "crates/osrs-editor/src/app/object_tool/commit.rs",
       "symbol": "semantic_object_undo_projection_is_validated_from_session_state"
     }
+  },
+  "Appearance": {
+    "kind": "workspace",
+    "mutates_document": true,
+    "controller": {
+      "file": "crates/osrs-editor/src/app/theme_studio/mod.rs",
+      "symbol": "draw"
+    },
+    "planner": {
+      "file": "crates/osrs-hd/src/theme/mod.rs",
+      "symbol": "plan"
+    },
+    "gateway": {
+      "file": "crates/osrs-editor/src/app/edit_runtime.rs",
+      "symbol": "execute_appearance"
+    },
+    "planning_test": {
+      "file": "crates/osrs-hd/tests/themes.rs",
+      "symbol": "ordered_rules_override_only_authored_properties_and_explain_winners"
+    },
+    "cancellation_test": {
+      "file": "crates/osrs-editor/src/app/theme_studio/mod.rs",
+      "symbol": "cancelling_preview_keeps_authority_and_restores_the_visible_base"
+    },
+    "commit_test": {
+      "file": "crates/osrs-editor/src/session/appearance_tests.rs",
+      "symbol": "failed_projection_and_empty_theme_gesture_preserve_redo_and_dirty_regions"
+    },
+    "undo_test": {
+      "file": "crates/osrs-editor/src/session/appearance_tests.rs",
+      "symbol": "mixed_history_preserves_map_revision_and_restores_appearance_exactly"
+    }
   }
 }

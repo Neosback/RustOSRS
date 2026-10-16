@@ -12,6 +12,43 @@ Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md`
 - Authorized work and plan: `docs/plans/PERFORMANCE-UI-PLAYTEST-HD.md`. The expanded user goals (RuneLite/deob re-verification, exact tile/overlay/underlay/blend abstraction for the spline tool, NPC/entity runtime for a future own client) are carried by the checkpoints below.
 - Source-review baseline on 2026-10-16: clean `main` at `fe1b703cf06e472b26bee68f2bd26cff2684dbe0`. Actor definition/sequence-slot and deterministic spot/projectile foundations now exist in `osrs-core`; this does not complete entity decoding, model assembly, collision snapshots or editor playtesting. Performance measurement/optimization is explicitly **paused** in the current authorized plan; historical instructions to retake baselines below do not resume it.
 
+## Theme Studio foundation (2026-10-16, in progress)
+
+- Authorized program: `docs/plans/THEME-STUDIO.md`. **The complete requested stock-HD/530/theme
+  program is not implemented or accepted.** This is the appearance-authoring foundation checkpoint.
+- Started on `main` at exact baseline `81ae4e8ad3423313c7ea7a5f401bb85eecb49d62`, with existing
+  player/NPC edits. Another session committed/amended that player work during implementation;
+  latest observed HEAD is `1645b81eee0e216384cc7d39afa6ed921109d809`. Shared viewer/mobile work is
+  separate. Recheck live Git; do not attribute those changes to this checkpoint.
+- `osrs-hd::theme` owns versioned definitions, finite values, ordered property-wise resolution,
+  reversible patches and checksummed ZIP packs with immutable shared asset bytes. Only the
+  foundational `osrs-core` dependency was added. ADR-0014 documents the boundary.
+- Application `EditorDocument` composes the existing workspace and `ThemePack`; the existing generic
+  patch history supplies chronological map/NPC/appearance undo/redo through `EditRuntime`.
+  Appearance edits advance authored revision but do not dirty map regions or advance map revision.
+- View → Graphics → Theme Studio provides stock/new/duplicate, native import/export/library,
+  lighting/fog/water/effect controls and editable/reorderable rectangular area rules. UI drafts are
+  transient. Native project v2 embeds appearance; v1 migrates to stock. Cache export is unchanged.
+- `RenderRuntime` owns candidate pipeline resources/futures. WGSL vertex/surface/water/sky/post
+  templates are parsed/validated before GPU preparation; scoped GPU validation completes before
+  activation. Shader history/project loads restore pipelines from authority. Vertex deformation
+  also reaches shadow casting; animated vertex hooks invalidate shadow reuse.
+- `scripts/audit_hd_config.py` records and verifies all 98 pinned source default bodies and anchors.
+  Source pins and the full supplied Java tree match. All 98 implementation dispositions remain
+  `audit_pending`; this inventory does not claim stock feature reconciliation.
+- Outstanding: stock point lights, celestial/day-night/reflections/wind/post/AA completion; image
+  material projections and terrain/object/placement rules; 530 procedural importer and faithful
+  theme; shader parameter/file UX; browser pack/library persistence; full independent visual and
+  end-user acceptance. Unsupported material/selector packs are rejected explicitly. The 2008 HD
+  card stays disabled. No 530 source/assets were copied or textures decoded in this checkpoint.
+- Focused local checks so far: 5 theme-domain tests; 2 mixed-history tests; 2 Theme Studio
+  cancellation/layout tests; 4 theme-shader tests including actual GPU activation and pixel output;
+  8 existing material/profile GPU tests; architecture guard + 26 guard tests + 12 editor-contract
+  tests; HD source pins/defaults: passed. Reference-regeneration reports 5 missing-tool skips and
+  golden-index reports its historical missing-harness skip. Full native/WASM gates are still being
+  run; subsequent results must be recorded below. No remote CI certification or independent
+  RLHD/530 visual comparison is claimed. Theme changes currently remain uncommitted.
+
 ## Offline NPC scenarios checkpoint (2026-10-16)
 
 - Authorized source: installed OpenRune at `/Users/tylercovalt/Desktop/OpenRune Project/OpenRune-Server` (revision-240 manifest, `.data/cache/LIVE`). Baseline `e1325640` plus the uncommitted work of the previous NPC session; this checkpoint finishes the editor side. Check `git log` for the checkpoint commit; nothing is pushed.

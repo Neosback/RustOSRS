@@ -3,6 +3,11 @@
 //! The authoritative state and history live here. Infrastructure-specific decoded region data is
 //! adapted at the module boundary before it enters the pure `osrs-edit` domain.
 
+mod appearance;
+mod appearance_support;
+pub(crate) use appearance_support::validate_appearance_pack;
+#[cfg(test)]
+mod appearance_tests;
 mod edit_session;
 #[cfg(not(target_arch = "wasm32"))]
 mod export;

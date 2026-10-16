@@ -21,6 +21,7 @@ struct VertexIn {
     @builtin(vertex_index) index: u32,
     @location(0) position: vec4<i32>,
     @location(1) abhsl: u32,
+    @location(3) normal: vec2<f32>,
     @location(4) uv: vec2<f32>,
     @location(5) hsl_flags: vec4<u32>,
     @location(6) material_water: vec4<u32>,
@@ -40,10 +41,17 @@ fn opacity_threshold() -> f32 {
     return select(0.71, 0.01, (env.shadow_flags.w & 1u) != 0u);
 }
 
+fn decode_shadow_normal(e: vec2<f32>) -> vec3<f32> {
+    var n = vec3<f32>(e, 1.0 - abs(e.x) - abs(e.y));
+    if (n.z < 0.0) {
+        n = vec3<f32>((vec2<f32>(1.0) - abs(n.yx)) * select(vec2<f32>(-1.0), vec2<f32>(1.0), n.xy >= vec2<f32>(0.0)), n.z);
+    }
+    return normalize(n);
+}
 @vertex
 fn vs_shadow(input: VertexIn) -> VertexOut {
     var out: VertexOut;
-    let position = vec3<f32>(input.position.xyz) + zone.base.xyz;
+    let position = theme_vertex(vec3<f32>(input.position.xyz) + zone.base.xyz, decode_shadow_normal(input.normal), env.camera.w);
     let corner = input.index % 3u;
     let flags = input.hsl_flags.w;
     let opacity = 1.0 - f32((input.abhsl >> 24u) & 0xffu) / 255.0;

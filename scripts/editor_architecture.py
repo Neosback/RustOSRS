@@ -124,9 +124,13 @@ def check_features(repo: Path, registry: dict) -> list[str]:
         return ["feature map: missing Tool enum"]
     body = code[match.end():block_end(code, match.end() - 1)]
     tools = set(re.findall(r"^\s*(\w+)\s*,", body, flags=re.M))
-    if tools != set(registry):
-        errors.append(f"feature map: Tool variants and feature entries differ: {sorted(tools ^ set(registry))}")
+    registered_tools = {name for name, feature in registry.items() if feature.get("kind", "tool") == "tool"}
+    if tools != registered_tools:
+        errors.append(f"feature map: Tool variants and feature entries differ: {sorted(tools ^ registered_tools)}")
     for tool, feature in registry.items():
+        kind = feature.get("kind", "tool")
+        if kind not in {"tool", "workspace"} or kind == "workspace" and tool in tools:
+            errors.append(f"feature map/{tool}: invalid feature kind")
         required = ["controller"]
         if feature.get("mutates_document"):
             required += ["planner", "gateway", "planning_test", "cancellation_test", "commit_test", "undo_test"]

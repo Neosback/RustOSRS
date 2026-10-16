@@ -8,6 +8,7 @@ use web_time::Instant;
 const RECENT_TOOLS: usize = 3;
 
 pub(super) struct UiRuntime {
+    pub(super) themes: super::theme_studio::ThemeStudio,
     pub(super) palette_search: String,
     pub(super) context_menu: Option<egui::Pos2>,
     pub(super) settings_open: bool,
@@ -34,6 +35,7 @@ pub(super) struct UiRuntime {
 impl UiRuntime {
     pub(super) fn new() -> Self {
         Self {
+            themes: super::theme_studio::ThemeStudio::default(),
             palette_search: String::new(),
             context_menu: None,
             settings_open: std::env::var_os("RUSTOSRS_OPEN_SETTINGS").is_some(),

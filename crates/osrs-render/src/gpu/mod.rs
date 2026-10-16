@@ -29,6 +29,7 @@ pub mod hd;
 mod overlay;
 mod profile;
 mod resources;
+pub mod theme;
 mod timing;
 pub use counters::RenderCounters;
 pub use resources::texture_storage_bytes;
@@ -371,6 +372,7 @@ struct ScenePipelines {
 
 /// GPU objects only the HD profile needs.
 struct HdResources {
+    sky: wgpu::RenderPipeline,
     /// Reference shading into the HDR target, for zones without HD vertex data.
     pipelines: ScenePipelines,
     /// The HD scene shader (two vertex buffers per draw).
@@ -482,6 +484,7 @@ pub struct SceneRenderer {
     /// HD pipelines, built the first time an HD frame is encoded.
     hd: std::cell::OnceCell<HdResources>,
     hd_params: HdParams,
+    theme_vertex_active: bool,
     hd_lighting: HdLighting,
     hd_layout: wgpu::BindGroupLayout,
     hd_env_buffer: wgpu::Buffer,
@@ -646,6 +649,7 @@ impl SceneRenderer {
             scene_layout: pipeline_layout,
             hd: std::cell::OnceCell::new(),
             hd_params: HdParams::default(),
+            theme_vertex_active: false,
             hd_lighting: HdLighting::default(),
             hd_layout,
             hd_env_buffer,
@@ -1022,7 +1026,14 @@ impl SceneRenderer {
         let lighting = &hd.lighting;
         let shadow_uniform = self.shadow_uniform(shadow_plan.as_ref(), shadow_maps);
         let with4 = |v: [f32; 3]| [v[0], v[1], v[2], 0.0];
+        let (sy, cy) = params.camera.yaw.sin_cos();
+        let (sp, cp) = params.camera.pitch.sin_cos();
+        let screen_x = width as f32 / (2.0 * params.camera.scale);
+        let screen_y = height as f32 / (2.0 * params.camera.scale);
         let environment = hd::layout::HdEnvironmentUniform {
+            sky_right: [cy * screen_x, 0.0, sy * screen_x, 0.0],
+            sky_down: [sy * sp * screen_y, cp * screen_y, -cy * sp * screen_y, 0.0],
+            sky_forward: [-sy * cp, sp, cy * cp, 0.0],
             light_proj: shadow_uniform.light_proj,
             shadow_right: shadow_uniform.right,
             shadow_up: shadow_uniform.up,
@@ -1278,6 +1289,7 @@ impl SceneRenderer {
                             hdr,
                             target,
                             size: (width, height),
+                            elapsed_seconds: self.hd_lighting.elapsed_seconds,
                             timestamps: timer
                                 .as_ref()
                                 .filter(|_| timed)
@@ -1539,47 +1551,28 @@ impl SceneRenderer {
     /// The HD pipelines and resolve pass, built on first use.
     fn hd_resources(&self) -> &HdResources {
         self.hd.get_or_init(|| {
-            let shader = self
-                .device
-                .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some("hd/scene.wgsl"),
-                    source: wgpu::ShaderSource::Wgsl(
-                        hd::shadow::shader_source(&format!(
-                            "{}\n{}",
-                            include_str!("hd/shadow_receive.wgsl"),
-                            include_str!("hd/scene.wgsl")
-                        ))
-                        .into(),
-                    ),
-                });
-            let layout = self
-                .device
-                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("hd-scene"),
-                    bind_group_layouts: &[
-                        Some(&self.globals_layout),
-                        Some(&self.zone_layout),
-                        Some(&self.hd_layout),
-                        Some(&self.hd_shadow_layout),
-                    ],
-                    immediate_size: 0,
-                });
-            HdResources {
-                pipelines: build_scene_pipelines(
-                    &self.device,
-                    &self.scene_shader,
-                    &self.scene_layout,
-                    hd::HDR_FORMAT,
-                    false,
-                ),
-                scene: build_scene_pipelines(&self.device, &shader, &layout, hd::HDR_FORMAT, true),
-                shadows: hd::shadow::ShadowPipelines::new(
-                    &self.device,
-                    &self.zone_layout,
-                    &self.hd_layout,
-                ),
-                post: hd::post::PostPass::new(&self.device),
-            }
+            let scene = hd::shadow::shader_source(&format!(
+                "{}\n{}\n{}",
+                osrs_hd::theme::shader::ShaderStage::ALL
+                    .into_iter()
+                    .filter(|stage| *stage != osrs_hd::theme::shader::ShaderStage::Post)
+                    .map(|stage| stage.template())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                include_str!("hd/shadow_receive.wgsl"),
+                include_str!("hd/scene.wgsl")
+            ));
+            let post = format!(
+                "{}\n{}",
+                osrs_hd::theme::shader::ShaderStage::Post.template(),
+                include_str!("hd/post.wgsl")
+            );
+            self.build_hd_resources(
+                &scene,
+                &post,
+                &hd::shadow::shader_source(include_str!("hd/sky.wgsl")),
+                "",
+            )
         })
     }
 
@@ -1639,6 +1632,10 @@ impl SceneRenderer {
 
     /// Lighting of the HD scene shader.
     pub fn set_hd_lighting(&mut self, lighting: HdLighting) {
+        if self.theme_vertex_active && self.hd_lighting.elapsed_seconds != lighting.elapsed_seconds
+        {
+            self.hd_shadow_drawn.set(None);
+        }
         self.hd_lighting = lighting;
     }
 
@@ -1701,6 +1698,11 @@ impl SceneRenderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            if hdr && let Some(binding) = &self.hd_binding {
+                pass.set_pipeline(&self.hd_resources().sky);
+                pass.set_bind_group(2, &binding.bind_group, &[]);
+                pass.draw(0..3, 0..1);
+            }
             pass.set_bind_group(0, &self.globals_bind_group, &[]);
 
             // The pipeline is switched only when consecutive zones disagree on HD shading.

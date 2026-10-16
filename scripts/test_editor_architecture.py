@@ -12,6 +12,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EditorArchitectureTests(unittest.TestCase):
+    def test_workspace_features_keep_behavior_checks_without_hiding_tools(self):
+        features = json.loads((ROOT / "scripts/editor_features.json").read_text())
+        self.assertEqual(guard.check_features(ROOT, features), [])
+        features["Paint"]["kind"] = "workspace"
+        self.assertTrue(any("Tool variants" in error for error in guard.check_features(ROOT, features)))
+        self.assertTrue(any("invalid feature kind" in error for error in guard.check_features(ROOT, features)))
+
     def test_current_editor_contracts_match_the_source(self):
         self.assertEqual(guard.check_editor_contracts(ROOT), [])
 

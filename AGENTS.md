@@ -25,6 +25,13 @@
 
 Use the pinned Rust toolchain in `rust-toolchain.toml` and Python **3.11+**. On this Mac, `/opt/homebrew/bin/python3` satisfies that requirement; `/usr/bin/python3` does not provide `tomllib`.
 
+During implementation, use focused checks (`python3 scripts/verify.py -p <changed-crate>`) or the
+specific existing tests. Run the full gate once for a ready checkpoint, not after every small edit.
+Do not overlap focused/full Cargo runs or repeat green suites without changed inputs. The equivalent
+full local entry point is `python3 scripts/verify.py --full`; it preserves every gate below and runs
+Cargo's complete test-binary inventory with bounded concurrency. See `docs/LOCAL-VERIFICATION.md`
+for timing reports, focused/full scope and concurrent-source-change handling.
+
 ```sh
 python3 scripts/check_architecture.py
 python3 scripts/test_check_architecture.py

@@ -59,9 +59,16 @@ pub(in crate::app) struct EditStep {
     pub(super) semantic_object: Option<ObjectHistoryRoute>,
     pub(super) semantic_path: Option<SemanticPathHistory>,
     pub(super) semantic_scenario: bool,
+    pub(super) semantic_appearance: bool,
 }
 
 impl EditStep {
+    pub(in crate::app) fn appearance() -> Self {
+        Self {
+            semantic_appearance: true,
+            ..Default::default()
+        }
+    }
     pub(in crate::app) fn scenario() -> Self {
         Self {
             semantic_scenario: true,

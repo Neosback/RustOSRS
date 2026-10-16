@@ -50,11 +50,13 @@ mod splash;
 mod spline_tool;
 mod status;
 mod streaming;
+mod theme_studio;
 mod tile_clipboard;
 mod tool_strip;
 mod toolbar;
 mod ui_runtime;
 mod user_tools;
+mod viewer;
 mod viewport;
 mod widgets;
 mod workspace;
@@ -101,6 +103,7 @@ pub struct EditorApp {
     npcs: npc_runtime::NpcRuntime,
     audio: audio_runtime::AudioRuntime,
     player_model: player_runtime::PlayerRuntime,
+    viewer: viewer::Viewer,
     names: names::NameRuntime,
     assets: Assets,
     hd: hd::HdRuntime,
@@ -150,6 +153,7 @@ impl eframe::App for EditorApp {
         self.update_animations();
         self.diagnostics.phase("anim", phase);
         let phase = Instant::now();
+        viewer::update(self, &ctx);
         npc_panel::update(self, &ctx);
         player_panel::update_model(self, &ctx);
         if self.settings.prefs.sound_overlay {
@@ -168,6 +172,16 @@ impl eframe::App for EditorApp {
         self.poll_export();
         self.poll_project();
         self.names.poll();
+        if self.viewer.enabled() {
+            viewer::frame(self, ui, &ctx);
+            self.cache_welcome(&ctx);
+            self.assets.poll(&ctx);
+            splash::draw(self, &ctx);
+            self.diagnostics.end_frame(frame_started);
+            self.diagnostics.finish_frame(&ctx);
+            ctx.request_repaint();
+            return;
+        }
         self.menu_bar(ui);
         self.toolbar(ui);
         self.status_bar(ui);
@@ -276,6 +290,7 @@ impl eframe::App for EditorApp {
         }
         self.tool_draft_window(&ctx);
         self.settings_window(&ctx);
+        theme_studio::frame(self, &ctx);
         self.export_window(&ctx);
         self.assets.poll(&ctx);
         self.world_map_window(&ctx);

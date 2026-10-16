@@ -52,6 +52,9 @@ struct Environment {
     scene_base: vec4<f32>,
     // Texture layers of the water flow map, foam, caustics map and underwater flow map.
     water_layers: vec4<i32>,
+    sky_right: vec4<f32>,
+    sky_down: vec4<f32>,
+    sky_forward: vec4<f32>,
 };
 
 // One water type (`UBOWaterTypes`). Colours are sRGB, like the plugin's struct.

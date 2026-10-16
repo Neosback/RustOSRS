@@ -53,11 +53,13 @@ impl ProjectRuntime {
         self.persistence.saving_revision = session.edit_revision();
         let source = self.source.clone();
         let document = session.document().clone();
+        let appearance = session.appearance().clone();
         let dirty: Vec<_> = session.dirty_regions().collect();
         let pending = self.export_pending();
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let result = build_project(source, &document, &dirty, &pending).and_then(|file| {
+            let result = build_project(source, &document, &dirty, &pending).and_then(|mut file| {
+                file.appearance = appearance;
                 write_atomically(&path, &file.to_json())?;
                 Ok((path, file.regions.len()))
             });

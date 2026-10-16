@@ -86,6 +86,7 @@ impl EditorApp {
             npcs: npc_runtime::NpcRuntime::default(),
             audio: audio_runtime::AudioRuntime::default(),
             player_model: player_runtime::PlayerRuntime::default(),
+            viewer: viewer::Viewer::from_environment(),
             names: names::NameRuntime::default(),
             hd: hd::HdRuntime::new(),
             world,

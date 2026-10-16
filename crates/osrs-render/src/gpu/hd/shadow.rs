@@ -80,6 +80,22 @@ pub(in crate::gpu) fn hd_vertex_buffers() -> [wgpu::VertexBufferLayout<'static>;
 
 /// WGSL of the shared declarations plus a stage file.
 pub(in crate::gpu) fn shader_source(stage: &str) -> String {
+    let tokens: Vec<_> = stage
+        .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .filter(|token| !token.is_empty())
+        .collect();
+    let defaults = osrs_hd::theme::shader::ShaderStage::ALL
+        .into_iter()
+        .filter(|kind| *kind != osrs_hd::theme::shader::ShaderStage::Post)
+        .filter(|kind| {
+            !tokens
+                .windows(2)
+                .any(|pair| pair == ["fn", kind.function()])
+        })
+        .map(|kind| kind.template())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let stage = format!("{defaults}\n{stage}");
     format!(
         // The branches that skip derivative uses depend on per-face (flat) data: every pixel of a
         // quad takes the same one.
@@ -214,10 +230,23 @@ impl ShadowPipelines {
         zone_layout: &wgpu::BindGroupLayout,
         scene_layout: &wgpu::BindGroupLayout,
     ) -> Self {
+        Self::with_extensions(device, zone_layout, scene_layout, "")
+    }
+
+    pub(in crate::gpu) fn with_extensions(
+        device: &wgpu::Device,
+        zone_layout: &wgpu::BindGroupLayout,
+        scene_layout: &wgpu::BindGroupLayout,
+        extensions: &str,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("hd/shadow_cast.wgsl"),
             source: wgpu::ShaderSource::Wgsl(
-                shader_source(include_str!("shadow_cast.wgsl")).into(),
+                shader_source(&format!(
+                    "{extensions}\n{}",
+                    include_str!("shadow_cast.wgsl")
+                ))
+                .into(),
             ),
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

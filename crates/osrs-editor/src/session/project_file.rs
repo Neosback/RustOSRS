@@ -14,7 +14,7 @@ use osrs_edit::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const PROJECT_FORMAT: &str = "rustosrs-project-v1";
+pub const PROJECT_FORMAT: &str = "rustosrs-project-v2";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectError {
@@ -43,6 +43,8 @@ pub struct ProjectFile {
     /// The bundled cache profile the edits were made against.
     pub profile: String,
     pub regions: Vec<RegionRecord>,
+    #[serde(default)]
+    pub appearance: osrs_hd::theme::ThemePack,
 }
 
 fn plane(value: i32, what: &'static str) -> Result<SourcePlane, ProjectError> {
@@ -132,6 +134,7 @@ impl ProjectFile {
             format: PROJECT_FORMAT.to_owned(),
             profile: profile.to_owned(),
             regions,
+            appearance: Default::default(),
         }
     }
 
@@ -141,11 +144,13 @@ impl ProjectFile {
     }
 
     pub fn from_json(text: &str) -> Result<Self, ProjectError> {
-        let file: Self =
+        let mut file: Self =
             serde_json::from_str(text).map_err(|error| ProjectError::Json(error.to_string()))?;
-        if file.format != PROJECT_FORMAT {
+        if file.format != PROJECT_FORMAT && file.format != "rustosrs-project-v1" {
             return Err(ProjectError::UnsupportedFormat(file.format));
         }
+        super::validate_appearance_pack(&file.appearance).map_err(ProjectError::Json)?;
+        file.format = PROJECT_FORMAT.to_owned();
         Ok(file)
     }
 

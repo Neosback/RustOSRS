@@ -52,6 +52,7 @@ fn source_change_reset_clears_source_bound_project_state() {
     state.persistence.transition = Some(LifecycleTransition::Project {
         path: PathBuf::from("next-project.json"),
         diffs: Vec::new(),
+        appearance: Default::default(),
     });
 
     state.reset_for_source_change();
@@ -173,6 +174,7 @@ fn unsaved_transition_is_staged_without_replacing_current_project_state() {
         LifecycleTransition::Project {
             path: PathBuf::from("next-project.json"),
             diffs: vec![empty_diff(next_region)],
+            appearance: Default::default(),
         },
         true,
     );
@@ -187,7 +189,7 @@ fn unsaved_transition_is_staged_without_replacing_current_project_state() {
     assert_eq!(project.persistence.saved_edit_revision, 3);
     assert!(project.persistence.transition_prompt);
     match project.persistence.transition.as_ref() {
-        Some(LifecycleTransition::Project { path, diffs }) => {
+        Some(LifecycleTransition::Project { path, diffs, .. }) => {
             assert_eq!(path, &PathBuf::from("next-project.json"));
             assert_eq!(diffs.len(), 1);
             assert_eq!(diffs[0].region, next_region);
@@ -216,6 +218,7 @@ fn failed_save_preserves_pending_transition_and_prevents_close() {
     let transition = LifecycleTransition::Project {
         path: PathBuf::from("next.json"),
         diffs: Vec::new(),
+        appearance: Default::default(),
     };
     assert!(project.stage_transition(transition, true).is_none());
     project.choose_transition(LifecycleChoice::Save);
@@ -247,6 +250,7 @@ fn save_then_transition_rechecks_edits_and_cancel_discards_only_the_request() {
     let transition = LifecycleTransition::Project {
         path: PathBuf::from("next.json"),
         diffs: Vec::new(),
+        appearance: Default::default(),
     };
     assert!(project.stage_transition(transition, true).is_none());
     project.choose_transition(LifecycleChoice::Save);

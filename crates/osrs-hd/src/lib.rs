@@ -12,6 +12,7 @@ pub mod expr;
 pub mod materials;
 pub mod settings;
 pub mod shadows;
+pub mod theme;
 pub mod tiles;
 
 use serde::Deserialize;

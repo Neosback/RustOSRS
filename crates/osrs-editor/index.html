@@ -2,18 +2,147 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>RustOSRS</title>
     <link data-trunk rel="rust" data-bin="osrs-editor" data-wasm-opt="0" />
     <style>
       html, body { margin: 0; height: 100%; background: #14161a; overflow: hidden; }
-      canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+      canvas { display: block; width: 100vw; height: 100vh; outline: none; touch-action: none; }
       #loading { position: fixed; inset: 0; display: grid; place-items: center;
                  color: #9aa3b2; font: 14px system-ui, sans-serif; pointer-events: none; }
+
+      /* ---- Mobile viewer (index.html?view=mobile): a phone-style game frame around the canvas.
+         A static mock: nothing here talks to a server or to the editor. ---- */
+      #phone { display: none; }
+      body.mobile #phone { display: block; position: fixed; inset: 0; pointer-events: none;
+        font: 12px/1.3 "Trebuchet MS", system-ui, sans-serif; color: #ffcb05;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+      #phone .stone { background: linear-gradient(#4a4034, #3a3128); border: 2px solid #1b1610;
+        box-shadow: inset 0 0 0 1px #6b5d48, 0 2px 6px #0008; }
+      #phone button, #phone .tap { pointer-events: auto; }
+      #phone .shadow { text-shadow: 1px 1px 0 #000; }
+
+      /* chat (bottom left) */
+      #chat { position: absolute; left: 8px; bottom: 8px; width: min(46vw, 460px); }
+      #chat .log { height: 92px; padding: 4px 6px; background: #d8ccaa99; color: #000; overflow: hidden;
+        border: 2px solid #1b1610; border-bottom: 0; backdrop-filter: blur(2px); }
+      #chat .log p { margin: 0; }
+      #chat .log .game { color: #0000d0; } #chat .log .pub b { color: #0000d0; font-weight: normal; }
+      #chat .tabs { display: flex; gap: 2px; padding: 2px; }
+      #chat .tabs span { flex: 1; text-align: center; padding: 3px 0; font-size: 10px; color: #ffcb05;
+        background: #3a3128; border: 1px solid #1b1610; }
+      #chat .tabs span.on { background: #6b2c20; }
+
+      /* minimap and orbs (top right) */
+      #mini { position: absolute; right: 10px; top: 10px; width: 150px; height: 150px; border-radius: 50%;
+        border: 4px solid #3a3128; box-shadow: 0 0 0 2px #1b1610, inset 0 0 0 2px #6b5d48;
+        background: radial-gradient(circle at 50% 50%, #5d7a3a 0 30%, #4f6b31 31% 55%, #6f8a4a 56%); overflow: hidden; }
+      #mini::before { content: ""; position: absolute; inset: 0; opacity: .35;
+        background-image: linear-gradient(#0002 1px, transparent 1px), linear-gradient(90deg, #0002 1px, transparent 1px);
+        background-size: 10px 10px; }
+      #mini .you { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px; background: #fff;
+        border: 1px solid #000; }
+      #mini .dot { position: absolute; width: 5px; height: 5px; background: #ff0; border-radius: 50%; }
+      #mini .north { position: absolute; left: 50%; top: 2px; transform: translateX(-50%); color: #fff; font-weight: bold; }
+      #orbs { position: absolute; right: 168px; top: 14px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+      .orb { display: flex; align-items: center; gap: 4px; }
+      .orb i { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+        font-style: normal; font-weight: bold; color: #fff; border: 2px solid #1b1610; box-shadow: inset 0 0 0 1px #fff4; }
+      .orb b { min-width: 22px; padding: 1px 4px; text-align: center; font-weight: normal; background: #0008; border-radius: 8px; }
+      .hp i { background: #2f8f2f; } .pray i { background: #2f7aa8; } .run i { background: #a87a2f; } .spec i { background: #8a2f2f; }
+
+      /* tab bar and panel (bottom right) */
+      #side { position: absolute; right: 8px; bottom: 8px; width: min(46vw, 252px); }
+      #panel { height: min(44vh, 262px); padding: 6px; margin-bottom: 4px; display: none; }
+      #panel.open { display: block; }
+      #panel h4 { margin: 0 0 6px; font-weight: normal; text-align: center; color: #ff981f; }
+      #inv { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+      #inv span { aspect-ratio: 1.1; display: grid; place-items: center; text-align: center; font-size: 9px; line-height: 1;
+        background: #0003; border: 1px solid #0006; color: #ffe; overflow: hidden; }
+      #inv span.item { background: #6b5d4888; }
+      #tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 2px; }
+      #tabs button { padding: 0; height: 30px; font: 10px "Trebuchet MS", system-ui, sans-serif; color: #ffcb05;
+        background: #3a3128; border: 1px solid #1b1610; border-radius: 2px; }
+      #tabs button.on { background: #6b2c20; }
+      #hint { position: absolute; left: 8px; top: 8px; padding: 6px 8px; max-width: 220px; background: #000a; border-radius: 6px;
+        color: #fff; pointer-events: auto; }
+      #hint b { color: #ffcb05; }
+      @media (max-height: 420px) { #chat .log { height: 64px; } #mini { width: 112px; height: 112px; }
+        #orbs { right: 130px; } #panel { height: 38vh; } }
     </style>
   </head>
   <body>
     <canvas id="rustosrs_canvas"></canvas>
     <div id="loading">Loading RustOSRS...</div>
+
+    <div id="phone" aria-hidden="true">
+      <div id="hint" class="shadow tap">
+        <b>Mobile client preview</b><br />
+        Drag to turn the camera, pinch to zoom. The panels are a mock; nothing connects to a server.
+        <div style="margin-top:4px"><button id="hide-hint" style="font:inherit">Got it</button></div>
+      </div>
+
+      <div id="orbs">
+        <div class="orb hp"><b class="shadow">10</b><i>♥</i></div>
+        <div class="orb pray"><b class="shadow">1</b><i>✚</i></div>
+        <div class="orb run"><b class="shadow">100</b><i>»</i></div>
+        <div class="orb spec"><b class="shadow">100</b><i>✦</i></div>
+      </div>
+      <div id="mini" class="tap"><div class="north">N</div><div class="you"></div>
+        <div class="dot" style="left:60%;top:38%"></div><div class="dot" style="left:42%;top:62%"></div>
+        <div class="dot" style="left:68%;top:58%"></div></div>
+
+      <div id="chat">
+        <div class="log">
+          <p class="game">Welcome to RustOSRS.</p>
+          <p class="game">This is a preview of how a mobile client could look in the browser.</p>
+          <p class="pub"><b>Hans:</b> Hello, adventurer.</p>
+        </div>
+        <div class="tabs stone tap"><span class="on">All</span><span>Game</span><span>Public</span><span>Private</span><span>Channel</span><span>Clan</span><span>Trade</span></div>
+      </div>
+
+      <div id="side">
+        <div id="panel" class="stone tap open"><h4 id="panel-title">Inventory</h4><div id="inv"></div></div>
+        <div id="tabs" class="stone"></div>
+      </div>
+    </div>
+
+    <script>
+      if (new URLSearchParams(location.search).get("view") === "mobile") {
+        document.body.classList.add("mobile");
+        const tabs = ["Combat", "Skills", "Quests", "Inventory", "Equipment", "Prayer", "Magic",
+                      "Clan", "Friends", "Account", "Settings", "Emotes", "Music", "Logout"];
+        const items = ["Rune scimitar", "Rune kiteshield", "Rune full helm", "Rune platebody", "Rune platelegs", "Rune boots",
+                       "Lobster", "Lobster", "Lobster", "Law rune", "Nature rune", "Coins"];
+        const tabBar = document.getElementById("tabs");
+        const panel = document.getElementById("panel");
+        const title = document.getElementById("panel-title");
+        const grid = document.getElementById("inv");
+        function show(name) {
+          [...tabBar.children].forEach(b => b.classList.toggle("on", b.title === name && panel.classList.contains("open")));
+          title.textContent = name;
+          grid.innerHTML = "";
+          const count = name === "Inventory" ? 28 : name === "Equipment" ? 12 : 0;
+          for (let i = 0; i < count; i++) {
+            const s = document.createElement("span");
+            if (name === "Inventory" ? i < items.length : i < 6) { s.className = "item"; s.textContent = items[i]; }
+            grid.appendChild(s);
+          }
+        }
+        tabs.forEach(name => {
+          const b = document.createElement("button");
+          b.title = name; b.textContent = name.slice(0, 4);
+          b.onclick = () => {
+            const same = b.classList.contains("on");
+            panel.classList.toggle("open", !same);
+            show(name);
+            if (same) b.classList.remove("on");
+          };
+          tabBar.appendChild(b);
+        });
+        show("Inventory");
+        document.getElementById("hide-hint").onclick = () => document.getElementById("hint").remove();
+      }
+    </script>
   </body>
 </html>

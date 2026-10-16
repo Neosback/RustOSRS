@@ -92,6 +92,7 @@ fn vs_main(input: VertexIn) -> VertexOut {
         }
     }
 
+    vert = vec4<f32>(theme_vertex(vert.xyz, oct_decode(input.normal), env.camera.w), 1.0);
     var screen = globals.world_proj * vert;
     screen.z = screen.z + bias / 128.0;
     out.clip = screen;
@@ -638,7 +639,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
         );
         let surface = sample_water(water_type, water_view, input.position, input.uv, blend, shore);
         let fog = combined_fog_amount(input.position);
-        var water_rgb = mix(surface.rgb, linear_to_srgb(env.fog_color.rgb), fog);
+        var water_rgb = mix(theme_water(surface.rgb, input.position, env.camera.w), linear_to_srgb(env.fog_color.rgb), fog);
         let water_alpha = fog + surface.a * (1.0 - fog);
         water_rgb = apply_color_adjustments(water_rgb);
         return vec4<f32>(water_rgb, water_alpha);
@@ -900,7 +901,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
         f32((material3.flags >> 1u) & 1u),
     ));
     var rgb = output_color.rgb * mix(composite, vec3<f32>(1.0), unlit);
-    rgb = linear_to_srgb(rgb);
+    rgb = theme_surface(linear_to_srgb(rgb), linear_to_srgb(output_color.rgb), input.position, normals, view_dir, env.camera.w);
 
     if (is_underwater) {
         rgb = sample_underwater(rgb, water_types[water_type], input.position, water_depth, light_dot_normals);

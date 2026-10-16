@@ -1,9 +1,11 @@
+use super::appearance::{EditorDocument, EditorPatch};
 use osrs_core::coords::RegionCoord;
 use osrs_edit::{
     ChangeImpact, EditHistoryTransaction, HistoryTransactionError, MapDocument, MapOp, MapPatch,
-    MapRegionSnapshot, PatchApplyError, ScenarioDocument, ScenarioPatch, WorkspaceDocument,
-    WorkspaceHistory, WorkspacePatch,
+    MapRegionSnapshot, PatchApplyError, PatchHistory, ScenarioDocument, ScenarioPatch,
+    WorkspaceDocument, WorkspacePatch,
 };
+use osrs_hd::theme::{ThemePack, ThemePatch};
 use std::collections::BTreeSet;
 
 /// One successful semantic edit state transition in the editor session.
@@ -64,8 +66,8 @@ pub enum RegionSyncOutcome {
 /// longer replace or evict that region's document state.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EditorSession {
-    document: WorkspaceDocument,
-    history: WorkspaceHistory,
+    document: EditorDocument,
+    history: PatchHistory<EditorDocument>,
     revision: u64,
     /// Advances only on real edits (commit, undo, redo, applied projects), never on streaming.
     edit_revision: u64,
@@ -77,8 +79,11 @@ impl EditorSession {
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn new(document: MapDocument) -> Self {
         Self {
-            document: WorkspaceDocument::new(document),
-            history: WorkspaceHistory::new(),
+            document: EditorDocument {
+                workspace: WorkspaceDocument::new(document),
+                appearance: ThemePack::default(),
+            },
+            history: PatchHistory::new(),
             revision: 0,
             edit_revision: 0,
             loaded_regions: BTreeSet::new(),
@@ -111,7 +116,7 @@ impl EditorSession {
         if patch.is_empty() {
             return Ok(false);
         }
-        self.document.apply_map_untracked(patch)?;
+        self.document.workspace.apply_map_untracked(patch)?;
         self.dirty_regions.extend(patch_regions(patch));
         self.edit_revision += 1;
         self.advance_revision();
@@ -152,7 +157,7 @@ impl EditorSession {
         if self.dirty_regions.contains(&region) {
             return RegionSyncOutcome::PreservedDirty;
         }
-        if self.document.replace_region(snapshot) {
+        if self.document.workspace.replace_region(snapshot) {
             self.advance_revision();
             RegionSyncOutcome::Changed
         } else {
@@ -171,7 +176,7 @@ impl EditorSession {
         if self.dirty_regions.contains(&region) {
             return RegionSyncOutcome::PreservedDirty;
         }
-        if self.document.remove_region(region) {
+        if self.document.workspace.remove_region(region) {
             self.advance_revision();
             RegionSyncOutcome::Changed
         } else {
@@ -212,9 +217,10 @@ impl EditorSession {
         let edit_revision_before = self.edit_revision;
         let loaded_regions_before = self.loaded_regions.clone();
 
-        let (impact, transaction) = self
-            .history
-            .begin_commit(&mut self.document, WorkspacePatch::Map(patch))?;
+        let (impact, transaction) = self.history.begin_commit(
+            &mut self.document,
+            EditorPatch::Workspace(WorkspacePatch::Map(patch)),
+        )?;
         let Some(history) = transaction else {
             return Ok(None);
         };
@@ -245,9 +251,48 @@ impl EditorSession {
         let revision_before = self.revision;
         let edit_revision_before = self.edit_revision;
         let loaded_regions_before = self.loaded_regions.clone();
+        let (impact, transaction) = self.history.begin_commit(
+            &mut self.document,
+            EditorPatch::Workspace(WorkspacePatch::Scenario(patch)),
+        )?;
+        let Some(history) = transaction else {
+            return Ok(None);
+        };
+        let commit = self.record_edit(impact);
+        Ok(Some((
+            commit,
+            EditCheckpoint {
+                history,
+                revision_before,
+                edit_revision_before,
+                loaded_regions_before,
+                newly_dirty_regions: BTreeSet::new(),
+            },
+        )))
+    }
+
+    pub fn appearance(&self) -> &ThemePack {
+        &self.document.appearance
+    }
+
+    /// Project loading installs an already validated appearance without adding an undo step.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub fn load_appearance(&mut self, appearance: ThemePack) -> Result<(), String> {
+        super::validate_appearance_pack(&appearance)?;
+        self.document.appearance = appearance;
+        Ok(())
+    }
+
+    pub fn commit_appearance_checkpointed(
+        &mut self,
+        patch: ThemePatch,
+    ) -> Result<Option<(EditCommit, EditCheckpoint)>, PatchApplyError> {
+        let revision_before = self.revision;
+        let edit_revision_before = self.edit_revision;
+        let loaded_regions_before = self.loaded_regions.clone();
         let (impact, transaction) = self
             .history
-            .begin_commit(&mut self.document, WorkspacePatch::Scenario(patch))?;
+            .begin_commit(&mut self.document, EditorPatch::Appearance(Box::new(patch)))?;
         let Some(history) = transaction else {
             return Ok(None);
         };

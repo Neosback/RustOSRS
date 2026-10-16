@@ -236,7 +236,13 @@ fn failed_undo_does_not_advance_revision_or_corrupt_history() {
     assert_eq!(session.revision(), 1);
 
     let out_of_band = height_patch(64, 128);
-    assert!(session.document.apply_map_untracked(&out_of_band).is_ok());
+    assert!(
+        session
+            .document
+            .workspace
+            .apply_map_untracked(&out_of_band)
+            .is_ok()
+    );
 
     assert!(session.undo().is_err());
     assert_eq!(session.document().height_at(vertex()), Some(128));

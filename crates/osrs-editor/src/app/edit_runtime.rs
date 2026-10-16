@@ -186,6 +186,38 @@ impl EditRuntime {
         )
     }
 
+    pub(super) fn appearance(&self) -> &osrs_hd::theme::ThemePack {
+        self.session.appearance()
+    }
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(super) fn load_appearance(
+        &mut self,
+        appearance: osrs_hd::theme::ThemePack,
+    ) -> Result<(), String> {
+        self.session.load_appearance(appearance)
+    }
+    pub(super) fn execute_appearance<T, E>(
+        &mut self,
+        patch: osrs_hd::theme::ThemePatch,
+        project: impl FnOnce(&osrs_hd::theme::ThemePack) -> Result<T, E>,
+    ) -> Result<EditExecution<T>, EditExecutionError<E>> {
+        let Some((commit, checkpoint)) = self
+            .session
+            .commit_appearance_checkpointed(patch)
+            .map_err(EditExecutionError::Semantic)?
+        else {
+            return Ok(EditExecution::NoChange);
+        };
+        let projection = project(self.session.appearance());
+        self.finish_execution(
+            commit.revision,
+            commit.impact,
+            EditTouches::default(),
+            checkpoint,
+            projection,
+        )
+    }
+
     /// Execute one `MapPatch` as an application transaction.
     ///
     /// The projection closure receives only the authoritative post-commit `MapDocument`. It cannot

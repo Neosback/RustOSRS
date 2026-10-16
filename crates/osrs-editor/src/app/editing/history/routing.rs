@@ -70,6 +70,7 @@ impl Direction {
 
 /// The semantic transaction kind a history step routes to.
 enum Route {
+    Appearance,
     Scenario,
     Paint(SemanticPaintHistory),
     Height(SemanticHeightHistory),
@@ -86,6 +87,7 @@ enum ProjectionInput {
 
 /// A fully validated replay projection. Applying this after gateway finalization is infallible.
 enum PreparedProjection {
+    Appearance,
     Scenario,
     Tiles {
         projected: Vec<(TileKey, TileValues, TileValues)>,
@@ -100,7 +102,9 @@ enum PreparedProjection {
 
 impl Route {
     fn of(step: &EditStep) -> Option<Self> {
-        if step.semantic_scenario {
+        if step.semantic_appearance {
+            Some(Self::Appearance)
+        } else if step.semantic_scenario {
             Some(Self::Scenario)
         } else if let Some(paint) = &step.semantic_paint {
             Some(Self::Paint(paint.clone()))
@@ -115,6 +119,7 @@ impl Route {
 
     fn label(&self) -> &'static str {
         match self {
+            Self::Appearance => "Appearance",
             Self::Scenario => "NPC scenario",
             Self::Paint(_) => "Paint",
             Self::Height(_) => "Height",
@@ -126,6 +131,7 @@ impl Route {
     /// "3 painted tiles", "1 object": what a success notice counts.
     fn counted(&self, count: usize) -> String {
         let (noun, plural) = match self {
+            Self::Appearance => ("appearance change", "s"),
             Self::Scenario => ("NPC scenario change", "s"),
             Self::Paint(_) => ("painted tile", "s"),
             Self::Height(_) => ("Height tile", "s"),
@@ -140,7 +146,7 @@ impl Route {
             Self::Paint(paint) => Some(&paint.keys),
             Self::Height(height) => Some(&height.keys),
             Self::Path(path) => Some(&path.keys),
-            Self::Object(_) | Self::Scenario => None,
+            Self::Object(_) | Self::Scenario | Self::Appearance => None,
         };
         match keys {
             Some(keys) => ProjectionInput::Tiles(
@@ -171,7 +177,7 @@ impl Route {
                 .collect::<Vec<_>>()
         };
         let footprint = match self {
-            Self::Scenario => EditFootprint::default(),
+            Self::Scenario | Self::Appearance => EditFootprint::default(),
             Self::Paint(paint) => EditFootprint::new(map_tiles(&paint.keys), [], []),
             Self::Height(height) => EditFootprint::new([], height_vertices(&height.keys), []),
             Self::Path(path) if path.include_height => {
@@ -211,6 +217,7 @@ impl Route {
         input: ProjectionInput,
     ) -> Result<PreparedProjection, String> {
         match (self, input) {
+            (Self::Appearance, _) => Ok(PreparedProjection::Appearance),
             (Self::Scenario, _) => Ok(PreparedProjection::Scenario),
             (Self::Paint(paint), ProjectionInput::Tiles(current)) => {
                 let mut projected = Vec::with_capacity(current.len());
@@ -406,7 +413,7 @@ impl EditorApp {
     /// is dispatched separately from the authoritative replay receipt after this returns.
     fn apply_replay_projection(&mut self, projection: PreparedProjection) -> usize {
         match projection {
-            PreparedProjection::Scenario => 1,
+            PreparedProjection::Scenario | PreparedProjection::Appearance => 1,
             PreparedProjection::Tiles {
                 projected,
                 mark_height,

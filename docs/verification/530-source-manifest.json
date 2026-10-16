@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "status": "source_inventory_only",
+  "meaning": "Exact supplied input bytes, not a cache profile/fingerprint, decoder acceptance, original-client oracle or 2008 HD completion claim.",
+  "textures_decoded": false,
+  "archived_cache_files": {
+    "main_file_cache.dat2": {
+      "bytes": 89206205,
+      "sha256": "7c48d420908c267d0a5c1b0abc48e5d3d8bdb0a11caffee214fc5980603d2143"
+    },
+    "main_file_cache.idx0": {
+      "bytes": 16344,
+      "sha256": "1d0779264468964b4a35201931539c0a9beb8d5f7c695e4f8107e34209a78689"
+    },
+    "main_file_cache.idx1": {
+      "bytes": 14610,
+      "sha256": "f90295329fd61fb1f7dc6fe0eed58222e9e45896e0162bb7a13bb0742f975c1e"
+    },
+    "main_file_cache.idx10": {
+      "bytes": 12,
+      "sha256": "24ec6370e1f1622179ab036bb940231999250bf7ec64d24b729abe593bea9694"
+    },
+    "main_file_cache.idx11": {
+      "bytes": 2274,
+      "sha256": "09818a452c00ba304d13de8a72c767bc3b69402da86d575a2275d5ac317bf6fa"
+    },
+    "main_file_cache.idx12": {
+      "bytes": 12390,
+      "sha256": "cf04cc4f4429b85acd9b7c345f5ce577dea20e729a1a68b6adafeaa86f82f199"
+    },
+    "main_file_cache.idx13": {
+      "bytes": 9552,
+      "sha256": "7f0d24c4304192a2fa796da4c64c3eb6b6b76e99e86938f49042bd1d43cba07e"
+    },
+    "main_file_cache.idx14": {
+      "bytes": 3834,
+      "sha256": "a6af564adc89f0b1cc9f66446c65d057ebf5c098dd4e569951a1694a48e2edec"
+    },
+    "main_file_cache.idx15": {
+      "bytes": 1596,
+      "sha256": "16eccf00fdaefda638eefee9c437d4d5b48bc093cfdd1a000a2d02546c66a6c2"
+    },
+    "main_file_cache.idx16": {
+      "bytes": 990,
+      "sha256": "8e6b601a79b04e55bee4ea6fac7a5480d04aeba32ae7a8a45788820bade886b9"
+    },
+    "main_file_cache.idx17": {
+      "bytes": 54,
+      "sha256": "f941e7323ec3f9090f1e12284ad051d68cd495848b356eb9340602cd6b42177c"
+    },
+    "main_file_cache.idx18": {
+      "bytes": 408,
+      "sha256": "89b8cc45f0337c3d8f9b45cc59a8bab58ffab9d734a96b2866140b038145f3c9"
+    },
+    "main_file_cache.idx19": {
+      "bytes": 348,
+      "sha256": "eae7d1ef574df3a3a4b1500dc5304479c8ad98b7f74fab36f9c97da0501bc596"
+    },
+    "main_file_cache.idx2": {
+      "bytes": 210,
+      "sha256": "2357d08438f853fc78b6b39426dd02d509a5d752d79e143ac4b5dbc4ecfed49a"
+    },
+    "main_file_cache.idx20": {
+      "bytes": 528,
+      "sha256": "e9b3b1032f2f92812ab92b1a17faa0a484be917c22cb6ebeb10845b318ae9be9"
+    },
+    "main_file_cache.idx21": {
+      "bytes": 48,
+      "sha256": "6becdadf6775f03c4f9813c9421b4fef76c4fe90de47437c68bdce276c5026e7"
+    },
+    "main_file_cache.idx22": {
+      "bytes": 36,
+      "sha256": "a098a183b9497ddb049c05807b24c324d406b55d7144355de1bf10915124e330"
+    },
+    "main_file_cache.idx23": {
+      "bytes": 18,
+      "sha256": "5af49a8ae96e69f406168745c2d0cded56f6a0359ee44586845c922415a7afb1"
+    },
+    "main_file_cache.idx24": {
+      "bytes": 12,
+      "sha256": "24760e59dd3fa0531a2d5f174d96a55ce8a96fce39f1195572f73e65367cfa29"
+    },
+    "main_file_cache.idx25": {
+      "bytes": 12,
+      "sha256": "494176e5446f466c237d707958bca2405571c49af8521106f61bc8f2c25a437f"
+    },
+    "main_file_cache.idx255": {
+      "bytes": 168,
+      "sha256": "148fac301850f50d9b726b64593eff119ade24f1ef0fb426cbe8ac988fbb2341"
+    },
+    "main_file_cache.idx26": {
+      "bytes": 6,
+      "sha256": "1fe13ec69f6d0bd0cc5d9cece6fad8f2f2c32208e75d41b01dbf34322f6629d2"
+    },
+    "main_file_cache.idx27": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "main_file_cache.idx3": {
+      "bytes": 5004,
+      "sha256": "0484d45e061843bb08943caf3c5fac610f9f4e3c6ff93b6b5db7e2e7abbf8576"
+    },
+    "main_file_cache.idx4": {
+      "bytes": 35076,
+      "sha256": "7092ff1edd881d0eb28998e04efd641b08492e63acc117f9a10842587a78eff2"
+    },
+    "main_file_cache.idx5": {
+      "bytes": 22092,
+      "sha256": "6ad2deb3a42a23a90f69e712f33b2ba28d242bbcf486cd8577e43145ce14a046"
+    },
+    "main_file_cache.idx6": {
+      "bytes": 3882,
+      "sha256": "3abbef8531627fd0d1c5d78d97f4c4ee7fb93394cb070a7635904eac2d5c16f2"
+    },
+    "main_file_cache.idx7": {
+      "bytes": 272808,
+      "sha256": "136be8df9db74e727b7ebd31ed2c088d8a12ff5e155407b2f48e782b28f62eee"
+    },
+    "main_file_cache.idx8": {
+      "bytes": 10242,
+      "sha256": "8f4ef7095f27ddc2d30c504b807979898d80e329308b65ab54c664566b0efa72"
+    },
+    "main_file_cache.idx9": {
+      "bytes": 4080,
+      "sha256": "3b6b6f8c4502eb995afa8ad657be224c63314424192737c44ce661bd939979f5"
+    }
+  },
+  "consulted_client_sources": {
+    "README.md": {
+      "bytes": 1145,
+      "sha256": "b2b3d455f81603a703148605b1f3bc2cf4ce0e669d4a5dc955fcfb059124e6a0"
+    },
+    "Arios-Client/src/client.java": {
+      "bytes": 82911,
+      "sha256": "94d335743fef2d58eb7907fc4c2e11bc90a81d994a09b192f80b895653e0fe58"
+    },
+    "Arios-Client/src/InputStream_Sub1.java": {
+      "bytes": 3139,
+      "sha256": "dc7ac39505effc854ad2407c5e8b3e7f0903d2af0fad54ed4a2fbd3eacc0961f"
+    },
+    "Arios-Client/src/Class130.java": {
+      "bytes": 18647,
+      "sha256": "8998468ebe01932a247e9632125fb317e515293adbd2bc44c23ee0adf1485f32"
+    },
+    "Arios-Client/src/Class82.java": {
+      "bytes": 30987,
+      "sha256": "b452e05346e64ca5699546c7efbd16f7f8bea2c98aa623721fc7a5f161447142"
+    },
+    "Arios-Client/src/Class3_Sub28_Sub20.java": {
+      "bytes": 20811,
+      "sha256": "51c67c0702403668a2fe13ed8f092cd3c83f2528c86587346fa363e1ac813c2c"
+    },
+    "Arios-Client/src/Class102.java": {
+      "bytes": 21591,
+      "sha256": "961b7687a9ee9ac4826352ec7fee89bd530ca78a9c6cf99a69c7e8cb8f14ebcb"
+    },
+    "Arios-Client/src/Class104.java": {
+      "bytes": 25557,
+      "sha256": "de4b48b18ed6ae45b107a70bb748f8eba805d1dbd477c16b5217bead835bfe8e"
+    }
+  }
+}

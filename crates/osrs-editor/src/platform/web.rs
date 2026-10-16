@@ -55,6 +55,13 @@ export function hide_loading() {
 export function page_query(name) {
   return new URLSearchParams(window.location.search).get(name);
 }
+
+// A small text file from a URL (the viewer's spawn list).
+export async function fetch_text(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("could not fetch " + url + ": " + response.status);
+  return await response.text();
+}
 "#)]
 extern "C" {
     #[wasm_bindgen(catch)]
@@ -65,6 +72,8 @@ extern "C" {
         progress: &js_sys::Function,
     ) -> Result<JsValue, JsValue>;
     fn page_query(name: &str) -> Option<String>;
+    #[wasm_bindgen(catch)]
+    async fn fetch_text(url: &str) -> Result<JsValue, JsValue>;
     pub fn hide_loading();
 }
 
@@ -85,6 +94,43 @@ pub type SharedPick = Rc<RefCell<PickState>>;
 /// The `?cache=<url prefix>` the page was opened with, if any.
 pub fn cache_url_param() -> Option<String> {
     page_query("cache").filter(|value| !value.is_empty())
+}
+
+/// The page was opened as the mobile viewer (`?view=mobile`): no editor chrome, a fixed demo.
+pub fn viewer_requested() -> bool {
+    page_query("view").is_some_and(|view| view == "mobile")
+}
+
+/// `?npcs=<url>`: a spawn-edits file for the viewer to show (the browser cannot read OpenRune).
+pub fn npcs_url_param() -> Option<String> {
+    page_query("npcs").filter(|value| !value.is_empty())
+}
+
+/// `?at=x,y[,plane]`: where the viewer's player stands.
+pub fn at_param() -> Option<(i32, i32, u8)> {
+    let value = page_query("at")?;
+    let mut parts = value.split(',').map(|part| part.trim().parse::<i32>().ok());
+    let x = parts.next()??;
+    let y = parts.next()??;
+    let plane = parts.next().flatten().unwrap_or(0).clamp(0, 3) as u8;
+    Some((x, y, plane))
+}
+
+/// A text file read by the page's `fetch`, shared with the async task that reads it.
+pub type SharedText = Rc<RefCell<Option<Result<String, String>>>>;
+
+pub fn start_fetch_text(url: String, repaint: impl Fn() + 'static) -> SharedText {
+    let state: SharedText = Rc::new(RefCell::new(None));
+    let shared = Rc::clone(&state);
+    wasm_bindgen_futures::spawn_local(async move {
+        let result = fetch_text(&url)
+            .await
+            .map_err(|e| describe(&e))
+            .and_then(|value| value.as_string().ok_or_else(|| "not text".to_owned()));
+        *shared.borrow_mut() = Some(result);
+        repaint();
+    });
+    state
 }
 
 fn describe(error: &JsValue) -> String {

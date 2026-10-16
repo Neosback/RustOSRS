@@ -131,7 +131,7 @@ pub fn srgb_to_linear(value: f32) -> f32 {
     }
 }
 
-/// Uniform of the HD resolve pass (the start of the plugin's `UBOGlobal`): 16 bytes.
+/// HD resolve inputs, with a deterministic clock for theme effects.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct HdFrameUniform {
@@ -139,9 +139,11 @@ pub struct HdFrameUniform {
     pub vignette: f32,
     pub width: f32,
     pub height: f32,
+    pub time: f32,
+    pub padding: [f32; 3],
 }
 
-const _: () = assert!(std::mem::size_of::<HdFrameUniform>() == 16);
+const _: () = assert!(std::mem::size_of::<HdFrameUniform>() == 32);
 
 /// Storage buffer holding the material table.
 pub struct MaterialTable {
@@ -348,7 +350,7 @@ pub fn material_bind_group(
 }
 
 /// Lighting environment of the HD scene shader (`Environment` in `scene.wgsl`): the lighting,
-/// fog and water fields of the plugin's `UBOGlobal` the water colours and the shadow camera, 400 bytes.
+/// fog and water fields of the plugin's `UBOGlobal` the water colours and the shadow camera and sky basis, 448 bytes.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct HdEnvironmentUniform {
@@ -394,9 +396,12 @@ pub struct HdEnvironmentUniform {
     pub scene_base: [f32; 4],
     /// Texture layers of the water flow map, foam, caustics map and underwater flow map.
     pub water_layers: [i32; 4],
+    pub sky_right: [f32; 4],
+    pub sky_down: [f32; 4],
+    pub sky_forward: [f32; 4],
 }
 
-const _: () = assert!(std::mem::size_of::<HdEnvironmentUniform>() == 160 + 64 + 80 + 96);
+const _: () = assert!(std::mem::size_of::<HdEnvironmentUniform>() == 160 + 64 + 80 + 96 + 48);
 
 /// Bind group layout of the HD scene shader's group 2: the material table, texture array,
 /// sampler, the lighting environment and the water types.

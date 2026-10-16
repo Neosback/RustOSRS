@@ -69,6 +69,15 @@ impl EditorApp {
                     // presentation rebuilds do not emit it, so this is the cache/source boundary
                     // where old semantic state must be discarded.
                     self.session.reset();
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let Some(appearance) = self.project.take_pending_appearance()
+                        && let Err(error) = self.session.load_appearance(appearance)
+                    {
+                        self.ui
+                            .notify(format!("Project appearance could not load: {error}"));
+                    }
+                    self.ui.themes.source_opened();
+                    self.renderer.cancel_theme_preparation();
                     self.audio.source_opened();
                     self.player_model.source_opened(&mut self.renderer);
                     self.names.source_opened(self.project.cache_label(), build);

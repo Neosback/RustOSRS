@@ -320,7 +320,8 @@ impl EditorApp {
                 self.update_hd_lighting();
             }
             let phase = Instant::now();
-            self.renderer.set_hd_params(self.settings.prefs.hd_params());
+            self.renderer
+                .set_hd_params(self.hd.params(self.settings.prefs.hd_params()));
             if let Some(mut frame) = self.renderer.encode_viewport(FrameParams {
                 camera: self.interaction.camera().reference(width as f32),
                 view_plane: self.interaction.view_plane(),

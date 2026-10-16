@@ -8,589 +8,1177 @@
       "key": "drawDistance",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 95,
+        "method": "drawDistance",
+        "default_body": "return 50;"
+      }
     },
     {
       "key": "detailDistance",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 113,
+        "method": "detailDrawDistance",
+        "default_body": "return 70;"
+      }
     },
     {
       "key": "expandedMapLoadingChunks",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 131,
+        "method": "expandedMapLoadingChunks",
+        "default_body": "return 3;"
+      }
     },
     {
       "key": "hideUnrelatedAreas",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 143,
+        "method": "hideUnrelatedAreas",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "antiAliasingMode",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 157,
+        "method": "antiAliasingMode",
+        "default_body": "return AntiAliasingMode.MSAA_8;"
+      }
     },
     {
       "key": "sceneResolutionScale",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 174,
+        "method": "sceneResolutionScale",
+        "default_body": "return 100;"
+      }
     },
     {
       "key": "sceneScalingMode",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 185,
+        "method": "sceneScalingMode",
+        "default_body": "return SceneScalingMode.LINEAR;"
+      }
     },
     {
       "key": "uiScalingMode",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 200,
+        "method": "uiScalingMode",
+        "default_body": "return UIScalingMode.HYBRID;"
+      }
     },
     {
       "key": "anisotropicFilteringLevel",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 221,
+        "method": "anisotropicFilteringLevel",
+        "default_body": "return 16;"
+      }
     },
     {
       "key": "unlockFps",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 234,
+        "method": "unlockFps",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "vsyncMode",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 260,
+        "method": "syncMode",
+        "default_body": "return SyncMode.ADAPTIVE;"
+      }
     },
     {
       "key": "fpsTarget",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 279,
+        "method": "fpsTarget",
+        "default_body": "return 60;"
+      }
     },
     {
       "key": "colorBlindMode",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 292,
+        "method": "colorBlindness",
+        "default_body": "return ColorBlindMode.NONE;"
+      }
     },
     {
       "key": "colorBlindnessIntensity",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 306,
+        "method": "colorBlindnessIntensity",
+        "default_body": "return 100;"
+      }
     },
     {
       "key": "flashingEffects",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 318,
+        "method": "flashingEffects",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "fSaturation",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 333,
+        "method": "saturation",
+        "default_body": "return round(oldSaturationDropdown().getAmount() * 100);"
+      }
     },
     {
       "key": "saturation",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 338,
+        "method": "oldSaturationDropdown",
+        "default_body": "return Saturation.DEFAULT;"
+      }
     },
     {
       "key": "fContrast",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 353,
+        "method": "contrast",
+        "default_body": "return round(oldContrastDropdown().getAmount() * 100);"
+      }
     },
     {
       "key": "contrast",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 358,
+        "method": "oldContrastDropdown",
+        "default_body": "return Contrast.DEFAULT;"
+      }
     },
     {
       "key": "screenBrightness",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 378,
+        "method": "brightness",
+        "default_body": "return 100;"
+      }
     },
     {
       "key": "shadowMode",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 405,
+        "method": "shadowMode",
+        "default_body": "return ShadowMode.DETAILED;"
+      }
     },
     {
       "key": "shadowResolution",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 419,
+        "method": "shadowResolution",
+        "default_body": "return ShadowResolution.RES_8192;"
+      }
     },
     {
       "key": "shadowFiltering",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 438,
+        "method": "shadowFiltering",
+        "default_body": "return ShadowFiltering.SMOOTH_HIGH;"
+      }
     },
     {
       "key": "enableShadowTransparency",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 450,
+        "method": "shadowTransparency",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "experimentalRoofShadows",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 462,
+        "method": "roofShadows",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "terrainShadows",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 474,
+        "method": "terrainShadows",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "expandShadowDraw",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 488,
+        "method": "conservativeShadowCulling",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "dynamicLights",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 513,
+        "method": "dynamicLights",
+        "default_body": "return DynamicLights.SOME;"
+      }
     },
     {
       "key": "tiledLighting",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 525,
+        "method": "tiledLighting",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "projectileLights",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 539,
+        "method": "projectileLights",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "npcLights",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 551,
+        "method": "npcLights",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "environmentalLighting",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 563,
+        "method": "atmosphericLighting",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "vanillaShadowMode",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 578,
+        "method": "vanillaShadowMode",
+        "default_body": "return VanillaShadowMode.SHOW_IN_PVM;"
+      }
     },
     {
       "key": "normalMapping",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 590,
+        "method": "normalMapping",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "parallaxOcclusionMappingToggle",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 602,
+        "method": "parallaxOcclusionMapping",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "daylightCycle",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 636,
+        "method": "daylightCycle",
+        "default_body": "return DaylightCycle.DEFAULT;"
+      }
     },
     {
       "key": "nightBrightness",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 654,
+        "method": "nightBrightness",
+        "default_body": "return 100;"
+      }
     },
     {
       "key": "stars",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 670,
+        "method": "starMode",
+        "default_body": "return StarMode.REALISTIC;"
+      }
     },
     {
       "key": "nebulae",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 682,
+        "method": "enableNebulae",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "moonBehavior",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 699,
+        "method": "moonBehavior",
+        "default_body": "return MoonBehavior.REALISTIC;"
+      }
     },
     {
       "key": "moonPhase",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 714,
+        "method": "moonPhase",
+        "default_body": "return MoonPhase.DYNAMIC;"
+      }
     },
     {
       "key": "replaceVanillaSkyboxes",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 726,
+        "method": "replaceVanillaSkyboxes",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "customCycleDurationMinutes",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 740,
+        "method": "customCycleDurationMinutes",
+        "default_body": "return 60;"
+      }
     },
     {
       "key": "latitudeDegrees",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 759,
+        "method": "latitudeDegrees",
+        "default_body": "return round(DEFAULT_LATLON[0]);"
+      }
     },
     {
       "key": "longitudeDegrees",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 778,
+        "method": "longitudeDegrees",
+        "default_body": "return round(DEFAULT_LATLON[1]);"
+      }
     },
     {
       "key": "seasonalTheme",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 801,
+        "method": "seasonalTheme",
+        "default_body": "return SeasonalTheme.AUTOMATIC;"
+      }
     },
     {
       "key": "seasonalHemisphere",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 813,
+        "method": "seasonalHemisphere",
+        "default_body": "return SeasonalHemisphere.NORTHERN;"
+      }
     },
     {
       "key": "seasonalFoliage",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 825,
+        "method": "seasonalFoliage",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "fogDepthMode",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 839,
+        "method": "fogDepthMode",
+        "default_body": "return FogDepthMode.DYNAMIC;"
+      }
     },
     {
       "key": "fogDepth",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 857,
+        "method": "fogDepth",
+        "default_body": "return 5;"
+      }
     },
     {
       "key": "groundFog",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 869,
+        "method": "groundFog",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "defaultSkyColor",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 885,
+        "method": "defaultSkyColor",
+        "default_body": "return DefaultSkyColor.DEFAULT;"
+      }
     },
     {
       "key": "overrideSky",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 897,
+        "method": "overrideSky",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "objectTextures",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 909,
+        "method": "modelTextures",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "groundTextures",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 921,
+        "method": "groundTextures",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "textureResolution",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 934,
+        "method": "textureResolution",
+        "default_body": "return TextureResolution.RES_256;"
+      }
     },
     {
       "key": "groundBlendingv2",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 949,
+        "method": "groundBlending",
+        "default_body": "return groundBlendingv1() ? GroundBlending.ON : GroundBlending.TEXTURES_ONLY;"
+      }
     },
     {
       "key": "groundBlending",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 954,
+        "method": "groundBlendingv1",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "underwaterCaustics",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 965,
+        "method": "underwaterCaustics",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "windDisplacement",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 978,
+        "method": "windDisplacement",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "characterDisplacement",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 990,
+        "method": "characterDisplacement",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "hideVanillaWaterEffects",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1002,
+        "method": "hideVanillaWaterEffects",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "pohThemeEnvironments",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1012,
+        "method": "pohThemeEnvironments",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "cpuUsageLimit",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1037,
+        "method": "cpuUsageLimit",
+        "default_body": "return CpuUsageLimit.MAX;"
+      }
     },
     {
       "key": "powerSaving",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1049,
+        "method": "powerSaving",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "macosIntelWorkaround",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1063,
+        "method": "macosIntelWorkaround",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "infernalCape",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1077,
+        "method": "infernalCape",
+        "default_body": "return InfernalCape.HD;"
+      }
     },
     {
       "key": "vanillaColorBanding",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1090,
+        "method": "vanillaColorBanding",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "lowMemoryMode",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1104,
+        "method": "lowMemoryMode",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "colorFilter",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1115,
+        "method": "colorFilter",
+        "default_body": "return ColorFilter.NONE;"
+      }
     },
     {
       "key": "removeVertexSnapping",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1129,
+        "method": "removeVertexSnapping",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "fillGapsInTerrain",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1140,
+        "method": "fillGapsInTerrain",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "flatShading",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1151,
+        "method": "flatShading",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "windowsHdrCorrection",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1164,
+        "method": "windowsHdrCorrection",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "legacyRenderer2",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1187,
+        "method": "legacyRenderer",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "useLegacyBrightness",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1200,
+        "method": "useLegacyBrightness",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "brightness2",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1217,
+        "method": "legacyBrightness",
+        "default_body": "return 20;"
+      }
     },
     {
       "key": "shadowDistance",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1231,
+        "method": "shadowDistance",
+        "default_body": "return ShadowDistance.DISTANCE_50;"
+      }
     },
     {
       "key": "useModelBatching",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1246,
+        "method": "modelBatching",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "useModelCaching",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1258,
+        "method": "modelCaching",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "modelCacheSizeMiBv2",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1276,
+        "method": "modelCacheSizeMiB",
+        "default_body": "return modelCacheSizeMiBv1() / 4;"
+      }
     },
     {
       "key": "modelCacheSizeMiB",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1280,
+        "method": "modelCacheSizeMiBv1",
+        "default_body": "return 2048;"
+      }
     },
     {
       "key": "reduceOverExposure",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1293,
+        "method": "legacyGreyColors",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "legacyTobEnvironment",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1306,
+        "method": "legacyTobEnvironment",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "tzhaarHD",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1317,
+        "method": "legacyTzHaarReskin",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "experimentalFasterModelHashing",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1339,
+        "method": "fasterModelHashing",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "experimentalZoneStreaming",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1352,
+        "method": "zoneStreaming",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "experimentalPreserveVanillaNormals",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1363,
+        "method": "preserveVanillaNormals",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "experimentalShadingMode",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1376,
+        "method": "shadingMode",
+        "default_body": "return ShadingMode.DEFAULT;"
+      }
     },
     {
       "key": "experimentalDecoupleWaterFromSkyColor",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1387,
+        "method": "decoupleSkyAndWaterColor",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "wireframe",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1398,
+        "method": "wireframe",
+        "default_body": "return false;"
+      }
     },
     {
       "key": "experimentalTiledLightingImageStore",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1409,
+        "method": "tiledLightingImageLoadStore",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "experimentalIndirectDraw",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1422,
+        "method": "indirectDraw",
+        "default_body": "return DefaultBoolean.DEFAULT;"
+      }
     },
     {
       "key": "experimentalStorageBuffers",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1435,
+        "method": "storageBuffers",
+        "default_body": "return DefaultBoolean.DEFAULT;"
+      }
     },
     {
       "key": "asyncModelProcessing",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1446,
+        "method": "multithreadedModelProcessing",
+        "default_body": "return true;"
+      }
     },
     {
       "key": "experimentalPointSprites",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1457,
+        "method": "pointSprites",
+        "default_body": "return DefaultBoolean.DEFAULT;"
+      }
     },
     {
       "key": "pluginUpdateMessage",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1467,
+        "method": "getPluginUpdateMessage",
+        "default_body": "return 0;"
+      }
     },
     {
       "key": "preciseLatitudeLongitude",
       "status": "audit_pending",
       "implementation": [],
-      "verification": []
+      "verification": [],
+      "source": {
+        "file": "HdPluginConfig.java",
+        "line": 1473,
+        "method": "preciseLatLon",
+        "default_body": "return \"\";"
+      }
     }
   ],
   "systems": {

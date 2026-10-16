@@ -167,7 +167,11 @@ impl EditorApp {
                             ViewTab::Scene => {
                                 self.quick_settings_ui(ui, &["Camera", "World", "Interface"]);
                             }
+                            ViewTab::ThemeStudio => crate::app::theme_studio::panel(self, ui),
                             ViewTab::Graphics => {
+                                if ui.button("Open Theme Studio").clicked() {
+                                    self.settings.prefs.view_tab = ViewTab::ThemeStudio;
+                                }
                                 self.quick_settings_ui(ui, &["Graphics"]);
                             }
                             ViewTab::Overlays => self.overlays_tab(ui),

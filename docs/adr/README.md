@@ -67,6 +67,7 @@ Numbers are monotonic and never reused.
 | `ADR-0010-rune-fs-private-cache-transport.md` | `rune-fs` is a private read-only transport dependency; RustOSRS owns revision-aware decoders |
 | [ADR-0011-editor-ownership-and-feature-contracts.md](ADR-0011-editor-ownership-and-feature-contracts.md) | runtime ownership, headless tool planners, optional traces and executable feature navigation |
 | [ADR-0012-first-class-filestore.md](ADR-0012-first-class-filestore.md) | owned JS5 filestore, safe lazy native reads, verified incremental repacking |
+| [ADR-0014-authored-appearance.md](ADR-0014-authored-appearance.md) | application-owned theme snapshots, shared chronological history and validated GPU candidates |
 
 ## Proposed ADRs
 
