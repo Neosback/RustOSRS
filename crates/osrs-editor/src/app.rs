@@ -27,6 +27,7 @@ mod overlay;
 mod paint_commit;
 mod palette_runtime;
 mod path_commit;
+mod player_panel;
 mod plugin_runtime;
 mod plugins;
 #[cfg_attr(target_arch = "wasm32", path = "app/project_web.rs")]
@@ -39,6 +40,7 @@ mod settings_io;
 mod settings_runtime;
 mod settings_window;
 mod shelf;
+mod sound_panel;
 mod spline_tool;
 mod status;
 mod streaming;
@@ -208,6 +210,22 @@ impl eframe::App for EditorApp {
                     height,
                 );
                 self.draw_spline(
+                    &ui.painter().with_clip_rect(rect),
+                    rect,
+                    pixels_per_point,
+                    width,
+                    height,
+                );
+                sound_panel::draw_world(
+                    self,
+                    &ui.painter().with_clip_rect(rect),
+                    rect,
+                    pixels_per_point,
+                    width,
+                    height,
+                );
+                player_panel::draw_world(
+                    self,
                     &ui.painter().with_clip_rect(rect),
                     rect,
                     pixels_per_point,

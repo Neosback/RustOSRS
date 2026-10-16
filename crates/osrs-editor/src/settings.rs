@@ -20,16 +20,22 @@ pub enum RailTab {
     View,
     /// Retired as a button (it is a tab of View); old settings files may still name it.
     Graphics,
+    /// The objects that make sounds in the current map square.
+    Sound,
+    /// A mock player: stats, look, worn items and game variables to play with.
+    Player,
 }
 
 impl RailTab {
-    pub const ALL: [Self; 2] = [Self::Inspect, Self::View];
+    pub const ALL: [Self; 4] = [Self::Inspect, Self::View, Self::Sound, Self::Player];
 
     pub const fn label(self) -> &'static str {
         match self {
             Self::Inspect => "Inspector",
             Self::View => "View",
             Self::Graphics => "Graphics",
+            Self::Sound => "Sound",
+            Self::Player => "Player",
         }
     }
 }
@@ -289,6 +295,8 @@ pub struct Settings {
     pub cache_dir: Option<String>,
     pub recent_caches: Vec<String>,
     pub spline: crate::paint::SplineSettings,
+    /// The mock player of the Player panel.
+    pub player: crate::player::PlayerSandbox,
     pub height_tool: crate::heights::HeightTool,
     pub palette_filter: crate::paint::PaletteFilter,
     /// Palette swatch size: 0 small, 1 medium, 2 large.
@@ -365,6 +373,7 @@ impl Default for Settings {
             cache_dir: None,
             recent_caches: Vec::new(),
             spline: crate::paint::SplineSettings::default(),
+            player: crate::player::PlayerSandbox::default(),
             height_tool: crate::heights::HeightTool::default(),
             palette_filter: crate::paint::PaletteFilter::default(),
             swatch_size: 1,

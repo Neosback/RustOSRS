@@ -1,0 +1,60 @@
+# Sound effect ids with the names RuneLite gives them (runelite-api SoundEffectID).
+60 close door
+62 open door
+200 teleport vwoop
+227 magic splash boing
+510 take damage splat
+511 zero damage splat
+1930 npc teleport woosh
+1982 prayer activate protect item
+2266 ui boop
+2498 attack hit
+2577 cook woosh
+2581 pick plant bloop
+2582 item pickup
+2596 fire woosh
+2597 tinder strike
+2662 prayer activate improved reflexes
+2663 prayer deactive vwoop
+2664 prayer activate clarity of thought
+2665 prayer activate eagle eye
+2666 prayer activate hawk eye
+2667 prayer activate incredible reflexes
+2668 prayer activate mystic lore
+2669 prayer activate mystic might
+2670 prayer activate mystic will augury
+2672 prayer deplete twinkle
+2675 prayer activate protect from magic
+2676 prayer activate protect from melee
+2677 prayer activate protect from missiles
+2678 prayer activate rapid heal
+2679 prayer activate rapid restore preserve
+2680 prayer activate redemption
+2682 prayer activate retribution
+2684 prayer activate rock skin
+2685 prayer activate sharp eye rigour
+2686 prayer activate smite
+2687 prayer activate steel skin
+2688 prayer activate burst of strength
+2689 prayer activate superhuman strength
+2690 prayer activate thick skin
+2691 prayer activate ultimate strength
+2734 tree falling
+2735 tree chop
+2738 bury bones
+2739 item drop
+3220 mining tink
+3790 smith anvil tink
+3791 smith anvil tonk
+3813 town crier bell ding
+3816 town crier shout squeak
+3817 town crier bell dong
+3825 prayer activate piety
+3826 prayer activate chivalry
+3924 ge coin tinkle
+3925 ge add offer dingaling
+3928 ge collect bloop
+3929 ge increment plop
+3930 ge decrement plop
+10100 prayer activate mystic vigour
+10194 prayer activate deadeye

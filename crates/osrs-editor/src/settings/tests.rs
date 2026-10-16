@@ -113,3 +113,28 @@ fn unreadable_file_gives_defaults() {
         Settings::default()
     );
 }
+
+#[test]
+fn the_sound_and_player_rail_tabs_and_the_mock_player_persist() -> Result<(), serde_json::Error> {
+    assert!(RailTab::ALL.contains(&RailTab::Sound) && RailTab::ALL.contains(&RailTab::Player));
+    let labels: std::collections::BTreeSet<_> = RailTab::ALL.map(RailTab::label).into();
+    assert_eq!(
+        labels.len(),
+        RailTab::ALL.len(),
+        "every rail button has its own name"
+    );
+    // A file from before these panels has the default player and still loads.
+    let old: Settings = serde_json::from_str(r#"{ "rail_tab": "View" }"#)?;
+    assert_eq!(old.player, crate::player::PlayerSandbox::default());
+    let mut settings = Settings::default();
+    settings.rail_tab = RailTab::Sound;
+    settings.player.name = "Ada".to_owned();
+    settings.player.varps.insert(281, 7);
+    let back: Settings = serde_json::from_str(&serde_json::to_string(&settings)?)?;
+    assert_eq!(back.rail_tab, RailTab::Sound);
+    assert_eq!(back.player.name, "Ada");
+    assert_eq!(back.player.varps.get(&281), Some(&7));
+    // `sanitized` leaves the new tabs alone.
+    assert_eq!(back.sanitized().rail_tab, RailTab::Sound);
+    Ok(())
+}

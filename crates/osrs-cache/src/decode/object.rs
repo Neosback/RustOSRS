@@ -1,10 +1,10 @@
 use super::{ArchiveFileProvenance, BinaryReader, DecodeResult, DecodeSubject, DecoderContext};
 use osrs_core::definitions::{
     DefinitionIdentity, LocType, ModelScale, ModelTranslation, ObjectDefinition, ObjectModels,
-    ObjectMorphs, ObjectPlacementFlags, RecolorPair, RetexturePair, TypedObjectModel,
+    ObjectMorphs, ObjectPlacementFlags, ObjectSound, RecolorPair, RetexturePair, TypedObjectModel,
 };
 use osrs_core::ids::{
-    CategoryId, MapIconId, MapSceneId, ModelId, ObjectId, SequenceId, VarbitId, VarpId,
+    CategoryId, MapIconId, MapSceneId, ModelId, ObjectId, SequenceId, SoundId, VarbitId, VarpId,
 };
 
 const EXTENDED_OBJECT_MODEL_IDS_GATE: &str = "extended_object_model_ids";
@@ -58,6 +58,8 @@ pub fn decode_object_definition(
     let mut map_icon = None;
     let mut category = None;
     let mut interactive_hint = None;
+    let mut sound: Option<ObjectSound> = None;
+    let mut sound_extras = SoundExtras::default();
     let mut actions: [Option<String>; 5] = std::array::from_fn(|_| None);
 
     loop {
@@ -132,8 +134,38 @@ pub fn decode_object_definition(
             74 => solid = true,
             75 => support_items = Some(reader.read_u8()?),
             77 | 92 => morphs = Some(decode_morphs(&mut reader, opcode == 92)?),
-            78 => consume_ambient_sound(&mut reader, object_sound_layout_220_plus)?,
-            79 => consume_random_sounds(&mut reader, object_sound_layout_220_plus)?,
+            78 => {
+                let looping = sound_id(reader.read_u16_be()?);
+                let distance = reader.read_u8()?;
+                let retain = if object_sound_layout_220_plus {
+                    reader.read_u8()?
+                } else {
+                    0
+                };
+                let sound = sound.get_or_insert_with(ObjectSound::empty);
+                sound.looping = looping;
+                sound.distance = distance;
+                sound.retain = retain;
+            }
+            79 => {
+                let change_ticks = (reader.read_u16_be()?, reader.read_u16_be()?);
+                let distance = reader.read_u8()?;
+                let retain = if object_sound_layout_220_plus {
+                    reader.read_u8()?
+                } else {
+                    0
+                };
+                let count = usize::from(reader.read_u8()?);
+                let mut random = Vec::with_capacity(count);
+                for _ in 0..count {
+                    random.extend(sound_id(reader.read_u16_be()?));
+                }
+                let sound = sound.get_or_insert_with(ObjectSound::empty);
+                sound.change_ticks = change_ticks;
+                sound.distance = distance;
+                sound.retain = retain;
+                sound.random = random;
+            }
             81 => contour_clip = Some(u32::from(reader.read_u8()?) * 256),
             82 => map_icon = Some(MapIconId::new(u32::from(reader.read_u16_be()?))),
             89 => random_animation_start = false,
@@ -141,18 +173,12 @@ pub fn decode_object_definition(
                 // Verified target booleans/no-op metadata with no canonical
                 // consumer in M2's ObjectDefinition.
             }
-            91 => {
-                reader.skip(1)?;
-            }
+            91 => sound_extras.distance_fade_curve = reader.read_u8()?,
             93 => {
-                reader.skip(1)?;
-                reader.skip(2)?;
-                reader.skip(1)?;
-                reader.skip(2)?;
+                sound_extras.fade_in = (reader.read_u8()?, reader.read_u16_be()?);
+                sound_extras.fade_out = (reader.read_u8()?, reader.read_u16_be()?);
             }
-            95 => {
-                reader.skip(1)?;
-            }
+            95 => sound_extras.visibility = reader.read_u8()?,
             42 => full_recolor = Some(reader.read_u16_be()?),
             96 => ground_raise = reader.read_u8()?,
             100 => consume_entity_sub_op(&mut reader)?,
@@ -171,6 +197,9 @@ pub fn decode_object_definition(
     }
 
     reader.finish()?;
+    if let Some(sound) = sound.as_mut() {
+        sound_extras.apply(sound);
+    }
     Ok(ObjectDefinition {
         identity: DefinitionIdentity::new(id, context.target_provenance().clone()),
         name,
@@ -206,7 +235,42 @@ pub fn decode_object_definition(
         category,
         actions,
         interactive_hint,
+        sound,
     })
+}
+
+/// Sound fields (opcodes 91, 93, 95) that may come before or after the sound opcodes 78/79.
+struct SoundExtras {
+    distance_fade_curve: u8,
+    fade_in: (u8, u16),
+    fade_out: (u8, u16),
+    visibility: u8,
+}
+
+impl Default for SoundExtras {
+    /// The client's defaults: 300-tick fades, visibility 2.
+    fn default() -> Self {
+        Self {
+            distance_fade_curve: 0,
+            fade_in: (0, 300),
+            fade_out: (0, 300),
+            visibility: 2,
+        }
+    }
+}
+
+impl SoundExtras {
+    fn apply(&self, sound: &mut ObjectSound) {
+        sound.distance_fade_curve = self.distance_fade_curve;
+        sound.fade_in = self.fade_in;
+        sound.fade_out = self.fade_out;
+        sound.visibility = self.visibility;
+    }
+}
+
+/// A sound id as the client reads it: `0xFFFF` is "none".
+fn sound_id(raw: u16) -> Option<SoundId> {
+    (raw != u16::MAX).then(|| SoundId::new(u32::from(raw)))
 }
 
 fn require_extended_model_ids(
@@ -355,27 +419,6 @@ fn consume_conditional_op(reader: &mut BinaryReader<'_>) -> DecodeResult<()> {
 fn consume_conditional_sub_op(reader: &mut BinaryReader<'_>) -> DecodeResult<()> {
     reader.skip(1 + 2 + 2 + 2 + 4 + 4)?;
     reader.read_cp1252_string()?;
-    Ok(())
-}
-
-fn consume_ambient_sound(reader: &mut BinaryReader<'_>, post_220: bool) -> DecodeResult<()> {
-    reader.skip(2)?;
-    reader.skip(1)?;
-    if post_220 {
-        reader.skip(1)?;
-    }
-    Ok(())
-}
-
-fn consume_random_sounds(reader: &mut BinaryReader<'_>, post_220: bool) -> DecodeResult<()> {
-    reader.skip(2)?;
-    reader.skip(2)?;
-    reader.skip(1)?;
-    if post_220 {
-        reader.skip(1)?;
-    }
-    let count = usize::from(reader.read_u8()?);
-    reader.skip(count * 2)?;
     Ok(())
 }
 
@@ -666,6 +709,41 @@ mod tests {
         let definition = decode_object_definition(ObjectId::new(109), &bytes, &context, &source)?;
 
         assert_eq!(definition.size_x, 4);
+        // Opcode 79 follows 78, so the random-sound range and radii are the later ones; the
+        // looping sound from 78 is kept.
+        let sound = definition.sound.ok_or("sound retained")?;
+        assert_eq!(sound.looping.map(|id| id.get()), Some(10));
+        assert_eq!(
+            sound.random.iter().map(|id| id.get()).collect::<Vec<_>>(),
+            [11, 12]
+        );
+        assert_eq!(sound.change_ticks, (1, 2));
+        assert_eq!((sound.distance, sound.retain), (3, 4));
+        assert_eq!(sound.distance_fade_curve, 5);
+        assert_eq!((sound.fade_in, sound.fade_out), ((6, 7), (8, 9)));
+        assert_eq!(sound.visibility, 10);
+        Ok(())
+    }
+
+    #[test]
+    fn objects_without_sound_opcodes_have_no_sound_and_no_id_means_none()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let context = test_support::target_context()?;
+        let source = ArchiveFileProvenance::new(2, 6, Some(111));
+        let silent = decode_object_definition(ObjectId::new(111), &[91, 3, 0], &context, &source)?;
+        assert_eq!(silent.sound, None, "fade curves alone are not a sound");
+        // 0xFFFF is the client's "no sound": distance and retain are still read.
+        let none = decode_object_definition(
+            ObjectId::new(112),
+            &[78, 0xff, 0xff, 7, 2, 0],
+            &context,
+            &source,
+        )?;
+        let sound = none.sound.ok_or("sound retained")?;
+        assert_eq!(sound.looping, None);
+        assert_eq!((sound.distance, sound.retain), (7, 2));
+        assert_eq!(sound.fade_in, (0, 300), "client defaults when absent");
+        assert_eq!(sound.visibility, 2);
         Ok(())
     }
 

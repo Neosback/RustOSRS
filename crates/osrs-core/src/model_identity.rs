@@ -327,6 +327,7 @@ mod tests {
             category: None,
             actions: [None, None, None, None, None],
             interactive_hint: None,
+            sound: None,
         })
     }
 

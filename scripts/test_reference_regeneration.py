@@ -10,12 +10,21 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "tools" / "reference-fixtures" / "regenerate.py"
-SPEC = importlib.util.spec_from_file_location("rustosrs_regenerate", MODULE_PATH)
-assert SPEC is not None and SPEC.loader is not None
-REGENERATE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(REGENERATE)
+# The regeneration tooling lives under tools/, which commit 5abe104e removed from the repository.
+# Without it there is no boundary to test, so these tests are skipped (and reported as skipped, not
+# passed). Restoring tools/ re-enables them unchanged.
+TOOLING_PRESENT = MODULE_PATH.is_file()
+REGENERATE = None
+if TOOLING_PRESENT:
+    SPEC = importlib.util.spec_from_file_location("rustosrs_regenerate", MODULE_PATH)
+    assert SPEC is not None and SPEC.loader is not None
+    REGENERATE = importlib.util.module_from_spec(SPEC)
+    SPEC.loader.exec_module(REGENERATE)
 
 
+@unittest.skipUnless(
+    TOOLING_PRESENT, "tools/reference-fixtures/regenerate.py is not in this checkout"
+)
 class ReferenceRegenerationTests(unittest.TestCase):
     def test_pin_is_exact_expected_public_deob_commit(self) -> None:
         self.assertEqual(

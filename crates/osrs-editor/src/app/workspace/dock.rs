@@ -7,6 +7,8 @@ pub(super) fn rail_icon(tab: RailTab) -> &'static str {
         RailTab::Inspect => icons::INSPECT,
         RailTab::View => icons::VIEW,
         RailTab::Graphics => icons::GRAPHICS,
+        RailTab::Sound => icons::SOUND,
+        RailTab::Player => icons::PLAYER,
     }
 }
 
@@ -146,6 +148,14 @@ impl EditorApp {
         match self.settings.prefs.rail_tab {
             // The inspector splits the panel itself (tile above, object below).
             RailTab::Inspect => self.inspector(ui),
+            RailTab::Sound => {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| crate::app::sound_panel::show(self, ui))
+                    .inner
+            }
+            // The panel scrolls itself.
+            RailTab::Player => crate::app::player_panel::show(self, ui),
             _ => {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
@@ -159,7 +169,7 @@ impl EditorApp {
                             }
                             ViewTab::Overlays => self.overlays_tab(ui),
                         },
-                        RailTab::Inspect => {}
+                        RailTab::Inspect | RailTab::Sound | RailTab::Player => {}
                     });
             }
         }

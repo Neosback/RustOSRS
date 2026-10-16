@@ -21,6 +21,7 @@ pub(super) struct UiRuntime {
     pub(super) world_map: super::worldmap::WorldMapView,
     pub(super) minimap_hud: super::minimap::MinimapHud,
     pub(super) teleport: crate::hud::TeleportWindow,
+    pub(super) sound: super::sound_panel::SoundPanel,
     notice: Option<(String, Instant)>,
     status: Option<String>,
 }
@@ -43,6 +44,7 @@ impl UiRuntime {
             world_map: super::worldmap::WorldMapView::new(),
             minimap_hud: super::minimap::MinimapHud::default(),
             teleport: crate::hud::TeleportWindow::new(),
+            sound: super::sound_panel::SoundPanel::default(),
             notice: None,
             status: None,
         }

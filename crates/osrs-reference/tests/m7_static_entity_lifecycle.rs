@@ -290,6 +290,7 @@ fn object_definition(
         category: None,
         actions: [None, None, None, None, None],
         interactive_hint: None,
+        sound: None,
     })
 }
 

@@ -8,7 +8,7 @@
 use crate::floor_color::{OverlayHsl, UnderlayHsl};
 use crate::ids::{
     CategoryId, FloorOverlayId, FloorUnderlayId, FrameId, ItemId, MapIconId, MapSceneId, ModelId,
-    ObjectId, SequenceId, SkeletalAnimationId, SpriteId, TextureId, VarbitId, VarpId,
+    ObjectId, SequenceId, SkeletalAnimationId, SoundId, SpriteId, TextureId, VarbitId, VarpId,
 };
 use crate::provenance::TargetProvenance;
 use core::fmt;
@@ -145,6 +145,54 @@ pub struct ObjectMorphs {
     pub fallback: Option<ObjectId>,
 }
 
+/// The ambient (area) sound of an object, from opcodes 78/79 (sounds and range), 91/93 (fade
+/// curves) and 95 (visibility). Retained as data; playback belongs to a later layer. Distances are
+/// in tiles. The client plays the sound at full volume inside `retain - 1` tiles of the object's
+/// footprint and fades it to silence at `distance` tiles.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ObjectSound {
+    /// The looping sound (opcode 78); `None` when the object only has random sounds.
+    pub looping: Option<SoundId>,
+    /// One of these plays at random every `change_ticks` (opcode 79).
+    pub random: Vec<SoundId>,
+    /// Inclusive range of client ticks between random sounds (opcode 79); `(0, 0)` without any.
+    pub change_ticks: (u16, u16),
+    /// Outer radius in tiles: silent beyond it.
+    pub distance: u8,
+    /// Inner radius setting in tiles (layout 220+): full volume within `retain - 1`. Zero when the
+    /// layout has no such byte.
+    pub retain: u8,
+    /// Opcode 91 fade curve over distance (0 when absent).
+    pub distance_fade_curve: u8,
+    /// Opcode 93 fade-in and fade-out as (curve, duration) (curve 0 / 300 when absent).
+    pub fade_in: (u8, u16),
+    pub fade_out: (u8, u16),
+    /// Opcode 95: who hears it (0 everyone, 1 only inside the object's own world view, 2 default).
+    pub visibility: u8,
+}
+
+impl ObjectSound {
+    /// No sounds yet; the decoder fills it from opcodes 78 and 79.
+    pub const fn empty() -> Self {
+        Self {
+            looping: None,
+            random: Vec::new(),
+            change_ticks: (0, 0),
+            distance: 0,
+            retain: 0,
+            distance_fade_curve: 0,
+            fade_in: (0, 300),
+            fade_out: (0, 300),
+            visibility: 2,
+        }
+    }
+
+    /// Every sound this object can play, looping first.
+    pub fn sounds(&self) -> impl Iterator<Item = SoundId> + '_ {
+        self.looping.into_iter().chain(self.random.iter().copied())
+    }
+}
+
 /// Canonical object/loc definition inputs required by later semantic milestones.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ObjectDefinition {
@@ -180,6 +228,8 @@ pub struct ObjectDefinition {
     pub actions: [Option<String>; 5],
     /// Raw opcode 19 (`int1`), the client's interaction hint; `None` when the definition omits it.
     pub interactive_hint: Option<u8>,
+    /// The object's ambient sound, when it has one.
+    pub sound: Option<ObjectSound>,
 }
 
 impl ObjectDefinition {
