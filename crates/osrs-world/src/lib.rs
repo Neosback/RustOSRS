@@ -26,6 +26,7 @@ mod object_output_adversarial_tests;
 mod object_output_proof;
 pub mod oracle_dump;
 mod scene_builder;
+pub mod sound;
 mod source_squares;
 mod streaming;
 mod terrain_edits;

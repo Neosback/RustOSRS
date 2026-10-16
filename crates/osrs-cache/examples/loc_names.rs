@@ -17,8 +17,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .symbols
         .table_symbols("loc")
         .into_iter()
-        .map(|(id, name)| (id, name))
         .collect();
+    for table in [
+        "synth", "sound", "sfx", "jingle", "midi", "seq", "spotanim", "obj", "loc", "npc", "music",
+        "audio", "mesanim",
+    ] {
+        println!(
+            "table {table}: {} symbols",
+            installation.symbols.table_symbols(table).len()
+        );
+    }
     let files = repository.read_group_files(2, 6)?;
     let (mut total, mut named, mut symbolled, mut both, mut neither, mut failures) =
         (0, 0, 0, 0, 0, 0);

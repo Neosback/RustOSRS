@@ -17,6 +17,16 @@ impl Installation {
     /// Does not run install, assign missing IDs, or write external files.
     pub fn read(root: impl AsRef<Path>) -> Result<Self, String> {
         let root = root.as_ref();
+        let (revision, symbols, server_files) = Self::read_symbols(root)?;
+        Self::with_spawns(root, revision, symbols, server_files)
+    }
+
+    /// Only the gameval names (and the server NPC files found alongside them): enough to name
+    /// objects, NPCs and sounds without reading spawn files.
+    pub fn read_symbols(
+        root: impl AsRef<Path>,
+    ) -> Result<(u32, GamevalSymbols, Vec<SourceText>), String> {
+        let root = root.as_ref();
         let manifest: toml::Value =
             toml::from_str(&read(root.join(".data/gamevals-binary/max-ids.toml"))?)
                 .map_err(|e| e.to_string())?;
@@ -72,6 +82,15 @@ impl Installation {
                 symbols.load_rscm(table, &read(&path)?)?;
             }
         }
+        Ok((revision, symbols, server_files))
+    }
+
+    fn with_spawns(
+        root: &Path,
+        revision: u32,
+        symbols: GamevalSymbols,
+        mut server_files: Vec<SourceText>,
+    ) -> Result<Self, String> {
         let spawn_dir = root.join(".data/raw-cache/map/npcs");
         let mut paths: Vec<_> = std::fs::read_dir(&spawn_dir)
             .map_err(|e| e.to_string())?

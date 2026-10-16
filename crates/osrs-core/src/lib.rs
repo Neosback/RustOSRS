@@ -9,6 +9,7 @@ pub mod actor_pose;
 pub mod actor_snapshot;
 pub mod animation;
 pub mod animation_pose;
+pub mod audio;
 pub mod color_palette;
 pub mod contour;
 pub mod coordinate_math;

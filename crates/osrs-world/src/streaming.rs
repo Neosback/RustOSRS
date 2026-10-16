@@ -298,6 +298,11 @@ fn load_hd(definitions: &WorldDefinitions) -> Result<(HdContext, Box<HdGpuData>)
 /// Messages from the streaming worker.
 pub enum StreamEvent {
     NpcAssets(crate::npc::NpcAssetsUpdate),
+    /// A rendered sound effect, or why it could not be.
+    Sound {
+        id: u32,
+        result: Result<Arc<osrs_core::audio::RawSound>, String>,
+    },
     NpcGeometry(crate::npc::NpcGeometryUpdate),
     /// Every NPC definition summary of the open cache, with per-definition decode failures.
     NpcCatalog {
@@ -336,6 +341,7 @@ pub enum StreamEvent {
 }
 
 enum Request {
+    Sound(u32),
     NpcCatalog,
     NpcAssets {
         identity: osrs_core::actor_snapshot::PlaytestIdentity,
@@ -407,6 +413,10 @@ impl StreamWorker {
     fn handle(&mut self, request: Request, events: &Sender<StreamEvent>) -> bool {
         match request {
             Request::Shutdown => return false,
+            Request::Sound(id) => {
+                let result = crate::sound::render_sound_effect(&self.definitions, id).map(Arc::new);
+                let _ = events.send(StreamEvent::Sound { id, result });
+            }
             Request::NpcCatalog => {
                 let (entries, errors) = self.definitions.npc_catalog();
                 let _ = events.send(StreamEvent::NpcCatalog {
@@ -680,6 +690,9 @@ impl RegionStreamer {
     }
 
     /// Next finished event, if any.
+    pub fn request_sound(&self, id: u32) {
+        let _ = self.requests.send(Request::Sound(id));
+    }
     pub fn request_npc_catalog(&self) {
         let _ = self.requests.send(Request::NpcCatalog);
     }
