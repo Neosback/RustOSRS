@@ -9,6 +9,9 @@ The `docs/RUNELITE_*.md` files predate the canonical RustOSRS blueprint. They re
 These dated source walkthroughs record evidence and open work; they do not supersede canonical
 specifications or certify implementation parity. `index.md` defines the repository authority order.
 
+- [World-editor opportunity review](EDITOR-OPPORTUNITY-REVIEW.md): ranked authoring opportunities
+  from the RuneLite/deob and OpenRune sources, current Rust foundations/gaps, delivery slices and
+  acceptance criteria; compared with `fe1b703c` on 2026-10-16.
 - [RuneLite / OSRS object system](RUNELITE-OBJECT-SYSTEM.md): definitions, placements, models,
   morphs, animation, sound, map graphics, textures and related renderable families.
 - [Actor, animation, projectile and interface runtime](RUNELITE-RUNTIME-RENDERING.md): Player/Actor/NPC runtime ownership, appearance/model assembly, dual sequence systems, spot animations, graphics objects, projectiles, CS2/interpreter/widget boundaries and the implications for `osrs-playtest` and `osrs-render`.

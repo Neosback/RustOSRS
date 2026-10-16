@@ -1,0 +1,439 @@
+{
+  "schema": 1,
+  "reviewed_on": "2026-10-16",
+  "scope": "Selected source paths and product recommendations; no runtime or parity certification.",
+  "roots": {
+    "rust": {
+      "path": "/Users/tylercovalt/Documents/RustOSRS",
+      "commit": "fe1b703cf06e472b26bee68f2bd26cff2684dbe0"
+    },
+    "rl": {
+      "path": "/Users/tylercovalt/Documents/ChatGPT/RSPSi-resources/RuneLite-melxin",
+      "commit": "1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc"
+    },
+    "server": {
+      "path": "/Users/tylercovalt/Desktop/OpenRune/OpenRune-Server-241",
+      "commit": null
+    },
+    "fs": {
+      "path": "/Users/tylercovalt/Desktop/OpenRune/OpenRune-FileStore-main",
+      "commit": null
+    }
+  },
+  "revision_boundary": {
+    "runelite_declared_game_revision": 235,
+    "rust_selected_cache_revision": 241
+  },
+  "files": [
+    {
+      "id": "S01",
+      "root": "rust",
+      "path": "crates/osrs-editor/src/app/inspector.rs",
+      "sha256": "89077cae1f872ae2464529499a4d3aeb19ece74d4ef644050780444636d1a845",
+      "anchor": {
+        "line": 234,
+        "text": "    fn object_card(&mut self, ui: &mut egui::Ui, authoring: bool) {"
+      }
+    },
+    {
+      "id": "S02",
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectComposition.java",
+      "sha256": "9de683c9af60d96481ddf02dc9caf239f43bc64d9616af482e378fa483811996",
+      "anchor": {
+        "line": 917,
+        "text": "\tpublic final ObjectComposition transform() {"
+      }
+    },
+    {
+      "id": "S03",
+      "root": "rl",
+      "path": "runescape-client/src/main/java/DynamicObject.java",
+      "sha256": "069dba100c4dc733c725f323ff569ef2194bc2ae3b4e3ce9c2cb9e9d58b4f89f",
+      "anchor": {
+        "line": 9,
+        "text": "public class DynamicObject extends Renderable {"
+      }
+    },
+    {
+      "id": "S04",
+      "root": "rl",
+      "path": "runescape-client/src/main/java/ObjectSound.java",
+      "sha256": "3ba263c8f5281bc52bcf0f2c3d0650ed9c0c7ba44425cc56c62f990f263cc650",
+      "anchor": {
+        "line": 12,
+        "text": "public final class ObjectSound extends Node {"
+      }
+    },
+    {
+      "id": "S05",
+      "root": "rl",
+      "path": "runelite-client/src/main/java/net/runelite/client/plugins/devtools/SceneOverlay.java",
+      "sha256": "a1bbb89fab98a6399e29cb8f948dd57c8897d850bcb743213ddef29b75ef5abd",
+      "anchor": {
+        "line": 89,
+        "text": "\tpublic Dimension render(Graphics2D graphics)"
+      }
+    },
+    {
+      "id": "S06",
+      "root": "rl",
+      "path": "runescape-client/src/main/java/CollisionMap.java",
+      "sha256": "c8dd1468081d0bb17d42e29caf941e932552b1a985647bb6dd1f1b5f1795d25a",
+      "anchor": {
+        "line": 9,
+        "text": "public class CollisionMap {"
+      }
+    },
+    {
+      "id": "S07",
+      "root": "server",
+      "path": "engine/routefinder/src/main/kotlin/org/rsmod/routefinder/StepValidator.kt",
+      "sha256": "512cbc42a1af4193eed5a2ac9f9bf879d9cb7e69c39cdda32145dd4206e26f56",
+      "anchor": {
+        "line": 20,
+        "text": "    public fun canTravel("
+      }
+    },
+    {
+      "id": "S08",
+      "root": "server",
+      "path": "engine/routefinder/src/main/kotlin/org/rsmod/routefinder/LineValidator.kt",
+      "sha256": "0c9c74e3b54580834fef409241d93596919bbc445a4e250085af01bb8e0e04cd",
+      "anchor": {
+        "line": 42,
+        "text": "    public fun hasLineOfSight("
+      }
+    },
+    {
+      "id": "S09",
+      "root": "server",
+      "path": "engine/routefinder/src/main/kotlin/org/rsmod/routefinder/reach/ReachStrategy.kt",
+      "sha256": "c43135020b2f65ebde3142819fe44d95759fb2e7ef328f24c40486b463313ae3",
+      "anchor": {
+        "line": 34,
+        "text": "    public fun reached("
+      }
+    },
+    {
+      "id": "S10",
+      "root": "rl",
+      "path": "runelite-api/src/main/java/net/runelite/api/coords/WorldPoint.java",
+      "sha256": "8935ad845716e7e17c6df414a93ca596a886b5dfbd3635b4e45e68c9cfaa0eae",
+      "anchor": {
+        "line": 293,
+        "text": "\tprivate static WorldPoint fromLocalInstance(int[][][] instanceTemplateChunks, LocalPoint localPoint, int plane)"
+      }
+    },
+    {
+      "id": "S11",
+      "root": "rl",
+      "path": "runescape-client/src/main/java/FriendSystem.java",
+      "sha256": "54ebf39399f7fee379204eebe220771188b1c12908b3a9b909e2d15d223af585",
+      "anchor": {
+        "line": 358,
+        "text": "\tstatic final void addObjects(WorldView var0, int var1, int var2, int var3, int var4, int var5, int var6, CollisionMap var7) {"
+      }
+    },
+    {
+      "id": "S12",
+      "root": "rl",
+      "path": "runelite-client/src/main/java/net/runelite/client/plugins/devtools/VarInspector.java",
+      "sha256": "da1b6c3f3eb71cf1e192560122c2dc4f5943cc2bf54a031f3d9e0d5dc7e67ed5",
+      "anchor": {
+        "line": 206,
+        "text": "\tpublic void onVarbitChanged(VarbitChanged varbitChanged)"
+      }
+    },
+    {
+      "id": "S13",
+      "root": "rust",
+      "path": "crates/osrs-core/src/definitions.rs",
+      "sha256": "0195f04867b823285707c7ecda14e571c818eca578faf9aad4d993d380b1cd51",
+      "anchor": {
+        "line": 198,
+        "text": "pub struct ObjectDefinition {"
+      }
+    },
+    {
+      "id": "S14",
+      "root": "rust",
+      "path": "crates/osrs-scene/src/side_effects.rs",
+      "sha256": "e57832f3d277839c9cf19792235ffb1c8a083545e27996572111f728bf47a0a8",
+      "anchor": {
+        "line": 47,
+        "text": "pub enum CollisionSideEffect {"
+      }
+    },
+    {
+      "id": "S15",
+      "root": "rust",
+      "path": "crates/osrs-scene/src/planes.rs",
+      "sha256": "d460837edfbab9f42e08cc82a1c3266c99191280f6f5aed143f544d00a4f6c00",
+      "anchor": {
+        "line": 32,
+        "text": "pub fn collision_plane(source: SourcePlane, bridge_bit_set: bool) -> CollisionPlane {"
+      }
+    },
+    {
+      "id": "S16",
+      "root": "rust",
+      "path": "crates/osrs-world/src/loc_stage.rs",
+      "sha256": "21a25a7f1fa0a822016445f99c76fe4a66b73c2ecf039b9e1d44e9133fdda8f7",
+      "anchor": {
+        "line": 327,
+        "text": "fn effective_definition("
+      }
+    },
+    {
+      "id": "S17",
+      "root": "rust",
+      "path": "crates/osrs-core/src/entity.rs",
+      "sha256": "3220cdcac291d0d2d43a35611abb9fdb210c37fa4cc32a8ba817d6c82f34d892",
+      "anchor": {
+        "line": 40,
+        "text": "pub struct ActorSequenceState {"
+      }
+    },
+    {
+      "id": "S18",
+      "root": "rust",
+      "path": "crates/osrs-core/src/entity_effect/mod.rs",
+      "sha256": "32cc7460b7c103fcc42b78459c90de13c50feffdc4a783deeede163669ef6caa",
+      "anchor": {
+        "line": 65,
+        "text": "pub struct RuntimeSequence {"
+      }
+    },
+    {
+      "id": "S19",
+      "root": "rust",
+      "path": "crates/osrs-editor/src/player/mod.rs",
+      "sha256": "23c05e428801a9f1636883bc5f4dbfb646699f62fb78887bb2898b896e853886",
+      "anchor": {
+        "line": 76,
+        "text": "pub struct PlayerSandbox {"
+      }
+    },
+    {
+      "id": "S20",
+      "root": "rust",
+      "path": "crates/osrs-editor/src/sound/mod.rs",
+      "sha256": "8c852cd254b727e3ab4b9725f850b083a5b700fe242103c86efa434df8db0943",
+      "anchor": {
+        "line": 122,
+        "text": "pub fn collect(infos: &Infos, scope: Scope, plane: Option<u8>) -> (Vec<AreaSound>, usize) {"
+      }
+    },
+    {
+      "id": "S21",
+      "root": "rust",
+      "path": "crates/osrs-world/src/object_catalog.rs",
+      "sha256": "4e30d94549263b9a1e2ef6a98d50611f8b2d83c6d23ae9370a7ea6aac69da0e7",
+      "anchor": {
+        "line": 3,
+        "text": "//! Only objects with a name and at least one model are listed: unnamed or model-less definitions"
+      }
+    },
+    {
+      "id": "S22",
+      "root": "rust",
+      "path": "crates/osrs-cache/src/decode/object.rs",
+      "sha256": "449486d4f2895caaaab237732d11b7b552a40af7c7150b6e562eac1b7e35a96e",
+      "anchor": {
+        "line": 19,
+        "text": "pub fn decode_object_definition("
+      }
+    },
+    {
+      "id": "S23",
+      "root": "server",
+      "path": "or-cache/src/main/kotlin/dev/openrune/gamevals/GameValMaxIdManifest.kt",
+      "sha256": "043ce91751fe3d51c0cdd51b2fd9dc30cdc6ecc5922a61c0a2f0beaefc527e88",
+      "anchor": {
+        "line": 16,
+        "text": "object GameValMaxIdManifest {"
+      }
+    },
+    {
+      "id": "S24",
+      "root": "fs",
+      "path": "tools/src/main/kotlin/dev/openrune/cache/tools/gameval/GameValReferenceIndex.kt",
+      "sha256": "b6071c24d2a87834e281fde516848327cb8c0b17fb835d98fa730dbc0c86c0c8",
+      "anchor": {
+        "line": 36,
+        "text": "internal object GameValReferenceIndex {"
+      }
+    },
+    {
+      "id": "S25",
+      "root": "rust",
+      "path": "crates/osrs-editor/src/app/tile_clipboard.rs",
+      "sha256": "d2e66cc42e7a7a3af2b2e16d3ffa7b2a9c0fd5eb50c9916591fecba6600abb93",
+      "anchor": {
+        "line": 18,
+        "text": "pub(super) struct TileClipboard {"
+      }
+    },
+    {
+      "id": "S26",
+      "root": "fs",
+      "path": "tools/src/main/kotlin/dev/openrune/cache/tools/incremental/RecordingCache.kt",
+      "sha256": "46d781f9b93acabf897d4a1131e8d7b53e22a2661e1648436448275fede82477",
+      "anchor": {
+        "line": 7,
+        "text": "internal class RecordingCache(private val delegate: Cache) : Cache by delegate {"
+      }
+    },
+    {
+      "id": "S27",
+      "root": "fs",
+      "path": "tools/src/main/kotlin/dev/openrune/cache/tools/incremental/IncrementalBuild.kt",
+      "sha256": "b866d11728017f2a19cd53f9f67342f92b6ee78e6a58cc9afcc21a49d9604996",
+      "anchor": {
+        "line": 211,
+        "text": "    private fun selectDirty("
+      }
+    },
+    {
+      "id": "S28",
+      "root": "fs",
+      "path": "tools/src/main/kotlin/dev/openrune/cache/tools/incremental/IncrementalSession.kt",
+      "sha256": "8efd84ed9b22f856d3d4668155961a54e5535c9ffc4cd07966b86893f389193c",
+      "anchor": {
+        "line": 78,
+        "text": "        fun open("
+      }
+    },
+    {
+      "id": "S29",
+      "root": "server",
+      "path": "or-cache/src/main/kotlin/dev/openrune/pack/PluginPacks.kt",
+      "sha256": "f3550746c570e73894fec5d71946b0f0f828440860543b59ebe6e3f59b4f0d38",
+      "anchor": {
+        "line": 52,
+        "text": "    fun buildPackTasks(baseTables: List<DBTable>, cs2Overrides: Cs2Overrides = Cs2Overrides()): List<CacheTask> {"
+      }
+    },
+    {
+      "id": "S30",
+      "root": "rust",
+      "path": "crates/osrs-editor/src/export_flow/prepare.rs",
+      "sha256": "3b4a948ae0f0fd3a77f71a8aae8bc9eeb73bf35f4a5363f5d69f673815300622",
+      "anchor": {
+        "line": 45,
+        "text": "pub(crate) fn prepare_with("
+      }
+    },
+    {
+      "id": "S31",
+      "root": "rust",
+      "path": "crates/osrs-world/src/worldmap/mod.rs",
+      "sha256": "37d14f552fab9949d3832ef7a3ff3f429fccfa5f7783ad2187ad56d2b06d20fb",
+      "anchor": {
+        "line": 1,
+        "text": "//! The in-game world map, ported from the client (`WorldMap`, `WorldMapRenderer`,"
+      }
+    },
+    {
+      "id": "S32",
+      "root": "fs",
+      "path": "tools/src/main/kotlin/dev/openrune/cache/tools/WorldMapPacker.kt",
+      "sha256": "990f39d3acd4bef82d2cca65b7c4771e159e1d22b43b8abe7af0cd59ddb17a97",
+      "anchor": {
+        "line": 124,
+        "text": "    fun pack("
+      }
+    },
+    {
+      "id": "S33",
+      "root": "server",
+      "path": "or-cache/src/main/kotlin/dev/openrune/map/packing/MapNpcPacker.kt",
+      "sha256": "345406980e65be5bb371476a724e8d4fd9ed88803e2e897c072c21ab9c555c4e",
+      "anchor": {
+        "line": 22,
+        "text": "    override fun decodeTomlSpawnFile(path: Path): List<Pair<MapSquareKey, MapNpcListDefinition>> {"
+      }
+    },
+    {
+      "id": "S34",
+      "root": "server",
+      "path": "or-cache/src/main/kotlin/dev/openrune/map/packing/MapObjPacker.kt",
+      "sha256": "d9fc2f49f08d5b0e76ae6680a7d0d69c72c74f31bf5f8e1c7da78e464864de5a",
+      "anchor": {
+        "line": 23,
+        "text": "    override fun decodeTomlSpawnFile(path: Path): List<Pair<MapSquareKey, MapObjListDefinition>> {"
+      }
+    },
+    {
+      "id": "S35",
+      "root": "server",
+      "path": "or-cache/src/main/kotlin/dev/openrune/map/packing/MapAreaPacker.kt",
+      "sha256": "843fcd8542cc76f8118950f1e7a8788e7fa6299bd660f17be70a70f11e0b14e5",
+      "anchor": {
+        "line": 90,
+        "text": "    private fun collectAreas(mapAreas: List<TomlMapArea>): PolygonArea {"
+      }
+    },
+    {
+      "id": "S36",
+      "root": "rust",
+      "path": "crates/osrs-world/src/animation.rs",
+      "sha256": "daf82e459d0431646427937141ed4967b3c7befc1ac061515872439c6c6fb786",
+      "anchor": {
+        "line": 8,
+        "text": "//! Skeletal sequences (a small minority of animated objects) are not posed; those locs render"
+      }
+    },
+    {
+      "id": "S37",
+      "root": "rust",
+      "path": "crates/osrs-editor/src/app/project.rs",
+      "sha256": "4c3d43fd0d9eb46026e78857c42e4f5a47f3b232c5d2bbe474eaac00b5badb3f",
+      "anchor": {
+        "line": 114,
+        "text": "    fn start_save(&mut self, path: PathBuf) {"
+      }
+    },
+    {
+      "id": "S38",
+      "root": "rust",
+      "path": "crates/osrs-core/src/entity_effect/projectile.rs",
+      "sha256": "745ce8eb303ec738526f8822e6bc805b4a630450b2f4a2a66bedb2c18d604518",
+      "anchor": {
+        "line": 28,
+        "text": "pub struct ProjectileState {"
+      }
+    },
+    {
+      "id": "S39",
+      "root": "rust",
+      "path": "crates/osrs-core/src/entity_effect/spot.rs",
+      "sha256": "3c173e57543f224d11fb22eaba5ada0d8cc1f9ecf2a65bad5654721d36e6fbce",
+      "anchor": {
+        "line": 87,
+        "text": "pub struct GraphicsObjectState {"
+      }
+    },
+    {
+      "id": "S40",
+      "root": "rust",
+      "path": "crates/osrs-cache/src/encode/reference_table.rs",
+      "sha256": "5856b5733a47858ea814328960e9459b44a94baa1427abce4171e8fbcba7e841",
+      "anchor": {
+        "line": 125,
+        "text": "    pub fn parse(bytes: &[u8]) -> Result<Self, ReferenceTableError> {"
+      }
+    },
+    {
+      "id": "S41",
+      "root": "rust",
+      "path": "crates/osrs-filestore/src/index.rs",
+      "sha256": "469b1ef747e683dee201f237ec2732e3beb30e15893ccd69c5d16de5d3865008",
+      "anchor": {
+        "line": 229,
+        "text": "        let (buffer, protocol) = be_u8(buffer)?;"
+      }
+    }
+  ]
+}

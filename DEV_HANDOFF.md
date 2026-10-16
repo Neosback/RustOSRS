@@ -1,6 +1,6 @@
 # RustOSRS Development Handoff
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md` and `scripts/editor_features.json` locate feature ownership and tests. Live Git state is authoritative for branch/SHA facts; CI claims require actual run evidence.
 
@@ -10,6 +10,14 @@ Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md`
 - Program baseline: `63d2721e3fa30dc2eaecff140d6b27886e4dff2f`, merge of PR #56 (editor ownership), main CI run `38766016806` (Tier A/B/C success). The old feature branch is retired remotely.
 - Commit `41d0c020` ("updates") on top of that baseline already contains the program foundations: opt-in JSON performance capture (`diagnostics/capture.rs`, schema v1), owned-GPU-byte accounting (`gpu/resources.rs`), Reference frame reuse (`render_runtime/reuse.rs`), the shared Spline settings widget (`spline_tool/panel.rs`), `scripts/performance.py`, and the 117HD source manifest/ledger (98 config items, all `audit_pending`). They are committed, not pending, but **no baseline or improvement has been recorded**.
 - Authorized work and plan: `docs/plans/PERFORMANCE-UI-PLAYTEST-HD.md`. The expanded user goals (RuneLite/deob re-verification, exact tile/overlay/underlay/blend abstraction for the spline tool, NPC/entity runtime for a future own client) are carried by the checkpoints below.
+- Source-review baseline on 2026-10-16: clean `main` at `fe1b703cf06e472b26bee68f2bd26cff2684dbe0`. Actor definition/sequence-slot and deterministic spot/projectile foundations now exist in `osrs-core`; this does not complete entity decoding, model assembly, collision snapshots or editor playtesting. Performance measurement/optimization is explicitly **paused** in the current authorized plan; historical instructions to retake baselines below do not resume it.
+
+## World-editor opportunity review (2026-10-16)
+
+- Documentation-only review requested by the user: `docs/research/EDITOR-OPPORTUNITY-REVIEW.md`, indexed in the research README. Compares existing Rust capabilities with selected RuneLite/deob, OpenRune server/routefinder and FileStore packing code. Recommends explainable inspection, collision/stateful playtesting, asset discovery/controlled authoring, reusable construction, reproducible publication, synchronized world layers, recovery/review and fidelity evidence. Recommendations do not supersede the authorized implementation plan or resume paused performance work.
+- Concrete gaps include the catalog's named/model-bearing-only discovery scope, default-zero loc morph context, operation-level collision plans without world collision-grid integration, mock Player state, absent audio playback, and missing-region export rejection. Existing map editing, world-map display, sound inspection, verified export, and new actor/effect primitives are acknowledged rather than proposed as wholly new systems.
+- Evidence: `docs/research/editor-opportunity-sources.json` pins **41** selected files and exact anchors. **28** Rust/RuneLite files match their declared Git blobs; OpenRune snapshots lack Git metadata and use individual SHA-256 pins. RuneLite revision 235 versus selected cache 241 remains an explicit evidence boundary. No third-party source/assets copied into production; no claim about Jagex's private tools.
+- Validation: all 41 hashes/anchors and **57** local document links verified; architecture guard passed. No Rust changes, client/audio execution, visual parity, performance measurement or full Rust suite run for this documentation checkpoint. All work remains on `main`; nothing published.
 
 ## Current program checkpoints
 
