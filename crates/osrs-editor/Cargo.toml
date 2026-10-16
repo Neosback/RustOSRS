@@ -13,6 +13,7 @@ osrs-scene = { path = "../osrs-scene" }
 osrs-render = { path = "../osrs-render" }
 osrs-hd = { path = "../osrs-hd" }
 osrs-world = { path = "../osrs-world" }
+osrs-playtest = { path = "../osrs-playtest" }
 eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts"] }
 wgpu.workspace = true
 web-time.workspace = true
@@ -32,6 +33,7 @@ rfd = "0.15"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
+rfd = "0.15"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["Window", "Document", "HtmlCanvasElement", "Element"] }

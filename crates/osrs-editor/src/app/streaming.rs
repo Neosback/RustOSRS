@@ -42,6 +42,13 @@ impl EditorApp {
                         self.ui.set_status(format!("HD materials failed: {error}"));
                     }
                 }
+                StreamEvent::NpcCatalog { entries, errors } => {
+                    self.npcs.catalog_arrived(entries, errors);
+                }
+                StreamEvent::NpcAssets(update) => self.npcs.assets_arrived(update),
+                StreamEvent::NpcGeometry(update) => {
+                    self.npcs.geometry_arrived(update, &mut self.renderer);
+                }
                 StreamEvent::HdFailed(error) => {
                     self.ui
                         .set_status(format!("117 HD data failed to load: {error}"));
@@ -50,6 +57,7 @@ impl EditorApp {
                     textures,
                     profile_id,
                     build,
+                    fingerprint,
                     floors,
                 } => {
                     self.world.set_floors(floors);
@@ -57,6 +65,8 @@ impl EditorApp {
                     // presentation rebuilds do not emit it, so this is the cache/source boundary
                     // where old semantic state must be discarded.
                     self.session.reset();
+                    self.npcs
+                        .source_opened(fingerprint, build, &self.world, &mut self.renderer);
                     self.cache_opened(ctx, profile_id, build);
                     self.renderer.set_textures(&textures);
                     self.palettes.set_textures(textures);

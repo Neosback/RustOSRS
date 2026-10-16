@@ -24,10 +24,18 @@ pub enum RailTab {
     Sound,
     /// A mock player: stats, look, worn items and game variables to play with.
     Player,
+    /// Offline NPC scenarios: import, place, edit and playtest.
+    Npc,
 }
 
 impl RailTab {
-    pub const ALL: [Self; 4] = [Self::Inspect, Self::View, Self::Sound, Self::Player];
+    pub const ALL: [Self; 5] = [
+        Self::Inspect,
+        Self::View,
+        Self::Sound,
+        Self::Player,
+        Self::Npc,
+    ];
 
     pub const fn label(self) -> &'static str {
         match self {
@@ -36,6 +44,7 @@ impl RailTab {
             Self::Graphics => "Graphics",
             Self::Sound => "Sound",
             Self::Player => "Player",
+            Self::Npc => "NPCs",
         }
     }
 }

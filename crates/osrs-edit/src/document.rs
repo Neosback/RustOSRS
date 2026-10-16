@@ -21,6 +21,12 @@ pub struct MapDocument {
 /// Why a patch could not be applied to the current authoritative state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PatchApplyError {
+    ScenarioMismatch {
+        op_index: usize,
+    },
+    InvalidScenario {
+        op_index: usize,
+    },
     TerrainMismatch {
         op_index: usize,
         coord: MapPosition,
@@ -51,7 +57,9 @@ pub enum PatchApplyError {
 impl PatchApplyError {
     pub const fn op_index(self) -> usize {
         match self {
-            Self::TerrainMismatch { op_index, .. }
+            Self::ScenarioMismatch { op_index }
+            | Self::InvalidScenario { op_index }
+            | Self::TerrainMismatch { op_index, .. }
             | Self::HeightMissing { op_index, .. }
             | Self::HeightMismatch { op_index, .. }
             | Self::ObjectAlreadyPresent { op_index, .. }

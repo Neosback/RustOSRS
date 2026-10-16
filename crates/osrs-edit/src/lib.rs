@@ -13,17 +13,27 @@ mod patch;
 mod position;
 mod query;
 mod region;
+mod scenario;
 mod terrain;
+mod workspace;
 
 pub use document::{MapDocument, PatchApplyError};
-pub use history::{EditHistory, EditHistoryTransaction, HistoryTransactionError};
+pub use history::{
+    EditHistory, EditHistoryTransaction, HistoryDocument, HistoryTransactionError, PatchHistory,
+    ReversiblePatch,
+};
 pub use object::{LocKind, ObjectOrientation, ObjectPlacement};
 pub use object_edit::{ObjectEditError, build_object_patch};
 pub use patch::{ChangeImpact, MapOp, MapPatch};
 pub use position::{HeightVertexCoord, MapPosition};
 pub use query::MapQuery;
 pub use region::{MapRegionSnapshot, RegionSnapshotError};
+pub use scenario::{
+    ScenarioDocument, ScenarioPatch, ScenarioPlanError, SpawnChange, SpawnDraft, plan_add_spawn,
+    plan_remove_spawns, plan_replace_scenario, plan_update_spawn,
+};
 pub use terrain::{OverlayRotation, OverlayShape, TerrainOverlay, TerrainTile};
+pub use workspace::{WorkspaceDocument, WorkspaceHistory, WorkspacePatch};
 
 mod brush;
 pub mod height;

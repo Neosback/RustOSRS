@@ -14,6 +14,7 @@ UI/input → controller intent → pure MapQuery planner → MapPatch
 | Height | `app/editing.rs` | `osrs-edit/src/height/commit.rs` | `app/editing/commit.rs` |
 | Spline / Path | `app/spline_tool/input.rs`, `app/interaction_runtime/spline.rs` (fit in `terrain_path/fit.rs`) | `osrs-edit/src/path.rs`, `osrs-edit/src/path_height.rs` | `app/editing/path.rs` |
 | Objects | `app/object_tool.rs`, `app/gizmo.rs` | `osrs-edit/src/object_edit.rs` | `app/object_tool/commit.rs` |
+| NPC scenarios (rail tab, not a `Tool`) | `app/npc_runtime.rs`, `app/npc_panel/` | `osrs-edit/src/scenario.rs`, `osrs-playtest` | `EditRuntime::execute_scenario`, chronological `WorkspaceHistory` |
 | Tile paste | `app/editing/paste.rs`, `app/tile_clipboard.rs` | Paint planner | Existing Path history projection |
 
 Application paths are relative to `crates/osrs-editor/src`. `osrs-edit` paths are relative to `crates`.
@@ -40,6 +41,7 @@ smoothing are two source-defined operations and two undo steps. See
 | `SettingsRuntime` | Preferences, keymap and persistence cadence | Tool gestures |
 | `PluginRuntime` | Built-in plugin callbacks and overlay contributions | Mutable application/document access |
 | `PaletteRuntime` | Floor palette job, texture previews and their lifetime | Terrain edits |
+| `NpcRuntime` | NPC catalog, immutable assets, playtest simulation, identity-stamped acceptance of worker results, entity-layer geometry requests | Authored scenario state (lives in `EditorSession`), GPU resources, terrain |
 
 Existing feature controllers (`PlaceState`, export, script, HD and asset services) remain dedicated owners. `EditorApp` coordinates these through explicit fields; it is not a mutable service locator.
 

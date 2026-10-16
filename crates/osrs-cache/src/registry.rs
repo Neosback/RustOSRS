@@ -10,6 +10,7 @@ use crate::profile::{TargetProfile, TargetProfileError};
 const BUNDLED: &[&str] = &[
     include_str!("../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml"),
     include_str!("../../../profiles/osrs-live-240-2026-09-23-openrs2-2720.yaml"),
+    include_str!("../../../profiles/openrune-installed-240-live.yaml"),
 ];
 
 /// Every bundled profile, parsed and validated.

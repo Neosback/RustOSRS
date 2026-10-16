@@ -4,7 +4,7 @@
 //! revision-sensitive decode contract. It is cache input metadata, not an OSRS
 //! semantic definition and not editor configuration.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -13,7 +13,7 @@ pub const TARGET_PROFILE_SCHEMA_V1: &str = "rustosrs-target-profile/v1";
 pub const TARGET_PROFILE_DIGEST_V1: &str = "rustosrs-target-profile-digest-v1";
 pub const CACHE_FINGERPRINT_V1: &str = "rustosrs-cache-v1";
 
-#[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TargetProfile {
     pub schema: String,
@@ -31,7 +31,7 @@ pub struct TargetProfile {
     pub policy: BTreeMap<String, bool>,
 }
 
-#[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct CacheSource {
     pub provider: String,
@@ -55,7 +55,7 @@ pub struct CacheSource {
     pub xtea_keys_total: u64,
 }
 
-#[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct CacheFingerprint {
     pub algorithm: String,
@@ -63,7 +63,7 @@ pub struct CacheFingerprint {
     pub state: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TransportEvidence {
     pub dependency_candidate: String,
@@ -73,7 +73,7 @@ pub struct TransportEvidence {
     pub note: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct XteaProfile {
     pub ownership: String,
@@ -83,7 +83,7 @@ pub struct XteaProfile {
     pub artifact_key_fingerprint_algorithm: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct SemanticSource {
     #[serde(default)]
@@ -95,7 +95,7 @@ pub struct SemanticSource {
     pub status: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct RevisionGate {
     pub state: String,

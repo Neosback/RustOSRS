@@ -297,12 +297,21 @@ fn load_hd(definitions: &WorldDefinitions) -> Result<(HdContext, Box<HdGpuData>)
 
 /// Messages from the streaming worker.
 pub enum StreamEvent {
+    NpcAssets(crate::npc::NpcAssetsUpdate),
+    NpcGeometry(crate::npc::NpcGeometryUpdate),
+    /// Every NPC definition summary of the open cache, with per-definition decode failures.
+    NpcCatalog {
+        entries: Arc<Vec<crate::definitions::NpcCatalogEntry>>,
+        errors: Vec<String>,
+    },
     /// The cache is open; textures are ready to upload.
     Ready {
         textures: Vec<Option<TextureLayer>>,
         /// The matched profile id and its build.
         profile_id: String,
         build: u32,
+        /// Cache content fingerprint (lowercase SHA-256) that scenarios bind to.
+        fingerprint: String,
         /// Floor definitions for appearance previews on the editor thread. The same table the
         /// terrain builder reads, shared immutably.
         floors: Arc<crate::FloorTable>,
@@ -327,6 +336,12 @@ pub enum StreamEvent {
 }
 
 enum Request {
+    NpcCatalog,
+    NpcAssets {
+        identity: osrs_core::actor_snapshot::PlaytestIdentity,
+        ids: BTreeSet<osrs_core::ids::NpcId>,
+    },
+    NpcGeometry(crate::npc::NpcFrameInput),
     Build {
         region: RegionCoord,
         zones: Option<BTreeSet<(i32, i32)>>,
@@ -374,6 +389,7 @@ impl StreamWorker {
             textures: texture_layers(definitions.textures()),
             profile_id: definitions.profile_id().to_owned(),
             build: definitions.build(),
+            fingerprint: definitions.cache().fingerprint(),
             floors: Arc::new(definitions.floors().clone()),
         });
         Some(Self {
@@ -391,6 +407,29 @@ impl StreamWorker {
     fn handle(&mut self, request: Request, events: &Sender<StreamEvent>) -> bool {
         match request {
             Request::Shutdown => return false,
+            Request::NpcCatalog => {
+                let (entries, errors) = self.definitions.npc_catalog();
+                let _ = events.send(StreamEvent::NpcCatalog {
+                    entries: Arc::new(entries),
+                    errors,
+                });
+            }
+            Request::NpcAssets { identity, ids } => {
+                let update = crate::npc::load_assets(&mut self.definitions, identity, &ids);
+                let _ = events.send(StreamEvent::NpcAssets(update));
+            }
+            Request::NpcGeometry(input) => {
+                let update = crate::npc::extract_npcs(
+                    &mut self.definitions,
+                    input,
+                    if self.presentation.hd_geometry {
+                        self.hd.as_ref()
+                    } else {
+                        None
+                    },
+                );
+                let _ = events.send(StreamEvent::NpcGeometry(update));
+            }
             Request::Outline { region, index, loc } => {
                 let triangles =
                     crate::loc_outline_triangles(&mut self.definitions, &loc).unwrap_or_default();
@@ -641,6 +680,19 @@ impl RegionStreamer {
     }
 
     /// Next finished event, if any.
+    pub fn request_npc_catalog(&self) {
+        let _ = self.requests.send(Request::NpcCatalog);
+    }
+    pub fn request_npc_assets(
+        &self,
+        identity: osrs_core::actor_snapshot::PlaytestIdentity,
+        ids: BTreeSet<osrs_core::ids::NpcId>,
+    ) {
+        let _ = self.requests.send(Request::NpcAssets { identity, ids });
+    }
+    pub fn request_npc_geometry(&self, input: crate::npc::NpcFrameInput) {
+        let _ = self.requests.send(Request::NpcGeometry(input));
+    }
     pub fn try_recv(&self) -> Option<StreamEvent> {
         self.events.try_recv().ok()
     }

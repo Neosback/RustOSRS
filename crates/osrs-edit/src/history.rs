@@ -42,14 +42,50 @@ impl From<PatchApplyError> for HistoryTransactionError {
 /// History mutations are failure-safe: if the document rejects an undo or redo
 /// because authoritative state no longer matches the recorded patch, the history
 /// stacks are restored to their prior state.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct EditHistory {
-    undo: Vec<MapPatch>,
-    redo: Vec<MapPatch>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchHistory<D: HistoryDocument> {
+    undo: Vec<D::Patch>,
+    redo: Vec<D::Patch>,
     generation: u64,
 }
 
-impl EditHistory {
+/// The existing map history and workspace history share this one implementation.
+pub type EditHistory = PatchHistory<MapDocument>;
+
+pub trait ReversiblePatch: Clone + std::fmt::Debug + Eq {
+    fn inverse(&self) -> Self;
+    fn is_empty(&self) -> bool;
+}
+pub trait HistoryDocument: Clone + std::fmt::Debug + Eq {
+    type Patch: ReversiblePatch;
+    fn apply_history_patch(&mut self, patch: &Self::Patch)
+    -> Result<ChangeImpact, PatchApplyError>;
+}
+impl ReversiblePatch for MapPatch {
+    fn inverse(&self) -> Self {
+        MapPatch::inverse(self)
+    }
+    fn is_empty(&self) -> bool {
+        MapPatch::is_empty(self)
+    }
+}
+impl HistoryDocument for MapDocument {
+    type Patch = MapPatch;
+    fn apply_history_patch(&mut self, patch: &MapPatch) -> Result<ChangeImpact, PatchApplyError> {
+        self.apply_patch(patch)
+    }
+}
+impl<D: HistoryDocument> Default for PatchHistory<D> {
+    fn default() -> Self {
+        Self {
+            undo: Vec::new(),
+            redo: Vec::new(),
+            generation: 0,
+        }
+    }
+}
+
+impl<D: HistoryDocument> PatchHistory<D> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -60,8 +96,8 @@ impl EditHistory {
     /// downstream projection must succeed before the edit becomes final.
     pub fn commit(
         &mut self,
-        document: &mut MapDocument,
-        patch: MapPatch,
+        document: &mut D,
+        patch: D::Patch,
     ) -> Result<ChangeImpact, PatchApplyError> {
         let (impact, transaction) = self.begin_commit(document, patch)?;
         if let Some(transaction) = transaction {
@@ -78,10 +114,10 @@ impl EditHistory {
     /// branch. Empty patches remain no-ops and produce no transaction token.
     pub fn begin_commit(
         &mut self,
-        document: &mut MapDocument,
-        patch: MapPatch,
+        document: &mut D,
+        patch: D::Patch,
     ) -> Result<(ChangeImpact, Option<EditHistoryTransaction>), PatchApplyError> {
-        let impact = document.apply_patch(&patch)?;
+        let impact = document.apply_history_patch(&patch)?;
         if patch.is_empty() {
             return Ok((impact, None));
         }
@@ -92,10 +128,7 @@ impl EditHistory {
     }
 
     /// Undo the most recent semantic edit and finalize it immediately.
-    pub fn undo(
-        &mut self,
-        document: &mut MapDocument,
-    ) -> Result<Option<ChangeImpact>, PatchApplyError> {
+    pub fn undo(&mut self, document: &mut D) -> Result<Option<ChangeImpact>, PatchApplyError> {
         let Some((impact, transaction)) = self.begin_undo(document)? else {
             return Ok(None);
         };
@@ -107,14 +140,14 @@ impl EditHistory {
     /// Undo while retaining the ability to restore the exact pre-undo history state.
     pub fn begin_undo(
         &mut self,
-        document: &mut MapDocument,
+        document: &mut D,
     ) -> Result<Option<(ChangeImpact, EditHistoryTransaction)>, PatchApplyError> {
         let Some(patch) = self.undo.pop() else {
             return Ok(None);
         };
 
         let inverse = patch.inverse();
-        match document.apply_patch(&inverse) {
+        match document.apply_history_patch(&inverse) {
             Ok(impact) => {
                 self.redo.push(patch);
                 let transaction = self.begin_transaction(TransactionKind::Undo);
@@ -128,10 +161,7 @@ impl EditHistory {
     }
 
     /// Redo the most recently undone semantic edit and finalize it immediately.
-    pub fn redo(
-        &mut self,
-        document: &mut MapDocument,
-    ) -> Result<Option<ChangeImpact>, PatchApplyError> {
+    pub fn redo(&mut self, document: &mut D) -> Result<Option<ChangeImpact>, PatchApplyError> {
         let Some((impact, transaction)) = self.begin_redo(document)? else {
             return Ok(None);
         };
@@ -143,13 +173,13 @@ impl EditHistory {
     /// Redo while retaining the ability to restore the exact pre-redo history state.
     pub fn begin_redo(
         &mut self,
-        document: &mut MapDocument,
+        document: &mut D,
     ) -> Result<Option<(ChangeImpact, EditHistoryTransaction)>, PatchApplyError> {
         let Some(patch) = self.redo.pop() else {
             return Ok(None);
         };
 
-        match document.apply_patch(&patch) {
+        match document.apply_history_patch(&patch) {
             Ok(impact) => {
                 self.undo.push(patch);
                 let transaction = self.begin_transaction(TransactionKind::Redo);
@@ -181,7 +211,7 @@ impl EditHistory {
     /// Restore the exact document/history state from immediately before `transaction`.
     pub fn rollback(
         &mut self,
-        document: &mut MapDocument,
+        document: &mut D,
         transaction: EditHistoryTransaction,
     ) -> Result<ChangeImpact, HistoryTransactionError> {
         self.validate_transaction(&transaction)?;
@@ -192,7 +222,7 @@ impl EditHistory {
                     return Err(HistoryTransactionError::StaleTransaction);
                 };
                 let inverse = patch.inverse();
-                let impact = document.apply_patch(&inverse)?;
+                let impact = document.apply_history_patch(&inverse)?;
                 self.undo.pop();
                 impact
             }
@@ -200,7 +230,7 @@ impl EditHistory {
                 let Some(patch) = self.redo.last() else {
                     return Err(HistoryTransactionError::StaleTransaction);
                 };
-                let impact = document.apply_patch(patch)?;
+                let impact = document.apply_history_patch(patch)?;
                 let patch = self
                     .redo
                     .pop()
@@ -213,7 +243,7 @@ impl EditHistory {
                     return Err(HistoryTransactionError::StaleTransaction);
                 };
                 let inverse = patch.inverse();
-                let impact = document.apply_patch(&inverse)?;
+                let impact = document.apply_history_patch(&inverse)?;
                 let patch = self
                     .undo
                     .pop()
@@ -225,6 +255,13 @@ impl EditHistory {
 
         self.generation = transaction.generation_before;
         Ok(impact)
+    }
+
+    pub fn next_undo(&self) -> Option<&D::Patch> {
+        self.undo.last()
+    }
+    pub fn next_redo(&self) -> Option<&D::Patch> {
+        self.redo.last()
     }
 
     pub fn can_undo(&self) -> bool {

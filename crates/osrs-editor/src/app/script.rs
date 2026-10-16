@@ -5,6 +5,7 @@
 //! switch tool, set the brush, go somewhere, toggle overlays, undo. `wait N` pauses N frames (the
 //! script resumes on its own), which is how smoke tests line things up with the world loading.
 
+mod inspect;
 mod path;
 mod window;
 
@@ -391,23 +392,7 @@ impl EditorApp {
                     return Ok(Step::Retry);
                 }
             }
-            "inspect" => {
-                let x = number::<i32>(words.next(), "x")?;
-                let y = number::<i32>(words.next(), "y")?;
-                let plane = self.interaction.view_plane();
-                let semantic = osrs_core::coords::SourcePlane::new(plane).map(|plane| {
-                    self.session
-                        .document()
-                        .terrain_at(osrs_edit::MapPosition::new(
-                            osrs_core::coords::MapTile::new(x, y),
-                            plane,
-                        ))
-                });
-                eprintln!(
-                    "smoke: inspect ({x},{y}) plane {plane}: view {:?}, document {semantic:?}",
-                    self.tile_now((x, y))
-                );
-            }
+            "inspect" => inspect::run(self, &mut words)?,
             "mark" => {
                 let name: Vec<&str> = words.collect();
                 self.diagnostics.mark_segment(&name.join(" "));
@@ -430,6 +415,11 @@ impl EditorApp {
                 let action = words.next().unwrap_or_default();
                 let path = words.collect::<Vec<_>>().join(" ");
                 if !self.script_export(action, &path)? {
+                    return Ok(Step::Retry);
+                }
+            }
+            "npc" => {
+                if !super::npc_panel::script::command(self, &mut words)? {
                     return Ok(Step::Retry);
                 }
             }

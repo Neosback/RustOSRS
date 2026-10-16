@@ -184,6 +184,8 @@ pub struct NpcMovementSequences {
     pub walk_back: Option<SequenceId>,
     pub walk_left: Option<SequenceId>,
     pub walk_right: Option<SequenceId>,
+    pub run: [Option<SequenceId>; 4],
+    pub crawl: [Option<SequenceId>; 4],
 }
 
 /// NPC transform selector metadata.
@@ -219,6 +221,47 @@ pub struct NpcDefinition {
     pub ambient: i16,
     pub contrast: i16,
     pub morphs: Option<NpcMorphs>,
+    pub render: NpcRenderFlags,
+    pub actions: [Option<String>; 5],
+    pub full_recolor: Option<u16>,
+}
+
+/// Definition-controlled client rendering and turning behavior.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NpcRenderFlags {
+    pub rotation_speed: u16,
+    pub priority: u8,
+    pub minimap_visible: bool,
+    pub interactable: bool,
+    pub clickable: bool,
+    pub follower: bool,
+    pub low_priority_follower_ops: bool,
+    pub height: Option<u16>,
+    pub footprint_size: Option<u16>,
+    pub ready_animation_during_action: bool,
+    pub hide_for_overlap: bool,
+    pub overlap_tint: Option<u16>,
+    pub depth_buffer: bool,
+}
+
+impl Default for NpcRenderFlags {
+    fn default() -> Self {
+        Self {
+            rotation_speed: 32,
+            priority: 0,
+            minimap_visible: true,
+            interactable: true,
+            clickable: true,
+            follower: false,
+            low_priority_follower_ops: false,
+            height: None,
+            footprint_size: None,
+            ready_animation_during_action: false,
+            hide_for_overlap: false,
+            overlap_tint: None,
+            depth_buffer: true,
+        }
+    }
 }
 
 /// Canonical reusable spot-animation definition inputs.

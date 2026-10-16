@@ -80,7 +80,27 @@ pub fn resolve_object_morph<S: MorphVariableState + ?Sized>(
     morphs: &ObjectMorphs,
     state: &S,
 ) -> Result<Option<ObjectId>, MorphResolveError> {
-    let selector = if let Some(varbit) = morphs.transform_varbit {
+    let selector = resolve_selector(morphs.transform_varbit, morphs.transform_varp, state)?;
+    Ok(select_morph_target(morphs, selector))
+}
+
+/// Resolve an NPC transform, preserving null targets and varbit precedence.
+pub fn resolve_npc_morph<S: MorphVariableState + ?Sized>(
+    morphs: &crate::entity::NpcMorphs,
+    state: &S,
+) -> Result<Option<crate::ids::NpcId>, MorphResolveError> {
+    let selector = resolve_selector(morphs.transform_varbit, morphs.transform_varp, state)?;
+    Ok(usize::try_from(selector)
+        .ok()
+        .and_then(|i| morphs.transforms.get(i).copied())
+        .unwrap_or(morphs.fallback))
+}
+fn resolve_selector<S: MorphVariableState + ?Sized>(
+    varbit: Option<VarbitId>,
+    varp: Option<VarpId>,
+    state: &S,
+) -> Result<i32, MorphResolveError> {
+    let selector = if let Some(varbit) = varbit {
         let definition = state
             .varbit_definition(varbit)
             .ok_or(MorphResolveError::MissingVarbitDefinition(varbit))?;
@@ -95,7 +115,7 @@ pub fn resolve_object_morph<S: MorphVariableState + ?Sized>(
             .varp_value(definition.base_varp)
             .ok_or(MorphResolveError::MissingVarpValue(definition.base_varp))?;
         extract_varbit_value(definition, backing_value)?
-    } else if let Some(varp) = morphs.transform_varp {
+    } else if let Some(varp) = varp {
         state
             .varp_value(varp)
             .ok_or(MorphResolveError::MissingVarpValue(varp))?
@@ -103,7 +123,7 @@ pub fn resolve_object_morph<S: MorphVariableState + ?Sized>(
         -1
     };
 
-    Ok(select_morph_target(morphs, selector))
+    Ok(selector)
 }
 
 /// Apply the decoded inclusive varbit range to one signed reference varp value.

@@ -127,6 +127,11 @@ pub(super) struct TerrainController {
 }
 
 impl TerrainController {
+    pub(in crate::app) fn record_scenario(&mut self) {
+        self.history.push(EditStep::scenario());
+        self.redo_stack.clear();
+    }
+
     pub(in crate::app) fn reset(&mut self) {
         *self = Self::default();
     }

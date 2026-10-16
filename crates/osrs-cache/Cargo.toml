@@ -11,6 +11,7 @@ osrs-filestore.workspace = true
 serde.workspace = true
 serde_yaml_ng.workspace = true
 sha2.workspace = true
+toml = "1"
 
 [lints]
 workspace = true

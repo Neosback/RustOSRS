@@ -11,7 +11,10 @@ pub(super) use footprint::{EditFootprint, EditTouches};
 use super::diagnostics::{DiagnosticSink, TraceEvent};
 use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession, RegionSyncOutcome};
 use osrs_core::coords::RegionCoord;
-use osrs_edit::{ChangeImpact, MapDocument, MapPatch, MapRegionSnapshot, PatchApplyError};
+use osrs_edit::{
+    ChangeImpact, MapDocument, MapPatch, MapRegionSnapshot, PatchApplyError, ScenarioDocument,
+    ScenarioPatch,
+};
 #[cfg(test)]
 use std::convert::Infallible;
 
@@ -153,6 +156,34 @@ impl EditRuntime {
             Ok::<_, Infallible>(())
         })?;
         Ok(())
+    }
+
+    pub(super) fn map_revision(&self) -> u64 {
+        self.session.map_revision()
+    }
+    pub(super) fn scenario(&self) -> &ScenarioDocument {
+        self.session.scenario()
+    }
+    pub(super) fn execute_scenario<T, E>(
+        &mut self,
+        patch: ScenarioPatch,
+        project: impl FnOnce(&ScenarioDocument) -> Result<T, E>,
+    ) -> Result<EditExecution<T>, EditExecutionError<E>> {
+        let Some((commit, checkpoint)) = self
+            .session
+            .commit_scenario_checkpointed(patch)
+            .map_err(EditExecutionError::Semantic)?
+        else {
+            return Ok(EditExecution::NoChange);
+        };
+        let projection = project(self.session.scenario());
+        self.finish_execution(
+            commit.revision,
+            commit.impact,
+            EditTouches::default(),
+            checkpoint,
+            projection,
+        )
     }
 
     /// Execute one `MapPatch` as an application transaction.

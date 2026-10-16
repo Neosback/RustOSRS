@@ -5,6 +5,8 @@
 //! foundation in bounded slices so later cache/scene/render layers consume typed
 //! canonical values rather than redefining them.
 
+pub mod actor_pose;
+pub mod actor_snapshot;
 pub mod animation;
 pub mod animation_pose;
 pub mod color_palette;
@@ -25,6 +27,7 @@ pub mod morph;
 pub mod normals;
 pub mod orientation;
 pub mod provenance;
+pub mod scenario;
 pub mod sequence_replacement;
 pub mod static_entity;
 pub mod trig;

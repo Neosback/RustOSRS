@@ -10,6 +10,7 @@ pub struct ChangeImpact(u8);
 
 impl ChangeImpact {
     pub const NONE: Self = Self(0);
+    pub const SCENARIO: Self = Self(1 << 7);
     pub const TERRAIN_GEOMETRY: Self = Self(1 << 0);
     pub const TERRAIN_MATERIAL: Self = Self(1 << 1);
     pub const NORMALS: Self = Self(1 << 2);

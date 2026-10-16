@@ -362,3 +362,188 @@ fn finalize_invariant_failure_is_explicit() {
         ))
     );
 }
+
+mod scenario {
+    use super::*;
+    use osrs_core::{
+        coords::PlaneIndex,
+        ids::NpcId,
+        scenario::{ActorLocation, ScenarioDefinition},
+    };
+    use osrs_edit::{
+        ScenarioPatch, SpawnDraft, plan_add_spawn, plan_replace_scenario, plan_update_spawn,
+    };
+
+    fn location(x: i32, y: i32) -> ActorLocation {
+        ActorLocation {
+            tile: MapTile::new(x, y),
+            plane: PlaneIndex::new(0).unwrap_or_else(|| unreachable!("plane zero is valid")),
+        }
+    }
+
+    fn definition() -> ScenarioDefinition {
+        ScenarioDefinition {
+            version: 1,
+            build: 240,
+            client_fingerprint: "c".repeat(64),
+            seed: 1,
+            spawns: Vec::new(),
+        }
+    }
+
+    fn commit_scenario(runtime: &mut EditRuntime, patch: ScenarioPatch) -> bool {
+        matches!(
+            runtime.execute_scenario(patch, |_| Ok::<_, &'static str>(())),
+            Ok(EditExecution::Committed { .. })
+        )
+    }
+
+    fn runtime_with_scenario() -> EditRuntime {
+        let mut runtime = EditRuntime::new(EditorSession::new(MapDocument::from_parts(
+            [],
+            [(vertex(3200, 3200), 0)],
+            [],
+        )));
+        let patch = plan_replace_scenario(runtime.scenario(), Some(definition()))
+            .unwrap_or_else(|e| unreachable!("valid scenario: {e}"));
+        assert!(commit_scenario(&mut runtime, patch));
+        runtime
+    }
+
+    fn add(runtime: &mut EditRuntime, x: i32) -> osrs_core::scenario::NpcSpawnId {
+        let (patch, id) = plan_add_spawn(
+            runtime.scenario(),
+            SpawnDraft::new(NpcId::new(3), "npc.hans", location(x, 3200)),
+        )
+        .unwrap_or_else(|e| unreachable!("valid spawn: {e}"));
+        assert!(commit_scenario(runtime, patch));
+        id
+    }
+
+    #[test]
+    fn map_and_scenario_edits_undo_and_redo_in_chronological_order() {
+        let mut runtime = runtime_with_scenario();
+        let coord = vertex(3200, 3200);
+        runtime
+            .execute(height_patch(coord, 0, 64), |_| Ok::<_, &'static str>(()))
+            .unwrap_or_else(|e| unreachable!("map edit: {e:?}"));
+        let id = add(&mut runtime, 3201);
+        let map_revision = runtime.map_revision();
+        assert_eq!(map_revision, 1, "only the height edit is a map change");
+
+        let undo = |runtime: &mut EditRuntime| {
+            runtime
+                .replay(EditReplayDirection::Undo, EditFootprint::default(), |_| {
+                    Ok::<_, &'static str>(())
+                })
+                .unwrap_or_else(|e| unreachable!("undo: {e:?}"))
+        };
+        let redo = |runtime: &mut EditRuntime| {
+            runtime
+                .replay(EditReplayDirection::Redo, EditFootprint::default(), |_| {
+                    Ok::<_, &'static str>(())
+                })
+                .unwrap_or_else(|e| unreachable!("redo: {e:?}"))
+        };
+
+        // Newest first: the spawn, then the height, then the scenario itself.
+        undo(&mut runtime);
+        assert!(runtime.scenario().spawn(id).is_none());
+        assert_eq!(runtime.document().height_at(coord), Some(64));
+        assert_eq!(
+            runtime.map_revision(),
+            map_revision,
+            "scenario undo is not a map change"
+        );
+        undo(&mut runtime);
+        assert_eq!(runtime.document().height_at(coord), Some(0));
+        assert_eq!(
+            runtime.map_revision(),
+            map_revision + 1,
+            "height undo is a map change"
+        );
+        undo(&mut runtime);
+        assert!(runtime.scenario().definition().is_none());
+
+        redo(&mut runtime);
+        redo(&mut runtime);
+        redo(&mut runtime);
+        assert_eq!(runtime.document().height_at(coord), Some(64));
+        assert!(runtime.scenario().spawn(id).is_some());
+    }
+
+    #[test]
+    fn empty_scenario_gesture_keeps_redo_and_skips_projection() {
+        let mut runtime = runtime_with_scenario();
+        let id = add(&mut runtime, 3201);
+        runtime
+            .replay(EditReplayDirection::Undo, EditFootprint::default(), |_| {
+                Ok::<_, &'static str>(())
+            })
+            .unwrap_or_else(|e| unreachable!("undo: {e:?}"));
+        assert!(runtime.can_redo());
+        let before = runtime.clone();
+        // The same definition replaced by itself changes nothing.
+        let unchanged = ScenarioPatch::Replace {
+            before: runtime.scenario().definition().cloned(),
+            after: runtime.scenario().definition().cloned(),
+        };
+        let mut projected = false;
+        let result = runtime.execute_scenario(unchanged, |_| {
+            projected = true;
+            Ok::<_, &'static str>(())
+        });
+        assert_eq!(result, Ok(EditExecution::NoChange));
+        assert!(!projected);
+        assert!(runtime.can_redo());
+        assert_eq!(runtime, before);
+        let _ = id;
+    }
+
+    #[test]
+    fn scenario_projection_failure_restores_exact_state_and_redo() {
+        let mut runtime = runtime_with_scenario();
+        let id = add(&mut runtime, 3201);
+        runtime
+            .replay(EditReplayDirection::Undo, EditFootprint::default(), |_| {
+                Ok::<_, &'static str>(())
+            })
+            .unwrap_or_else(|e| unreachable!("undo: {e:?}"));
+        let id = {
+            // Re-add under a fresh redo-free history: failure must restore *this* state.
+            let _ = id;
+            add(&mut runtime, 3202)
+        };
+        let before = runtime.clone();
+        let patch = plan_update_spawn(runtime.scenario(), id, |s| s.facing = 512)
+            .unwrap_or_else(|e| unreachable!("valid update: {e}"));
+        let result = runtime.execute_scenario(patch, |_| Err::<(), _>("projection failed"));
+        assert_eq!(
+            result,
+            Err(EditExecutionError::Projection("projection failed"))
+        );
+        assert_eq!(runtime, before);
+        assert_eq!(runtime.scenario().spawn(id).map(|s| s.facing), Some(0));
+    }
+
+    #[test]
+    fn stale_scenario_patch_is_rejected_before_projection() {
+        let mut runtime = runtime_with_scenario();
+        let id = add(&mut runtime, 3201);
+        let stale = plan_update_spawn(runtime.scenario(), id, |s| s.facing = 256)
+            .unwrap_or_else(|e| unreachable!("valid update: {e}"));
+        // A later committed change makes the planned patch stale.
+        let newer = plan_update_spawn(runtime.scenario(), id, |s| s.facing = 512)
+            .unwrap_or_else(|e| unreachable!("valid update: {e}"));
+        assert!(commit_scenario(&mut runtime, newer));
+        let before = runtime.clone();
+        let mut projected = false;
+        let result = runtime.execute_scenario(stale, |_| {
+            projected = true;
+            Ok::<_, &'static str>(())
+        });
+        assert!(matches!(result, Err(EditExecutionError::Semantic(_))));
+        assert!(!projected);
+        assert_eq!(runtime, before);
+    }
+}

@@ -197,6 +197,14 @@ fn apply_legacy_frame(
     model: &mut ReferenceLitModel,
     frame: &LegacyAnimationFrame,
 ) -> Result<(), LegacyPoseError> {
+    apply_legacy_frame_filtered(model, frame, |_, _| true)
+}
+
+pub(crate) fn apply_legacy_frame_filtered(
+    model: &mut ReferenceLitModel,
+    frame: &LegacyAnimationFrame,
+    mut include: impl FnMut(usize, u8) -> bool,
+) -> Result<(), LegacyPoseError> {
     // `Model.animate` is guarded by `vertexLabels != null`. Preserve that
     // behavior even for frames containing only alpha transforms.
     let Some(vertex_skins) = model.vertex_skins.as_deref() else {
@@ -220,7 +228,9 @@ fn apply_legacy_frame(
             });
         };
 
-        apply_transform(model, &groups, &mut pivot, skeleton, authored)?;
+        if include(authored.skeleton_transform, skeleton.transform_type) {
+            apply_transform(model, &groups, &mut pivot, skeleton, authored)?;
+        }
     }
 
     Ok(())

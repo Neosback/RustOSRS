@@ -124,6 +124,7 @@ impl ByteSpan {
 /// Semantic artifact identity being decoded when a failure occurred.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DecodeSubject {
+    NpcDefinition(u32),
     ObjectDefinition(u32),
     FloorUnderlay(u32),
     FloorOverlay(u32),
@@ -142,6 +143,7 @@ pub enum DecodeSubject {
 impl fmt::Display for DecodeSubject {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::NpcDefinition(id) => write!(formatter, "npc-definition:{id}"),
             Self::ObjectDefinition(id) => write!(formatter, "object-definition:{id}"),
             Self::FloorUnderlay(id) => write!(formatter, "floor-underlay:{id}"),
             Self::FloorOverlay(id) => write!(formatter, "floor-overlay:{id}"),

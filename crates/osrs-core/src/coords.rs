@@ -18,7 +18,9 @@ pub const REGION_SIZE_TILES: i32 = 64;
 pub const MAX_PLANE_INDEX: u8 = 3;
 
 /// Global/world map tile coordinate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct MapTile {
     pub x: i32,
     pub y: i32,
@@ -222,7 +224,7 @@ impl ModelPoint {
 }
 
 /// Validated ordinary OSRS plane index (`0..=3`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub struct PlaneIndex(u8);
 
 impl PlaneIndex {
@@ -283,6 +285,13 @@ impl CollisionPlane {
             Some(plane) => Some(Self::Plane(plane)),
             None => None,
         }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for PlaneIndex {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = <u8 as serde::Deserialize>::deserialize(deserializer)?;
+        Self::new(value).ok_or_else(|| serde::de::Error::custom("plane must be in 0..=3"))
     }
 }
 

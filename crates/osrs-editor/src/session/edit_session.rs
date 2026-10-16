@@ -1,7 +1,8 @@
 use osrs_core::coords::RegionCoord;
 use osrs_edit::{
-    ChangeImpact, EditHistory, EditHistoryTransaction, HistoryTransactionError, MapDocument, MapOp,
-    MapPatch, MapRegionSnapshot, PatchApplyError,
+    ChangeImpact, EditHistoryTransaction, HistoryTransactionError, MapDocument, MapOp, MapPatch,
+    MapRegionSnapshot, PatchApplyError, ScenarioDocument, ScenarioPatch, WorkspaceDocument,
+    WorkspaceHistory, WorkspacePatch,
 };
 use std::collections::BTreeSet;
 
@@ -63,8 +64,8 @@ pub enum RegionSyncOutcome {
 /// longer replace or evict that region's document state.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EditorSession {
-    document: MapDocument,
-    history: EditHistory,
+    document: WorkspaceDocument,
+    history: WorkspaceHistory,
     revision: u64,
     /// Advances only on real edits (commit, undo, redo, applied projects), never on streaming.
     edit_revision: u64,
@@ -76,8 +77,8 @@ impl EditorSession {
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn new(document: MapDocument) -> Self {
         Self {
-            document,
-            history: EditHistory::new(),
+            document: WorkspaceDocument::new(document),
+            history: WorkspaceHistory::new(),
             revision: 0,
             edit_revision: 0,
             loaded_regions: BTreeSet::new(),
@@ -110,7 +111,7 @@ impl EditorSession {
         if patch.is_empty() {
             return Ok(false);
         }
-        self.document.apply_patch(patch)?;
+        self.document.apply_map_untracked(patch)?;
         self.dirty_regions.extend(patch_regions(patch));
         self.edit_revision += 1;
         self.advance_revision();
@@ -211,7 +212,9 @@ impl EditorSession {
         let edit_revision_before = self.edit_revision;
         let loaded_regions_before = self.loaded_regions.clone();
 
-        let (impact, transaction) = self.history.begin_commit(&mut self.document, patch)?;
+        let (impact, transaction) = self
+            .history
+            .begin_commit(&mut self.document, WorkspacePatch::Map(patch))?;
         let Some(history) = transaction else {
             return Ok(None);
         };
@@ -226,6 +229,39 @@ impl EditorSession {
             newly_dirty_regions,
         };
         Ok(Some((commit, checkpoint)))
+    }
+
+    /// Advances when an authored map change (edit, replay or project application) lands.
+    pub fn map_revision(&self) -> u64 {
+        self.document.map_revision()
+    }
+    pub fn scenario(&self) -> &ScenarioDocument {
+        self.document.scenario()
+    }
+    pub fn commit_scenario_checkpointed(
+        &mut self,
+        patch: ScenarioPatch,
+    ) -> Result<Option<(EditCommit, EditCheckpoint)>, PatchApplyError> {
+        let revision_before = self.revision;
+        let edit_revision_before = self.edit_revision;
+        let loaded_regions_before = self.loaded_regions.clone();
+        let (impact, transaction) = self
+            .history
+            .begin_commit(&mut self.document, WorkspacePatch::Scenario(patch))?;
+        let Some(history) = transaction else {
+            return Ok(None);
+        };
+        let commit = self.record_edit(impact);
+        Ok(Some((
+            commit,
+            EditCheckpoint {
+                history,
+                revision_before,
+                edit_revision_before,
+                loaded_regions_before,
+                newly_dirty_regions: BTreeSet::new(),
+            },
+        )))
     }
 
     /// Undo the most recent semantic edit and finalize it immediately.

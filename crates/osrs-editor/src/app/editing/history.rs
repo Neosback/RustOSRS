@@ -58,9 +58,16 @@ pub(in crate::app) struct EditStep {
     pub(super) semantic_height: Option<SemanticHeightHistory>,
     pub(super) semantic_object: Option<ObjectHistoryRoute>,
     pub(super) semantic_path: Option<SemanticPathHistory>,
+    pub(super) semantic_scenario: bool,
 }
 
 impl EditStep {
+    pub(in crate::app) fn scenario() -> Self {
+        Self {
+            semantic_scenario: true,
+            ..Default::default()
+        }
+    }
     pub(super) fn semantic_paint(brush: Brush, keys: Vec<TileKey>) -> Self {
         Self {
             semantic_paint: Some(SemanticPaintHistory { brush, keys }),

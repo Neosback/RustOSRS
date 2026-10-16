@@ -27,6 +27,7 @@ ALLOWED_INTERNAL: dict[str, set[str]] = {
     # Headless editable-map semantics may reuse only the canonical value vocabulary.
     "osrs-edit": {"osrs-core"},
     "osrs-filestore": set(),
+    "osrs-playtest": {"osrs-core"},
     "osrs-cache": {"osrs-core", "osrs-filestore"},
     "osrs-scene": {"osrs-core"},
     # 117HD data/settings are reusable renderer inputs and do not depend on renderer/world/editor.
@@ -34,7 +35,7 @@ ALLOWED_INTERNAL: dict[str, set[str]] = {
     "osrs-render": {"osrs-core", "osrs-scene", "osrs-hd"},
     # Runtime world composition/orchestration may consume the reusable decode,
     # semantic-scene, renderer, and HD-data layers, but none of those layers may depend back on it.
-    "osrs-world": {"osrs-core", "osrs-cache", "osrs-scene", "osrs-render", "osrs-hd"},
+    "osrs-world": {"osrs-core", "osrs-cache", "osrs-scene", "osrs-render", "osrs-hd", "osrs-playtest"},
     # Reference infrastructure may exercise the composed world layer for integration parity.
     "osrs-reference": {"osrs-core", "osrs-cache", "osrs-scene", "osrs-world"},
     # The editor is the product composition root and may consume world orchestration directly.
@@ -46,6 +47,7 @@ ALLOWED_INTERNAL: dict[str, set[str]] = {
         "osrs-render",
         "osrs-world",
         "osrs-hd",
+        "osrs-playtest",
     },
 }
 
@@ -125,7 +127,7 @@ def check_workspace(crates_root: Path = CRATES) -> list[str]:
         if crate != "osrs-reference" and "osrs-reference" in dependencies:
             errors.append(f"{crate}: production crates must never depend on osrs-reference")
 
-        if crate in {"osrs-edit", "osrs-filestore"}:
+        if crate in {"osrs-edit", "osrs-filestore", "osrs-playtest"}:
             forbidden = sorted(dependencies & EDIT_FORBIDDEN)
             if forbidden:
                 errors.append(f"{crate}: UI/GPU/platform dependency leakage: " + ", ".join(forbidden))

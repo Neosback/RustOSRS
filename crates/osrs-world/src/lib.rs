@@ -19,6 +19,7 @@ mod info;
 mod loc_edits;
 mod loc_stage;
 pub mod minimap;
+pub mod npc;
 mod object_catalog;
 #[cfg(test)]
 mod object_output_adversarial_tests;
@@ -36,8 +37,8 @@ pub use animation::{AnimatedContour, AnimatedInstance, AnimatedModel, AnimationS
 pub use animation_worker::{AnimationUpdate, AnimationWorker};
 pub use assets::{AssetEvent, AssetWorker, SpriteImage, WorldMapRegionImage};
 pub use definitions::{
-    FloorTable, RegionMap, TEXTURE_SIZE, TextureImage, TextureTable, WorldDefinitions,
-    region_tiles_from_decoded,
+    FloorTable, NpcCatalogEntry, RegionMap, TEXTURE_SIZE, TextureImage, TextureTable,
+    WorldDefinitions, region_tiles_from_decoded,
 };
 pub use error::WorldError;
 pub use extract::{

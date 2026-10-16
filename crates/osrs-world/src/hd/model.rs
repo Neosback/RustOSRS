@@ -281,6 +281,7 @@ pub struct ModelOverrides {
     list: Vec<ResolvedModelOverride>,
     /// object id -> (index of the unrestricted override, area-restricted ones in file order).
     by_object: HashMap<u32, ObjectEntry>,
+    by_npc: HashMap<u32, ObjectEntry>,
     areas: Vec<Vec<Value>>,
 }
 
@@ -298,6 +299,7 @@ impl ModelOverrides {
             none: ResolvedModelOverride::resolve(&ModelOverride::default(), materials, settings),
             list: Vec::new(),
             by_object: HashMap::new(),
+            by_npc: HashMap::new(),
             areas: Vec::new(),
         };
         for source in &data.model_overrides {
@@ -312,7 +314,13 @@ impl ModelOverrides {
                 .filter_map(|id| Gamevals::resolve(&data.gamevals.objects, id))
                 .filter_map(|id| u32::try_from(id).ok())
                 .collect();
-            if ids.is_empty() {
+            let npc_ids: Vec<u32> = source
+                .npc_ids
+                .iter()
+                .filter_map(|id| Gamevals::resolve(&data.gamevals.npcs, id))
+                .filter_map(|id| u32::try_from(id).ok())
+                .collect();
+            if ids.is_empty() && npc_ids.is_empty() {
                 continue;
             }
             let index = overrides.list.len();
@@ -320,8 +328,16 @@ impl ModelOverrides {
                 .list
                 .push(ResolvedModelOverride::resolve(source, materials, settings));
             overrides.areas.push(source.areas.clone());
-            for id in ids {
-                let entry = overrides.by_object.entry(id).or_default();
+            for (npc, id) in ids
+                .into_iter()
+                .map(|id| (false, id))
+                .chain(npc_ids.into_iter().map(|id| (true, id)))
+            {
+                let entry = if npc {
+                    overrides.by_npc.entry(id).or_default()
+                } else {
+                    overrides.by_object.entry(id).or_default()
+                };
                 if source.areas.is_empty() {
                     entry.default = Some(index);
                 } else {
@@ -347,7 +363,23 @@ impl ModelOverrides {
         world: (i32, i32, i32),
         areas: &Areas,
     ) -> &ResolvedModelOverride {
-        let Some(entry) = self.by_object.get(&object_id) else {
+        self.get_entry(self.by_object.get(&object_id), world, areas)
+    }
+    pub fn get_npc(
+        &self,
+        npc_id: u32,
+        world: (i32, i32, i32),
+        areas: &Areas,
+    ) -> &ResolvedModelOverride {
+        self.get_entry(self.by_npc.get(&npc_id), world, areas)
+    }
+    fn get_entry(
+        &self,
+        entry: Option<&ObjectEntry>,
+        world: (i32, i32, i32),
+        areas: &Areas,
+    ) -> &ResolvedModelOverride {
+        let Some(entry) = entry else {
             return &self.none;
         };
         for &index in &entry.restricted {

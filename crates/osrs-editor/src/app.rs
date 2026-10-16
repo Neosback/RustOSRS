@@ -21,6 +21,8 @@ mod map_icons;
 mod menu;
 mod minimap;
 pub(crate) mod modal;
+mod npc_panel;
+mod npc_runtime;
 mod object_tool;
 mod overlay;
 #[allow(dead_code)]
@@ -92,6 +94,7 @@ pub struct EditorApp {
     diagnostics: diagnostics::DiagnosticsRuntime,
     plugins: plugin_runtime::PluginRuntime,
     palettes: palette_runtime::PaletteRuntime,
+    npcs: npc_runtime::NpcRuntime,
     assets: Assets,
     hd: hd::HdRuntime,
     placer: object_tool::PlaceState,
@@ -139,6 +142,9 @@ impl eframe::App for EditorApp {
         let phase = Instant::now();
         self.update_animations();
         self.diagnostics.phase("anim", phase);
+        let phase = Instant::now();
+        npc_panel::update(self, &ctx);
+        self.diagnostics.phase("npcs", phase);
         let phase = Instant::now();
         self.run_plugins(|plugin, cx| plugin.update(cx));
         self.diagnostics.phase("plugins", phase);
@@ -217,6 +223,14 @@ impl eframe::App for EditorApp {
                     height,
                 );
                 sound_panel::draw_world(
+                    self,
+                    &ui.painter().with_clip_rect(rect),
+                    rect,
+                    pixels_per_point,
+                    width,
+                    height,
+                );
+                npc_panel::draw_world(
                     self,
                     &ui.painter().with_clip_rect(rect),
                     rect,

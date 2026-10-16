@@ -83,6 +83,7 @@ impl EditorApp {
             ]),
             assets: Assets::new(initial_source.clone()),
             palettes: palette_runtime::PaletteRuntime::default(),
+            npcs: npc_runtime::NpcRuntime::default(),
             hd: hd::HdRuntime::new(),
             world,
             diagnostics,

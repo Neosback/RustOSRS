@@ -1,0 +1,82 @@
+schema: rustosrs-target-profile/v1
+id: openrune-installed-240-live-9be24ee85e45
+game_family: osrs
+profile_schema_version: 1
+decoder_schema_version: 1
+cache_source:
+  provider: openrune-installed
+  cache_id: 0
+  uri: openrune-installation:LIVE
+  game: oldschool
+  environment: live
+  language: en
+  build: 240
+  timestamp: installed-artifact-time-unspecified
+  format: VERSIONED
+  logical_archive_slots_present: 23
+  logical_archive_slots_total: 23
+  empty_logical_indices: []
+  physical_content_indices: 23
+  groups_present: 117170
+  groups_total: 117170
+  reported_size_mib: 182
+  xtea_keys_present: 0
+  xtea_keys_total: 0
+cache_fingerprint:
+  algorithm: rustosrs-cache-v1
+  value: 9be24ee85e451ef5e82070c2d48ed66b53500e651f2f06843a30023f07edf4a1
+  state: installed-artifact-manifest-declared-build
+transport_evidence: null
+xtea:
+  ownership: external_decode_input
+  provider_id: openrune-installed
+  key_set_id: none-required-by-source
+  persist_raw_keys: false
+  artifact_key_fingerprint_algorithm: rustosrs-xtea-v1
+semantic_sources:
+  imported_openrune_tree:
+    repository: null
+    commit: null
+    tree: 55f571db4b23f2d528786e1cdfbcba0061fd201a
+    status: decoder_tooling_evidence
+  imported_rs_cache_tree:
+    repository: null
+    commit: null
+    tree: fae41f98352fc804e5d13d9bd2e836ab1e2635cd
+    status: legacy_transport_and_decoder_evidence
+  imported_runelite_tree:
+    repository: null
+    commit: null
+    tree: 5afef996a992bacc73655860681269242e90d6e8
+    status: renderer_and_api_reference
+  public_deob:
+    repository: melxin/runelite
+    commit: 1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc
+    tree: null
+    status: semantic_reference_not_cache_identity
+revision_gates:
+  extended_object_model_ids:
+    state: required
+    spec: null
+    note: preserve 32-bit IDs when encoded by the target
+  object_sound_layout_220_plus:
+    state: required
+    spec: null
+    note: null
+  sequence_layout_226_plus:
+    state: required
+    spec: null
+    note: null
+  terrain_color_builder:
+    state: source_verified
+    spec: TERRAIN-004
+    note: Pinned public class470.method9712 contains the complete terrain builder. Exact Rust implementation and executable differential fixtures remain required before TERRAIN-004 may claim implementation parity.
+  texture_layout_233_plus:
+    state: required
+    spec: null
+    note: null
+policy:
+  bundled_revision_180_cache_is_target: false
+  external_definition_structs_cross_osrs_cache_boundary: false
+  fixed_texture_count_is_semantic_truth: false
+  local_absolute_path_is_identity: false

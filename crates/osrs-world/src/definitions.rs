@@ -1,6 +1,8 @@
 //! Cache-backed definition access for scene assembly.
 
+mod npc;
 mod terrain;
+pub use npc::NpcCatalogEntry;
 
 use crate::WorldError;
 use osrs_cache::{
@@ -138,6 +140,7 @@ pub fn region_tiles_from_decoded(terrain: &DecodedTerrain) -> Vec<RegionTerrainT
 /// Definitions and map data read from the pinned build-241 cache.
 pub struct WorldDefinitions {
     models: ModelSourceRepository,
+    npcs: npc::NpcCache,
     context: DecoderContext,
     profile_id: String,
     build: u32,
@@ -265,6 +268,7 @@ impl WorldDefinitions {
 
         Ok(Self {
             models: ModelSourceRepository::new(cache),
+            npcs: npc::NpcCache::default(),
             context,
             profile_id: profile.id.clone(),
             build: profile.cache_source.build,
@@ -384,7 +388,7 @@ impl WorldDefinitions {
         Ok(Some(frames))
     }
 
-    fn legacy_frame(
+    pub(crate) fn legacy_frame(
         &mut self,
         frame_id: FrameId,
     ) -> Result<Option<Arc<LegacyAnimationFrame>>, WorldError> {
