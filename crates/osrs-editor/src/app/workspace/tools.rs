@@ -109,11 +109,17 @@ impl EditorApp {
         };
         let screen = ctx.content_rect();
         let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-        let width = 292.0;
+        // The HUD never outgrows the window: it narrows on small screens and scrolls when its
+        // content (the Objects tool's drawer) is taller than the space below the cursor.
+        let width = 292.0_f32.min((screen.width() - 16.0).max(160.0));
+        let max_height = (screen.height() - 96.0).max(120.0);
         let position = Pos2::new(
             (origin.x - width / 2.0)
                 .clamp(screen.left() + 8.0, (screen.right() - width - 8.0).max(8.0)),
-            (origin.y - 40.0).clamp(screen.top() + 40.0, (screen.bottom() - 300.0).max(48.0)),
+            (origin.y - 40.0).clamp(
+                screen.top() + 40.0,
+                (screen.bottom() - max_height.min(300.0) - 8.0).max(48.0),
+            ),
         );
         let area = egui::Area::new(egui::Id::new("quick_tools"))
             .order(egui::Order::Foreground)
@@ -123,60 +129,70 @@ impl EditorApp {
                     .inner_margin(egui::Margin::same(10))
                     .show(ui, |ui| {
                         ui.set_width(width - 20.0);
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Quick tools").strong());
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.weak("Esc closes");
-                                },
-                            );
-                        });
-                        ui.add_space(4.0);
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing.x = 6.0;
-                            for tool in Tool::ALL {
-                                let key = self
-                                    .settings
-                                    .keymap
-                                    .binding(tool.action())
-                                    .map(|b| b.describe());
-                                if quick_tool_button(
-                                    ui,
-                                    tool,
-                                    self.settings.prefs.tool == tool,
-                                    key,
-                                )
-                                .clicked()
-                                {
-                                    self.set_tool(tool);
-                                    close = true;
-                                }
-                            }
-                        });
-                        self.quick_tool_options(ui);
-                        crate::theme::section_heading(ui, "View");
-                        ui.horizontal(|ui| {
-                            let mut view_plane = self.interaction.view_plane();
-                            let mut camera_mode = self.interaction.camera().mode;
-                            ui.weak("Plane");
-                            for plane in 0..4_u8 {
-                                ui.selectable_value(&mut view_plane, plane, plane.to_string());
-                            }
-                            ui.separator();
-                            ui.selectable_value(
-                                &mut camera_mode,
-                                crate::camera::CameraMode::Fly,
-                                "Fly",
-                            );
-                            ui.selectable_value(
-                                &mut camera_mode,
-                                crate::camera::CameraMode::Orbit,
-                                "Orbit",
-                            );
-                            self.interaction.set_camera_mode(camera_mode);
-                            self.interaction.set_view_plane(view_plane);
-                        });
+                        egui::ScrollArea::vertical()
+                            .id_salt("quick_tools_scroll")
+                            .max_height(max_height)
+                            .auto_shrink([false, true])
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new("Quick tools").strong());
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            ui.weak("Esc closes");
+                                        },
+                                    );
+                                });
+                                ui.add_space(4.0);
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 6.0;
+                                    for tool in Tool::ALL {
+                                        let key = self
+                                            .settings
+                                            .keymap
+                                            .binding(tool.action())
+                                            .map(|b| b.describe());
+                                        if quick_tool_button(
+                                            ui,
+                                            tool,
+                                            self.settings.prefs.tool == tool,
+                                            key,
+                                        )
+                                        .clicked()
+                                        {
+                                            self.set_tool(tool);
+                                            close = true;
+                                        }
+                                    }
+                                });
+                                self.quick_tool_options(ui);
+                                crate::theme::section_heading(ui, "View");
+                                ui.horizontal_wrapped(|ui| {
+                                    let mut view_plane = self.interaction.view_plane();
+                                    let mut camera_mode = self.interaction.camera().mode;
+                                    ui.weak("Plane");
+                                    for plane in 0..4_u8 {
+                                        ui.selectable_value(
+                                            &mut view_plane,
+                                            plane,
+                                            plane.to_string(),
+                                        );
+                                    }
+                                    ui.separator();
+                                    ui.selectable_value(
+                                        &mut camera_mode,
+                                        crate::camera::CameraMode::Fly,
+                                        "Fly",
+                                    );
+                                    ui.selectable_value(
+                                        &mut camera_mode,
+                                        crate::camera::CameraMode::Orbit,
+                                        "Orbit",
+                                    );
+                                    self.interaction.set_camera_mode(camera_mode);
+                                    self.interaction.set_view_plane(view_plane);
+                                });
+                            });
                     });
             });
         // A click outside closes it.
@@ -196,7 +212,7 @@ impl EditorApp {
         match self.settings.prefs.tool {
             Tool::Select => {
                 crate::theme::section_heading(ui, "Select");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for mode in SelectMode::ALL {
                         let text = format!("{}  {}", select_mode_icon(mode), mode.label());
                         ui.selectable_value(&mut self.settings.prefs.select_mode, mode, text);
@@ -213,14 +229,16 @@ impl EditorApp {
                         }
                     }
                 });
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.weak("Brush");
                     self.brush_controls(ui, true, false);
                 });
             }
             Tool::Spline => {
-                crate::theme::section_heading(ui, "Path");
-                crate::app::spline_tool::panel::settings(ui, &mut self.settings.prefs.spline);
+                self.spline_drawer(
+                    ui,
+                    crate::app::spline_tool::sections::SplineSections::COMPACT,
+                );
             }
             Tool::Height => {
                 crate::theme::section_heading(ui, "Height");
@@ -232,7 +250,7 @@ impl EditorApp {
                 if let Some(op) = crate::app::widgets::chips(ui, current, &options) {
                     self.settings.prefs.height_tool.op = op;
                 }
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.weak("Brush");
                     self.brush_controls(ui, true, false);
                 });

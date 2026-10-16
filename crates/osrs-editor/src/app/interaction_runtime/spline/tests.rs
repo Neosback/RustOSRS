@@ -113,3 +113,66 @@ fn deleting_a_point_preserves_selection_identity_and_cancels_drag() {
     interaction.remove_spline_point(1);
     assert_eq!(interaction.selected_spline_point(), None);
 }
+
+#[test]
+fn missing_overlay_and_running_plan_are_distinct_states() {
+    let mut interaction = interaction();
+    let settings = crate::paint::SplineSettings::default();
+    interaction.replace_spline_points(vec![(1.0, 1.0), (9.0, 9.0)]);
+    interaction.update_spline_preview(&settings, None);
+    assert_eq!(interaction.spline_status(), SplineStatus::NeedsOverlay);
+    // With an overlay the same points are being planned, not waiting for a choice.
+    interaction.update_spline_preview(&settings, Some(1));
+    assert_ne!(interaction.spline_status(), SplineStatus::NeedsOverlay);
+    assert!(matches!(
+        interaction.spline_status(),
+        SplineStatus::Updating | SplineStatus::Ready { .. }
+    ));
+}
+
+#[test]
+fn cancelling_a_running_plan_holds_until_an_edit_or_resume() {
+    let mut interaction = interaction();
+    let settings = crate::paint::SplineSettings::default();
+    interaction.replace_spline_points(vec![(1.0, 1.0), (9.0, 9.0)]);
+    // Force the plan to be "running": a desired key with no matching preview.
+    interaction.spline.desired_key = Some(7);
+    interaction.spline.preview = None;
+    assert_eq!(interaction.spline_status(), SplineStatus::Updating);
+    interaction.cancel_spline_plan();
+    assert_eq!(interaction.spline_status(), SplineStatus::Cancelled);
+
+    // Cancelling is only meaningful while updating: a second call changes nothing.
+    interaction.cancel_spline_plan();
+    assert_eq!(interaction.spline_status(), SplineStatus::Cancelled);
+
+    // Moving a point changes the plan key, which lifts the cancellation.
+    interaction.move_spline_point(0, (2.0, 2.0));
+    interaction.update_spline_preview(&settings, Some(1));
+    assert_ne!(interaction.spline_status(), SplineStatus::Cancelled);
+
+    // Resume lifts it for unchanged points too.
+    interaction.plan_spline_now(&settings, Some(1));
+    interaction.spline.preview = None;
+    let key = interaction.spline.desired_key;
+    interaction.spline.cancelled_key = key;
+    assert_eq!(interaction.spline_status(), SplineStatus::Cancelled);
+    interaction.resume_spline_plan();
+    assert_ne!(interaction.spline_status(), SplineStatus::Cancelled);
+}
+
+#[test]
+fn a_cancelled_plan_never_starts_a_worker_for_the_same_key() {
+    let mut interaction = interaction();
+    let settings = crate::paint::SplineSettings::default();
+    interaction.replace_spline_points(vec![(1.0, 1.0), (9.0, 9.0)]);
+    let Some(input) = interaction.plan_input(&settings, Some(1)) else {
+        unreachable!("two points and an overlay make a plan")
+    };
+    interaction.spline.cancelled_key = Some(input.key);
+    interaction.update_spline_preview(&settings, Some(1));
+    #[cfg(not(target_arch = "wasm32"))]
+    assert!(interaction.spline.worker.is_none());
+    assert!(interaction.spline_preview().is_none());
+    assert_eq!(interaction.spline_status(), SplineStatus::Cancelled);
+}

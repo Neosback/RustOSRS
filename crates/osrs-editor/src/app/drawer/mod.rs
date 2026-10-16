@@ -7,6 +7,40 @@
 //!
 //! The drawer exists only for tools that have a palette; Select has none.
 
+/// Panel width from which the Paint tab strip and its buttons share one row.
+const PAINT_TABS_WIDE: f32 = 620.0;
+/// Panel width from which the Paint preview sits beside the palette instead of above it.
+const PAINT_BODY_SIDE_BY_SIDE: f32 = 340.0;
+
+/// The palette or picker of the selected Paint tab.
+fn paint_tab_body(app: &mut EditorApp, ui: &mut egui::Ui) {
+    match app.settings.prefs.drawer_tab {
+        DrawerTab::Overlay => app.overlay_palette(ui, false),
+        DrawerTab::Underlay => app.underlay_palette(ui, false),
+        DrawerTab::Shape => app.shape_picker(ui),
+        DrawerTab::Height => app.height_channel(ui),
+        DrawerTab::Mask => app.flag_options(ui),
+    }
+}
+
+/// Collapse chevron and "Fill selected", in tab-strip order (`strip`) or on their own row.
+fn paint_drawer_buttons(app: &mut EditorApp, ui: &mut egui::Ui, strip: bool) {
+    app.drawer_collapse(ui);
+    let selected = app.interaction.selection_tiles().len();
+    if selected > 0 && !app.settings.prefs.brush.is_empty() {
+        if strip {
+            ui.add_space(8.0);
+        }
+        if ui
+            .button(format!("{}  Fill {selected} selected", icons::SELECT_TILES))
+            .on_hover_text("Apply the brush to every selected tile")
+            .clicked()
+        {
+            app.fill_selection();
+        }
+    }
+}
+
 mod channels;
 mod palettes;
 mod tabs;
@@ -15,6 +49,7 @@ use palettes::paint_overlay_swatch;
 use tabs::channel_tab;
 
 use super::EditorApp;
+use super::spline_tool::sections::SplineSections;
 use super::widgets::{OverlayFill, paint_tile, swatch};
 use crate::heights::HeightOp;
 use crate::icons;
@@ -53,7 +88,7 @@ impl EditorApp {
                 380.0,
             ),
             Tool::Objects => (120.0, 60.0, 360.0),
-            Tool::Spline => (210.0, 100.0, 440.0),
+            Tool::Spline => (260.0, 120.0, 460.0),
             _ => (104.0, 84.0, 200.0),
         };
         egui::Panel::bottom(egui::Id::new(("tool_drawer", tool as u8)))
@@ -76,7 +111,7 @@ impl EditorApp {
     fn drawer(&mut self, ui: &mut egui::Ui) {
         match self.settings.prefs.tool {
             Tool::Paint => self.paint_drawer(ui),
-            Tool::Spline => self.spline_drawer(ui),
+            Tool::Spline => self.spline_drawer(ui, SplineSections::FULL),
             Tool::Height => self.height_drawer(ui),
             Tool::Objects => self.object_drawer(ui),
             Tool::Select => {}
@@ -105,7 +140,13 @@ impl EditorApp {
         let line = ui.visuals().widgets.noninteractive.bg_stroke.color;
         let content_fill = ui.visuals().widgets.inactive.bg_fill;
         let mut selected_tab = None;
-        ui.horizontal(|ui| {
+        // Tabs plus the collapse and fill buttons need about this much; below it the buttons get
+        // their own wrapping row and the tabs wrap too instead of running off the panel.
+        let wide = ui.available_width() >= PAINT_TABS_WIDE;
+        if !wide {
+            ui.horizontal_wrapped(|ui| paint_drawer_buttons(self, ui, false));
+        }
+        ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 3.0;
             for tab in tabs {
                 let selected = self.settings.prefs.drawer_tab == *tab;
@@ -117,20 +158,11 @@ impl EditorApp {
                     self.settings.prefs.drawer_tab = *tab;
                 }
             }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                self.drawer_collapse(ui);
-                let selected = self.interaction.selection_tiles().len();
-                if selected > 0 && !self.settings.prefs.brush.is_empty() {
-                    ui.add_space(8.0);
-                    if ui
-                        .button(format!("{}  Fill {selected} selected", icons::SELECT_TILES))
-                        .on_hover_text("Apply the brush to every selected tile")
-                        .clicked()
-                    {
-                        self.fill_selection();
-                    }
-                }
-            });
+            if wide {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    paint_drawer_buttons(self, ui, true)
+                });
+            }
         });
         ui.add_space(-ui.spacing().item_spacing.y);
         // The panel under the tabs; the selected tab opens into it.
@@ -145,20 +177,23 @@ impl EditorApp {
             })
             .inner_margin(egui::Margin::same(8))
             .show(ui, |ui| {
-                ui.horizontal_top(|ui| {
-                    self.drawer_preview(ui);
-                    ui.separator();
+                // The preview beside the controls needs about 320 points; narrower panels stack
+                // them so nothing is cut off.
+                if ui.available_width() < PAINT_BODY_SIDE_BY_SIDE {
                     ui.vertical(|ui| {
-                        ui.set_width(ui.available_width().max(200.0));
-                        match self.settings.prefs.drawer_tab {
-                            DrawerTab::Overlay => self.overlay_palette(ui, false),
-                            DrawerTab::Underlay => self.underlay_palette(ui, false),
-                            DrawerTab::Shape => self.shape_picker(ui),
-                            DrawerTab::Height => self.height_channel(ui),
-                            DrawerTab::Mask => self.flag_options(ui),
-                        }
+                        self.drawer_preview(ui);
+                        paint_tab_body(self, ui);
                     });
-                });
+                } else {
+                    ui.horizontal_top(|ui| {
+                        self.drawer_preview(ui);
+                        ui.separator();
+                        ui.vertical(|ui| {
+                            ui.set_width(ui.available_width().max(200.0));
+                            paint_tab_body(self, ui);
+                        });
+                    });
+                }
             });
         if let Some(tab) = selected_tab {
             // Erase the panel's top border under the selected tab so the two read as one piece.
@@ -186,19 +221,36 @@ impl EditorApp {
         self.height_tool_options(ui);
     }
 
-    /// Responsive Spline workflow; pure widgets emit actions for the interaction owner.
-    fn spline_drawer(&mut self, ui: &mut egui::Ui) {
-        use super::interaction_runtime::SplineStatus;
-        use super::spline_tool::panel::{self, PointAction};
+    /// The Spline workflow, drawn from the shared sections. The drawer shows every section under
+    /// its own title row; compact surfaces (the quick HUD) pass fewer. Pure widgets emit actions
+    /// that are applied here to their owners.
+    pub(in crate::app) fn spline_drawer(&mut self, ui: &mut egui::Ui, sections: SplineSections) {
+        use super::spline_tool::panel::PointAction;
+        use super::spline_tool::sections::{self, AlsoApplies, SplineAction, SplineView};
         let ctx = ui.ctx().clone();
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Path").strong());
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                self.drawer_collapse(ui)
+        if sections.points {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Path").strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.drawer_collapse(ui)
+                });
             });
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Appearance");
+        }
+        self.spline_update();
+        let points = self.interaction.spline_points().to_vec();
+        let brush = &self.settings.prefs.brush;
+        let also = AlsoApplies {
+            height: brush.height.armed.then_some(brush.height.value),
+            flags: brush.flags.armed.then_some(brush.flags.bits),
+        };
+        let view = SplineView {
+            points: &points,
+            selected: self.interaction.selected_spline_point(),
+            status: self.interaction.spline_status(),
+            also,
+        };
+        let mut spline_settings = self.settings.prefs.spline.clone();
+        let actions = sections::show(ui, sections, &mut spline_settings, &view, |ui| {
             let overlay = match self.settings.prefs.brush.overlay.fill {
                 Fill::Set(id) => self
                     .overlay_swatch(id)
@@ -219,7 +271,9 @@ impl EditorApp {
             egui::Popup::from_toggle_button_response(&response)
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                 .show(|ui| {
-                    ui.set_width((ui.ctx().content_rect().width() - 32.0).clamp(120.0, 560.0));
+                    let screen = ui.ctx().content_rect();
+                    ui.set_width((screen.width() - 32.0).clamp(120.0, 560.0));
+                    ui.set_max_height((screen.height() - 120.0).clamp(120.0, 420.0));
                     self.overlay_palette(ui, true);
                 });
             if let Fill::Set(id) = self.settings.prefs.brush.overlay.fill {
@@ -230,71 +284,29 @@ impl EditorApp {
                 "Paint overlay",
             );
         });
-        panel::settings(ui, &mut self.settings.prefs.spline);
-        if let Some(action) = panel::points(
-            ui,
-            self.interaction.spline_points(),
-            self.interaction.selected_spline_point(),
-        ) {
+        self.settings.prefs.spline = spline_settings;
+        for action in actions {
             match action {
-                PointAction::Select(index) => self.interaction.select_spline_point(index),
-                PointAction::Move(index, point) => self.interaction.move_spline_point(index, point),
-                PointAction::Remove(index) => self.interaction.remove_spline_point(index),
+                SplineAction::Point(PointAction::Select(index)) => {
+                    self.interaction.select_spline_point(index)
+                }
+                SplineAction::Point(PointAction::Move(index, point)) => {
+                    self.interaction.move_spline_point(index, point)
+                }
+                SplineAction::Point(PointAction::Remove(index)) => {
+                    self.interaction.remove_spline_point(index)
+                }
+                SplineAction::Lay => self.commit_spline(),
+                SplineAction::RemoveLast => self.interaction.pop_spline_point(),
+                SplineAction::Clear => self.interaction.clear_spline_points(),
+                SplineAction::CancelPlan => self.interaction.cancel_spline_plan(),
+                SplineAction::ResumePlan => self.interaction.resume_spline_plan(),
+                SplineAction::CopyDetails => {
+                    ctx.copy_text(self.spline_report());
+                    self.ui.notify("Copied the path details".to_owned());
+                }
             }
         }
-        self.spline_update();
-        let status = self.interaction.spline_status();
-        ui.horizontal_wrapped(|ui| {
-            match status {
-                SplineStatus::NeedsPoints => {
-                    ui.weak("Add at least two control points");
-                }
-                SplineStatus::NeedsOverlay => {
-                    ui.weak("Choose and enable an overlay");
-                }
-                SplineStatus::Updating => {
-                    ui.spinner();
-                    ui.weak("Updating preview…");
-                }
-                SplineStatus::Ready { tiles } => {
-                    ui.label(format!("Ready · {tiles} tiles"));
-                }
-                SplineStatus::Empty => {
-                    ui.weak("The fitted path contains no tiles");
-                }
-                SplineStatus::Failed(reason) => {
-                    ui.colored_label(ui.visuals().error_fg_color, reason);
-                }
-            }
-            if ui
-                .add_enabled(
-                    matches!(status, SplineStatus::Ready { .. }),
-                    egui::Button::new("Lay path"),
-                )
-                .on_hover_text("Enter · one undo step")
-                .clicked()
-            {
-                self.commit_spline();
-            }
-            let any = !self.interaction.spline_points().is_empty();
-            if ui
-                .add_enabled(any, egui::Button::new("Clear"))
-                .on_hover_text("Cancel this path without changing the map")
-                .clicked()
-            {
-                self.interaction.clear_spline_points();
-            }
-            if ui
-                .add_enabled(any, egui::Button::new("Copy details"))
-                .clicked()
-            {
-                ui.ctx().copy_text(self.spline_report());
-                self.ui.notify("Copied the path details".to_owned());
-            }
-        });
-        egui::CollapsingHeader::new("How to edit the path").show(ui, |ui| {
-            ui.label("Click to add · drag to move · Shift-click a segment to insert · Cmd-click or Delete to remove · Backspace removes the last point · Enter lays the current preview · Esc cancels");
-        });
     }
 
     /// What one painted tile will look like.

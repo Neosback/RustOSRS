@@ -128,7 +128,7 @@ impl EditorApp {
     pub(super) fn height_tool_options(&mut self, ui: &mut egui::Ui) {
         let mut tool = self.settings.prefs.height_tool.clone();
         ui.add_space(2.0);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             for op in HeightOp::ALL {
                 if ui
                     .selectable_label(tool.op == op, op.label())
@@ -140,7 +140,7 @@ impl EditorApp {
             }
         });
         if tool.op == HeightOp::Flatten {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.weak("Level to");
                 if ui
                     .selectable_label(tool.flatten_to.is_none(), "Height under the cursor")
@@ -173,7 +173,7 @@ impl EditorApp {
         let op = tool.op;
         self.settings.prefs.height_tool = tool;
         let selected = self.interaction.selection_tiles().len();
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.weak(op.hint());
             if selected > 0
                 && ui

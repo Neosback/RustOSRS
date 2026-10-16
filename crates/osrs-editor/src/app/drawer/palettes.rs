@@ -62,6 +62,15 @@ pub(super) fn paint_overlay_swatch(
     }
 }
 
+/// Tallest a palette popup may be: what the window leaves, never more than 300 points.
+fn popup_max_height(ui: &egui::Ui, popup: bool) -> f32 {
+    if popup {
+        (ui.ctx().content_rect().height() - 160.0).clamp(120.0, 300.0)
+    } else {
+        f32::INFINITY
+    }
+}
+
 impl EditorApp {
     /// How an overlay swatch is filled: its texture (scrolling when animated), else its colour.
     pub(in crate::app) fn overlay_fill(
@@ -160,21 +169,22 @@ impl EditorApp {
                     .desired_width(54.0),
             );
             ui.weak(format!("{shown} shown"));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                for (level, label, tip) in [
-                    (2_u8, "L", "Large swatches"),
-                    (1, "M", "Medium swatches"),
-                    (0, "S", "Small swatches"),
-                ] {
-                    if ui
-                        .selectable_label(self.settings.prefs.swatch_size == level, label)
-                        .on_hover_text(tip)
-                        .clicked()
-                    {
-                        self.settings.prefs.swatch_size = level;
-                    }
+            // Part of the same wrapping flow (a right-to-left layout inside a wrapped row
+            // misplaces its items once the row wraps).
+            ui.add_space(6.0);
+            for (level, label, tip) in [
+                (0_u8, "S", "Small swatches"),
+                (1, "M", "Medium swatches"),
+                (2, "L", "Large swatches"),
+            ] {
+                if ui
+                    .selectable_label(self.settings.prefs.swatch_size == level, label)
+                    .on_hover_text(tip)
+                    .clicked()
+                {
+                    self.settings.prefs.swatch_size = level;
                 }
-            });
+            }
         });
         self.ui.palette_search.trim().to_owned()
     }
@@ -206,7 +216,7 @@ impl EditorApp {
         let mut picked = None;
         let ctx = ui.ctx().clone();
         egui::ScrollArea::vertical()
-            .max_height(if popup { 300.0 } else { f32::INFINITY })
+            .max_height(popup_max_height(ui, popup))
             .auto_shrink([popup, popup])
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
@@ -266,7 +276,7 @@ impl EditorApp {
         let current = self.settings.prefs.brush.underlay.fill;
         let mut picked = None;
         egui::ScrollArea::vertical()
-            .max_height(if popup { 300.0 } else { f32::INFINITY })
+            .max_height(popup_max_height(ui, popup))
             .auto_shrink([popup, popup])
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {

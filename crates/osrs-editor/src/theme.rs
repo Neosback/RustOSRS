@@ -327,6 +327,16 @@ pub fn set_theme(ctx: &egui::Context, theme: Theme) {
     });
 }
 
+/// A context with the app's spacing and type scale (default fonts), for panel layout tests.
+#[cfg(test)]
+pub(crate) fn layout_test_context(scale: f32) -> egui::Context {
+    let ctx = egui::Context::default();
+    ctx.set_pixels_per_point(scale);
+    ctx.set_theme(egui::ThemePreference::Dark);
+    ctx.style_mut_of(egui::Theme::Dark, apply_layout);
+    ctx
+}
+
 /// Spacing, type scale and interaction sizes shared by every theme.
 fn apply_layout(style: &mut egui::Style) {
     style.spacing.item_spacing = egui::vec2(8.0, 6.0);

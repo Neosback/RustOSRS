@@ -2,6 +2,7 @@
 use super::InteractionRuntime;
 use crate::terrain_path::{self, FittedTile};
 use eframe::egui;
+mod cancel;
 const FNV_OFFSET: u64 = 0xCBF2_9CE4_8422_2325;
 const FNV_PRIME: u64 = 0x0100_0000_01B3;
 
@@ -17,6 +18,10 @@ pub(super) struct SplineState {
     appearance: Option<std::sync::Arc<terrain_path::PathAppearance>>,
     /// The editor state the preview should represent. The worker may still be catching up.
     desired_key: Option<u64>,
+    /// No overlay is armed, so there is nothing to plan.
+    needs_overlay: bool,
+    /// A plan for this key was cancelled by the user; it stays cancelled until an edit changes the key.
+    cancelled_key: Option<u64>,
     /// One background worker. Rapid edits are coalesced to the newest request.
     #[cfg(not(target_arch = "wasm32"))]
     worker: Option<PlanWorker>,
@@ -36,8 +41,13 @@ pub(in crate::app) struct Preview {
 pub(in crate::app) enum SplineStatus {
     NeedsPoints,
     NeedsOverlay,
+    /// A plan for the current points is running.
     Updating,
-    Ready { tiles: usize },
+    /// The user cancelled the running plan; edit or resume to plan again.
+    Cancelled,
+    Ready {
+        tiles: usize,
+    },
     Empty,
     Failed(&'static str),
 }
@@ -184,7 +194,7 @@ impl InteractionRuntime {
         if self.spline.points.len() < 2 {
             return SplineStatus::NeedsPoints;
         }
-        if self.spline.desired_key.is_none() {
+        if self.spline.needs_overlay {
             return SplineStatus::NeedsOverlay;
         }
         match self.spline.current_preview() {
@@ -192,6 +202,11 @@ impl InteractionRuntime {
             Some(preview) => SplineStatus::Ready {
                 tiles: preview.paints.len(),
             },
+            None if self.spline.cancelled_key.is_some()
+                && self.spline.cancelled_key == self.spline.desired_key =>
+            {
+                SplineStatus::Cancelled
+            }
             None => SplineStatus::Updating,
         }
     }
@@ -352,6 +367,7 @@ impl InteractionRuntime {
         if self.spline.error == Some("Control points must have finite coordinates") {
             self.spline.error = None;
         }
+        self.spline.needs_overlay = overlay_id.is_none();
         if let Some(overlay) = overlay_id
             && self.spline.current_preview().is_some()
             && self.spline.desired_key
@@ -377,6 +393,9 @@ impl InteractionRuntime {
         };
         let desired_key = input.key;
         self.spline.desired_key = Some(desired_key);
+        if self.cancelled_plan_stays_cancelled(desired_key) {
+            return;
+        }
 
         #[cfg(not(target_arch = "wasm32"))]
         {

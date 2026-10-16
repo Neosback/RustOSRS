@@ -13,13 +13,21 @@ Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md`
 
 ## Current program checkpoints
 
-0. Reconcile handoff/docs and record gate results at `41d0c020` — done (see Validation).
-1. Measurement completion (schema v2, worker/renderer counters, workloads, compare tool) and recorded baselines — pending.
-2. (a) Terrain appearance abstraction in `osrs-scene`, no behavior change; (b) responsive tool panels and Spline workflow with real blended preview — pending.
-3. Measured CPU/GPU/memory optimizations — pending.
+0. Reconcile handoff/docs, gate results at `41d0c020` — done (`7587400f`).
+1. Measurement: schema-2 capture, worker/renderer counters, workloads, compare tool, fixed-view pixel capture — code done (`7f1bb2a2`). **Baselines are not recorded.** A partial run (49 of 84 planned runs) was abandoned: four runs contained 5–59 s frame gaps while the editor's own frame body took ~14 ms, which points at macOS throttling an unattended window (reproduced as a ~4000 fps no-present spin and a 2.9 fps crawl in later runs). `performance.py` now holds the machine awake (`caffeinate`), discards and retries stalled runs, and continues past failures. Retake baselines on the commit that starts checkpoint 3.
+2. (a) Terrain appearance contract in `osrs-scene` and real-colour spline preview — done (`8768cf07`; oracle, Reference pixel golden and fixed-view hashes unchanged). (b) Responsive panels and Spline workflow — done in this checkpoint (below); wider tool-panel audit continues as needed.
+3. Measured CPU/GPU/memory optimizations — pending (needs baselines).
 4. Entity cache decoders, skeletal animation, shared model appearance transforms — pending.
 5. `osrs-playtest` crate, editor controller, entity rendering — pending.
 6. Remaining 117HD systems and independent visual proof — pending.
+
+### Checkpoint 2b notes
+
+- Spline panel is one pure widget set (`app/spline_tool/sections.rs`) used by the drawer (all sections) and the quick HUD (compact); the shelf keeps the shape settings. Order: appearance, shape, preview status + actions, control points; two columns from 640 points.
+- Explicit plan states: needs points, needs overlay, updating, cancelled, ready, empty, failed. "Lay path" is enabled only for a ready, current preview. Cancel stops a running plan (the worker is dropped); any edit or "Plan again" lifts it.
+- Lay path also sets the Paint brush's armed height/flags; the panel now says so. The preview tile set does not depend on them, so they are not in the plan key.
+- Layout: quick HUD narrows and scrolls; Paint tab strip wraps and the preview stacks under the palette below 340 points; palette popup height follows the window; Height tool rows wrap; the status bar drops its figures below 900 points.
+- Tests: spline panel layout at widths 240/320/480/700/1100 and scales 1/1.5/2 for every status (verified able to fail), cancel/resume/status tests. Layout tests use default fonts with the app spacing, not the app fonts. Not yet covered by a layout harness: the Paint/Height/Objects drawers and popups (checked by eye only), and display scales were not visually verified.
 
 Do not describe this program as complete merely because its foundations or self-generated regression images pass. Viewing distance, resolution and visual settings remain fixed in performance comparisons. Client networking/accounts and full combat/economy are outside scope.
 
@@ -42,15 +50,14 @@ Do not describe this program as complete merely because its foundations or self-
 
 ## Validation
 
-Checkpoint 0, at `41d0c020` plus documentation/comment-only edits (local results, not remote CI certification), Python 3.14.8 (`/opt/homebrew/bin/python3`):
+Latest full run (checkpoint 2b working tree on top of `8768cf07`; local results, not remote CI certification), Python 3.14.8 (`/opt/homebrew/bin/python3`):
 
-- Architecture guard, 24 architecture-guard tests, 11 editor-ownership tests, 5 reference-regeneration tests, golden-index check, HD source pins (98 entries awaiting audit) and 3 HD-source tests: all passed.
-- `cargo fmt --all --check`; locked workspace/all-target/all-feature `cargo check` and strict Clippy: passed.
-- Locked full workspace/all-target/all-feature tests: **805 passed, 0 failed, 18 ignored** (the ignored tests keep their explicit external cache/GPU/oracle prerequisites and are not acceptance evidence).
-- WASM lower-crate check and strict editor Clippy: passed.
-- Cargo emits the existing vendored `rune-fs` MSRV-metadata warning.
+- Architecture guard and its tests, editor-ownership tests, reference-regeneration tests, golden-index check, HD source pins (98 entries awaiting audit), HD-source tests and `test_performance.py`: passed.
+- `cargo fmt --all --check`; locked workspace/all-target/all-feature `cargo check` and strict Clippy; WASM lower-crate check and strict editor Clippy: passed.
+- Locked full workspace/all-target/all-feature tests: **825 passed, 0 failed, 18 ignored** (ignored tests keep their external cache/GPU/oracle prerequisites).
+- With the pinned cache: terrain oracle (`terrain_oracle_diff`) and the Reference pixel golden passed; `region_capture` Reference hashes were identical before and after checkpoint 2a. HD captures vary by up to one channel level in a few hundred pixels between identical runs, so HD comparisons use a tolerance.
 
-This supersedes the earlier PR #56 figures (793 passed). Historical CI results only certify the SHAs they name.
+Earlier figures (805 at `41d0c020`, 793 for PR #56) are superseded. Historical CI results only certify the SHAs they name. Cargo emits the existing vendored `rune-fs` MSRV-metadata warning.
 
 ## Subsequent work
 

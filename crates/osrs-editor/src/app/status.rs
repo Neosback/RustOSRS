@@ -3,6 +3,9 @@
 use super::EditorApp;
 use eframe::egui;
 
+/// Window width below which the status bar drops its right-hand figures.
+const NARROW_STATUS: f32 = 900.0;
+
 const FLY_HINTS: &[(&str, &str)] = &[
     ("Click", "select"),
     ("Right drag", "look"),
@@ -26,8 +29,11 @@ impl EditorApp {
     pub(super) fn status_bar(&mut self, ui: &mut egui::Ui) {
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
+                // On narrow windows the figures on the right are dropped and a long notice is
+                // cut with an ellipsis, so the two never draw over each other.
+                let narrow = ui.ctx().content_rect().width() < NARROW_STATUS;
                 if let Some(message) = self.ui.notice() {
-                    ui.label(message);
+                    ui.add(egui::Label::new(message).truncate());
                     ui.separator();
                     ui.ctx()
                         .request_repaint_after(std::time::Duration::from_millis(500));
@@ -48,6 +54,9 @@ impl EditorApp {
                 if let Some(status) = self.ui.status() {
                     ui.separator();
                     ui.colored_label(egui::Color32::LIGHT_RED, status);
+                }
+                if narrow {
+                    return;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let resident = self.world.resident_vertices();

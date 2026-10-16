@@ -46,6 +46,7 @@ pub(in crate::app) fn settings(ui: &mut egui::Ui, settings: &mut SplineSettings)
     });
 }
 
+#[derive(Debug, PartialEq)]
 pub(in crate::app) enum PointAction {
     Select(usize),
     Move(usize, (f32, f32)),

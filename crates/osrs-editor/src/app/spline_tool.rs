@@ -7,6 +7,7 @@
 mod input;
 mod overlay;
 pub(in crate::app) mod panel;
+pub(in crate::app) mod sections;
 
 use super::EditorApp;
 use super::editing::PathTile;
