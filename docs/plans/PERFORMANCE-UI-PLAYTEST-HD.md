@@ -8,6 +8,13 @@ Stay on main unless explicitly asked otherwise. Preserve Reference semantics and
 
 As of 2026-10-16 the user explicitly paused performance measurement/optimization work. Performance tooling may remain in the repository, but checkpoints 1 and 3 below are **not the active development path** until the user resumes them. Current work proceeds through the entity/runtime/playtest source-audit and implementation path in checkpoint 4.
 
+The user subsequently approved starting the source-driven world-editor workflow review. Its first
+implementation slice is explainable initial collision: a headless clipping snapshot, accepted-build
+inspection and source/target-cache regression coverage. See [`COLLISION-001`](../specs/collision.md)
+and the [feature map](../architecture/FEATURE-MAP.md). This prepares the collision input for checkpoint
+4; it does not claim controllable actors, routefinding, audio or entity rendering are complete, and
+does not resume the paused performance checkpoints.
+
 ## Sequence and acceptance
 
 1. **Paused.** Extend existing diagnostics with opt-in raw frame/CPU/GPU distributions, build latency, resource accounting and reproducible JSON reports. Run optimized fixed-input baselines with warm-up/repetitions on the M2/8-GB Mac, both profiles, capped and uncapped. Measure idle/animated views, dense/long-distance views, travel/return, editing/rebuilds, water/shadows/interiors. Unavailable counters stay explicitly unavailable. Unified memory counters are never added together.

@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "source_commit": "1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc",
+  "declared_game_revision": 235,
+  "scope": "Exact CollisionMap constructor/terrain-load-bit clearing/initial clipping writes, not movement or cache-241 certification.",
+  "sources": [
+    {
+      "path": "runescape-client/src/main/java/CollisionMap.java",
+      "sha256": "c8dd1468081d0bb17d42e29caf941e932552b1a985647bb6dd1f1b5f1795d25a"
+    },
+    {
+      "path": "injection-annotations/src/main/java/net/runelite/mapping/Export.java",
+      "sha256": "327f81b62522a7206e175813e0763415d659b878b298649d5af873bda400487a"
+    },
+    {
+      "path": "injection-annotations/src/main/java/net/runelite/mapping/Implements.java",
+      "sha256": "efec6c4ffc12d11730eb7a3b49dc257deb59b7eaaa4a5b871ff7546d3189ae45"
+    },
+    {
+      "path": "injection-annotations/src/main/java/net/runelite/mapping/ObfuscatedGetter.java",
+      "sha256": "5daa58479848bcd5863059e316578b35866ff2c62c2c8f8fffe563ad6bd45bfd"
+    },
+    {
+      "path": "injection-annotations/src/main/java/net/runelite/mapping/ObfuscatedName.java",
+      "sha256": "6c7de2f1947951da6ba0ead7c2511599812cb94fda0ec36041969925bc40b08a"
+    },
+    {
+      "path": "injection-annotations/src/main/java/net/runelite/mapping/ObfuscatedSignature.java",
+      "sha256": "219cf42e974b9420d32f91ab032a5d46a62bc1b02857b2fa5dad316f1647038e"
+    }
+  ],
+  "context_sources": [
+    {
+      "path": "runescape-client/src/main/java/WorldView.java",
+      "sha256": "9ddccb593cc81036d9a07c611f4e3088e0bd08fde93ea237645c2816010ccb4c"
+    },
+    {
+      "path": "runescape-client/src/main/java/class337.java",
+      "sha256": "09be9b4fb2dd86f3b778cdd22f7672afad16131bcb7afd68e7d60d1d9da7b975"
+    },
+    {
+      "path": "runescape-client/src/main/java/class470.java",
+      "sha256": "e0c8198a320503b469023d87f57e84460f92e7fe95b392c2a8d166ad760a3dbe"
+    },
+    {
+      "path": "runescape-client/src/main/java/DynamicObject.java",
+      "sha256": "069dba100c4dc733c725f323ff569ef2194bc2ae3b4e3ce9c2cb9e9d58b4f89f"
+    },
+    {
+      "path": "runescape-client/src/main/java/FriendSystem.java",
+      "sha256": "54ebf39399f7fee379204eebe220771188b1c12908b3a9b909e2d15d223af585"
+    }
+  ]
+}

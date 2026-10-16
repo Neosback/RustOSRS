@@ -7,6 +7,7 @@
 mod builds;
 mod height_dependencies;
 mod inspection;
+pub(in crate::app) use inspection::CollisionInspection;
 mod invalidation;
 mod object_output_store;
 mod stats;

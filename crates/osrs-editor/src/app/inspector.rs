@@ -4,6 +4,8 @@
 //! inspects: the editing tools act on tiles and objects, the inspector never changes them.
 //! The dock itself (rail, panel, tabs) is in `workspace.rs`; settings live in `settings_window.rs`.
 
+mod collision;
+
 use super::EditorApp;
 use super::widgets::{OverlayFill, empty_state, paint_tile};
 use crate::icons;
@@ -210,6 +212,13 @@ impl EditorApp {
                     &crate::hud::region_id(tile.0 >> 6, tile.1 >> 6).to_string(),
                 );
             });
+        collision::show(
+            ui,
+            self.world
+                .collision_inspection(osrs_core::coords::MapTile::new(tile.0, tile.1)),
+            osrs_core::coords::MapTile::new(tile.0, tile.1),
+            self.interaction.view_plane(),
+        );
         ui.add_space(6.0);
         ui.horizontal_wrapped(|ui| {
             if authoring

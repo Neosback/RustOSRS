@@ -92,6 +92,8 @@ pub struct LocInfo {
 /// Everything the picker needs for one region.
 #[derive(Debug)]
 pub struct RegionInfo {
+    /// Initial-placement clipping on collision planes, with full contextual provenance.
+    pub collision: Arc<osrs_scene::collision::CollisionSnapshot>,
     pub region: RegionCoord,
     /// `plane * 64 * 64 + local_x * 64 + local_y`.
     tiles: Vec<TileInfo>,
@@ -395,6 +397,7 @@ pub fn extract_region_info(
     }
 
     RegionInfo {
+        collision: Arc::clone(&world.collision),
         region,
         tiles,
         heights,

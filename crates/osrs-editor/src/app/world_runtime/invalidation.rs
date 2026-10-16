@@ -191,6 +191,13 @@ pub(super) fn projection_invalidation(
         return ProjectionInvalidation::Regions(expand_regions(touched_regions, 1));
     }
 
+    // A bridge flag changes the collision plane of an anchored loc's entire footprint, not
+    // just the radius-5 terrain blend. Refresh contextual producers until a clipping dependency
+    // proof can bound that footprint. Object output proofs above already rebuild this universe.
+    if impact.intersects(ChangeImpact::COLLISION) {
+        return ProjectionInvalidation::Regions(expand_regions(touched_regions, 1));
+    }
+
     if terrain_tiles.is_empty() && height_vertices.is_empty() {
         return ProjectionInvalidation::Regions(invalidated_regions(impact, touched_regions));
     }

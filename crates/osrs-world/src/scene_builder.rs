@@ -18,6 +18,8 @@ use osrs_scene::{
 
 /// A fully assembled 104x104 scene window.
 pub struct WorldScene {
+    /// Initial-placement clipping, retained independently of visual admission and storage relinking.
+    pub collision: std::sync::Arc<osrs_scene::collision::CollisionSnapshot>,
     pub window: SceneWindow,
     /// Loaded height/flag/floor/shadow arrays (the builder's inputs).
     pub load: TerrainLoadGrid,
@@ -46,6 +48,7 @@ pub fn build_world_scene(
     )?;
 
     let LocStageOutput {
+        collision,
         mut finalizer,
         lit,
         animated,
@@ -66,6 +69,7 @@ pub fn build_world_scene(
     }
 
     Ok(WorldScene {
+        collision: std::sync::Arc::new(collision),
         window,
         load: loaded.grid,
         scene,

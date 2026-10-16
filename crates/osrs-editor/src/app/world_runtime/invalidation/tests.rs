@@ -200,3 +200,20 @@ fn zone_to_region_uses_euclidean_coordinates() {
     assert_eq!(zone_region((-8, -8)), (-1, -1));
     assert_eq!(zone_region((-9, -9)), (-2, -2));
 }
+#[test]
+fn collision_flag_edits_refresh_context_beyond_material_blending() {
+    let touched = [RegionCoord::new(50, 50)];
+    // At x=3254 the radius-5 material region set cannot include producer region 51.
+    // That producer still contains this anchor in its contextual window; a 20-tile footprint
+    // reaches its owned tiles at x>=3264 and changes collision plane when the bridge bit changes.
+    let footprint = EditFootprint::new([MapTile::new(3254, 3210)], [], []);
+    assert_eq!(
+        projection_invalidation(
+            ChangeImpact::COLLISION | ChangeImpact::TERRAIN_GEOMETRY,
+            &touched,
+            &footprint,
+            None
+        ),
+        ProjectionInvalidation::Regions(expand_regions(&touched, 1))
+    );
+}

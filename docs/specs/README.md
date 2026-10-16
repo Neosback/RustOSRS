@@ -58,6 +58,7 @@ Imported October 2026 RuneLite sources may independently corroborate a behavior,
 | File | Atomic specs | Status |
 |---|---|---|
 | `loc-placement.md` | `LOC-PLACEMENT-001` through `LOC-PLACEMENT-006` | Canonical |
+| `collision.md` | `COLLISION-001` | Pinned initial-write differential / target-cache integration |
 | `model-build.md` | `MODEL-BUILD-001` through `MODEL-BUILD-005` | Canonical |
 | `normals-lighting.md` | `NORMALS-001` through `NORMALS-004`, `LIGHTING-001` | Canonical |
 | `morph-animation-contouring.md` | `MORPH-001`, `ANIMATION-001`, `CONTOUR-001` | Canonical |

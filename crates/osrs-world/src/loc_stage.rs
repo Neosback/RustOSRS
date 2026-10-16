@@ -5,8 +5,8 @@
 //! transforms, exact loc lighting or retained `ModelData`, ground contouring), inserts the
 //! placement into the scene, and writes the `clipped` shadow grid the terrain builder consumes.
 //!
-//! Collision maps, minimap/occlusion flags, and sound registration are deliberately not modeled:
-//! no renderer consumes them.
+//! Initial-placement collision is retained independently of renderable admission for inspection
+//! and future playtesting. Minimap/occlusion flags and sound registration remain separate work.
 
 use crate::{
     LoadedWindow, WorldDefinitions, WorldError,
@@ -84,6 +84,8 @@ pub struct LocStageStats {
 
 /// Everything the loc stage produced.
 pub struct LocStageOutput {
+    /// Rebuildable initial clipping, including placements whose model was absent or rejected.
+    pub collision: osrs_scene::collision::CollisionSnapshot,
     /// Finalizer holding the surviving `ModelData` entities; call `reconcile_and_light` after the
     /// terrain stage.
     pub finalizer: SceneReferenceFinalizer,
@@ -134,6 +136,7 @@ pub fn place_window_locs(
     scene: &mut SceneGrid,
 ) -> Result<LocStageOutput, WorldError> {
     let window = loaded.window;
+    let mut collision = crate::collision_stage::terrain_collision(loaded);
     let plane_heights: Vec<Arc<Vec<Vec<i32>>>> = (0..4)
         .map(|plane| Arc::new(loaded.grid.plane_heights(plane)))
         .collect();
@@ -163,6 +166,7 @@ pub fn place_window_locs(
 
             let Some(definition) = definitions.object(loc.object_id)? else {
                 stats.missing_definition += 1;
+                collision.missing_definition();
                 continue;
             };
 
@@ -198,6 +202,30 @@ pub fn place_window_locs(
                 existing_wall_displacement,
             })
             .map_err(|error| WorldError::Placement(error.to_string()))?;
+
+            collision
+                .object(
+                    osrs_scene::collision::CollisionObject {
+                        object_id: loc.object_id,
+                        tile: tile
+                            .to_map(osrs_core::coords::MapTile::new(
+                                window.base_x,
+                                window.base_y,
+                            ))
+                            .ok_or_else(|| {
+                                WorldError::Placement(
+                                    "collision tile outside map coordinates".into(),
+                                )
+                            })?,
+                        source_plane: loc.source_plane,
+                        loc_type: plan.source_loc_type,
+                        orientation: plan.source_orientation,
+                        effect: osrs_scene::plan_definition_side_effects(&definition, plan)
+                            .collision,
+                    },
+                    loaded.grid.settings(1, tile_x as usize, tile_y as usize) & 2 != 0,
+                )
+                .map_err(|error| WorldError::Placement(error.to_string()))?;
 
             let requests = model_requests(&plan.kind);
             let mut entities = Vec::with_capacity(requests.len());
@@ -297,7 +325,7 @@ pub fn place_window_locs(
     }
     loaded.locations = locations;
 
-    finish(pending, scene, &loaded.grid, stats)
+    finish(pending, scene, &loaded.grid, stats, collision.build())
 }
 
 fn model_requests(kind: &PlacementKind) -> Vec<ModelRequest> {
@@ -603,6 +631,7 @@ fn finish(
     scene: &SceneGrid,
     grid: &TerrainLoadGrid,
     mut stats: LocStageStats,
+    collision: osrs_scene::collision::CollisionSnapshot,
 ) -> Result<LocStageOutput, WorldError> {
     // Boundary and floor-decoration slots keep only their last occupant (the client overwrites).
     let mut boundary_owner: HashMap<(u8, u32, u32), usize> = HashMap::new();
@@ -702,6 +731,7 @@ fn finish(
     }
 
     Ok(LocStageOutput {
+        collision,
         finalizer,
         lit,
         animated,

@@ -55,6 +55,14 @@ The small `app/paint_commit.rs`, `app/path_commit.rs`, and editor `heights.rs` m
 
 ## Debugging edits and rebuilds
 
+The tile inspector's **Collision and blockers** section reads immutable contextual snapshots from
+accepted world builds. It explains walking/projectile wall bits, footprint/floor blockers and their
+original object/terrain source planes, including neighbouring wall anchors and invisible placements.
+Dirty/pending or obsolete producer epochs show an updating state. Missing land/definitions are
+explicit; this is not a full route/reach or actor-size test. Ownership and oracle commands:
+[`docs/specs/collision.md`](../specs/collision.md). The scene builder retains clipping independently
+of renderable admission; the UI never derives it from picker triangles or edits a collision grid.
+
 The tile inspector's **Edit and rebuild trace** shows retained source-plane edit observations, semantic revision transitions, invalidation reasons and FIFO build identities/outcomes. The 256-event ring is enabled in debug builds; `RUSTOSRS_TRACE_EDITS=1` enables it explicitly and `=0` disables it. Release builds default to disabled and event construction is lazy. Source replacement clears retained observations.
 
 Build observations include source generation, request ID, semantic revision at scheduling, projection epoch and presentation generation. “Ticket accepted” records the FIFO freshness decision, not a claim that GPU presentation has completed. History-free source hydration and project-diff application are not interactive tool transactions and do not produce an interactive gesture event. Object tile observations describe placement anchors; invalidation events describe affected producer regions.

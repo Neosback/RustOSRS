@@ -8,6 +8,7 @@
 mod animation;
 mod animation_worker;
 mod assets;
+mod collision_stage;
 mod definitions;
 mod error;
 mod extract;
