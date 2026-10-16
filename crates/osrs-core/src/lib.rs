@@ -14,6 +14,7 @@ pub mod coords;
 pub mod definitions;
 pub mod dynamic_model;
 pub mod entity;
+pub mod entity_effect;
 pub mod floor_color;
 pub mod ids;
 pub mod lighting;
