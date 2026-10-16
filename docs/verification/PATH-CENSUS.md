@@ -26,6 +26,15 @@ Reproduce: `cargo run --release -p osrs-world --example path_census -- $RUSTOSRS
 - Width should be **per point** (or a preset: trail 1, path 3, road 5), not one global value.
 - Where a path meets a different overlay the real map mostly abuts with full tiles; a path should not blend into a non-path overlay.
 
+## How the tool uses it
+
+`scripts/gen_path_data.py` turns the census into `crates/osrs-editor/src/terrain_path/census.txt` (committed; the editor never needs the cache for it). The Spline tool then:
+
+- **Edge prior.** The fitter adds a cost, relative to the most common choice, for every (shape, rotation) the real map rarely uses for that 8-neighbour pattern (`PRIOR_WEIGHT` 18 samples per nat). Measured on a battery of 15 drawn paths (`terrain_path/fitter/tests.rs`): partial shapes on boundary tiles 60.5% → ~41% (real 44.7%), full tiles on straight edges 34.8% → ~70% (real ~77%), fidelity to the drawn band 0.974 → ~0.94. The weight is the knee of that trade-off: 6 barely moves the numbers, 30 buys nothing more.
+- **Presets.** Width presets Trail 1 / Path 3 / Road 5, per control point, with optional corners (round points curve, square points bend). Minimum width is one tile.
+- **Crossing rules.** An overlay is a *path* when it has at least 10 path-like components and at least 10% of its tiles in path-like strips (60 overlays; the hidden magenta overlays never are). A path replaces path overlays and open ground, keeps the underlay beneath, and leaves every other overlay (water, floors, hidden overlays) alone: those tiles are shown in red and counted ("N left alone"). The 10% line is a judgement: lowering it to 5% would also treat large mixed overlays as paths; the data does not say where "road" ends and "plaza" begins.
+- **Ground.** Paths follow the ground by default. "Smooth ground along the path" eases bumps along the path (profile smoothing 8 tiles, slope limit 40 units/tile = the real map's steepest-10% slope) and keeps the cross-slope, because real paths are not level across their width.
+
 ## Limits
 
 Components are cut at map-square edges (long roads are counted as several), plane 0 only, bridges and stairs are not distinguished, and "path-like" is a geometric guess, not a label: some large rivers' banks or paving qualify. Widths are approximate. Nothing here says which overlays *should* be paths; it measures how the existing map uses them.

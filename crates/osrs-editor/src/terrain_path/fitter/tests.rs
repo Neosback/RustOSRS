@@ -35,9 +35,9 @@ const STRAIGHT_EDGE_MASKS: [u8; 4] = [199, 124, 31, 241];
 
 fn conformance(tiles: &[FittedTile]) -> Conformance {
     let set: std::collections::BTreeSet<_> = tiles.iter().map(|t| (t.tile_x, t.tile_y)).collect();
-    let (mut boundary, mut partial) = (0.0, 0.0);
-    let (mut straight, mut straight_full) = (0.0, 0.0);
-    let (mut modal, mut total) = (0.0, 0.0);
+    let (mut boundary, mut partial) = (0.0_f32, 0.0_f32);
+    let (mut straight, mut straight_full) = (0.0_f32, 0.0_f32);
+    let (mut modal, mut total) = (0.0_f32, 0.0_f32);
     for tile in tiles {
         let key = (tile.tile_x, tile.tile_y);
         let mut mask = 0u8;
@@ -197,9 +197,78 @@ fn an_empty_line_fits_nothing() {
     assert_eq!(fit_path_overlay(&[], &options(2.0)), Fit::default());
 }
 
-#[test]
-fn print_conformance_for_tuning() {
-    for weight in [0.0, 1.0, 2.0, 3.0, 4.0, 6.0] {
-        eprintln!("prior {weight}: {:?}", average(weight));
+/// Share of the ideal band's samples the fit reproduces, over the tiles the band touches.
+fn coverage(line: &[PathSample], tiles: &[FittedTile]) -> f32 {
+    let by_tile: std::collections::BTreeMap<_, _> =
+        tiles.iter().map(|t| ((t.tile_x, t.tile_y), *t)).collect();
+    let (mut agreed, mut sampled) = (0_u32, 0_u32);
+    for tile in candidate_tiles(line) {
+        let ideal = ideal_mask(tile, line);
+        if !ideal.iter().any(|c| *c) {
+            continue;
+        }
+        let index = by_tile
+            .get(&tile)
+            .map_or(0, |t| census::candidate_index(t.shape, t.orientation));
+        agreed += agreement(&ideal, &candidates()[index].covered);
+        sampled += SAMPLE_COUNT as u32;
     }
+    agreed as f32 / sampled.max(1) as f32
+}
+
+fn average_coverage(prior_weight: f32) -> f32 {
+    let paths = battery();
+    let sum: f32 = paths
+        .iter()
+        .map(|(points, width)| {
+            let path = line(points, *width);
+            coverage(
+                &path,
+                &fit_path_overlay(&path, &options(prior_weight)).tiles,
+            )
+        })
+        .sum();
+    sum / paths.len() as f32
+}
+
+/// The real map's figures (docs/verification/PATH-CENSUS.md): 44.7% of boundary tiles are partial
+/// shapes and about 77% of straight-edge tiles are full tiles.
+#[test]
+fn the_census_prior_moves_the_fit_toward_how_the_real_map_tiles_paths() {
+    let without = average(0.0);
+    let with = average(PRIOR_WEIGHT);
+    // Straight edges: far more full tiles, close to the real 77%.
+    assert!(
+        with.straight_edge_full > without.straight_edge_full + 0.25,
+        "{with:?} vs {without:?}"
+    );
+    assert!(with.straight_edge_full > 0.60, "{with:?}");
+    // Boundaries: fewer partial shapes, closer to the real 45% than the unsteered 61%.
+    assert!(
+        with.boundary_partial < without.boundary_partial - 0.10,
+        "{with:?} vs {without:?}"
+    );
+    assert!((0.33..=0.52).contains(&with.boundary_partial), "{with:?}");
+    // Tiles are overwhelmingly the most common choice for their neighbourhood.
+    assert!(
+        with.modal > without.modal + 0.10 && with.modal > 0.85,
+        "{with:?}"
+    );
+}
+
+#[test]
+fn following_the_census_costs_little_fidelity_to_the_drawn_band() {
+    let without = average_coverage(0.0);
+    let with = average_coverage(PRIOR_WEIGHT);
+    assert!(without > 0.96, "{without}");
+    assert!(with > 0.92 && without - with < 0.05, "{with} vs {without}");
+}
+
+#[test]
+fn narrow_trails_keep_their_length_instead_of_dissolving() {
+    // A one-tile trail is the most common real path; the prior must not eat it.
+    let path = line(&[(2.5, 10.5), (28.5, 10.5)], 1.0);
+    let fit = fit_path_overlay(&path, &options(PRIOR_WEIGHT));
+    let columns: std::collections::BTreeSet<_> = fit.tiles.iter().map(|t| t.tile_x).collect();
+    assert!((2..=28).all(|x| columns.contains(&x)), "{columns:?}");
 }

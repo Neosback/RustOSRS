@@ -39,7 +39,7 @@ pub(in crate::app) struct AlsoApplies {
 }
 
 pub(in crate::app) struct SplineView<'a> {
-    pub points: &'a [(f32, f32)],
+    pub points: &'a [crate::terrain_path::ControlPoint],
     pub selected: Option<usize>,
     pub status: SplineStatus,
     pub also: AlsoApplies,
@@ -68,7 +68,10 @@ pub(in crate::app) fn status_text(status: SplineStatus) -> String {
         SplineStatus::NeedsOverlay => "Choose and enable an overlay".to_owned(),
         SplineStatus::Updating => "Planning the preview…".to_owned(),
         SplineStatus::Cancelled => "Planning cancelled".to_owned(),
-        SplineStatus::Ready { tiles } => format!("Ready · {tiles} tiles"),
+        SplineStatus::Ready { tiles, clipped: 0 } => format!("Ready · {tiles} tiles"),
+        SplineStatus::Ready { tiles, clipped } => {
+            format!("Ready · {tiles} tiles · {clipped} left alone (other overlays)")
+        }
         SplineStatus::Empty => "The fitted path contains no tiles".to_owned(),
         SplineStatus::Failed(reason) => reason.to_owned(),
     }

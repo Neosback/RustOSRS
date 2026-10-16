@@ -1,18 +1,30 @@
 use super::*;
 
-const STATUSES: [SplineStatus; 7] = [
+const STATUSES: [SplineStatus; 8] = [
     SplineStatus::NeedsPoints,
     SplineStatus::NeedsOverlay,
     SplineStatus::Updating,
     SplineStatus::Cancelled,
-    SplineStatus::Ready { tiles: 128 },
+    SplineStatus::Ready {
+        tiles: 128,
+        clipped: 0,
+    },
+    SplineStatus::Ready {
+        tiles: 128,
+        clipped: 9,
+    },
     SplineStatus::Empty,
     SplineStatus::Failed("Preview worker stopped; retrying"),
 ];
 
-fn points(count: usize) -> Vec<(f32, f32)> {
+fn points(count: usize) -> Vec<crate::terrain_path::ControlPoint> {
     (0..count)
-        .map(|i| (3200.5 + i as f32 * 7.25, 3210.5 + i as f32 * 3.5))
+        .map(|i| crate::terrain_path::ControlPoint {
+            x: 3200.5 + i as f32 * 7.25,
+            y: 3210.5 + i as f32 * 3.5,
+            width: 1.0 + (i % 5) as f32 * 2.0,
+            corner: i % 3 == 1,
+        })
         .collect()
 }
 
@@ -38,7 +50,7 @@ fn run(
     };
     let pts = points(point_count);
     let mut settings = SplineSettings {
-        grade,
+        smooth_ground: grade,
         ..SplineSettings::default()
     };
     let mut result = (Vec::new(), egui::Rect::NOTHING, 0.0);

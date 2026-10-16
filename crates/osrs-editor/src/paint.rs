@@ -200,11 +200,6 @@ impl PathStyle {
             Self::Road => "Road",
         }
     }
-
-    /// The preset a width belongs to, when it is exactly one of them.
-    pub fn of_width(width: f32) -> Option<Self> {
-        Self::ALL.into_iter().find(|style| style.width() == width)
-    }
 }
 
 /// Which floors the palettes list.

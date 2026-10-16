@@ -5,6 +5,7 @@
 //! switch tool, set the brush, go somewhere, toggle overlays, undo. `wait N` pauses N frames (the
 //! script resumes on its own), which is how smoke tests line things up with the world loading.
 
+mod path;
 mod window;
 
 use super::EditorApp;
@@ -22,7 +23,9 @@ teleport X Y [plane]
 overlay ID|none        underlay ID|none        shape S [R]
 radius N               arm overlay|underlay|shape|height|mask on|off
 paint X Y              apply the brush at a tile (waits until it is loaded)
-spline X,Y X,Y ...     set the path's control points (tile coordinates)
+spline X,Y[:W][!] ...  set the path's control points (tile coordinates, width, ! = corner)
+width N                the width new points start with (1 trail, 3 path, 5 road)
+ground follow|smooth   lay paths following the ground, or smoothing it along the path
 lay                    lay the path
 select object X Y      the nearest named object within 4 tiles (waits for it)
 select tiles X0 Y0 X1 Y1
@@ -271,15 +274,15 @@ impl EditorApp {
                 self.interaction.set_camera_pose(yaw, pitch, height);
             }
             "spline" => {
-                let mut points = Vec::new();
-                for pair in words {
-                    let (x, y) = pair.split_once(',').ok_or("points are X,Y")?;
-                    points.push((
-                        number::<f32>(Some(x), "x")? + 0.5,
-                        number::<f32>(Some(y), "y")? + 0.5,
-                    ));
-                }
-                self.interaction.replace_spline_points(points);
+                let width = self.settings.prefs.spline.width;
+                let controls = path::controls(words, width)?;
+                self.interaction.replace_spline_controls(controls);
+            }
+            "width" => {
+                self.settings.prefs.spline.width = number::<f32>(words.next(), "width")?;
+            }
+            "ground" => {
+                self.settings.prefs.spline.smooth_ground = path::smooth_ground(words.next())?
             }
             "lay" => {
                 if self.interaction.spline_points().is_empty() {

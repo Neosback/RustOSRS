@@ -237,11 +237,11 @@ impl EditorApp {
             });
         }
         self.spline_update();
-        let points = self.interaction.spline_points().to_vec();
+        let points = self.interaction.spline_controls();
         let brush = &self.settings.prefs.brush;
         let also = AlsoApplies {
             // A graded bed replaces the Paint brush's flat height.
-            height: (brush.height.armed && !self.settings.prefs.spline.grade)
+            height: (brush.height.armed && !self.settings.prefs.spline.smooth_ground)
                 .then_some(brush.height.value),
             flags: brush.flags.armed.then_some(brush.flags.bits),
         };
@@ -286,6 +286,10 @@ impl EditorApp {
                 "Paint overlay",
             );
         });
+        // A new width preset applies to the selected point, or to every point and new ones.
+        if spline_settings.width != self.settings.prefs.spline.width {
+            self.interaction.apply_spline_width(spline_settings.width);
+        }
         self.settings.prefs.spline = spline_settings;
         for action in actions {
             match action {
@@ -297,6 +301,12 @@ impl EditorApp {
                 }
                 SplineAction::Point(PointAction::Remove(index)) => {
                     self.interaction.remove_spline_point(index)
+                }
+                SplineAction::Point(PointAction::Width(index, width)) => {
+                    self.interaction.set_spline_point_width(index, width)
+                }
+                SplineAction::Point(PointAction::ToggleCorner(index)) => {
+                    self.interaction.toggle_spline_corner(index)
                 }
                 SplineAction::Lay => self.commit_spline(),
                 SplineAction::RemoveLast => self.interaction.pop_spline_point(),

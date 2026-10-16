@@ -27,11 +27,7 @@ impl EditorApp {
             }
             return;
         };
-        let at = if self.settings.prefs.spline.snap_points {
-            (hit.tile.0 as f32 + 0.5, hit.tile.1 as f32 + 0.5)
-        } else {
-            hit.at
-        };
+        let at = hit.at;
         let modifiers = ctx.input(|i| i.modifiers);
         let nearest = self
             .interaction
@@ -47,6 +43,13 @@ impl EditorApp {
                 Some(index) => self.interaction.remove_spline_point(index),
                 None => self.interaction.pop_spline_point(),
             }
+        }
+        // Double-clicking a point makes it a corner, or makes a corner smooth again.
+        if response.double_clicked()
+            && let Some(index) = nearest
+        {
+            self.interaction.toggle_spline_corner(index);
+            return;
         }
         if ctx.input(|i| i.pointer.primary_pressed()) && response.is_pointer_button_down_on() {
             if modifiers.alt {
@@ -114,7 +117,7 @@ impl EditorApp {
                 rotation: paint.orientation,
             })
             .collect();
-        let grade = super::commit_grade(self, &preview);
+        let grade = super::terrain::commit_grade(self, &preview);
         let changed = self.apply_terrain_path(&tiles, &grade);
         self.interaction.clear_spline_points();
         self.ui

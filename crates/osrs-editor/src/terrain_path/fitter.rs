@@ -8,6 +8,7 @@
 //! outline turns.
 
 use super::census::{self, NeighbourMask};
+use super::shapes::overlay_triangles;
 use super::smooth::PathSample;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
@@ -41,6 +42,11 @@ pub struct FittedTile {
     pub shape: u8,
     pub orientation: u8,
 }
+
+/// How strongly shared edges line up, and how strongly the real map's usual shape for a
+/// neighbourhood is preferred. Fixed: the real map decides, not a slider.
+pub const EDGE_WEIGHT: f32 = 0.75;
+pub const PRIOR_WEIGHT: f32 = 18.0;
 
 /// How the fit is steered.
 pub struct FitOptions<'a> {
@@ -330,10 +336,10 @@ fn best_with_neighbors(
     let penalty = census::penalty(mask);
     let mut best = 0;
     let mut best_score = f32::NEG_INFINITY;
-    for index in 0..candidates.len() {
+    for (index, extra) in penalty.iter().enumerate().take(candidates.len()) {
         let mut score = score_candidate(key, state, index, states, candidates, edge_weight);
         if index > 0 {
-            score -= prior_weight * penalty[index];
+            score -= prior_weight * extra;
         }
         if score > best_score {
             best = index;

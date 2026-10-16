@@ -39,5 +39,6 @@ pub use path::{
     build_terrain_path_patch_with_grade,
 };
 pub use path_grade::{
-    MAX_BLEND_TILES, MAX_SLOPE, MAX_SMOOTHING_TILES, MIN_SLOPE, PathGradeSpec, plan_path_grade,
+    GradePoint, MAX_BLEND_TILES, MAX_SLOPE, MAX_SMOOTHING_TILES, MIN_SLOPE, PathGradeSpec,
+    plan_path_grade,
 };

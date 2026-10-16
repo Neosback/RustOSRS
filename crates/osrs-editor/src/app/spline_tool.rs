@@ -8,6 +8,7 @@ mod input;
 mod overlay;
 pub(in crate::app) mod panel;
 pub(in crate::app) mod sections;
+mod terrain;
 
 use super::EditorApp;
 use super::editing::PathTile;
@@ -46,11 +47,7 @@ fn pending_point(app: &EditorApp) -> Option<(f32, f32)> {
         return None;
     }
     let hit = app.interaction.hover().tile?;
-    let at = if app.settings.prefs.spline.snap_points {
-        (hit.tile.0 as f32 + 0.5, hit.tile.1 as f32 + 0.5)
-    } else {
-        hit.at
-    };
+    let at = hit.at;
     if app
         .interaction
         .spline_points()
@@ -60,106 +57,6 @@ fn pending_point(app: &EditorApp) -> Option<(f32, f32)> {
         return None;
     }
     Some(((at.0 * 4.0).round() / 4.0, (at.1 * 4.0).round() / 4.0))
-}
-
-/// A vertex height from the picker data of the loaded regions.
-fn info_vertex_height(infos: &crate::pick::Infos, plane: u8, vertex: (i32, i32)) -> Option<i32> {
-    let region = (vertex.0.div_euclid(64), vertex.1.div_euclid(64));
-    let info = infos.get(&region)?;
-    Some(info.corner_height(
-        usize::from(plane),
-        vertex.0.rem_euclid(64) as usize,
-        vertex.1.rem_euclid(64) as usize,
-    ))
-}
-
-/// Rebuild the real-colour appearance (and the grade it shows) when the plan, the grading options
-/// or the terrain under the path changed.
-fn rebuild_appearance(app: &mut EditorApp) {
-    let version = app.world.infos_version();
-    let spline = &app.settings.prefs.spline;
-    let spec = spline.grade_spec();
-    let grade_key = spec.map_or(0, |spec| {
-        [
-            spec.smoothing_tiles,
-            spec.max_slope,
-            spec.blend_tiles,
-            spline.width,
-        ]
-        .iter()
-        .fold(0xCBF2_9CE4_8422_2325_u64, |hash, value| {
-            (hash ^ u64::from(value.to_bits())).wrapping_mul(0x0100_0000_01B3)
-        }) | 1
-    });
-    let (Some(preview), Some(floors)) =
-        (app.interaction.current_spline_preview(), app.world.floors())
-    else {
-        return;
-    };
-    let fresh = app.interaction.spline_appearance().is_some_and(|a| {
-        a.key == preview.key && a.infos_version == version && a.grade_key == grade_key
-    });
-    if fresh {
-        return;
-    }
-    let plane = app.interaction.view_plane();
-    let infos = app.world.infos();
-    let graded = match (spec, preview.lines.first()) {
-        (Some(spec), Some(line)) => {
-            osrs_edit::plan_path_grade(line, spline.width.clamp(0.5, 24.0), spec, &|vertex| {
-                info_vertex_height(infos, plane, vertex)
-            })
-        }
-        _ => Vec::new(),
-    };
-    let appearance = terrain_path::path_appearance(
-        plane,
-        preview.overlay_id,
-        &preview.paints,
-        &graded,
-        |tile| {
-            let region = (tile.0.div_euclid(64), tile.1.div_euclid(64));
-            infos.get(&region)?.tile(usize::from(plane), tile).copied()
-        },
-        floors.as_ref(),
-        terrain_path::reference_palette(),
-    );
-    let built = terrain_path::PathAppearance {
-        key: preview.key,
-        infos_version: version,
-        grade_key,
-        origin: appearance.as_ref().map_or((0, 0), |(origin, _)| *origin),
-        tiles: appearance.map(|(_, tiles)| tiles).unwrap_or_default(),
-    };
-    app.interaction.set_spline_appearance(built);
-}
-
-/// The vertices laying `preview` would grade, from the authoritative document's heights. Empty when
-/// grading is off, or (with a notice) when the ground under the path is not known.
-fn commit_grade(
-    app: &mut EditorApp,
-    preview: &super::interaction_runtime::Preview,
-) -> Vec<((i32, i32), i32)> {
-    use osrs_core::coords::{MapTile, SourcePlane};
-    use osrs_edit::HeightVertexCoord;
-    let settings = &app.settings.prefs.spline;
-    let (Some(spec), Some(line), Some(plane)) = (
-        settings.grade_spec(),
-        preview.lines.first(),
-        SourcePlane::new(app.interaction.view_plane()),
-    ) else {
-        return Vec::new();
-    };
-    let document = app.session.document();
-    let grade = osrs_edit::plan_path_grade(line, settings.width.clamp(0.5, 24.0), spec, &|v| {
-        document.height_at(HeightVertexCoord::new(MapTile::new(v.0, v.1), plane))
-    });
-    if grade.is_empty() {
-        app.ui.notify(
-            "Terrain grading was skipped: the ground under the path is not loaded".to_owned(),
-        );
-    }
-    grade
 }
 
 impl EditorApp {
@@ -174,25 +71,33 @@ impl EditorApp {
         let overlay = self.laying_overlay();
         let pending = pending_point(self);
         self.interaction
-            .update_spline_preview(&self.settings.prefs.spline, overlay, pending);
-        rebuild_appearance(self);
+            .set_spline_default_width(self.settings.prefs.spline.width);
+        terrain::refresh_blocked(self, overlay, pending);
+        self.interaction.update_spline_preview(overlay, pending);
+        terrain::rebuild_appearance(self);
     }
     /// Everything about the current fitted path in one copyable block.
     pub(super) fn spline_report(&self) -> String {
-        let spline = &self.settings.prefs.spline;
-        let raw: Vec<String> = self
+        let controls: Vec<String> = self
             .interaction
-            .spline_points()
+            .spline_controls()
             .iter()
-            .map(|p| format!("{:.3},{:.3}", p.0, p.1))
+            .map(|c| {
+                format!(
+                    "{:.3},{:.3}:{:.1}{}",
+                    c.x,
+                    c.y,
+                    c.width,
+                    if c.corner { "!" } else { "" }
+                )
+            })
             .collect();
         let mut text = format!(
-            "PATH plane={} points={}\nwidth={:.2} edge_weight={:.2} overlay={:?}\n",
+            "PATH plane={} overlay={:?}\npoints={}\nsmooth_ground={}\n",
             self.interaction.view_plane(),
-            raw.join(";"),
-            spline.width,
-            spline.edge_weight,
             self.settings.prefs.brush.overlay.fill,
+            controls.join(" "),
+            self.settings.prefs.spline.smooth_ground,
         );
         if let Some(preview) = &self.interaction.spline_preview() {
             text.push_str(&format!("fitted {} tiles\n", preview.paints.len()));

@@ -5,7 +5,11 @@
 //! so they can catch drift between requested coverage and the shape/rotation choices the fitter
 //! emits.
 
-use super::{FittedTile, fit_path_overlay, overlay_triangles, smooth_catmull_rom};
+use super::fitter::{EDGE_WEIGHT, PRIOR_WEIGHT};
+use super::{
+    ControlPoint, FitOptions, FittedTile, PathSample, fit_path_overlay, overlay_triangles,
+    smooth_path,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 const GRID: usize = 8;
@@ -31,6 +35,15 @@ struct QualityMetrics {
     edge_mismatches: u32,
     shared_edge_samples: u32,
     hash: u64,
+}
+
+/// The dense centre line of a fixture's control points, all at one width.
+fn dense(control_points: &[(f32, f32)], width: f32) -> Vec<(f32, f32)> {
+    let controls: Vec<_> = control_points
+        .iter()
+        .map(|&(x, y)| ControlPoint::new(x, y, width))
+        .collect();
+    smooth_path(&controls).iter().map(|s| (s.x, s.y)).collect()
 }
 
 fn fixtures() -> [Fixture; 10] {
@@ -80,7 +93,7 @@ fn fixtures() -> [Fixture; 10] {
         Fixture {
             name: "narrow",
             control_points: &[(0.25, 1.25), (8.75, 3.75)],
-            width: 0.75,
+            width: 1.0,
             min_coverage_agreement: 0.82,
             max_edge_mismatch_rate: 0.45,
         },
@@ -111,8 +124,8 @@ fn fixtures() -> [Fixture; 10] {
 #[test]
 fn representative_fixture_matrix_meets_quality_floors() {
     for fixture in fixtures() {
-        let dense = smooth_catmull_rom(fixture.control_points);
-        let metrics = measure(&dense, fixture.width, 0.75);
+        let dense = dense(fixture.control_points, fixture.width);
+        let metrics = measure(&dense, fixture.width, EDGE_WEIGHT, PRIOR_WEIGHT);
         assert!(
             metrics.ideal_tiles > 0,
             "{} produced no ideal tiles",
@@ -148,9 +161,10 @@ fn representative_fixture_matrix_meets_quality_floors() {
 #[test]
 fn default_edge_relaxation_does_not_worsen_basic_shared_edges() {
     for fixture in fixtures().into_iter().take(4) {
-        let dense = smooth_catmull_rom(fixture.control_points);
-        let independent = measure(&dense, fixture.width, 0.0);
-        let relaxed = measure(&dense, fixture.width, 0.75);
+        let dense = dense(fixture.control_points, fixture.width);
+        // The prior is left out so only the edge relaxation is being tested.
+        let independent = measure(&dense, fixture.width, 0.0, 0.0);
+        let relaxed = measure(&dense, fixture.width, EDGE_WEIGHT, 0.0);
         assert!(
             relaxed.edge_mismatches <= independent.edge_mismatches,
             "{} edge relaxation worsened shared edges: independent={independent:?}, relaxed={relaxed:?}",
@@ -162,9 +176,9 @@ fn default_edge_relaxation_does_not_worsen_basic_shared_edges() {
 #[test]
 fn fixture_outputs_are_repeatable() {
     for fixture in fixtures() {
-        let dense = smooth_catmull_rom(fixture.control_points);
-        let first = measure(&dense, fixture.width, 0.75);
-        let second = measure(&dense, fixture.width, 0.75);
+        let dense = dense(fixture.control_points, fixture.width);
+        let first = measure(&dense, fixture.width, EDGE_WEIGHT, PRIOR_WEIGHT);
+        let second = measure(&dense, fixture.width, EDGE_WEIGHT, PRIOR_WEIGHT);
         assert_eq!(first.hash, second.hash, "{} changed hash", fixture.name);
         assert_eq!(
             first.fitted_tiles, second.fitted_tiles,
@@ -177,29 +191,55 @@ fn fixture_outputs_are_repeatable() {
 #[test]
 fn fixture_hashes_are_locked() {
     let actual = fixtures().map(|fixture| {
-        let dense = smooth_catmull_rom(fixture.control_points);
-        measure(&dense, fixture.width, 0.75).hash
+        let dense = dense(fixture.control_points, fixture.width);
+        measure(&dense, fixture.width, EDGE_WEIGHT, PRIOR_WEIGHT).hash
     });
 
-    // Seeded from the first validated run of this independent quality harness. Any intentional
-    // fitter change must review the visual/metric delta before updating these values.
+    // Re-seeded when the fitter began preferring the real map's choices for each neighbourhood (the
+    // census prior, weight `PRIOR_WEIGHT`) and the narrowest fixture became one tile wide, the
+    // narrowest path the tool makes. The visual/metric delta was reviewed through the conformance
+    // tests in `fitter/tests.rs`: against the real map, partial shapes on boundary tiles fell from
+    // 61% to ~41% (real 45%) and full tiles on straight edges rose from 35% to ~70% (real 77%),
+    // for a coverage fidelity of ~0.94 against 0.97. Any further fitter change must review the
+    // delta before updating these values.
     let expected = [
-        9_698_767_332_744_141_528,
-        16_827_461_290_919_595_932,
-        9_837_969_246_590_686_967,
-        3_271_925_537_409_006_157,
-        13_962_819_451_543_403_686,
-        16_478_564_135_416_554_377,
-        9_966_194_120_848_495_766,
-        11_251_971_564_733_650_760,
-        1_110_224_164_382_363_969,
-        7_079_287_740_327_523_224,
+        10_913_319_085_832_378_304,
+        17_163_196_555_705_064_285,
+        10_842_659_392_432_427_742,
+        3_283_214_655_908_419_901,
+        17_332_951_069_497_710_890,
+        2_508_264_416_641_209_716,
+        8_403_130_812_578_236_330,
+        18_109_459_687_301_424_149,
+        467_232_552_191_870_625,
+        9_580_802_868_217_043_061,
     ];
     assert_eq!(actual, expected);
 }
 
-fn measure(points: &[(f32, f32)], width: f32, edge_weight: f32) -> QualityMetrics {
-    let fitted = fit_path_overlay(points, width, edge_weight);
+fn measure(
+    points: &[(f32, f32)],
+    width: f32,
+    edge_weight: f32,
+    prior_weight: f32,
+) -> QualityMetrics {
+    let line: Vec<PathSample> = points
+        .iter()
+        .map(|&(x, y)| PathSample {
+            x,
+            y,
+            half: width * 0.5,
+        })
+        .collect();
+    let fitted = fit_path_overlay(
+        &line,
+        &FitOptions {
+            edge_weight,
+            prior_weight,
+            blocked: &|_| false,
+        },
+    )
+    .tiles;
     let fitted_by_tile: BTreeMap<_, _> = fitted
         .iter()
         .map(|tile| ((tile.tile_x, tile.tile_y), *tile))

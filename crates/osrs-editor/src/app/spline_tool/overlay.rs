@@ -178,12 +178,35 @@ impl EditorApp {
             }
         }
 
+        // Tiles the path covers but leaves alone because another overlay is there.
+        if let Some(preview) = self.interaction.current_spline_preview() {
+            let red = Color32::from_rgba_unmultiplied(220, 70, 70, 90);
+            for tile in &preview.clipped {
+                if let Some(corners) = interact::tile_corners(self.world.infos(), *tile, plane) {
+                    let points: Vec<Pos2> = corners
+                        .iter()
+                        .filter_map(|c| project([c[0], c[1] - 3.0, c[2]]))
+                        .collect();
+                    if points.len() == 4 {
+                        painter.add(egui::Shape::convex_polygon(
+                            points,
+                            red,
+                            Stroke::new(1.0, Color32::from_rgb(220, 70, 70)),
+                        ));
+                    }
+                }
+            }
+        }
+
         // The centre line.
         let drawn: Vec<(f32, f32)> = match self.interaction.current_spline_preview() {
-            Some(preview) if !preview.lines.is_empty() => {
-                preview.lines.iter().flatten().copied().collect()
+            Some(preview) if !preview.line.is_empty() => {
+                preview.line.iter().map(|s| (s.x, s.y)).collect()
             }
-            _ => terrain_path::smooth_catmull_rom(self.interaction.spline_points()),
+            _ => terrain_path::smooth_path(&self.interaction.spline_controls())
+                .iter()
+                .map(|s| (s.x, s.y))
+                .collect(),
         };
         let screen: Vec<Pos2> = drawn.iter().filter_map(|p| ground(*p, 10.0)).collect();
         if screen.len() >= 2 {
@@ -206,12 +229,30 @@ impl EditorApp {
             ));
             painter.circle_stroke(b, 5.0, Stroke::new(1.5, ghost));
         }
-        // The control points.
+        // The control points: round when the path curves through them, square for corners.
         for (index, point) in self.interaction.spline_points().iter().enumerate() {
             if let Some(position) = ground(*point, 12.0) {
                 let active = self.interaction.spline_drag() == Some(index);
-                painter.circle_filled(position, if active { 8.0 } else { 6.5 }, Color32::WHITE);
-                painter.circle_stroke(position, 7.5, Stroke::new(2.0, outline));
+                let corner = self
+                    .interaction
+                    .spline_attrs()
+                    .get(index)
+                    .is_some_and(|attr| attr.corner);
+                let radius = if active { 8.0 } else { 6.5 };
+                if corner {
+                    let half = egui::vec2(radius, radius);
+                    let rect = Rect::from_center_size(position, half * 2.0);
+                    painter.rect_filled(rect, 2.0, Color32::WHITE);
+                    painter.rect_stroke(
+                        rect.expand(1.0),
+                        2.0,
+                        Stroke::new(2.0, outline),
+                        egui::StrokeKind::Outside,
+                    );
+                } else {
+                    painter.circle_filled(position, radius, Color32::WHITE);
+                    painter.circle_stroke(position, radius + 1.0, Stroke::new(2.0, outline));
+                }
                 painter.text(
                     position + egui::vec2(11.0, -11.0),
                     egui::Align2::LEFT_CENTER,

@@ -322,20 +322,31 @@ fn graded_path_commits_once_and_one_undo_restores_overlay_and_terrain() {
             (3190..=3210).map(move |y| {
                 (
                     HeightVertexCoord::new(MapTile::new(x, y), plane(0)),
-                    -16 * (y - 3190),
+                    -16 * (y - 3190) + if x % 6 == 0 { -96 } else { 0 },
                 )
             })
         })
         .collect();
     let mut session = EditorSession::new(MapDocument::from_parts([], heights, []));
     let original = session.document().clone();
-    let line = [(3194.0_f32, 3200.0_f32), (3206.0, 3200.0)];
-    let grade = osrs_edit::plan_path_grade(&line, 3.0, osrs_edit::PathGradeSpec::default(), &|v| {
+    let line = [
+        osrs_edit::GradePoint {
+            x: 3194.0,
+            y: 3200.0,
+            half: 1.5,
+        },
+        osrs_edit::GradePoint {
+            x: 3206.0,
+            y: 3200.0,
+            half: 1.5,
+        },
+    ];
+    let grade = osrs_edit::plan_path_grade(&line, osrs_edit::PathGradeSpec::default(), &|v| {
         session
             .document()
             .height_at(HeightVertexCoord::new(MapTile::new(v.0, v.1), plane(0)))
     });
-    assert!(!grade.is_empty(), "a path across a slope grades something");
+    assert!(!grade.is_empty(), "bumps along a path are smoothed");
     let intent = TerrainPathIntent {
         tile: MapTile::new(3200, 3200),
         overlay: Some(7),
@@ -351,18 +362,16 @@ fn graded_path_commits_once_and_one_undo_restores_overlay_and_terrain() {
     assert!(session.commit(patch).is_ok());
     assert_eq!(session.revision(), 1, "overlay and grade are one commit");
     assert_ne!(*session.document(), original);
-    // The bed is level across the path at x = 3200.
-    let across: Vec<_> = (3199..=3201)
-        .filter_map(|y| {
-            session
-                .document()
-                .height_at(HeightVertexCoord::new(MapTile::new(3200, y), plane(0)))
-        })
-        .collect();
-    assert!(
-        across.windows(2).all(|pair| pair[0] == pair[1]),
-        "{across:?}"
-    );
+    // The bumps along the centre line are smaller than before.
+    let spread = |document: &MapDocument| {
+        let values: Vec<i32> = (3195..=3205)
+            .filter_map(|x| {
+                document.height_at(HeightVertexCoord::new(MapTile::new(x, 3200), plane(0)))
+            })
+            .collect();
+        values.iter().max().copied().unwrap_or(0) - values.iter().min().copied().unwrap_or(0)
+    };
+    assert!(spread(session.document()) < spread(&original));
 
     assert!(session.undo().is_ok());
     assert_eq!(*session.document(), original);

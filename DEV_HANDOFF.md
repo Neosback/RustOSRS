@@ -29,6 +29,13 @@ Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md`
 - Cursor-following preview plans one extra segment up to the cursor alongside the placed path; it is never laid and does not affect "Lay path". Verified by unit tests only, **not visually with a real mouse**.
 - Baselines: the C3 baseline job started earlier was invalid (the release binary was rebuilt while it ran and other runs competed for the machine); its output is quarantined under `target/performance/c3-before-INVALID-mixed-binaries`. Retake baselines from a frozen copy of the binary on an idle machine.
 
+### Settings-free path tool (after the census)
+
+- Real paths were measured (`docs/verification/PATH-CENSUS.md`) and the tool now follows them: width presets (Trail 1 / Path 3 / Road 5) with per-point widths and corner flags; the fitter prefers the real map's choice for each neighbourhood; paths replace path overlays and open ground, keep the underlay, and leave area overlays (water, floors, hidden overlays) alone, showing them in red; terrain follows the ground, with an optional "smooth ground along the path" that keeps the cross-slope. Removed settings: edge weight, snap, curve, cursor preview (always on), and the grading sliders. Persisted files with the old fields still load (unknown fields are ignored).
+- The grading planner changed from "level across the path" to "ease bumps along the path, keep the cross-slope" after the census showed real paths are not level across their width.
+- Verified in the real editor on the pinned cache: a variable-width path with a corner laid overlay 1 on open ground, replaced another path overlay, left a hidden overlay untouched, smoothed heights gently, and one undo restored overlay and height on every sampled tile. The cursor-following preview and red clipped tiles were seen in screenshots; hover interaction with a real mouse, double-click to toggle a corner and the width keys were covered by unit tests only.
+- **Repository state to be aware of.** Commit `5abe104e` ("clean", made outside this session) deleted `runelite-master/`, `tools/` and similar and swept an unfinished snapshot of this work into history (that commit does not build on its own; the next commit does). Two guard scripts depend on the removed files and now fail independently of any code change: `scripts/test_reference_regeneration.py` (needs `tools/reference-fixtures/regenerate.py`) and `scripts/test_deob_golden_index.py` (needs `tools/deob-harness/src/Dumper.java`). They need a decision from the repository owner (update them or restore the tooling). Plans that rely on the deob harness (loc-shadow oracle, entity decoder verification) are affected; the decompiled client outside the repository is untouched.
+
 ### Checkpoint 2b notes
 
 - Spline panel is one pure widget set (`app/spline_tool/sections.rs`) used by the drawer (all sections) and the quick HUD (compact); the shelf keeps the shape settings. Order: appearance, shape, preview status + actions, control points; two columns from 640 points.
@@ -62,7 +69,7 @@ Latest full run (path grading/curve/cursor work on top of `7757ff4a`; local resu
 
 - Architecture guard and its tests, editor-ownership tests, reference-regeneration tests, golden-index check, HD source pins (98 entries awaiting audit), HD-source tests and `test_performance.py`: passed.
 - `cargo fmt --all --check`; locked workspace/all-target/all-feature `cargo check` and strict Clippy; WASM lower-crate check and strict editor Clippy: passed.
-- Locked full workspace/all-target/all-feature tests: **845 passed, 0 failed, 18 ignored** (ignored tests keep their external cache/GPU/oracle prerequisites).
+- Locked full workspace/all-target/all-feature tests: **861 passed, 0 failed, 18 ignored** (the two guard scripts above fail for the reason given) (ignored tests keep their external cache/GPU/oracle prerequisites).
 - With the pinned cache: terrain oracle (`terrain_oracle_diff`) and the Reference pixel golden passed; `region_capture` Reference hashes were identical before and after checkpoint 2a. HD captures vary by up to one channel level in a few hundred pixels between identical runs, so HD comparisons use a tolerance.
 
 Earlier figures (805 at `41d0c020`, 793 for PR #56) are superseded. Historical CI results only certify the SHAs they name. Cargo emits the existing vendored `rune-fs` MSRV-metadata warning.

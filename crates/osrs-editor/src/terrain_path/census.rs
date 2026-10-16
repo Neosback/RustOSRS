@@ -2,8 +2,49 @@
 //! paths, and for each neighbourhood of path tiles which overlay shape and rotation the real map
 //! most often uses. Pure lookups over the generated `census_data`.
 
-use super::census_data::{PATH_OVERLAYS, PRIOR};
 use std::sync::OnceLock;
+
+/// The generated census data (`scripts/gen_path_data.py`).
+const DATA: &str = include_str!("census.txt");
+
+/// A neighbourhood row: mask, number of tiles, and the most common `(shape, rotation, count)`.
+type PriorRow = (u8, u32, Vec<(u8, u8, u32)>);
+
+/// The path overlays and prior rows parsed from [`DATA`]; malformed lines are ignored.
+fn data() -> &'static (Vec<u16>, Vec<PriorRow>) {
+    static PARSED: OnceLock<(Vec<u16>, Vec<PriorRow>)> = OnceLock::new();
+    PARSED.get_or_init(|| {
+        let (mut paths, mut rows) = (Vec::new(), Vec::new());
+        for line in DATA.lines() {
+            let mut words = line.split_whitespace();
+            match words.next() {
+                Some("P") => paths = words.filter_map(|w| w.parse().ok()).collect(),
+                Some("R") => {
+                    let (Some(mask), Some(total)) = (
+                        words.next().and_then(|w| w.parse().ok()),
+                        words.next().and_then(|w| w.parse().ok()),
+                    ) else {
+                        continue;
+                    };
+                    let top = words
+                        .filter_map(|w| {
+                            let mut parts = w.split(',');
+                            Some((
+                                parts.next()?.parse().ok()?,
+                                parts.next()?.parse().ok()?,
+                                parts.next()?.parse().ok()?,
+                            ))
+                        })
+                        .collect();
+                    rows.push((mask, total, top));
+                }
+                _ => {}
+            }
+        }
+        paths.sort_unstable();
+        (paths, rows)
+    })
+}
 
 /// The candidate index of a stored overlay shape and rotation, matching the fitter's candidate
 /// order: `0` is "no overlay", `1` the full tile (any rotation), then shapes `1..=11` with four
@@ -21,7 +62,7 @@ pub const CANDIDATES: usize = 46;
 
 /// The real map's own paths: overlays used as strips, as opposed to areas such as water or floors.
 pub fn is_path_overlay(overlay: u16) -> bool {
-    PATH_OVERLAYS.binary_search(&overlay).is_ok()
+    data().0.binary_search(&overlay).is_ok()
 }
 
 /// A bit per 8-neighbour (N, NE, E, SE, S, SW, W, NW), set when that neighbour is a path tile.
@@ -34,9 +75,10 @@ pub fn penalty(mask: NeighbourMask) -> &'static [f32; CANDIDATES] {
     static TABLE: OnceLock<Vec<[f32; CANDIDATES]>> = OnceLock::new();
     let table = TABLE.get_or_init(|| {
         let mut table = vec![[0.0; CANDIDATES]; 256];
-        for &(mask, total, top) in PRIOR {
+        for (mask, total, top) in &data().1 {
+            let (mask, total) = (*mask, *total);
             let mut counts = [0.0_f32; CANDIDATES];
-            for &(shape, rotation, count) in top {
+            for &(shape, rotation, count) in top.iter() {
                 counts[candidate_index(shape, rotation)] += count as f32;
             }
             // Mass outside the listed choices is spread evenly: it is real but unattributed.
@@ -46,8 +88,8 @@ pub fn penalty(mask: NeighbourMask) -> &'static [f32; CANDIDATES] {
             let cost =
                 |c: usize| -((counts[c] + spread + ALPHA) / (total as f32 + ALPHA * 45.0)).ln();
             let best = (1..CANDIDATES).map(cost).fold(f32::INFINITY, f32::min);
-            for c in 1..CANDIDATES {
-                table[usize::from(mask)][c] = cost(c) - best;
+            for (c, slot) in table[usize::from(mask)].iter_mut().enumerate().skip(1) {
+                *slot = cost(c) - best;
             }
         }
         table
