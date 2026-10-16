@@ -11,6 +11,8 @@ specifications or certify implementation parity. `index.md` defines the reposito
 
 - [RuneLite / OSRS object system](RUNELITE-OBJECT-SYSTEM.md): definitions, placements, models,
   morphs, animation, sound, map graphics, textures and related renderable families.
+- [Actor, animation, projectile and interface runtime](RUNELITE-RUNTIME-RENDERING.md): Player/Actor/NPC runtime ownership, appearance/model assembly, dual sequence systems, spot animations, graphics objects, projectiles, CS2/interpreter/widget boundaries and the implications for `osrs-playtest` and `osrs-render`.
+- [Tile appearance and paths](TILE-APPEARANCE-AND-PATHS.md): terrain/tile appearance, overlay shape semantics and the Eiken path-tool source study.
 - [Filestore and cache needs](RUNELITE-FILESTORE-NEEDS.md): existing capabilities, reproduced
   metadata-parser findings, priorities, ownership and acceptance cases from that study.
 - [OpenRune cache design review](OPENRUNE-CACHE.md): reading/packing ideas and adoption decisions.

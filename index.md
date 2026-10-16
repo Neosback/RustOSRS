@@ -14,7 +14,7 @@ Before starting implementation work, read:
 4. `docs/architecture/FEATURE-MAP.md` for existing tool implementations and tests;
 5. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` for dependency/order and milestone reconciliation.
 
-The project is no longer at the blueprint/M0 entry point. M0-M16 have substantial or complete production implementation; the remaining program is concentrated in architecture extraction, Reference parity/certification closure, 117HD completion, export generalization, and project lifecycle/recovery work.
+The project is no longer at the blueprint/M0 entry point. M0-M16 have substantial or complete production implementation; the remaining program is concentrated in architecture extraction, Reference parity/certification closure, entity/runtime/playtest work, 117HD completion, export generalization, and project lifecycle/recovery work.
 
 ## Canonical reading order
 
@@ -47,7 +47,7 @@ The canonical blueprint registry is `docs/blueprint/README.md`.
 | Where are a tool's controller, planner, gateway and tests? | `scripts/editor_features.json` + `docs/architecture/FEATURE-MAP.md` |
 | What source/revision proves a claim? | `docs/verification/SOURCE-PINS.md` + spec evidence |
 | What tests/fixtures prove implementation correctness? | `docs/verification/PARITY-MATRIX.md`, `REFERENCE-FIXTURES.md`, `GOLDEN-SCENES.md` |
-| What should be built, and in what order? | `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` |
+| What should be built, and in what order? | `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` plus an explicitly authorized current plan |
 | What old claims are superseded or unsafe? | `docs/research/README.md` + `docs/blueprint/02-CONTRADICTION-REGISTER.md` |
 
 A root research document cannot override a canonical spec or accepted ADR. A historical milestone note cannot override current implementation/evidence status.
@@ -80,13 +80,14 @@ See `docs/blueprint/README.md` for the complete registry and checkpoint status.
 - loc placement and wall/decor behavior;
 - model selection, mirroring, winding, transforms, and ownership;
 - normal generation, cross-model normal reconciliation, and lighting;
-- morphs, animation ownership, and contouring;
+- morphs, loc animation ownership, and contouring;
+- player/NPC actor runtime ownership, appearance/model assembly, dual sequence systems, spot animations, graphics objects, projectiles, and CS2/widget runtime boundaries;
 - terrain topology and floor definitions;
 - bridge/source/storage/collision/render plane distinctions;
 - face priority, alpha, authored bias, textures, and UV inputs;
 - coordinate and angular conventions.
 
-Each spec carries evidence status, source pins, required behavior, invariants, failure signatures, and required verification.
+Each spec carries evidence status, source pins, required behavior, invariants, failure signatures, and required verification. `docs/specs/actor-runtime-rendering.md` is intentionally source-audited/`DERIVED` until its required executable entity/UI fixtures exist.
 
 ## Architecture decisions
 
@@ -118,14 +119,14 @@ Important current facts:
 - a headless/reference wgpu renderer and editor viewport exist;
 - editor semantic authoring and verified export exist;
 - Reference parity closure and external visual proof remain incomplete;
+- entity/runtime/playtest work is now source-audited but not implemented as a complete runtime;
 - M17 and M18 remain active completion umbrellas rather than the earlier M10 entry state.
 
-## Tile appearance and path authoring study
+## Current RuneLite source studies
 
-[Tile appearance and paths](docs/research/TILE-APPEARANCE-AND-PATHS.md) traces the pinned
-client's tile pipeline, maps it to current code, documents the exact Eiken path contract and
-ranks subsequent appearance improvements. It is research; the semantic specifications remain
-authoritative.
+[Actor, animation, projectile and interface runtime](docs/research/RUNELITE-RUNTIME-RENDERING.md) traces the checked-in `RuneLite-melxin` Player/Actor/NPC, appearance, dual-animation, spot-effect, graphics-object, projectile, CS2/interpreter and Widget paths. The promoted source-audited contracts live in `docs/specs/actor-runtime-rendering.md`.
+
+[Tile appearance and paths](docs/research/TILE-APPEARANCE-AND-PATHS.md) traces the pinned client's tile pipeline, maps it to current code, documents the exact Eiken path contract and ranks subsequent appearance improvements. It is research; the semantic specifications remain authoritative.
 
 ## Legacy research corpus
 
@@ -137,16 +138,13 @@ Known superseded legacy claims include no cross-model normal merging, one univer
 
 These are evidence/tooling inputs, not automatically normative contracts:
 
-- `runelite-master/`;
-- `OpenRune-FileStore-main/`;
+- `RuneLite-melxin/`;
 - `rs-cache-master/`;
 - `docs/api/`;
 - `reference-shaders/`;
-- `reference-fixtures/`;
-- `tools/runelite-mcp/`;
-- `tools/deob-harness/`.
+- `reference-fixtures/`.
 
-Their authority and provenance are classified in `docs/blueprint/03-SOURCE-GROUP-INVENTORY.md` and `docs/verification/SOURCE-PINS.md`.
+Historical paths such as `runelite-master/`, `OpenRune-FileStore-main/` and `tools/deob-harness/` may be absent from the current tree. Do not cite an absent checkout as live evidence. Their historical authority/provenance remains described in Git history and the source/verification documents.
 
 ## How to resolve a disagreement
 
