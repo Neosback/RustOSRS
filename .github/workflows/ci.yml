@@ -48,6 +48,7 @@ jobs:
         run: |
           python3 scripts/test_performance.py
           python3 scripts/test_performance_baseline.py
+          python3 scripts/test_performance_rank.py
 
       - name: Check formatting
         run: cargo fmt --all --check
