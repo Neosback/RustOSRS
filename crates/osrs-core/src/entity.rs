@@ -70,6 +70,54 @@ pub struct ActorAnimationState {
     pub action_delay_cycles: i32,
 }
 
+/// Action and pose slots admitted by the actor's model-selection rules.
+///
+/// This is a selection result only. It neither advances animation state nor
+/// resolves sequence definitions, frames, cached models, or renderer resources.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct ActorAnimationSelection {
+    pub action: Option<ActorSequenceState>,
+    pub pose: Option<ActorSequenceState>,
+}
+
+impl ActorAnimationState {
+    /// Select the action/pose slots that may participate in actor model work.
+    ///
+    /// This mirrors the pinned client's `Actor.method2507()` / `method2508()`:
+    /// an action participates only when its delay is zero, it is active, and
+    /// its sequence is model-usable; pose participates only when active and
+    /// model-usable, with the idle pose suppressed while an admitted action is
+    /// present. The `*_model_usable` inputs correspond to the source
+    /// `SequenceDefinition.method4925()` predicate and stay external because it
+    /// depends on resolved frame/cached-model resources rather than actor state.
+    pub const fn select_action_and_pose(
+        self,
+        idle_sequence: Option<SequenceId>,
+        action_model_usable: bool,
+        pose_model_usable: bool,
+    ) -> ActorAnimationSelection {
+        let action = if self.action_delay_cycles == 0
+            && self.action.is_active()
+            && action_model_usable
+        {
+            Some(self.action)
+        } else {
+            None
+        };
+
+        let pose = if self.pose.is_active()
+            && pose_model_usable
+            && !(self.pose.sequence == idle_sequence && action.is_some())
+        {
+            Some(self.pose)
+        } else {
+            None
+        };
+
+        ActorAnimationSelection { action, pose }
+    }
+}
+
 /// Movement/idle sequence references authored by an NPC definition.
 ///
 /// This is the minimum source-audited set needed to initialize actor runtime
@@ -147,6 +195,14 @@ pub struct SpotAnimationDefinition {
 mod tests {
     use super::*;
 
+    fn actor_slot(sequence: SequenceId) -> ActorSequenceState {
+        ActorSequenceState {
+            sequence: Some(sequence),
+            frame: Some(0),
+            ..ActorSequenceState::default()
+        }
+    }
+
     #[test]
     fn entity_scale_identity_matches_reference_definition_default() {
         assert_eq!(EntityScale::IDENTITY.horizontal, 128);
@@ -189,6 +245,80 @@ mod tests {
         assert_eq!(state.action.sequence, Some(SequenceId::new(200)));
         assert_eq!(state.auxiliary.sequence, Some(SequenceId::new(300)));
         assert_eq!(state.action_delay_cycles, 4);
+    }
+
+    #[test]
+    fn actor_action_selection_requires_zero_delay_active_and_model_usable() {
+        let action = actor_slot(SequenceId::new(200));
+        let state = ActorAnimationState {
+            action,
+            ..ActorAnimationState::default()
+        };
+
+        assert_eq!(
+            state.select_action_and_pose(None, true, true).action,
+            Some(action)
+        );
+        assert_eq!(
+            ActorAnimationState {
+                action_delay_cycles: 1,
+                ..state
+            }
+            .select_action_and_pose(None, true, true)
+            .action,
+            None
+        );
+        assert_eq!(
+            state.select_action_and_pose(None, false, true).action,
+            None
+        );
+        assert_eq!(
+            ActorAnimationState {
+                action: ActorSequenceState::default(),
+                ..state
+            }
+            .select_action_and_pose(None, true, true)
+            .action,
+            None
+        );
+    }
+
+    #[test]
+    fn actor_pose_selection_suppresses_idle_only_for_admitted_action() {
+        let idle = SequenceId::new(100);
+        let pose = actor_slot(idle);
+        let action = actor_slot(SequenceId::new(200));
+        let state = ActorAnimationState {
+            pose,
+            action,
+            ..ActorAnimationState::default()
+        };
+
+        let with_action = state.select_action_and_pose(Some(idle), true, true);
+        assert_eq!(with_action.action, Some(action));
+        assert_eq!(with_action.pose, None);
+
+        let delayed = ActorAnimationState {
+            action_delay_cycles: 1,
+            ..state
+        }
+        .select_action_and_pose(Some(idle), true, true);
+        assert_eq!(delayed.action, None);
+        assert_eq!(delayed.pose, Some(pose));
+
+        let non_idle_pose = actor_slot(SequenceId::new(101));
+        let non_idle = ActorAnimationState {
+            pose: non_idle_pose,
+            ..state
+        }
+        .select_action_and_pose(Some(idle), true, true);
+        assert_eq!(non_idle.action, Some(action));
+        assert_eq!(non_idle.pose, Some(non_idle_pose));
+
+        assert_eq!(
+            state.select_action_and_pose(Some(idle), true, false).pose,
+            None
+        );
     }
 
     #[test]
