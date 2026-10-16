@@ -13,7 +13,8 @@ use osrs_core::{
     animation_pose::LegacyAnimationFrame,
     entity::ActorSequenceState,
     ids::{NpcId, VarpId},
-    scenario::NpcSpawnId,
+    player::PlayerLook,
+    scenario::{ActorLocation, NpcSpawnId},
 };
 use osrs_playtest::runtime::RuntimeAssets;
 use osrs_render::{ModelPlacement, SceneGeometry};
@@ -27,6 +28,21 @@ pub struct NpcAssetsUpdate {
     pub assets: Arc<RuntimeAssets>,
     pub errors: Vec<String>,
 }
+/// A player standing in the world, with its look and where its idle animation is.
+pub struct PlayerFrame {
+    /// Echoed in the result so the caller can tell which request it answers.
+    pub token: u64,
+    pub look: PlayerLook,
+    pub location: ActorLocation,
+    /// Absolute position in local units (128 per tile).
+    pub position: (i32, i32),
+    pub rotation: u16,
+    pub ground_height: i32,
+    /// The looping sequence to show and how many client cycles it has been playing.
+    pub sequence: Option<osrs_core::ids::SequenceId>,
+    pub cycles: u64,
+}
+
 pub struct NpcFrameInput {
     pub snapshot: PlaytestSnapshot,
     pub ground_heights: BTreeMap<NpcSpawnId, i32>,
@@ -141,42 +157,16 @@ pub fn extract_npcs(
                 definition.scale,
             )
             .map_err(|e| e.to_string())?;
-            let x = actor.position.x.units();
-            let z = actor.position.z.units();
-            let zone_x = x.div_euclid(1024);
-            let zone_z = z.div_euclid(1024);
-            let placement = ModelPlacement {
-                x: x - zone_x * 1024,
-                y: height,
-                z: z - zone_z * 1024,
-                orientation: actor.rotation,
-            };
-            let builder = geometry
-                .zone_mut(zone_x, zone_z)
-                .group_mut(actor.location.plane.get(), actor.location.plane.get());
-            if let Some(hd) = hd {
-                let world = (
-                    actor.location.tile.x,
-                    actor.location.tile.y,
-                    i32::from(actor.location.plane.get()),
-                );
-                let override_ = hd.models.get_npc(id.get(), world, &hd.areas);
-                let faces = model_faces_resolved(
-                    &hd.materials,
-                    hd.settings.hide_fake_shadows(),
-                    override_,
-                    &model,
-                    ModelSite {
-                        object_id: id.get(),
-                        world,
-                        placement,
-                        zone_origin_world: (zone_x * 1024, zone_z * 1024),
-                    },
-                );
-                builder.push_hd_faces(&faces, [placement.x, placement.y, placement.z]);
-            } else {
-                builder.push_model(&model, placement);
-            }
+            emit(
+                &mut geometry,
+                hd,
+                &model,
+                actor.location,
+                (actor.position.x.units(), actor.position.z.units()),
+                actor.rotation,
+                height,
+                id.get(),
+            );
             Ok(())
         })();
         if let Err(e) = result {
@@ -223,4 +213,166 @@ fn frame(
         .map_err(|e| e.to_string())?
         .map(Some)
         .ok_or_else(|| format!("missing actor frame {frame}"))
+}
+
+/// Which frame of a looping sequence is showing `cycles` client cycles after it started: each
+/// frame lasts its delay (at least one cycle), then the sequence loops.
+fn frame_at(delays: &[u16], cycles: u64) -> usize {
+    let lasts = |d: &u16| u64::from((*d).max(1));
+    let total: u64 = delays.iter().map(lasts).sum();
+    if total == 0 {
+        return 0;
+    }
+    let mut left = cycles % total;
+    for (index, delay) in delays.iter().enumerate() {
+        if left < lasts(delay) {
+            return index;
+        }
+        left -= lasts(delay);
+    }
+    0
+}
+
+pub struct PlayerGeometryUpdate {
+    pub token: u64,
+    pub geometry: SceneGeometry,
+    pub errors: Vec<String>,
+}
+
+/// Geometry of one player: its own entity layer, replaced whole by each result.
+pub fn extract_player_frame(
+    definitions: &mut WorldDefinitions,
+    player: &PlayerFrame,
+    hd: Option<&HdContext>,
+) -> PlayerGeometryUpdate {
+    let mut geometry = SceneGeometry::default();
+    let mut errors = Vec::new();
+    if let Err(e) = extract_player(definitions, player, hd, &mut geometry) {
+        errors.push(format!("player: {e}"));
+    }
+    for zone in &mut geometry.zones {
+        for group in &mut zone.groups {
+            group.geometry.finish_hd();
+        }
+    }
+    PlayerGeometryUpdate {
+        token: player.token,
+        geometry,
+        errors,
+    }
+}
+
+fn extract_player(
+    definitions: &mut WorldDefinitions,
+    player: &PlayerFrame,
+    hd: Option<&HdContext>,
+    geometry: &mut SceneGeometry,
+) -> Result<(), String> {
+    let appearance = definitions.compose_player(&player.look)?;
+    let Some(base) = definitions.player_base(&appearance)? else {
+        return Err("this look has no models".into());
+    };
+    let posed = match player.sequence {
+        None => None,
+        Some(id) => {
+            let sequence = definitions
+                .sequence(id)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("missing sequence {id}"))?;
+            if sequence.skeletal_animation.is_some() {
+                return Err(format!("sequence {id} is skeletal; not posed"));
+            }
+            let index = frame_at(&sequence.frame_delays, player.cycles);
+            let frame_id = sequence
+                .frame_ids
+                .get(index)
+                .ok_or_else(|| format!("sequence {id} has no frame {index}"))?;
+            definitions
+                .legacy_frame(*frame_id)
+                .map_err(|e| e.to_string())?
+        }
+    };
+    let model = pose_legacy_actor(
+        &base,
+        None,
+        posed.as_deref(),
+        None,
+        osrs_core::entity::EntityScale::IDENTITY,
+    )
+    .map_err(|e| e.to_string())?;
+    emit(
+        geometry,
+        hd,
+        &model,
+        player.location,
+        player.position,
+        player.rotation,
+        player.ground_height,
+        u32::MAX,
+    );
+    Ok(())
+}
+
+/// Place a posed model in the entity geometry (HD faces when the HD profile is on).
+#[allow(clippy::too_many_arguments)]
+fn emit(
+    geometry: &mut SceneGeometry,
+    hd: Option<&HdContext>,
+    model: &osrs_core::lighting::ReferenceLitModel,
+    location: ActorLocation,
+    position: (i32, i32),
+    rotation: u16,
+    height: i32,
+    override_id: u32,
+) {
+    let (x, z) = position;
+    let zone_x = x.div_euclid(1024);
+    let zone_z = z.div_euclid(1024);
+    let placement = ModelPlacement {
+        x: x - zone_x * 1024,
+        y: height,
+        z: z - zone_z * 1024,
+        orientation: rotation,
+    };
+    let builder = geometry
+        .zone_mut(zone_x, zone_z)
+        .group_mut(location.plane.get(), location.plane.get());
+    if let Some(hd) = hd {
+        let world = (
+            location.tile.x,
+            location.tile.y,
+            i32::from(location.plane.get()),
+        );
+        let override_ = hd.models.get_npc(override_id, world, &hd.areas);
+        let faces = model_faces_resolved(
+            &hd.materials,
+            hd.settings.hide_fake_shadows(),
+            override_,
+            model,
+            ModelSite {
+                object_id: override_id,
+                world,
+                placement,
+                zone_origin_world: (zone_x * 1024, zone_z * 1024),
+            },
+        );
+        builder.push_hd_faces(&faces, [placement.x, placement.y, placement.z]);
+    } else {
+        builder.push_model(model, placement);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::frame_at;
+
+    #[test]
+    fn a_looping_sequence_shows_each_frame_for_its_delay_then_repeats() {
+        let delays = [3, 2, 0];
+        let shown: Vec<usize> = (0..8).map(|cycle| frame_at(&delays, cycle)).collect();
+        // Frame 0 for 3 cycles, frame 1 for 2, frame 2 (delay 0 counts as 1) for 1, then again.
+        assert_eq!(shown, [0, 0, 0, 1, 1, 2, 0, 0]);
+        assert_eq!(frame_at(&[], 5), 0);
+        assert_eq!(frame_at(&delays, 6 * 1_000_000), 0);
+    }
 }

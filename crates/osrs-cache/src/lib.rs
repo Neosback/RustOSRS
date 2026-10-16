@@ -12,6 +12,7 @@ pub mod model_repository;
 pub mod npc_model;
 pub mod object_model;
 pub mod openrune;
+pub mod player_model;
 pub mod profile;
 pub mod registry;
 pub mod source;

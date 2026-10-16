@@ -298,6 +298,7 @@ fn load_hd(definitions: &WorldDefinitions) -> Result<(HdContext, Box<HdGpuData>)
 /// Messages from the streaming worker.
 pub enum StreamEvent {
     NpcAssets(crate::npc::NpcAssetsUpdate),
+    PlayerGeometry(crate::npc::PlayerGeometryUpdate),
     /// A rendered sound effect, or why it could not be.
     Sound {
         id: u32,
@@ -341,6 +342,7 @@ pub enum StreamEvent {
 }
 
 enum Request {
+    PlayerGeometry(crate::npc::PlayerFrame),
     Sound(u32),
     NpcCatalog,
     NpcAssets {
@@ -413,6 +415,18 @@ impl StreamWorker {
     fn handle(&mut self, request: Request, events: &Sender<StreamEvent>) -> bool {
         match request {
             Request::Shutdown => return false,
+            Request::PlayerGeometry(frame) => {
+                let update = crate::npc::extract_player_frame(
+                    &mut self.definitions,
+                    &frame,
+                    if self.presentation.hd_geometry {
+                        self.hd.as_ref()
+                    } else {
+                        None
+                    },
+                );
+                let _ = events.send(StreamEvent::PlayerGeometry(update));
+            }
             Request::Sound(id) => {
                 let result = crate::sound::render_sound_effect(&self.definitions, id).map(Arc::new);
                 let _ = events.send(StreamEvent::Sound { id, result });
@@ -690,6 +704,9 @@ impl RegionStreamer {
     }
 
     /// Next finished event, if any.
+    pub fn request_player_geometry(&self, frame: crate::npc::PlayerFrame) {
+        let _ = self.requests.send(Request::PlayerGeometry(frame));
+    }
     pub fn request_sound(&self, id: u32) {
         let _ = self.requests.send(Request::Sound(id));
     }

@@ -1,7 +1,10 @@
 //! The Player dock panel: edit the mock player (see `crate::player`) and stand it in the world.
 //! Drawing edits the player in the settings; nothing here touches the map or its history.
 
-use super::EditorApp;
+use super::{
+    EditorApp,
+    player_runtime::{PlayerHost, PlayerSpec},
+};
 use crate::hud::Destination;
 use crate::player::{
     COLOUR_SLOTS, EQUIPMENT_SLOTS, KIT_SLOTS, MAX_LEVEL, PlayerSandbox, SKILLS, Stand,
@@ -74,6 +77,28 @@ fn variables(ui: &mut egui::Ui, title: &str, hint: &str, table: &mut BTreeMap<u3
         });
 }
 
+/// Keep the player's model in step with the settings (called once per frame).
+pub(super) fn update_model(app: &mut EditorApp, ctx: &egui::Context) {
+    let player = &app.settings.prefs.player;
+    let spec = player
+        .stand
+        .filter(|_| player.show_model)
+        .map(|stand| PlayerSpec {
+            look: player.look(),
+            tile: (stand.x, stand.y),
+            plane: stand.plane,
+        });
+    let mut host = PlayerHost {
+        world: &app.world,
+        renderer: &mut app.renderer,
+        dt: ctx.input(|i| i.stable_dt),
+        spec,
+    };
+    if app.player_model.update(&mut host) {
+        ctx.request_repaint();
+    }
+}
+
 pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     let hover = app
         .interaction
@@ -120,7 +145,12 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
                 if player.stand.is_some() && ui.button("Remove").clicked() {
                     player.stand = None;
                 }
+                ui.checkbox(&mut player.show_model, "Draw the model")
+                    .on_hover_text("Off shows only the marker");
             });
+            if let Some(error) = app.player_model.error() {
+                ui.colored_label(Color32::LIGHT_RED, error);
+            }
             if let Some(stand) = &mut player.stand {
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut stand.x).prefix("X "));

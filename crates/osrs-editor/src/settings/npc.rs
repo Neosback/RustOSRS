@@ -22,7 +22,7 @@ impl Default for NpcSettings {
             spawns: false,
             distance: 64,
             max_drawn: 300,
-            footprints: true,
+            footprints: false,
             models: true,
         }
     }

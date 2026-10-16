@@ -355,6 +355,11 @@ impl NpcRuntime {
             self.run_generation = live.sim.identity().run_generation;
             self.geometry_sent = None;
         }
+        // The simulation always runs while the layer is on: after a restart, a rebuilt spawn list
+        // or a map edit that paused it, it simply starts again (placement is revalidated).
+        if !live.sim.running() {
+            let _ = live.sim.command(RuntimeCommand::Start, &navigation);
+        }
         if live.sim.running() {
             self.clock += host.dt.min(0.25);
             let step = CLIENT_CYCLE_MS as f32 / 1000.0;

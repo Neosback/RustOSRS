@@ -27,6 +27,7 @@ pub mod model_identity;
 pub mod morph;
 pub mod normals;
 pub mod orientation;
+pub mod player;
 pub mod provenance;
 pub mod scenario;
 pub mod sequence_replacement;

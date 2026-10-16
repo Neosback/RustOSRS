@@ -46,6 +46,9 @@ impl EditorApp {
                     self.npcs.catalog_arrived(entries, errors);
                 }
                 StreamEvent::NpcAssets(update) => self.npcs.assets_arrived(update),
+                StreamEvent::PlayerGeometry(update) => {
+                    self.player_model.arrived(update, &mut self.renderer);
+                }
                 StreamEvent::Sound { id, result } => self.audio.arrived(id, result),
                 StreamEvent::NpcGeometry(update) => {
                     self.npcs.geometry_arrived(update, &mut self.renderer);
@@ -67,6 +70,7 @@ impl EditorApp {
                     // where old semantic state must be discarded.
                     self.session.reset();
                     self.audio.source_opened();
+                    self.player_model.source_opened(&mut self.renderer);
                     self.names.source_opened(self.project.cache_label(), build);
                     self.npcs
                         .source_opened(fingerprint, build, &self.world, &mut self.renderer);

@@ -58,6 +58,10 @@ macro_rules! semantic_id {
 semantic_id!(ObjectId, "Canonical object/loc definition ID.");
 semantic_id!(NpcId, "Canonical NPC definition ID.");
 semantic_id!(
+    KitId,
+    "Canonical identity-kit (player body part) definition ID."
+);
+semantic_id!(
     SpotAnimationId,
     "Canonical spot-animation/graphics definition ID."
 );

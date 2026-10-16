@@ -8,6 +8,8 @@ mod animation;
 mod context;
 mod error;
 mod floor;
+mod item;
+mod kit;
 mod map;
 mod model;
 mod npc;
@@ -28,6 +30,8 @@ pub use error::{
     XteaKeyProvenance, XteaProvenanceError,
 };
 pub use floor::{decode_floor_overlay, decode_floor_underlay};
+pub use item::decode_item_definition;
+pub use kit::decode_kit_definition;
 pub use map::{
     DecodedLocation, DecodedLocations, DecodedTerrain, EncodedTerrainOverlay, EncodedTerrainTile,
     EncodedTileHeight, LOCATION_FILE_ID, MAP_INDEX_ID, MODERN_MAP_LAYOUT_MIN_BUILD, MapSquareFiles,

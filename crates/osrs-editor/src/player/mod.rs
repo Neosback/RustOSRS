@@ -87,6 +87,8 @@ pub struct PlayerSandbox {
     pub weight_kg: i16,
     /// Standing tile; `None` leaves the player out of the world.
     pub stand: Option<Stand>,
+    /// Draw the player's model on its tile (off: only the marker).
+    pub show_model: bool,
     /// Identity-kit id per [`KIT_SLOTS`] entry (`None` for none).
     pub kits: [Option<u16>; 7],
     pub colours: [u8; 5],
@@ -111,6 +113,7 @@ impl Default for PlayerSandbox {
             running: false,
             weight_kg: 0,
             stand: None,
+            show_model: true,
             kits: [None; 7],
             colours: [0; 5],
             equipment: BTreeMap::new(),
@@ -122,6 +125,30 @@ impl Default for PlayerSandbox {
 }
 
 impl PlayerSandbox {
+    /// What the player looks like, for model assembly: kits and colours as set, worn items by
+    /// body slot (item 0 means nothing worn).
+    pub fn look(&self) -> osrs_core::player::PlayerLook {
+        use osrs_core::{
+            ids::{ItemId, KitId},
+            player::{Gender, PlayerLook},
+        };
+        PlayerLook {
+            gender: if self.female {
+                Gender::Female
+            } else {
+                Gender::Male
+            },
+            kits: self.kits.map(|kit| kit.map(|id| KitId::new(u32::from(id)))),
+            colours: self.colours,
+            worn: self
+                .equipment
+                .iter()
+                .filter(|(_, item)| **item != 0)
+                .map(|(slot, item)| (*slot, ItemId::new(*item)))
+                .collect(),
+        }
+    }
+
     /// Set a skill's level (clamped; hitpoints never below 10) and keep hitpoints and prayer
     /// from exceeding their levels.
     pub fn set_level(&mut self, skill: usize, level: u8) {

@@ -85,6 +85,7 @@ impl EditorApp {
             palettes: palette_runtime::PaletteRuntime::default(),
             npcs: npc_runtime::NpcRuntime::default(),
             audio: audio_runtime::AudioRuntime::default(),
+            player_model: player_runtime::PlayerRuntime::default(),
             names: names::NameRuntime::default(),
             hd: hd::HdRuntime::new(),
             world,

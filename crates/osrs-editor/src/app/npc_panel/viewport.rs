@@ -166,6 +166,8 @@ pub(in crate::app) fn draw_world(
             .map_or(1, |d| i32::from(d.size))
     };
     let anchor = Color32::from_rgb(120, 200, 255);
+    let mut drawn = std::collections::HashSet::new();
+    let max_outlines = usize::from(app.settings.prefs.npc.max_drawn);
     let selected_colour = Color32::from_rgb(255, 214, 90);
     for spawn in &definition.spawns {
         let tile = (spawn.location.tile.x, spawn.location.tile.y);
@@ -177,13 +179,24 @@ pub(in crate::app) fn draw_world(
         }
         let selected = app.npcs.selection == Some(spawn.id);
         let colour = if selected { selected_colour } else { anchor };
-        if selected || app.settings.prefs.npc.footprints {
-            outline(
-                tile,
-                size_of(spawn),
-                colour,
-                if selected { 2.5 } else { 1.0 },
-            );
+        if selected {
+            outline(tile, size_of(spawn), colour, 2.5);
+        } else if app.settings.prefs.npc.footprints && drawn.len() < max_outlines {
+            // One outline per NPC, under where it stands now (not its spawn tile, which it walks
+            // away from), and one per tile when several stand together.
+            if let Some(actor) = app.npcs.actor(spawn.id)
+                && actor.location.plane.get() == plane
+                && !matches!(
+                    actor.status,
+                    osrs_core::actor_snapshot::ActorStatus::Parked
+                        | osrs_core::actor_snapshot::ActorStatus::MissingDefinition
+                )
+            {
+                let here = (actor.location.tile.x, actor.location.tile.y);
+                if drawn.insert(here) {
+                    outline(here, i32::from(actor.size), colour, 1.0);
+                }
+            }
         }
         if !selected {
             continue;

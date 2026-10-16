@@ -4,6 +4,9 @@ use super::WorldRuntime;
 use std::collections::BTreeSet;
 
 impl WorldRuntime {
+    pub(in crate::app) fn request_player_geometry(&self, frame: osrs_world::npc::PlayerFrame) {
+        self.streamer.request_player_geometry(frame);
+    }
     pub(in crate::app) fn request_sound(&self, id: u32) {
         self.streamer.request_sound(id);
     }

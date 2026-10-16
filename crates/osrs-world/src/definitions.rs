@@ -1,6 +1,7 @@
 //! Cache-backed definition access for scene assembly.
 
 mod npc;
+mod player;
 mod terrain;
 pub use npc::NpcCatalogEntry;
 
@@ -141,6 +142,7 @@ pub fn region_tiles_from_decoded(terrain: &DecodedTerrain) -> Vec<RegionTerrainT
 pub struct WorldDefinitions {
     models: ModelSourceRepository,
     npcs: npc::NpcCache,
+    players: player::PlayerCache,
     context: DecoderContext,
     profile_id: String,
     build: u32,
@@ -269,6 +271,7 @@ impl WorldDefinitions {
         Ok(Self {
             models: ModelSourceRepository::new(cache),
             npcs: npc::NpcCache::default(),
+            players: player::PlayerCache::default(),
             context,
             profile_id: profile.id.clone(),
             build: profile.cache_source.build,

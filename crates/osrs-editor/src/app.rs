@@ -32,6 +32,7 @@ mod paint_commit;
 mod palette_runtime;
 mod path_commit;
 mod player_panel;
+mod player_runtime;
 mod plugin_runtime;
 mod plugins;
 #[cfg_attr(target_arch = "wasm32", path = "app/project_web.rs")]
@@ -99,6 +100,7 @@ pub struct EditorApp {
     palettes: palette_runtime::PaletteRuntime,
     npcs: npc_runtime::NpcRuntime,
     audio: audio_runtime::AudioRuntime,
+    player_model: player_runtime::PlayerRuntime,
     names: names::NameRuntime,
     assets: Assets,
     hd: hd::HdRuntime,
@@ -149,6 +151,7 @@ impl eframe::App for EditorApp {
         self.diagnostics.phase("anim", phase);
         let phase = Instant::now();
         npc_panel::update(self, &ctx);
+        player_panel::update_model(self, &ctx);
         if self.settings.prefs.sound_overlay {
             sound_panel::refresh(self);
         }

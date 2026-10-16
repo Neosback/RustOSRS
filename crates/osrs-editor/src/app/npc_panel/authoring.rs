@@ -14,26 +14,19 @@ use osrs_core::{
 use osrs_edit::{plan_remove_spawns, plan_update_spawn};
 use osrs_playtest::runtime::RuntimeCommand;
 pub(super) fn playback_section(app: &mut EditorApp, ui: &mut egui::Ui) {
-    crate::theme::section_heading(ui, "Playtest");
+    crate::theme::section_heading(ui, "Movement");
     if !app.npcs.has_runtime() {
         ui.weak("Preparing NPC definitions...");
         return;
     }
-    ui.horizontal_wrapped(|ui| {
-        if app.npcs.running() {
-            if ui.button("Pause").clicked() {
-                app.npcs.queue(RuntimeCommand::Pause);
-            }
-        } else if ui.button("Play").clicked() {
-            app.npcs.queue(RuntimeCommand::Start);
-        }
-        if ui.button("Step").on_hover_text("One server tick").clicked() {
-            app.npcs.queue(RuntimeCommand::SingleStep);
-        }
-        if ui.button("Restart").clicked() {
-            app.npcs.queue(RuntimeCommand::Restart);
-        }
-    });
+    // NPCs move on their own whenever the switch is on; Restart puts them back on their spawns.
+    if ui
+        .button("Restart")
+        .on_hover_text("Put every NPC back on its spawn")
+        .clicked()
+    {
+        app.npcs.queue(RuntimeCommand::Restart);
+    }
     if let Some(stamp) = app.npcs.stamp() {
         ui.weak(format!(
             "tick {} \u{b7} cycle {} \u{b7} run {}",

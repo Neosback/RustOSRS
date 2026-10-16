@@ -34,6 +34,15 @@ Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md`
 - **Proposed ADR-0013** (egui and Svelte shells over one typed UI contract). Not accepted; needs a spike.
 - Local gates for this work: locked workspace tests **959 passed, 0 failed, 21 ignored**; fmt; strict workspace Clippy; lower-crate WASM check; strict WASM editor Clippy; architecture guard + editor-ownership tests: passed.
 
+## Player model rendering (2026-10-16)
+
+- **Decoders** (`osrs-cache::decode::{kit,item}`, strict, layouts from OpenRune's codecs): against the OpenRune LIVE cache (revision 240) all **307** identity kits and all **33,975** items decode (6,333 wearable); the probe is `crates/osrs-cache/examples/kit_item_probe.rs`. Synthetic-byte tests cover fields, truncation, unknown opcodes and trailing bytes.
+- **Assembly** (`osrs-core::player`, `osrs-cache::player_model`): `PlayerLook` -> `PlayerAppearance` (12 slots; worn items replace a slot and hide covered slots) -> recoloured part models combined and lit like the client (64/850/-30,-50,-30). Body colours use the client's tables.
+- **Rendering** (`osrs-world` `PlayerCache`/`extract_player`, editor `PlayerRuntime`): the Player panel's mock player is drawn on its tile (HD faces under the HD profile), idle sequence 808 assumed (not read from the player's animation set), rebuilt every two client cycles. Worker request `Request::PlayerGeometry`, event `StreamEvent::PlayerGeometry`, stale results dropped by token.
+- **NPC outlines**: the spawn squares are drawn on each actor's current tile (one per actor, capped), not at the anchor plus the walked footprint; footprints default off. The simulation starts by itself whenever the spawns switch is on.
+- **Not verified**: look correctness beyond one screenshot (default kits and colours, hides, female), facing (fixed), HD player appearance, the player's walking animations.
+- Gates were run on a copy of HEAD plus only these files because another writer's unfinished HD theme/appearance changes were in the same working tree: architecture guard + tests, fmt, strict Clippy (native, WASM editor), lower-crate WASM check and the full locked workspace tests all passed there.
+
 ## Object semantics slice (2026-10-16)
 
 - `osrs-scene::object_semantics` (pure analysis, no cache/UI): name/symbol tokenizing and opacity (`tokens`), loc-type slot and verb facts (`structure`), a relation `Census` over placements (straight continuation, corner arm, run end open/perpendicular/pillar, inset, decoration; edge numbering 0 W, 1 N, 2 E, 3 S), and `infer` (role, wall-style family by union of repeated relations, suggested labels with evidence and confidence). 18 unit tests with hand-built fixtures.
