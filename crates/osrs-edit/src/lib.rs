@@ -72,7 +72,10 @@ pub use building_roof_realization::{
     RoofPlacementDescription, RoofPlacementDescriptionError, build_roof_patch,
     describe_roof_placements,
 };
-pub use building_roof_sections::{RoofSection, RoofSectionError, decompose_roof_sections};
+pub use building_roof_sections::{
+    RoofSection, RoofSectionError, RoofSectionShape, decompose_roof_sections,
+    plan_roof_section_shapes,
+};
 pub use building_roof_solver::{
     RoofPatternSelection, RoofWfcSolution, RoofWfcSolveError, solve_roof_wfc,
 };
