@@ -186,11 +186,9 @@ mod tests {
     }
 
     fn solved_roof() -> (BuildingRoofPlan, RoofWfcSolution) {
-        let vertical = plan_vertical_connectivity(
-            request(),
-            &[rectangle(MapTile::new(3200, 3200), 5, 5)],
-        )
-        .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
+        let vertical =
+            plan_vertical_connectivity(request(), &[rectangle(MapTile::new(3200, 3200), 5, 5)])
+                .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
         let roof = plan_roof_coverage(&vertical)
             .unwrap_or_else(|error| unreachable!("valid roof plan: {error:?}"));
         let solution = solve_roof_wfc(
@@ -240,7 +238,10 @@ mod tests {
             assert_eq!(description.placement.position.plane, roof.plane());
             assert_eq!(description.placement.object_id, expected_asset.object_id);
             assert_eq!(description.placement.kind, expected_asset.kind);
-            assert_eq!(description.placement.orientation, expected_asset.orientation);
+            assert_eq!(
+                description.placement.orientation,
+                expected_asset.orientation
+            );
         }
     }
 
