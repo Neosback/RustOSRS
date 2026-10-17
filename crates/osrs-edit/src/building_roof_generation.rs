@@ -58,7 +58,8 @@ pub fn generate_roof_patch(
         return build_roof_patch(&descriptions).map_err(RoofGenerationError::Patch);
     }
 
-    let sections = decompose_roof_sections(&roof).map_err(RoofGenerationError::SectionDecomposition)?;
+    let sections =
+        decompose_roof_sections(&roof).map_err(RoofGenerationError::SectionDecomposition)?;
     let section_shapes = plan_roof_section_shapes(&sections);
     let section_cells = classify_roof_section_cells(&roof, &section_shapes)
         .map_err(RoofGenerationError::SectionCells)?;
@@ -160,14 +161,17 @@ mod tests {
     }
 
     fn palette() -> RoofPalette {
-        RoofPalette::new((0_u8..12).map(|value| RoofPaletteEntry {
-            pattern: pattern(value),
-            asset: RoofAsset {
-                object_id: ObjectId::new(20_000 + u32::from(value)),
-                kind: LocKind::new(10).unwrap_or_else(|| unreachable!("test loc kind is valid")),
-                orientation: ObjectOrientation::new(value % 4)
-                    .unwrap_or_else(|| unreachable!("test orientation is valid")),
-            },
+        RoofPalette::new((0_u8..12).map(|value| {
+            RoofPaletteEntry {
+                pattern: pattern(value),
+                asset: RoofAsset {
+                    object_id: ObjectId::new(20_000 + u32::from(value)),
+                    kind: LocKind::new(10)
+                        .unwrap_or_else(|| unreachable!("test loc kind is valid")),
+                    orientation: ObjectOrientation::new(value % 4)
+                        .unwrap_or_else(|| unreachable!("test orientation is valid")),
+                },
+            }
         }))
         .unwrap_or_else(|error| unreachable!("valid roof palette: {error:?}"))
     }
