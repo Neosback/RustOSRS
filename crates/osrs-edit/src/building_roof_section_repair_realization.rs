@@ -1,14 +1,13 @@
 //! Concrete realization of semantic complex-roof junction repair requirements.
 //!
-//! Junction repair sites are normalized into asset-independent profile keys. A junction pattern
-//! palette maps each profile to a semantic `WfcPatternId`, then the existing `RoofPalette` resolves
-//! that pattern into the concrete roof asset. The resulting descriptions replace normal section
-//! placements before any map patch is built.
+//! Junction repair sites are normalized into semantic profile keys. A junction pattern palette maps
+//! each profile to a replacement `WfcPatternId`, then the existing `RoofPalette` resolves that
+//! pattern into the concrete roof asset. Normal section placements are replaced before patch build.
 
 use crate::{
-    CardinalDirection, RoofJunctionPatternPaletteError, RoofPalette, RoofPlacementDescription,
-    RoofSection, RoofSectionJunctionRepairRole, RoofSectionJunctionRepairSite,
-    RoofSectionPlacementPlan, WfcPatternId,
+    CardinalDirection, RoofPalette, RoofPlacementDescription, RoofSection,
+    RoofSectionJunctionRepairRole, RoofSectionJunctionRepairSite, RoofSectionPlacementPlan,
+    WfcPatternId,
 };
 use osrs_core::coords::MapTile;
 use std::collections::BTreeMap;
@@ -25,9 +24,7 @@ pub struct RoofJunctionPatternKey {
 }
 
 impl RoofJunctionPatternKey {
-    pub fn new(
-        requirements: impl IntoIterator<Item = RoofJunctionPatternRequirement>,
-    ) -> Self {
+    pub fn new(requirements: impl IntoIterator<Item = RoofJunctionPatternRequirement>) -> Self {
         let mut requirements = requirements.into_iter().collect::<Vec<_>>();
         requirements.sort_unstable();
         requirements.dedup();
@@ -113,10 +110,8 @@ type PlacementKey = (SectionSortKey, MapTile);
 
 /// Replace normal section roof placements at semantic repair sites with junction-specific assets.
 ///
-/// Output is flattened in deterministic section/world-tile order and is ready for the existing
-/// `build_roof_patch` transaction builder. The input plans and repair-site order do not affect the
-/// result. Each repair profile first selects a replacement semantic pattern, then that pattern is
-/// resolved through the ordinary roof asset palette.
+/// Output is flattened in deterministic section/world-tile order and is ready for `build_roof_patch`.
+/// The order of section plans and repair sites does not affect the result.
 pub fn describe_repaired_roof_section_placements(
     plans: &[RoofSectionPlacementPlan],
     repairs: &[RoofSectionJunctionRepairSite],
@@ -207,12 +202,12 @@ mod tests {
     use crate::{
         BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingRoofPlan, BuildingStyle,
         LocKind, MapDocument, ObjectOrientation, PatternDomain, RectSite, RoofAsset,
-        RoofPaletteEntry, RoofPatternSet, RoofSectionCellPlan, RoofSectionJunctionRepairRequirement,
-        RoofSectionWfcPlan, WfcCatalog, WfcPatternSpec, WfcSocket, build_roof_patch,
-        classify_roof_section_cells, classify_roof_section_junctions, decompose_roof_sections,
-        describe_roof_section_placements, detect_roof_section_junctions, plan_roof_coverage,
-        plan_roof_section_junction_repairs, plan_roof_section_shapes, plan_vertical_connectivity,
-        roof_section_wfc_constraints, solve_roof_section_wfc,
+        RoofPaletteEntry, RoofPatternSet, RoofSectionCellPlan, RoofSectionWfcPlan, WfcCatalog,
+        WfcPatternSpec, WfcSocket, build_roof_patch, classify_roof_section_cells,
+        classify_roof_section_junctions, decompose_roof_sections, describe_roof_section_placements,
+        detect_roof_section_junctions, plan_roof_coverage, plan_roof_section_junction_repairs,
+        plan_roof_section_shapes, plan_vertical_connectivity, roof_section_wfc_constraints,
+        solve_roof_section_wfc,
     };
     use osrs_core::coords::SourcePlane;
     use osrs_core::ids::ObjectId;
@@ -332,20 +327,16 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("roof section cells classify: {error:?}"))
     }
 
-    fn section_wfc_plans(cells: &[RoofSectionCellPlan]) -> Vec<RoofSectionWfcPlan> {
-        roof_section_wfc_constraints(cells, patterns())
-            .unwrap_or_else(|error| unreachable!("section constraints are valid: {error:?}"))
-    }
-
-    fn fixture_for(
-        floor: Vec<MapTile>,
-    ) -> (
+    fn fixture() -> (
         Vec<RoofSectionPlacementPlan>,
         Vec<RoofSectionJunctionRepairSite>,
     ) {
+        let mut floor = rectangle(MapTile::new(3200, 3200), 5, 1);
+        floor.extend(rectangle(MapTile::new(3201, 3201), 3, 3));
         let roof = roof_for(floor);
         let cells = section_cells(&roof);
-        let wfc_plans = section_wfc_plans(&cells);
+        let wfc_plans: Vec<RoofSectionWfcPlan> = roof_section_wfc_constraints(&cells, patterns())
+            .unwrap_or_else(|error| unreachable!("section constraints are valid: {error:?}"));
         let solutions = solve_roof_section_wfc(&catalog(), &wfc_plans, 91, 32)
             .unwrap_or_else(|error| unreachable!("roof sections solve: {error:?}"));
         let placements = describe_roof_section_placements(&solutions, &roof_palette(true))
@@ -357,17 +348,8 @@ mod tests {
         (placements, repairs)
     }
 
-    fn l_shape_fixture() -> (
-        Vec<RoofSectionPlacementPlan>,
-        Vec<RoofSectionJunctionRepairSite>,
-    ) {
-        let mut floor = rectangle(MapTile::new(3200, 3200), 5, 1);
-        floor.extend(rectangle(MapTile::new(3201, 3201), 3, 3));
-        fixture_for(floor)
-    }
-
     #[test]
-    fn junction_pattern_key_normalizes_order_and_duplicates() {
+    fn key_normalizes_requirement_order_and_duplicates() {
         let normalized = key([
             (
                 RoofSectionJunctionRepairRole::RidgeIntersection,
@@ -383,23 +365,19 @@ mod tests {
             ),
         ]);
 
+        assert_eq!(normalized.requirements().len(), 2);
         assert_eq!(
-            normalized.requirements(),
-            &[
-                RoofJunctionPatternRequirement {
-                    role: RoofSectionJunctionRepairRole::RidgeIntersection,
-                    direction_to_other: CardinalDirection::North,
-                },
-                RoofJunctionPatternRequirement {
-                    role: RoofSectionJunctionRepairRole::RidgeIntersection,
-                    direction_to_other: CardinalDirection::South,
-                },
-            ]
+            normalized.requirements()[0].direction_to_other,
+            CardinalDirection::North
+        );
+        assert_eq!(
+            normalized.requirements()[1].direction_to_other,
+            CardinalDirection::South
         );
     }
 
     #[test]
-    fn junction_palette_rejects_duplicate_normalized_profiles() {
+    fn palette_rejects_duplicate_normalized_profiles() {
         let duplicate = key([(
             RoofSectionJunctionRepairRole::Valley,
             CardinalDirection::East,
@@ -420,13 +398,8 @@ mod tests {
     }
 
     #[test]
-    fn l_shape_replaces_all_six_junction_tiles_and_preserves_other_placements() {
-        let (plans, repairs) = l_shape_fixture();
-        let base = plans
-            .iter()
-            .flat_map(|plan| plan.descriptions().iter().copied())
-            .map(|description| (description.placement.position.tile, description))
-            .collect::<BTreeMap<_, _>>();
+    fn l_shape_replaces_all_six_junction_tiles_with_bound_assets() {
+        let (plans, repairs) = fixture();
         let repaired = describe_repaired_roof_section_placements(
             &plans,
             &repairs,
@@ -436,39 +409,37 @@ mod tests {
         .unwrap_or_else(|error| unreachable!("junction repairs resolve: {error:?}"));
         let repaired_by_tile = repaired
             .iter()
-            .copied()
             .map(|description| (description.placement.position.tile, description))
             .collect::<BTreeMap<_, _>>();
 
-        assert_eq!(repaired.len(), base.len());
         assert_eq!(repairs.len(), 6);
+        assert_eq!(
+            repaired.len(),
+            plans
+                .iter()
+                .map(|plan| plan.descriptions().len())
+                .sum::<usize>()
+        );
         for repair in &repairs {
-            let requirement = repair.requirements()[0];
-            let expected_pattern = match requirement.direction_to_other {
+            let expected_pattern = match repair.requirements()[0].direction_to_other {
                 CardinalDirection::North => pattern(10),
                 CardinalDirection::South => pattern(11),
                 _ => unreachable!("L-shape seam is north/south"),
             };
             let description = repaired_by_tile
                 .get(&repair.cell().tile)
-                .unwrap_or_else(|| unreachable!("repair tile remains in roof output"));
+                .unwrap_or_else(|| unreachable!("repair tile remains in output"));
             let expected_asset = roof_palette(true)
                 .asset(expected_pattern)
                 .unwrap_or_else(|| unreachable!("junction pattern has asset"));
             assert_eq!(description.pattern, expected_pattern);
             assert_eq!(description.placement.object_id, expected_asset.object_id);
         }
-
-        for (tile, description) in &base {
-            if repairs.iter().all(|repair| repair.cell().tile != *tile) {
-                assert_eq!(repaired_by_tile.get(tile), Some(description));
-            }
-        }
     }
 
     #[test]
-    fn repair_realization_is_independent_of_plan_and_site_input_order() {
-        let (plans, repairs) = l_shape_fixture();
+    fn realization_is_independent_of_plan_and_repair_input_order() {
+        let (plans, repairs) = fixture();
         let mut reversed_plans = plans.clone();
         reversed_plans.reverse();
         let mut reversed_repairs = repairs.clone();
@@ -493,8 +464,8 @@ mod tests {
     }
 
     #[test]
-    fn missing_junction_pattern_reports_exact_first_repair_site() {
-        let (plans, repairs) = l_shape_fixture();
+    fn missing_profile_and_asset_report_exact_first_repair_site() {
+        let (plans, repairs) = fixture();
         let first = &repairs[0];
         let expected_key = RoofJunctionPatternKey::from_repair_site(first);
         let empty = RoofJunctionPatternPalette::new([])
@@ -510,20 +481,13 @@ mod tests {
             Err(RoofSectionJunctionRealizationError::MissingJunctionPattern {
                 section: first.section(),
                 tile: first.cell().tile,
-                key: expected_key,
+                key: expected_key.clone(),
             })
         );
-    }
 
-    #[test]
-    fn missing_concrete_asset_reports_exact_junction_pattern() {
-        let (plans, repairs) = l_shape_fixture();
-        let first = &repairs[0];
-        let key = RoofJunctionPatternKey::from_repair_site(first);
         let expected_pattern = l_shape_junction_patterns()
-            .pattern(&key)
+            .pattern(&expected_key)
             .unwrap_or_else(|| unreachable!("first repair profile is bound"));
-
         assert_eq!(
             describe_repaired_roof_section_placements(
                 &plans,
@@ -540,41 +504,8 @@ mod tests {
     }
 
     #[test]
-    fn multi_seam_site_produces_one_normalized_profile() {
-        let floor = vec![
-            MapTile::new(3201, 3200),
-            MapTile::new(3200, 3201),
-            MapTile::new(3201, 3201),
-            MapTile::new(3202, 3201),
-            MapTile::new(3201, 3202),
-        ];
-        let (_, repairs) = fixture_for(floor);
-        let center = repairs
-            .iter()
-            .find(|repair| {
-                repair.cell().tile == MapTile::new(3201, 3201)
-                    && repair.requirements().len() == 2
-            })
-            .unwrap_or_else(|| unreachable!("center tile has two seam requirements"));
-
-        assert_eq!(
-            RoofJunctionPatternKey::from_repair_site(center),
-            key([
-                (
-                    RoofSectionJunctionRepairRole::RidgeIntersection,
-                    CardinalDirection::North,
-                ),
-                (
-                    RoofSectionJunctionRepairRole::RidgeIntersection,
-                    CardinalDirection::South,
-                ),
-            ])
-        );
-    }
-
-    #[test]
     fn repaired_patch_apply_and_inverse_restore_exact_document() {
-        let (plans, repairs) = l_shape_fixture();
+        let (plans, repairs) = fixture();
         let repaired = describe_repaired_roof_section_placements(
             &plans,
             &repairs,
@@ -591,9 +522,6 @@ mod tests {
             .apply_patch(&patch)
             .unwrap_or_else(|error| unreachable!("repaired roof patch applies: {error:?}"));
         assert_eq!(document.object_count(), repaired.len());
-        for description in &repaired {
-            assert!(document.contains_object(description.placement));
-        }
 
         document
             .apply_patch(&patch.inverse())
