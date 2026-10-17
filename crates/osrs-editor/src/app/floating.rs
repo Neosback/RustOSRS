@@ -100,6 +100,7 @@ impl EditorApp {
                             // tool, an object waiting to be placed, an NPC placement.
                             self.placer.disarm();
                             self.npcs.cancel_gesture();
+                            self.prefabs.disarm();
                             if !selecting {
                                 self.interaction.clear_spline_points();
                                 self.set_tool(Tool::Select);

@@ -11,6 +11,7 @@ mod history;
 mod paste;
 mod path;
 mod plan;
+mod prefab_commit;
 #[cfg(test)]
 mod tests;
 
@@ -29,6 +30,7 @@ use osrs_edit::HeightVertexCoord;
 use osrs_world::TileEdit;
 pub(super) use path::commit_path_height;
 use plan::{build_paint_stroke_patch, project_height_values, project_paint_values};
+pub(super) use prefab_commit::commit_map_patch;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use web_time::Instant;

@@ -35,6 +35,8 @@ mod player_panel;
 mod player_runtime;
 mod plugin_runtime;
 mod plugins;
+mod prefab_panel;
+mod prefab_runtime;
 #[cfg_attr(target_arch = "wasm32", path = "app/project_web.rs")]
 mod project;
 mod project_runtime;
@@ -104,6 +106,7 @@ pub struct EditorApp {
     audio: audio_runtime::AudioRuntime,
     player_model: player_runtime::PlayerRuntime,
     viewer: viewer::Viewer,
+    prefabs: prefab_runtime::PrefabRuntime,
     names: names::NameRuntime,
     assets: Assets,
     hd: hd::HdRuntime,
@@ -156,6 +159,7 @@ impl eframe::App for EditorApp {
         viewer::update(self, &ctx);
         npc_panel::update(self, &ctx);
         player_panel::update_model(self, &ctx);
+        prefab_panel::update(self);
         if self.settings.prefs.sound_overlay {
             sound_panel::refresh(self);
         }
@@ -249,6 +253,14 @@ impl eframe::App for EditorApp {
                     height,
                 );
                 sound_panel::draw_world(
+                    self,
+                    &ui.painter().with_clip_rect(rect),
+                    rect,
+                    pixels_per_point,
+                    width,
+                    height,
+                );
+                prefab_panel::draw_world(
                     self,
                     &ui.painter().with_clip_rect(rect),
                     rect,

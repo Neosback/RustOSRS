@@ -7,6 +7,7 @@
 
 mod inspect;
 mod path;
+mod prefab;
 mod window;
 
 use super::EditorApp;
@@ -50,6 +51,8 @@ sleep SECONDS          pause by the clock, whatever the frame rate
 tcopy | tpaste X Y     copy the selected tiles / paste them with their corner at a tile
 place ID X Y [TURNS]  place an object from the catalog at a tile
 inspect X Y            log a tile's projected and document values (smoke tests)
+prefab capture NAME X0 Y0 X1 Y1 [PLANES] | place NAME X Y [TURNS] [replace]
+                       build X Y W H SEED [apply] | list
 status TEXT
 # a comment";
 
@@ -393,6 +396,7 @@ impl EditorApp {
                 }
             }
             "inspect" => inspect::run(self, &mut words)?,
+            "prefab" => prefab::run(self, &mut words)?,
             "mark" => {
                 let name: Vec<&str> = words.collect();
                 self.diagnostics.mark_segment(&name.join(" "));

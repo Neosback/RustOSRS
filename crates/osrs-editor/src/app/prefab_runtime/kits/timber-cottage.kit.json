@@ -1,0 +1,201 @@
+{
+  "format": "rustosrs-building-kit",
+  "version": 1,
+  "name": "Timber cottage",
+  "notes": "Timber walls and doors, red slate roof. Object ids are revision-240 cache ids; roof pieces are loc kinds 12 (slope), 17 (flat top) and 18 (edge).",
+  "floor": {
+    "underlay": null,
+    "overlay": {
+      "id": 10,
+      "shape": 0,
+      "rotation": 0
+    }
+  },
+  "exterior_wall": {
+    "id": 1602,
+    "kind": 0,
+    "orientations": [
+      1,
+      2,
+      3,
+      0
+    ]
+  },
+  "interior_wall": {
+    "id": 5634,
+    "kind": 0,
+    "orientations": [
+      1,
+      2,
+      3,
+      0
+    ]
+  },
+  "door": {
+    "id": 13015,
+    "kind": 0,
+    "orientations": [
+      1,
+      2,
+      3,
+      0
+    ]
+  },
+  "window": {
+    "id": 1615,
+    "kind": 0,
+    "orientations": [
+      1,
+      2,
+      3,
+      0
+    ]
+  },
+  "corner": null,
+  "door_variants": [],
+  "roof_plane_offset": 1,
+  "roof": {
+    "patterns": [
+      {
+        "id": 1924,
+        "kind": 17,
+        "orientation": 1,
+        "weight": 1,
+        "sockets": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "id": 1924,
+        "kind": 12,
+        "orientation": 3,
+        "weight": 1,
+        "sockets": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "id": 1924,
+        "kind": 12,
+        "orientation": 0,
+        "weight": 1,
+        "sockets": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "id": 1924,
+        "kind": 12,
+        "orientation": 1,
+        "weight": 1,
+        "sockets": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "id": 1924,
+        "kind": 12,
+        "orientation": 2,
+        "weight": 1,
+        "sockets": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "id": 1790,
+        "kind": 18,
+        "orientation": 3,
+        "weight": 1,
+        "sockets": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "id": 1790,
+        "kind": 18,
+        "orientation": 0,
+        "weight": 1,
+        "sockets": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "id": 1790,
+        "kind": 18,
+        "orientation": 1,
+        "weight": 1,
+        "sockets": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "id": 1790,
+        "kind": 18,
+        "orientation": 2,
+        "weight": 1,
+        "sockets": [
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    ],
+    "ridge": [
+      0
+    ],
+    "slopes": [
+      [
+        1
+      ],
+      [
+        2
+      ],
+      [
+        3
+      ],
+      [
+        4
+      ]
+    ],
+    "eaves": [
+      [
+        5
+      ],
+      [
+        6
+      ],
+      [
+        7
+      ],
+      [
+        8
+      ]
+    ],
+    "junctions": []
+  }
+}

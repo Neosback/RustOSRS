@@ -16,6 +16,8 @@ UI/input → controller intent → pure MapQuery planner → MapPatch
 | Objects | `app/object_tool.rs`, `app/gizmo.rs` | `osrs-edit/src/object_edit.rs` | `app/object_tool/commit.rs` |
 | NPC scenarios (rail tab, not a `Tool`) | `app/npc_runtime.rs`, `app/npc_panel/` | `osrs-edit/src/scenario.rs`, `osrs-playtest` | `EditRuntime::execute_scenario`, chronological `WorkspaceHistory` |
 | Appearance (View tab, not a `Tool`) | `app/theme_studio/`, UI drafts in `UiRuntime` | `osrs-hd::theme::ThemePatch` | `EditRuntime::execute_appearance`, same generic chronological history |
+| Prefabs (rail tab, not a `Tool`) | `app/prefab_panel/` (library, placement gesture and ghost), `app/prefab_runtime.rs` (library and files) | `osrs-edit/src/prefab/` | `app/editing/prefab_commit.rs`, composite history route (terrain keys plus object route) |
+| Buildings (Prefabs panel Build page) | `app/prefab_panel/build.rs`, `app/prefab_runtime/build.rs` | `osrs-edit` `building_*` generator through `BuildingKit` (`building_kit.rs`) | same prefab commit and composite route |
 | Tile paste | `app/editing/paste.rs`, `app/tile_clipboard.rs` | Paint planner | Existing Path history projection |
 
 Application paths are relative to `crates/osrs-editor/src`. `osrs-edit` paths are relative to `crates`.

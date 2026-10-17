@@ -96,6 +96,23 @@ impl EditStep {
         }
     }
 
+    /// One semantic transaction that changed terrain and/or objects together (a prefab or a
+    /// generated building). Both routes set means undo and redo replay them as one step.
+    pub(super) fn semantic_composite(
+        keys: Vec<TileKey>,
+        include_height: bool,
+        objects: Option<ObjectHistoryRoute>,
+    ) -> Self {
+        Self {
+            semantic_path: (!keys.is_empty()).then_some(SemanticPathHistory {
+                keys,
+                include_height,
+            }),
+            semantic_object: objects,
+            ..Self::default()
+        }
+    }
+
     pub(super) fn semantic_path(keys: Vec<TileKey>, include_height: bool) -> Self {
         Self {
             semantic_path: Some(SemanticPathHistory {

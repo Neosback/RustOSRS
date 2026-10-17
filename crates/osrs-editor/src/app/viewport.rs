@@ -58,6 +58,7 @@ impl EditorApp {
         self.interaction.set_hover(hover);
         // The brush tools keep the left button for painting; Select clicks and boxes.
         let consumed = npc_panel::armed_input(self, response)
+            || prefab_panel::armed_input(self, response)
             || sound_panel::marker_click(self, response, rect, pixels_per_point, width, height);
         if !consumed {
             self.brush_input(&response.ctx, response);

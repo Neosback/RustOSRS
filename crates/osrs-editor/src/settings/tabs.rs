@@ -19,15 +19,18 @@ pub enum RailTab {
     Player,
     /// Offline NPC scenarios: import, place, edit and playtest.
     Npc,
+    /// Saved buildings and pieces of map to place, and the building generator.
+    Prefabs,
 }
 
 impl RailTab {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Inspect,
         Self::View,
         Self::Sound,
         Self::Player,
         Self::Npc,
+        Self::Prefabs,
     ];
 
     pub const fn label(self) -> &'static str {
@@ -38,6 +41,7 @@ impl RailTab {
             Self::Sound => "Sound",
             Self::Player => "Player",
             Self::Npc => "NPCs",
+            Self::Prefabs => "Prefabs",
         }
     }
 }

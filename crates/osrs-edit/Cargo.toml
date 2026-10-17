@@ -10,5 +10,8 @@ osrs-core = { path = "../osrs-core" }
 
 serde.workspace = true
 
+[dev-dependencies]
+serde_json = "1.0.152"
+
 [lints]
 workspace = true

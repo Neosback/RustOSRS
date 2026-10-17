@@ -10,6 +10,7 @@ pub(super) fn rail_icon(tab: RailTab) -> &'static str {
         RailTab::Sound => icons::SOUND,
         RailTab::Player => icons::PLAYER,
         RailTab::Npc => icons::NPC,
+        RailTab::Prefabs => icons::PREFABS,
     }
 }
 
@@ -159,6 +160,8 @@ impl EditorApp {
             RailTab::Player => crate::app::player_panel::show(self, ui),
             // The panel scrolls itself.
             RailTab::Npc => crate::app::npc_panel::show(self, ui),
+            // The panel scrolls itself.
+            RailTab::Prefabs => crate::app::prefab_panel::show(self, ui),
             _ => {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
@@ -176,7 +179,11 @@ impl EditorApp {
                             }
                             ViewTab::Overlays => self.overlays_tab(ui),
                         },
-                        RailTab::Inspect | RailTab::Sound | RailTab::Player | RailTab::Npc => {}
+                        RailTab::Inspect
+                        | RailTab::Sound
+                        | RailTab::Player
+                        | RailTab::Npc
+                        | RailTab::Prefabs => {}
                     });
             }
         }

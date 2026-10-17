@@ -9,18 +9,10 @@ use super::super::plan::{project_height_values, project_paint_values};
 use super::{
     EditStep, EditorApp, SemanticHeightHistory, SemanticPaintHistory, SemanticPathHistory, TileKey,
 };
-use crate::app::edit_runtime::{
-    EditExecution, EditExecutionError, EditFootprint, EditReplayDirection,
-};
+use crate::app::edit_runtime::{EditExecution, EditExecutionError, EditReplayDirection};
 use crate::app::object_tool::{ObjectHistoryRoute, build_object_history_projection};
 use crate::paint::TileValues;
-use osrs_core::{
-    coords::{MapTile, SourcePlane},
-    ids::ObjectId,
-};
-use osrs_edit::{
-    HeightVertexCoord, LocKind, MapPosition, MapQuery, ObjectOrientation, ObjectPlacement,
-};
+use osrs_edit::MapQuery;
 use osrs_world::{LocEdit, LocSpec};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -76,6 +68,8 @@ enum Route {
     Height(SemanticHeightHistory),
     Path(SemanticPathHistory),
     Object(ObjectHistoryRoute),
+    /// Terrain and objects changed by one transaction (prefabs, generated buildings).
+    Composite(SemanticPathHistory, ObjectHistoryRoute),
 }
 
 /// Transitional worker values captured before semantic replay. Missing tiles are retained as
@@ -83,6 +77,7 @@ enum Route {
 enum ProjectionInput {
     Tiles(Vec<(TileKey, Option<TileValues>)>),
     Object,
+    TilesAndObject(Vec<(TileKey, Option<TileValues>)>),
 }
 
 /// A fully validated replay projection. Applying this after gateway finalization is infallible.
@@ -94,6 +89,13 @@ enum PreparedProjection {
         mark_height: bool,
     },
     Object {
+        edits: Vec<LocEdit>,
+        reselect: Vec<LocSpec>,
+        count: usize,
+    },
+    Composite {
+        projected: Vec<(TileKey, TileValues, TileValues)>,
+        mark_height: bool,
         edits: Vec<LocEdit>,
         reselect: Vec<LocSpec>,
         count: usize,
@@ -110,6 +112,8 @@ impl Route {
             Some(Self::Paint(paint.clone()))
         } else if let Some(height) = &step.semantic_height {
             Some(Self::Height(height.clone()))
+        } else if let (Some(path), Some(object)) = (&step.semantic_path, &step.semantic_object) {
+            Some(Self::Composite(path.clone(), object.clone()))
         } else if let Some(path) = &step.semantic_path {
             Some(Self::Path(path.clone()))
         } else {
@@ -125,6 +129,7 @@ impl Route {
             Self::Height(_) => "Height",
             Self::Path(_) => "Path",
             Self::Object(_) => "Object",
+            Self::Composite(..) => "Prefab",
         }
     }
 
@@ -137,6 +142,7 @@ impl Route {
             Self::Height(_) => ("Height tile", "s"),
             Self::Path(_) => ("path tile", "s"),
             Self::Object(_) => ("object", "s"),
+            Self::Composite(..) => ("map change", "s"),
         };
         format!("{count} {noun}{}", if count == 1 { "" } else { plural })
     }
@@ -146,68 +152,19 @@ impl Route {
             Self::Paint(paint) => Some(&paint.keys),
             Self::Height(height) => Some(&height.keys),
             Self::Path(path) => Some(&path.keys),
+            Self::Composite(path, _) => Some(&path.keys),
             Self::Object(_) | Self::Scenario | Self::Appearance => None,
         };
-        match keys {
-            Some(keys) => ProjectionInput::Tiles(
-                keys.iter()
-                    .map(|key| (*key, app.current_tile(*key)))
-                    .collect(),
-            ),
-            None => ProjectionInput::Object,
+        let tiles = |keys: &Vec<TileKey>| -> Vec<(TileKey, Option<TileValues>)> {
+            keys.iter()
+                .map(|key| (*key, app.current_tile(*key)))
+                .collect()
+        };
+        match (keys, self) {
+            (Some(keys), Self::Composite(..)) => ProjectionInput::TilesAndObject(tiles(keys)),
+            (Some(keys), _) => ProjectionInput::Tiles(tiles(keys)),
+            (None, _) => ProjectionInput::Object,
         }
-    }
-
-    /// Reconstruct the semantic coordinate classes of the opaque session-history patch. Object
-    /// replay retains exact placement identity and reports the mutation polarity of the replay that
-    /// is about to occur: Undo swaps the original removed/added sets, while Redo preserves them.
-    fn footprint(&self, direction: Direction) -> EditFootprint {
-        let map_tiles = |keys: &[TileKey]| {
-            keys.iter()
-                .map(|key| MapTile::new(key.1, key.2))
-                .collect::<Vec<_>>()
-        };
-        let height_vertices = |keys: &[TileKey]| {
-            keys.iter()
-                .map(|key| {
-                    let plane = SourcePlane::new(key.0)
-                        .unwrap_or_else(|| unreachable!("history TileKey plane is valid"));
-                    HeightVertexCoord::new(MapTile::new(key.1, key.2), plane)
-                })
-                .collect::<Vec<_>>()
-        };
-        let footprint = match self {
-            Self::Scenario | Self::Appearance => EditFootprint::default(),
-            Self::Paint(paint) => EditFootprint::new(map_tiles(&paint.keys), [], []),
-            Self::Height(height) => EditFootprint::new([], height_vertices(&height.keys), []),
-            Self::Path(path) if path.include_height => {
-                EditFootprint::new(map_tiles(&path.keys), height_vertices(&path.keys), [])
-            }
-            Self::Path(path) => EditFootprint::new(map_tiles(&path.keys), [], []),
-            Self::Object(object) => {
-                let (removed, added) = match direction {
-                    Direction::Undo => (object.added(), object.removed()),
-                    Direction::Redo => (object.removed(), object.added()),
-                };
-                EditFootprint::with_object_mutations(
-                    [],
-                    [],
-                    removed.iter().copied().map(history_object_placement),
-                    added.iter().copied().map(history_object_placement),
-                )
-            }
-        };
-        let keys: &[TileKey] = match self {
-            Self::Paint(paint) => &paint.keys,
-            Self::Path(path) => &path.keys,
-            _ => &[],
-        };
-        footprint.with_terrain_positions(keys.iter().map(|&(plane, x, y)| {
-            MapPosition::new(
-                MapTile::new(x, y),
-                SourcePlane::new(plane).unwrap_or_else(|| unreachable!("validated history plane")),
-            )
-        }))
     }
 
     fn prepare_projection(
@@ -283,23 +240,34 @@ impl Route {
                     count: object.object_count(),
                 })
             }
+            (Self::Composite(path, object), ProjectionInput::TilesAndObject(current)) => {
+                let mut projected = Vec::with_capacity(current.len());
+                for (key, current) in current {
+                    let current = current.ok_or_else(|| {
+                        "a tile of the area is no longer available to the projection adapter"
+                            .to_owned()
+                    })?;
+                    let values =
+                        project_semantic_path_values(query, key, current, path.include_height)
+                            .ok_or_else(|| {
+                                "the semantic result cannot be represented by the legacy projection"
+                                    .to_owned()
+                            })?;
+                    projected.push((key, current, values));
+                }
+                let projection =
+                    build_object_history_projection(query, object, direction == Direction::Redo)
+                        .map_err(|error| format!("{error:?}"))?;
+                Ok(PreparedProjection::Composite {
+                    projected,
+                    mark_height: path.include_height,
+                    edits: projection.edits,
+                    reselect: projection.reselect,
+                    count: object.object_count() + path.keys.len(),
+                })
+            }
             _ => unreachable!("projection input is captured from the same history route"),
         }
-    }
-}
-
-fn history_object_placement(spec: LocSpec) -> ObjectPlacement {
-    let plane = SourcePlane::new(spec.plane)
-        .unwrap_or_else(|| unreachable!("semantic Object history plane is canonical"));
-    let kind = LocKind::new(spec.loc_type)
-        .unwrap_or_else(|| unreachable!("semantic Object history loc kind is canonical"));
-    let orientation = ObjectOrientation::new(spec.orientation)
-        .unwrap_or_else(|| unreachable!("semantic Object history orientation is canonical"));
-    ObjectPlacement {
-        object_id: ObjectId::new(spec.object_id),
-        position: MapPosition::new(MapTile::new(spec.tile.0, spec.tile.1), plane),
-        kind,
-        orientation,
     }
 }
 
@@ -442,9 +410,33 @@ impl EditorApp {
                 self.interaction.set_pending_reselect(reselect);
                 count
             }
+            PreparedProjection::Composite {
+                projected,
+                mark_height,
+                edits,
+                reselect,
+                count,
+            } => {
+                let mut tile_edits = Vec::new();
+                for (key, current, values) in projected {
+                    if mark_height {
+                        self.terrain.height_edited.insert(key);
+                    }
+                    if values != current {
+                        self.terrain.edited.insert(key, values);
+                        tile_edits.push(self.edit_for(key, values));
+                    }
+                }
+                self.world.project_tile_edits(tile_edits);
+                self.world.project_loc_edits(edits);
+                self.clear_selection();
+                self.interaction.set_pending_reselect(reselect);
+                count
+            }
         }
     }
 }
 
+mod footprint;
 #[cfg(test)]
 mod tests;

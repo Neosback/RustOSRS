@@ -161,5 +161,69 @@
       "file": "crates/osrs-editor/src/session/appearance_tests.rs",
       "symbol": "mixed_history_preserves_map_revision_and_restores_appearance_exactly"
     }
+  },
+  "Prefabs": {
+    "kind": "workspace",
+    "mutates_document": true,
+    "controller": {
+      "file": "crates/osrs-editor/src/app/prefab_panel/viewport.rs",
+      "symbol": "armed_input"
+    },
+    "planner": {
+      "file": "crates/osrs-edit/src/prefab/place.rs",
+      "symbol": "plan_place_prefab"
+    },
+    "gateway": {
+      "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
+      "symbol": "commit_map_patch"
+    },
+    "planning_test": {
+      "file": "crates/osrs-edit/src/prefab/tests.rs",
+      "symbol": "one_turn_moves_things_where_a_clockwise_quarter_turn_puts_them"
+    },
+    "cancellation_test": {
+      "file": "crates/osrs-editor/src/app/prefab_runtime/tests.rs",
+      "symbol": "removing_the_armed_prefab_disarms_it"
+    },
+    "commit_test": {
+      "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
+      "symbol": "a_missing_tile_fails_the_composite_projection_and_restores_the_session"
+    },
+    "undo_test": {
+      "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
+      "symbol": "composite_undo_and_redo_replay_terrain_height_and_object_together"
+    }
+  },
+  "Buildings": {
+    "kind": "workspace",
+    "mutates_document": true,
+    "controller": {
+      "file": "crates/osrs-editor/src/app/prefab_panel/build.rs",
+      "symbol": "show"
+    },
+    "planner": {
+      "file": "crates/osrs-edit/src/building_kit.rs",
+      "symbol": "generate"
+    },
+    "gateway": {
+      "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
+      "symbol": "commit_map_patch"
+    },
+    "planning_test": {
+      "file": "crates/osrs-editor/src/app/prefab_runtime/tests.rs",
+      "symbol": "the_built_in_kit_plans_a_building_that_applies_undoes_and_saves"
+    },
+    "cancellation_test": {
+      "file": "crates/osrs-editor/src/app/prefab_runtime/tests.rs",
+      "symbol": "choosing_a_site_ends_the_gesture_and_centres_the_site_on_the_click"
+    },
+    "commit_test": {
+      "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
+      "symbol": "a_missing_tile_fails_the_composite_projection_and_restores_the_session"
+    },
+    "undo_test": {
+      "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
+      "symbol": "composite_undo_and_redo_replay_terrain_height_and_object_together"
+    }
   }
 }

@@ -135,13 +135,14 @@ Facade refinement runs only after that topology is fixed. Its first pass convert
 
 ## Checkpoint 8: editor integration
 
-- [ ] building-generator tool state
-- [ ] rectangular/polygon site selection
-- [ ] live semantic preview
-- [ ] seed field and reroll action
-- [ ] archetype/style/palette controls
-- [ ] validation diagnostics overlay
-- [ ] Apply as one history transaction
+- [x] building-generator panel state (Prefabs rail tab, Build page; no separate `Tool`)
+- [x] rectangular site selection (click the map or use the tile selection); polygon sites are not done
+- [x] live semantic preview (ghost of the objects added and removed)
+- [x] seed field and reroll action (plus a windows/doors-only reroll)
+- [x] archetype/style/kit controls (kits are JSON files, `osrs-edit/src/building_kit.rs`)
+- [ ] validation diagnostics overlay (errors are shown as one line; no per-room overlay yet)
+- [x] Apply as one history transaction (composite route, `app/editing/prefab_commit.rs`)
+- [x] save a generated building to the prefab library
 
 ## Checkpoint 9: building instances and regeneration
 

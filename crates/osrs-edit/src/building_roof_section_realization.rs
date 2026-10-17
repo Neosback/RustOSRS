@@ -338,7 +338,7 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("valid section roof patch: {error:?}"));
         let original = MapDocument::new();
         let mut document = original.clone();
-        let placement_count = plans.iter().map(|plan| plan.descriptions().len()).sum();
+        let placement_count: usize = plans.iter().map(|plan| plan.descriptions().len()).sum();
 
         document
             .apply_patch(&patch)

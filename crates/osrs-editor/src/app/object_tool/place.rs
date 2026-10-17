@@ -52,6 +52,20 @@ impl PlaceState {
         self.target.is_some()
     }
 
+    /// An object's base size in tiles from the catalog; one tile when the catalog has not loaded
+    /// or does not list it (unnamed boundary pieces and decoration are one tile anyway).
+    pub(in crate::app) fn object_size(&self, id: u32) -> (u8, u8) {
+        self.catalog
+            .as_ref()
+            .and_then(|catalog| catalog.get(id))
+            .map_or((1, 1), |entry| {
+                (
+                    u8::try_from(entry.size_x).unwrap_or(1),
+                    u8::try_from(entry.size_y).unwrap_or(1),
+                )
+            })
+    }
+
     /// Cancel placing. Returns whether anything was armed.
     pub(in crate::app) fn disarm(&mut self) -> bool {
         self.target.take().is_some()

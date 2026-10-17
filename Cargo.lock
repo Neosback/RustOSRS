@@ -2602,6 +2602,7 @@ version = "0.0.0"
 dependencies = [
  "osrs-core",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

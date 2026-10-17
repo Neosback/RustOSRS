@@ -87,6 +87,7 @@ impl EditorApp {
             audio: audio_runtime::AudioRuntime::default(),
             player_model: player_runtime::PlayerRuntime::default(),
             viewer: viewer::Viewer::from_environment(),
+            prefabs: prefab_runtime::PrefabRuntime::open(),
             names: names::NameRuntime::default(),
             hd: hd::HdRuntime::new(),
             world,

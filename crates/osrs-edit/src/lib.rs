@@ -8,6 +8,7 @@
 mod building;
 mod building_detail;
 mod building_generation;
+mod building_kit;
 mod building_program;
 mod building_realization;
 mod building_refinement;
@@ -36,6 +37,7 @@ mod object;
 mod object_edit;
 mod patch;
 mod position;
+mod prefab;
 mod query;
 mod region;
 mod scenario;
@@ -55,6 +57,10 @@ pub use building_detail::{
 pub use building_generation::{
     BuildingGenerationConfig, BuildingGenerationError, generate_building_patch,
     generate_building_plan_patch,
+};
+pub use building_kit::{
+    BuildingKit, KIT_FORMAT, KIT_VERSION, KitAsset, KitError, KitFile, KitFloor, KitJunction,
+    KitOverlay, KitRoof, KitRoofPattern, KitWeightedAsset,
 };
 pub use building_program::{
     BspCorridor, BspLayout, BspLayoutError, BspRoomPlacement, BuildingProgram, BuildingRoomRole,
@@ -146,6 +152,11 @@ pub use object::{LocKind, ObjectOrientation, ObjectPlacement};
 pub use object_edit::{ObjectEditError, build_object_patch};
 pub use patch::{ChangeImpact, MapOp, MapPatch};
 pub use position::{HeightVertexCoord, MapPosition};
+pub use prefab::{
+    CaptureSpec, MAX_PREFAB_SIDE, PREFAB_FORMAT, PREFAB_VERSION, PlaceSpec, PlacedPrefab, Prefab,
+    PrefabError, PrefabHeight, PrefabObject, PrefabOverlay, PrefabSource, PrefabTile,
+    capture_prefab, objects_in_rect, plan_place_prefab, prefab_from_patch, turned_size,
+};
 pub use query::MapQuery;
 pub use region::{MapRegionSnapshot, RegionSnapshotError};
 pub use scenario::{

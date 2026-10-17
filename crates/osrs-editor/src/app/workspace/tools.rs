@@ -85,6 +85,7 @@ impl EditorApp {
     pub(in crate::app) fn set_tool(&mut self, tool: Tool) {
         // Choosing a tool stops an armed NPC placement or destination click.
         self.npcs.cancel_gesture();
+        self.prefabs.disarm();
         self.ui.note_tool(tool);
         if self.settings.prefs.tool == tool {
             return;
@@ -330,7 +331,7 @@ impl EditorApp {
 
     /// Esc: back to Select; in Select it clears the selection.
     pub(in crate::app) fn escape_action(&mut self) {
-        if self.placer.disarm() {
+        if self.placer.disarm() || self.prefabs.disarm() {
             return;
         }
         if self.settings.prefs.tool != Tool::Select {

@@ -41,6 +41,7 @@ pub const PLUGINS: &str = ph::PUZZLE_PIECE;
 pub const SOUND: &str = ph::SPEAKER_HIGH;
 pub const PLAYER: &str = ph::PERSON_SIMPLE_WALK;
 pub const NPC: &str = ph::USERS_THREE;
+pub const PREFABS: &str = ph::BUILDINGS;
 pub const TOOL_SELECT: &str = ph::CURSOR;
 pub const TOOL_PAINT: &str = ph::PAINT_BRUSH;
 pub const TOOL_HEIGHT: &str = ph::MOUNTAINS;
