@@ -356,13 +356,9 @@ pub fn solve_wfc(
         }
         domains[cell] = PatternDomain::singleton(chosen);
 
-        if let Err(contradiction) = propagate(
-            catalog,
-            width,
-            height,
-            &mut domains,
-            VecDeque::from([cell]),
-        ) {
+        if let Err(contradiction) =
+            propagate(catalog, width, height, &mut domains, VecDeque::from([cell]))
+        {
             restore_after_contradiction(
                 catalog,
                 width,
@@ -470,9 +466,11 @@ fn compatible_union(
     domain: PatternDomain,
     direction: CardinalDirection,
 ) -> PatternDomain {
-    domain.iter().fold(PatternDomain::empty(), |allowed, pattern| {
-        allowed.union(catalog.compatible_domain(pattern, direction))
-    })
+    domain
+        .iter()
+        .fold(PatternDomain::empty(), |allowed, pattern| {
+            allowed.union(catalog.compatible_domain(pattern, direction))
+        })
 }
 
 fn select_lowest_entropy_cell(domains: &[PatternDomain]) -> Option<usize> {
@@ -542,9 +540,7 @@ fn grid_neighbor(
         CardinalDirection::North if coord.y + 1 < height => {
             Some(WfcCoord::new(coord.x, coord.y + 1))
         }
-        CardinalDirection::East if coord.x + 1 < width => {
-            Some(WfcCoord::new(coord.x + 1, coord.y))
-        }
+        CardinalDirection::East if coord.x + 1 < width => Some(WfcCoord::new(coord.x + 1, coord.y)),
         CardinalDirection::South if coord.y > 0 => Some(WfcCoord::new(coord.x, coord.y - 1)),
         CardinalDirection::West if coord.x > 0 => Some(WfcCoord::new(coord.x - 1, coord.y)),
         _ => None,
@@ -653,7 +649,10 @@ mod tests {
                                 .unwrap_or_else(|| unreachable!("neighbor cell exists")),
                         )
                         .unwrap_or_else(|| unreachable!("neighbor pattern exists"));
-                    assert_eq!(pattern.socket(direction), neighbor.socket(opposite(direction)));
+                    assert_eq!(
+                        pattern.socket(direction),
+                        neighbor.socket(opposite(direction))
+                    );
                 }
             }
         }
@@ -661,11 +660,8 @@ mod tests {
 
     #[test]
     fn fixed_constraint_remains_fixed() {
-        let catalog = WfcCatalog::new([
-            pattern(1, 0, 0, 0, 0),
-            pattern(1, 0, 0, 0, 0),
-        ])
-        .unwrap_or_else(|error| unreachable!("valid test catalog: {error:?}"));
+        let catalog = WfcCatalog::new([pattern(1, 0, 0, 0, 0), pattern(1, 0, 0, 0, 0)])
+            .unwrap_or_else(|error| unreachable!("valid test catalog: {error:?}"));
         let fixed = WfcCoord::new(2, 1);
         let solution = solve_wfc(
             &catalog,
@@ -700,11 +696,8 @@ mod tests {
 
     #[test]
     fn incompatible_fixed_constraints_report_contradiction() {
-        let catalog = WfcCatalog::new([
-            pattern(1, 0, 0, 0, 0),
-            pattern(1, 1, 1, 1, 1),
-        ])
-        .unwrap_or_else(|error| unreachable!("valid test catalog: {error:?}"));
+        let catalog = WfcCatalog::new([pattern(1, 0, 0, 0, 0), pattern(1, 1, 1, 1, 1)])
+            .unwrap_or_else(|error| unreachable!("valid test catalog: {error:?}"));
         let result = solve_wfc(
             &catalog,
             2,
