@@ -9,6 +9,7 @@ mod building;
 mod building_program;
 mod building_realization;
 mod building_refinement;
+mod building_refinement_policy;
 mod building_routing;
 mod building_topology;
 mod building_validation;
@@ -42,6 +43,10 @@ pub use building_realization::{
 pub use building_refinement::{
     FacadeRefinementError, FacadeWfcConfig, RefinedBuildingArchitecture,
     build_wfc_refined_building_patch, refine_exterior_walls_with_wfc,
+};
+pub use building_refinement_policy::{
+    FacadeRefinementPolicy, build_wfc_building_variation_patch, facade_variation_seed,
+    refine_exterior_walls_for_variation,
 };
 pub use building_routing::{ProgramRoute, ProgramRoutingError, route_program_connections};
 pub use building_topology::{
