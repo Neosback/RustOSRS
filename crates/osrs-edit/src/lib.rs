@@ -62,9 +62,7 @@ pub use building_roof::{
     RoofEdge, RoofRidge, RoofRidgeAxis, RoofShape, classify_roof_cells, plan_roof_coverage,
     plan_roof_shape,
 };
-pub use building_roof_wfc::{
-    RoofConstraintError, RoofPatternSet, roof_wfc_constraints,
-};
+pub use building_roof_wfc::{RoofConstraintError, RoofPatternSet, roof_wfc_constraints};
 pub use building_routing::{ProgramRoute, ProgramRoutingError, route_program_connections};
 pub use building_topology::{
     BspBuildingPlan, BspTopologyError, ProgramRoomRole, build_bsp_building_plan,
