@@ -30,6 +30,9 @@ jobs:
           components: clippy, rustfmt
           cache: false
 
+      - name: Install Linux build dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -qq -y pkg-config libasound2-dev
+
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -44,9 +47,9 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
-  tests:
-    name: Full Test Suite
-    if: github.event_name == 'workflow_dispatch'
+  procgen-semantic-tests:
+    name: Targeted Procgen Semantic Tests
+    needs: fast-gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -57,8 +60,35 @@ jobs:
         with:
           cache: false
 
-      - name: Setup mold linker
-        run: sudo apt-get update -qq && sudo apt-get install -qq -y mold
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "workspace-fast-ci"
+
+      - name: Run vertical procgen tests
+        run: cargo test --locked -p osrs-edit building_vertical
+
+      - name: Run roof procgen tests
+        run: cargo test --locked -p osrs-edit building_roof
+
+      - name: Run end-to-end building procgen tests
+        run: cargo test --locked -p osrs-edit building_generation
+
+  tests:
+    name: Full Test Suite
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[full-ci]'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache: false
+
+      - name: Install Linux build dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -qq -y mold pkg-config libasound2-dev
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2

@@ -5,6 +5,31 @@
 //! ECS/runtime state. Presentation and infrastructure layers adapt to and from the
 //! types defined here.
 
+mod building;
+mod building_detail;
+mod building_generation;
+mod building_program;
+mod building_realization;
+mod building_refinement;
+mod building_refinement_policy;
+mod building_roof;
+mod building_roof_generation;
+mod building_roof_realization;
+mod building_roof_section_cells;
+mod building_roof_section_junctions;
+mod building_roof_section_realization;
+mod building_roof_section_repair;
+mod building_roof_section_repair_realization;
+mod building_roof_section_solver;
+mod building_roof_section_wfc;
+mod building_roof_sections;
+mod building_roof_solver;
+mod building_roof_wfc;
+mod building_routing;
+mod building_topology;
+mod building_validation;
+mod building_vertical;
+mod building_wfc;
 mod document;
 mod history;
 mod object;
@@ -17,6 +42,101 @@ mod scenario;
 mod terrain;
 mod workspace;
 
+pub use building::{
+    BuildingArchetype, BuildingConstraints, BuildingPlan, BuildingPlanError, BuildingRequest,
+    BuildingStyle, OccupancyCell, OccupancyGrid, PortalKind, RectSite, RoomConnection, RoomId,
+    RoomKind, RoomRect, RoomSpec, plan_basic_house,
+};
+pub use building_detail::{
+    BuildingDetailError, BuildingDetailPalette, CornerAsset, CornerTurn,
+    DetailedBuildingArchitecture, DetailedBuildingElement, WeightedEdgeAsset,
+    build_detailed_wfc_building_variation_patch, detail_refined_building_architecture,
+};
+pub use building_generation::{
+    BuildingGenerationConfig, BuildingGenerationError, generate_building_patch,
+    generate_building_plan_patch,
+};
+pub use building_program::{
+    BspCorridor, BspLayout, BspLayoutError, BspRoomPlacement, BuildingProgram, BuildingRoomRole,
+    ProgramConnection, ProgramRoom, building_program, pack_building_program,
+};
+pub use building_realization::{
+    BuildingArchitecture, BuildingArchitectureError, BuildingPalette, BuildingRealizationError,
+    CardinalDirection, EdgeAsset, EdgeFeature, FloorMaterial, SemanticEdge, build_building_patch,
+    derive_building_architecture,
+};
+pub use building_refinement::{
+    FacadeRefinementError, FacadeWfcConfig, RefinedBuildingArchitecture,
+    build_wfc_refined_building_patch, refine_exterior_walls_with_wfc,
+};
+pub use building_refinement_policy::{
+    FacadeRefinementPolicy, build_wfc_building_variation_patch, facade_variation_seed,
+    refine_exterior_walls_for_variation,
+};
+pub use building_roof::{
+    BuildingRoofError, BuildingRoofPlan, RoofCell, RoofCellClassificationError, RoofCellKind,
+    RoofEdge, RoofRidge, RoofRidgeAxis, RoofShape, classify_roof_cells, plan_roof_coverage,
+    plan_roof_shape,
+};
+pub use building_roof_generation::{RoofGenerationError, generate_roof_patch};
+pub use building_roof_realization::{
+    RoofAsset, RoofPalette, RoofPaletteEntry, RoofPaletteError, RoofPatchError,
+    RoofPlacementDescription, RoofPlacementDescriptionError, build_roof_patch,
+    describe_roof_placements,
+};
+pub use building_roof_section_cells::{
+    RoofSectionCellError, RoofSectionCellPlan, classify_roof_section_cells,
+};
+pub use building_roof_section_junctions::{
+    RoofSectionJunction, RoofSectionJunctionClassification, RoofSectionJunctionContact,
+    RoofSectionJunctionContactClassification, RoofSectionJunctionContactKind,
+    RoofSectionJunctionError, RoofSectionJunctionKind, classify_roof_section_junctions,
+    detect_roof_section_junctions,
+};
+pub use building_roof_section_realization::{
+    RoofSectionPlacementDescriptionError, RoofSectionPlacementPlan, build_roof_section_patch,
+    describe_roof_section_placements,
+};
+pub use building_roof_section_repair::{
+    RoofSectionJunctionRepairRequirement, RoofSectionJunctionRepairRole,
+    RoofSectionJunctionRepairSite, plan_roof_section_junction_repairs,
+};
+pub use building_roof_section_repair_realization::{
+    RoofJunctionPatternKey, RoofJunctionPatternPalette, RoofJunctionPatternPaletteEntry,
+    RoofJunctionPatternPaletteError, RoofJunctionPatternRequirement,
+    RoofSectionJunctionRealizationError, describe_repaired_roof_section_placements,
+};
+pub use building_roof_section_solver::{
+    RoofSectionWfcSolution, RoofSectionWfcSolveError, solve_roof_section_wfc,
+};
+pub use building_roof_section_wfc::{
+    RoofSectionConstraintError, RoofSectionWfcPlan, roof_section_wfc_constraints,
+};
+pub use building_roof_sections::{
+    RoofSection, RoofSectionError, RoofSectionShape, decompose_roof_sections,
+    plan_roof_section_shapes,
+};
+pub use building_roof_solver::{
+    RoofPatternSelection, RoofWfcSolution, RoofWfcSolveError, solve_roof_wfc,
+};
+pub use building_roof_wfc::{RoofConstraintError, RoofPatternSet, roof_wfc_constraints};
+pub use building_routing::{ProgramRoute, ProgramRoutingError, route_program_connections};
+pub use building_topology::{
+    BspBuildingPlan, BspTopologyError, ProgramRoomRole, build_bsp_building_plan,
+};
+pub use building_validation::{
+    BuildingDiagnostic, BuildingValidationReport, GenerationSnapshot, OccupiedFootprint,
+    capture_generation_snapshot, validate_building_plan,
+};
+pub use building_vertical::{
+    BuildingFloorIndex, BuildingFloorSurface, BuildingVerticalError, BuildingVerticalPlan,
+    StairAnchor, StairAsset, StairConstraintError, StairPalette, StairPatternSet,
+    StairRealizationError, build_stair_patch, plan_vertical_connectivity, stair_wfc_constraints,
+};
+pub use building_wfc::{
+    MAX_WFC_PATTERNS, PatternDomain, WfcCatalog, WfcCatalogError, WfcConstraint, WfcCoord,
+    WfcPattern, WfcPatternId, WfcPatternSpec, WfcSocket, WfcSolution, WfcSolveError, solve_wfc,
+};
 pub use document::{MapDocument, PatchApplyError};
 pub use history::{
     EditHistory, EditHistoryTransaction, HistoryDocument, HistoryTransactionError, PatchHistory,
