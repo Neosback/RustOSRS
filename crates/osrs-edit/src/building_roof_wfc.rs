@@ -146,8 +146,9 @@ mod tests {
     #[test]
     fn ridge_constraint_preserves_multi_pattern_domain() {
         let roof = roof_for(rectangle(MapTile::new(3200, 3200), 5, 5));
-        let constraints = roof_wfc_constraints(request().site, &roof, plan_roof_shape(&roof), patterns())
-            .unwrap_or_else(|error| unreachable!("valid roof constraints: {error:?}"));
+        let constraints =
+            roof_wfc_constraints(request().site, &roof, plan_roof_shape(&roof), patterns())
+                .unwrap_or_else(|error| unreachable!("valid roof constraints: {error:?}"));
         let ridge = constraint_at(&constraints, WfcCoord::new(2, 2));
 
         assert_eq!(ridge.allowed.len(), 2);
@@ -158,8 +159,9 @@ mod tests {
     #[test]
     fn slope_and_eave_constraints_use_downhill_direction_domains() {
         let roof = roof_for(rectangle(MapTile::new(3200, 3200), 5, 5));
-        let constraints = roof_wfc_constraints(request().site, &roof, plan_roof_shape(&roof), patterns())
-            .unwrap_or_else(|error| unreachable!("valid roof constraints: {error:?}"));
+        let constraints =
+            roof_wfc_constraints(request().site, &roof, plan_roof_shape(&roof), patterns())
+                .unwrap_or_else(|error| unreachable!("valid roof constraints: {error:?}"));
 
         assert_eq!(
             constraint_at(&constraints, WfcCoord::new(2, 1)).allowed,
@@ -185,8 +187,9 @@ mod tests {
         let mut patterns = patterns();
         patterns.ridge = PatternDomain::empty();
 
-        let constraints = roof_wfc_constraints(request().site, &roof, plan_roof_shape(&roof), patterns)
-            .unwrap_or_else(|error| unreachable!("even gable has no ridge cells: {error:?}"));
+        let constraints =
+            roof_wfc_constraints(request().site, &roof, plan_roof_shape(&roof), patterns)
+                .unwrap_or_else(|error| unreachable!("even gable has no ridge cells: {error:?}"));
 
         assert_eq!(constraints.len(), 16);
     }
@@ -211,12 +214,19 @@ mod tests {
     #[test]
     fn constraints_are_site_local_and_sorted() {
         let roof = roof_for(rectangle(MapTile::new(3202, 3203), 3, 3));
-        let constraints = roof_wfc_constraints(request().site, &roof, plan_roof_shape(&roof), patterns())
-            .unwrap_or_else(|error| unreachable!("valid roof constraints: {error:?}"));
+        let constraints =
+            roof_wfc_constraints(request().site, &roof, plan_roof_shape(&roof), patterns())
+                .unwrap_or_else(|error| unreachable!("valid roof constraints: {error:?}"));
 
         assert_eq!(constraints.len(), 9);
-        assert_eq!(constraints.first().map(|constraint| constraint.coord), Some(WfcCoord::new(2, 3)));
-        assert_eq!(constraints.last().map(|constraint| constraint.coord), Some(WfcCoord::new(4, 5)));
+        assert_eq!(
+            constraints.first().map(|constraint| constraint.coord),
+            Some(WfcCoord::new(2, 3))
+        );
+        assert_eq!(
+            constraints.last().map(|constraint| constraint.coord),
+            Some(WfcCoord::new(4, 5))
+        );
     }
 
     #[test]
