@@ -380,7 +380,7 @@ fn best_split_candidate(leaves: &[Leaf], min_span: u16) -> Option<usize> {
     leaves
         .iter()
         .enumerate()
-        .filter(|(_, leaf)| can_split(*leaf, min_span))
+        .filter(|(_, leaf)| can_split(leaf, min_span))
         .max_by(|(_, first), (_, second)| {
             rect_area(first.rect)
                 .cmp(&rect_area(second.rect))

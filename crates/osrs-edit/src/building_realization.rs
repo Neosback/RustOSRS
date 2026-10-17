@@ -11,7 +11,7 @@ use crate::{
 };
 use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_core::ids::{FloorUnderlayId, ObjectId};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CardinalDirection {
@@ -209,10 +209,9 @@ fn internal_portal_edge(
         };
         let there = room_by_tile.get(&neighbor).copied();
         if matches!((here, there), (Some(a), Some(b)) if (a == from && b == to) || (a == to && b == from))
+            && let Some(edge) = canonical_edge_between(doorway, neighbor)
         {
-            if let Some(edge) = canonical_edge_between(doorway, neighbor) {
-                return Ok(edge);
-            }
+            return Ok(edge);
         }
     }
 
@@ -373,6 +372,7 @@ mod tests {
         BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingStyle, HeightVertexCoord,
         MapDocument, RectSite, capture_generation_snapshot, plan_basic_house,
     };
+    use std::collections::BTreeSet;
 
     fn plane() -> SourcePlane {
         SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane zero is valid"))

@@ -337,14 +337,14 @@ pub fn validate_building_plan(
                     });
                 }
             }
-            (Some(from), Some(from_room), Some(to_room)) => {
-                if !doorway_bridges_rooms(connection.doorway, from_room.rect, to_room.rect) {
-                    diagnostics.push(BuildingDiagnostic::DoorwayNotBetweenRooms {
-                        from,
-                        to: to_room.id,
-                        doorway: connection.doorway,
-                    });
-                }
+            (Some(from), Some(from_room), Some(to_room))
+                if !doorway_bridges_rooms(connection.doorway, from_room.rect, to_room.rect) =>
+            {
+                diagnostics.push(BuildingDiagnostic::DoorwayNotBetweenRooms {
+                    from,
+                    to: to_room.id,
+                    doorway: connection.doorway,
+                });
             }
             _ => {}
         }
