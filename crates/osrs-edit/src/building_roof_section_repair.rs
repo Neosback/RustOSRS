@@ -112,9 +112,8 @@ pub fn plan_roof_section_junction_repairs(
         .into_values()
         .map(|(section, cell, mut requirements)| {
             requirements.sort_by_key(requirement_sort_key);
-            requirements.dedup_by(|left, right| {
-                requirement_sort_key(left) == requirement_sort_key(right)
-            });
+            requirements
+                .dedup_by(|left, right| requirement_sort_key(left) == requirement_sort_key(right));
             RoofSectionJunctionRepairSite {
                 section,
                 cell,
@@ -281,7 +280,10 @@ mod tests {
 
     #[test]
     fn continuation_needs_no_repair_and_other_contact_kinds_map_to_roles() {
-        assert_eq!(repair_role(RoofSectionJunctionContactKind::SlopeContinuation), None);
+        assert_eq!(
+            repair_role(RoofSectionJunctionContactKind::SlopeContinuation),
+            None
+        );
         assert_eq!(
             repair_role(RoofSectionJunctionContactKind::Valley),
             Some(RoofSectionJunctionRepairRole::Valley)
