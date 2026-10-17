@@ -252,15 +252,8 @@ fn refine_run(
     ];
     let start = tangent(run[0].tile, key.direction);
     let seed = run_seed(base_seed, key, start);
-    let solution = solve_wfc(
-        catalog,
-        width,
-        1,
-        seed,
-        &constraints,
-        config.max_backtracks,
-    )
-    .map_err(|error| FacadeRefinementError::Solve { error })?;
+    let solution = solve_wfc(catalog, width, 1, seed, &constraints, config.max_backtracks)
+        .map_err(|error| FacadeRefinementError::Solve { error })?;
 
     for (index, edge) in run.iter().enumerate() {
         let pattern = solution
