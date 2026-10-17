@@ -65,8 +65,9 @@ pub use building_roof::{
     plan_roof_shape,
 };
 pub use building_roof_realization::{
-    RoofAsset, RoofPalette, RoofPaletteEntry, RoofPaletteError, RoofPlacementDescription,
-    RoofPlacementDescriptionError, describe_roof_placements,
+    RoofAsset, RoofPalette, RoofPaletteEntry, RoofPaletteError, RoofPatchError,
+    RoofPlacementDescription, RoofPlacementDescriptionError, build_roof_patch,
+    describe_roof_placements,
 };
 pub use building_roof_solver::{
     RoofPatternSelection, RoofWfcSolution, RoofWfcSolveError, solve_roof_wfc,
