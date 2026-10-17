@@ -1,9 +1,10 @@
 //! Deterministic rectangular decomposition for complex semantic roof footprints.
 //!
 //! This layer partitions an already-planned roof footprint into exact, non-overlapping rectangular
-//! sections. It does not choose per-section roof shapes, run WFC, resolve assets, or build map edits.
+//! sections and derives an independent simple roof shape for each section. It does not run WFC,
+//! join section valleys, resolve assets, or build map edits.
 
-use crate::{BuildingFloorIndex, BuildingRoofPlan, RectSite};
+use crate::{BuildingFloorIndex, BuildingRoofPlan, RectSite, RoofRidge, RoofRidgeAxis, RoofShape};
 use osrs_core::coords::{MapTile, SourcePlane};
 use std::collections::BTreeMap;
 
@@ -25,6 +26,22 @@ impl RoofSection {
 
     pub const fn plane(self) -> SourcePlane {
         self.plane
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RoofSectionShape {
+    section: RoofSection,
+    shape: RoofShape,
+}
+
+impl RoofSectionShape {
+    pub const fn section(self) -> RoofSection {
+        self.section
+    }
+
+    pub const fn shape(self) -> RoofShape {
+        self.shape
     }
 }
 
@@ -90,16 +107,59 @@ pub fn decompose_roof_sections(
         sections.push(make_section(roof, min_x, max_x, start_y, end_y)?);
     }
 
-    sections.sort_by_key(|section| {
-        let bounds = section.bounds();
-        (
-            bounds.origin().y,
-            bounds.origin().x,
-            bounds.height(),
-            bounds.width(),
-        )
-    });
+    sections.sort_by_key(section_sort_key);
     Ok(sections)
+}
+
+/// Derive one deterministic simple roof shape for every rectangular section.
+///
+/// Each section uses the same rule as a simple rectangular whole roof: the ridge follows the longer
+/// axis, squares use an east-west ridge as the stable tie-break, and the cross-axis ridge coordinate
+/// is stored in doubled world coordinates so even spans remain between tile centers.
+pub fn plan_roof_section_shapes(sections: &[RoofSection]) -> Vec<RoofSectionShape> {
+    let mut shapes = sections
+        .iter()
+        .copied()
+        .map(|section| RoofSectionShape {
+            section,
+            shape: shape_for_section(section),
+        })
+        .collect::<Vec<_>>();
+    shapes.sort_by_key(|planned| section_sort_key(&planned.section));
+    shapes
+}
+
+fn shape_for_section(section: RoofSection) -> RoofShape {
+    let bounds = section.bounds();
+    let width = i64::from(bounds.width());
+    let height = i64::from(bounds.height());
+    let origin = bounds.origin();
+    let axis = if width >= height {
+        RoofRidgeAxis::EastWest
+    } else {
+        RoofRidgeAxis::NorthSouth
+    };
+    let cross_axis_coordinate_x2 = match axis {
+        RoofRidgeAxis::EastWest => i64::from(origin.y) * 2 + height,
+        RoofRidgeAxis::NorthSouth => i64::from(origin.x) * 2 + width,
+    };
+
+    RoofShape::Gable {
+        ridge: RoofRidge {
+            axis,
+            cross_axis_coordinate_x2,
+        },
+    }
+}
+
+fn section_sort_key(section: &RoofSection) -> (i32, i32, u16, u16) {
+    let bounds = section.bounds();
+    (
+        bounds.origin().y,
+        bounds.origin().x,
+        bounds.height(),
+        bounds.width(),
+    )
 }
 
 fn make_section(
@@ -145,7 +205,7 @@ fn make_section(
 mod tests {
     use super::*;
     use crate::{
-        BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingStyle, RoofShape,
+        BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingStyle,
         plan_roof_coverage, plan_roof_shape, plan_vertical_connectivity,
     };
 
@@ -274,6 +334,71 @@ mod tests {
         assert_eq!(
             decompose_roof_sections(&roof_a),
             decompose_roof_sections(&roof_b)
+        );
+    }
+
+    #[test]
+    fn wide_section_uses_east_west_ridge_with_local_center() {
+        let roof = roof_for(rectangle(MapTile::new(3201, 3202), 5, 3));
+        let sections = decompose_roof_sections(&roof)
+            .unwrap_or_else(|error| unreachable!("roof decomposes: {error:?}"));
+        let planned = plan_roof_section_shapes(&sections);
+        let RoofShape::Gable { ridge } = planned[0].shape() else {
+            unreachable!("rectangular section receives a gable ridge");
+        };
+
+        assert_eq!(ridge.axis, RoofRidgeAxis::EastWest);
+        assert_eq!(ridge.cross_axis_coordinate_x2, 6407);
+        assert!(ridge.passes_through_tile_centers());
+    }
+
+    #[test]
+    fn tall_section_uses_north_south_ridge_with_local_center() {
+        let roof = roof_for(rectangle(MapTile::new(3202, 3201), 3, 5));
+        let sections = decompose_roof_sections(&roof)
+            .unwrap_or_else(|error| unreachable!("roof decomposes: {error:?}"));
+        let planned = plan_roof_section_shapes(&sections);
+        let RoofShape::Gable { ridge } = planned[0].shape() else {
+            unreachable!("rectangular section receives a gable ridge");
+        };
+
+        assert_eq!(ridge.axis, RoofRidgeAxis::NorthSouth);
+        assert_eq!(ridge.cross_axis_coordinate_x2, 6407);
+        assert!(ridge.passes_through_tile_centers());
+    }
+
+    #[test]
+    fn square_section_uses_east_west_tie_break_and_even_span_center() {
+        let roof = roof_for(rectangle(MapTile::new(3200, 3200), 4, 4));
+        let sections = decompose_roof_sections(&roof)
+            .unwrap_or_else(|error| unreachable!("roof decomposes: {error:?}"));
+        let planned = plan_roof_section_shapes(&sections);
+        let RoofShape::Gable { ridge } = planned[0].shape() else {
+            unreachable!("rectangular section receives a gable ridge");
+        };
+
+        assert_eq!(ridge.axis, RoofRidgeAxis::EastWest);
+        assert_eq!(ridge.cross_axis_coordinate_x2, 6404);
+        assert!(!ridge.passes_through_tile_centers());
+    }
+
+    #[test]
+    fn section_shape_planning_is_independent_of_section_input_order() {
+        let roof = roof_for(vec![
+            MapTile::new(3200, 3200),
+            MapTile::new(3201, 3200),
+            MapTile::new(3202, 3200),
+            MapTile::new(3200, 3201),
+            MapTile::new(3200, 3202),
+        ]);
+        let sections = decompose_roof_sections(&roof)
+            .unwrap_or_else(|error| unreachable!("complex roof decomposes: {error:?}"));
+        let mut reversed = sections.clone();
+        reversed.reverse();
+
+        assert_eq!(
+            plan_roof_section_shapes(&sections),
+            plan_roof_section_shapes(&reversed)
         );
     }
 }
