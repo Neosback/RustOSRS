@@ -8,6 +8,7 @@
 mod building;
 mod building_realization;
 mod building_validation;
+mod building_wfc;
 mod document;
 mod history;
 mod object;
@@ -33,6 +34,10 @@ pub use building_realization::{
 pub use building_validation::{
     BuildingDiagnostic, BuildingValidationReport, GenerationSnapshot, OccupiedFootprint,
     capture_generation_snapshot, validate_building_plan,
+};
+pub use building_wfc::{
+    MAX_WFC_PATTERNS, PatternDomain, WfcCatalog, WfcCatalogError, WfcConstraint, WfcCoord,
+    WfcPattern, WfcPatternId, WfcPatternSpec, WfcSocket, WfcSolution, WfcSolveError, solve_wfc,
 };
 pub use document::{MapDocument, PatchApplyError};
 pub use history::{

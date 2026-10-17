@@ -69,24 +69,24 @@ The first planner deliberately uses a simple hallway-and-room layout. It exists 
 
 Building realization is intentionally palette-driven. The semantic architecture knows that an edge is an exterior wall, interior wall, door, window, or opening, but does not know cache object IDs. The palette supplies exact object IDs, location kinds, and orientation mappings for each cardinal direction.
 
-The single-floor house planner now puts the exterior entrance directly off the end of its hallway. This gives realization one unambiguous shell edge for the exterior door instead of treating a distant boundary tile and hallway tile as if they were one portal.
+The single-floor house planner puts the exterior entrance directly off the end of its hallway. This gives realization one unambiguous shell edge for the exterior door instead of treating a distant boundary tile and hallway tile as if they were one portal.
 
 ## Checkpoint 3: WFC engine
 
 Implement simple-tiled WFC over semantic architectural patterns.
 
-- [ ] pattern IDs and directional sockets
-- [ ] bitset domains
-- [ ] adjacency compatibility tables
-- [ ] entropy selection
-- [ ] deterministic weighted observation
-- [ ] propagation queue
-- [ ] contradiction reporting
-- [ ] bounded backtracking
-- [ ] fixed cells / pinned constraints
-- [ ] tests for determinism and contradiction recovery
+- [x] pattern IDs and directional sockets
+- [x] compact `u128` bitset domains for up to 128 semantic patterns
+- [x] precomputed adjacency compatibility tables
+- [x] lowest-domain entropy selection with stable tie-breaking
+- [x] deterministic weighted observation
+- [x] propagation queue
+- [x] contradiction reporting with exact grid coordinate
+- [x] bounded backtracking
+- [x] fixed / allowed-domain constraints
+- [x] tests for determinism, socket compatibility, pinned cells, contradictions, and backtracking recovery
 
-WFC is responsible for local architectural compatibility. It is not responsible for global room reachability or building-program guarantees.
+WFC is responsible for local architectural compatibility. It is not responsible for global room reachability or building-program guarantees. The solver is intentionally generic and has no RuneScape object-ID dependency. A higher layer will map semantic WFC pattern IDs to wall/window/door/roof variants before palette realization.
 
 ## Checkpoint 4: hybrid building solver
 
