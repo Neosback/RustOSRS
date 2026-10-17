@@ -12,6 +12,7 @@ mod building_realization;
 mod building_refinement;
 mod building_refinement_policy;
 mod building_roof;
+mod building_roof_wfc;
 mod building_routing;
 mod building_topology;
 mod building_validation;
@@ -60,6 +61,9 @@ pub use building_roof::{
     BuildingRoofError, BuildingRoofPlan, RoofCell, RoofCellClassificationError, RoofCellKind,
     RoofEdge, RoofRidge, RoofRidgeAxis, RoofShape, classify_roof_cells, plan_roof_coverage,
     plan_roof_shape,
+};
+pub use building_roof_wfc::{
+    RoofConstraintError, RoofPatternSet, roof_wfc_constraints,
 };
 pub use building_routing::{ProgramRoute, ProgramRoutingError, route_program_connections};
 pub use building_topology::{
