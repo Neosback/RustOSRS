@@ -8,6 +8,7 @@
 mod building;
 mod building_program;
 mod building_realization;
+mod building_refinement;
 mod building_routing;
 mod building_topology;
 mod building_validation;
@@ -37,6 +38,10 @@ pub use building_realization::{
     BuildingArchitecture, BuildingArchitectureError, BuildingPalette, BuildingRealizationError,
     CardinalDirection, EdgeAsset, EdgeFeature, FloorMaterial, SemanticEdge, build_building_patch,
     derive_building_architecture,
+};
+pub use building_refinement::{
+    FacadeRefinementError, FacadeWfcConfig, RefinedBuildingArchitecture,
+    build_wfc_refined_building_patch, refine_exterior_walls_with_wfc,
 };
 pub use building_routing::{ProgramRoute, ProgramRoutingError, route_program_connections};
 pub use building_topology::{
