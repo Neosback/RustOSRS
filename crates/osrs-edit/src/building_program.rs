@@ -240,10 +240,19 @@ impl BspLayout {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BspLayoutError {
-    SiteTooSmall { width: u16, height: u16 },
+    SiteTooSmall {
+        width: u16,
+        height: u16,
+    },
     NoProgramRooms,
-    CannotSplitForRoomCount { room_count: usize },
-    RoomDoesNotFit { room: RoomId, width: u16, height: u16 },
+    CannotSplitForRoomCount {
+        room_count: usize,
+    },
+    RoomDoesNotFit {
+        room: RoomId,
+        width: u16,
+        height: u16,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -387,11 +396,7 @@ fn can_split(leaf: &Leaf, min_span: u16) -> bool {
     }
 }
 
-fn split_leaf(
-    leaf: Leaf,
-    min_span: u16,
-    rng: &mut SplitMix64,
-) -> Option<(Leaf, RoomRect, Leaf)> {
+fn split_leaf(leaf: Leaf, min_span: u16, rng: &mut SplitMix64) -> Option<(Leaf, RoomRect, Leaf)> {
     let next_axis = leaf.next_axis.opposite();
     match leaf.next_axis {
         SplitAxis::Vertical => {
