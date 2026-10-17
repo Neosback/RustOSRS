@@ -55,6 +55,19 @@ struct Environment {
     sky_right: vec4<f32>,
     sky_down: vec4<f32>,
     sky_forward: vec4<f32>,
+    sun_dir: vec4<f32>,
+    sun_color: vec4<f32>,
+    moon_dir: vec4<f32>,
+    moon_color: vec4<f32>,
+    sky_zenith: vec4<f32>,
+};
+
+// One point light from `lights.json` (`PointLightArray`).
+struct PointLight {
+    // xyz = render-local position, w = radiusSquared
+    position: vec4<f32>,
+    // rgb = linear color * strength, w = unused
+    color: vec4<f32>,
 };
 
 // One water type (`UBOWaterTypes`). Colours are sRGB, like the plugin's struct.
@@ -78,6 +91,7 @@ struct WaterType {
 @group(2) @binding(2) var material_sampler: sampler;
 @group(2) @binding(3) var<uniform> env: Environment;
 @group(2) @binding(4) var<storage, read> water_types: array<WaterType>;
+@group(2) @binding(5) var<storage, read> point_lights: array<PointLight>;
 
 // Per-face flags of the HD vertex stream (`HdVertex::hsl_flags.w`).
 const FLAG_UPWARDS_NORMALS: u32 = 1u;

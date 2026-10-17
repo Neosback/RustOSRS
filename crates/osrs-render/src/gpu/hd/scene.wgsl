@@ -890,8 +890,32 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     // Underglow lights surfaces facing down (`normals.y` is positive downwards).
     let underglow_out = env.underglow.rgb * max(normals.y, 0.0) * env.underglow.w;
 
+    // Point lights (attenuated diffuse and specular from `lights.json`).
+    var point_lights_out = vec3<f32>(0.0);
+    var point_lights_specular_out = vec3<f32>(0.0);
+    let num_lights = min(u32(env.misc.w), arrayLength(&point_lights));
+    for (var i = 0u; i < num_lights; i = i + 1u) {
+        let pl = point_lights[i];
+        let light_to_frag = pl.position.xyz - input.position;
+        let dist_sq = dot(light_to_frag, light_to_frag);
+        let rad_sq = pl.position.w;
+        if (dist_sq <= rad_sq && rad_sq > 0.0) {
+            let att = 1.0 - sqrt(dist_sq / rad_sq);
+            let att_sq = att * att;
+            let light_color = pl.color.rgb * att_sq;
+            let light_dir = normalize(light_to_frag);
+            let n_dot_l = max(dot(normals, light_dir), 0.0);
+            point_lights_out = point_lights_out + light_color * n_dot_l;
+
+            let pl_reflect_dir = reflect(-light_dir, normals);
+            let pl_v_dot_r = clamp(dot(view_dir, pl_reflect_dir), 1e-10, 1.0);
+            let pl_spec = dot(pow(vec3<f32>(pl_v_dot_r), spec_gloss) * spec_strength, blend);
+            point_lights_specular_out = point_lights_specular_out + light_color * pl_spec;
+        }
+    }
+
     let composite = ambient_out + light_out + light_specular_out + sky_out + lightning_out
-        + underglow_out;
+        + underglow_out + point_lights_out + point_lights_specular_out;
     if (env.flags.y == 5u) {
         return vec4<f32>(composite, 1.0);
     }

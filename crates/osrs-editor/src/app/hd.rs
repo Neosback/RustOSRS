@@ -14,6 +14,7 @@ use web_time::Instant;
 /// The environment table and the transition state driven by it.
 pub struct HdRuntime {
     environments: Option<Arc<EnvironmentSet>>,
+    lights: Option<Arc<osrs_hd::lights::LightSet>>,
     state: EnvironmentState,
     started: Instant,
     last_update: Instant,
@@ -24,6 +25,7 @@ impl HdRuntime {
     pub fn new() -> Self {
         Self {
             environments: None,
+            lights: None,
             state: EnvironmentState::new(),
             started: Instant::now(),
             last_update: Instant::now(),
@@ -45,6 +47,11 @@ impl HdRuntime {
     pub fn set_environments(&mut self, environments: Arc<EnvironmentSet>) {
         self.environments = Some(environments);
         self.state.reset();
+    }
+
+    /// Install the loaded point and placed light set.
+    pub fn set_lights(&mut self, lights: Arc<osrs_hd::lights::LightSet>) {
+        self.lights = Some(lights);
     }
 
     /// Name of the environment the camera is in (status text, diagnostics).
@@ -136,6 +143,34 @@ impl EditorApp {
             elapsed_seconds: (elapsed % 4096.0) as f32,
             debug_view: 0,
         });
+        if let Some(lights) = &self.hd.lights {
+            let visible = lights.collect_visible(
+                i32::from(self.interaction.view_plane()),
+                (f64::from(origin.0) + f64::from(x)) as f32,
+                (f64::from(origin.1) + f64::from(z)) as f32,
+                self.settings.prefs.draw_distance_tiles as f32,
+                elapsed,
+                100,
+            );
+            let gpu_lights: Vec<osrs_render::gpu::hd::layout::GpuPointLight> = visible
+                .into_iter()
+                .map(|l| osrs_render::gpu::hd::layout::GpuPointLight {
+                    position: [
+                        l.world_x - origin.0 as f32,
+                        l.world_y,
+                        l.world_z - origin.1 as f32,
+                        l.radius_squared(),
+                    ],
+                    color: [
+                        l.color[0] * l.strength,
+                        l.color[1] * l.strength,
+                        l.color[2] * l.strength,
+                        0.0,
+                    ],
+                })
+                .collect();
+            self.renderer.set_hd_point_lights(&gpu_lights);
+        }
         self.hd.resolved = values;
     }
 }

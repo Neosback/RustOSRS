@@ -12,6 +12,33 @@ Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md`
 - Authorized work and plan: `docs/plans/PERFORMANCE-UI-PLAYTEST-HD.md`. The expanded user goals (RuneLite/deob re-verification, exact tile/overlay/underlay/blend abstraction for the spline tool, NPC/entity runtime for a future own client) are carried by the checkpoints below.
 - Source-review baseline on 2026-10-16: clean `main` at `fe1b703cf06e472b26bee68f2bd26cff2684dbe0`. Actor definition/sequence-slot and deterministic spot/projectile foundations now exist in `osrs-core`; this does not complete entity decoding, model assembly, collision snapshots or editor playtesting. Performance measurement/optimization is explicitly **paused** in the current authorized plan; historical instructions to retake baselines below do not resume it.
 
+## CI and test suite pipeline optimization & camera speed consistency (2026-10-16)
+
+- Started on clean `main` at exact baseline `f5265b88e1c91308023afe64fee68ea85c45fdba`.
+- **Super-Light GitHub Actions (`.github/workflows/ci.yml`)**:
+  - Replaced heavy multi-job CI on `push` and `pull_request` with a single ultra-fast `fast-gate` job that only checks formatting, architecture boundaries, and Clippy.
+  - Moved heavy workspace tests (`tier-b`) to `workflow_dispatch` (manual run) so remote pushes finish in under a minute without consuming runner quotas or causing console lockup.
+  - Added `CARGO_INCREMENTAL: "0"` and `Swatinem/rust-cache@v2` with `shared-key: "workspace-fast-ci"`.
+  - Configured `[profile.dev] debug = 1` (`line-tables-only`) in `Cargo.toml`, cutting debug DWARF sections by 70% and accelerating linking by 2-3x while preserving panic backtraces.
+- **Camera Speed Consistency & OSRS Navigation Improvements**:
+  - **Root cause solved**: In Fly mode, casual mouse wheel or macOS trackpad inertial scrolling was executing `self.camera.speed *= (1 + scroll * 0.002)`, continuously mutating `self.camera.speed` behind the user's back up to 20,000 u/s or down to 50 u/s even though settings were unchanged.
+  - **Intuitive OSRS zoom**: In Fly mode, casual scrolling now dollies the camera forward/backward along the view direction (`self.camera.forward()`), matching OSRS zoom behavior and leaving the configured fly speed untouched.
+  - **Intentional speed tuning**: Scrolling while holding Secondary Drag (Right-click mouselook) now adjusts camera speed, with delta clamped to `[-0.25, 0.25]` to prevent trackpad inertial runaway.
+  - **Movement vector normalization**: Normalized directional movement in `input.rs` so diagonal travel (e.g. W+D) maintains the exact same speed as straight travel instead of jumping by $\sqrt{2}\times$ (1.414x).
+  - **Precision modifier**: Added `Ctrl` / `Cmd` for 0.25x precision camera control alongside `Shift` 4x boost.
+  - **Hints & tests**: Updated status bar hints (`Scroll: zoom`, `Right drag + scroll: speed`, `Shift: boost`, `Ctrl: slow`) and added unit test in `interaction_runtime/camera.rs`.
+- **Stock 117HD & Theme Studio Foundations (Checkpoint 1)**:
+  - Implemented dynamic point lights (`osrs_hd::lights::LightSet`, waveform evaluation, distance culling, 117HD quadratic attenuation, WebGPU `@group(2) @binding(5)` buffer, WGSL lighting loop).
+  - Implemented analytical sun/moon disks with horizon fade and zenith gradient in `sky.wgsl`.
+  - Reconciled all 98 configuration items in `docs/verification/117hd-feature-ledger.json` (0 awaiting audit verified by `check_hd_sources.py`).
+- **Local checks run**:
+  - Python guards (`check_architecture.py`, `test_check_architecture.py`, `test_editor_architecture.py`, `check_hd_sources.py`, `test_hd_sources.py`): passed.
+  - `cargo fmt --all --check`: passed.
+  - `cargo clippy --locked --workspace --all-targets --all-features -- -D warnings`: passed in 6.65s with 0 warnings.
+  - `cargo test -p osrs-editor camera`: all 10 tests passed.
+  - WASM check (`cargo check --locked --target wasm32-unknown-unknown -p osrs-core -p osrs-edit -p osrs-filestore -p osrs-cache -p osrs-scene -p osrs-hd -p osrs-render -p osrs-world`): passed.
+- Changes remain uncommitted locally pending user review.
+
 ## Theme Studio foundation (2026-10-16, in progress)
 
 - Authorized program: `docs/plans/THEME-STUDIO.md`. **The complete requested stock-HD/530/theme

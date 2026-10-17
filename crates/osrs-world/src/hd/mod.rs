@@ -42,6 +42,8 @@ pub struct HdContext {
     pub models: model::ModelOverrides,
     /// The per-area lighting environments (phase 3).
     pub environments: Arc<EnvironmentSet>,
+    /// The spatially-indexed point and placed lights set.
+    pub lights: Arc<osrs_hd::lights::LightSet>,
 }
 
 impl HdContext {
@@ -69,6 +71,7 @@ impl HdContext {
         });
         let models = model::ModelOverrides::with_settings(&data, &materials, &settings);
         let environments = Arc::new(EnvironmentSet::new(&data, &areas));
+        let lights = Arc::new(osrs_hd::lights::LightSet::new(&data));
         Self {
             settings,
             data,
@@ -79,6 +82,7 @@ impl HdContext {
             tile_overrides,
             models,
             environments,
+            lights,
         }
     }
 }

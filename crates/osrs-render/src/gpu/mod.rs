@@ -492,6 +492,8 @@ pub struct SceneRenderer {
     /// The water type table (storage buffer, `WaterType.NONE` first) and the special water layers.
     hd_water_types: wgpu::Buffer,
     hd_water_layers: hd::layout::WaterLayers,
+    hd_lights: wgpu::Buffer,
+    hd_lights_count: u32,
     /// Shadow options and the shadow maps they ask for (rebuilt when the size changes).
     hd_shadows: ShadowSettings,
     hd_shadow_layout: wgpu::BindGroupLayout,
@@ -634,6 +636,7 @@ impl SceneRenderer {
         let hd_water_types =
             hd::layout::water_types_buffer(&device, &[hd::layout::GpuWaterType::none(|_| -1)]);
         let hd_shadow_dummy = hd::shadow::ShadowMaps::new(&device, &hd_shadow_layout, 1);
+        let hd_lights = hd::layout::point_lights_buffer(&device, &[]);
         let hd_env_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("hd-environment"),
             size: std::mem::size_of::<hd::layout::HdEnvironmentUniform>() as u64,
@@ -656,6 +659,8 @@ impl SceneRenderer {
             hd_binding: None,
             hd_water_types,
             hd_water_layers: hd::layout::WaterLayers::default(),
+            hd_lights,
+            hd_lights_count: 0,
             hd_shadows: ShadowSettings::default(),
             hd_shadow_dummy,
             hd_shadow_layout,
@@ -1034,6 +1039,36 @@ impl SceneRenderer {
             sky_right: [cy * screen_x, 0.0, sy * screen_x, 0.0],
             sky_down: [sy * sp * screen_y, cp * screen_y, -cy * sp * screen_y, 0.0],
             sky_forward: [-sy * cp, sp, cy * cp, 0.0],
+            sun_dir: [
+                lighting.sun_dir[0],
+                lighting.sun_dir[1],
+                lighting.sun_dir[2],
+                if lighting.sun_enabled { 1.0 } else { 0.0 },
+            ],
+            sun_color: [
+                lighting.sun_color[0],
+                lighting.sun_color[1],
+                lighting.sun_color[2],
+                lighting.sun_intensity,
+            ],
+            moon_dir: [
+                lighting.moon_dir[0],
+                lighting.moon_dir[1],
+                lighting.moon_dir[2],
+                lighting.moon_phase,
+            ],
+            moon_color: [
+                lighting.moon_color[0],
+                lighting.moon_color[1],
+                lighting.moon_color[2],
+                lighting.moon_intensity,
+            ],
+            sky_zenith: [
+                lighting.sky_zenith_color[0],
+                lighting.sky_zenith_color[1],
+                lighting.sky_zenith_color[2],
+                lighting.horizon_width,
+            ],
             light_proj: shadow_uniform.light_proj,
             shadow_right: shadow_uniform.right,
             shadow_up: shadow_uniform.up,
@@ -1113,7 +1148,7 @@ impl SceneRenderer {
                 lighting.lightning_brightness,
                 f32::from(u8::from(hd.underwater_caustics)),
                 hd.gamma,
-                0.0,
+                self.hd_lights_count as f32,
             ],
             flags: [
                 u32::from(hd.normal_mapping),
@@ -1622,7 +1657,20 @@ impl SceneRenderer {
             textures,
             &self.hd_env_buffer,
             &self.hd_water_types,
+            &self.hd_lights,
         )
+    }
+
+    /// Set active point lights for the HD scene shader.
+    pub fn set_hd_point_lights(&mut self, lights: &[hd::layout::GpuPointLight]) {
+        self.hd_lights = hd::layout::point_lights_buffer(&self.device, lights);
+        self.hd_lights_count = lights.len() as u32;
+        if let Some(binding) = &self.hd_binding {
+            let bind_group = self.hd_scene_bind_group(&binding.table, &binding.textures);
+            if let Some(binding) = self.hd_binding.as_mut() {
+                binding.bind_group = bind_group;
+            }
+        }
     }
 
     /// The bound HD material texture array, to fill vanilla texture layers.

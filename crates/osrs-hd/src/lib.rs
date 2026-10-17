@@ -9,6 +9,7 @@
 
 pub mod environment;
 pub mod expr;
+pub mod lights;
 pub mod materials;
 pub mod settings;
 pub mod shadows;

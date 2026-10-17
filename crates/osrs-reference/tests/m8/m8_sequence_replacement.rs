@@ -12,7 +12,7 @@ use osrs_core::{
 use std::error::Error;
 
 const PROFILE_YAML: &str =
-    include_str!("../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
+    include_str!("../../../../profiles/osrs-live-241-2026-09-30-openrs2-2727.yaml");
 
 fn decoder_context() -> Result<DecoderContext, Box<dyn Error>> {
     let profile = TargetProfile::from_yaml_str(PROFILE_YAML)?;

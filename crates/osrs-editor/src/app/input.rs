@@ -111,11 +111,26 @@ impl EditorApp {
                     f32::from(self.settings.keymap.held(i, plus))
                         - f32::from(self.settings.keymap.held(i, minus))
                 };
-                let boost = if i.modifiers.shift { 4.0 } else { 1.0 };
+                let raw_dir = [
+                    axis("camera.forward", "camera.back"),
+                    axis("camera.right", "camera.left"),
+                    axis("camera.up", "camera.down"),
+                ];
+                let len =
+                    (raw_dir[0] * raw_dir[0] + raw_dir[1] * raw_dir[1] + raw_dir[2] * raw_dir[2])
+                        .sqrt();
+                let norm = if len > 1.0 { 1.0 / len } else { 1.0 };
+                let boost = if i.modifiers.shift {
+                    4.0
+                } else if i.modifiers.ctrl || i.modifiers.command {
+                    0.25
+                } else {
+                    1.0
+                };
                 [
-                    axis("camera.forward", "camera.back") * boost,
-                    axis("camera.right", "camera.left") * boost,
-                    axis("camera.up", "camera.down") * boost,
+                    raw_dir[0] * norm * boost,
+                    raw_dir[1] * norm * boost,
+                    raw_dir[2] * norm * boost,
                 ]
             })
         };

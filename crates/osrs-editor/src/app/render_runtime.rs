@@ -176,6 +176,13 @@ impl RenderRuntime {
         self.scene.set_hd_lighting(lighting);
     }
 
+    pub(super) fn set_hd_point_lights(
+        &mut self,
+        lights: &[osrs_render::gpu::hd::layout::GpuPointLight],
+    ) {
+        self.scene.set_hd_point_lights(lights);
+    }
+
     pub(super) fn set_hd_shadows(&mut self, settings: ShadowSettings) {
         self.scene.set_hd_shadows(settings);
     }

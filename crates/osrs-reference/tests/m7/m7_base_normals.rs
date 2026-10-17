@@ -19,12 +19,12 @@ const CACHE_FINGERPRINT: &str = "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b
 
 const CASES: [(&[u8], &[u8]); 2] = [
     (
-        include_bytes!("../../../reference-fixtures/normals/base_smooth_triangle.input.json"),
-        include_bytes!("../../../reference-fixtures/normals/base_smooth_triangle.expected.json"),
+        include_bytes!("../../../../reference-fixtures/normals/base_smooth_triangle.input.json"),
+        include_bytes!("../../../../reference-fixtures/normals/base_smooth_triangle.expected.json"),
     ),
     (
-        include_bytes!("../../../reference-fixtures/normals/base_flat_triangle.input.json"),
-        include_bytes!("../../../reference-fixtures/normals/base_flat_triangle.expected.json"),
+        include_bytes!("../../../../reference-fixtures/normals/base_flat_triangle.input.json"),
+        include_bytes!("../../../../reference-fixtures/normals/base_flat_triangle.expected.json"),
     ),
 ];
 

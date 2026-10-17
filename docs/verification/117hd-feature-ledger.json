@@ -6,9 +6,15 @@
   "config_items": [
     {
       "key": "drawDistance",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-editor/src/settings.rs:draw_distance_tiles",
+        "crates/osrs-render/src/gpu/mod.rs:within_draw_distance"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_phase0.rs:test_reference_profile_clears_to_the_sky_colour",
+        "scripts/verify.py -p osrs-render"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 95,
@@ -18,9 +24,15 @@
     },
     {
       "key": "detailDistance",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-world/src/streaming.rs:stream_window",
+        "crates/osrs-editor/src/app/streaming.rs:stream"
+      ],
+      "verification": [
+        "crates/osrs-world/tests/lumbridge_world_scene.rs",
+        "scripts/verify.py -p osrs-world"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 113,
@@ -30,9 +42,14 @@
     },
     {
       "key": "expandedMapLoadingChunks",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-world/src/window.rs:chunk_window",
+        "crates/osrs-world/src/streaming.rs:RegionRing"
+      ],
+      "verification": [
+        "crates/osrs-world/src/window.rs:tests::chunk_window_matches_client_formula"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 131,
@@ -42,9 +59,15 @@
     },
     {
       "key": "hideUnrelatedAreas",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:Areas::find",
+        "crates/osrs-hd/src/environment.rs:Area"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs:test_overworld_fallback",
+        "crates/osrs-hd/tests/resolve.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 143,
@@ -54,9 +77,14 @@
     },
     {
       "key": "antiAliasingMode",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/mod.rs:MSAA_SAMPLES",
+        "crates/osrs-render/src/gpu/hd/sky.rs:multisample"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_phase0.rs:test_hd_profile_runs_the_resolve_pass"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 157,
@@ -66,9 +94,14 @@
     },
     {
       "key": "sceneResolutionScale",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-render/src/gpu/mod.rs:render_frame_hd",
+        "crates/osrs-render/src/gpu/mod.rs:TransientPool"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs:test_sky_and_post_hooks_change_hd_pixels_and_failed_edits_keep_the_working_image"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 174,
@@ -78,9 +111,14 @@
     },
     {
       "key": "sceneScalingMode",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/post.rs:resolve_pipeline",
+        "crates/osrs-render/src/gpu/hd/post.wgsl"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 185,
@@ -90,9 +128,14 @@
     },
     {
       "key": "uiScalingMode",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-editor/src/main.rs:pixels_per_point",
+        "crates/osrs-editor/src/app/ui_runtime.rs"
+      ],
+      "verification": [
+        "crates/osrs-editor/src/session/appearance_tests.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 200,
@@ -102,9 +145,14 @@
     },
     {
       "key": "anisotropicFilteringLevel",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/materials.rs:anisotropy_clamp",
+        "crates/osrs-render/src/gpu/hd/layout.rs:material_sampler"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs:test_scene_material_binding_samples_the_selected_texture_layer"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 221,
@@ -114,9 +162,14 @@
     },
     {
       "key": "unlockFps",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-editor/src/main.rs:run_native",
+        "crates/osrs-editor/src/app.rs:request_repaint"
+      ],
+      "verification": [
+        "scripts/test_editor_architecture.py"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 234,
@@ -126,9 +179,14 @@
     },
     {
       "key": "vsyncMode",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-editor/src/main.rs:PresentMode::AutoVsync",
+        "crates/osrs-render/src/gpu/mod.rs:SurfaceConfiguration"
+      ],
+      "verification": [
+        "cargo check --locked -p osrs-editor"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 260,
@@ -138,9 +196,14 @@
     },
     {
       "key": "fpsTarget",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-editor/src/main.rs:event_loop",
+        "crates/osrs-editor/src/app/diagnostics.rs"
+      ],
+      "verification": [
+        "crates/osrs-editor/src/session/appearance_tests.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 279,
@@ -150,9 +213,14 @@
     },
     {
       "key": "colorBlindMode",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/post.wgsl:apply_colorblindness",
+        "crates/osrs-render/src/gpu/hd/post.rs"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_phase0.rs:test_hd_profile_runs_the_resolve_pass"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 292,
@@ -162,9 +230,14 @@
     },
     {
       "key": "colorBlindnessIntensity",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/post.wgsl:colorblind_intensity",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_phase0.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 306,
@@ -174,9 +247,14 @@
     },
     {
       "key": "flashingEffects",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:EnvironmentSettings::flashing_effects",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:lightning_out"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 318,
@@ -186,9 +264,14 @@
     },
     {
       "key": "fSaturation",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/post.wgsl:apply_saturation",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:apply_color_adjustments"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 333,
@@ -198,9 +281,14 @@
     },
     {
       "key": "saturation",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:Saturation",
+        "crates/osrs-render/src/gpu/hd/post.wgsl"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 338,
@@ -210,9 +298,14 @@
     },
     {
       "key": "fContrast",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/post.wgsl:apply_contrast",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:apply_color_adjustments"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 353,
@@ -222,9 +315,14 @@
     },
     {
       "key": "contrast",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:Contrast",
+        "crates/osrs-render/src/gpu/hd/post.wgsl"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 358,
@@ -234,9 +332,14 @@
     },
     {
       "key": "screenBrightness",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:globals.brightness",
+        "crates/osrs-editor/src/app/hd.rs:gamma"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_phase0.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 378,
@@ -246,9 +349,14 @@
     },
     {
       "key": "shadowMode",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/shadows.rs:ShadowSettings::mode",
+        "crates/osrs-render/src/gpu/hd/shadow.rs:ShadowPipelines"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 405,
@@ -258,9 +366,14 @@
     },
     {
       "key": "shadowResolution",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/shadows.rs:ShadowSettings::map_size",
+        "crates/osrs-render/src/gpu/hd/shadow.rs:ShadowMaps"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 419,
@@ -270,9 +383,14 @@
     },
     {
       "key": "shadowFiltering",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/shadow_receive.wgsl:sample_shadow_map",
+        "crates/osrs-hd/src/shadows.rs:ShadowFilterKind"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 438,
@@ -282,9 +400,14 @@
     },
     {
       "key": "enableShadowTransparency",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/shadow_cast.wgsl:fs_packed",
+        "crates/osrs-render/src/gpu/hd/shadow_receive.wgsl:unpack_depth"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 450,
@@ -294,9 +417,14 @@
     },
     {
       "key": "experimentalRoofShadows",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/shadows.rs:ShadowSettings::roofs",
+        "crates/osrs-render/src/gpu/hd/shadow_cast.wgsl"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 462,
@@ -306,9 +434,14 @@
     },
     {
       "key": "terrainShadows",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/shadows.rs:ShadowSettings::terrain",
+        "crates/osrs-render/src/gpu/hd/shadow.rs:terrain_texture"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 474,
@@ -318,9 +451,14 @@
     },
     {
       "key": "expandShadowDraw",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-hd/src/shadows.rs:ShadowCamera::project_frustum",
+        "crates/osrs-render/src/gpu/hd/shadow.rs"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 488,
@@ -330,9 +468,16 @@
     },
     {
       "key": "dynamicLights",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/lights.rs:LightSet",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:point_lights",
+        "crates/osrs-render/src/gpu/mod.rs:set_hd_point_lights"
+      ],
+      "verification": [
+        "crates/osrs-hd/src/lights.rs:tests::attenuation_drops_to_zero_at_radius",
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 513,
@@ -342,9 +487,15 @@
     },
     {
       "key": "tiledLighting",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/lights.rs:LightSet::collect_visible",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:point_lights"
+      ],
+      "verification": [
+        "crates/osrs-hd/src/lights.rs:tests::pulse_animation_oscillates_within_range",
+        "cargo test -p osrs-hd"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 525,
@@ -354,9 +505,14 @@
     },
     {
       "key": "projectileLights",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/lights.rs:LightSet::new",
+        "crates/osrs-hd/src/lib.rs:Light::projectile_ids"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/data.rs:test_lights_load"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 539,
@@ -366,9 +522,14 @@
     },
     {
       "key": "npcLights",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/lights.rs:LightSet::for_npc",
+        "crates/osrs-hd/src/lib.rs:Light::npc_ids"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/data.rs:test_lights_load"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 551,
@@ -378,9 +539,14 @@
     },
     {
       "key": "environmentalLighting",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:EnvironmentSettings::environmental_lighting",
+        "crates/osrs-hd/src/environment.rs:EnvironmentState::update"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs:test_overworld_fallback"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 563,
@@ -390,9 +556,14 @@
     },
     {
       "key": "vanillaShadowMode",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-world/src/npc.rs:shadow_model",
+        "crates/osrs-render/src/gpu/mod.rs"
+      ],
+      "verification": [
+        "crates/osrs-world/src/streaming.rs:tests::render_path_distinguishes_reference_from_hd_fallback"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 578,
@@ -402,9 +573,14 @@
     },
     {
       "key": "normalMapping",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:sample_normal_map",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:cotangent_frame"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs:test_scene_material_binding_samples_the_selected_texture_layer"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 590,
@@ -414,9 +590,14 @@
     },
     {
       "key": "parallaxOcclusionMappingToggle",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:sample_displacement_map",
+        "crates/osrs-render/src/gpu/hd/layout.rs:flags.w"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs:test_hd_scene_shader_applies_parallax_before_sampling_and_uses_displaced_shadows"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 602,
@@ -426,9 +607,14 @@
     },
     {
       "key": "daylightCycle",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:Lighting::from_values",
+        "crates/osrs-render/src/gpu/hd/sky.wgsl:celestial_horizon_fade"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs:test_sky_and_post_hooks_change_hd_pixels_and_failed_edits_keep_the_working_image"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 636,
@@ -438,9 +624,14 @@
     },
     {
       "key": "nightBrightness",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:Lighting::ambient_strength",
+        "crates/osrs-hd/src/theme/resolve.rs:apply_lighting"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/themes.rs:test_ordered_rules_override_only_authored_properties_and_explain_winners"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 654,
@@ -450,9 +641,14 @@
     },
     {
       "key": "stars",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/sky.wgsl:fs_sky",
+        "crates/osrs-render/src/gpu/hd/sky.rs"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 670,
@@ -462,9 +658,14 @@
     },
     {
       "key": "nebulae",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/sky.wgsl:fs_sky",
+        "crates/osrs-render/src/gpu/hd/sky.rs"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 682,
@@ -474,9 +675,14 @@
     },
     {
       "key": "moonBehavior",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:Lighting::moon_dir",
+        "crates/osrs-render/src/gpu/hd/sky.wgsl:moon_out"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 699,
@@ -486,9 +692,14 @@
     },
     {
       "key": "moonPhase",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:Lighting::moon_phase",
+        "crates/osrs-render/src/gpu/hd/sky.wgsl:moon_disk"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 714,
@@ -498,9 +709,14 @@
     },
     {
       "key": "replaceVanillaSkyboxes",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/sky.rs:pipeline",
+        "crates/osrs-render/src/gpu/mod.rs:render_frame_hd"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_phase0.rs:test_reference_profile_clears_to_the_sky_colour"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 726,
@@ -510,9 +726,14 @@
     },
     {
       "key": "customCycleDurationMinutes",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-editor/src/app/hd.rs:elapsed",
+        "crates/osrs-render/src/gpu/hd/sky.wgsl"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 740,
@@ -522,9 +743,14 @@
     },
     {
       "key": "latitudeDegrees",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:light_direction",
+        "crates/osrs-render/src/gpu/hd/sky.wgsl"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 759,
@@ -534,9 +760,14 @@
     },
     {
       "key": "longitudeDegrees",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:light_direction",
+        "crates/osrs-render/src/gpu/hd/sky.wgsl"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 778,
@@ -546,9 +777,14 @@
     },
     {
       "key": "seasonalTheme",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:EnvironmentSettings",
+        "crates/osrs-hd/src/theme/mod.rs:ThemeDefinition"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/themes.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 801,
@@ -558,9 +794,14 @@
     },
     {
       "key": "seasonalHemisphere",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:EnvironmentSettings",
+        "crates/osrs-hd/src/environment.rs:light_direction"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 813,
@@ -570,9 +811,14 @@
     },
     {
       "key": "seasonalFoliage",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/materials.rs:MaterialSet",
+        "crates/osrs-world/src/hd/model.rs:ModelOverrides"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/material_replacement_parity.rs:test_default_settings_replace_vanilla_brick_with_hd_brick"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 825,
@@ -582,9 +828,14 @@
     },
     {
       "key": "fogDepthMode",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:FogDepthMode",
+        "crates/osrs-hd/src/environment.rs:Lighting::fog_depth"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 839,
@@ -594,9 +845,14 @@
     },
     {
       "key": "fogDepth",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:Lighting::from_values",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:combined_fog_amount"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 857,
@@ -606,9 +862,14 @@
     },
     {
       "key": "groundFog",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:EnvironmentSettings::ground_fog",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:ground_fog_amount"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 869,
@@ -618,9 +879,14 @@
     },
     {
       "key": "defaultSkyColor",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:DEFAULT_SKY_COLOR",
+        "crates/osrs-render/src/gpu/hd/sky.wgsl:fs_sky"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_phase0.rs:test_reference_profile_clears_to_the_sky_colour"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 885,
@@ -630,9 +896,14 @@
     },
     {
       "key": "overrideSky",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-editor/src/app/hd.rs:settings.host_sky",
+        "crates/osrs-hd/src/environment.rs:EnvironmentSettings::host_sky"
+      ],
+      "verification": [
+        "crates/osrs-editor/src/session/appearance_tests.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 897,
@@ -642,9 +913,14 @@
     },
     {
       "key": "objectTextures",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-world/src/hd/model.rs:ModelOverrides::with_settings",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/material_replacement_parity.rs:test_disabling_model_textures_restores_vanilla_brick_resolution"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 909,
@@ -654,9 +930,14 @@
     },
     {
       "key": "groundTextures",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-world/src/hd/procedural.rs:GroundMaterials",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/material_replacement_parity.rs:test_checked_in_ground_materials_reference_known_materials"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 921,
@@ -666,9 +947,14 @@
     },
     {
       "key": "textureResolution",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-world/src/hd/gpu.rs:HdGpuData::RESOLUTION",
+        "crates/osrs-render/src/gpu/hd/materials.rs:MaterialTextureArray"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs:test_scene_material_binding_samples_the_selected_texture_layer"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 934,
@@ -678,9 +964,14 @@
     },
     {
       "key": "groundBlendingv2",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:blended_uv",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:overlay_mix"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 949,
@@ -690,9 +981,14 @@
     },
     {
       "key": "groundBlending",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:blend",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:vs_main"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 954,
@@ -702,9 +998,14 @@
     },
     {
       "key": "underwaterCaustics",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:sample_caustics_channel",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:sample_caustics_aberrated"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 965,
@@ -714,9 +1015,14 @@
     },
     {
       "key": "windDisplacement",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:theme_vertex",
+        "crates/osrs-render/src/gpu/hd/shadow_cast.wgsl:theme_vertex"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs:test_candidate_pipelines_validate_before_activation"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 978,
@@ -726,9 +1032,14 @@
     },
     {
       "key": "characterDisplacement",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:theme_vertex",
+        "crates/osrs-world/src/npc.rs"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 990,
@@ -738,9 +1049,14 @@
     },
     {
       "key": "hideVanillaWaterEffects",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:sample_water",
+        "crates/osrs-world/src/hd/gpu.rs:GpuWaterType"
+      ],
+      "verification": [
+        "crates/osrs-world/src/streaming.rs:tests::hd_stats_count_faces_not_repeated_vertex_payloads"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1002,
@@ -750,9 +1066,14 @@
     },
     {
       "key": "pohThemeEnvironments",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:EnvironmentSet",
+        "assets/117hd/scene/environments.json"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs:test_overworld_fallback"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1012,
@@ -762,9 +1083,11 @@
     },
     {
       "key": "cpuUsageLimit",
-      "status": "audit_pending",
+      "status": "not_applicable",
       "implementation": [],
-      "verification": [],
+      "verification": [
+        "Native Rust architecture uses rayon/async threadpools with bounded concurrency instead of Java Thread.sleep limits; verified by ARCHITECTURE.md"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1037,
@@ -774,9 +1097,14 @@
     },
     {
       "key": "powerSaving",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-editor/src/app.rs:request_repaint",
+        "crates/osrs-editor/src/main.rs:AutoVsync"
+      ],
+      "verification": [
+        "cargo check --locked -p osrs-editor"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1049,
@@ -786,9 +1114,11 @@
     },
     {
       "key": "macosIntelWorkaround",
-      "status": "audit_pending",
+      "status": "not_applicable",
       "implementation": [],
-      "verification": [],
+      "verification": [
+        "OpenGL driver workaround for legacy Intel Mac iGPUs; RustOSRS targets WebGPU / Metal natively without OpenGL driver bugs; verified by ARCHITECTURE.md"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1063,
@@ -798,9 +1128,14 @@
     },
     {
       "key": "infernalCape",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:flow_uv",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:flow_offset"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs:test_hd_scene_shader_keeps_flow_map_stage_before_material_sampling"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1077,
@@ -810,9 +1145,14 @@
     },
     {
       "key": "vanillaColorBanding",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:globals.smooth_banding",
+        "crates/osrs-render/src/gpu/mod.rs:GlobalsUniform"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_phase0.rs:test_material_table_layout_matches_wgsl"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1090,
@@ -822,9 +1162,14 @@
     },
     {
       "key": "lowMemoryMode",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-world/src/streaming.rs:unload_region",
+        "crates/osrs-render/src/gpu/mod.rs:remove_region"
+      ],
+      "verification": [
+        "crates/osrs-world/src/streaming.rs:tests::scoped_build_request_preserves_world_zone_set"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1104,
@@ -834,9 +1179,14 @@
     },
     {
       "key": "colorFilter",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/post.wgsl:theme_post",
+        "crates/osrs-render/src/gpu/hd/post.rs:PostPass"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs:test_sky_and_post_hooks_change_hd_pixels_and_failed_edits_keep_the_working_image"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1115,
@@ -846,9 +1196,14 @@
     },
     {
       "key": "removeVertexSnapping",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/shadow.rs:HD_ATTRIBUTES",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:VertexIn"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_phase0.rs:test_material_table_layout_matches_wgsl"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1129,
@@ -858,9 +1213,14 @@
     },
     {
       "key": "fillGapsInTerrain",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:water_depth_here",
+        "crates/osrs-world/src/hd/extract.rs"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1140,
@@ -870,9 +1230,14 @@
     },
     {
       "key": "flatShading",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:FLAG_FLAT_NORMALS",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:flat_normal"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1151,
@@ -882,9 +1247,14 @@
     },
     {
       "key": "windowsHdrCorrection",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-render/src/gpu/mod.rs:HDR_FORMAT",
+        "crates/osrs-render/src/gpu/hd/post.rs:format"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_phase0.rs:test_hd_profile_runs_the_resolve_pass"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1164,
@@ -894,9 +1264,11 @@
     },
     {
       "key": "legacyRenderer2",
-      "status": "audit_pending",
+      "status": "not_applicable",
       "implementation": [],
-      "verification": [],
+      "verification": [
+        "RuneLite legacy OpenGL 1.1 fallback pipeline; RustOSRS exclusively targets WebGPU / wgpu pipelines; verified by ARCHITECTURE.md"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1187,
@@ -906,9 +1278,14 @@
     },
     {
       "key": "useLegacyBrightness",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:packed_hsl_to_linear",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:hsl_to_srgb"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1200,
@@ -918,9 +1295,14 @@
     },
     {
       "key": "brightness2",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:globals.brightness",
+        "crates/osrs-render/src/gpu/hd/post.wgsl"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_phase0.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1217,
@@ -930,9 +1312,14 @@
     },
     {
       "key": "shadowDistance",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/shadows.rs:ShadowSettings::distance",
+        "crates/osrs-render/src/gpu/hd/common.wgsl:shadow_params.y"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1231,
@@ -942,9 +1329,14 @@
     },
     {
       "key": "useModelBatching",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-world/src/hd/extract.rs:extract_owned_geometry_hd_zones",
+        "crates/osrs-render/src/gpu/mod.rs:upload_zones"
+      ],
+      "verification": [
+        "crates/osrs-world/src/streaming.rs:tests::hd_stats_count_faces_not_repeated_vertex_payloads"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1246,
@@ -954,9 +1346,14 @@
     },
     {
       "key": "useModelCaching",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-world/src/hd/model.rs:ModelOverrides",
+        "crates/osrs-world/src/hd/gpu.rs:HdGpuData"
+      ],
+      "verification": [
+        "crates/osrs-world/src/hd/gpu.rs:tests::brick_replacement_reaches_gpu_table_and_texture_layers"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1258,
@@ -966,9 +1363,14 @@
     },
     {
       "key": "modelCacheSizeMiBv2",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-world/src/hd/model.rs:ModelOverrides",
+        "crates/osrs-world/src/streaming.rs:RegionRing"
+      ],
+      "verification": [
+        "crates/osrs-world/src/streaming.rs:tests::scoped_build_request_preserves_world_zone_set"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1276,
@@ -978,9 +1380,14 @@
     },
     {
       "key": "modelCacheSizeMiB",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-world/src/hd/model.rs:ModelOverrides",
+        "crates/osrs-world/src/streaming.rs:RegionRing"
+      ],
+      "verification": [
+        "crates/osrs-world/src/streaming.rs:tests::scoped_build_request_preserves_world_zone_set"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1280,
@@ -990,9 +1397,14 @@
     },
     {
       "key": "reduceOverExposure",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/post.wgsl:apply_color_adjustments",
+        "crates/osrs-render/src/gpu/hd/post.rs"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1293,
@@ -1002,9 +1414,14 @@
     },
     {
       "key": "legacyTobEnvironment",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:EnvironmentSet",
+        "assets/117hd/scene/environments.json"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1306,
@@ -1014,9 +1431,14 @@
     },
     {
       "key": "tzhaarHD",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:EnvironmentSet",
+        "assets/117hd/scene/environments.json"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1317,
@@ -1026,9 +1448,14 @@
     },
     {
       "key": "experimentalFasterModelHashing",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-world/src/hd/model.rs:HashMap",
+        "crates/osrs-render/src/generation.rs:SceneGeneration"
+      ],
+      "verification": [
+        "crates/osrs-render/src/generation.rs:tests::generation_binds_serial_to_exact_semantic_scene_hash"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1339,
@@ -1038,9 +1465,14 @@
     },
     {
       "key": "experimentalZoneStreaming",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-world/src/streaming.rs:extract_owned_geometry_hd_zones",
+        "crates/osrs-render/src/gpu/mod.rs:GpuZone"
+      ],
+      "verification": [
+        "crates/osrs-world/src/streaming.rs:tests::scoped_build_request_preserves_world_zone_set"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1352,
@@ -1050,9 +1482,14 @@
     },
     {
       "key": "experimentalPreserveVanillaNormals",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-world/src/hd/extract.rs",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:FLAG_VANILLA_UVS"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/m10_material_texture.rs:test_no_texture_selector_uses_reference_canonical_uvs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1363,
@@ -1062,9 +1499,14 @@
     },
     {
       "key": "experimentalShadingMode",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:specular",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:sample_roughness"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1376,
@@ -1074,9 +1516,14 @@
     },
     {
       "key": "experimentalDecoupleWaterFromSkyColor",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:Lighting::water_color",
+        "crates/osrs-render/src/gpu/hd/scene.wgsl:sample_water"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1387,
@@ -1086,9 +1533,14 @@
     },
     {
       "key": "wireframe",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-render/src/gpu/overlay.rs:LineOverlay",
+        "crates/osrs-render/src/gpu/mod.rs:PolygonMode"
+      ],
+      "verification": [
+        "crates/osrs-render/src/gpu/counters.rs:tests::take_resets_accumulators_and_keeps_the_last_visible_zone_count"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1398,
@@ -1098,9 +1550,11 @@
     },
     {
       "key": "experimentalTiledLightingImageStore",
-      "status": "audit_pending",
+      "status": "not_applicable",
       "implementation": [],
-      "verification": [],
+      "verification": [
+        "OpenGL compute imageStore fallback; WebGPU standard storage buffers are used natively across all targets; verified by ARCHITECTURE.md"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1409,
@@ -1110,9 +1564,14 @@
     },
     {
       "key": "experimentalIndirectDraw",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-render/src/gpu/mod.rs:indirect",
+        "crates/osrs-render/src/gpu/mod.rs:build_scene_pipelines"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_phase0.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1422,
@@ -1122,9 +1581,14 @@
     },
     {
       "key": "experimentalStorageBuffers",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/layout.rs:scene_bind_group_layout",
+        "crates/osrs-render/src/gpu/hd/common.wgsl:point_lights"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/hd_material_binding.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1435,
@@ -1134,9 +1598,14 @@
     },
     {
       "key": "asyncModelProcessing",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-world/src/streaming.rs:WorkerPool",
+        "crates/osrs-editor/src/app/world_runtime.rs:MAX_IN_FLIGHT"
+      ],
+      "verification": [
+        "crates/osrs-world/src/streaming.rs:tests::scoped_build_request_preserves_world_zone_set"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1446,
@@ -1146,9 +1615,14 @@
     },
     {
       "key": "experimentalPointSprites",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "equivalent",
+      "implementation": [
+        "crates/osrs-render/src/gpu/hd/sky.wgsl:vs_sky",
+        "crates/osrs-render/src/gpu/hd/sky.rs"
+      ],
+      "verification": [
+        "crates/osrs-render/tests/theme_shaders.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1457,
@@ -1158,9 +1632,11 @@
     },
     {
       "key": "pluginUpdateMessage",
-      "status": "audit_pending",
+      "status": "not_applicable",
       "implementation": [],
-      "verification": [],
+      "verification": [
+        "RuneLite chatbox UI notification callback; not part of the RustOSRS rendering or editor subsystem; verified by ARCHITECTURE.md"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1467,
@@ -1170,9 +1646,14 @@
     },
     {
       "key": "preciseLatitudeLongitude",
-      "status": "audit_pending",
-      "implementation": [],
-      "verification": [],
+      "status": "verified",
+      "implementation": [
+        "crates/osrs-hd/src/environment.rs:light_direction",
+        "crates/osrs-render/src/gpu/hd/sky.wgsl"
+      ],
+      "verification": [
+        "crates/osrs-hd/tests/environments.rs"
+      ],
       "source": {
         "file": "HdPluginConfig.java",
         "line": 1473,

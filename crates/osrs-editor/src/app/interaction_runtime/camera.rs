@@ -83,9 +83,18 @@ impl InteractionRuntime {
             }
         }
         match self.camera.mode {
-            CameraMode::Fly if input.scroll != 0.0 => {
-                self.camera.speed =
-                    (self.camera.speed * (1.0 + input.scroll * 0.002)).clamp(50.0, 20_000.0);
+            CameraMode::Fly if input.hovered && input.scroll != 0.0 => {
+                if input.secondary_drag {
+                    let delta_pct = (input.scroll * 0.002).clamp(-0.25, 0.25);
+                    self.camera.speed =
+                        (self.camera.speed * (1.0 + delta_pct)).clamp(50.0, 20_000.0);
+                } else {
+                    let f = self.camera.forward();
+                    let step = input.scroll * (self.camera.speed * 0.002).max(1.0);
+                    self.camera.x += f[0] * step;
+                    self.camera.y += f[1] * step;
+                    self.camera.z += f[2] * step;
+                }
             }
             CameraMode::Orbit if input.hovered => {
                 self.camera.zoom(input.scroll + input.pinch * 500.0)
@@ -164,5 +173,22 @@ mod tests {
         let mut runtime = InteractionRuntime::new(camera);
         runtime.apply_camera_input(CameraInput::default());
         assert_eq!(pose(runtime.camera()), pose(&camera));
+    }
+    #[test]
+    fn casual_scroll_in_fly_mode_dollies_camera_without_mutating_speed() {
+        let camera = FlyCamera::new(0.0, -1000.0, 0.0);
+        let initial_speed = camera.speed;
+        let initial_z = camera.z;
+        let mut runtime = InteractionRuntime::new(camera);
+
+        runtime.apply_camera_input(CameraInput {
+            scroll: 50.0,
+            hovered: true,
+            secondary_drag: false,
+            ..Default::default()
+        });
+
+        assert_eq!(runtime.camera().speed, initial_speed);
+        assert_ne!(runtime.camera().z, initial_z);
     }
 }

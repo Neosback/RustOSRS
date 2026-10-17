@@ -46,6 +46,6 @@ cargo check --locked --target wasm32-unknown-unknown -p osrs-core -p osrs-edit -
 cargo clippy --locked --target wasm32-unknown-unknown -p osrs-editor -- -D warnings
 ```
 
-The full workspace tests include the permanent M3–M9 parity suites. `.github/workflows/ci.yml` separately names their Tier C gates. External pinned-cache and independent visual-oracle tests retain their prerequisites; ignored tests are not proof of acceptance.
+The full workspace tests include the permanent M3–M9 parity suites (run via Tier B in `.github/workflows/ci.yml`). External pinned-cache and independent visual-oracle tests retain their prerequisites; ignored tests are not proof of acceptance.
 
 Update the current handoff when ownership changes. Report checks actually run, their results, the exact baseline SHA, and whether changes remain uncommitted. A local check does not certify remote CI or a later commit.

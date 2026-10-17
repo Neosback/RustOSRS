@@ -1026,6 +1026,16 @@ pub struct Lighting {
     pub wind_speed: f32,
     pub wind_strength: f32,
     pub wind_ceiling: f32,
+    pub sun_dir: [f32; 3],
+    pub sun_enabled: bool,
+    pub sun_color: [f32; 3],
+    pub sun_intensity: f32,
+    pub moon_dir: [f32; 3],
+    pub moon_phase: f32,
+    pub moon_color: [f32; 3],
+    pub moon_intensity: f32,
+    pub sky_zenith_color: [f32; 3],
+    pub horizon_width: f32,
 }
 
 impl Default for Lighting {
@@ -1110,6 +1120,23 @@ impl Lighting {
             wind_speed: values.wind_speed,
             wind_strength: values.wind_strength,
             wind_ceiling: values.wind_ceiling,
+            sun_dir: light_direction(values.shadow_angles),
+            sun_enabled: light_strength > 0.0,
+            sun_color: normalise(directional, light_strength),
+            sun_intensity: 1.0,
+            moon_dir: {
+                let s = light_direction(values.shadow_angles);
+                [-s[0], -s[1], -s[2]]
+            },
+            moon_phase: 0.5,
+            moon_color: [0.75, 0.82, 1.0],
+            moon_intensity: 0.5,
+            sky_zenith_color: [
+                values.fog_color[0] * 0.4,
+                values.fog_color[1] * 0.55,
+                values.fog_color[2] * 0.85,
+            ],
+            horizon_width: 0.35,
         }
     }
 }

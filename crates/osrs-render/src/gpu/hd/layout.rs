@@ -399,12 +399,46 @@ pub struct HdEnvironmentUniform {
     pub sky_right: [f32; 4],
     pub sky_down: [f32; 4],
     pub sky_forward: [f32; 4],
+    /// xyz = sun direction in world/sky coordinates, w = sun enabled / disk scale (> 0 when visible).
+    pub sun_dir: [f32; 4],
+    /// rgb = sun linear color, w = sun intensity scale.
+    pub sun_color: [f32; 4],
+    /// xyz = moon direction in world/sky coordinates, w = moon phase in `0.0..=1.0`.
+    pub moon_dir: [f32; 4],
+    /// rgb = moon linear disk color, w = moon visibility / intensity scale.
+    pub moon_color: [f32; 4],
+    /// rgb = sky zenith color, w = horizon gradient width.
+    pub sky_zenith: [f32; 4],
 }
 
-const _: () = assert!(std::mem::size_of::<HdEnvironmentUniform>() == 160 + 64 + 80 + 96 + 48);
+const _: () = assert!(std::mem::size_of::<HdEnvironmentUniform>() == 160 + 64 + 80 + 96 + 48 + 80);
+
+/// Point light uploaded to GPU storage buffer (`PointLight` in `scene.wgsl`).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable, PartialEq)]
+pub struct GpuPointLight {
+    /// xyz = render-local position, w = radiusSquared
+    pub position: [f32; 4],
+    /// rgb = linear color * strength, w = unused
+    pub color: [f32; 4],
+}
+
+/// Create a GPU storage buffer holding point lights.
+pub fn point_lights_buffer(device: &wgpu::Device, lights: &[GpuPointLight]) -> wgpu::Buffer {
+    let slice = if lights.is_empty() {
+        &[GpuPointLight::default()]
+    } else {
+        lights
+    };
+    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("hd-point-lights"),
+        contents: bytemuck::cast_slice(slice),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    })
+}
 
 /// Bind group layout of the HD scene shader's group 2: the material table, texture array,
-/// sampler, the lighting environment and the water types.
+/// sampler, the lighting environment, the water types and point lights.
 pub fn scene_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     let mut entries = material_layout_entries();
     entries.push(wgpu::BindGroupLayoutEntry {
@@ -427,13 +461,23 @@ pub fn scene_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         },
         count: None,
     });
+    entries.push(wgpu::BindGroupLayoutEntry {
+        binding: 5,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Storage { read_only: true },
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    });
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("hd-scene"),
         entries: &entries,
     })
 }
 
-/// Material table, texture array, sampler and environment bound together.
+/// Material table, texture array, sampler, environment, water types and point lights bound together.
 pub fn scene_bind_group(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
@@ -441,6 +485,7 @@ pub fn scene_bind_group(
     textures: &super::materials::MaterialTextureArray,
     environment: &wgpu::Buffer,
     water_types: &wgpu::Buffer,
+    point_lights: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("hd-scene"),
@@ -465,6 +510,10 @@ pub fn scene_bind_group(
             wgpu::BindGroupEntry {
                 binding: 4,
                 resource: water_types.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: point_lights.as_entire_binding(),
             },
         ],
     })

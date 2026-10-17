@@ -22,9 +22,7 @@ def commands(full, packages, jobs, output):
     result = [(name, [sys.executable, f'scripts/{name}']) for name in PYTHON_CHECKS]
     result.append(('format', ['cargo', 'fmt', '--all', '--check']))
     selection = ['--workspace'] if full else [arg for package in packages for arg in ['-p', package]]
-    if full:
-        result.append(('native-check', ['cargo', 'check', '--locked', *selection, '--all-targets', '--all-features']))
-    # Clippy type-checks the focused packages too; only full mode repeats the explicit check gate.
+    # Clippy already type-checks all targets; omitting redundant cargo check.
     result.append(('native-clippy', ['cargo', 'clippy', '--locked', *selection,
                                      '--all-targets', '--all-features', '--', '-D', 'warnings']))
     tests = [sys.executable, 'scripts/run_tests.py', '--jobs', str(jobs), '--output', str(output / 'tests')]

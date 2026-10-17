@@ -38,6 +38,7 @@ impl EditorApp {
             match event {
                 StreamEvent::HdMaterials(data) => {
                     self.hd.set_environments(Arc::clone(&data.environments));
+                    self.hd.set_lights(Arc::clone(&data.lights));
                     if let Err(error) = self.renderer.install_hd_materials(*data) {
                         self.ui.set_status(format!("HD materials failed: {error}"));
                     }

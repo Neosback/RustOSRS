@@ -29,7 +29,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Duration;
 
 /// Regions being built at once.
-const MAX_IN_FLIGHT: usize = 2;
+const MAX_IN_FLIGHT: usize = 4;
 /// Animated locs farther than this many tiles from the camera are not drawn.
 const ANIMATION_RADIUS_TILES: i32 = 80;
 /// Animated geometry is rebuilt at most once per this many game cycles (20 ms each).

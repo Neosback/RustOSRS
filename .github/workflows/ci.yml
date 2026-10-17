@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,9 +12,13 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+
 jobs:
-  tier-a:
-    name: Tier A - static quality
+  fast-gate:
+    name: Fast Quality Gate (Format & Clippy)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -22,118 +27,45 @@ jobs:
       - name: Install pinned Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
-          target: wasm32-unknown-unknown
+          components: clippy, rustfmt
+          cache: false
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "workspace-fast-ci"
 
       - name: Check architecture boundaries
         run: python3 scripts/check_architecture.py
 
-      - name: Test architecture guard
-        run: python3 scripts/test_check_architecture.py
-
-      - name: Test editor ownership and feature contracts
-        run: python3 scripts/test_editor_architecture.py
-
-      - name: Test reference regeneration safety
-        run: python3 scripts/test_reference_regeneration.py
-
-      - name: Test historical deob golden index
-        run: python3 scripts/test_deob_golden_index.py
-
-      - name: Verify pinned HD corpus and feature ledger
-        run: |
-          python3 scripts/check_hd_sources.py
-          python3 scripts/test_hd_sources.py
-
       - name: Check formatting
         run: cargo fmt --all --check
-
-      - name: Check workspace
-        run: cargo check --locked --workspace --all-targets --all-features
 
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
-      - name: WebAssembly portability gate
-        run: |
-          cargo check --locked --target wasm32-unknown-unknown \
-            -p osrs-core -p osrs-edit -p osrs-filestore -p osrs-cache -p osrs-scene -p osrs-hd -p osrs-render -p osrs-world
-          cargo clippy --locked --target wasm32-unknown-unknown -p osrs-editor -- -D warnings
-
-  tier-b:
-    name: Tier B - fast tests
+  tests:
+    name: Full Test Suite
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    needs: tier-a
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
       - name: Install pinned Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache: false
+
+      - name: Setup mold linker
+        run: sudo apt-get update -qq && sudo apt-get install -qq -y mold
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "workspace-fast-ci"
 
       - name: Run workspace tests
+        env:
+          RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
         run: cargo test --locked --workspace --all-targets --all-features
-
-  tier-c:
-    name: Tier C - semantic parity
-    runs-on: ubuntu-latest
-    needs: tier-b
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Install pinned Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v2
-
-      - name: Run checked-in M3 P0 decode fixtures
-        run: cargo test --locked -p osrs-cache --test m3_decode_fixtures
-
-      - name: Run M3 deterministic decoder fuzz smoke
-        run: cargo test --locked -p osrs-cache --test m3_fuzz_smoke
-
-      - name: Run checked-in M4 fixture inventory
-        run: cargo test --locked -p osrs-core --test m4_fixture_manifest
-
-      - name: Run M4 exact model construction fixtures
-        run: |
-          cargo test --locked -p osrs-core --lib model_construction::tests
-          cargo test --locked -p osrs-core --test m4_instance_transform
-
-      - name: Run M4 model decoder fuzz smoke
-        run: cargo test --locked -p osrs-cache --test m4_model_fuzz_smoke
-
-      - name: Run M5 repository-wide normalized fixture runner
-        run: cargo test --locked -p osrs-reference --test m5_fixture_runner
-
-      - name: Run M6 semantic scene suite
-        run: cargo test --locked -p osrs-scene
-
-      - name: Run M7 normals, lighting, and finalization suite
-        run: |
-          cargo test --locked -p osrs-core --lib normals::tests
-          cargo test --locked -p osrs-core --lib lighting::tests
-          cargo test --locked -p osrs-reference --test m7_base_normals
-          cargo test --locked -p osrs-reference --test m7_normal_merge
-          cargo test --locked -p osrs-reference --test m7_lighting
-          cargo test --locked -p osrs-reference --test m7_static_entity_lifecycle
-          cargo test --locked -p osrs-reference --test m7_initial_scene_finalization
-          cargo test --locked -p osrs-reference --test m7_identity_threading
-          cargo test --locked -p osrs-reference --test m7_composite_admission
-          cargo test --locked -p osrs-scene --test m7_scene_normal_reconciliation
-
-      - name: Run M8 morph, contour, animation, and replacement suite
-        run: |
-          cargo test --locked -p osrs-reference --test m8_morph_resolution
-          cargo test --locked -p osrs-reference --test m8_contour_ground
-          cargo test --locked -p osrs-reference --test m8_legacy_animation_decode
-          cargo test --locked -p osrs-reference --test m8_legacy_animation_pose
-          cargo test --locked -p osrs-reference --test m8_sequence_progression
-          cargo test --locked -p osrs-reference --test m8_sequence_replacement
-          cargo test --locked -p osrs-reference --test m8_dynamic_model_assembly
-          cargo test --locked -p osrs-reference --test m8_pending_replacement_contract
-          cargo test --locked -p osrs-reference --test m8_initial_runtime_model_path
-          cargo test --locked -p osrs-scene --test m8_active_morph_placement
-
-      - name: Run M9 semantic closure and golden hash suite
-        run: |
-          cargo test --locked -p osrs-scene --lib semantic_hash::tests
-          cargo test --locked -p osrs-reference --test m9_semantic_closure

@@ -424,7 +424,9 @@ impl CacheRepository {
                         computed
                     }
                 },
-                CacheSource::Dir(_) => transport.fingerprint_v1(limits.max_encoded_group_bytes)?,
+                CacheSource::Dir(path) => {
+                    transport.cached_dir_fingerprint(path, limits.max_encoded_group_bytes)?
+                }
                 #[cfg(not(target_arch = "wasm32"))]
                 CacheSource::VerifiedExport(_) => {
                     transport.fingerprint_v1(limits.max_encoded_group_bytes)?
@@ -1227,6 +1229,71 @@ impl CacheTransport {
         }
 
         Ok(ComputedFingerprint(digest.finalize().into()))
+    }
+
+    fn cached_dir_fingerprint(
+        &self,
+        path: &Path,
+        max_encoded_bytes: usize,
+    ) -> TransportResult<ComputedFingerprint> {
+        let dat2 = path.join("main_file_cache.dat2");
+        let idx255 = path.join("main_file_cache.idx255");
+        if dat2.is_file() && idx255.is_file() {
+            let cache_file = path.join(".rustosrs_fingerprint");
+            if let (Ok(dat2_meta), Ok(idx255_meta)) = (dat2.metadata(), idx255.metadata()) {
+                let dat2_len = dat2_meta.len();
+                let dat2_mtime = dat2_meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0);
+                let idx255_len = idx255_meta.len();
+                let idx255_mtime = idx255_meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0);
+
+                if let Ok(content) = std::fs::read_to_string(&cache_file) {
+                    let mut lines = content.lines();
+                    let v = lines.next();
+                    let d_len = lines.next().and_then(|l| l.strip_prefix("dat2_len:"));
+                    let d_mt = lines.next().and_then(|l| l.strip_prefix("dat2_mtime:"));
+                    let i_len = lines.next().and_then(|l| l.strip_prefix("idx255_len:"));
+                    let i_mt = lines.next().and_then(|l| l.strip_prefix("idx255_mtime:"));
+                    let fp = lines.next().and_then(|l| l.strip_prefix("fingerprint:"));
+                    let dat2_len_str = dat2_len.to_string();
+                    let dat2_mtime_str = dat2_mtime.to_string();
+                    let idx255_len_str = idx255_len.to_string();
+                    let idx255_mtime_str = idx255_mtime.to_string();
+                    if v == Some("version:1")
+                        && d_len == Some(&dat2_len_str)
+                        && d_mt == Some(&dat2_mtime_str)
+                        && i_len == Some(&idx255_len_str)
+                        && i_mt == Some(&idx255_mtime_str)
+                        && let Some(fp_hex) = fp
+                        && fp_hex.len() == 64
+                        && let Ok(bytes) = (0..32)
+                            .map(|i| u8::from_str_radix(&fp_hex[i * 2..i * 2 + 2], 16))
+                            .collect::<Result<Vec<u8>, _>>()
+                        && let Ok(array) = bytes.try_into()
+                    {
+                        return Ok(ComputedFingerprint(array));
+                    }
+                }
+
+                let computed = self.fingerprint_v1(max_encoded_bytes)?;
+                let hex = computed.to_hex();
+                let payload = format!(
+                    "version:1\ndat2_len:{dat2_len}\ndat2_mtime:{dat2_mtime}\nidx255_len:{idx255_len}\nidx255_mtime:{idx255_mtime}\nfingerprint:{hex}\n"
+                );
+                let _ = std::fs::write(&cache_file, payload);
+                return Ok(computed);
+            }
+        }
+        self.fingerprint_v1(max_encoded_bytes)
     }
 }
 

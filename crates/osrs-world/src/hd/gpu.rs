@@ -30,6 +30,8 @@ pub struct HdGpuData {
     pub water_layers: WaterLayers,
     /// The per-area lighting environments, for the render thread's environment state.
     pub environments: Arc<EnvironmentSet>,
+    /// The loaded light set for dynamic and placed point lights.
+    pub lights: Arc<osrs_hd::lights::LightSet>,
 }
 
 impl HdContext {
@@ -103,6 +105,7 @@ impl HdContext {
             water_types,
             water_layers,
             environments: Arc::clone(&self.environments),
+            lights: Arc::clone(&self.lights),
         })
     }
 }

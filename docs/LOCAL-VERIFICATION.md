@@ -32,10 +32,9 @@ Once a checkpoint is ready, run all required gates once:
 python3 scripts/verify.py --full
 ```
 
-This retains the AGENTS.md native check, strict native Clippy, full workspace/all-target/all-feature
+This retains strict native Clippy (which type-checks all targets), full workspace/all-target/all-feature
 tests and both WASM commands, plus Python guards and formatting. A failure stops the gate. Repair
 the failure and rerun the affected check; broaden verification only when changed inputs justify it.
-Remote CI retains its separate Tier C gate names and is not certified by a local run.
 
 ## Parallel test execution
 

@@ -77,7 +77,7 @@ class RunnerTests(unittest.TestCase):
 
     def test_full_gate_retains_every_required_scope_once(self):
         steps = dict(commands(True, [], 4, Path('/output')))
-        self.assertIn('--workspace', steps['native-check'])
+        self.assertNotIn('native-check', steps)
         self.assertIn('--workspace', steps['native-clippy'])
         self.assertIn('wasm-check', steps)
         self.assertIn('wasm-clippy', steps)

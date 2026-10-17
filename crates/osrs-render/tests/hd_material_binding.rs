@@ -10,7 +10,7 @@ use osrs_render::gpu::{
     hd::{
         layout::{
             GpuMaterial, GpuWaterType, HdEnvironmentUniform, MATERIAL_WGSL, MaterialTable,
-            scene_bind_group, scene_bind_group_layout, water_types_buffer,
+            point_lights_buffer, scene_bind_group, scene_bind_group_layout, water_types_buffer,
         },
         materials::{DecodedLayers, MaterialTextureArray, build_mips},
     },
@@ -72,7 +72,16 @@ fn scene_material_binding_samples_the_selected_texture_layer()
         mapped_at_creation: false,
     });
     let water = water_types_buffer(device, &[GpuWaterType::none(|_| -1)]);
-    let bind_group = scene_bind_group(device, &layout, &table, &textures, &environment, &water);
+    let lights = point_lights_buffer(device, &[]);
+    let bind_group = scene_bind_group(
+        device,
+        &layout,
+        &table,
+        &textures,
+        &environment,
+        &water,
+        &lights,
+    );
 
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("hd-material-binding-test"),
