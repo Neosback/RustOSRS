@@ -86,7 +86,7 @@ Implement simple-tiled WFC over semantic architectural patterns.
 - [x] fixed / allowed-domain constraints
 - [x] tests for determinism, socket compatibility, pinned cells, contradictions, and backtracking recovery
 
-WFC is responsible for local architectural compatibility. It is not responsible for global room reachability or building-program guarantees. The solver is intentionally generic and has no RuneScape object-ID dependency. A higher layer will map semantic WFC pattern IDs to wall/window/door/roof variants before palette realization.
+WFC is responsible for local architectural compatibility. It is not responsible for global room reachability or building-program guarantees. The solver is intentionally generic and has no RuneScape object-ID dependency. A higher layer maps semantic WFC pattern IDs to architectural variants before palette realization.
 
 ## Checkpoint 4: hybrid building solver
 
@@ -96,11 +96,15 @@ WFC is responsible for local architectural compatibility. It is not responsible 
 - [x] convert BSP rooms/corridor bands into final semantic building topology
 - [x] route program-preferred connections through the corridor network
 - [x] exact entrance count and placement constraints for BSP layouts
-- [ ] WFC refinement of walls/corners/windows/door variants
-- [ ] local repair followed by backtracking
-- [ ] seeded reroll without changing request geometry
+- [x] first WFC facade pass for straight exterior wall/window runs
+- [x] deterministic contradiction retry after each WFC solve exhausts bounded backtracking
+- [x] seeded facade reroll without changing macro building geometry
+- [ ] WFC corner variants
+- [ ] WFC door / portal variants
 
-The CP4 macro solver now separates four concerns. Archetype programs describe required spaces and preferred relationships. BSP packs those spaces without overlap and reserves one-tile circulation bands. Topology conversion turns room and corridor rectangles into a validation-clean `BuildingPlan` with exactly one deterministic exterior entrance, Door portals from semantic rooms into circulation, and Open portals between corridor bands. Finally, program routing computes a stable shortest corridor path for every preferred room relationship, preserving global circulation intent before any local WFC refinement is allowed to run.
+The CP4 macro solver separates global topology from local appearance. Archetype programs describe required spaces and preferred relationships. BSP packs those spaces without overlap and reserves one-tile circulation bands. Topology conversion turns room and corridor rectangles into a validation-clean `BuildingPlan` with exactly one deterministic exterior entrance, Door portals from semantic rooms into circulation, and Open portals between corridor bands. Program routing then computes a stable shortest corridor path for every preferred room relationship.
+
+Facade refinement runs only after that topology is fixed. Its first pass converts eligible straight exterior-wall edges into isolated semantic windows while preserving corners, doors, openings, rooms, corridors, and reachability. Each WFC attempt receives its normal bounded backtracking budget. Only a true contradiction can trigger a deterministic alternate local seed. Reroll variations derive a facade-only seed from the building seed plus a variation number, so visual rerolls cannot move rooms or corridors.
 
 ## Checkpoint 5: multi-floor + roofs
 
