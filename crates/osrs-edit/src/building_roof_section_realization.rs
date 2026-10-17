@@ -81,10 +81,7 @@ pub fn build_roof_section_patch(
     let mut ordered = plans.iter().collect::<Vec<_>>();
     ordered.sort_by_key(|plan| section_sort_key(plan.section()));
 
-    let description_count = ordered
-        .iter()
-        .map(|plan| plan.descriptions().len())
-        .sum();
+    let description_count = ordered.iter().map(|plan| plan.descriptions().len()).sum();
     let mut descriptions = Vec::with_capacity(description_count);
     for plan in ordered {
         descriptions.extend_from_slice(plan.descriptions());
