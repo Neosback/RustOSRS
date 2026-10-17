@@ -82,14 +82,8 @@ pub struct BuildingDetailPalette {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DetailedBuildingElement {
     Edge(SemanticEdge),
-    ExteriorCorner {
-        tile: MapTile,
-        turn: CornerTurn,
-    },
-    DoorVariant {
-        edge: SemanticEdge,
-        variant: usize,
-    },
+    ExteriorCorner { tile: MapTile, turn: CornerTurn },
+    DoorVariant { edge: SemanticEdge, variant: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,32 +104,15 @@ impl DetailedBuildingArchitecture {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildingDetailError {
-    InvalidPlan {
-        report: BuildingValidationReport,
-    },
-    Architecture {
-        error: BuildingArchitectureError,
-    },
-    Refinement {
-        error: FacadeRefinementError,
-    },
-    ZeroDoorVariantWeight {
-        index: usize,
-    },
+    InvalidPlan { report: BuildingValidationReport },
+    Architecture { error: BuildingArchitectureError },
+    Refinement { error: FacadeRefinementError },
+    ZeroDoorVariantWeight { index: usize },
     DoorVariantWeightOverflow,
-    MissingSnapshotTerrain {
-        tile: MapTile,
-    },
-    MissingAsset {
-        edge: SemanticEdge,
-    },
-    MissingDoorVariant {
-        edge: SemanticEdge,
-        variant: usize,
-    },
-    DuplicateObjectPlacement {
-        placement: ObjectPlacement,
-    },
+    MissingSnapshotTerrain { tile: MapTile },
+    MissingAsset { edge: SemanticEdge },
+    MissingDoorVariant { edge: SemanticEdge, variant: usize },
+    DuplicateObjectPlacement { placement: ObjectPlacement },
 }
 
 pub fn detail_refined_building_architecture(
@@ -175,8 +152,7 @@ pub fn detail_refined_building_architecture(
         if edge.feature == EdgeFeature::Door
             && let Some(total_weight) = total_door_weight
         {
-            let variant =
-                choose_weighted_variant(seed, edge, door_variant_weights, total_weight);
+            let variant = choose_weighted_variant(seed, edge, door_variant_weights, total_weight);
             elements.push(DetailedBuildingElement::DoorVariant { edge, variant });
         } else {
             elements.push(DetailedBuildingElement::Edge(edge));
@@ -218,9 +194,8 @@ pub fn build_detailed_wfc_building_variation_patch(
         .iter()
         .map(|variant| variant.weight)
         .collect::<Vec<_>>();
-    let detail_seed = mix64(
-        facade_variation_seed(plan.request.seed, variation) ^ 0x6a09_e667_f3bc_c909,
-    );
+    let detail_seed =
+        mix64(facade_variation_seed(plan.request.seed, variation) ^ 0x6a09_e667_f3bc_c909);
     let detailed = detail_refined_building_architecture(&refined, detail_seed, &weights)?;
     realize_detailed(snapshot, plan, palette, &detailed)
 }
@@ -502,9 +477,7 @@ mod tests {
         let corner_count = detailed
             .elements()
             .iter()
-            .filter(|element| {
-                matches!(element, DetailedBuildingElement::ExteriorCorner { .. })
-            })
+            .filter(|element| matches!(element, DetailedBuildingElement::ExteriorCorner { .. }))
             .count();
 
         assert_eq!(corner_count, 4);
@@ -519,9 +492,12 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("valid detail plan: {error:?}"));
 
         assert_eq!(first, second);
-        assert!(first.elements().iter().any(|element| {
-            matches!(element, DetailedBuildingElement::DoorVariant { .. })
-        }));
+        assert!(
+            first
+                .elements()
+                .iter()
+                .any(|element| { matches!(element, DetailedBuildingElement::DoorVariant { .. }) })
+        );
     }
 
     #[test]
