@@ -80,7 +80,7 @@ pub use building_roof_section_cells::{
     RoofSectionCellError, RoofSectionCellPlan, classify_roof_section_cells,
 };
 pub use building_roof_section_realization::{
-    RoofSectionPlacementDescriptionError, RoofSectionPlacementPlan,
+    RoofSectionPlacementDescriptionError, RoofSectionPlacementPlan, build_roof_section_patch,
     describe_roof_section_placements,
 };
 pub use building_roof_section_solver::{
