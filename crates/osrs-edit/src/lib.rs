@@ -57,8 +57,9 @@ pub use building_refinement_policy::{
     refine_exterior_walls_for_variation,
 };
 pub use building_roof::{
-    BuildingRoofError, BuildingRoofPlan, RoofEdge, RoofRidge, RoofRidgeAxis, RoofShape,
-    plan_roof_coverage, plan_roof_shape,
+    BuildingRoofError, BuildingRoofPlan, RoofCell, RoofCellClassificationError, RoofCellKind,
+    RoofEdge, RoofRidge, RoofRidgeAxis, RoofShape, classify_roof_cells, plan_roof_coverage,
+    plan_roof_shape,
 };
 pub use building_routing::{ProgramRoute, ProgramRoutingError, route_program_connections};
 pub use building_topology::{
