@@ -338,14 +338,23 @@ fn plan_horizontal_house(
         upper_height,
     );
 
-    let entrance_x = 1 + interior_width / 2;
-    let entrance = site.local_tile(entrance_x, 0);
+    let (entrance, exterior_doorway) = if rng.next_u64() & 1 == 0 {
+        (
+            site.local_tile(0, hall_local_y),
+            site.local_tile(1, hall_local_y),
+        )
+    } else {
+        (
+            site.local_tile(site.width - 1, hall_local_y),
+            site.local_tile(site.width - 2, hall_local_y),
+        )
+    };
     let hall_id = hall.id;
     let connections = vec![
         RoomConnection {
             from: None,
             to: hall_id,
-            doorway: site.local_tile(entrance_x, hall_local_y),
+            doorway: exterior_doorway,
         },
         connect(
             hall_id,
@@ -437,14 +446,23 @@ fn plan_vertical_house(
         interior_height - split,
     );
 
-    let entrance_y = 1 + interior_height / 2;
-    let entrance = site.local_tile(0, entrance_y);
+    let (entrance, exterior_doorway) = if rng.next_u64() & 1 == 0 {
+        (
+            site.local_tile(hall_local_x, 0),
+            site.local_tile(hall_local_x, 1),
+        )
+    } else {
+        (
+            site.local_tile(hall_local_x, site.height - 1),
+            site.local_tile(hall_local_x, site.height - 2),
+        )
+    };
     let hall_id = hall.id;
     let connections = vec![
         RoomConnection {
             from: None,
             to: hall_id,
-            doorway: site.local_tile(hall_local_x, entrance_y),
+            doorway: exterior_doorway,
         },
         connect(
             hall_id,
@@ -602,6 +620,22 @@ mod tests {
                 .iter()
                 .any(|connection| { connection.from.is_none() && connection.to == hall.id })
         );
+    }
+
+    #[test]
+    fn exterior_entrance_is_cardinally_adjacent_to_hall_doorway() {
+        for (width, height) in [(12, 10), (10, 12)] {
+            let plan = plan_basic_house(request(123, width, height))
+                .unwrap_or_else(|error| unreachable!("valid test plan: {error:?}"));
+            let exterior = plan
+                .connections
+                .iter()
+                .find(|connection| connection.from.is_none())
+                .unwrap_or_else(|| unreachable!("house has one exterior connection"));
+            let dx = (plan.entrance.x - exterior.doorway.x).abs();
+            let dy = (plan.entrance.y - exterior.doorway.y).abs();
+            assert_eq!(dx + dy, 1);
+        }
     }
 
     #[test]
