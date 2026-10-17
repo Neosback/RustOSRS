@@ -46,16 +46,10 @@ pub enum BspTopologyError {
     ArchetypeMismatch,
     SiteMismatch,
     NoCorridors,
-    MissingProgramRoom {
-        room: RoomId,
-    },
+    MissingProgramRoom { room: RoomId },
     RoomIdOverflow,
-    RoomNotAdjacentToCorridor {
-        room: RoomId,
-    },
-    DisconnectedCorridor {
-        corridor: RoomId,
-    },
+    RoomNotAdjacentToCorridor { room: RoomId },
+    DisconnectedCorridor { corridor: RoomId },
     NoExteriorEntrance,
     CoordinateOverflow,
 }
@@ -126,17 +120,15 @@ pub fn build_bsp_building_plan(
 
     let mut connections = Vec::new();
     for program_room in program.rooms() {
-        let room = rooms
-            .iter()
-            .find(|room| room.id == program_room.id)
-            .ok_or(BspTopologyError::MissingProgramRoom {
+        let room = rooms.iter().find(|room| room.id == program_room.id).ok_or(
+            BspTopologyError::MissingProgramRoom {
                 room: program_room.id,
-            })?;
+            },
+        )?;
         let mut candidates = corridor_rooms
             .iter()
             .filter_map(|corridor| {
-                adjacent_portal(room.rect, corridor.rect)
-                    .map(|doorway| (corridor.id, doorway))
+                adjacent_portal(room.rect, corridor.rect).map(|doorway| (corridor.id, doorway))
             })
             .collect::<Vec<_>>();
         candidates.sort_by_key(|(corridor, doorway)| (*doorway, *corridor));
@@ -251,7 +243,10 @@ fn ensure_corridor_connectivity(
     corridors: &[RoomSpec],
     connections: &[RoomConnection],
 ) -> Result<(), BspTopologyError> {
-    let corridor_ids = corridors.iter().map(|room| room.id).collect::<BTreeSet<_>>();
+    let corridor_ids = corridors
+        .iter()
+        .map(|room| room.id)
+        .collect::<BTreeSet<_>>();
     let Some(start) = corridor_ids.iter().next().copied() else {
         return Err(BspTopologyError::NoCorridors);
     };
@@ -337,18 +332,10 @@ fn rect_tiles(rect: RoomRect) -> Result<Vec<MapTile>, BspTopologyError> {
 
 fn cardinal_neighbors(tile: MapTile) -> [Option<MapTile>; 4] {
     [
-        tile.y
-            .checked_add(1)
-            .map(|y| MapTile::new(tile.x, y)),
-        tile.x
-            .checked_add(1)
-            .map(|x| MapTile::new(x, tile.y)),
-        tile.y
-            .checked_sub(1)
-            .map(|y| MapTile::new(tile.x, y)),
-        tile.x
-            .checked_sub(1)
-            .map(|x| MapTile::new(x, tile.y)),
+        tile.y.checked_add(1).map(|y| MapTile::new(tile.x, y)),
+        tile.x.checked_add(1).map(|x| MapTile::new(x, tile.y)),
+        tile.y.checked_sub(1).map(|y| MapTile::new(tile.x, y)),
+        tile.x.checked_sub(1).map(|x| MapTile::new(x, tile.y)),
     ]
 }
 
@@ -379,8 +366,8 @@ mod tests {
     use super::*;
     use crate::{
         BuildingArchetype, BuildingConstraints, BuildingStyle, HeightVertexCoord, MapDocument,
-        RectSite, build_building_patch, building_program, capture_generation_snapshot,
-        derive_building_architecture, pack_building_program, validate_building_plan,
+        RectSite, building_program, capture_generation_snapshot, derive_building_architecture,
+        pack_building_program, validate_building_plan,
     };
     use osrs_core::coords::SourcePlane;
 
@@ -442,7 +429,11 @@ mod tests {
             let snapshot = capture_generation_snapshot(&document, request, []);
             let report = validate_building_plan(&generated.plan, &snapshot);
 
-            assert!(report.is_valid(), "{archetype:?}: {:?}", report.diagnostics());
+            assert!(
+                report.is_valid(),
+                "{archetype:?}: {:?}",
+                report.diagnostics()
+            );
             assert_eq!(
                 generated
                     .plan
@@ -469,10 +460,12 @@ mod tests {
         assert!(generated.plan.connections.iter().any(|connection| {
             connection.from.is_some() && connection.kind == PortalKind::Open
         }));
-        assert!(architecture
-            .edges()
-            .iter()
-            .any(|edge| edge.feature == crate::EdgeFeature::Open));
+        assert!(
+            architecture
+                .edges()
+                .iter()
+                .any(|edge| edge.feature == crate::EdgeFeature::Open)
+        );
     }
 
     #[test]
