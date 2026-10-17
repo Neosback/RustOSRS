@@ -5,9 +5,7 @@
 //! `RoofPatternSet`; this layer does not solve WFC, join valleys/intersections, resolve assets, or
 //! build map edits.
 
-use crate::{
-    RoofCell, RoofPatternSet, RoofSection, RoofSectionCellPlan, WfcConstraint, WfcCoord,
-};
+use crate::{RoofCell, RoofPatternSet, RoofSection, RoofSectionCellPlan, WfcConstraint, WfcCoord};
 use osrs_core::coords::MapTile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
