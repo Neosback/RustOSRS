@@ -1,8 +1,8 @@
-//! Semantic roof coverage planning for generated buildings.
+//! Semantic roof coverage and shape planning for generated buildings.
 //!
-//! Roof planning starts from the already-validated vertical building stack. This module deliberately
-//! stops at semantic coverage and exposed boundary edges so later roof-shape, WFC, and asset
-//! realization stages can evolve without coupling the headless edit domain to concrete object IDs.
+//! Roof planning starts from the already-validated vertical building stack. This module owns exact
+//! top-floor coverage, exposed boundary edges, and deterministic high-level roof shape semantics.
+//! It deliberately stops before slope-cell assignment, WFC patterns, and concrete object IDs.
 
 use crate::{BuildingFloorIndex, BuildingVerticalPlan, CardinalDirection};
 use osrs_core::coords::{MapTile, SourcePlane};
@@ -49,6 +49,39 @@ pub enum BuildingRoofError {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RoofRidgeAxis {
+    NorthSouth,
+    EastWest,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RoofRidge {
+    pub axis: RoofRidgeAxis,
+    /// Cross-axis ridge coordinate in half-tile world units.
+    ///
+    /// A tile centered at integer map coordinate `n` has center coordinate `2 * n + 1`. An even
+    /// value therefore places the ridge between tile-center rows/columns, while an odd value passes
+    /// through one row/column of tile centers.
+    pub cross_axis_coordinate_x2: i64,
+}
+
+impl RoofRidge {
+    pub const fn passes_through_tile_centers(self) -> bool {
+        self.cross_axis_coordinate_x2 & 1 != 0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RoofShape {
+    /// Reserved for archetype/style overrides that intentionally use a flat roof.
+    Flat,
+    /// One ridge spanning the longer axis of a rectangular footprint.
+    Gable { ridge: RoofRidge },
+    /// The footprint requires later decomposition into multiple roof sections.
+    Complex,
+}
+
 /// Derive exact roof coverage from the highest solved building floor.
 ///
 /// Lower floors never expand the roof footprint. Every top-floor tile is covered once, while each
@@ -81,6 +114,58 @@ pub fn plan_roof_coverage(
         tiles,
         exposed_edges,
     })
+}
+
+/// Classify the covered roof footprint and derive a deterministic primary ridge when possible.
+///
+/// Rectangles receive one gable ridge along their longer axis so slope travel is minimized. Square
+/// footprints use an east-west ridge as a stable tie-break. Non-rectangular footprints are marked
+/// complex instead of inventing an invalid single-ridge roof; a later checkpoint can decompose them
+/// into compatible roof sections.
+pub fn plan_roof_shape(roof: &BuildingRoofPlan) -> RoofShape {
+    let Some(first) = roof.tiles.first().copied() else {
+        return RoofShape::Complex;
+    };
+
+    let mut min_x = first.x;
+    let mut max_x = first.x;
+    let mut min_y = first.y;
+    let mut max_y = first.y;
+    for tile in roof.tiles.iter().copied().skip(1) {
+        min_x = min_x.min(tile.x);
+        max_x = max_x.max(tile.x);
+        min_y = min_y.min(tile.y);
+        max_y = max_y.max(tile.y);
+    }
+
+    let width = i64::from(max_x) - i64::from(min_x) + 1;
+    let height = i64::from(max_y) - i64::from(min_y) + 1;
+    let Ok(width_usize) = usize::try_from(width) else {
+        return RoofShape::Complex;
+    };
+    let Ok(height_usize) = usize::try_from(height) else {
+        return RoofShape::Complex;
+    };
+    if width_usize.checked_mul(height_usize) != Some(roof.tiles.len()) {
+        return RoofShape::Complex;
+    }
+
+    let axis = if width >= height {
+        RoofRidgeAxis::EastWest
+    } else {
+        RoofRidgeAxis::NorthSouth
+    };
+    let cross_axis_coordinate_x2 = match axis {
+        RoofRidgeAxis::EastWest => i64::from(min_y) + i64::from(max_y) + 1,
+        RoofRidgeAxis::NorthSouth => i64::from(min_x) + i64::from(max_x) + 1,
+    };
+
+    RoofShape::Gable {
+        ridge: RoofRidge {
+            axis,
+            cross_axis_coordinate_x2,
+        },
+    }
 }
 
 #[cfg(test)]
@@ -118,6 +203,13 @@ mod tests {
         tiles
     }
 
+    fn roof_for(floor: Vec<MapTile>) -> BuildingRoofPlan {
+        let vertical = plan_vertical_connectivity(request(1), &[floor])
+            .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
+        plan_roof_coverage(&vertical)
+            .unwrap_or_else(|error| unreachable!("valid roof plan: {error:?}"))
+    }
+
     #[test]
     fn roof_covers_only_the_highest_floor() {
         let lower = rectangle(MapTile::new(3201, 3201), 5, 5);
@@ -138,11 +230,7 @@ mod tests {
     #[test]
     fn rectangular_roof_records_only_exterior_edges() {
         let origin = MapTile::new(3202, 3202);
-        let floor = rectangle(origin, 2, 2);
-        let vertical = plan_vertical_connectivity(request(1), &[floor])
-            .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
-        let roof = plan_roof_coverage(&vertical)
-            .unwrap_or_else(|error| unreachable!("valid roof plan: {error:?}"));
+        let roof = roof_for(rectangle(origin, 2, 2));
 
         assert_eq!(roof.exposed_edges().len(), 8);
         assert!(roof.exposed_edges().contains(&RoofEdge {
@@ -168,11 +256,7 @@ mod tests {
         let south = MapTile::new(3202, 3202);
         let north = MapTile::new(3202, 3203);
         let east = MapTile::new(3203, 3202);
-        let floor = vec![south, north, east];
-        let vertical = plan_vertical_connectivity(request(1), &[floor])
-            .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
-        let roof = plan_roof_coverage(&vertical)
-            .unwrap_or_else(|error| unreachable!("valid roof plan: {error:?}"));
+        let roof = roof_for(vec![south, north, east]);
 
         assert!(roof.exposed_edges().contains(&RoofEdge {
             tile: north,
@@ -191,5 +275,51 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
 
         assert_eq!(plan_roof_coverage(&vertical), plan_roof_coverage(&vertical));
+    }
+
+    #[test]
+    fn wide_rectangle_uses_east_west_ridge() {
+        let roof = roof_for(rectangle(MapTile::new(3200, 3200), 5, 3));
+        let RoofShape::Gable { ridge } = plan_roof_shape(&roof) else {
+            unreachable!("rectangular footprint should have a gable ridge");
+        };
+
+        assert_eq!(ridge.axis, RoofRidgeAxis::EastWest);
+        assert!(ridge.passes_through_tile_centers());
+    }
+
+    #[test]
+    fn tall_rectangle_uses_north_south_ridge() {
+        let roof = roof_for(rectangle(MapTile::new(3200, 3200), 3, 5));
+        let RoofShape::Gable { ridge } = plan_roof_shape(&roof) else {
+            unreachable!("rectangular footprint should have a gable ridge");
+        };
+
+        assert_eq!(ridge.axis, RoofRidgeAxis::NorthSouth);
+        assert!(ridge.passes_through_tile_centers());
+    }
+
+    #[test]
+    fn even_cross_span_places_ridge_between_tile_centers() {
+        let roof = roof_for(rectangle(MapTile::new(3200, 3200), 4, 2));
+        let RoofShape::Gable { ridge } = plan_roof_shape(&roof) else {
+            unreachable!("rectangular footprint should have a gable ridge");
+        };
+
+        assert_eq!(ridge.axis, RoofRidgeAxis::EastWest);
+        assert_eq!(ridge.cross_axis_coordinate_x2, 6402);
+        assert!(!ridge.passes_through_tile_centers());
+    }
+
+    #[test]
+    fn non_rectangular_footprint_is_marked_complex() {
+        let floor = vec![
+            MapTile::new(3200, 3200),
+            MapTile::new(3201, 3200),
+            MapTile::new(3200, 3201),
+        ];
+        let roof = roof_for(floor);
+
+        assert_eq!(plan_roof_shape(&roof), RoofShape::Complex);
     }
 }
