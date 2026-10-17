@@ -70,10 +70,7 @@ impl RectSite {
     }
 
     fn local_tile(self, x: u16, y: u16) -> MapTile {
-        MapTile::new(
-            self.origin.x + i32::from(x),
-            self.origin.y + i32::from(y),
-        )
+        MapTile::new(self.origin.x + i32::from(x), self.origin.y + i32::from(y))
     }
 }
 
@@ -171,9 +168,15 @@ impl BuildingPlan {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildingPlanError {
-    UnsupportedArchetype { archetype: BuildingArchetype },
-    UnsupportedFloorCount { floors: u8 },
-    CorridorWidthMustBeOne { width: u16 },
+    UnsupportedArchetype {
+        archetype: BuildingArchetype,
+    },
+    UnsupportedFloorCount {
+        floors: u8,
+    },
+    CorridorWidthMustBeOne {
+        width: u16,
+    },
     SiteTooSmall {
         width: u16,
         height: u16,
@@ -297,7 +300,15 @@ fn plan_horizontal_house(
     }
 
     let split = choose_split(interior_width, min_room, rng);
-    let hall = room(0, RoomKind::Hallway, site, 1, hall_local_y, interior_width, 1);
+    let hall = room(
+        0,
+        RoomKind::Hallway,
+        site,
+        1,
+        hall_local_y,
+        interior_width,
+        1,
+    );
     let lower_left = room(1, RoomKind::Living, site, 1, 1, split, lower_height);
     let lower_right = room(
         2,
@@ -336,13 +347,21 @@ fn plan_horizontal_house(
             to: hall_id,
             doorway: site.local_tile(entrance_x, hall_local_y),
         },
-        connect(hall_id, lower_left.id, site.local_tile(1 + split / 2, hall_local_y)),
+        connect(
+            hall_id,
+            lower_left.id,
+            site.local_tile(1 + split / 2, hall_local_y),
+        ),
         connect(
             hall_id,
             lower_right.id,
             site.local_tile(1 + split + (interior_width - split) / 2, hall_local_y),
         ),
-        connect(hall_id, upper_left.id, site.local_tile(1 + split / 2, hall_local_y)),
+        connect(
+            hall_id,
+            upper_left.id,
+            site.local_tile(1 + split / 2, hall_local_y),
+        ),
         connect(
             hall_id,
             upper_right.id,
@@ -380,7 +399,15 @@ fn plan_vertical_house(
     }
 
     let split = choose_split(interior_height, min_room, rng);
-    let hall = room(0, RoomKind::Hallway, site, hall_local_x, 1, 1, interior_height);
+    let hall = room(
+        0,
+        RoomKind::Hallway,
+        site,
+        hall_local_x,
+        1,
+        1,
+        interior_height,
+    );
     let lower_left = room(1, RoomKind::Living, site, 1, 1, left_width, split);
     let upper_left = room(
         2,
@@ -419,13 +446,21 @@ fn plan_vertical_house(
             to: hall_id,
             doorway: site.local_tile(hall_local_x, entrance_y),
         },
-        connect(hall_id, lower_left.id, site.local_tile(hall_local_x, 1 + split / 2)),
+        connect(
+            hall_id,
+            lower_left.id,
+            site.local_tile(hall_local_x, 1 + split / 2),
+        ),
         connect(
             hall_id,
             upper_left.id,
             site.local_tile(hall_local_x, 1 + split + (interior_height - split) / 2),
         ),
-        connect(hall_id, lower_right.id, site.local_tile(hall_local_x, 1 + split / 2)),
+        connect(
+            hall_id,
+            lower_right.id,
+            site.local_tile(hall_local_x, 1 + split / 2),
+        ),
         connect(
             hall_id,
             upper_right.id,
@@ -562,9 +597,11 @@ mod tests {
                 connection.from == Some(hall.id) && connection.to == room.id
             }));
         }
-        assert!(plan.connections.iter().any(|connection| {
-            connection.from.is_none() && connection.to == hall.id
-        }));
+        assert!(
+            plan.connections
+                .iter()
+                .any(|connection| { connection.from.is_none() && connection.to == hall.id })
+        );
     }
 
     #[test]
