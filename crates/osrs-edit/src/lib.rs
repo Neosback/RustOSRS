@@ -12,6 +12,7 @@ mod building_realization;
 mod building_refinement;
 mod building_refinement_policy;
 mod building_roof;
+mod building_roof_generation;
 mod building_roof_realization;
 mod building_roof_solver;
 mod building_roof_wfc;
@@ -64,6 +65,7 @@ pub use building_roof::{
     RoofEdge, RoofRidge, RoofRidgeAxis, RoofShape, classify_roof_cells, plan_roof_coverage,
     plan_roof_shape,
 };
+pub use building_roof_generation::{RoofGenerationError, generate_roof_patch};
 pub use building_roof_realization::{
     RoofAsset, RoofPalette, RoofPaletteEntry, RoofPaletteError, RoofPatchError,
     RoofPlacementDescription, RoofPlacementDescriptionError, build_roof_patch,
