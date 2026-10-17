@@ -15,6 +15,7 @@ mod building_roof;
 mod building_roof_generation;
 mod building_roof_realization;
 mod building_roof_section_cells;
+mod building_roof_section_junctions;
 mod building_roof_section_realization;
 mod building_roof_section_solver;
 mod building_roof_section_wfc;
@@ -78,6 +79,10 @@ pub use building_roof_realization::{
 };
 pub use building_roof_section_cells::{
     RoofSectionCellError, RoofSectionCellPlan, classify_roof_section_cells,
+};
+pub use building_roof_section_junctions::{
+    RoofSectionJunction, RoofSectionJunctionContact, RoofSectionJunctionError,
+    detect_roof_section_junctions,
 };
 pub use building_roof_section_realization::{
     RoofSectionPlacementDescriptionError, RoofSectionPlacementPlan, build_roof_section_patch,
