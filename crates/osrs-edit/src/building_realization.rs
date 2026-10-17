@@ -139,10 +139,7 @@ pub fn derive_building_architecture(
             };
             match room_by_tile.get(&neighbor).copied() {
                 None => {
-                    edges.insert(
-                        EdgeKey { tile, direction },
-                        EdgeFeature::ExteriorWall,
-                    );
+                    edges.insert(EdgeKey { tile, direction }, EdgeFeature::ExteriorWall);
                 }
                 Some(other_room) if other_room != room => {
                     let key = canonical_edge_between(tile, neighbor)
@@ -157,12 +154,9 @@ pub fn derive_building_architecture(
     for connection in &plan.connections {
         let key = match connection.from {
             None => exterior_portal_edge(plan, connection.doorway)?,
-            Some(from) => internal_portal_edge(
-                &room_by_tile,
-                from,
-                connection.to,
-                connection.doorway,
-            )?,
+            Some(from) => {
+                internal_portal_edge(&room_by_tile, from, connection.to, connection.doorway)?
+            }
         };
         edges.insert(key, EdgeFeature::Door);
     }
@@ -311,21 +305,11 @@ impl BuildingPalette {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildingRealizationError {
-    InvalidPlan {
-        report: BuildingValidationReport,
-    },
-    Architecture {
-        error: BuildingArchitectureError,
-    },
-    MissingSnapshotTerrain {
-        tile: MapTile,
-    },
-    MissingAsset {
-        edge: SemanticEdge,
-    },
-    DuplicateObjectPlacement {
-        placement: ObjectPlacement,
-    },
+    InvalidPlan { report: BuildingValidationReport },
+    Architecture { error: BuildingArchitectureError },
+    MissingSnapshotTerrain { tile: MapTile },
+    MissingAsset { edge: SemanticEdge },
+    DuplicateObjectPlacement { placement: ObjectPlacement },
 }
 
 pub fn build_building_patch(
@@ -490,7 +474,10 @@ mod tests {
             flags: 5,
         };
         let mut document = MapDocument::from_parts(
-            [(MapPosition::new(existing_tile, request.base_plane), existing_terrain)],
+            [(
+                MapPosition::new(existing_tile, request.base_plane),
+                existing_terrain,
+            )],
             heights_for(request),
             [],
         );
@@ -504,7 +491,12 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("valid generated patch: {error:?}"));
         let after = document.clone();
         assert_ne!(after, before);
-        assert_eq!(document.terrain_at(MapPosition::new(existing_tile, request.base_plane)).flags, 5);
+        assert_eq!(
+            document
+                .terrain_at(MapPosition::new(existing_tile, request.base_plane))
+                .flags,
+            5
+        );
 
         document
             .apply_patch(&patch.inverse())
