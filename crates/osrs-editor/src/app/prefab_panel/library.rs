@@ -23,10 +23,11 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
         });
     }
     ui.horizontal(|ui| {
-        ui.add(
+        let width = (ui.available_width() - 90.0).max(80.0);
+        ui.add_sized(
+            [width, 22.0],
             egui::TextEdit::singleline(&mut app.prefabs.filter)
-                .hint_text("Search name, tag or note")
-                .desired_width(ui.available_width() - 70.0),
+                .hint_text("Search name, tag or note"),
         );
         if ui
             .button(format!(
@@ -87,10 +88,10 @@ fn capture_section(app: &mut EditorApp, ui: &mut egui::Ui) {
                     "Select tiles (Select tool, tile mode, drag a box) around a building, then capture it.",
                 ),
             };
-            ui.add(
-                egui::TextEdit::singleline(&mut app.prefabs.form.name)
-                    .hint_text("Name")
-                    .desired_width(ui.available_width()),
+            let width = ui.available_width();
+            ui.add_sized(
+                [width, 22.0],
+                egui::TextEdit::singleline(&mut app.prefabs.form.name).hint_text("Name"),
             );
             ui.horizontal_wrapped(|ui| {
                 ui.label("Planes");
@@ -202,12 +203,12 @@ fn text_field(ui: &mut egui::Ui, key: &str, current: &str, multiline: bool) -> O
         .data_mut(|d| d.get_temp::<(String, String)>(id))
         .filter(|(origin, _)| origin == current)
         .map_or_else(|| current.to_owned(), |(_, text)| text);
-    let edit = if multiline {
-        egui::TextEdit::multiline(&mut text).desired_rows(2)
+    let width = ui.available_width();
+    let response = if multiline {
+        ui.add_sized([width, 52.0], egui::TextEdit::multiline(&mut text))
     } else {
-        egui::TextEdit::singleline(&mut text)
+        ui.add_sized([width, 22.0], egui::TextEdit::singleline(&mut text))
     };
-    let response = ui.add(edit.desired_width(ui.available_width()));
     if response.changed() {
         ui.data_mut(|d| d.insert_temp(id, (current.to_owned(), text.clone())));
     }

@@ -15,6 +15,7 @@ mod building_refinement;
 mod building_refinement_policy;
 mod building_roof;
 mod building_roof_generation;
+mod building_roof_hip;
 mod building_roof_realization;
 mod building_roof_section_cells;
 mod building_roof_section_junctions;
@@ -59,8 +60,8 @@ pub use building_generation::{
     generate_building_plan_patch,
 };
 pub use building_kit::{
-    BuildingKit, KIT_FORMAT, KIT_VERSION, KitAsset, KitError, KitFile, KitFloor, KitJunction,
-    KitOverlay, KitRoof, KitRoofPattern, KitWeightedAsset,
+    BuildingKit, KIT_FORMAT, KIT_VERSION, KitAsset, KitError, KitFile, KitFloor, KitGenerateError,
+    KitHipRoof, KitJunction, KitOverlay, KitRoof, KitRoofPattern, KitWeightedAsset,
 };
 pub use building_program::{
     BspCorridor, BspLayout, BspLayoutError, BspRoomPlacement, BuildingProgram, BuildingRoomRole,
@@ -85,6 +86,7 @@ pub use building_roof::{
     plan_roof_shape,
 };
 pub use building_roof_generation::{RoofGenerationError, generate_roof_patch};
+pub use building_roof_hip::{HipRoofAssets, hip_roof_placements};
 pub use building_roof_realization::{
     RoofAsset, RoofPalette, RoofPaletteEntry, RoofPaletteError, RoofPatchError,
     RoofPlacementDescription, RoofPlacementDescriptionError, build_roof_patch,

@@ -78,6 +78,8 @@ pub(in crate::app) struct Preview {
     pub(in crate::app) apply: MapPatch,
     pub(in crate::app) objects: usize,
     pub(in crate::app) removed: usize,
+    /// Pieces already standing exactly as wanted, left alone.
+    pub(in crate::app) standing: usize,
 }
 
 pub(in crate::app) struct Kit {
@@ -91,6 +93,9 @@ pub(in crate::app) struct BuildState {
     kit_problems: Vec<String>,
     /// The site's south-west tile once chosen.
     pub(in crate::app) site: Option<MapTile>,
+    /// The plane the site was chosen on: the walls go here, the roof one plane up. Looking at
+    /// another plane afterwards does not move the building.
+    pub(in crate::app) site_plane: u8,
     /// The next viewport click chooses the site.
     pub(in crate::app) choosing: bool,
     pub(in crate::app) preview: Option<Preview>,
@@ -106,6 +111,7 @@ impl Default for BuildState {
             kits: Vec::new(),
             kit_problems: Vec::new(),
             site: None,
+            site_plane: 0,
             choosing: false,
             preview: None,
             error: None,
@@ -174,7 +180,8 @@ impl BuildState {
     }
 
     /// Choose the site so its centre is on `tile`.
-    pub(in crate::app) fn centre_site_on(&mut self, tile: (i32, i32)) {
+    pub(in crate::app) fn centre_site_on(&mut self, tile: (i32, i32), plane: u8) {
+        self.site_plane = plane;
         self.site = Some(MapTile::new(
             tile.0 - i32::from(self.form.width) / 2,
             tile.1 - i32::from(self.form.height) / 2,
@@ -194,12 +201,12 @@ impl BuildState {
 
     /// Refresh the preview when the form, the site, the viewed plane or the map changed.
     /// `map_revision` is any number that changes whenever the document does.
-    pub(in crate::app) fn refresh(
-        &mut self,
-        document: &MapDocument,
-        base_plane: SourcePlane,
-        map_revision: u64,
-    ) {
+    pub(in crate::app) fn refresh(&mut self, document: &MapDocument, map_revision: u64) {
+        let Some(base_plane) = SourcePlane::new(self.site_plane) else {
+            self.preview = None;
+            self.error = Some("the site is on an invalid plane".to_owned());
+            return;
+        };
         let Some(origin) = self.site else {
             self.preview = None;
             self.error = None;
@@ -253,7 +260,7 @@ impl BuildState {
         let building = kit
             .kit
             .generate(&snapshot, form.variation)
-            .map_err(|error| format!("{error:?}"))?;
+            .map_err(|error| describe(&error))?;
         let mut ops = Vec::new();
         let mut removed = 0;
         if form.clear_site {
@@ -278,16 +285,38 @@ impl BuildState {
                 }
             }
         }
-        ops.extend(building.ops().iter().copied());
+        // A piece already standing exactly as the building wants it stays; adding it again would
+        // make the whole patch invalid (and removing then re-adding it would be pointless).
+        let removing: std::collections::HashSet<_> = ops
+            .iter()
+            .filter_map(|op| match op {
+                MapOp::RemoveObject { placement } => Some(*placement),
+                _ => None,
+            })
+            .collect();
+        let mut standing = 0;
+        for op in building.ops() {
+            match op {
+                MapOp::AddObject { placement }
+                    if document.contains_object(*placement) && !removing.contains(placement) =>
+                {
+                    standing += 1;
+                }
+                other => ops.push(*other),
+            }
+        }
         let objects = building
             .ops()
             .iter()
             .filter(|op| matches!(op, MapOp::AddObject { .. }))
             .count();
         let apply = MapPatch::new(ops);
-        document
-            .validate_patch(&apply)
-            .map_err(|error| format!("the building does not fit the map: {error:?}"))?;
+        document.validate_patch(&apply).map_err(|error| {
+            format!(
+                "the building does not fit the map: {}",
+                describe_apply(&error)
+            )
+        })?;
         Ok(Preview {
             origin,
             base_plane,
@@ -296,6 +325,7 @@ impl BuildState {
             apply,
             objects,
             removed,
+            standing,
         })
     }
 
@@ -333,5 +363,43 @@ impl BuildState {
         .map_err(|error| error.to_string())?;
         prefab.tags = vec!["generated".to_owned(), archetype.to_lowercase()];
         Ok(prefab)
+    }
+}
+
+/// Say why generation failed in words.
+fn describe(error: &osrs_edit::KitGenerateError) -> String {
+    use osrs_edit::{BuildingGenerationError as G, KitGenerateError as K};
+    match error {
+        K::RoofPlane { plane } => format!("the roof would need plane {plane}, above the top plane"),
+        K::Generation(G::UnsupportedFloorCount { floors }) => {
+            format!("{floors} floors are not supported yet")
+        }
+        K::Generation(G::Layout(_)) => "the rooms do not fit this site; make it bigger".to_owned(),
+        K::Generation(G::Detail(osrs_edit::BuildingDetailError::MissingSnapshotTerrain {
+            tile,
+        })) => {
+            format!(
+                "the map has no height data at {}, {}; move the camera over the site so it loads",
+                tile.x, tile.y
+            )
+        }
+        K::Generation(other) => format!("the generator could not plan this site ({other:?})"),
+    }
+}
+
+fn describe_apply(error: &osrs_edit::PatchApplyError) -> String {
+    use osrs_edit::PatchApplyError as E;
+    match error {
+        E::ObjectAlreadyPresent { placement, .. } => format!(
+            "object {} is already at {}, {}",
+            placement.object_id.get(),
+            placement.position.tile.x,
+            placement.position.tile.y
+        ),
+        E::HeightMissing { coord, .. } => format!(
+            "the map has no height at {}, {}; move the camera over the site so it loads",
+            coord.corner.x, coord.corner.y
+        ),
+        other => format!("{other:?}"),
     }
 }

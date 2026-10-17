@@ -143,6 +143,7 @@ Facade refinement runs only after that topology is fixed. Its first pass convert
 - [ ] validation diagnostics overlay (errors are shown as one line; no per-room overlay yet)
 - [x] Apply as one history transaction (composite route, `app/editing/prefab_commit.rs`)
 - [x] save a generated building to the prefab library
+- [x] room program sized to the site; rooms at least 3x3; hip roof from real piece semantics (`building_roof_hip.rs`)
 
 ## Checkpoint 9: building instances and regeneration
 

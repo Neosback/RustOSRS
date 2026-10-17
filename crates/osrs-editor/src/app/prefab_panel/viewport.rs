@@ -99,7 +99,8 @@ fn choose_site(app: &mut EditorApp, response: &egui::Response) -> bool {
     if response.clicked()
         && let Some(tile) = app.interaction.hover().tile.map(|pick| pick.tile)
     {
-        app.prefabs.build.centre_site_on(tile);
+        let plane = app.interaction.view_plane();
+        app.prefabs.build.centre_site_on(tile, plane);
     }
     true
 }

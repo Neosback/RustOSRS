@@ -6,7 +6,6 @@ use crate::app::{
     prefab_runtime::{ARCHETYPES, MAX_SITE, STYLES},
 };
 use eframe::egui;
-use osrs_core::coords::SourcePlane;
 
 pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     let accent = ui.visuals().selection.stroke.color;
@@ -94,18 +93,32 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
         }
         return;
     };
-    ui.colored_label(
-        accent,
-        format!(
-            "{} objects{}",
-            preview.objects,
-            if preview.removed > 0 {
-                format!(", {} removed", preview.removed)
-            } else {
-                String::new()
+    let mut summary = format!("{} objects", preview.objects);
+    if preview.removed > 0 {
+        summary.push_str(&format!(", {} removed", preview.removed));
+    }
+    if preview.standing > 0 {
+        summary.push_str(&format!(", {} already there", preview.standing));
+    }
+    ui.colored_label(accent, summary);
+    let roof_plane = preview.base_plane.index().get() + 1;
+    if roof_plane <= 3 {
+        let viewing = app.interaction.view_plane() == roof_plane;
+        ui.horizontal_wrapped(|ui| {
+            ui.weak("The roof is on the plane above the walls.");
+            if ui
+                .selectable_label(
+                    viewing,
+                    format!("{} View plane {roof_plane}", egui_phosphor::regular::EYE),
+                )
+                .on_hover_text("Switch the view to the plane the roof is on, and back")
+                .clicked()
+            {
+                app.interaction
+                    .set_view_plane(if viewing { roof_plane - 1 } else { roof_plane });
             }
-        ),
-    );
+        });
+    }
     ui.horizontal(|ui| {
         if ui
             .button(format!(
@@ -124,10 +137,11 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
             app.prefabs.build.reroll();
         }
     });
-    ui.add(
+    let width = ui.available_width();
+    ui.add_sized(
+        [width, 22.0],
         egui::TextEdit::singleline(&mut app.prefabs.build.form.name)
-            .hint_text("Name for the library")
-            .desired_width(ui.available_width()),
+            .hint_text("Name for the library"),
     );
     if ui
         .button(format!(
@@ -205,6 +219,7 @@ fn site_controls(app: &mut EditorApp, ui: &mut egui::Ui) {
             app.prefabs.build.form.width = width;
             app.prefabs.build.form.height = height;
             app.prefabs.build.site = Some(osrs_core::coords::MapTile::new(min_x, min_y));
+            app.prefabs.build.site_plane = app.interaction.view_plane();
         }
     });
     match app.prefabs.build.site {
@@ -215,7 +230,7 @@ fn site_controls(app: &mut EditorApp, ui: &mut egui::Ui) {
                 app.prefabs.build.form.height,
                 origin.x,
                 origin.y,
-                app.interaction.view_plane()
+                app.prefabs.build.site_plane
             ));
         }
         None => {
@@ -226,11 +241,6 @@ fn site_controls(app: &mut EditorApp, ui: &mut egui::Ui) {
 
 /// Refresh the preview from the current map and form (called every frame the page is showing).
 pub(super) fn refresh(app: &mut EditorApp) {
-    let Some(plane) = SourcePlane::new(app.interaction.view_plane()) else {
-        return;
-    };
     let revision = app.session.map_revision();
-    app.prefabs
-        .build
-        .refresh(app.session.document(), plane, revision);
+    app.prefabs.build.refresh(app.session.document(), revision);
 }

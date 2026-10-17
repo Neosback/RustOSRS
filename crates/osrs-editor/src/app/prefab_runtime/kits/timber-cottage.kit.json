@@ -2,7 +2,7 @@
   "format": "rustosrs-building-kit",
   "version": 1,
   "name": "Timber cottage",
-  "notes": "Timber walls and doors, red slate roof. Object ids are revision-240 cache ids; roof pieces are loc kinds 12 (slope), 17 (flat top) and 18 (edge).",
+  "notes": "Timber walls and doors with a red slate hip roof. Object ids are revision-240 cache ids; the roof is built from the footprint (edge ring 1790, slope ring and flat top 1924).",
   "floor": {
     "underlay": null,
     "overlay": {
@@ -54,148 +54,8 @@
   "corner": null,
   "door_variants": [],
   "roof_plane_offset": 1,
-  "roof": {
-    "patterns": [
-      {
-        "id": 1924,
-        "kind": 17,
-        "orientation": 1,
-        "weight": 1,
-        "sockets": [
-          1,
-          1,
-          1,
-          1
-        ]
-      },
-      {
-        "id": 1924,
-        "kind": 12,
-        "orientation": 3,
-        "weight": 1,
-        "sockets": [
-          1,
-          1,
-          1,
-          1
-        ]
-      },
-      {
-        "id": 1924,
-        "kind": 12,
-        "orientation": 0,
-        "weight": 1,
-        "sockets": [
-          1,
-          1,
-          1,
-          1
-        ]
-      },
-      {
-        "id": 1924,
-        "kind": 12,
-        "orientation": 1,
-        "weight": 1,
-        "sockets": [
-          1,
-          1,
-          1,
-          1
-        ]
-      },
-      {
-        "id": 1924,
-        "kind": 12,
-        "orientation": 2,
-        "weight": 1,
-        "sockets": [
-          1,
-          1,
-          1,
-          1
-        ]
-      },
-      {
-        "id": 1790,
-        "kind": 18,
-        "orientation": 3,
-        "weight": 1,
-        "sockets": [
-          1,
-          1,
-          1,
-          1
-        ]
-      },
-      {
-        "id": 1790,
-        "kind": 18,
-        "orientation": 0,
-        "weight": 1,
-        "sockets": [
-          1,
-          1,
-          1,
-          1
-        ]
-      },
-      {
-        "id": 1790,
-        "kind": 18,
-        "orientation": 1,
-        "weight": 1,
-        "sockets": [
-          1,
-          1,
-          1,
-          1
-        ]
-      },
-      {
-        "id": 1790,
-        "kind": 18,
-        "orientation": 2,
-        "weight": 1,
-        "sockets": [
-          1,
-          1,
-          1,
-          1
-        ]
-      }
-    ],
-    "ridge": [
-      0
-    ],
-    "slopes": [
-      [
-        1
-      ],
-      [
-        2
-      ],
-      [
-        3
-      ],
-      [
-        4
-      ]
-    ],
-    "eaves": [
-      [
-        5
-      ],
-      [
-        6
-      ],
-      [
-        7
-      ],
-      [
-        8
-      ]
-    ],
-    "junctions": []
+  "roof_hip": {
+    "slope_object": 1924,
+    "edge_object": 1790
   }
 }

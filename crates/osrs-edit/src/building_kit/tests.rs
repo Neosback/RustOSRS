@@ -40,7 +40,8 @@ fn kit() -> KitFile {
                 weight: 3,
             },
         ],
-        roof: KitRoof {
+        roof_hip: None,
+        roof: Some(KitRoof {
             patterns: (0..12u32)
                 .map(|index| KitRoofPattern {
                     id: 20_000 + index,
@@ -63,7 +64,7 @@ fn kit() -> KitFile {
                     pattern: 11,
                 },
             ],
-        },
+        }),
     }
 }
 
@@ -162,7 +163,12 @@ fn the_roof_goes_up_by_the_kits_plane_offset_and_walls_stay_put() {
     // The test fixtures' roof pieces use kind 10, so only a kind 12 piece moves: use real kinds.
     let mut real = kit();
     real.roof_plane_offset = 1;
-    for pattern in &mut real.roof.patterns {
+    for pattern in &mut real
+        .roof
+        .as_mut()
+        .unwrap_or_else(|| unreachable!())
+        .patterns
+    {
         pattern.kind = 12;
     }
     let real = real.compile().unwrap_or_else(|e| unreachable!("{e}"));
@@ -229,16 +235,31 @@ fn bad_kits_are_refused_with_a_reason() {
     ));
 
     let mut file = kit();
-    file.roof.ridge = vec![0, 99];
+    file.roof.as_mut().unwrap_or_else(|| unreachable!()).ridge = vec![0, 99];
     assert!(matches!(file.compile(), Err(KitError::Roof(_))));
 
     let mut file = kit();
-    file.roof.junctions[0].requires = vec![("sideways".into(), "north".into())];
+    file.roof
+        .as_mut()
+        .unwrap_or_else(|| unreachable!())
+        .junctions[0]
+        .requires = vec![("sideways".into(), "north".into())];
     assert!(matches!(file.compile(), Err(KitError::Roof(_))));
 
     let mut file = kit();
-    file.roof.patterns.clear();
+    file.roof
+        .as_mut()
+        .unwrap_or_else(|| unreachable!())
+        .patterns
+        .clear();
     assert!(matches!(file.compile(), Err(KitError::Roof(_))));
+
+    let mut file = kit();
+    file.roof = None;
+    assert!(
+        matches!(file.compile(), Err(KitError::Roof(_))),
+        "a kit needs some roof"
+    );
 
     let text = serde_json::to_string(&kit())
         .unwrap_or_else(|e| unreachable!("{e}"))
@@ -247,4 +268,104 @@ fn bad_kits_are_refused_with_a_reason() {
         serde_json::from_str::<KitFile>(&text).is_err(),
         "unknown fields are rejected"
     );
+}
+
+fn hip_kit() -> KitFile {
+    let mut file = kit();
+    file.roof = None;
+    file.roof_hip = Some(KitHipRoof {
+        slope_object: 1924,
+        edge_object: 1790,
+    });
+    file.roof_plane_offset = 1;
+    file
+}
+
+#[test]
+fn a_hip_kit_roofs_the_whole_footprint_one_plane_up_with_one_piece_per_tile() {
+    let compiled = hip_kit().compile().unwrap_or_else(|e| unreachable!("{e}"));
+    let (_, snapshot) = snapshot(20, 14);
+    let patch = compiled
+        .generate(&snapshot, 0)
+        .unwrap_or_else(|e| unreachable!("{e:?}"));
+    let mut roof_tiles = std::collections::BTreeSet::new();
+    let mut floor_tiles = std::collections::BTreeSet::new();
+    for op in patch.ops() {
+        match op {
+            MapOp::AddObject { placement } if (12..=21).contains(&placement.kind.get()) => {
+                assert_eq!(
+                    placement.position.plane.index().get(),
+                    2,
+                    "base plane 1, offset 1"
+                );
+                assert!([1924, 1790].contains(&placement.object_id.get()));
+                assert!(
+                    roof_tiles.insert(placement.position.tile),
+                    "one roof piece per tile"
+                );
+            }
+            MapOp::SetTerrain { coord, .. } => {
+                floor_tiles.insert(coord.tile);
+            }
+            _ => {}
+        }
+    }
+    assert!(!roof_tiles.is_empty());
+    assert_eq!(roof_tiles, floor_tiles, "the roof covers exactly the floor");
+    assert_eq!(
+        patch,
+        compiled
+            .generate(&snapshot, 0)
+            .unwrap_or_else(|e| unreachable!("{e:?}"))
+    );
+}
+
+#[test]
+fn bigger_sites_get_more_rooms_and_small_ones_stay_simple() {
+    use crate::{BuildingArchetype, building_program};
+    let program = building_program(BuildingArchetype::House);
+    assert_eq!(program.rooms().len(), 5);
+    let small = program.fitted_to_area(48);
+    assert_eq!(small.rooms().len(), 2, "never fewer than two rooms");
+    assert_eq!(program.fitted_to_area(80).rooms().len(), 3);
+    assert_eq!(
+        program.fitted_to_area(500).rooms().len(),
+        5,
+        "never more than the program lists"
+    );
+    // Whatever is dropped, every kept room is still connected to the entrance.
+    for archetype in [
+        BuildingArchetype::House,
+        BuildingArchetype::Shop,
+        BuildingArchetype::Tavern,
+        BuildingArchetype::Bank,
+        BuildingArchetype::Church,
+        BuildingArchetype::Warehouse,
+        BuildingArchetype::Castle,
+        BuildingArchetype::Dungeon,
+    ] {
+        for area in [10, 44, 66, 88, 110] {
+            let fitted = building_program(archetype).fitted_to_area(area);
+            let mut reached = vec![fitted.entrance_room];
+            let mut grew = true;
+            while grew {
+                grew = false;
+                for room in fitted.rooms() {
+                    if !reached.contains(&room.id)
+                        && reached
+                            .iter()
+                            .any(|r| fitted.neighbors(*r).any(|n| n == room.id))
+                    {
+                        reached.push(room.id);
+                        grew = true;
+                    }
+                }
+            }
+            assert_eq!(
+                reached.len(),
+                fitted.rooms().len(),
+                "{archetype:?} at {area}"
+            );
+        }
+    }
 }

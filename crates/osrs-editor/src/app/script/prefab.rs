@@ -76,13 +76,9 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
             build.form.width = width;
             build.form.height = height;
             build.form.seed = seed;
-            build.centre_site_on((x, y));
-            let plane = SourcePlane::new(app.interaction.view_plane())
-                .ok_or("the viewed plane is invalid")?;
+            build.centre_site_on((x, y), app.interaction.view_plane());
             let revision = app.session.map_revision();
-            app.prefabs
-                .build
-                .refresh(app.session.document(), plane, revision);
+            app.prefabs.build.refresh(app.session.document(), revision);
             match (&app.prefabs.build.preview, &app.prefabs.build.error) {
                 (Some(preview), _) => {
                     eprintln!(

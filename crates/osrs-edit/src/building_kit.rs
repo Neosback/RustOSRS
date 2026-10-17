@@ -8,13 +8,16 @@
 
 use crate::{
     BuildingDetailPalette, BuildingGenerationConfig, BuildingGenerationError, BuildingPalette,
-    CardinalDirection, CornerAsset, EdgeAsset, FacadeRefinementPolicy, FacadeWfcConfig,
-    FloorMaterial, GenerationSnapshot, LocKind, MapOp, MapPatch, ObjectOrientation,
-    OverlayRotation, OverlayShape, PatternDomain, RoofAsset, RoofJunctionPatternKey,
-    RoofJunctionPatternPalette, RoofJunctionPatternPaletteEntry, RoofJunctionPatternRequirement,
-    RoofPalette, RoofPaletteEntry, RoofPatternSet, RoofSectionJunctionRepairRole, TerrainOverlay,
-    WeightedEdgeAsset, WfcCatalog, WfcPatternId, WfcPatternSpec, WfcSocket,
-    generate_building_patch,
+    BuildingPlan, CardinalDirection, CornerAsset, EdgeAsset, FacadeRefinementPolicy,
+    FacadeWfcConfig, FloorMaterial, GenerationSnapshot, HipRoofAssets, LocKind, MapOp, MapPatch,
+    ObjectOrientation, OverlayRotation, OverlayShape, PatternDomain, RoofAsset,
+    RoofJunctionPatternKey, RoofJunctionPatternPalette, RoofJunctionPatternPaletteEntry,
+    RoofJunctionPatternRequirement, RoofPalette, RoofPaletteEntry, RoofPatternSet,
+    RoofSectionJunctionRepairRole, TerrainOverlay, WeightedEdgeAsset, WfcCatalog, WfcPatternId,
+    WfcPatternSpec, WfcSocket, build_bsp_building_plan,
+    build_detailed_wfc_building_variation_patch, building_program, derive_building_architecture,
+    generate_building_plan_patch, hip_roof_placements, pack_building_program,
+    route_program_connections,
 };
 use osrs_core::ids::{FloorOverlayId, FloorUnderlayId, ObjectId};
 use serde::{Deserialize, Serialize};
@@ -100,7 +103,20 @@ pub struct KitFile {
     /// a ground-floor building's roof on the next plane up, so a kit for real objects says 1;
     /// 0 keeps the generator's own plane.
     pub roof_plane_offset: u8,
-    pub roof: KitRoof,
+    /// A hip roof built from the footprint (the real client's edge ring, slope ring and flat top);
+    /// used instead of `roof` when both are given.
+    pub roof_hip: Option<KitHipRoof>,
+    /// A roof solved from patterns with sockets; needed when there is no `roof_hip`.
+    pub roof: Option<KitRoof>,
+}
+
+/// The two objects a hip roof uses.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KitHipRoof {
+    /// Slope and flat top (loc kinds 12, 15, 16, 17), e.g. `roof_redslate`.
+    pub slope_object: u32,
+    /// Edge trim (loc kinds 18, 19, 20), e.g. `roofedge_redslate`.
+    pub edge_object: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,11 +147,27 @@ impl std::error::Error for KitError {}
 pub struct BuildingKit {
     name: String,
     detail: BuildingDetailPalette,
+    hip: Option<HipRoofAssets>,
+    patterns: Option<PatternRoof>,
+    roof_plane_offset: u8,
+}
+
+#[derive(Debug, Clone)]
+struct PatternRoof {
     catalog: WfcCatalog,
     patterns: RoofPatternSet,
-    roof: RoofPalette,
+    palette: RoofPalette,
     junctions: RoofJunctionPatternPalette,
-    roof_plane_offset: u8,
+}
+
+/// Why a kit could not make a building.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KitGenerateError {
+    Generation(BuildingGenerationError),
+    /// The roof would be above the top plane.
+    RoofPlane {
+        plane: u8,
+    },
 }
 
 fn kind(value: u8) -> Result<LocKind, KitError> {
@@ -262,81 +294,101 @@ impl KitFile {
             door_variants,
         };
 
-        let roof = &self.roof;
-        let count = roof.patterns.len();
-        let catalog = WfcCatalog::new(roof.patterns.iter().map(|pattern| WfcPatternSpec {
-            weight: pattern.weight,
-            sockets: pattern.sockets.map(WfcSocket),
-        }))
-        .map_err(|error| KitError::Roof(format!("{error:?}")))?;
-        let mut entries = Vec::with_capacity(count);
-        for (index, pattern) in roof.patterns.iter().enumerate() {
-            entries.push(RoofPaletteEntry {
-                pattern: pattern_id(u8::try_from(index).map_err(|_| {
-                    KitError::Roof("a kit holds at most 128 roof patterns".to_owned())
-                })?)?,
-                asset: RoofAsset {
-                    object_id: ObjectId::new(pattern.id),
-                    kind: kind(pattern.kind)?,
-                    orientation: ObjectOrientation::new(pattern.orientation).ok_or(
-                        KitError::Value {
-                            what: "orientation",
-                            value: u32::from(pattern.orientation),
-                        },
-                    )?,
-                },
-            });
-        }
-        let palette =
-            RoofPalette::new(entries).map_err(|error| KitError::Roof(format!("{error:?}")))?;
-        let patterns = RoofPatternSet {
-            ridge: domain(&roof.ridge, count)?,
-            slopes: [
-                domain(&roof.slopes[0], count)?,
-                domain(&roof.slopes[1], count)?,
-                domain(&roof.slopes[2], count)?,
-                domain(&roof.slopes[3], count)?,
-            ],
-            eaves: [
-                domain(&roof.eaves[0], count)?,
-                domain(&roof.eaves[1], count)?,
-                domain(&roof.eaves[2], count)?,
-                domain(&roof.eaves[3], count)?,
-            ],
+        let hip = self.roof_hip.as_ref().map(|hip| HipRoofAssets {
+            slope: ObjectId::new(hip.slope_object),
+            edge: ObjectId::new(hip.edge_object),
+        });
+        let patterns = match (&self.roof, hip) {
+            (Some(roof), _) => Some(compile_pattern_roof(roof)?),
+            (None, Some(_)) => None,
+            (None, None) => {
+                return Err(KitError::Roof(
+                    "a kit needs a roof: roof_hip or roof".to_owned(),
+                ));
+            }
         };
-        let mut junction_entries = Vec::with_capacity(roof.junctions.len());
-        for junction in &roof.junctions {
-            let mut requirements = Vec::with_capacity(junction.requires.len());
-            for (word, toward) in &junction.requires {
-                requirements.push(RoofJunctionPatternRequirement {
-                    role: role(word)?,
-                    direction_to_other: direction(toward)?,
-                });
-            }
-            if usize::from(junction.pattern) >= count {
-                return Err(KitError::Roof(format!(
-                    "junction pattern {} is not listed",
-                    junction.pattern
-                )));
-            }
-            junction_entries.push(RoofJunctionPatternPaletteEntry {
-                key: RoofJunctionPatternKey::new(requirements),
-                pattern: pattern_id(junction.pattern)?,
-            });
-        }
-        let junctions = RoofJunctionPatternPalette::new(junction_entries)
-            .map_err(|error| KitError::Roof(format!("{error:?}")))?;
 
         Ok(BuildingKit {
             name: self.name.clone(),
             detail,
-            catalog,
+            hip,
             patterns,
-            roof: palette,
-            junctions,
             roof_plane_offset: self.roof_plane_offset,
         })
     }
+}
+
+fn compile_pattern_roof(roof: &KitRoof) -> Result<PatternRoof, KitError> {
+    let count = roof.patterns.len();
+    let catalog = WfcCatalog::new(roof.patterns.iter().map(|pattern| WfcPatternSpec {
+        weight: pattern.weight,
+        sockets: pattern.sockets.map(WfcSocket),
+    }))
+    .map_err(|error| KitError::Roof(format!("{error:?}")))?;
+    let mut entries = Vec::with_capacity(count);
+    for (index, pattern) in roof.patterns.iter().enumerate() {
+        entries.push(RoofPaletteEntry {
+            pattern: pattern_id(u8::try_from(index).map_err(|_| {
+                KitError::Roof("a kit holds at most 128 roof patterns".to_owned())
+            })?)?,
+            asset: RoofAsset {
+                object_id: ObjectId::new(pattern.id),
+                kind: kind(pattern.kind)?,
+                orientation: ObjectOrientation::new(pattern.orientation).ok_or(
+                    KitError::Value {
+                        what: "orientation",
+                        value: u32::from(pattern.orientation),
+                    },
+                )?,
+            },
+        });
+    }
+    let palette =
+        RoofPalette::new(entries).map_err(|error| KitError::Roof(format!("{error:?}")))?;
+    let patterns = RoofPatternSet {
+        ridge: domain(&roof.ridge, count)?,
+        slopes: [
+            domain(&roof.slopes[0], count)?,
+            domain(&roof.slopes[1], count)?,
+            domain(&roof.slopes[2], count)?,
+            domain(&roof.slopes[3], count)?,
+        ],
+        eaves: [
+            domain(&roof.eaves[0], count)?,
+            domain(&roof.eaves[1], count)?,
+            domain(&roof.eaves[2], count)?,
+            domain(&roof.eaves[3], count)?,
+        ],
+    };
+    let mut junction_entries = Vec::with_capacity(roof.junctions.len());
+    for junction in &roof.junctions {
+        let mut requirements = Vec::with_capacity(junction.requires.len());
+        for (word, toward) in &junction.requires {
+            requirements.push(RoofJunctionPatternRequirement {
+                role: role(word)?,
+                direction_to_other: direction(toward)?,
+            });
+        }
+        if usize::from(junction.pattern) >= count {
+            return Err(KitError::Roof(format!(
+                "junction pattern {} is not listed",
+                junction.pattern
+            )));
+        }
+        junction_entries.push(RoofJunctionPatternPaletteEntry {
+            key: RoofJunctionPatternKey::new(requirements),
+            pattern: pattern_id(junction.pattern)?,
+        });
+    }
+    let junctions = RoofJunctionPatternPalette::new(junction_entries)
+        .map_err(|error| KitError::Roof(format!("{error:?}")))?;
+
+    Ok(PatternRoof {
+        catalog,
+        patterns,
+        palette,
+        junctions,
+    })
 }
 
 impl BuildingKit {
@@ -344,34 +396,98 @@ impl BuildingKit {
         &self.name
     }
 
-    /// Generate one building for the request in `snapshot`. `variation` re-rolls the facade
-    /// windows and doors without moving rooms or corridors.
+    /// Generate one building for the request in `snapshot`: rooms sized to the site, walls, doors
+    /// and windows from the kit, and its roof. `variation` re-rolls the windows and doors without
+    /// moving rooms or corridors.
     pub fn generate(
         &self,
         snapshot: &GenerationSnapshot,
         variation: u32,
-    ) -> Result<MapPatch, BuildingGenerationError> {
-        let patch = generate_building_patch(
+    ) -> Result<MapPatch, KitGenerateError> {
+        let wrap = KitGenerateError::Generation;
+        let request = snapshot.request();
+        if request.floors != 1 {
+            return Err(wrap(BuildingGenerationError::UnsupportedFloorCount {
+                floors: request.floors,
+            }));
+        }
+        let site = request.site;
+        let interior =
+            u32::from(site.width().saturating_sub(2)) * u32::from(site.height().saturating_sub(2));
+        let program = building_program(request.archetype).fitted_to_area(interior);
+        let layout = pack_building_program(&program, site, request.seed)
+            .map_err(|e| wrap(BuildingGenerationError::Layout(e)))?;
+        let building = build_bsp_building_plan(request, &program, &layout)
+            .map_err(|e| wrap(BuildingGenerationError::Topology(e)))?;
+        route_program_connections(&building)
+            .map_err(|e| wrap(BuildingGenerationError::Routing(e)))?;
+        let plan: &BuildingPlan = &building.plan;
+
+        if let (Some(hip), None) = (self.hip, &self.patterns) {
+            return self.with_hip_roof(snapshot, plan, hip, variation);
+        }
+        let Some(roof) = &self.patterns else {
+            // `compile` guarantees one of the two roofs.
+            return Err(wrap(BuildingGenerationError::UnsupportedFloorCount {
+                floors: 0,
+            }));
+        };
+        let patch = generate_building_plan_patch(
             snapshot,
+            plan,
             BuildingGenerationConfig {
                 detail_palette: &self.detail,
                 facade_variation: variation,
                 facade_config: FacadeWfcConfig::default(),
                 facade_policy: FacadeRefinementPolicy::default(),
-                roof_catalog: &self.catalog,
-                roof_patterns: self.patterns,
-                roof_palette: &self.roof,
-                roof_junction_patterns: &self.junctions,
+                roof_catalog: &roof.catalog,
+                roof_patterns: roof.patterns,
+                roof_palette: &roof.palette,
+                roof_junction_patterns: &roof.junctions,
                 roof_max_backtracks: 64,
             },
-        )?;
-        self.lift_roof(patch)
+        )
+        .map_err(wrap)?;
+        Ok(self.lift_roof(patch))
+    }
+
+    /// The walls and floor from the facade pipeline, then a hip roof over the footprint.
+    fn with_hip_roof(
+        &self,
+        snapshot: &GenerationSnapshot,
+        plan: &BuildingPlan,
+        hip: HipRoofAssets,
+        variation: u32,
+    ) -> Result<MapPatch, KitGenerateError> {
+        let wrap = KitGenerateError::Generation;
+        let architecture = derive_building_architecture(plan)
+            .map_err(|e| wrap(BuildingGenerationError::Architecture(e)))?;
+        let body = build_detailed_wfc_building_variation_patch(
+            snapshot,
+            plan,
+            &self.detail,
+            variation,
+            FacadeWfcConfig::default(),
+            FacadeRefinementPolicy::default(),
+        )
+        .map_err(|e| wrap(BuildingGenerationError::Detail(e)))?;
+        let base = plan.request.base_plane.index().get();
+        let plane = base.saturating_add(self.roof_plane_offset);
+        let plane = osrs_core::coords::SourcePlane::new(plane)
+            .ok_or(KitGenerateError::RoofPlane { plane })?;
+        let mut ops: Vec<MapOp> = body.ops().to_vec();
+        ops.extend(
+            hip_roof_placements(architecture.floor_tiles(), hip, plane)
+                .into_iter()
+                .map(|placement| MapOp::AddObject { placement }),
+        );
+        Ok(MapPatch::new(ops))
     }
 
     /// Move roof pieces up by the kit's roof plane offset.
-    fn lift_roof(&self, patch: MapPatch) -> Result<MapPatch, BuildingGenerationError> {
+    fn lift_roof(&self, patch: MapPatch) -> MapPatch {
         if self.roof_plane_offset == 0 {
-            return Ok(patch);
+            return patch;
         }
         let mut ops = Vec::with_capacity(patch.ops().len());
         for op in patch.ops() {
@@ -392,7 +508,7 @@ impl BuildingKit {
                 other => other,
             });
         }
-        Ok(MapPatch::new(ops))
+        MapPatch::new(ops)
     }
 }
 

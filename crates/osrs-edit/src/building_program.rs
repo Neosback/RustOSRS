@@ -71,6 +71,42 @@ impl BuildingProgram {
         self.rooms.iter().find(|room| room.id == id)
     }
 
+    /// The same program with only as many rooms as `area` tiles can hold comfortably (about 22
+    /// tiles each, never fewer than two, never more than the program lists). Rooms are listed most
+    /// important first, so the least important go first. Connections to dropped rooms are removed
+    /// and a room left on its own is joined to the entrance room, so the program stays connected.
+    pub fn fitted_to_area(&self, area: u32) -> Self {
+        const TILES_PER_ROOM: u32 = 22;
+        let wanted = usize::try_from(area / TILES_PER_ROOM)
+            .unwrap_or(usize::MAX)
+            .clamp(2, self.rooms.len().max(2));
+        let rooms: Vec<ProgramRoom> = self.rooms.iter().copied().take(wanted).collect();
+        let kept = |id: RoomId| rooms.iter().any(|room| room.id == id);
+        let mut connections: Vec<ProgramConnection> = self
+            .connections
+            .iter()
+            .copied()
+            .filter(|c| kept(c.first) && kept(c.second))
+            .collect();
+        for room in &rooms {
+            let joined = connections
+                .iter()
+                .any(|c| c.first == room.id || c.second == room.id);
+            if room.id != self.entrance_room && !joined {
+                connections.push(ProgramConnection {
+                    first: self.entrance_room,
+                    second: room.id,
+                });
+            }
+        }
+        Self {
+            archetype: self.archetype,
+            entrance_room: self.entrance_room,
+            rooms,
+            connections,
+        }
+    }
+
     pub fn neighbors(&self, id: RoomId) -> impl Iterator<Item = RoomId> + '_ {
         self.connections.iter().filter_map(move |connection| {
             if connection.first == id {
@@ -181,8 +217,8 @@ fn room(id: u16, role: BuildingRoomRole, area_weight: u16) -> ProgramRoom {
     ProgramRoom {
         id: RoomId::new(id),
         role,
-        min_width: 2,
-        min_height: 2,
+        min_width: 3,
+        min_height: 3,
         area_weight,
     }
 }
