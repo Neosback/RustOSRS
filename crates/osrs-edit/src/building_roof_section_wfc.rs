@@ -104,9 +104,8 @@ mod tests {
     use super::*;
     use crate::{
         BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingRoofPlan, BuildingStyle,
-        RectSite, RoofCellKind, WfcPatternId, classify_roof_section_cells,
-        decompose_roof_sections, plan_roof_coverage, plan_roof_section_shapes,
-        plan_vertical_connectivity,
+        RectSite, RoofCellKind, WfcPatternId, classify_roof_section_cells, decompose_roof_sections,
+        plan_roof_coverage, plan_roof_section_shapes, plan_vertical_connectivity,
     };
     use osrs_core::coords::SourcePlane;
 
@@ -189,18 +188,33 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("section constraints are valid: {error:?}"));
 
         assert_eq!(plans.len(), 2);
-        assert_eq!(plans[0].section().bounds().origin(), MapTile::new(3200, 3200));
-        assert_eq!(plans[1].section().bounds().origin(), MapTile::new(3201, 3201));
         assert_eq!(
-            plans[0].constraints().first().map(|constraint| constraint.coord),
+            plans[0].section().bounds().origin(),
+            MapTile::new(3200, 3200)
+        );
+        assert_eq!(
+            plans[1].section().bounds().origin(),
+            MapTile::new(3201, 3201)
+        );
+        assert_eq!(
+            plans[0]
+                .constraints()
+                .first()
+                .map(|constraint| constraint.coord),
             Some(WfcCoord::new(0, 0))
         );
         assert_eq!(
-            plans[1].constraints().first().map(|constraint| constraint.coord),
+            plans[1]
+                .constraints()
+                .first()
+                .map(|constraint| constraint.coord),
             Some(WfcCoord::new(0, 0))
         );
         assert_eq!(
-            plans[1].constraints().last().map(|constraint| constraint.coord),
+            plans[1]
+                .constraints()
+                .last()
+                .map(|constraint| constraint.coord),
             Some(WfcCoord::new(2, 2))
         );
     }
