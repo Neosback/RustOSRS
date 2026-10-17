@@ -5,6 +5,7 @@
 //! ECS/runtime state. Presentation and infrastructure layers adapt to and from the
 //! types defined here.
 
+mod building;
 mod document;
 mod history;
 mod object;
@@ -17,6 +18,11 @@ mod scenario;
 mod terrain;
 mod workspace;
 
+pub use building::{
+    BuildingArchetype, BuildingConstraints, BuildingPlan, BuildingPlanError, BuildingRequest,
+    BuildingStyle, OccupancyCell, OccupancyGrid, RectSite, RoomConnection, RoomId, RoomKind,
+    RoomRect, RoomSpec, plan_basic_house,
+};
 pub use document::{MapDocument, PatchApplyError};
 pub use history::{
     EditHistory, EditHistoryTransaction, HistoryDocument, HistoryTransactionError, PatchHistory,
