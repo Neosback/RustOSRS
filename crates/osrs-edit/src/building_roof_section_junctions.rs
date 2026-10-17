@@ -67,7 +67,8 @@ pub fn detect_roof_section_junctions(
     let mut ownership = BTreeMap::<MapTile, (RoofSection, RoofCell)>::new();
     for plan in plans {
         let section = plan.section();
-        if section.covered_floor() != reference.covered_floor() || section.plane() != reference.plane()
+        if section.covered_floor() != reference.covered_floor()
+            || section.plane() != reference.plane()
         {
             return Err(RoofSectionJunctionError::SectionMetadataMismatch { section });
         }
@@ -164,9 +165,7 @@ fn section_sort_key(section: RoofSection) -> SectionSortKey {
     )
 }
 
-fn contact_sort_key(
-    contact: &RoofSectionJunctionContact,
-) -> (MapTile, MapTile, CardinalDirection) {
+fn contact_sort_key(contact: &RoofSectionJunctionContact) -> (MapTile, MapTile, CardinalDirection) {
     (
         contact.first.tile,
         contact.second.tile,
@@ -218,10 +217,7 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("valid roof plan: {error:?}"))
     }
 
-    fn section_plans_for(
-        floor: Vec<MapTile>,
-        base_plane: SourcePlane,
-    ) -> Vec<RoofSectionCellPlan> {
+    fn section_plans_for(floor: Vec<MapTile>, base_plane: SourcePlane) -> Vec<RoofSectionCellPlan> {
         let roof = roof_for(floor, base_plane);
         let sections = decompose_roof_sections(&roof)
             .unwrap_or_else(|error| unreachable!("roof decomposes: {error:?}"));
@@ -267,10 +263,7 @@ mod tests {
     fn one_rectangular_section_has_no_junctions() {
         let plans = section_plans_for(rectangle(MapTile::new(3201, 3201), 5, 3), plane(0));
 
-        assert_eq!(
-            detect_roof_section_junctions(&plans),
-            Ok(Vec::new())
-        );
+        assert_eq!(detect_roof_section_junctions(&plans), Ok(Vec::new()));
     }
 
     #[test]
@@ -279,10 +272,7 @@ mod tests {
         let plans = section_plans_for(floor, plane(0));
         assert_eq!(plans.len(), 2);
 
-        assert_eq!(
-            detect_roof_section_junctions(&plans),
-            Ok(Vec::new())
-        );
+        assert_eq!(detect_roof_section_junctions(&plans), Ok(Vec::new()));
     }
 
     #[test]
