@@ -79,8 +79,8 @@ pub fn generate_building_plan_patch(
 ) -> Result<MapPatch, BuildingGenerationError> {
     ensure_single_floor(plan.request.floors)?;
 
-    let architecture = derive_building_architecture(plan)
-        .map_err(BuildingGenerationError::Architecture)?;
+    let architecture =
+        derive_building_architecture(plan).map_err(BuildingGenerationError::Architecture)?;
     let floor_tiles = vec![architecture.floor_tiles().to_vec()];
     let vertical = plan_vertical_connectivity(plan.request, &floor_tiles)
         .map_err(BuildingGenerationError::Vertical)?;
@@ -155,7 +155,12 @@ mod tests {
         SourcePlane::new(value).unwrap_or_else(|| unreachable!("test plane is valid"))
     }
 
-    fn request(archetype: BuildingArchetype, floors: u8, width: u16, height: u16) -> BuildingRequest {
+    fn request(
+        archetype: BuildingArchetype,
+        floors: u8,
+        width: u16,
+        height: u16,
+    ) -> BuildingRequest {
         BuildingRequest {
             seed: 77,
             site: RectSite::new(MapTile::new(3200, 3200), width, height)
@@ -257,15 +262,17 @@ mod tests {
     }
 
     fn roof_palette() -> RoofPalette {
-        RoofPalette::new((0_u8..12).map(|value| RoofPaletteEntry {
-            pattern: pattern(value),
-            asset: RoofAsset {
-                object_id: ObjectId::new(20_000 + u32::from(value)),
-                kind: LocKind::new(10)
-                    .unwrap_or_else(|| unreachable!("test loc kind is valid")),
-                orientation: crate::ObjectOrientation::new(value % 4)
-                    .unwrap_or_else(|| unreachable!("test orientation is valid")),
-            },
+        RoofPalette::new((0_u8..12).map(|value| {
+            RoofPaletteEntry {
+                pattern: pattern(value),
+                asset: RoofAsset {
+                    object_id: ObjectId::new(20_000 + u32::from(value)),
+                    kind: LocKind::new(10)
+                        .unwrap_or_else(|| unreachable!("test loc kind is valid")),
+                    orientation: crate::ObjectOrientation::new(value % 4)
+                        .unwrap_or_else(|| unreachable!("test orientation is valid")),
+                },
+            }
         }))
         .unwrap_or_else(|error| unreachable!("valid roof palette: {error:?}"))
     }
@@ -361,7 +368,12 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("repeat generation succeeds: {error:?}"));
 
         assert_eq!(first, second);
-        assert!(first.ops().iter().any(|op| matches!(op, MapOp::SetTerrain { .. })));
+        assert!(
+            first
+                .ops()
+                .iter()
+                .any(|op| matches!(op, MapOp::SetTerrain { .. }))
+        );
         assert!(first.ops().iter().any(|op| {
             matches!(
                 op,
