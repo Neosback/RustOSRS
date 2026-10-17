@@ -205,8 +205,8 @@ fn make_section(
 mod tests {
     use super::*;
     use crate::{
-        BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingStyle,
-        plan_roof_coverage, plan_roof_shape, plan_vertical_connectivity,
+        BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingStyle, plan_roof_coverage,
+        plan_roof_shape, plan_vertical_connectivity,
     };
 
     fn plane(value: u8) -> SourcePlane {
