@@ -1,16 +1,16 @@
-//! Asset mapping contracts for solved semantic roof patterns.
+//! Asset mapping and reversible patch construction for solved semantic roof patterns.
 //!
-//! This layer resolves WFC pattern IDs into concrete object-placement descriptions while remaining
-//! side-effect free. It deliberately does not construct `MapOp` values or a `MapPatch`; applying
-//! roof objects to the editable map remains a later checkpoint.
+//! This layer resolves WFC pattern IDs into concrete object-placement descriptions, then can turn
+//! those validated descriptions into the same headless `MapPatch` transaction used by other map
+//! edits. It contains no editor, renderer, cache, or runtime integration.
 
 use crate::{
-    BuildingRoofPlan, LocKind, MapPosition, ObjectOrientation, ObjectPlacement, RoofWfcSolution,
-    WfcPatternId,
+    BuildingRoofPlan, LocKind, MapOp, MapPatch, MapPosition, ObjectOrientation, ObjectPlacement,
+    RoofWfcSolution, WfcPatternId,
 };
 use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_core::ids::ObjectId;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 /// Concrete object metadata for one already-oriented semantic roof pattern.
 ///
@@ -82,6 +82,11 @@ pub enum RoofPlacementDescriptionError {
     MissingPatternAsset { pattern: WfcPatternId },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoofPatchError {
+    DuplicateObjectPlacement { placement: ObjectPlacement },
+}
+
 /// Resolve a solved semantic roof into concrete placement descriptions without mutating a map.
 pub fn describe_roof_placements(
     roof: &BuildingRoofPlan,
@@ -108,13 +113,35 @@ pub fn describe_roof_placements(
     Ok(descriptions)
 }
 
+/// Build one exact reversible object patch from validated roof placement descriptions.
+///
+/// Descriptions retain their solved ordering. Duplicate exact placements are rejected before any
+/// patch is returned so a generated roof cannot contain a transaction that adds the same semantic
+/// object twice.
+pub fn build_roof_patch(
+    descriptions: &[RoofPlacementDescription],
+) -> Result<MapPatch, RoofPatchError> {
+    let mut placements = HashSet::with_capacity(descriptions.len());
+    let mut ops = Vec::with_capacity(descriptions.len());
+
+    for description in descriptions {
+        let placement = description.placement;
+        if !placements.insert(placement) {
+            return Err(RoofPatchError::DuplicateObjectPlacement { placement });
+        }
+        ops.push(MapOp::AddObject { placement });
+    }
+
+    Ok(MapPatch::new(ops))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingStyle, PatternDomain,
-        RectSite, RoofPatternSet, WfcCatalog, WfcPatternSpec, WfcSocket, plan_roof_coverage,
-        plan_roof_shape, plan_vertical_connectivity, solve_roof_wfc,
+        BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingStyle, MapDocument,
+        PatternDomain, RectSite, RoofPatternSet, WfcCatalog, WfcPatternSpec, WfcSocket,
+        plan_roof_coverage, plan_roof_shape, plan_vertical_connectivity, solve_roof_wfc,
     };
 
     fn plane(value: u8) -> SourcePlane {
@@ -203,6 +230,12 @@ mod tests {
         (roof, solution)
     }
 
+    fn solved_descriptions() -> Vec<RoofPlacementDescription> {
+        let (roof, solution) = solved_roof();
+        describe_roof_placements(&roof, &solution, &full_palette())
+            .unwrap_or_else(|error| unreachable!("roof descriptions resolve: {error:?}"))
+    }
+
     #[test]
     fn palette_rejects_duplicate_pattern_bindings() {
         let duplicate = pattern(2);
@@ -287,5 +320,57 @@ mod tests {
             .map(|selection| selection.tile)
             .collect::<Vec<_>>();
         assert_eq!(described_tiles, solved_tiles);
+    }
+
+    #[test]
+    fn roof_patch_preserves_description_order_as_add_object_ops() {
+        let descriptions = solved_descriptions();
+        let patch = build_roof_patch(&descriptions)
+            .unwrap_or_else(|error| unreachable!("valid roof patch: {error:?}"));
+        let expected = descriptions
+            .iter()
+            .map(|description| MapOp::AddObject {
+                placement: description.placement,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(patch.ops(), expected);
+    }
+
+    #[test]
+    fn roof_patch_apply_and_inverse_restore_exact_document() {
+        let descriptions = solved_descriptions();
+        let patch = build_roof_patch(&descriptions)
+            .unwrap_or_else(|error| unreachable!("valid roof patch: {error:?}"));
+        let original = MapDocument::new();
+        let mut document = original.clone();
+
+        document
+            .apply_patch(&patch)
+            .unwrap_or_else(|error| unreachable!("roof patch applies: {error:?}"));
+        assert_eq!(document.object_count(), descriptions.len());
+        for description in &descriptions {
+            assert!(document.contains_object(description.placement));
+        }
+
+        document
+            .apply_patch(&patch.inverse())
+            .unwrap_or_else(|error| unreachable!("roof inverse applies: {error:?}"));
+        assert_eq!(document, original);
+    }
+
+    #[test]
+    fn roof_patch_rejects_duplicate_exact_placements() {
+        let description = RoofPlacementDescription {
+            pattern: pattern(0),
+            placement: asset(77, 2).placement(MapTile::new(3200, 3200), plane(1)),
+        };
+
+        assert_eq!(
+            build_roof_patch(&[description, description]),
+            Err(RoofPatchError::DuplicateObjectPlacement {
+                placement: description.placement,
+            })
+        );
     }
 }
