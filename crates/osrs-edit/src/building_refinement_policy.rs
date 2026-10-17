@@ -160,14 +160,13 @@ mod tests {
     #[test]
     fn non_contradiction_errors_are_not_retried() {
         let mut calls = 0;
-        let error = retry_contradictions::<()>(99, 8, |_| {
+        let result = retry_contradictions::<()>(99, 8, |_| {
             calls += 1;
             Err(FacadeRefinementError::InvalidConfig)
-        })
-        .expect_err("invalid configuration must fail immediately");
+        });
 
         assert_eq!(calls, 1);
-        assert_eq!(error, FacadeRefinementError::InvalidConfig);
+        assert_eq!(result, Err(FacadeRefinementError::InvalidConfig));
     }
 
     #[test]
