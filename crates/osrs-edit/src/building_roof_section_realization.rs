@@ -1,11 +1,12 @@
-//! Asset mapping for independently solved complex-roof sections.
+//! Asset mapping and reversible patch construction for independently solved complex-roof sections.
 //!
 //! Each solved rectangular roof section is kept as a distinct realization plan while its semantic
-//! WFC pattern IDs are resolved through the existing `RoofPalette`. This layer stops before
-//! valley/intersection repair or `MapPatch` construction.
+//! WFC pattern IDs are resolved through the existing `RoofPalette`. Validated section plans can then
+//! be flattened into one deterministic `MapPatch`. Valley/intersection repair remains a later stage.
 
 use crate::{
-    RoofPalette, RoofPlacementDescription, RoofSection, RoofSectionWfcSolution, WfcPatternId,
+    MapPatch, RoofPalette, RoofPatchError, RoofPlacementDescription, RoofSection,
+    RoofSectionWfcSolution, WfcPatternId, build_roof_patch,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,6 +70,29 @@ pub fn describe_roof_section_placements(
     Ok(plans)
 }
 
+/// Flatten validated section placement plans into one exact reversible roof patch.
+///
+/// Section order is normalized before flattening. Descriptions retain their deterministic
+/// world-tile order within each section, and the existing roof patch builder rejects duplicate exact
+/// placements across section boundaries before returning a transaction.
+pub fn build_roof_section_patch(
+    plans: &[RoofSectionPlacementPlan],
+) -> Result<MapPatch, RoofPatchError> {
+    let mut ordered = plans.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|plan| section_sort_key(plan.section()));
+
+    let description_count = ordered
+        .iter()
+        .map(|plan| plan.descriptions().len())
+        .sum();
+    let mut descriptions = Vec::with_capacity(description_count);
+    for plan in ordered {
+        descriptions.extend_from_slice(plan.descriptions());
+    }
+
+    build_roof_patch(&descriptions)
+}
+
 fn section_sort_key(section: RoofSection) -> (i32, i32, u16, u16) {
     let bounds = section.bounds();
     (
@@ -84,11 +108,11 @@ mod tests {
     use super::*;
     use crate::{
         BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingRoofPlan, BuildingStyle,
-        LocKind, ObjectOrientation, PatternDomain, RectSite, RoofAsset, RoofPaletteEntry,
-        RoofPatternSet, RoofSectionCellPlan, RoofSectionWfcPlan, WfcCatalog, WfcPatternId,
-        WfcPatternSpec, WfcSocket, classify_roof_section_cells, decompose_roof_sections,
-        plan_roof_coverage, plan_roof_section_shapes, plan_vertical_connectivity,
-        roof_section_wfc_constraints, solve_roof_section_wfc,
+        LocKind, MapDocument, MapOp, ObjectOrientation, PatternDomain, RectSite, RoofAsset,
+        RoofPaletteEntry, RoofPatternSet, RoofSectionCellPlan, RoofSectionWfcPlan, WfcCatalog,
+        WfcPatternId, WfcPatternSpec, WfcSocket, classify_roof_section_cells,
+        decompose_roof_sections, plan_roof_coverage, plan_roof_section_shapes,
+        plan_vertical_connectivity, roof_section_wfc_constraints, solve_roof_section_wfc,
     };
     use osrs_core::coords::{MapTile, SourcePlane};
     use osrs_core::ids::ObjectId;
@@ -189,6 +213,11 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("roof sections solve: {error:?}"))
     }
 
+    fn placement_plans() -> Vec<RoofSectionPlacementPlan> {
+        describe_roof_section_placements(&solved_sections(), &full_palette())
+            .unwrap_or_else(|error| unreachable!("section descriptions resolve: {error:?}"))
+    }
+
     #[test]
     fn section_descriptions_preserve_section_tiles_plane_and_assets() {
         let solutions = solved_sections();
@@ -222,8 +251,7 @@ mod tests {
 
     #[test]
     fn descriptions_remain_sorted_by_world_tile_within_each_section() {
-        let plans = describe_roof_section_placements(&solved_sections(), &full_palette())
-            .unwrap_or_else(|error| unreachable!("section descriptions resolve: {error:?}"));
+        let plans = placement_plans();
 
         for plan in plans {
             let tiles = plan
@@ -275,6 +303,72 @@ mod tests {
         assert_eq!(
             describe_roof_section_placements(&solutions, &palette),
             describe_roof_section_placements(&reversed, &palette)
+        );
+    }
+
+    #[test]
+    fn section_patch_preserves_section_then_world_tile_order() {
+        let plans = placement_plans();
+        let patch = build_roof_section_patch(&plans)
+            .unwrap_or_else(|error| unreachable!("valid section roof patch: {error:?}"));
+        let expected = plans
+            .iter()
+            .flat_map(|plan| plan.descriptions())
+            .map(|description| MapOp::AddObject {
+                placement: description.placement,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(patch.ops(), expected);
+    }
+
+    #[test]
+    fn section_patch_is_independent_of_plan_input_order() {
+        let plans = placement_plans();
+        let mut reversed = plans.clone();
+        reversed.reverse();
+
+        assert_eq!(
+            build_roof_section_patch(&plans),
+            build_roof_section_patch(&reversed)
+        );
+    }
+
+    #[test]
+    fn section_patch_apply_and_inverse_restore_exact_document() {
+        let plans = placement_plans();
+        let patch = build_roof_section_patch(&plans)
+            .unwrap_or_else(|error| unreachable!("valid section roof patch: {error:?}"));
+        let original = MapDocument::new();
+        let mut document = original.clone();
+        let placement_count = plans.iter().map(|plan| plan.descriptions().len()).sum();
+
+        document
+            .apply_patch(&patch)
+            .unwrap_or_else(|error| unreachable!("section roof patch applies: {error:?}"));
+        assert_eq!(document.object_count(), placement_count);
+
+        document
+            .apply_patch(&patch.inverse())
+            .unwrap_or_else(|error| unreachable!("section roof inverse applies: {error:?}"));
+        assert_eq!(document, original);
+    }
+
+    #[test]
+    fn section_patch_rejects_duplicate_exact_placements_across_sections() {
+        let mut plans = placement_plans();
+        let duplicate = plans[0]
+            .descriptions()
+            .first()
+            .copied()
+            .unwrap_or_else(|| unreachable!("first section has a placement"));
+        plans[1].descriptions.push(duplicate);
+
+        assert_eq!(
+            build_roof_section_patch(&plans),
+            Err(RoofPatchError::DuplicateObjectPlacement {
+                placement: duplicate.placement,
+            })
         );
     }
 }
