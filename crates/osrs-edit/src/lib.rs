@@ -14,6 +14,7 @@ mod building_refinement_policy;
 mod building_roof;
 mod building_roof_generation;
 mod building_roof_realization;
+mod building_roof_sections;
 mod building_roof_solver;
 mod building_roof_wfc;
 mod building_routing;
@@ -71,6 +72,7 @@ pub use building_roof_realization::{
     RoofPlacementDescription, RoofPlacementDescriptionError, build_roof_patch,
     describe_roof_placements,
 };
+pub use building_roof_sections::{RoofSection, RoofSectionError, decompose_roof_sections};
 pub use building_roof_solver::{
     RoofPatternSelection, RoofWfcSolution, RoofWfcSolveError, solve_roof_wfc,
 };
