@@ -15,6 +15,7 @@ mod building_roof;
 mod building_roof_generation;
 mod building_roof_realization;
 mod building_roof_section_cells;
+mod building_roof_section_solver;
 mod building_roof_section_wfc;
 mod building_roof_sections;
 mod building_roof_solver;
@@ -76,6 +77,9 @@ pub use building_roof_realization::{
 };
 pub use building_roof_section_cells::{
     RoofSectionCellError, RoofSectionCellPlan, classify_roof_section_cells,
+};
+pub use building_roof_section_solver::{
+    RoofSectionWfcSolution, RoofSectionWfcSolveError, solve_roof_section_wfc,
 };
 pub use building_roof_section_wfc::{
     RoofSectionConstraintError, RoofSectionWfcPlan, roof_section_wfc_constraints,
