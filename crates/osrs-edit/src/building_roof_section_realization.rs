@@ -206,10 +206,16 @@ mod tests {
                     .unwrap_or_else(|| unreachable!("full palette contains solved pattern"));
                 assert_eq!(description.pattern, selection.pattern);
                 assert_eq!(description.placement.position.tile, selection.tile);
-                assert_eq!(description.placement.position.plane, solution.section().plane());
+                assert_eq!(
+                    description.placement.position.plane,
+                    solution.section().plane()
+                );
                 assert_eq!(description.placement.object_id, expected_asset.object_id);
                 assert_eq!(description.placement.kind, expected_asset.kind);
-                assert_eq!(description.placement.orientation, expected_asset.orientation);
+                assert_eq!(
+                    description.placement.orientation,
+                    expected_asset.orientation
+                );
             }
         }
     }
