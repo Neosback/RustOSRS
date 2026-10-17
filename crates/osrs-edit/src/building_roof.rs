@@ -1,8 +1,9 @@
-//! Semantic roof coverage and shape planning for generated buildings.
+//! Semantic roof coverage, shape, and cell planning for generated buildings.
 //!
 //! Roof planning starts from the already-validated vertical building stack. This module owns exact
-//! top-floor coverage, exposed boundary edges, and deterministic high-level roof shape semantics.
-//! It deliberately stops before slope-cell assignment, WFC patterns, and concrete object IDs.
+//! top-floor coverage, exposed boundary edges, deterministic high-level roof shape semantics, and
+//! semantic ridge/slope/eave cell classification. It deliberately stops before WFC patterns and
+//! concrete object IDs.
 
 use crate::{BuildingFloorIndex, BuildingVerticalPlan, CardinalDirection};
 use osrs_core::coords::{MapTile, SourcePlane};
@@ -80,6 +81,28 @@ pub enum RoofShape {
     Gable { ridge: RoofRidge },
     /// The footprint requires later decomposition into multiple roof sections.
     Complex,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RoofCellKind {
+    /// The geometric ridge passes directly through this tile's center.
+    Ridge,
+    /// An interior sloped tile. `downhill` points away from the ridge toward the eave.
+    Slope { downhill: CardinalDirection },
+    /// The final sloped tile at an exposed downhill roof boundary.
+    Eave { downhill: CardinalDirection },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RoofCell {
+    pub tile: MapTile,
+    pub kind: RoofCellKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoofCellClassificationError {
+    FlatRoofUnsupported,
+    ComplexRoofUnsupported,
 }
 
 /// Derive exact roof coverage from the highest solved building floor.
@@ -168,6 +191,64 @@ pub fn plan_roof_shape(roof: &BuildingRoofPlan) -> RoofShape {
     }
 }
 
+/// Classify every covered tile of a simple gable roof relative to its geometric ridge.
+///
+/// Ridge cells exist only when the ridge actually passes through tile centers. For an even cross
+/// span the ridge lies between two rows/columns, so neither adjacent row is mislabeled as a ridge.
+/// Remaining tiles slope away from the ridge; the final tile whose downhill edge is exposed is an
+/// eave. Complex and explicitly flat roofs are deferred to later specialized solvers.
+pub fn classify_roof_cells(
+    roof: &BuildingRoofPlan,
+    shape: RoofShape,
+) -> Result<Vec<RoofCell>, RoofCellClassificationError> {
+    let ridge = match shape {
+        RoofShape::Gable { ridge } => ridge,
+        RoofShape::Flat => return Err(RoofCellClassificationError::FlatRoofUnsupported),
+        RoofShape::Complex => return Err(RoofCellClassificationError::ComplexRoofUnsupported),
+    };
+    let exposed_edges = roof.exposed_edges.iter().copied().collect::<BTreeSet<_>>();
+    let mut cells = Vec::with_capacity(roof.tiles.len());
+
+    for &tile in &roof.tiles {
+        let cross_axis_center_x2 = match ridge.axis {
+            RoofRidgeAxis::EastWest => i64::from(tile.y) * 2 + 1,
+            RoofRidgeAxis::NorthSouth => i64::from(tile.x) * 2 + 1,
+        };
+        let kind = if cross_axis_center_x2 == ridge.cross_axis_coordinate_x2 {
+            RoofCellKind::Ridge
+        } else {
+            let downhill = match ridge.axis {
+                RoofRidgeAxis::EastWest => {
+                    if cross_axis_center_x2 < ridge.cross_axis_coordinate_x2 {
+                        CardinalDirection::South
+                    } else {
+                        CardinalDirection::North
+                    }
+                }
+                RoofRidgeAxis::NorthSouth => {
+                    if cross_axis_center_x2 < ridge.cross_axis_coordinate_x2 {
+                        CardinalDirection::West
+                    } else {
+                        CardinalDirection::East
+                    }
+                }
+            };
+            let edge = RoofEdge {
+                tile,
+                direction: downhill,
+            };
+            if exposed_edges.contains(&edge) {
+                RoofCellKind::Eave { downhill }
+            } else {
+                RoofCellKind::Slope { downhill }
+            }
+        };
+        cells.push(RoofCell { tile, kind });
+    }
+
+    Ok(cells)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,6 +289,14 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
         plan_roof_coverage(&vertical)
             .unwrap_or_else(|error| unreachable!("valid roof plan: {error:?}"))
+    }
+
+    fn cell_kind(cells: &[RoofCell], tile: MapTile) -> RoofCellKind {
+        cells
+            .iter()
+            .find(|cell| cell.tile == tile)
+            .map(|cell| cell.kind)
+            .unwrap_or_else(|| unreachable!("requested tile is covered by roof"))
     }
 
     #[test]
@@ -321,5 +410,127 @@ mod tests {
         let roof = roof_for(floor);
 
         assert_eq!(plan_roof_shape(&roof), RoofShape::Complex);
+    }
+
+    #[test]
+    fn odd_span_gable_classifies_ridge_slopes_and_eaves() {
+        let roof = roof_for(rectangle(MapTile::new(3200, 3200), 5, 5));
+        let shape = plan_roof_shape(&roof);
+        let cells = classify_roof_cells(&roof, shape)
+            .unwrap_or_else(|error| unreachable!("simple gable classifies: {error:?}"));
+
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3202, 3202)),
+            RoofCellKind::Ridge
+        );
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3202, 3201)),
+            RoofCellKind::Slope {
+                downhill: CardinalDirection::South,
+            }
+        );
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3202, 3200)),
+            RoofCellKind::Eave {
+                downhill: CardinalDirection::South,
+            }
+        );
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3202, 3203)),
+            RoofCellKind::Slope {
+                downhill: CardinalDirection::North,
+            }
+        );
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3202, 3204)),
+            RoofCellKind::Eave {
+                downhill: CardinalDirection::North,
+            }
+        );
+    }
+
+    #[test]
+    fn even_span_gable_does_not_invent_ridge_cells() {
+        let roof = roof_for(rectangle(MapTile::new(3200, 3200), 4, 4));
+        let shape = plan_roof_shape(&roof);
+        let cells = classify_roof_cells(&roof, shape)
+            .unwrap_or_else(|error| unreachable!("simple gable classifies: {error:?}"));
+
+        assert!(!cells.iter().any(|cell| cell.kind == RoofCellKind::Ridge));
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3201, 3201)),
+            RoofCellKind::Slope {
+                downhill: CardinalDirection::South,
+            }
+        );
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3201, 3202)),
+            RoofCellKind::Slope {
+                downhill: CardinalDirection::North,
+            }
+        );
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3201, 3200)),
+            RoofCellKind::Eave {
+                downhill: CardinalDirection::South,
+            }
+        );
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3201, 3203)),
+            RoofCellKind::Eave {
+                downhill: CardinalDirection::North,
+            }
+        );
+    }
+
+    #[test]
+    fn north_south_ridge_assigns_east_and_west_downhill_directions() {
+        let roof = roof_for(rectangle(MapTile::new(3200, 3200), 5, 7));
+        let shape = plan_roof_shape(&roof);
+        let cells = classify_roof_cells(&roof, shape)
+            .unwrap_or_else(|error| unreachable!("simple gable classifies: {error:?}"));
+
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3202, 3203)),
+            RoofCellKind::Ridge
+        );
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3201, 3203)),
+            RoofCellKind::Slope {
+                downhill: CardinalDirection::West,
+            }
+        );
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3200, 3203)),
+            RoofCellKind::Eave {
+                downhill: CardinalDirection::West,
+            }
+        );
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3203, 3203)),
+            RoofCellKind::Slope {
+                downhill: CardinalDirection::East,
+            }
+        );
+        assert_eq!(
+            cell_kind(&cells, MapTile::new(3204, 3203)),
+            RoofCellKind::Eave {
+                downhill: CardinalDirection::East,
+            }
+        );
+    }
+
+    #[test]
+    fn complex_roof_defers_cell_classification() {
+        let roof = roof_for(vec![
+            MapTile::new(3200, 3200),
+            MapTile::new(3201, 3200),
+            MapTile::new(3200, 3201),
+        ]);
+
+        assert_eq!(
+            classify_roof_cells(&roof, plan_roof_shape(&roof)),
+            Err(RoofCellClassificationError::ComplexRoofUnsupported)
+        );
     }
 }
