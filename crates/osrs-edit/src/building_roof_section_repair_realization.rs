@@ -36,12 +36,14 @@ impl RoofJunctionPatternKey {
     }
 
     fn from_repair_site(site: &RoofSectionJunctionRepairSite) -> Self {
-        Self::new(site.requirements().iter().map(|requirement| {
-            RoofJunctionPatternRequirement {
-                role: requirement.role,
-                direction_to_other: requirement.direction_to_other,
-            }
-        }))
+        Self::new(
+            site.requirements()
+                .iter()
+                .map(|requirement| RoofJunctionPatternRequirement {
+                    role: requirement.role,
+                    direction_to_other: requirement.direction_to_other,
+                }),
+        )
     }
 }
 
@@ -141,10 +143,7 @@ pub fn describe_repaired_roof_section_placements(
         let tile = repair.cell().tile;
         let key = (section_sort_key(section), tile);
         if repair_sites.insert(key, repair).is_some() {
-            return Err(RoofSectionJunctionRealizationError::DuplicateRepairSite {
-                section,
-                tile,
-            });
+            return Err(RoofSectionJunctionRealizationError::DuplicateRepairSite { section, tile });
         }
     }
 
@@ -478,11 +477,13 @@ mod tests {
                 &empty,
                 &roof_palette(true),
             ),
-            Err(RoofSectionJunctionRealizationError::MissingJunctionPattern {
-                section: first.section(),
-                tile: first.cell().tile,
-                key: expected_key.clone(),
-            })
+            Err(
+                RoofSectionJunctionRealizationError::MissingJunctionPattern {
+                    section: first.section(),
+                    tile: first.cell().tile,
+                    key: expected_key.clone(),
+                }
+            )
         );
 
         let expected_pattern = l_shape_junction_patterns()
