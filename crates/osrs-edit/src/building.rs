@@ -145,11 +145,18 @@ pub struct RoomSpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PortalKind {
+    Open,
+    Door,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RoomConnection {
     /// `None` represents the exterior entrance.
     pub from: Option<RoomId>,
     pub to: RoomId,
     pub doorway: MapTile,
+    pub kind: PortalKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -355,6 +362,7 @@ fn plan_horizontal_house(
             from: None,
             to: hall_id,
             doorway: exterior_doorway,
+            kind: PortalKind::Door,
         },
         connect(
             hall_id,
@@ -463,6 +471,7 @@ fn plan_vertical_house(
             from: None,
             to: hall_id,
             doorway: exterior_doorway,
+            kind: PortalKind::Door,
         },
         connect(
             hall_id,
@@ -519,6 +528,7 @@ const fn connect(from: RoomId, to: RoomId, doorway: MapTile) -> RoomConnection {
         from: Some(from),
         to,
         doorway,
+        kind: PortalKind::Door,
     }
 }
 
@@ -619,6 +629,11 @@ mod tests {
             plan.connections
                 .iter()
                 .any(|connection| { connection.from.is_none() && connection.to == hall.id })
+        );
+        assert!(
+            plan.connections
+                .iter()
+                .all(|connection| connection.kind == PortalKind::Door)
         );
     }
 

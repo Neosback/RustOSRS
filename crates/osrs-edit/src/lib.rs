@@ -8,6 +8,7 @@
 mod building;
 mod building_program;
 mod building_realization;
+mod building_topology;
 mod building_validation;
 mod building_wfc;
 mod document;
@@ -24,8 +25,8 @@ mod workspace;
 
 pub use building::{
     BuildingArchetype, BuildingConstraints, BuildingPlan, BuildingPlanError, BuildingRequest,
-    BuildingStyle, OccupancyCell, OccupancyGrid, RectSite, RoomConnection, RoomId, RoomKind,
-    RoomRect, RoomSpec, plan_basic_house,
+    BuildingStyle, OccupancyCell, OccupancyGrid, PortalKind, RectSite, RoomConnection, RoomId,
+    RoomKind, RoomRect, RoomSpec, plan_basic_house,
 };
 pub use building_program::{
     BspCorridor, BspLayout, BspLayoutError, BspRoomPlacement, BuildingProgram, BuildingRoomRole,
@@ -35,6 +36,9 @@ pub use building_realization::{
     BuildingArchitecture, BuildingArchitectureError, BuildingPalette, BuildingRealizationError,
     CardinalDirection, EdgeAsset, EdgeFeature, FloorMaterial, SemanticEdge, build_building_patch,
     derive_building_architecture,
+};
+pub use building_topology::{
+    BspBuildingPlan, BspTopologyError, ProgramRoomRole, build_bsp_building_plan,
 };
 pub use building_validation::{
     BuildingDiagnostic, BuildingValidationReport, GenerationSnapshot, OccupiedFootprint,

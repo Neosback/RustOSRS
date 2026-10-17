@@ -4,7 +4,7 @@
 //! directional edge graph, then resolves semantic floor/wall/door roles through a palette into
 //! ordinary [`MapPatch`] operations. No procedural path bypasses normal map validation or history.
 
-use crate::building::{BuildingPlan, RoomId, RoomRect};
+use crate::building::{BuildingPlan, PortalKind, RoomId, RoomRect};
 use crate::{
     BuildingValidationReport, GenerationSnapshot, LocKind, MapOp, MapPatch, MapPosition,
     ObjectOrientation, ObjectPlacement, TerrainOverlay, TerrainTile, validate_building_plan,
@@ -158,7 +158,11 @@ pub fn derive_building_architecture(
                 internal_portal_edge(&room_by_tile, from, connection.to, connection.doorway)?
             }
         };
-        edges.insert(key, EdgeFeature::Door);
+        let feature = match connection.kind {
+            PortalKind::Open => EdgeFeature::Open,
+            PortalKind::Door => EdgeFeature::Door,
+        };
+        edges.insert(key, feature);
     }
 
     let edges = edges
@@ -435,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn architecture_contains_one_door_per_connection() {
+    fn architecture_contains_one_door_per_door_connection() {
         let plan = plan_basic_house(request())
             .unwrap_or_else(|error| unreachable!("valid test plan: {error:?}"));
         let architecture = derive_building_architecture(&plan)
@@ -445,8 +449,13 @@ mod tests {
             .iter()
             .filter(|edge| edge.feature == EdgeFeature::Door)
             .count();
+        let expected = plan
+            .connections
+            .iter()
+            .filter(|connection| connection.kind == PortalKind::Door)
+            .count();
 
-        assert_eq!(door_count, plan.connections.len());
+        assert_eq!(door_count, expected);
     }
 
     #[test]
