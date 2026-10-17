@@ -70,9 +70,11 @@ fn retry_contradictions<T>(
         let seed = repair_seed(base_seed, attempt);
         match solve(seed) {
             Ok(value) => return Ok(value),
-            Err(error @ FacadeRefinementError::Solve {
-                error: WfcSolveError::Contradiction { .. },
-            }) => {
+            Err(
+                error @ FacadeRefinementError::Solve {
+                    error: WfcSolveError::Contradiction { .. },
+                },
+            ) => {
                 if attempt == retry_attempts {
                     return Err(error);
                 }
@@ -195,8 +197,17 @@ mod tests {
 
     #[test]
     fn variation_seed_is_repeatable_and_separate_from_building_seed() {
-        assert_eq!(facade_variation_seed(1234, 7), facade_variation_seed(1234, 7));
-        assert_ne!(facade_variation_seed(1234, 7), facade_variation_seed(1234, 8));
-        assert_ne!(facade_variation_seed(1234, 7), facade_variation_seed(1235, 7));
+        assert_eq!(
+            facade_variation_seed(1234, 7),
+            facade_variation_seed(1234, 7)
+        );
+        assert_ne!(
+            facade_variation_seed(1234, 7),
+            facade_variation_seed(1234, 8)
+        );
+        assert_ne!(
+            facade_variation_seed(1234, 7),
+            facade_variation_seed(1235, 7)
+        );
     }
 }
