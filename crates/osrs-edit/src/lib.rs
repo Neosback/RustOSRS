@@ -14,6 +14,7 @@ mod building_refinement_policy;
 mod building_routing;
 mod building_topology;
 mod building_validation;
+mod building_vertical;
 mod building_wfc;
 mod document;
 mod history;
@@ -61,6 +62,11 @@ pub use building_topology::{
 pub use building_validation::{
     BuildingDiagnostic, BuildingValidationReport, GenerationSnapshot, OccupiedFootprint,
     capture_generation_snapshot, validate_building_plan,
+};
+pub use building_vertical::{
+    BuildingFloorIndex, BuildingFloorSurface, BuildingVerticalError, BuildingVerticalPlan,
+    StairAnchor, StairAsset, StairConstraintError, StairPalette, StairPatternSet,
+    StairRealizationError, build_stair_patch, plan_vertical_connectivity, stair_wfc_constraints,
 };
 pub use building_wfc::{
     MAX_WFC_PATTERNS, PatternDomain, WfcCatalog, WfcCatalogError, WfcConstraint, WfcCoord,
