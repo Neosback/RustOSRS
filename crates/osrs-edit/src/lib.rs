@@ -18,6 +18,7 @@ mod building_roof_section_cells;
 mod building_roof_section_junctions;
 mod building_roof_section_realization;
 mod building_roof_section_repair;
+mod building_roof_section_repair_realization;
 mod building_roof_section_solver;
 mod building_roof_section_wfc;
 mod building_roof_sections;
@@ -94,6 +95,11 @@ pub use building_roof_section_realization::{
 pub use building_roof_section_repair::{
     RoofSectionJunctionRepairRequirement, RoofSectionJunctionRepairRole,
     RoofSectionJunctionRepairSite, plan_roof_section_junction_repairs,
+};
+pub use building_roof_section_repair_realization::{
+    RoofJunctionPatternKey, RoofJunctionPatternPalette, RoofJunctionPatternPaletteEntry,
+    RoofJunctionPatternPaletteError, RoofJunctionPatternRequirement,
+    RoofSectionJunctionRealizationError, describe_repaired_roof_section_placements,
 };
 pub use building_roof_section_solver::{
     RoofSectionWfcSolution, RoofSectionWfcSolveError, solve_roof_section_wfc,
