@@ -5,9 +5,8 @@
 //! multi-pattern domain so WFC can still choose weighted visual variants later.
 
 use crate::{
-    BuildingRoofPlan, CardinalDirection, PatternDomain, RectSite, RoofCell,
-    RoofCellClassificationError, RoofCellKind, RoofShape, WfcConstraint, WfcCoord,
-    classify_roof_cells,
+    BuildingRoofPlan, PatternDomain, RectSite, RoofCell, RoofCellClassificationError, RoofCellKind,
+    RoofShape, WfcConstraint, WfcCoord, classify_roof_cells,
 };
 use osrs_core::coords::MapTile;
 
