@@ -30,6 +30,9 @@ jobs:
           components: clippy, rustfmt
           cache: false
 
+      - name: Install Linux build dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -qq -y pkg-config libasound2-dev
+
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -57,8 +60,8 @@ jobs:
         with:
           cache: false
 
-      - name: Setup mold linker
-        run: sudo apt-get update -qq && sudo apt-get install -qq -y mold
+      - name: Install Linux build dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -qq -y mold pkg-config libasound2-dev
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
