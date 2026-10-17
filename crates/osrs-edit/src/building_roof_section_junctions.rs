@@ -513,11 +513,16 @@ mod tests {
         let classified = classify_roof_section_junctions(&junctions);
 
         assert_eq!(classified.len(), 1);
-        assert_eq!(classified[0].kind(), RoofSectionJunctionKind::RidgeIntersection);
-        assert!(classified[0]
-            .contacts()
-            .iter()
-            .all(|contact| contact.kind == RoofSectionJunctionContactKind::RidgeIntersection));
+        assert_eq!(
+            classified[0].kind(),
+            RoofSectionJunctionKind::RidgeIntersection
+        );
+        assert!(
+            classified[0]
+                .contacts()
+                .iter()
+                .all(|contact| contact.kind == RoofSectionJunctionContactKind::RidgeIntersection)
+        );
     }
 
     #[test]
