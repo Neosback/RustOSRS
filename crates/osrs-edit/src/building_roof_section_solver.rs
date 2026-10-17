@@ -80,15 +80,17 @@ pub fn solve_roof_section_wfc(
         for y in 0..bounds.height() {
             for x in 0..bounds.width() {
                 let coord = WfcCoord::new(x, y);
-                let tile_x = origin.x.checked_add(i32::from(x)).ok_or(
-                    RoofSectionWfcSolveError::CoordinateOverflow { section, coord },
-                )?;
-                let tile_y = origin.y.checked_add(i32::from(y)).ok_or(
-                    RoofSectionWfcSolveError::CoordinateOverflow { section, coord },
-                )?;
-                let pattern = solved.at(coord).ok_or(
-                    RoofSectionWfcSolveError::MissingSolvedPattern { section, coord },
-                )?;
+                let tile_x = origin
+                    .x
+                    .checked_add(i32::from(x))
+                    .ok_or(RoofSectionWfcSolveError::CoordinateOverflow { section, coord })?;
+                let tile_y = origin
+                    .y
+                    .checked_add(i32::from(y))
+                    .ok_or(RoofSectionWfcSolveError::CoordinateOverflow { section, coord })?;
+                let pattern = solved
+                    .at(coord)
+                    .ok_or(RoofSectionWfcSolveError::MissingSolvedPattern { section, coord })?;
                 selections.push(RoofPatternSelection {
                     tile: osrs_core::coords::MapTile::new(tile_x, tile_y),
                     pattern,
@@ -247,19 +249,31 @@ mod tests {
 
         assert_eq!(solved.len(), 2);
         assert_eq!(
-            solved[0].selections().first().map(|selection| selection.tile),
+            solved[0]
+                .selections()
+                .first()
+                .map(|selection| selection.tile),
             Some(MapTile::new(3200, 3200))
         );
         assert_eq!(
-            solved[0].selections().last().map(|selection| selection.tile),
+            solved[0]
+                .selections()
+                .last()
+                .map(|selection| selection.tile),
             Some(MapTile::new(3204, 3200))
         );
         assert_eq!(
-            solved[1].selections().first().map(|selection| selection.tile),
+            solved[1]
+                .selections()
+                .first()
+                .map(|selection| selection.tile),
             Some(MapTile::new(3201, 3201))
         );
         assert_eq!(
-            solved[1].selections().last().map(|selection| selection.tile),
+            solved[1]
+                .selections()
+                .last()
+                .map(|selection| selection.tile),
             Some(MapTile::new(3203, 3203))
         );
     }
