@@ -6,6 +6,7 @@
 //! types defined here.
 
 mod building;
+mod building_validation;
 mod document;
 mod history;
 mod object;
@@ -22,6 +23,10 @@ pub use building::{
     BuildingArchetype, BuildingConstraints, BuildingPlan, BuildingPlanError, BuildingRequest,
     BuildingStyle, OccupancyCell, OccupancyGrid, RectSite, RoomConnection, RoomId, RoomKind,
     RoomRect, RoomSpec, plan_basic_house,
+};
+pub use building_validation::{
+    BuildingDiagnostic, BuildingValidationReport, GenerationSnapshot, OccupiedFootprint,
+    capture_generation_snapshot, validate_building_plan,
 };
 pub use document::{MapDocument, PatchApplyError};
 pub use history::{

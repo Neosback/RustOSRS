@@ -45,14 +45,16 @@ The first planner deliberately uses a simple hallway-and-room layout. It exists 
 
 ## Checkpoint 1: generation snapshot + plan validation
 
-- [ ] read selected terrain/height state through semantic query boundaries
-- [ ] build a generation-side occupancy snapshot
-- [ ] track existing object footprints supplied by an adapter
-- [ ] validate selected site bounds and required height vertices
-- [ ] flood-fill/BFS reachability validator
-- [ ] doorway clearance validator
-- [ ] room-overlap and corridor-overlap validator
-- [ ] deterministic diagnostic reporting
+- [x] read selected terrain/height state through semantic query boundaries
+- [x] build a generation-side occupancy snapshot
+- [x] track existing object footprints supplied by an adapter
+- [x] validate selected site bounds and required height vertices
+- [x] BFS room reachability validator
+- [x] doorway clearance / adjacency validator
+- [x] room-overlap and corridor-overlap validator
+- [x] deterministic diagnostic reporting
+
+`GenerationSnapshot` is deliberately bounded to the requested site. Terrain and height state come through `MapQuery`; cache/catalog code adapts object definitions into `OccupiedFootprint` values before the solver sees them. This keeps procedural generation independent of cache and renderer infrastructure.
 
 ## Checkpoint 2: semantic realization
 
@@ -62,6 +64,8 @@ The first planner deliberately uses a simple hallway-and-room layout. It exists 
 - [ ] compile `BuildingPlan` into `MapPatch`
 - [ ] ensure realization uses exact `ObjectPlacement` values and normal semantic invalidation
 - [ ] exact undo/redo test for generated buildings
+
+Checkpoint 2 must also make exterior entrances and interior portals edge-oriented. Checkpoint 1 validates room-level doorway adjacency, but RuneScape realization needs an explicit north/east/south/west wall edge so opposite-facing doors on one tile cannot be conflated.
 
 ## Checkpoint 3: WFC engine
 
