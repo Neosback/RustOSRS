@@ -6,8 +6,7 @@
 //! build map edits.
 
 use crate::{
-    PatternDomain, RoofCell, RoofPatternSet, RoofSection, RoofSectionCellPlan, WfcConstraint,
-    WfcCoord,
+    RoofCell, RoofPatternSet, RoofSection, RoofSectionCellPlan, WfcConstraint, WfcCoord,
 };
 use osrs_core::coords::MapTile;
 
@@ -104,8 +103,9 @@ mod tests {
     use super::*;
     use crate::{
         BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingRoofPlan, BuildingStyle,
-        RectSite, RoofCellKind, WfcPatternId, classify_roof_section_cells, decompose_roof_sections,
-        plan_roof_coverage, plan_roof_section_shapes, plan_vertical_connectivity,
+        PatternDomain, RectSite, RoofCellKind, WfcPatternId, classify_roof_section_cells,
+        decompose_roof_sections, plan_roof_coverage, plan_roof_section_shapes,
+        plan_vertical_connectivity,
     };
     use osrs_core::coords::SourcePlane;
 
