@@ -1,10 +1,11 @@
-//! Semantic junction detection between decomposed roof sections.
+//! Semantic junction detection and classification between decomposed roof sections.
 //!
 //! This layer finds exact cardinal cell contacts between independently classified rectangular roof
-//! sections. It preserves the touching cell semantics and a deterministic section orientation for
-//! later valley/intersection planning, but does not choose junction types, assets, or map edits.
+//! sections, then classifies the local slope relationship at those contacts. It preserves a
+//! deterministic section orientation for later asset repair, but does not modify WFC solutions,
+//! choose concrete junction assets, or build map edits.
 
-use crate::{CardinalDirection, RoofCell, RoofSection, RoofSectionCellPlan};
+use crate::{CardinalDirection, RoofCell, RoofCellKind, RoofSection, RoofSectionCellPlan};
 use osrs_core::coords::MapTile;
 use std::collections::BTreeMap;
 
@@ -32,6 +33,63 @@ impl RoofSectionJunction {
     }
 
     pub fn contacts(&self) -> &[RoofSectionJunctionContact] {
+        &self.contacts
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RoofSectionJunctionContactKind {
+    /// Both touching cells descend in the same world direction, so their local slopes can continue.
+    SlopeContinuation,
+    /// Both touching cells descend toward the shared seam.
+    Valley,
+    /// Both touching cells descend away from the shared seam.
+    Crest,
+    /// At least one touching cell is itself a ridge cell.
+    RidgeIntersection,
+    /// The touching slopes disagree without forming a direct valley or crest across the seam.
+    CrossSlopeIntersection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RoofSectionJunctionKind {
+    SlopeContinuation,
+    Valley,
+    Crest,
+    RidgeIntersection,
+    CrossSlopeIntersection,
+    /// Different contacts along the same section pair require different local junction semantics.
+    Mixed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RoofSectionJunctionContactClassification {
+    pub contact: RoofSectionJunctionContact,
+    pub kind: RoofSectionJunctionContactKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoofSectionJunctionClassification {
+    first_section: RoofSection,
+    second_section: RoofSection,
+    kind: RoofSectionJunctionKind,
+    contacts: Vec<RoofSectionJunctionContactClassification>,
+}
+
+impl RoofSectionJunctionClassification {
+    pub const fn first_section(&self) -> RoofSection {
+        self.first_section
+    }
+
+    pub const fn second_section(&self) -> RoofSection {
+        self.second_section
+    }
+
+    pub const fn kind(&self) -> RoofSectionJunctionKind {
+        self.kind
+    }
+
+    pub fn contacts(&self) -> &[RoofSectionJunctionContactClassification] {
         &self.contacts
     }
 }
@@ -146,6 +204,107 @@ pub fn detect_roof_section_junctions(
     Ok(junctions)
 }
 
+/// Classify each detected section junction from the local roof-cell slope relationship.
+///
+/// The classifier is deliberately conservative. It identifies direct slope continuation, valleys,
+/// crests, ridge intersections, and other cross-slope intersections. If different contacts along a
+/// section pair require different local semantics, the whole junction is labeled `Mixed` while each
+/// contact retains its exact classification.
+pub fn classify_roof_section_junctions(
+    junctions: &[RoofSectionJunction],
+) -> Vec<RoofSectionJunctionClassification> {
+    let mut ordered = junctions.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|junction| {
+        (
+            section_sort_key(junction.first_section()),
+            section_sort_key(junction.second_section()),
+        )
+    });
+
+    ordered
+        .into_iter()
+        .map(|junction| {
+            let mut contacts = junction
+                .contacts()
+                .iter()
+                .copied()
+                .map(|contact| RoofSectionJunctionContactClassification {
+                    contact,
+                    kind: classify_contact(contact),
+                })
+                .collect::<Vec<_>>();
+            contacts.sort_by_key(|classified| contact_sort_key(&classified.contact));
+            let kind = classify_junction_kind(&contacts);
+
+            RoofSectionJunctionClassification {
+                first_section: junction.first_section(),
+                second_section: junction.second_section(),
+                kind,
+                contacts,
+            }
+        })
+        .collect()
+}
+
+fn classify_contact(contact: RoofSectionJunctionContact) -> RoofSectionJunctionContactKind {
+    if matches!(contact.first.kind, RoofCellKind::Ridge)
+        || matches!(contact.second.kind, RoofCellKind::Ridge)
+    {
+        return RoofSectionJunctionContactKind::RidgeIntersection;
+    }
+
+    let first_downhill = downhill_direction(contact.first.kind)
+        .unwrap_or_else(|| unreachable!("non-ridge roof cells always have downhill direction"));
+    let second_downhill = downhill_direction(contact.second.kind)
+        .unwrap_or_else(|| unreachable!("non-ridge roof cells always have downhill direction"));
+
+    if first_downhill == second_downhill {
+        return RoofSectionJunctionContactKind::SlopeContinuation;
+    }
+
+    let toward_second = contact.direction_from_first;
+    let toward_first = opposite(toward_second);
+    if first_downhill == toward_second && second_downhill == toward_first {
+        RoofSectionJunctionContactKind::Valley
+    } else if first_downhill == toward_first && second_downhill == toward_second {
+        RoofSectionJunctionContactKind::Crest
+    } else {
+        RoofSectionJunctionContactKind::CrossSlopeIntersection
+    }
+}
+
+fn classify_junction_kind(
+    contacts: &[RoofSectionJunctionContactClassification],
+) -> RoofSectionJunctionKind {
+    let Some(first) = contacts.first().map(|classified| classified.kind) else {
+        return RoofSectionJunctionKind::Mixed;
+    };
+    if contacts.iter().all(|classified| classified.kind == first) {
+        match first {
+            RoofSectionJunctionContactKind::SlopeContinuation => {
+                RoofSectionJunctionKind::SlopeContinuation
+            }
+            RoofSectionJunctionContactKind::Valley => RoofSectionJunctionKind::Valley,
+            RoofSectionJunctionContactKind::Crest => RoofSectionJunctionKind::Crest,
+            RoofSectionJunctionContactKind::RidgeIntersection => {
+                RoofSectionJunctionKind::RidgeIntersection
+            }
+            RoofSectionJunctionContactKind::CrossSlopeIntersection => {
+                RoofSectionJunctionKind::CrossSlopeIntersection
+            }
+        }
+    } else {
+        RoofSectionJunctionKind::Mixed
+    }
+}
+
+const fn downhill_direction(kind: RoofCellKind) -> Option<CardinalDirection> {
+    match kind {
+        RoofCellKind::Ridge => None,
+        RoofCellKind::Slope { downhill } | RoofCellKind::Eave { downhill } => Some(downhill),
+    }
+}
+
 const fn opposite(direction: CardinalDirection) -> CardinalDirection {
     match direction {
         CardinalDirection::North => CardinalDirection::South,
@@ -178,8 +337,8 @@ mod tests {
     use super::*;
     use crate::{
         BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingRoofPlan, BuildingStyle,
-        RectSite, RoofCellKind, classify_roof_section_cells, decompose_roof_sections,
-        plan_roof_coverage, plan_roof_section_shapes, plan_vertical_connectivity,
+        RectSite, classify_roof_section_cells, decompose_roof_sections, plan_roof_coverage,
+        plan_roof_section_shapes, plan_vertical_connectivity,
     };
     use osrs_core::coords::SourcePlane;
 
@@ -230,6 +389,32 @@ mod tests {
         let mut floor = rectangle(MapTile::new(3200, 3200), 5, 1);
         floor.extend(rectangle(MapTile::new(3201, 3201), 3, 3));
         section_plans_for(floor, plane(0))
+    }
+
+    fn one_contact_junction(
+        first_kind: RoofCellKind,
+        second_kind: RoofCellKind,
+    ) -> RoofSectionJunction {
+        let plans = l_shaped_plans();
+        RoofSectionJunction {
+            first_section: plans[0].section(),
+            second_section: plans[1].section(),
+            contacts: vec![RoofSectionJunctionContact {
+                first: RoofCell {
+                    tile: MapTile::new(3201, 3200),
+                    kind: first_kind,
+                },
+                second: RoofCell {
+                    tile: MapTile::new(3201, 3201),
+                    kind: second_kind,
+                },
+                direction_from_first: CardinalDirection::North,
+            }],
+        }
+    }
+
+    fn classified_kind(junction: RoofSectionJunction) -> RoofSectionJunctionKind {
+        classify_roof_section_junctions(&[junction])[0].kind()
     }
 
     #[test]
@@ -317,6 +502,124 @@ mod tests {
             Err(RoofSectionJunctionError::SectionMetadataMismatch {
                 section: second[0].section(),
             })
+        );
+    }
+
+    #[test]
+    fn actual_l_shape_classifies_as_ridge_intersection() {
+        let plans = l_shaped_plans();
+        let junctions = detect_roof_section_junctions(&plans)
+            .unwrap_or_else(|error| unreachable!("valid junctions: {error:?}"));
+        let classified = classify_roof_section_junctions(&junctions);
+
+        assert_eq!(classified.len(), 1);
+        assert_eq!(classified[0].kind(), RoofSectionJunctionKind::RidgeIntersection);
+        assert!(classified[0]
+            .contacts()
+            .iter()
+            .all(|contact| contact.kind == RoofSectionJunctionContactKind::RidgeIntersection));
+    }
+
+    #[test]
+    fn same_downhill_direction_is_slope_continuation() {
+        let kind = RoofCellKind::Slope {
+            downhill: CardinalDirection::North,
+        };
+        assert_eq!(
+            classified_kind(one_contact_junction(kind, kind)),
+            RoofSectionJunctionKind::SlopeContinuation
+        );
+    }
+
+    #[test]
+    fn slopes_descending_into_seam_form_valley() {
+        let junction = one_contact_junction(
+            RoofCellKind::Slope {
+                downhill: CardinalDirection::North,
+            },
+            RoofCellKind::Slope {
+                downhill: CardinalDirection::South,
+            },
+        );
+        assert_eq!(classified_kind(junction), RoofSectionJunctionKind::Valley);
+    }
+
+    #[test]
+    fn slopes_descending_away_from_seam_form_crest() {
+        let junction = one_contact_junction(
+            RoofCellKind::Slope {
+                downhill: CardinalDirection::South,
+            },
+            RoofCellKind::Slope {
+                downhill: CardinalDirection::North,
+            },
+        );
+        assert_eq!(classified_kind(junction), RoofSectionJunctionKind::Crest);
+    }
+
+    #[test]
+    fn perpendicular_conflicting_slopes_form_cross_slope_intersection() {
+        let junction = one_contact_junction(
+            RoofCellKind::Slope {
+                downhill: CardinalDirection::East,
+            },
+            RoofCellKind::Slope {
+                downhill: CardinalDirection::West,
+            },
+        );
+        assert_eq!(
+            classified_kind(junction),
+            RoofSectionJunctionKind::CrossSlopeIntersection
+        );
+    }
+
+    #[test]
+    fn mixed_contact_semantics_do_not_force_one_junction_type() {
+        let plans = l_shaped_plans();
+        let junction = RoofSectionJunction {
+            first_section: plans[0].section(),
+            second_section: plans[1].section(),
+            contacts: vec![
+                RoofSectionJunctionContact {
+                    first: RoofCell {
+                        tile: MapTile::new(3201, 3200),
+                        kind: RoofCellKind::Ridge,
+                    },
+                    second: RoofCell {
+                        tile: MapTile::new(3201, 3201),
+                        kind: RoofCellKind::Slope {
+                            downhill: CardinalDirection::South,
+                        },
+                    },
+                    direction_from_first: CardinalDirection::North,
+                },
+                RoofSectionJunctionContact {
+                    first: RoofCell {
+                        tile: MapTile::new(3202, 3200),
+                        kind: RoofCellKind::Slope {
+                            downhill: CardinalDirection::North,
+                        },
+                    },
+                    second: RoofCell {
+                        tile: MapTile::new(3202, 3201),
+                        kind: RoofCellKind::Slope {
+                            downhill: CardinalDirection::South,
+                        },
+                    },
+                    direction_from_first: CardinalDirection::North,
+                },
+            ],
+        };
+        let classified = classify_roof_section_junctions(&[junction]);
+
+        assert_eq!(classified[0].kind(), RoofSectionJunctionKind::Mixed);
+        assert_eq!(
+            classified[0].contacts()[0].kind,
+            RoofSectionJunctionContactKind::RidgeIntersection
+        );
+        assert_eq!(
+            classified[0].contacts()[1].kind,
+            RoofSectionJunctionContactKind::Valley
         );
     }
 }
