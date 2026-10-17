@@ -71,6 +71,9 @@ jobs:
       - name: Run roof procgen tests
         run: cargo test --locked -p osrs-edit building_roof
 
+      - name: Run end-to-end building procgen tests
+        run: cargo test --locked -p osrs-edit building_generation
+
   tests:
     name: Full Test Suite
     if: github.event_name == 'workflow_dispatch'
