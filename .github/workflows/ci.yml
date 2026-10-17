@@ -47,6 +47,27 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
+  procgen-vertical-tests:
+    name: Targeted Procgen Vertical Tests
+    needs: fast-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache: false
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "workspace-fast-ci"
+
+      - name: Run vertical procgen tests
+        run: cargo test --locked -p osrs-edit building_vertical
+
   tests:
     name: Full Test Suite
     if: github.event_name == 'workflow_dispatch'
