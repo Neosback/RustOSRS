@@ -14,6 +14,7 @@ mod building_refinement_policy;
 mod building_roof;
 mod building_roof_generation;
 mod building_roof_realization;
+mod building_roof_section_cells;
 mod building_roof_sections;
 mod building_roof_solver;
 mod building_roof_wfc;
@@ -71,6 +72,9 @@ pub use building_roof_realization::{
     RoofAsset, RoofPalette, RoofPaletteEntry, RoofPaletteError, RoofPatchError,
     RoofPlacementDescription, RoofPlacementDescriptionError, build_roof_patch,
     describe_roof_placements,
+};
+pub use building_roof_section_cells::{
+    RoofSectionCellError, RoofSectionCellPlan, classify_roof_section_cells,
 };
 pub use building_roof_sections::{
     RoofSection, RoofSectionError, RoofSectionShape, decompose_roof_sections,
