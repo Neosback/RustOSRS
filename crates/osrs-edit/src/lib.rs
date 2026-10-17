@@ -7,6 +7,7 @@
 
 mod building;
 mod building_detail;
+mod building_generation;
 mod building_program;
 mod building_realization;
 mod building_refinement;
@@ -50,6 +51,10 @@ pub use building_detail::{
     BuildingDetailError, BuildingDetailPalette, CornerAsset, CornerTurn,
     DetailedBuildingArchitecture, DetailedBuildingElement, WeightedEdgeAsset,
     build_detailed_wfc_building_variation_patch, detail_refined_building_architecture,
+};
+pub use building_generation::{
+    BuildingGenerationConfig, BuildingGenerationError, generate_building_patch,
+    generate_building_plan_patch,
 };
 pub use building_program::{
     BspCorridor, BspLayout, BspLayoutError, BspRoomPlacement, BuildingProgram, BuildingRoomRole,
