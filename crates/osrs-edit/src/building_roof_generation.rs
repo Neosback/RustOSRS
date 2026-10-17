@@ -43,9 +43,9 @@ pub fn generate_roof_patch(
 mod tests {
     use super::*;
     use crate::{
-        BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingStyle, LocKind, MapDocument,
-        MapOp, ObjectOrientation, PatternDomain, RectSite, RoofAsset, RoofPaletteEntry,
-        WfcPatternId, WfcPatternSpec, WfcSocket, plan_vertical_connectivity,
+        BuildingArchetype, BuildingConstraints, BuildingRequest, BuildingStyle, LocKind,
+        MapDocument, MapOp, ObjectOrientation, PatternDomain, RectSite, RoofAsset,
+        RoofPaletteEntry, WfcPatternId, WfcPatternSpec, WfcSocket, plan_vertical_connectivity,
     };
     use osrs_core::coords::{MapTile, SourcePlane};
     use osrs_core::ids::ObjectId;
@@ -78,11 +78,8 @@ mod tests {
     }
 
     fn vertical() -> BuildingVerticalPlan {
-        plan_vertical_connectivity(
-            request(),
-            &[rectangle(MapTile::new(3200, 3200), 5, 5)],
-        )
-        .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"))
+        plan_vertical_connectivity(request(), &[rectangle(MapTile::new(3200, 3200), 5, 5)])
+            .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"))
     }
 
     fn pattern(value: u8) -> WfcPatternId {
@@ -110,14 +107,17 @@ mod tests {
     }
 
     fn palette() -> RoofPalette {
-        RoofPalette::new((0_u8..10).map(|value| RoofPaletteEntry {
-            pattern: pattern(value),
-            asset: RoofAsset {
-                object_id: ObjectId::new(20_000 + u32::from(value)),
-                kind: LocKind::new(10).unwrap_or_else(|| unreachable!("test loc kind is valid")),
-                orientation: ObjectOrientation::new(value % 4)
-                    .unwrap_or_else(|| unreachable!("test orientation is valid")),
-            },
+        RoofPalette::new((0_u8..10).map(|value| {
+            RoofPaletteEntry {
+                pattern: pattern(value),
+                asset: RoofAsset {
+                    object_id: ObjectId::new(20_000 + u32::from(value)),
+                    kind: LocKind::new(10)
+                        .unwrap_or_else(|| unreachable!("test loc kind is valid")),
+                    orientation: ObjectOrientation::new(value % 4)
+                        .unwrap_or_else(|| unreachable!("test orientation is valid")),
+                },
+            }
         }))
         .unwrap_or_else(|error| unreachable!("valid roof palette: {error:?}"))
     }
