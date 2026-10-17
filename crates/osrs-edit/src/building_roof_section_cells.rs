@@ -91,13 +91,15 @@ pub fn classify_roof_section_cells(
         );
 
         for y in 0..bounds.height() {
-            let tile_y = origin.y.checked_add(i32::from(y)).ok_or(
-                RoofSectionCellError::CoordinateOverflow { section, x: 0, y },
-            )?;
+            let tile_y = origin
+                .y
+                .checked_add(i32::from(y))
+                .ok_or(RoofSectionCellError::CoordinateOverflow { section, x: 0, y })?;
             for x in 0..bounds.width() {
-                let tile_x = origin.x.checked_add(i32::from(x)).ok_or(
-                    RoofSectionCellError::CoordinateOverflow { section, x, y },
-                )?;
+                let tile_x = origin
+                    .x
+                    .checked_add(i32::from(x))
+                    .ok_or(RoofSectionCellError::CoordinateOverflow { section, x, y })?;
                 let tile = MapTile::new(tile_x, tile_y);
                 if !roof_tiles.contains(&tile) {
                     return Err(RoofSectionCellError::SectionTileOutsideRoof { section, tile });
