@@ -5,8 +5,8 @@
 //! those pattern IDs into RuneScape object IDs or map edits.
 
 use crate::{
-    BuildingRoofPlan, RectSite, RoofConstraintError, RoofPatternSet, RoofShape, WfcCatalog, WfcCoord,
-    WfcPatternId, WfcSolveError, roof_wfc_constraints, solve_wfc,
+    BuildingRoofPlan, RectSite, RoofConstraintError, RoofPatternSet, RoofShape, WfcCatalog,
+    WfcCoord, WfcPatternId, WfcSolveError, roof_wfc_constraints, solve_wfc,
 };
 use osrs_core::coords::MapTile;
 
