@@ -6,6 +6,7 @@
 //! types defined here.
 
 mod building;
+mod building_program;
 mod building_realization;
 mod building_validation;
 mod building_wfc;
@@ -25,6 +26,10 @@ pub use building::{
     BuildingArchetype, BuildingConstraints, BuildingPlan, BuildingPlanError, BuildingRequest,
     BuildingStyle, OccupancyCell, OccupancyGrid, RectSite, RoomConnection, RoomId, RoomKind,
     RoomRect, RoomSpec, plan_basic_house,
+};
+pub use building_program::{
+    BspCorridor, BspLayout, BspLayoutError, BspRoomPlacement, BuildingProgram, BuildingRoomRole,
+    ProgramConnection, ProgramRoom, building_program, pack_building_program,
 };
 pub use building_realization::{
     BuildingArchitecture, BuildingArchitectureError, BuildingPalette, BuildingRealizationError,

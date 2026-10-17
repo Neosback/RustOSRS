@@ -90,13 +90,17 @@ WFC is responsible for local architectural compatibility. It is not responsible 
 
 ## Checkpoint 4: hybrid building solver
 
-- [ ] room/program graph grammar by archetype
-- [ ] BSP / constrained rectangular room packing
-- [ ] corridor routing
-- [ ] exact entrance count and placement constraints
+- [x] room/program graph grammar by archetype
+- [x] deterministic BSP / constrained rectangular room packing
+- [x] reserved connected corridor bands during recursive partitioning
+- [ ] convert BSP rooms/corridor bands into final semantic building topology
+- [ ] route program-preferred connections through the corridor network
+- [ ] exact entrance count and placement constraints for BSP layouts
 - [ ] WFC refinement of walls/corners/windows/door variants
 - [ ] local repair followed by backtracking
 - [ ] seeded reroll without changing request geometry
+
+The first CP4 slice defines semantic room programs for House, Shop, Tavern, Bank, Church, Warehouse, Castle, and Dungeon. Each program is a connected room graph with room-size and area-weight hints. The deterministic BSP packer reserves a one-tile corridor band at every split and alternates split axes so those bands form one connected macro circulation network without overlapping the room leaves.
 
 ## Checkpoint 5: multi-floor + roofs
 
