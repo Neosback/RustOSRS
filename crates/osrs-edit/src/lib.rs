@@ -8,6 +8,7 @@
 mod building;
 mod building_program;
 mod building_realization;
+mod building_routing;
 mod building_topology;
 mod building_validation;
 mod building_wfc;
@@ -37,6 +38,7 @@ pub use building_realization::{
     CardinalDirection, EdgeAsset, EdgeFeature, FloorMaterial, SemanticEdge, build_building_patch,
     derive_building_architecture,
 };
+pub use building_routing::{ProgramRoute, ProgramRoutingError, route_program_connections};
 pub use building_topology::{
     BspBuildingPlan, BspTopologyError, ProgramRoomRole, build_bsp_building_plan,
 };

@@ -93,14 +93,14 @@ WFC is responsible for local architectural compatibility. It is not responsible 
 - [x] room/program graph grammar by archetype
 - [x] deterministic BSP / constrained rectangular room packing
 - [x] reserved connected corridor bands during recursive partitioning
-- [ ] convert BSP rooms/corridor bands into final semantic building topology
-- [ ] route program-preferred connections through the corridor network
-- [ ] exact entrance count and placement constraints for BSP layouts
+- [x] convert BSP rooms/corridor bands into final semantic building topology
+- [x] route program-preferred connections through the corridor network
+- [x] exact entrance count and placement constraints for BSP layouts
 - [ ] WFC refinement of walls/corners/windows/door variants
 - [ ] local repair followed by backtracking
 - [ ] seeded reroll without changing request geometry
 
-The first CP4 slice defines semantic room programs for House, Shop, Tavern, Bank, Church, Warehouse, Castle, and Dungeon. Each program is a connected room graph with room-size and area-weight hints. The deterministic BSP packer reserves a one-tile corridor band at every split and alternates split axes so those bands form one connected macro circulation network without overlapping the room leaves.
+The CP4 macro solver now separates four concerns. Archetype programs describe required spaces and preferred relationships. BSP packs those spaces without overlap and reserves one-tile circulation bands. Topology conversion turns room and corridor rectangles into a validation-clean `BuildingPlan` with exactly one deterministic exterior entrance, Door portals from semantic rooms into circulation, and Open portals between corridor bands. Finally, program routing computes a stable shortest corridor path for every preferred room relationship, preserving global circulation intent before any local WFC refinement is allowed to run.
 
 ## Checkpoint 5: multi-floor + roofs
 
