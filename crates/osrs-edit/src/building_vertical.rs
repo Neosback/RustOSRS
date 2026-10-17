@@ -139,12 +139,8 @@ pub struct StairPalette {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StairRealizationError {
-    MissingFloor {
-        floor: BuildingFloorIndex,
-    },
-    DuplicateObjectPlacement {
-        placement: ObjectPlacement,
-    },
+    MissingFloor { floor: BuildingFloorIndex },
+    DuplicateObjectPlacement { placement: ObjectPlacement },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -156,16 +152,10 @@ pub struct StairPatternSet {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StairConstraintError {
-    MissingFloor {
-        floor: BuildingFloorIndex,
-    },
+    MissingFloor { floor: BuildingFloorIndex },
     EmptyApproachDomain,
-    InvalidAnchorTile {
-        tile: MapTile,
-    },
-    InvalidApproachTile {
-        tile: MapTile,
-    },
+    InvalidAnchorTile { tile: MapTile },
+    InvalidApproachTile { tile: MapTile },
 }
 
 /// Validate aligned solved floor surfaces and choose one deterministic stair anchor per transition.
@@ -214,8 +204,7 @@ pub fn plan_vertical_connectivity(
 
     for upper_index in 1..floor_sets.len() {
         let floor = BuildingFloorIndex::new(
-            u8::try_from(upper_index)
-                .unwrap_or_else(|_| unreachable!("request floor count is u8")),
+            u8::try_from(upper_index).unwrap_or_else(|_| unreachable!("request floor count is u8")),
         );
         for &tile in &floor_sets[upper_index] {
             if !floor_sets[upper_index - 1].contains(&tile) {
@@ -228,8 +217,7 @@ pub fn plan_vertical_connectivity(
     let mut stairs = Vec::with_capacity(floor_sets.len().saturating_sub(1));
     for lower_index in 0..floor_sets.len().saturating_sub(1) {
         let lower_floor = BuildingFloorIndex::new(
-            u8::try_from(lower_index)
-                .unwrap_or_else(|_| unreachable!("request floor count is u8")),
+            u8::try_from(lower_index).unwrap_or_else(|_| unreachable!("request floor count is u8")),
         );
         let upper_floor = BuildingFloorIndex::new(
             lower_floor
@@ -483,16 +471,11 @@ mod tests {
     fn same_stack_produces_identical_stair_anchors() {
         let request = request(0, 3);
         let floor = rectangle(MapTile::new(3201, 3201), 5, 5);
-        let first = plan_vertical_connectivity(
-            request,
-            &[floor.clone(), floor.clone(), floor.clone()],
-        )
-        .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
-        let second = plan_vertical_connectivity(
-            request,
-            &[floor.clone(), floor.clone(), floor],
-        )
-        .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
+        let first =
+            plan_vertical_connectivity(request, &[floor.clone(), floor.clone(), floor.clone()])
+                .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
+        let second = plan_vertical_connectivity(request, &[floor.clone(), floor.clone(), floor])
+            .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
 
         assert_eq!(first, second);
         assert_eq!(first.stairs().len(), 2);
@@ -601,11 +584,8 @@ mod tests {
     fn stair_constraints_pin_vertical_cells_and_preserve_walkable_approaches() {
         let request = request(0, 3);
         let floor = rectangle(MapTile::new(3201, 3201), 5, 5);
-        let vertical = plan_vertical_connectivity(
-            request,
-            &[floor.clone(), floor.clone(), floor],
-        )
-        .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
+        let vertical = plan_vertical_connectivity(request, &[floor.clone(), floor.clone(), floor])
+            .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
         let approach_allowed = PatternDomain::from_patterns([pattern(2), pattern(3)]);
         let patterns = StairPatternSet {
             up: pattern(5),
