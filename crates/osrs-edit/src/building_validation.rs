@@ -4,7 +4,10 @@
 //! renderer, or editor state while solving. Object footprints are supplied by an adapter so this
 //! layer remains independent of cache object definitions and catalog infrastructure.
 
-use crate::building::{BuildingPlan, BuildingRequest, OccupancyCell, OccupancyGrid, RectSite, RoomId, RoomRect, RoomSpec};
+use crate::building::{
+    BuildingPlan, BuildingRequest, OccupancyCell, OccupancyGrid, RectSite, RoomId, RoomRect,
+    RoomSpec,
+};
 use crate::{HeightVertexCoord, MapPosition, MapQuery, TerrainTile};
 use osrs_core::coords::{MapTile, SourcePlane};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -18,12 +21,7 @@ pub struct OccupiedFootprint {
 }
 
 impl OccupiedFootprint {
-    pub fn new(
-        origin: MapTile,
-        plane: SourcePlane,
-        width: u16,
-        height: u16,
-    ) -> Option<Self> {
+    pub fn new(origin: MapTile, plane: SourcePlane, width: u16, height: u16) -> Option<Self> {
         if width == 0 || height == 0 {
             return None;
         }
@@ -480,7 +478,9 @@ fn offset_tile(origin: MapTile, local_x: u32, local_y: u32) -> MapTile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{BuildingArchetype, BuildingConstraints, BuildingStyle, MapDocument, plan_basic_house};
+    use crate::{
+        BuildingArchetype, BuildingConstraints, BuildingStyle, MapDocument, plan_basic_house,
+    };
     use osrs_core::ids::FloorUnderlayId;
 
     fn plane() -> SourcePlane {
@@ -528,11 +528,8 @@ mod tests {
             ..TerrainTile::default()
         };
         let terrain_position = MapPosition::new(request.site.origin(), request.base_plane);
-        let document = MapDocument::from_parts(
-            [(terrain_position, terrain)],
-            heights_for(request),
-            [],
-        );
+        let document =
+            MapDocument::from_parts([(terrain_position, terrain)], heights_for(request), []);
         let blocked_origin = offset_tile(request.site.origin(), 2, 3);
         let footprint = OccupiedFootprint::new(blocked_origin, request.base_plane, 2, 1)
             .unwrap_or_else(|| unreachable!("test footprint is valid"));
@@ -573,10 +570,8 @@ mod tests {
     #[test]
     fn missing_height_is_reported_with_exact_vertex() {
         let request = request();
-        let missing = HeightVertexCoord::new(
-            offset_tile(request.site.origin(), 4, 5),
-            request.base_plane,
-        );
+        let missing =
+            HeightVertexCoord::new(offset_tile(request.site.origin(), 4, 5), request.base_plane);
         let heights = heights_for(request)
             .into_iter()
             .filter(|(coord, _)| *coord != missing)
@@ -587,9 +582,11 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("valid test plan: {error:?}"));
         let report = validate_building_plan(&plan, &snapshot);
 
-        assert!(report
-            .diagnostics()
-            .contains(&BuildingDiagnostic::MissingHeight { coord: missing }));
+        assert!(
+            report
+                .diagnostics()
+                .contains(&BuildingDiagnostic::MissingHeight { coord: missing })
+        );
     }
 
     #[test]
@@ -634,9 +631,11 @@ mod tests {
         });
         let report = validate_building_plan(&plan, &snapshot);
 
-        assert!(report
-            .diagnostics()
-            .contains(&BuildingDiagnostic::UnreachableRoom { room: disconnected }));
+        assert!(
+            report
+                .diagnostics()
+                .contains(&BuildingDiagnostic::UnreachableRoom { room: disconnected })
+        );
     }
 
     #[test]
@@ -651,10 +650,11 @@ mod tests {
         plan.rooms[1].rect = plan.rooms[0].rect;
         let report = validate_building_plan(&plan, &snapshot);
 
-        assert!(report.diagnostics().contains(&BuildingDiagnostic::RoomOverlap {
-            first,
-            second,
-        }));
+        assert!(
+            report
+                .diagnostics()
+                .contains(&BuildingDiagnostic::RoomOverlap { first, second })
+        );
     }
 
     #[test]
@@ -676,12 +676,14 @@ mod tests {
         connection.doorway = request.site.origin();
         let report = validate_building_plan(&plan, &snapshot);
 
-        assert!(report
-            .diagnostics()
-            .contains(&BuildingDiagnostic::DoorwayNotBetweenRooms {
-                from,
-                to,
-                doorway: request.site.origin(),
-            }));
+        assert!(
+            report
+                .diagnostics()
+                .contains(&BuildingDiagnostic::DoorwayNotBetweenRooms {
+                    from,
+                    to,
+                    doorway: request.site.origin(),
+                })
+        );
     }
 }
