@@ -324,7 +324,7 @@ mod tests {
     fn complex_generation_reports_missing_junction_profile() {
         let empty = RoofJunctionPatternPalette::new([])
             .unwrap_or_else(|error| unreachable!("empty junction palette is valid: {error:?}"));
-        let error = generate_roof_patch(
+        let error = match generate_roof_patch(
             &complex_vertical(),
             &catalog(),
             patterns(),
@@ -332,8 +332,10 @@ mod tests {
             &empty,
             91,
             32,
-        )
-        .expect_err("complex roof needs junction profile bindings");
+        ) {
+            Ok(_) => unreachable!("complex roof needs junction profile bindings"),
+            Err(error) => error,
+        };
 
         assert!(matches!(
             error,
