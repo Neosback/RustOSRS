@@ -58,14 +58,18 @@ The first planner deliberately uses a simple hallway-and-room layout. It exists 
 
 ## Checkpoint 2: semantic realization
 
-- [ ] semantic edge model for exterior wall / interior wall / door / window / open
-- [ ] floor-material intent
-- [ ] semantic object-role palette
-- [ ] compile `BuildingPlan` into `MapPatch`
-- [ ] ensure realization uses exact `ObjectPlacement` values and normal semantic invalidation
-- [ ] exact undo/redo test for generated buildings
+- [x] semantic edge model for exterior wall / interior wall / door / window / open
+- [x] north/east/south/west edge identity
+- [x] physically adjacent seeded exterior entrance
+- [x] floor-material intent
+- [x] semantic object-role palette
+- [x] compile `BuildingPlan` into `MapPatch`
+- [x] ensure realization uses exact `ObjectPlacement` values and normal semantic invalidation
+- [x] exact undo/redo test for generated buildings
 
-Checkpoint 2 must also make exterior entrances and interior portals edge-oriented. Checkpoint 1 validates room-level doorway adjacency, but RuneScape realization needs an explicit north/east/south/west wall edge so opposite-facing doors on one tile cannot be conflated.
+Building realization is intentionally palette-driven. The semantic architecture knows that an edge is an exterior wall, interior wall, door, window, or opening, but does not know cache object IDs. The palette supplies exact object IDs, location kinds, and orientation mappings for each cardinal direction.
+
+The single-floor house planner now puts the exterior entrance directly off the end of its hallway. This gives realization one unambiguous shell edge for the exterior door instead of treating a distant boundary tile and hallway tile as if they were one portal.
 
 ## Checkpoint 3: WFC engine
 
