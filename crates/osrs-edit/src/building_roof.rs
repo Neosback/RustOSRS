@@ -190,9 +190,6 @@ mod tests {
         let vertical = plan_vertical_connectivity(request(1), &[floor])
             .unwrap_or_else(|error| unreachable!("valid vertical plan: {error:?}"));
 
-        assert_eq!(
-            plan_roof_coverage(&vertical),
-            plan_roof_coverage(&vertical)
-        );
+        assert_eq!(plan_roof_coverage(&vertical), plan_roof_coverage(&vertical));
     }
 }
