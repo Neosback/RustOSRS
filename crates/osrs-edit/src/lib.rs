@@ -81,7 +81,9 @@ pub use building_roof_section_cells::{
     RoofSectionCellError, RoofSectionCellPlan, classify_roof_section_cells,
 };
 pub use building_roof_section_junctions::{
-    RoofSectionJunction, RoofSectionJunctionContact, RoofSectionJunctionError,
+    RoofSectionJunction, RoofSectionJunctionClassification, RoofSectionJunctionContact,
+    RoofSectionJunctionContactClassification, RoofSectionJunctionContactKind,
+    RoofSectionJunctionError, RoofSectionJunctionKind, classify_roof_section_junctions,
     detect_roof_section_junctions,
 };
 pub use building_roof_section_realization::{
