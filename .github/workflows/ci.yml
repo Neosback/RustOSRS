@@ -47,8 +47,8 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
-  procgen-vertical-tests:
-    name: Targeted Procgen Vertical Tests
+  procgen-semantic-tests:
+    name: Targeted Procgen Semantic Tests
     needs: fast-gate
     runs-on: ubuntu-latest
     steps:
@@ -67,6 +67,9 @@ jobs:
 
       - name: Run vertical procgen tests
         run: cargo test --locked -p osrs-edit building_vertical
+
+      - name: Run roof procgen tests
+        run: cargo test --locked -p osrs-edit building_roof
 
   tests:
     name: Full Test Suite

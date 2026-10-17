@@ -11,6 +11,7 @@ mod building_program;
 mod building_realization;
 mod building_refinement;
 mod building_refinement_policy;
+mod building_roof;
 mod building_routing;
 mod building_topology;
 mod building_validation;
@@ -55,6 +56,7 @@ pub use building_refinement_policy::{
     FacadeRefinementPolicy, build_wfc_building_variation_patch, facade_variation_seed,
     refine_exterior_walls_for_variation,
 };
+pub use building_roof::{BuildingRoofError, BuildingRoofPlan, RoofEdge, plan_roof_coverage};
 pub use building_routing::{ProgramRoute, ProgramRoutingError, route_program_connections};
 pub use building_topology::{
     BspBuildingPlan, BspTopologyError, ProgramRoomRole, build_bsp_building_plan,
