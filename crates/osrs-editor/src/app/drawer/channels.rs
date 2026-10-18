@@ -4,9 +4,19 @@ use super::*;
 
 impl EditorApp {
     pub(super) fn shape_picker(&mut self, ui: &mut egui::Ui) {
-        // Fixed, contrasting colours: the thumbnails show geometry, not the chosen floor.
-        let under = Color32::from_rgb(58, 98, 66);
-        let over = OverlayFill::Color(Color32::from_rgb(214, 196, 150));
+        let ctx = ui.ctx().clone();
+        let under = match self.settings.prefs.brush.underlay.fill {
+            Fill::Set(id) if id > 0 => self.underlay_color(id),
+            _ => None,
+        }
+        .unwrap_or(Color32::from_rgb(58, 98, 66));
+        let over = match self.settings.prefs.brush.overlay.fill {
+            Fill::Set(id) if id > 0 => self
+                .overlay_swatch(id)
+                .map(|swatch| self.overlay_fill(&ctx, &swatch)),
+            _ => None,
+        }
+        .unwrap_or(OverlayFill::Color(Color32::from_rgb(214, 196, 150)));
         let (mut shape, mut rotation) = (
             self.settings.prefs.brush.shape.shape,
             self.settings.prefs.brush.shape.rotation,

@@ -242,6 +242,19 @@ impl EditorApp {
             can_lay: self.interaction.spline_can_lay(),
         };
         let mut spline_settings = self.settings.prefs.spline.clone();
+        let mut paint_companion = spline_settings.paint_companion_underlay;
+        let companion_hint = match self.settings.prefs.brush.underlay {
+            crate::paint::IdChannel {
+                armed: true,
+                fill: Fill::Set(id),
+            } if id > 0 => Some(id),
+            _ => match self.settings.prefs.brush.overlay.fill {
+                Fill::Set(id) => self
+                    .overlay_swatch(id)
+                    .and_then(|s| s.top_companion_underlay()),
+                Fill::Clear => None,
+            },
+        };
         let actions = sections::show(ui, sections, &mut spline_settings, &view, |ui| {
             let overlay = match self.settings.prefs.brush.overlay.fill {
                 Fill::Set(id) => self
@@ -275,7 +288,15 @@ impl EditorApp {
                 &mut self.settings.prefs.brush.overlay.armed,
                 "Paint overlay",
             );
+            let companion_label = match companion_hint {
+                Some(id) => format!("Shoulder underlay (#{id})"),
+                None => "Shoulder underlay".to_owned(),
+            };
+            ui.checkbox(&mut paint_companion, companion_label).on_hover_text(
+                "Also lay the overlay's top companion underlay (or armed brush underlay) underneath the path so shaped edge tiles blend into a natural road shoulder",
+            );
         });
+        spline_settings.paint_companion_underlay = paint_companion;
         self.settings.prefs.spline = spline_settings;
         for action in actions {
             match action {

@@ -11,6 +11,7 @@ pub mod dynamic_model;
 pub mod dynamic_placement;
 pub mod normal_finalization;
 pub mod object_semantics;
+pub mod path_catalog;
 pub mod pending_replacement;
 pub mod placement;
 pub mod placement_height;

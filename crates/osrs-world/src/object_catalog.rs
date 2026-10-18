@@ -1,7 +1,8 @@
 //! A searchable list of the objects an editor can place, read from the cache's object configs.
 //!
-//! Only objects with a name and at least one model are listed: unnamed or model-less definitions
-//! (morph shells, placeholders) cannot be meaningfully placed from a palette.
+//! Every definition with at least one model is listed, including unnamed (`"null"`) architectural
+//! walls, roofs, and trims so the editor and procedural tools can inspect and place them by ID,
+//! gameval symbol, slot, category, or mapScene.
 
 use crate::WorldError;
 use osrs_cache::{
@@ -19,10 +20,17 @@ pub const SCENERY_LOC_TYPE: u8 = 10;
 pub struct ObjectEntry {
     pub id: u32,
     pub name: String,
+    /// Readable gameval symbol (`castle door l`) when populated from an installation's `NameBook`.
+    pub symbol: Option<String>,
     pub size_x: u16,
     pub size_y: u16,
     /// Loc types the definition has models for, ascending (untyped models count as scenery).
     pub loc_types: Vec<u8>,
+    pub category: Option<u32>,
+    pub map_scene: Option<u32>,
+    pub map_icon: Option<u32>,
+    pub support_items: Option<u8>,
+    pub blocking_mask: u8,
 }
 
 impl ObjectEntry {
@@ -41,6 +49,32 @@ impl ObjectEntry {
             (self.size_y, self.size_x)
         } else {
             (self.size_x, self.size_y)
+        }
+    }
+
+    /// Human-readable label for UI lists: cache name, else `[symbol]`, else `Object <id>`.
+    pub fn display_name(&self) -> String {
+        if !self.name.is_empty() {
+            self.name.clone()
+        } else if let Some(symbol) = &self.symbol {
+            format!("[{symbol}]")
+        } else {
+            format!("Object {}", self.id)
+        }
+    }
+
+    /// Whether any model of this definition occupies the named slot family.
+    pub fn matches_slot(&self, slot: &str) -> bool {
+        match slot {
+            "wall" => self.loc_types.contains(&0),
+            "corner" | "wallcorner" => self.loc_types.contains(&2),
+            "pillar" => self.loc_types.iter().any(|&t| t == 1 || t == 3),
+            "decor" | "walldecor" => self.loc_types.iter().any(|&t| (4..=8).contains(&t)),
+            "diagonal" => self.loc_types.contains(&9),
+            "prop" | "scenery" => self.loc_types.iter().any(|&t| t == 10 || t == 11),
+            "roof" => self.loc_types.iter().any(|&t| (12..=21).contains(&t)),
+            "floor" | "floordecor" => self.loc_types.contains(&22),
+            _ => false,
         }
     }
 }
@@ -64,6 +98,10 @@ impl ObjectCatalog {
         self.entries.is_empty()
     }
 
+    pub fn entries(&self) -> &[ObjectEntry] {
+        &self.entries
+    }
+
     pub fn get(&self, id: u32) -> Option<&ObjectEntry> {
         self.entries
             .binary_search_by_key(&id, |entry| entry.id)
@@ -71,9 +109,19 @@ impl ObjectCatalog {
             .map(|index| &self.entries[index])
     }
 
+    /// Attach readable gameval symbols (`loc.*`) to matching entries in place.
+    pub fn apply_symbols(&mut self, symbols: impl Fn(u32) -> Option<String>) {
+        for entry in &mut self.entries {
+            if let Some(symbol) = symbols(entry.id).filter(|s| !s.is_empty()) {
+                entry.symbol = Some(symbol);
+            }
+        }
+    }
+
     /// Up to `limit` entries matching `query`: an exact id first, then names starting with the
-    /// query, then names containing it (case-insensitive, every word must match). An empty query
-    /// matches nothing.
+    /// query, then names containing it, then symbol/filter matches (case-insensitive, every word
+    /// and filter token must match). Supports `category:<id>`, `scene:<id>`, `icon:<id>`, and
+    /// `slot:<wall|corner|pillar|decor|diagonal|prop|roof|floor>`. An empty query matches nothing.
     pub fn search(&self, query: &str, limit: usize) -> Vec<&ObjectEntry> {
         let query = query.trim().to_lowercase();
         if query.is_empty() || limit == 0 {
@@ -83,30 +131,101 @@ impl ObjectCatalog {
         if let Some(entry) = query.parse::<u32>().ok().and_then(|id| self.get(id)) {
             found.push(entry);
         }
-        let words: Vec<&str> = query.split_whitespace().collect();
+
+        let mut text_words: Vec<&str> = Vec::new();
+        let mut req_category: Option<u32> = None;
+        let mut req_scene: Option<u32> = None;
+        let mut req_icon: Option<u32> = None;
+        let mut req_slot: Option<&str> = None;
+
+        for token in query.split_whitespace() {
+            if let Some(val) = token
+                .strip_prefix("category:")
+                .or_else(|| token.strip_prefix("cat:"))
+            {
+                let Ok(id) = val.parse::<u32>() else {
+                    return found;
+                };
+                req_category = Some(id);
+            } else if let Some(val) = token.strip_prefix("scene:") {
+                let Ok(id) = val.parse::<u32>() else {
+                    return found;
+                };
+                req_scene = Some(id);
+            } else if let Some(val) = token.strip_prefix("icon:") {
+                let Ok(id) = val.parse::<u32>() else {
+                    return found;
+                };
+                req_icon = Some(id);
+            } else if let Some(val) = token.strip_prefix("slot:") {
+                req_slot = Some(val);
+            } else {
+                text_words.push(token);
+            }
+        }
+
+        let text_query = text_words.join(" ");
         let mut prefix = Vec::new();
         let mut contains = Vec::new();
+        let mut fallback = Vec::new();
+
         for entry in &self.entries {
-            let name = entry.name.to_lowercase();
-            if !words.iter().all(|word| name.contains(word))
-                || found.iter().any(|f| f.id == entry.id)
+            if found.iter().any(|f| f.id == entry.id) {
+                continue;
+            }
+            if let Some(cat) = req_category
+                && entry.category != Some(cat)
             {
                 continue;
             }
-            if name.starts_with(&query) {
-                prefix.push(entry);
-            } else {
-                contains.push(entry);
+            if let Some(scene) = req_scene
+                && entry.map_scene != Some(scene)
+            {
+                continue;
+            }
+            if let Some(icon) = req_icon
+                && entry.map_icon != Some(icon)
+            {
+                continue;
+            }
+            if let Some(slot) = req_slot
+                && !entry.matches_slot(slot)
+            {
+                continue;
+            }
+
+            if text_words.is_empty() {
+                if !entry.name.is_empty() {
+                    contains.push(entry);
+                } else {
+                    fallback.push(entry);
+                }
+                continue;
+            }
+
+            let name = entry.name.to_lowercase();
+            if !name.is_empty() && text_words.iter().all(|word| name.contains(word)) {
+                if name.starts_with(&text_query) {
+                    prefix.push(entry);
+                } else {
+                    contains.push(entry);
+                }
+            } else if let Some(symbol) = &entry.symbol {
+                let sym = symbol.to_lowercase();
+                if text_words.iter().all(|word| sym.contains(word)) {
+                    fallback.push(entry);
+                }
             }
         }
         found.extend(prefix);
         found.extend(contains);
+        found.extend(fallback);
         found.truncate(limit);
         found
     }
 }
 
-/// Read every placeable object from the cache.
+/// Read every model-bearing object from the cache.
 pub fn load_object_catalog(
     cache: impl Into<osrs_cache::source::CacheSource>,
 ) -> Result<ObjectCatalog, WorldError> {
@@ -120,12 +239,10 @@ pub fn load_object_catalog(
         else {
             continue;
         };
-        let Some(name) = definition
+        let name = definition
             .name
-            .filter(|name| !name.is_empty() && name != "null")
-        else {
-            continue;
-        };
+            .filter(|name| !name.is_empty() && !name.eq_ignore_ascii_case("null"))
+            .unwrap_or_default();
         let mut loc_types: Vec<u8> = match &definition.models {
             Some(ObjectModels::Typed(models)) if !models.is_empty() => {
                 models.iter().map(|model| model.loc_type.get()).collect()
@@ -138,9 +255,15 @@ pub fn load_object_catalog(
         entries.push(ObjectEntry {
             id,
             name,
+            symbol: None,
             size_x: definition.size_x.max(1),
             size_y: definition.size_y.max(1),
             loc_types,
+            category: definition.category.map(|c| c.get()),
+            map_scene: definition.map_scene.map(|s| s.get()),
+            map_icon: definition.map_icon.map(|i| i.get()),
+            support_items: definition.support_items,
+            blocking_mask: definition.blocking_mask,
         });
     }
     Ok(ObjectCatalog::from_entries(entries))
@@ -154,19 +277,29 @@ mod tests {
         ObjectEntry {
             id,
             name: name.to_owned(),
+            symbol: None,
             size_x: 2,
             size_y: 1,
             loc_types: loc_types.to_vec(),
+            category: None,
+            map_scene: None,
+            map_icon: None,
+            support_items: None,
+            blocking_mask: 0,
         }
     }
 
     fn catalog() -> ObjectCatalog {
+        let mut unnamed_wall = entry(99, "", &[0]);
+        unnamed_wall.map_scene = Some(12);
+        unnamed_wall.category = Some(207);
         ObjectCatalog::from_entries(vec![
             entry(30, "Oak tree", &[10]),
             entry(10, "Tree", &[10]),
             entry(20, "Dead tree", &[10]),
             entry(5, "Wooden door", &[0, 9]),
             entry(7, "Bank booth", &[10]),
+            unnamed_wall,
         ])
     }
 
@@ -207,5 +340,51 @@ mod tests {
         assert_eq!(e.footprint(0), (2, 1));
         assert_eq!(e.footprint(1), (1, 2));
         assert_eq!(e.footprint(2), (2, 1));
+    }
+
+    #[test]
+    fn unnamed_architectural_entries_match_by_id_symbol_slot_and_metadata() {
+        let mut catalog = catalog();
+        assert_eq!(
+            catalog.get(99).map(ObjectEntry::display_name),
+            Some("Object 99".to_owned())
+        );
+        assert_eq!(
+            catalog
+                .search("99", 5)
+                .into_iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>(),
+            vec![99]
+        );
+        assert_eq!(
+            catalog
+                .search("slot:wall", 5)
+                .into_iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>(),
+            vec![5, 99]
+        );
+        assert_eq!(
+            catalog
+                .search("scene:12 category:207", 5)
+                .into_iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>(),
+            vec![99]
+        );
+        catalog.apply_symbols(|id| (id == 99).then(|| "stone wall straight".to_owned()));
+        assert_eq!(
+            catalog.get(99).map(ObjectEntry::display_name),
+            Some("[stone wall straight]".to_owned())
+        );
+        assert_eq!(
+            catalog
+                .search("stone wall", 5)
+                .into_iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>(),
+            vec![99]
+        );
     }
 }

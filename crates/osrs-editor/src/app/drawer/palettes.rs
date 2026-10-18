@@ -15,8 +15,26 @@ pub(super) fn none_swatch(ui: &mut egui::Ui, size: f32, selected: bool) -> egui:
 
 pub(super) fn overlay_tip(sw: &OverlaySwatch) -> String {
     let mut tip = format!("Overlay {}  \u{b7}  {} tiles", sw.id, sw.uses);
+    if sw.shaped_uses > 0 {
+        tip.push_str(&format!(" ({} shaped path/border)", sw.shaped_uses));
+    }
     if let Some(texture) = sw.texture {
         tip.push_str(&format!("\ntexture {texture}"));
+    }
+    if let Some(sec) = sw.secondary_rgb {
+        tip.push_str(&format!(
+            "\nminimap rgb ({}, {}, {})",
+            sec[0], sec[1], sec[2]
+        ));
+    }
+    let companions: Vec<String> = sw
+        .companion_underlays
+        .iter()
+        .filter(|&&(id, count)| id != 0 && count > 0)
+        .map(|&(id, count)| format!("#{id} ({count})"))
+        .collect();
+    if !companions.is_empty() {
+        tip.push_str(&format!("\nshoulder underlays: {}", companions.join(", ")));
     }
     if sw.rgb == [255, 0, 255] && sw.texture.is_none() {
         tip.push_str("\ntransparent: draws nothing (the map's placeholder)");
@@ -147,13 +165,16 @@ impl EditorApp {
     ) -> String {
         ui.horizontal_wrapped(|ui| {
             for filter in PaletteFilter::ALL {
-                if filter == PaletteFilter::Textured && !textured {
+                if matches!(filter, PaletteFilter::Textured | PaletteFilter::Paths) && !textured {
                     continue;
                 }
                 if ui
                     .selectable_label(self.settings.prefs.palette_filter == filter, filter.label())
                     .on_hover_text(match filter {
                         PaletteFilter::Common => "Floors that many tiles of the real map use",
+                        PaletteFilter::Paths => {
+                            "Overlays frequently used with shaped borders (1..=11) for paths and edges"
+                        }
                         PaletteFilter::AllUsed => "Every floor any tile of the real map uses",
                         PaletteFilter::Textured => "Overlays with a texture",
                     })
@@ -206,11 +227,21 @@ impl EditorApp {
             .overlays
             .iter()
             .filter(|s| filter == PaletteFilter::AllUsed || !placeholder(s))
-            .filter(|s| filter.keeps(s.uses, s.texture.is_some()))
+            .filter(|s| filter.keeps(s.uses, s.shaped_uses, s.texture.is_some()))
             .filter(|s| search.is_empty() || s.id.to_string().contains(&search))
             .copied()
             .collect();
-        swatches.sort_by_key(|s| (std::cmp::Reverse(s.uses), s.id));
+        if filter == PaletteFilter::Paths {
+            swatches.sort_by_key(|s| {
+                (
+                    std::cmp::Reverse(s.shaped_uses),
+                    std::cmp::Reverse(s.uses),
+                    s.id,
+                )
+            });
+        } else {
+            swatches.sort_by_key(|s| (std::cmp::Reverse(s.uses), s.id));
+        }
         self.palette_header(ui, swatches.len(), true);
         let current = self.settings.prefs.brush.overlay.fill;
         let mut picked = None;
@@ -259,7 +290,7 @@ impl EditorApp {
             return;
         };
         let filter = match self.settings.prefs.palette_filter {
-            PaletteFilter::Textured => PaletteFilter::AllUsed,
+            PaletteFilter::Textured | PaletteFilter::Paths => PaletteFilter::AllUsed,
             other => other,
         };
         let size = SWATCH_SIZES[usize::from(self.settings.prefs.swatch_size).min(2)];
@@ -267,7 +298,7 @@ impl EditorApp {
         let mut swatches: Vec<UnderlaySwatch> = palette
             .underlays
             .iter()
-            .filter(|s| filter.keeps(s.uses, false))
+            .filter(|s| filter.keeps(s.uses, 0, false))
             .filter(|s| search.is_empty() || s.id.to_string().contains(&search))
             .copied()
             .collect();

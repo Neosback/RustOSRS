@@ -20,6 +20,12 @@ fn facts(n: u32, symbol: &str, slots: &[Slot], verbs: &[&str]) -> (ObjectId, Obj
                 animated: false,
                 morphs: false,
                 interact_type: 1,
+                category: None,
+                map_scene: None,
+                map_icon: None,
+                support_items: None,
+                blocking_mask: 0,
+                obstructs_ground: false,
             },
         },
     )

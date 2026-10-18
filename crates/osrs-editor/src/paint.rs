@@ -176,6 +176,9 @@ pub struct SplineSettings {
     pub height_passes: u32,
     /// Tiles around the path blended into the surrounding terrain.
     pub height_blend: f32,
+    /// Also paint the overlay's top companion underlay (or armed brush underlay) underneath the
+    /// path so shaped border tiles blend naturally into a road shoulder.
+    pub paint_companion_underlay: bool,
 }
 
 impl SplineSettings {
@@ -194,6 +197,7 @@ impl Default for SplineSettings {
             smooth_height: false,
             height_passes: 5,
             height_blend: 4.0,
+            paint_companion_underlay: false,
         }
     }
 }
@@ -204,6 +208,8 @@ pub enum PaletteFilter {
     /// Floors that many tiles of the real map use.
     #[default]
     Common,
+    /// Overlays frequently used with shaped borders (`shape in 1..=11`) for paths and edges.
+    Paths,
     /// Every floor any tile of the map uses.
     AllUsed,
     /// Overlays with a texture.
@@ -211,11 +217,12 @@ pub enum PaletteFilter {
 }
 
 impl PaletteFilter {
-    pub const ALL: [Self; 3] = [Self::Common, Self::AllUsed, Self::Textured];
+    pub const ALL: [Self; 4] = [Self::Common, Self::Paths, Self::AllUsed, Self::Textured];
 
     pub const fn label(self) -> &'static str {
         match self {
             Self::Common => "Common",
+            Self::Paths => "Paths",
             Self::AllUsed => "All used",
             Self::Textured => "Textured",
         }
@@ -223,10 +230,13 @@ impl PaletteFilter {
 
     /// Tiles of the whole map a floor needs to count as common.
     pub const COMMON_USES: u64 = 5_000;
+    /// Shaped border tiles an overlay needs to count as a path/border floor.
+    pub const PATH_SHAPED_USES: u64 = 100;
 
-    pub fn keeps(self, uses: u64, textured: bool) -> bool {
+    pub fn keeps(self, uses: u64, shaped_uses: u64, textured: bool) -> bool {
         match self {
             Self::Common => uses >= Self::COMMON_USES,
+            Self::Paths => shaped_uses >= Self::PATH_SHAPED_USES,
             Self::AllUsed => uses > 0,
             Self::Textured => textured,
         }

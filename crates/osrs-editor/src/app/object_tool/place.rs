@@ -28,6 +28,7 @@ pub(in crate::app) struct PlaceState {
     error: Option<String>,
     search: String,
     target: Option<PlaceTarget>,
+    symbols_applied: bool,
 }
 
 /// The client's name for a loc type, for the type picker.
@@ -103,18 +104,30 @@ impl EditorApp {
     }
 
     pub(in crate::app) fn poll_catalog(&mut self) {
-        let Some(receiver) = &self.placer.loading else {
-            return;
-        };
-        match receiver.try_recv() {
-            Ok(Ok(catalog)) => self.placer.catalog = Some(Arc::new(catalog)),
-            Ok(Err(error)) => self.placer.error = Some(error),
-            Err(TryRecvError::Empty) => return,
-            Err(TryRecvError::Disconnected) => {
-                self.placer.error = Some("The object list stopped loading.".to_owned());
+        if let Some(receiver) = &self.placer.loading {
+            match receiver.try_recv() {
+                Ok(Ok(catalog)) => {
+                    self.placer.catalog = Some(Arc::new(catalog));
+                    self.placer.symbols_applied = false;
+                    self.placer.loading = None;
+                }
+                Ok(Err(error)) => {
+                    self.placer.error = Some(error);
+                    self.placer.loading = None;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    self.placer.error = Some("The object list stopped loading.".to_owned());
+                    self.placer.loading = None;
+                }
             }
         }
-        self.placer.loading = None;
+        if !self.placer.symbols_applied
+            && let (Some(catalog), Some(book)) = (&mut self.placer.catalog, self.names.book())
+        {
+            Arc::make_mut(catalog).apply_symbols(|id| book.object(id).map(str::to_owned));
+            self.placer.symbols_applied = true;
+        }
     }
 
     /// The drawer's "Place object" group: search, pick, and the armed object's controls.
@@ -133,7 +146,7 @@ impl EditorApp {
         };
         ui.add(
             egui::TextEdit::singleline(&mut self.placer.search)
-                .hint_text("Search objects by name or id")
+                .hint_text("Search name, id, symbol, slot:wall…")
                 .desired_width(f32::INFINITY),
         );
         let hits = catalog.search(&self.placer.search, MAX_RESULTS);
@@ -149,7 +162,10 @@ impl EditorApp {
                             .as_ref()
                             .is_some_and(|target| target.entry.id == entry.id);
                         if ui
-                            .selectable_label(armed, format!("{}  ({})", entry.name, entry.id))
+                            .selectable_label(
+                                armed,
+                                format!("{}  ({})", entry.display_name(), entry.id),
+                            )
                             .clicked()
                         {
                             self.placer.arm(entry);
@@ -165,7 +181,7 @@ impl EditorApp {
             return;
         };
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new(&target.entry.name).strong());
+            ui.label(egui::RichText::new(target.entry.display_name()).strong());
             if target.entry.loc_types.len() > 1 {
                 egui::ComboBox::from_id_salt("place_loc_type")
                     .selected_text(loc_type_label(target.loc_type))
@@ -238,7 +254,11 @@ impl EditorApp {
             loc_type,
             orientation,
         };
-        self.edit_objects(Vec::new(), vec![spec], &format!("Placed {}", entry.name));
+        self.edit_objects(
+            Vec::new(),
+            vec![spec],
+            &format!("Placed {}", entry.display_name()),
+        );
     }
 
     /// `place ID X Y [ORIENTATION]` from the script language. `Ok(false)` while the catalog is

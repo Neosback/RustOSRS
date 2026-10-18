@@ -48,6 +48,12 @@ pub struct Structure {
     /// The definition changes into other objects (open and closed doors, growth stages).
     pub morphs: bool,
     pub interact_type: u8,
+    pub category: Option<u32>,
+    pub map_scene: Option<u32>,
+    pub map_icon: Option<u32>,
+    pub support_items: Option<u8>,
+    pub blocking_mask: u8,
+    pub obstructs_ground: bool,
 }
 
 pub fn structure_of(definition: &ObjectDefinition) -> Structure {
@@ -71,6 +77,12 @@ pub fn structure_of(definition: &ObjectDefinition) -> Structure {
         animated: definition.animation.is_some(),
         morphs: definition.morphs.is_some(),
         interact_type: definition.placement.interact_type,
+        category: definition.category.map(|c| c.get()),
+        map_scene: definition.map_scene.map(|s| s.get()),
+        map_icon: definition.map_icon.map(|i| i.get()),
+        support_items: definition.support_items,
+        blocking_mask: definition.blocking_mask,
+        obstructs_ground: definition.placement.obstructs_ground,
     }
 }
 
@@ -130,6 +142,12 @@ mod tests {
             animated: false,
             morphs: false,
             interact_type: 1,
+            category: Some(207),
+            map_scene: Some(12),
+            map_icon: None,
+            support_items: Some(1),
+            blocking_mask: 0x05,
+            obstructs_ground: false,
         };
         assert!(!s.door_like());
         s.verbs.push("open".into());

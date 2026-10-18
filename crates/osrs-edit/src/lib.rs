@@ -191,7 +191,10 @@ mod path_height;
 pub use brush::{BrushShape, footprint};
 pub use height::{HeightCommitError, HeightStrokeSpec, build_terrain_height_patch};
 pub use paint::{PaintCommitError, TerrainPaintIntent, build_terrain_paint_patch};
-pub use path::{PathCommitError, TerrainPathIntent, build_terrain_path_patch};
+pub use path::{
+    PathCommitError, TerrainPathIntent, build_terrain_path_patch,
+    build_terrain_path_patch_with_underlay,
+};
 pub use path_height::{
     PathHeightSpec, build_path_height_patch, distance_to_line, plan_path_height_smoothing,
     smoothing_vertices,

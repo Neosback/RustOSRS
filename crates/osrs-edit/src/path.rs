@@ -9,7 +9,7 @@ use crate::{
     TerrainTile,
 };
 use osrs_core::coords::{MapTile, SourcePlane};
-use osrs_core::ids::FloorOverlayId;
+use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,8 +38,23 @@ pub fn build_terrain_path_patch(
     plane: SourcePlane,
     intents: &[TerrainPathIntent],
 ) -> Result<MapPatch, PathCommitError> {
+    build_terrain_path_patch_with_underlay(query, plane, intents, None)
+}
+
+/// Like [`build_terrain_path_patch`], additionally painting `companion_underlay` (when `Some(id)`
+/// with `id > 0`) underneath the path tiles so shaped border triangles blend naturally with a
+/// companion road-shoulder underlay.
+pub fn build_terrain_path_patch_with_underlay(
+    query: &impl MapQuery,
+    plane: SourcePlane,
+    intents: &[TerrainPathIntent],
+    companion_underlay: Option<u16>,
+) -> Result<MapPatch, PathCommitError> {
     let mut terrain_order = Vec::new();
     let mut terrain = HashMap::<MapPosition, (TerrainTile, TerrainTile)>::new();
+    let companion = companion_underlay
+        .filter(|&id| id > 0)
+        .map(|id| FloorUnderlayId::new(u32::from(id)));
 
     for intent in intents {
         let position = MapPosition::new(intent.tile, plane);
@@ -51,6 +66,10 @@ pub fn build_terrain_path_patch(
             (current, current)
         });
         let mut after = entry.1;
+
+        if let Some(underlay) = companion {
+            after.underlay = Some(underlay);
+        }
 
         if let Some(id) = intent.overlay {
             if id == 0 {

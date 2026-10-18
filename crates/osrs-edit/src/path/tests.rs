@@ -109,3 +109,28 @@ fn invalid_shape_and_rotation_are_rejected() {
         Err(PathCommitError::InvalidOverlayRotation { tile, rotation: 4 })
     );
 }
+
+#[test]
+fn companion_underlay_sets_underlay_and_reverses_on_undo() {
+    let tile = (3200, 3200);
+    let before = TerrainTile {
+        underlay: Some(FloorUnderlayId::new(2)),
+        overlay: None,
+        flags: 0,
+    };
+    let mut document = MapDocument::from_parts([(position(tile), before)], [], []);
+    let patch = build_terrain_path_patch_with_underlay(
+        &document,
+        plane(),
+        &[intent(tile, 7, 4, 1)],
+        Some(9),
+    )
+    .expect("valid companion path patch");
+    assert_eq!(patch.len(), 1);
+    document.apply_patch(&patch).expect("apply patch");
+    let after = document.terrain_at(position(tile));
+    assert_eq!(after.underlay, Some(FloorUnderlayId::new(9)));
+    assert_eq!(after.overlay.map(|o| o.id.get()), Some(7));
+    document.apply_patch(&patch.inverse()).expect("undo patch");
+    assert_eq!(document.terrain_at(position(tile)), before);
+}

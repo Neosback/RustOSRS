@@ -103,7 +103,27 @@ impl EditorApp {
         if intents.is_empty() {
             return 0;
         }
-        let patch = match build_terrain_path_patch(self.session.document(), plane, &intents) {
+        let companion_underlay = if self.settings.prefs.spline.paint_companion_underlay {
+            match self.settings.prefs.brush.underlay {
+                crate::paint::IdChannel {
+                    armed: true,
+                    fill: crate::paint::Fill::Set(id),
+                } if id > 0 => Some(id),
+                _ => tiles
+                    .first()
+                    .and_then(|t| t.overlay)
+                    .and_then(|ov| self.overlay_swatch(ov))
+                    .and_then(|s| s.top_companion_underlay()),
+            }
+        } else {
+            None
+        };
+        let patch = match osrs_edit::build_terrain_path_patch_with_underlay(
+            self.session.document(),
+            plane,
+            &intents,
+            companion_underlay,
+        ) {
             Ok(patch) => patch,
             Err(error) => {
                 self.ui.notify(format!(
