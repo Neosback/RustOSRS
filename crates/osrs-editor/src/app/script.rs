@@ -8,9 +8,10 @@
 mod inspect;
 mod path;
 mod prefab;
+mod select;
 mod window;
 
-use super::{EditorApp, building_pick};
+use super::EditorApp;
 use crate::hud::Destination;
 use crate::paint::{Fill, Tool};
 use eframe::egui;
@@ -303,40 +304,7 @@ impl EditorApp {
                 }
                 self.commit_spline();
             }
-            "select" => match words.next() {
-                Some("object") => {
-                    let x: i32 = number(words.next(), "x")?;
-                    let y: i32 = number(words.next(), "y")?;
-                    return Ok(if self.select_nearest_object((x, y)) {
-                        Step::Done
-                    } else {
-                        Step::Retry
-                    });
-                }
-                Some("tiles") => {
-                    let x0: i32 = number(words.next(), "x0")?;
-                    let y0: i32 = number(words.next(), "y0")?;
-                    let x1: i32 = number(words.next(), "x1")?;
-                    let y1: i32 = number(words.next(), "y1")?;
-                    for x in x0.min(x1)..=x0.max(x1) {
-                        for y in y0.min(y1)..=y0.max(y1) {
-                            self.interaction.add_tile((x, y));
-                        }
-                    }
-                }
-                Some("building") => {
-                    let x: i32 = number(words.next(), "x")?;
-                    let y: i32 = number(words.next(), "y")?;
-                    return Ok(match building_pick::select_building(self, (x, y), false) {
-                        Some(message) => {
-                            eprintln!("smoke: {message}");
-                            Step::Done
-                        }
-                        None => Step::Retry,
-                    });
-                }
-                other => return Err(format!("select object, tiles or building, not {other:?}")),
-            },
+            "select" => return select::run(self, &mut words),
             "menu" => {
                 let Some(object) = self.interaction.selected().clone() else {
                     return Ok(Step::Retry);

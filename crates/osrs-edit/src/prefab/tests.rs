@@ -340,3 +340,43 @@ fn prefab_from_a_patch_matches_capturing_the_patched_map() {
     // The patch only sets heights that changed; the capture also holds the unchanged zeros.
     assert!(from_patch.heights.len() <= captured.heights.len());
 }
+
+#[test]
+fn replacing_also_clears_big_objects_that_reach_into_the_area_from_outside() {
+    // A 3x3 object stored two tiles west of the area reaches its first column; a 1x1 object
+    // one tile outside does not; both are on the same plane.
+    let reaching = object(777, 3198, 3201, 0, 10, 0);
+    let outside = object(778, 3199, 3201, 0, 10, 0);
+    let mut target = world((3200, 3200));
+    target
+        .apply_patch(&MapPatch::new([
+            MapOp::AddObject {
+                placement: reaching,
+            },
+            MapOp::AddObject { placement: outside },
+        ]))
+        .unwrap_or_else(|e| unreachable!("{e:?}"));
+    let prefab = capture_of(&world((3200, 3200)), (3200, 3200), 4, 3);
+    let big = |id: ObjectId, _: LocKind| if id.get() == 777 { (3, 3) } else { (1, 1) };
+    let mut replace = spec((3200, 3200), 0);
+    replace.replace_objects = true;
+    let placed =
+        plan_place_prefab(&target, &prefab, replace, &big).unwrap_or_else(|e| unreachable!("{e}"));
+    let removed: Vec<_> = placed
+        .patch
+        .ops()
+        .iter()
+        .filter_map(|op| match op {
+            MapOp::RemoveObject { placement } => Some(placement.object_id.get()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        removed.contains(&777),
+        "the big object reaching in is cleared"
+    );
+    assert!(
+        !removed.contains(&778),
+        "a neighbour that only touches the edge stays"
+    );
+}

@@ -4,11 +4,14 @@
 //! archetype, seed, kit), the kits available, and the last plan; it never touches the map.
 //! Applying a preview is the panel's job and goes through the edit gateway.
 
-use osrs_core::coords::{MapTile, SourcePlane};
+use osrs_core::{
+    coords::{MapTile, SourcePlane},
+    ids::ObjectId,
+};
 use osrs_edit::{
     BuildingArchetype, BuildingConstraints, BuildingKit, BuildingRequest, BuildingStyle, KitFile,
-    MapDocument, MapOp, MapPatch, Prefab, PrefabSource, RectSite, capture_generation_snapshot,
-    prefab_from_patch,
+    LocKind, MapDocument, MapOp, MapPatch, Prefab, PrefabSource, RectSite,
+    capture_generation_snapshot, prefab_from_patch,
 };
 
 const STARTER_KITS: [(&str, &str); 2] = [
@@ -212,7 +215,12 @@ impl BuildState {
 
     /// Refresh the preview when the form, the site, the viewed plane or the map changed.
     /// `map_revision` is any number that changes whenever the document does.
-    pub(in crate::app) fn refresh(&mut self, document: &MapDocument, map_revision: u64) {
+    pub(in crate::app) fn refresh(
+        &mut self,
+        document: &MapDocument,
+        map_revision: u64,
+        size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
+    ) {
         let Some(base_plane) = SourcePlane::new(self.site_plane) else {
             self.preview = None;
             self.error = Some("the site is on an invalid plane".to_owned());
@@ -234,7 +242,7 @@ impl BuildState {
             return;
         }
         self.made_from = Some(key);
-        match self.plan(document, origin, base_plane) {
+        match self.plan(document, origin, base_plane, size_of) {
             Ok(preview) => {
                 self.preview = Some(preview);
                 self.error = None;
@@ -251,6 +259,7 @@ impl BuildState {
         document: &MapDocument,
         origin: MapTile,
         base_plane: SourcePlane,
+        size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
     ) -> Result<Preview, String> {
         let form = &self.form;
         let kit = self
@@ -282,7 +291,7 @@ impl BuildState {
             .into_iter()
             .flatten()
             {
-                for placement in osrs_edit::objects_in_rect(
+                for placement in osrs_edit::objects_overlapping_rect(
                     document,
                     (origin.x, origin.y),
                     (
@@ -290,6 +299,7 @@ impl BuildState {
                         origin.y + i32::from(form.height),
                     ),
                     plane,
+                    size_of,
                 ) {
                     ops.push(MapOp::RemoveObject { placement });
                     removed += 1;

@@ -311,6 +311,48 @@ pub fn objects_in_rect(
     found
 }
 
+/// What an object covers, given its orientation: odd orientations swap the two sides.
+pub(crate) fn footprint(
+    id: ObjectId,
+    kind: u8,
+    orientation: u8,
+    size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
+) -> (i32, i32) {
+    // Boundary pieces, wall decorations, diagonal walls and ground decoration take one tile
+    // whatever the definition's size says.
+    if kind <= 9 || kind == 22 {
+        return (1, 1);
+    }
+    let (sx, sy) = LocKind::new(kind).map_or((1, 1), |kind| size_of(id, kind));
+    let (sx, sy) = (i32::from(sx.max(1)), i32::from(sy.max(1)));
+    if orientation & 1 == 1 {
+        (sy, sx)
+    } else {
+        (sx, sy)
+    }
+}
+
+/// Every placement whose footprint touches `[min.0, max.0) x [min.1, max.1)` on `plane`: those
+/// stored inside it and the big ones (a tree, a table) stored on a tile outside but reaching in.
+pub fn objects_overlapping_rect(
+    document: &MapDocument,
+    min: (i32, i32),
+    max: (i32, i32),
+    plane: SourcePlane,
+    size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
+) -> Vec<ObjectPlacement> {
+    /// No object is wider than this many tiles, so none stored further away can reach in.
+    const REACH: i32 = 8;
+    objects_in_rect(document, (min.0 - REACH, min.1 - REACH), max, plane)
+        .into_iter()
+        .filter(|p| {
+            let (w, h) = footprint(p.object_id, p.kind.get(), p.orientation.get(), size_of);
+            let tile = p.position.tile;
+            tile.x < max.0 && tile.x + w > min.0 && tile.y < max.1 && tile.y + h > min.1
+        })
+        .collect()
+}
+
 pub(crate) fn plane_at(base: SourcePlane, offset: u8) -> Option<SourcePlane> {
     SourcePlane::new(base.index().get().checked_add(offset)?)
 }

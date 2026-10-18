@@ -1,6 +1,8 @@
 //! Planning a prefab back into a map: turn it, move it, and compare with what is there.
 
-use super::{Prefab, PrefabError, objects_in_rect, overlay_of, placement_of, plane_at};
+use super::{
+    Prefab, PrefabError, footprint, objects_overlapping_rect, overlay_of, placement_of, plane_at,
+};
 use crate::{HeightVertexCoord, LocKind, MapDocument, MapOp, MapPatch, MapPosition, TerrainTile};
 use osrs_core::{
     coords::{MapTile, SourcePlane},
@@ -48,27 +50,6 @@ pub fn turned_size(width: u16, height: u16, turns: u8) -> (u16, u16) {
 /// One clockwise quarter turn of a tile in a `w` x `h` rectangle (south-west origin, y up).
 fn turn_tile(x: i32, y: i32, w: i32) -> (i32, i32) {
     (y, w - 1 - x)
-}
-
-/// What an object covers, given its orientation: odd orientations swap the two sides.
-fn footprint(
-    id: ObjectId,
-    kind: u8,
-    orientation: u8,
-    size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
-) -> (i32, i32) {
-    // Boundary pieces, wall decorations, diagonal walls and ground decoration take one tile
-    // whatever the definition's size says.
-    if kind <= 9 || kind == 22 {
-        return (1, 1);
-    }
-    let (sx, sy) = LocKind::new(kind).map_or((1, 1), |kind| size_of(id, kind));
-    let (sx, sy) = (i32::from(sx.max(1)), i32::from(sy.max(1)));
-    if orientation & 1 == 1 {
-        (sy, sx)
-    } else {
-        (sx, sy)
-    }
 }
 
 /// Plan the placement of `prefab` as one patch against `document`.
@@ -150,7 +131,7 @@ pub fn plan_place_prefab(
         let mut removing = HashSet::new();
         if spec.replace_objects {
             for offset in 0..prefab.planes {
-                for placement in objects_in_rect(
+                for placement in objects_overlapping_rect(
                     document,
                     (spec.origin.x, spec.origin.y),
                     (
@@ -158,6 +139,7 @@ pub fn plan_place_prefab(
                         spec.origin.y + i32::from(height),
                     ),
                     plane(offset),
+                    size_of,
                 ) {
                     if removing.insert(placement) {
                         ops.push(MapOp::RemoveObject { placement });

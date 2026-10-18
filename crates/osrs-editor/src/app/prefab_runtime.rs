@@ -312,7 +312,7 @@ impl PrefabRuntime {
             terrain: options.as_ref().is_none_or(|o| o.terrain),
             heights: options.as_ref().is_none_or(|o| o.heights),
             objects: options.as_ref().is_none_or(|o| o.objects),
-            replace_objects: options.as_ref().is_some_and(|o| o.replace_objects),
+            replace_objects: options.as_ref().is_none_or(|o| o.replace_objects),
         });
     }
 }

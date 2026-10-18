@@ -39,6 +39,7 @@ impl EditorApp {
             .corner_radius(12.0)
             .inner_margin(egui::Margin::same(5))
             .shadow(ctx.global_style().visuals.popup_shadow);
+        let mut auto_button: Option<egui::Rect> = None;
         let area = egui::Area::new(egui::Id::new("picker_rail"))
             .order(egui::Order::Middle)
             .movable(true)
@@ -80,31 +81,36 @@ impl EditorApp {
                                 !self.settings.prefs.picker_collapsed;
                         }
                     });
+                    // Building lives under Auto: it is picked from the slide-out that opens when the
+                    // pointer rests on the Auto button, and the button then shows its icon.
                     let modes: Vec<SelectMode> = if self.settings.prefs.picker_collapsed {
-                        vec![self.settings.prefs.select_mode]
+                        vec![match self.settings.prefs.select_mode {
+                            SelectMode::Building => SelectMode::Auto,
+                            other => other,
+                        }]
                     } else {
-                        SelectMode::ALL.to_vec()
+                        SelectMode::ALL
+                            .into_iter()
+                            .filter(|mode| *mode != SelectMode::Building)
+                            .collect()
                     };
                     for mode in modes {
-                        let active = selecting && self.settings.prefs.select_mode == mode;
-                        if picker_button(
+                        let building = mode == SelectMode::Auto
+                            && self.settings.prefs.select_mode == SelectMode::Building;
+                        let shown = if building { SelectMode::Building } else { mode };
+                        let active =
+                            selecting && (self.settings.prefs.select_mode == mode || building);
+                        let response = picker_button(
                             ui,
-                            select_mode_icon(mode),
+                            select_mode_icon(shown),
                             active,
-                            &format!("{}: {}", mode.label(), mode.hint()),
-                        )
-                        .clicked()
-                        {
-                            self.settings.prefs.select_mode = mode;
-                            // Choosing a picker stops whatever else is going on: the active
-                            // tool, an object waiting to be placed, an NPC placement.
-                            self.placer.disarm();
-                            self.npcs.cancel_gesture();
-                            self.prefabs.disarm();
-                            if !selecting {
-                                self.interaction.clear_spline_points();
-                                self.set_tool(Tool::Select);
-                            }
+                            &format!("{}: {}", shown.label(), shown.hint()),
+                        );
+                        if response.clicked() {
+                            choose_picker(self, mode, selecting);
+                        }
+                        if mode == SelectMode::Auto {
+                            auto_button = Some(response.rect);
                         }
                     }
                     if !self.settings.prefs.picker_collapsed {
@@ -114,6 +120,9 @@ impl EditorApp {
                 });
             });
         self.ui.rail_rect = Some(area.response.rect);
+        if let Some(button) = auto_button {
+            auto_flyout(self, ctx, button, selecting);
+        }
         let offset = area.response.rect.min - viewport.min;
         if (offset.x - self.settings.prefs.picker_pos[0]).abs() > 0.5
             || (offset.y - self.settings.prefs.picker_pos[1]).abs() > 0.5
@@ -121,6 +130,75 @@ impl EditorApp {
             self.settings.prefs.picker_pos = [offset.x, offset.y];
         }
     }
+}
+
+/// Choosing a picker stops whatever else is going on: the active tool, an object waiting to be
+/// placed, an NPC placement, a prefab being placed.
+fn choose_picker(app: &mut EditorApp, mode: SelectMode, selecting: bool) {
+    app.settings.prefs.select_mode = mode;
+    app.placer.disarm();
+    app.npcs.cancel_gesture();
+    app.prefabs.disarm();
+    if !selecting {
+        app.interaction.clear_spline_points();
+        app.set_tool(Tool::Select);
+    }
+}
+
+/// The slide-out beside the Auto button: Auto itself and Building. It opens while the pointer is
+/// on the button or the slide-out and glides in and out.
+fn auto_flyout(app: &mut EditorApp, ctx: &egui::Context, button: egui::Rect, selecting: bool) {
+    let zone_id = egui::Id::new("auto_flyout_zone");
+    let last: Option<egui::Rect> = ctx.data(|d| d.get_temp(zone_id));
+    let zone = last.map_or(button, |last| button.union(last)).expand(4.0);
+    let over = ctx
+        .input(|i| i.pointer.hover_pos())
+        .is_some_and(|p| zone.contains(p));
+    let t = ctx.animate_bool_with_time(egui::Id::new("auto_flyout_open"), over, 0.12);
+    if t <= 0.0 {
+        ctx.data_mut(|d| d.remove::<egui::Rect>(zone_id));
+        return;
+    }
+    let frame = egui::Frame::new()
+        .fill(ctx.global_style().visuals.window_fill)
+        .stroke(Stroke::new(
+            1.0,
+            ctx.global_style()
+                .visuals
+                .widgets
+                .noninteractive
+                .bg_stroke
+                .color,
+        ))
+        .corner_radius(10.0)
+        .inner_margin(egui::Margin::same(4))
+        .shadow(ctx.global_style().visuals.popup_shadow);
+    let slide = (1.0 - t) * -14.0;
+    let area = egui::Area::new(egui::Id::new("auto_flyout"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(button.right_top() + Vec2::new(6.0 + slide, -4.0))
+        .show(ctx, |ui| {
+            ui.set_opacity(t);
+            frame.show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::splat(3.0);
+                    for mode in [SelectMode::Auto, SelectMode::Building] {
+                        let active = selecting && app.settings.prefs.select_mode == mode;
+                        if picker_button(
+                            ui,
+                            select_mode_icon(mode),
+                            active,
+                            &format!("{}: {}", mode.label(), mode.hint()),
+                        )
+                        .clicked()
+                        {
+                            choose_picker(app, mode, selecting);
+                        }
+                    }
+                });
+            });
+        });
+    ctx.data_mut(|d| d.insert_temp(zone_id, area.response.rect));
 }
 
 /// What is in use now, as shortcuts under the pickers (which always stay): the tools last

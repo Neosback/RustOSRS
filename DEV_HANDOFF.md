@@ -98,6 +98,14 @@ Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md`
 - **Proposed ADR-0013** (egui and Svelte shells over one typed UI contract). Not accepted; needs a spike.
 - Local gates for this work: locked workspace tests **959 passed, 0 failed, 21 ignored**; fmt; strict workspace Clippy; lower-crate WASM check; strict WASM editor Clippy; architecture guard + editor-ownership tests: passed.
 
+## Building ghost, overlap clearing and the Auto flyout (2026-10-18)
+
+- **Geometry ghost** (`app/viewport.rs`): with more than one object selected, every selected object's real model triangles (the same worker outline request the single selection uses, capped at 1500 objects) are drawn as one translucent mesh, so a selected building shows its walls, roof and furniture instead of only a flat floor tint. Outline requests are now queued before the pointer-dependent early returns. Seen on a Lumbridge tavern at plane 1; at plane 0 the roof ghost is drawn although roofs are hidden by the plane rule.
+- **Placing clears what is there**: `osrs_edit::objects_overlapping_rect` finds objects by footprint overlap (anchors within 8 tiles, multi-tile sizes through `size_of`), used by prefab placement and the Build page's clear-site step (planes base and base+1). Prefab placement now defaults to replacing. Test in `prefab/tests.rs`.
+- **Building under Auto**: the Building picker is no longer a rail button. The Auto button shows a flyout on hover (`floating.rs`: `auto_flyout`, `choose_picker`; animated, hover zone kept in `ctx.data`) listing Auto and Building; the button shows the building icon while Building is active. **Not exercised with a real mouse**: hover timing and the flyout's exit zone are unverified.
+- `script/select.rs` holds the `select` script command (moved out of `script.rs` for the 500-line cap); `select report` prints how many selected objects have geometry ready, per plane.
+- Local gates: locked workspace tests **1198 passed, 0 failed, 21 ignored**; fmt; strict workspace Clippy; lower-crate WASM check; strict WASM editor Clippy; architecture guard + tests: passed.
+
 ## Building picker and unified selection overlay (2026-10-18)
 
 - **Overlay**: selected tiles draw as one shape: a single mesh fill (no lines between tiles) and an outline only along edges where a selected tile meets an unselected one. Per-object footprints are skipped when more than 40 objects are selected, so a whole building does not bury its own shape.

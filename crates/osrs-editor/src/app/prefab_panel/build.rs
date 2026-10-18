@@ -242,5 +242,9 @@ fn site_controls(app: &mut EditorApp, ui: &mut egui::Ui) {
 /// Refresh the preview from the current map and form (called every frame the page is showing).
 pub(super) fn refresh(app: &mut EditorApp) {
     let revision = app.session.map_revision();
-    app.prefabs.build.refresh(app.session.document(), revision);
+    let size_of =
+        |id: osrs_core::ids::ObjectId, _: osrs_edit::LocKind| app.placer.object_size(id.get());
+    app.prefabs
+        .build
+        .refresh(app.session.document(), revision, &size_of);
 }

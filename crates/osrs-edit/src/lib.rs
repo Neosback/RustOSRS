@@ -163,7 +163,8 @@ pub use position::{HeightVertexCoord, MapPosition};
 pub use prefab::{
     CaptureSpec, MAX_PREFAB_SIDE, PREFAB_FORMAT, PREFAB_VERSION, PlaceSpec, PlacedPrefab, Prefab,
     PrefabError, PrefabHeight, PrefabObject, PrefabOverlay, PrefabSource, PrefabTile,
-    capture_prefab, objects_in_rect, plan_place_prefab, prefab_from_patch, turned_size,
+    capture_prefab, objects_in_rect, objects_overlapping_rect, plan_place_prefab,
+    prefab_from_patch, turned_size,
 };
 pub use query::MapQuery;
 pub use region::{MapRegionSnapshot, RegionSnapshotError};
