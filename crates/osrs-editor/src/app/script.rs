@@ -6,6 +6,8 @@
 //! script resumes on its own), which is how smoke tests line things up with the world loading.
 
 mod inspect;
+mod lab;
+pub(super) use lab::controls as lab_controls;
 mod path;
 mod prefab;
 mod select;
@@ -62,6 +64,7 @@ status TEXT
 #[derive(Default)]
 pub struct ScriptRunner {
     queue: VecDeque<String>,
+    lab_controls_only: bool,
     wait_until: u64,
     /// `sleep SECONDS`: wall-clock hold, steady regardless of the frame rate.
     sleep_until: Option<Instant>,
@@ -131,6 +134,10 @@ impl EditorApp {
             let Some(line) = self.script.queue.pop_front() else {
                 return;
             };
+            if self.script.lab_controls_only && !lab::allows(&line) {
+                self.script.queue.push_front(line);
+                return;
+            }
             match self.script_command(&line, ctx) {
                 Ok(Step::Done) => self.script.retries = 0,
                 Ok(Step::Retry) => {

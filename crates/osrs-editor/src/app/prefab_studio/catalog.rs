@@ -1,13 +1,9 @@
 //! Learned catalogs, pinned patterns and bounded repair through the existing WFC solver.
 use crate::app::EditorApp;
 use eframe::egui;
-use osrs_core::{
-    coords::{MapTile, SourcePlane},
-    ids::{FloorOverlayId, FloorUnderlayId},
-};
+use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::{
-    LearnedCatalog, MapOp, MapPatch, MapPosition, OverlayRotation, OverlayShape, PatternDomain,
-    TerrainOverlay, TerrainTile, WfcConstraint, WfcCoord, WfcPatternId, WfcSolution,
+    LearnedCatalog, PatternDomain, WfcConstraint, WfcCoord, WfcPatternId, WfcSolution,
 };
 #[derive(Default)]
 pub(super) struct CatalogView {
@@ -18,13 +14,47 @@ pub(super) struct CatalogView {
     y: u16,
     pattern: u16,
     problem: Option<String>,
+    import: Option<crate::app::npc_runtime::OpenTask>,
 }
 impl CatalogView {
     pub(super) fn show(&mut self, ui: &mut egui::Ui, seed: u64, viewer: &mut EditorApp) {
+        if let Some(job) = &mut self.import
+            && let Some(result) = job.poll()
+        {
+            self.import = None;
+            match result {
+                Ok(Some(file)) => match serde_json::from_str::<LearnedCatalog>(&file.text)
+                    .map_err(|e| e.to_string())
+                    .and_then(|catalog| {
+                        catalog.compile().map_err(|e| e.to_string())?;
+                        Ok(catalog)
+                    }) {
+                    Ok(catalog) => {
+                        *self = Self {
+                            catalog: Some(catalog),
+                            ..Self::default()
+                        };
+                    }
+                    Err(e) => self.problem = Some(e),
+                },
+                Ok(None) => {}
+                Err(e) => self.problem = Some(e),
+            }
+        }
+        if ui.button("Import learned WFC catalog").clicked() {
+            self.import = Some(crate::app::npc_runtime::open_text(
+                "Load learned WFC catalog",
+                "json",
+            ));
+        }
+        if let Some(problem) = &self.problem {
+            ui.colored_label(ui.visuals().error_fg_color, problem);
+        }
         let Some(data) = &self.catalog else {
             ui.weak("Import a learned catalog to inspect its patterns and pin a solution.");
             return;
         };
+        ui.weak("Applies terrain patterns to the editable prefab with normal undo and Save. Wall sockets constrain the solve; this tool paints floors only.");
         ui.label(format!(
             "{} / {} · {} patterns",
             data.style,
@@ -66,7 +96,7 @@ impl CatalogView {
             apply_scene = ui
                 .add_enabled(
                     self.solution.is_some(),
-                    egui::Button::new("Apply 8×8 to Studio Scene"),
+                    egui::Button::new("Apply floor layout to prefab"),
                 )
                 .clicked();
         });
@@ -140,53 +170,13 @@ fn apply_solution_to_scene(
     solution: &WfcSolution,
 ) -> Result<(), String> {
     let plane = SourcePlane::new(viewer.interaction.view_plane()).ok_or("invalid plane")?;
-    let shape = OverlayShape::new(0).ok_or("invalid shape")?;
-    let rotation = OverlayRotation::new(0).ok_or("invalid rotation")?;
-    let mut ops = Vec::new();
-    for y in 0..solution.height() {
-        for x in 0..solution.width() {
-            let Some(pat_id) = solution.at(WfcCoord::new(x, y)) else {
-                continue;
-            };
-            let Some(pat) = data.patterns.get(usize::from(pat_id.get())) else {
-                continue;
-            };
-            if pat.floor_class == 0 {
-                continue;
-            }
-            let tile = MapTile::new(
-                super::CENTRE.0 - i32::from(solution.width()) / 2 + i32::from(x),
-                super::CENTRE.1 - i32::from(solution.height()) / 2 + i32::from(y),
-            );
-            let coord = MapPosition::new(tile, plane);
-            let before = viewer.session.document().terrain_at(coord);
-            let raw_underlay = (pat.floor_class >> 16) & 0xFFFF;
-            let raw_overlay = pat.floor_class & 0xFFFF;
-            let underlay = if raw_underlay != 0 {
-                Some(FloorUnderlayId::new(raw_underlay))
-            } else {
-                before.underlay
-            };
-            let overlay = (raw_overlay != 0).then(|| TerrainOverlay {
-                id: FloorOverlayId::new(raw_overlay),
-                shape,
-                rotation,
-            });
-            let after = TerrainTile {
-                underlay,
-                overlay,
-                flags: before.flags,
-            };
-            if before != after {
-                ops.push(MapOp::SetTerrain {
-                    coord,
-                    before,
-                    after,
-                });
-            }
-        }
-    }
-    let patch = MapPatch::new(ops);
+    let origin = MapTile::new(
+        super::CENTRE.0 - i32::from(solution.width()) / 2,
+        super::CENTRE.1 - i32::from(solution.height()) / 2,
+    );
+    let patch =
+        osrs_edit::plan_wfc_floors(viewer.session.document(), data, solution, origin, plane)
+            .map_err(|e| e.to_string())?;
     if !patch.is_empty()
         && !crate::app::editing::commit_map_patch(viewer, patch, "Apply 8×8 WFC floor layout")
     {
@@ -194,3 +184,6 @@ fn apply_solution_to_scene(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

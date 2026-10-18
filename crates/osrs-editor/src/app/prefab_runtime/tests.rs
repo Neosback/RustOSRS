@@ -431,3 +431,32 @@ fn applying_the_same_building_twice_leaves_what_stands_instead_of_failing() {
         .apply_patch(&replaced.apply)
         .unwrap_or_else(|e| unreachable!("{e:?}"));
 }
+
+#[test]
+fn detached_save_refuses_a_newer_library_edit_and_preserves_both_versions() {
+    let dir = temp_dir("detached-conflict");
+    let mut world = PrefabRuntime::in_directory(dir.clone());
+    let original = prefab("test");
+    let file = world
+        .add(original.clone())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let mut other = PrefabRuntime::in_directory(dir.clone());
+    other
+        .edit(&file, |p| p.notes = "world changed this".into())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let mut edited = original.clone();
+    edited.name = "Studio work".into();
+    assert!(
+        world
+            .replace_if_unchanged(&file, &original, edited.clone())
+            .is_err()
+    );
+    assert_eq!(
+        world.entry(&file).map(|e| e.prefab.notes.as_str()),
+        Some("world changed this")
+    );
+    let recovered = world.add(edited).unwrap_or_else(|e| panic!("{e}"));
+    assert_ne!(recovered, file);
+    assert_eq!(world.entries().len(), 2);
+    let _ = std::fs::remove_dir_all(dir);
+}

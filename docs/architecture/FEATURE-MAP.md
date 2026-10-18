@@ -19,7 +19,8 @@ UI/input → controller intent → pure MapQuery planner → MapPatch
 | Prefabs (rail tab, not a `Tool`) | `app/prefab_panel/` (library, placement gesture and ghost), `app/prefab_runtime.rs` (library and files) | `osrs-edit/src/prefab/` | `app/editing/prefab_commit.rs`, composite history route (terrain keys plus object route) |
 | Buildings (Prefabs panel Build page) | `app/prefab_panel/build.rs`, `app/prefab_runtime/build.rs` | `osrs-edit` `building_*` generator through `BuildingKit` (`building_kit.rs`) | same prefab commit and composite route |
 | Building capture | `app/prefab_panel/capture/` and `capture.rs` | `osrs-scene::building_census::description`, `osrs-edit::capture_building_prefab` | explicit room/plane/piece review, source/revision-stamped acceptance |
-| Prefab Studio | `app/prefab_studio/` | `capture_prefab_over`, `plan_place_exact` | isolated stage; baseline gateway then normal tool history; sparse save |
+| Prefab Studio | `app/prefab_studio/`, `workspace.rs` (library / Builder / WFC) | `capture_prefab_over`, `plan_place_exact` | synthetic map source, isolated baseline then normal tool history; sparse save |
+| WFC prefab floors | `app/prefab_studio/catalog.rs` | `osrs-edit::plan_wfc_floors` | authored scene gateway, undo and sparse save; never the Lab mirror |
 | Procedural Lab | `app/prefab_studio/lab/`, `osrs-lab` JSON-lines | existing edit planners, WFC, foundation fitting | parked author runtime; Lab history; read-only scene projection |
 | Tile paste | `app/editing/paste.rs`, `app/tile_clipboard.rs` | Paint planner | Existing Path history projection |
 
@@ -100,3 +101,23 @@ and inferred links; their explanation panel exposes evidence. Object edits inval
 occurrence links; human labels survive. Metadata edits participate in dirty navigation.
 See [local training commands](../../scripts/lab/README.md) for source-stamped exports, integer role
 models, observed WFC catalogs, held-out groups and the distinction between curriculum and evaluation.
+
+The Builder / Prefab Studio entry and library double-click open a separate native workspace window.
+Map placement remains an explicit button. The stage queues `use_virtual_map` before any region
+requests. `WorldDefinitions` supplies flat four-plane source maps with no source locations, while
+models, textures and definitions still come from the selected cache. Normal edits replay over this
+immutable baseline through the existing FIFO worker and transactional gateway; the stage floor is
+excluded from saved prefab content. No real cache map square is used, including contextual reads.
+
+Building capture defaults to a reviewed sparse footprint. Its role filters independently control
+furnishings, decoration, roofs and stairs; boundary anchors never expand terrain ownership. Legacy
+rectangular capture remains available by unchecking the outside-ground exclusion. Room and plane
+membership still require review rather than treating a bounding rectangle as building ownership.
+
+The detached window uses `prefab_studio/window.rs`; the world retains its own frame and input.
+`PrefabRuntime::replace_if_unchanged` protects a newer library edit from a stale detached save.
+`osrs-lab::reconstruction_task` constructs the saved-building curriculum with resolved dimensions
+and geographic/family grouping. `lab/runner.rs` runs the existing Python demonstration baseline,
+writes local task/actions/metrics artifacts and checks tool replay before exposing it to the UI.
+`script/lab.rs` restricts automation to host controls while the Lab owns edits; normal editor
+commands cannot write the Lab projection. Teacher data and fitted-policy claims stay distinct.

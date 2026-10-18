@@ -1,9 +1,11 @@
 //! Reproducible simple-tiled catalogs learned from reviewed symbolic grids.
 mod model;
+mod placement;
 use crate::{
     CardinalDirection, MAX_WFC_PATTERNS, WfcCatalog, WfcPatternId, WfcPatternSpec, WfcSocket,
 };
 pub use model::LearnedRoleModel;
+pub use placement::plan_wfc_floors;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -4,6 +4,93 @@ Last updated: 2026-10-18
 
 Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md` and `scripts/editor_features.json` locate feature ownership and tests. Live Git state is authoritative for branch/SHA facts; CI claims require actual run evidence.
 
+## Audit baseline — 2026-10-18
+
+Audit baseline: clean `main` at exact `ada7c6277fac47527e481994ef6d44798ecc66f3`.
+The audit report [Building / Studio / Lab](docs/verification/BUILDING-STUDIO-LAB-AUDIT-2026-10-18.md)
+supersedes the historical “uncommitted”, 128-pattern and stepped-foundation status claims below.
+At that baseline, acceptance was incomplete: native Studio rejected the pinned b241 stage,
+bridge-plane and stepped-height probes failed, WFC apply targeted the Lab mirror, and
+door/human-link/held-out model boundaries had confirmed gaps. The virtual-workspace checkpoint
+below resolves the stage rejection and WFC authoring route. The report records exact repros,
+source locations, verification provenance and next checkpoint order.
+
+The audit native build passed. Stored pre-checkpoint full verification belongs to `92477b00` plus the then-dirty
+search fix (1,260 passed / 22 ignored); stored focused world/editor verification belongs to
+`ada7c627` (394 passed / 20 ignored). The audit native Studio smoke failed; those green suites
+did not override that baseline result. The audit changed documentation only and left those docs
+uncommitted. See the newer implementation and native smoke results below.
+AI training may be native-only; shared editing semantics retain their existing portable boundary.
+
+## Detached workspace and first copy curriculum — 2026-10-18
+
+Baseline remains `main` at exact `ada7c6277fac47527e481994ef6d44798ecc66f3`; changes from the
+previous checkpoint are preserved and all implementation remains uncommitted.
+
+- Builder / AI Lab / WFC now has its own immediate native viewport. The main editor continues
+  streaming/editing independently. Authored sessions/history stay separate; Lab parks only its
+  Studio author session. Root quit closes/prompts the workspace first, then preserves the world
+  save prompt. A detached save refuses newer library content and supports Save as new recovery.
+- `osrs-lab::reconstruction_task` and `task-copy` replace editor-only task conversion. Exact
+  occurrences, rotations, sparse terrain and heights are retained; dimensions must be resolved,
+  palettes are deduplicated and geographic/family grouping is shared with offline evaluation.
+- Lab adds Generate copy demonstration, progress/cancel, task export, next-action inspection,
+  replay speed and reset. Native jobs reuse the existing Python `imitate` baseline and local Lab
+  server, write immutable artifacts under settings-adjacent `lab-runs/`, and independently replay
+  actions before presenting a verified score. Metrics say target-visible / not a learned policy.
+  Direct editor scripts pause in Lab; permitted host controls cannot bypass action authority.
+- The user's saved `test` is reviewed, 10×9×2, with 154 placements, 22 asset IDs, 50 owned tiles and
+  208 source height samples. The first headless run produced 141 legal actions and exact score 1.0.
+  It has inferred role/evidence labels but no confirmed human object-role labels. Policy fitting
+  and generalization on held-out buildings remain future work; this creates the demonstration data.
+- Focused reconstruction tests (3) and prefab/editor tests (24) passed. Strict focused Clippy passed
+  after fixing a test unwrap. The first detached smoke confirmed a native child viewport and
+  concurrent world paint/undo, and verified teacher replay artifacts. It exposed paused Lab smoke
+  controls, which have been fixed with a controls-only script boundary. Final native/full checks
+  are pending; do not treat the earlier 1,265-test gate as verification of these later changes.
+
+## Virtual prefab workspace checkpoint — 2026-10-18
+
+Implementation baseline: `main` at exact `ada7c6277fac47527e481994ef6d44798ecc66f3`.
+All changes in this checkpoint remain uncommitted; the earlier audit documentation is preserved.
+
+- The library's former 3D gallery button and double-click now enter the full-frame Builder /
+  Prefab Studio. The workspace exposes Library, existing Builder controls, authored WFC floors,
+  camera framing/top/3D views, normal object/terrain tools, Save/new/Revert and the separate AI Lab.
+  Transient workspace controls/catalog previews are owned by the stage's `UiRuntime`.
+  Switching to newly created scenes reloads the owning library; scene and accepted Lab saves refresh
+  its workspace projection. Explicit map placement remains separate.
+- Gallery and Studio now configure a synthetic four-plane map before any FIFO build requests.
+  The source has flat known support, base ground and no source objects; all contextual region reads
+  use it. Cache definitions/models/textures remain available. `WorldDefinitions` source selection is
+  a disposable worker projection and never becomes editing authority. This removes the dependency
+  on empty cache squares, and floor palettes now load for stage authoring.
+- Capture defaults to reviewed sparse building ground, independently retaining outside boundary
+  anchors. Rectangle copying is explicit. Role controls cover furnishings, attached/ground
+  decoration, roofs and stairs; room/plane/piece review still resolves ownership. Filtering remaps
+  occurrence labels and links. Roof membership follows active floor evidence even above its plane.
+- Learned floor application now plans in `osrs-edit::plan_wfc_floors` and commits only to the
+  authored Studio runtime. Its controls live in Edit / WFC rather than the temporary Lab mirror.
+  It paints terrain only; sockets constrain the solve, without claiming object realization.
+- Architecture and diff checks passed; focused prefab tests passed (23) and virtual source test
+  passed (1). Native build passed. The pinned b241 native smoke opened 208 objects with empty
+  baseline history, exercised paint/undo/redo and saved the changed tile; it exited successfully.
+  Screenshot: `target/prefab-workspace-smoke/workspace-first.png`; log and saved fixture are beside
+  it. The saved smoke fixture retained all 208 exact object occurrences and 136 terrain tiles,
+  excluding the synthetic stage floor. The ready-checkpoint full gate passed in 712.8 seconds:
+  **1,265 passed / 0 failed / 22 ignored**, including native Clippy, architecture/registry checks,
+  complete test-binary inventory and portable checks. Report:
+  `target/verify/gates-20261018-142149/report.json`; both gate and test source-identity checks report
+  no concurrent source changes. The earlier full run was interrupted for the UI ownership cleanup;
+  it is not counted as full verification. Only this handoff documentation was updated afterward.
+  Ignored external-cache / visual-oracle tests remain unverified prerequisites, not acceptance.
+  A regular updated app was launched with Studio open, without an exit timer or test settings;
+  the older manual instance was preserved. AI training remains allowed to be native-only; this
+  checkpoint did not change the portable semantic boundary.
+
+Remaining findings in the audit (bridge support, stepped-height precision, door labels, live human
+link indexing, and held-out fitting) are separate from this workspace/capture checkpoint.
+
 ## Building correctness / Prefab Studio / procedural Lab (2026-10-18)
 
 This section supersedes older operational status below for this checkpoint. Work started on `main`

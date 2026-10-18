@@ -232,6 +232,7 @@ pub(in crate::app) fn start(app: &mut EditorApp, tile: MapTile) {
                         .collect(),
                     provenance,
                     confirmed: false,
+                    options: Options::default(),
                 })
             })();
             let _ = send.send(result);

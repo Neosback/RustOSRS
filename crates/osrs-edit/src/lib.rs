@@ -37,7 +37,7 @@ mod building_walls;
 mod building_wfc;
 pub use building_learning::{
     LearnedCatalog, LearnedPattern, LearnedRoleModel, LearningError, LearningGrid, learn_catalog,
-    learn_catalog_with_rotations,
+    learn_catalog_with_rotations, plan_wfc_floors,
 };
 mod document;
 mod document_diff;

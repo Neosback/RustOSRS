@@ -43,15 +43,15 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     ui.horizontal_wrapped(|ui| {
         if ui
             .button(format!(
-                "{} Open the 3D gallery",
+                "{} Open Builder / Prefab Studio",
                 egui_phosphor::regular::CUBE
             ))
             .on_hover_text(
-                "Browse every prefab and look at it from all sides in a window of its own",
+                "Open the full 3D workspace: edit prefabs, build, and experiment with WFC or AI tasks",
             )
             .clicked()
         {
-            app.prefabs.gallery.open = true;
+            crate::app::prefab_studio::open_library(app);
         }
         if ui
             .button(format!("{} New scene", egui_phosphor::regular::PLUS))
@@ -64,7 +64,6 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
             }
         }
     });
-    super::capture::show(app, ui);
     capture_section(app, ui);
     ui.separator();
     list(app, ui);
@@ -99,8 +98,12 @@ fn selection_box(app: &EditorApp) -> Option<(MapTile, u16, u16)> {
 fn capture_section(app: &mut EditorApp, ui: &mut egui::Ui) {
     egui::CollapsingHeader::new("Capture from the map")
         .id_salt("prefab-capture")
-        .default_open(app.prefabs.entries().is_empty())
+        .default_open(true)
         .show(ui, |ui| {
+            ui.checkbox(&mut app.prefabs.form.building_only,
+                "Ignore ground outside the building's outer walls")
+                .on_hover_text("Keep walls and attached decoration even when their anchors are outside. Review rooms, floors and pieces before capture. Uncheck for a rectangular copy.");
+            let building_only = app.prefabs.form.building_only;
             let selection = selection_box(app);
             match selection {
                 Some((origin, w, h)) => ui.label(format!(
@@ -118,7 +121,7 @@ fn capture_section(app: &mut EditorApp, ui: &mut egui::Ui) {
                 [width, 22.0],
                 egui::TextEdit::singleline(&mut app.prefabs.form.name).hint_text("Name"),
             );
-            ui.horizontal_wrapped(|ui| {
+            if !building_only { ui.horizontal_wrapped(|ui| {
                 ui.label("Planes");
                 ui.add(egui::DragValue::new(&mut app.prefabs.form.planes).range(1..=4))
                     .on_hover_text("How many planes up from the viewed one to copy");
@@ -126,11 +129,16 @@ fn capture_section(app: &mut EditorApp, ui: &mut egui::Ui) {
                 crate::theme::toggle(ui, &mut app.prefabs.form.heights, "Heights");
                 crate::theme::toggle(ui, &mut app.prefabs.form.objects, "Objects");
             });
+            }
             let capture = ui.add_enabled(
-                selection.is_some(),
-                egui::Button::new(format!("{} Capture", egui_phosphor::regular::CAMERA)),
+                selection.is_some() || (building_only && app.interaction.inspect_tile().is_some()),
+                egui::Button::new(if building_only { "Review building capture" } else { "Capture rectangle" }),
             );
-            if capture.clicked()
+            if capture.clicked() && building_only
+                && let Some(seed) = super::capture::seed(app) {
+                    super::capture::start(app, seed);
+            }
+            if capture.clicked() && !building_only
                 && let Some((origin, width, height)) = selection
                 && let Some(base_plane) = SourcePlane::new(app.interaction.view_plane())
             {
@@ -154,6 +162,10 @@ fn capture_section(app: &mut EditorApp, ui: &mut egui::Ui) {
                     Err(error) => app.prefabs.say(format!("Nothing captured: {error}")),
                 }
             }
+            if building_only {
+                ui.weak("Pick an interior floor tile, or select tiles around one building. Outside wall anchors do not own the ground beneath them. Courtyards and holes stay empty.");
+            }
+            super::capture::show(app, ui);
         });
 }
 
@@ -219,7 +231,7 @@ fn list(app: &mut EditorApp, ui: &mut egui::Ui) {
             app.prefabs.selected = Some(file.clone());
         }
         if response.double_clicked() {
-            arm(app, &file);
+            crate::app::prefab_studio::request(app, file.clone());
         }
     }
 }
@@ -351,7 +363,7 @@ fn place_controls(app: &mut EditorApp, ui: &mut egui::Ui, file: &str) {
     if !armed {
         if ui
             .button(format!("{} Place on the map", egui_phosphor::regular::CURSOR_CLICK))
-            .on_hover_text("Then click the map. R turns it, Esc stops. Double-click a prefab in the list does the same")
+            .on_hover_text("Then click the map. R turns it, Esc stops. Double-click opens the prefab in Studio")
             .clicked()
         {
             arm(app, file);

@@ -264,8 +264,18 @@ pub(super) fn save(
         prefab.name = format!("{} copy", prefab.name);
         studio.file = parent.prefabs.add(prefab.clone())?;
     } else {
-        parent.prefabs.edit(&studio.file, |p| *p = prefab.clone())?;
+        parent.prefabs.replace_if_unchanged(
+            &studio.file,
+            &studio.library_baseline,
+            prefab.clone(),
+        )?;
     }
+    studio
+        .stage
+        .viewer()
+        .prefabs
+        .sync_entries_from(&parent.prefabs);
+    studio.library_baseline = prefab.clone();
     studio.original = prefab;
     studio
         .session

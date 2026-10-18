@@ -1,9 +1,13 @@
-//! Full-frame isolated prefab editing. The parent document and its history stay parked.
+//! Detached prefab authoring window with an independent semantic session and history.
 mod catalog;
+mod initialize;
 mod lab;
 pub(in crate::app) mod overlays;
 mod save;
 mod session;
+mod window;
+pub(super) use window::{show as window, viewport_id};
+pub(in crate::app) mod workspace;
 use super::{
     EditorApp,
     prefab_gallery::stage::{CENTRE, Stage},
@@ -19,6 +23,8 @@ pub(in crate::app) enum SceneCommand {
     Close,
     Revert,
     Report,
+    Demonstrate,
+    PlayReplay,
 }
 
 pub(in crate::app) struct Studio {
@@ -26,6 +32,7 @@ pub(in crate::app) struct Studio {
     lab: lab::LabPanel,
     file: String,
     original: Prefab,
+    library_baseline: Prefab,
     pad: Option<MapDocument>,
     origin: MapTile,
     session: StudioSession,
@@ -56,56 +63,29 @@ impl Studio {
                 CENTRE.0 - i32::from(original.width) / 2,
                 CENTRE.1 - i32::from(original.height) / 2,
             ),
+            library_baseline: original.clone(),
             original,
             pad: None,
             session: StudioSession::default(),
             problem: None,
-            relations: true,
+            relations: false,
             auto_own_painted_floors: true,
         })
     }
-    fn initialize(&mut self) -> Result<(), String> {
-        let viewer = self.stage.viewer();
-        let pad = viewer.session.document().clone();
-        let plane = SourcePlane::new(0).ok_or("plane")?;
-        let plan = plan_place_exact(
-            &pad,
-            &self.original,
-            PlaceSpec {
-                origin: self.origin,
-                base_plane: plane,
-                quarter_turns: 0,
-                terrain: true,
-                heights: true,
-                objects: true,
-                replace_objects: false,
-            },
-            &|id, _| viewer.placer.object_size(id.get()),
-        )
-        .map_err(|e| e.to_string())?;
-        if !plan.patch.is_empty()
-            && !super::editing::apply_baseline_patch(viewer, plan.patch, "Prefab scene baseline")
-        {
-            return Err("Scene projection failed; retry after loading.".into());
-        }
-        viewer.interaction.clear_selection();
-        viewer.interaction.drop_pending_reselect();
-        viewer.settings.prefs.properties_panel = true;
-        viewer.settings.prefs.rail_tab = crate::settings::RailTab::Inspect;
-        viewer.settings.prefs.hover_tile = true;
-        let side = f32::from(self.original.width.max(self.original.height)).max(6.0);
-        let origin = viewer.renderer.render_origin();
-        viewer.interaction.focus_camera(
-            [
-                (CENTRE.0 * 128 + 64 - origin.0) as f32,
-                -(side * 40.0).min(900.0),
-                (CENTRE.1 * 128 + 64 - origin.1) as f32,
-            ],
-            (side * 128.0 * 1.5).clamp(900.0, 9000.0),
-        );
-        self.session.baseline(viewer.session.edit_revision());
-        self.pad = Some(pad);
-        Ok(())
+}
+
+/// The former gallery entry opens a real editing workspace, including for an empty library.
+pub(in crate::app) fn open_library(app: &mut EditorApp) {
+    let file = app
+        .prefabs
+        .selected
+        .clone()
+        .filter(|f| app.prefabs.entry(f).is_some())
+        .or_else(|| app.prefabs.entries().first().map(|e| e.file.clone()));
+    let result = file.map_or_else(|| app.prefabs.create_blank_scene(), Ok);
+    match result {
+        Ok(file) => request(app, file),
+        Err(error) => app.prefabs.say(error),
     }
 }
 
@@ -113,8 +93,8 @@ pub(in crate::app) fn request(app: &mut EditorApp, file: String) {
     app.prefabs.studio_request = Some(file);
 }
 
-/// Returns true while Studio owns the frame. No parent input, streaming or project UI runs.
-pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
+/// Draw only the child viewport. Parent-world processing continues in its own viewport.
+fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
     let requested = app.prefabs.studio_request.take();
     let mut studio = app.prefabs.studio.take();
     if studio.is_none()
@@ -134,7 +114,7 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
     {
         destination = studio.session.request(
             Destination::Switch(file),
-            studio.stage.viewer().session.edit_revision(),
+            studio.lab.author_revision(studio.stage.viewer()),
         );
     }
     studio.stage.step(ctx);
@@ -142,9 +122,13 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
         match studio.initialize() {
             Ok(()) => {
                 let viewer = studio.stage.viewer();
-                app.script
-                    .rebase_frames(app.diagnostics.frames(), viewer.diagnostics.frames());
-                viewer.script = std::mem::take(&mut app.script);
+                if let Ok(script) = std::env::var("RUSTOSRS_STUDIO_SCRIPT") {
+                    viewer.run_script(&script);
+                } else {
+                    app.script
+                        .rebase_frames(app.diagnostics.frames(), viewer.diagnostics.frames());
+                    viewer.script = std::mem::take(&mut app.script);
+                }
             }
             Err(e) => studio.problem = Some(e),
         }
@@ -204,7 +188,7 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
     egui::Panel::top("prefab-studio-header").show(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
             ui.strong(format!(
-                "Prefab Studio · {} ({}×{}×{}){}",
+                "Builder / Prefab Studio · {} ({}×{}×{}){}",
                 studio.original.name,
                 studio.original.width,
                 studio.original.height,
@@ -232,12 +216,18 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
             revert = ui
                 .add_enabled(ready && !studio.lab.active, egui::Button::new("Revert"))
                 .clicked();
-            leave |= ui.button("Return to world").clicked();
+            leave |= ui.button("Close workspace").clicked();
             ui.checkbox(&mut studio.relations, "Relationships");
-            if ui.selectable_label(studio.lab.active, "Lab").clicked() {
+            ui.checkbox(
+                &mut studio.stage.viewer().ui.prefab_workspace.open,
+                "Workspace tools",
+            );
+            if ui.selectable_label(studio.lab.active, "AI Lab").clicked() {
                 studio.lab.active = true;
             }
-            if ui.selectable_label(!studio.lab.active, "Edit").clicked()
+            if ui
+                .selectable_label(!studio.lab.active, "Edit / WFC")
+                .clicked()
                 && let Err(e) = studio.lab.leave(studio.stage.viewer())
             {
                 studio.problem = Some(e);
@@ -262,6 +252,7 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
         if studio.session.pending.is_none() {
             let viewer = studio.stage.viewer();
             if studio.lab.active {
+                super::script::lab_controls(viewer, ctx);
                 viewer.settings.prefs.tool = crate::paint::Tool::Select;
                 viewer.prefabs.disarm();
                 viewer.placer.disarm();
@@ -279,6 +270,9 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
                 viewer.toolbar(ui);
                 super::viewport::read_only(viewer, ui, ctx);
             } else {
+                let mut workspace = std::mem::take(&mut viewer.ui.prefab_workspace);
+                workspace.show(viewer, &studio.file, ui);
+                viewer.ui.prefab_workspace = workspace;
                 super::input::editor_actions(viewer, ctx, false);
                 viewer.tool_strip(ui);
                 super::prefab_panel::review_placement(viewer, ctx);
@@ -299,12 +293,30 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
             Some(SceneCommand::SaveAsNew) => save_as = true,
             Some(SceneCommand::Close) => leave = true,
             Some(SceneCommand::Revert) => revert = true,
-            Some(SceneCommand::Report) => eprintln!(
-                "smoke: studio: {} objects, undo {}, dirty {}",
-                viewer.session.document().object_entries().len(),
-                viewer.can_undo(),
-                dirty
-            ),
+            Some(SceneCommand::Report) => {
+                eprintln!(
+                    "smoke: studio: {} objects, undo {}, dirty {}",
+                    viewer.session.document().object_entries().len(),
+                    viewer.can_undo(),
+                    dirty
+                );
+                studio.lab.report();
+                eprintln!(
+                    "smoke: studio viewport {:?}, frames {}",
+                    ctx.viewport_id(),
+                    viewer.diagnostics.frames()
+                );
+            }
+            Some(SceneCommand::Demonstrate) => {
+                if let Some(pad) = &studio.pad
+                    && let Err(e) = studio
+                        .lab
+                        .generate_demonstration(viewer, pad, &studio.original)
+                {
+                    studio.problem = Some(e);
+                }
+            }
+            Some(SceneCommand::PlayReplay) => studio.lab.play_replay(),
             None => {}
         }
         if let Some(file) = viewer.prefabs.studio_request.take() {
@@ -322,8 +334,13 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
     if let Some(prefab) = studio.lab.accepted.take() {
         match app.prefabs.add(prefab) {
             Ok(_) => {
+                studio
+                    .stage
+                    .viewer()
+                    .prefabs
+                    .sync_entries_from(&app.prefabs);
                 studio.problem =
-                    Some("Accepted reconstruction saved as a new library prefab".into())
+                    Some("Accepted reconstruction saved as a new library prefab".into());
             }
             Err(e) => studio.problem = Some(e),
         }
@@ -358,7 +375,7 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
         let mut choice = None;
         egui::Modal::new(egui::Id::new("studio-unsaved")).show(ctx, |ui| {
             ui.heading("Save changes to this prefab?");
-            ui.label("The world document remains parked while this scene is open.");
+            ui.label("This prefab has its own history. Your world editor stays open.");
             ui.horizontal(|ui| {
                 if ui.button("Save").clicked() {
                     choice = Some(Choice::Save)
@@ -372,6 +389,10 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
             });
         });
         if let Some(choice) = choice {
+            #[cfg(not(target_arch = "wasm32"))]
+            if choice == Choice::Cancel {
+                app.ui.studio_quit_pending = false;
+            }
             let saved = if choice == Choice::Save {
                 match save::save(&mut studio, app, false) {
                     Ok(()) => Some(studio.stage.viewer().session.edit_revision()),
@@ -386,7 +407,7 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
             destination = studio.session.choose(choice, saved);
         }
     }
-    if destination.is_some() {
+    if destination.is_some() && std::env::var_os("RUSTOSRS_STUDIO_SCRIPT").is_none() {
         let viewer = studio.stage.viewer();
         viewer
             .script
@@ -400,6 +421,7 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
         Some(Destination::Revert) => {
             let file = studio.file.clone();
             drop(studio);
+            app.prefabs.load();
             match Studio::new(app, file, ctx) {
                 Ok(s) => app.prefabs.studio = Some(Box::new(s)),
                 Err(e) => app.prefabs.say(e),
@@ -407,6 +429,7 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
         }
         Some(Destination::Switch(file)) => {
             drop(studio);
+            app.prefabs.load();
             match Studio::new(app, file, ctx) {
                 Ok(s) => app.prefabs.studio = Some(Box::new(s)),
                 Err(e) => app.prefabs.say(e),
@@ -419,7 +442,6 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
     if app.diagnostics.expired(app.started.elapsed().as_secs_f32()) {
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
-    app.diagnostics.finish_frame(ctx);
     ctx.request_repaint();
     true
 }

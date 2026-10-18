@@ -18,6 +18,12 @@ use eframe::egui;
 pub(in crate::app) use library::arm;
 pub(super) use viewport::{armed_input, draw_world, place};
 
+/// The same generator controls inside the isolated authoring workspace.
+pub(in crate::app) fn builder(app: &mut EditorApp, ui: &mut egui::Ui) {
+    build::refresh(app);
+    build::show(app, ui);
+}
+
 /// Once per frame: finish file dialogs and keep the generator's preview current while it shows.
 pub(super) fn update(app: &mut EditorApp) {
     viewport::poll(app);

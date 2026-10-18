@@ -184,6 +184,6 @@ fn card(app: &mut EditorApp, ui: &mut egui::Ui, file: &str, name: &str, prefab: 
         app.prefabs.gallery.turns = 0;
     }
     if response.double_clicked() {
-        crate::app::prefab_panel::arm(app, file);
+        crate::app::prefab_studio::request(app, file.to_owned());
     }
 }

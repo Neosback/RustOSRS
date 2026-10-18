@@ -351,6 +351,7 @@ pub enum StreamEvent {
 }
 
 enum Request {
+    VirtualMap(u16),
     PlayerGeometry(crate::npc::PlayerFrame),
     Sound(u32),
     NpcCatalog,
@@ -424,6 +425,7 @@ impl StreamWorker {
     /// Handle one request; `false` when the worker should stop.
     fn handle(&mut self, request: Request, events: &Sender<StreamEvent>) -> bool {
         match request {
+            Request::VirtualMap(underlay) => self.definitions.use_virtual_map(underlay),
             Request::Shutdown => return false,
             Request::PlayerGeometry(frame) => {
                 let update = crate::npc::extract_player_frame(
@@ -608,6 +610,12 @@ impl RegionStreamer {
                 let _ = worker.join();
             });
         }
+    }
+
+    /// Select synthetic source terrain before enqueueing any build. FIFO ensures every stage
+    /// region and its context uses this source, including later edit rebuilds and outlines.
+    pub fn use_virtual_map(&self, underlay: u16) {
+        let _ = self.requests.send(Request::VirtualMap(underlay));
     }
 
     pub fn spawn(source: impl Into<CacheSource>, presentation: TerrainPresentation) -> Self {

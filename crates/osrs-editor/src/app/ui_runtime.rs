@@ -8,6 +8,9 @@ use web_time::Instant;
 const RECENT_TOOLS: usize = 3;
 
 pub(super) struct UiRuntime {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) studio_quit_pending: bool,
+    pub(super) prefab_workspace: super::prefab_studio::workspace::Workspace,
     pub(super) themes: super::theme_studio::ThemeStudio,
     pub(super) palette_search: String,
     pub(super) context_menu: Option<egui::Pos2>,
@@ -35,6 +38,9 @@ pub(super) struct UiRuntime {
 impl UiRuntime {
     pub(super) fn new() -> Self {
         Self {
+            #[cfg(not(target_arch = "wasm32"))]
+            studio_quit_pending: false,
+            prefab_workspace: super::prefab_studio::workspace::Workspace::default(),
             themes: super::theme_studio::ThemeStudio::default(),
             palette_search: String::new(),
             context_menu: None,

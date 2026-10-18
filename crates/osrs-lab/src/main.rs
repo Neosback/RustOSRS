@@ -138,6 +138,15 @@ fn run(request: Request, envs: &mut BTreeMap<u32, Running>) -> Result<Value, Str
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|s| s == "task-copy") {
+        let path = args.get(1).ok_or("task-copy PREFAB_JSON")?;
+        let prefab = serde_json::from_str(&std::fs::read_to_string(path)?)?;
+        println!(
+            "{}",
+            serde_json::to_string(&osrs_lab::reconstruction_task(&prefab, &|_, _| None)?)?
+        );
+        return Ok(());
+    }
     if args.first().is_some_and(|s| s == "task-relocate") {
         let path = args.get(1).ok_or("task-relocate PREFAB_JSON [SEED]")?;
         let prefab = serde_json::from_str(&std::fs::read_to_string(path)?)?;
@@ -176,7 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     if args.first().is_some_and(|s| s != "serve") {
-        return Err("use serve, task-tavern KIT_JSON [SEED], task-relocate PREFAB_JSON [SEED], or task-paths [SEED|PREFAB_JSON] [SEED]".into());
+        return Err("use serve, task-copy PREFAB_JSON, task-tavern KIT_JSON [SEED], task-relocate PREFAB_JSON [SEED], or task-paths [SEED|PREFAB_JSON] [SEED]".into());
     }
     let mut envs = BTreeMap::new();
     let mut stdout = io::stdout().lock();

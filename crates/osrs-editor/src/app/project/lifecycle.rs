@@ -83,14 +83,26 @@ impl EditorApp {
     }
 
     pub(in crate::app) fn quit_guard(&mut self, ctx: &egui::Context) {
+        // Close the detached workspace first, so its dirty prompt cannot be bypassed by root quit.
+        if self.prefabs.studio.is_some() && ctx.input(|i| i.viewport().close_requested()) {
+            self.ui.studio_quit_pending = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            ctx.send_viewport_cmd_to(
+                super::super::prefab_studio::viewport_id(),
+                egui::ViewportCommand::Close,
+            );
+            return;
+        }
+        let workspace_finished =
+            self.prefabs.studio.is_none() && std::mem::take(&mut self.ui.studio_quit_pending);
+        let requested = workspace_finished || ctx.input(|i| i.viewport().close_requested());
         let smoke = self.diagnostics.smoke_active();
-        if !smoke
-            && ctx.input(|i| i.viewport().close_requested())
-            && self.is_unsaved()
-            && !self.project.discard_confirmed()
-        {
+        if !smoke && requested && self.is_unsaved() && !self.project.discard_confirmed() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.project.request_quit();
+        }
+        if workspace_finished && (smoke || !self.is_unsaved() || self.project.discard_confirmed()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         if self.project.ready_to_close(self.is_unsaved()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);

@@ -1,5 +1,6 @@
 //! Cache-backed definition access for scene assembly.
 
+mod map;
 mod npc;
 mod player;
 mod terrain;
@@ -157,6 +158,7 @@ pub struct WorldDefinitions {
     frames: HashMap<u32, Option<Arc<LegacyAnimationFrame>>>,
     edits: crate::TerrainEdits,
     loc_edits: crate::LocEdits,
+    virtual_underlay: Option<u16>,
 }
 
 impl WorldDefinitions {
@@ -286,6 +288,7 @@ impl WorldDefinitions {
             frames: HashMap::new(),
             edits: crate::TerrainEdits::default(),
             loc_edits: crate::LocEdits::default(),
+            virtual_underlay: None,
         })
     }
 
@@ -483,58 +486,6 @@ impl WorldDefinitions {
         };
         self.skeletons.insert(skeleton_id, skeleton.clone());
         Ok(skeleton)
-    }
-
-    /// Read and decode one region's terrain and location files, or `None` when the cache has no
-    /// map square for it.
-    pub fn region(&self, region: RegionCoord) -> Result<Option<RegionMap>, WorldError> {
-        let square = match self.cache().read_map_square(region) {
-            Ok(square) => square,
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    CacheErrorKind::MapResolution { .. }
-                        | CacheErrorKind::MissingGroup
-                        | CacheErrorKind::MissingMetadata
-                        | CacheErrorKind::MissingFile
-                ) =>
-            {
-                return Ok(None);
-            }
-            Err(error) => return Err(error.into()),
-        };
-        let terrain = decode_terrain(
-            &square.terrain.bytes,
-            &self.context,
-            &square.terrain.provenance,
-            region,
-        )?;
-        let locations = decode_locations(
-            &square.locations.bytes,
-            &self.context,
-            &square.locations.provenance,
-            region,
-        )?;
-        let mut tiles = region_tiles_from_decoded(&terrain);
-        for edit in self.edits.region((region.x, region.y)) {
-            let (_, (x, y)) = edit.locate();
-            let index = (usize::from(edit.plane) * 64 + usize::from(x)) * 64 + usize::from(y);
-            if let Some(tile) = tiles.get_mut(index) {
-                edit.apply_to(tile);
-            }
-        }
-        let locations = if self.loc_edits.touches((region.x, region.y)) {
-            DecodedLocations::with_locations(
-                region,
-                self.loc_edits.replay(region, locations.locations()),
-            )
-        } else {
-            locations
-        };
-        Ok(Some(RegionMap {
-            terrain: RegionTerrain::new(tiles)?,
-            locations,
-        }))
     }
 
     /// Provenance helper for diagnostics.

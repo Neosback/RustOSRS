@@ -47,9 +47,9 @@ Placement frequency tables are exported separately with that qualification.
 
 Learned WFC grids use row-major cells with y increasing north and sockets in N/E/S/W order.
 The `learn` command returns a versioned catalog of sorted patterns, integer frequencies and only
-observed adjacency pairs. Import it in Studio Lab to pin patterns, solve and repair a bounded
+observed adjacency pairs. Import it in Studio Edit / WFC to pin patterns, solve and repair a bounded
 neighborhood. Kits can bind catalog sockets to their own ordered roof asset patterns. A catalog
-with more than 128 distinct patterns is rejected explicitly; it is never silently truncated.
+with more than 512 distinct patterns is rejected explicitly; it is never silently truncated.
 
 Learn a symbolic catalog from reviewed sparse captures (holes never become adjacency samples):
 
@@ -62,3 +62,37 @@ target/debug/osrs-lab task-relocate path/to/reviewed.prefab.json 7 > target/relo
 Relocation tasks preserve the source geographic/family group across rotations and seed variants.
 Their targets come from the same foundation planner as map placement; the policy still reconstructs
 using ordinary tools. A model's classification evidence margin is not a calibrated probability.
+
+## Reconstruct a saved building
+
+Open a prefab (for example `test`) in the separate Builder / AI Lab / WFC window, choose **AI Lab**,
+then **Generate copy demonstration**. This starts an empty reconstruction, generates a visible-target
+tool trace, and verifies the replay. Use Step, Play, replay speed, next-action inspection and Reset
+to watch it. Export task/action trace and accept a reconstruction as a new prefab when reviewed.
+The world remains editable in its own window and has separate history. Normal editor scripts pause
+in Lab mode so they cannot bypass the tool environment by mutating its render projection.
+
+Task, actions, trainer log and metrics are saved in `lab-runs/` beside the editor settings. Jobs use
+Python 3.11+ (override with `RUSTOSRS_PYTHON`) and an `osrs-lab` executable beside `osrs-editor`.
+Source-development builds locate `scripts/lab/train.py` in this checkout. Job cancellation drops
+results and stops the worker process; it cannot commit an authored edit.
+
+The same curriculum can be exported headlessly:
+
+```sh
+target/debug/osrs-lab task-copy "/path/to/test.prefab.json" > target/test-task.json
+/opt/homebrew/bin/python3 scripts/lab/train.py reconstruct --binary target/debug/osrs-lab \
+  --task target/test-task.json --method imitate --seed 7 --out target/test-actions.json
+```
+
+Task construction preserves exact occurrences, rotations, sparse terrain and source heights.
+Dimensions must come from reviewed prefab metadata or a resolved definition lookup; unresolved
+assets are rejected rather than guessed as 1×1. Nearby captured buildings share a geographic group.
+
+An exact teacher reconstruction verifies the task and tools; it is not evidence of a trained model.
+The next policy-training stage needs observation/action examples, legal tool masks, rewards and a
+learner that predicts actions. Confirm wall/door/roof relationships for structural learning, add
+varied buildings, and evaluate on separate building families/geographic groups. Keep augmented
+rotations in their source group. One `test` building is useful for an overfit smoke test, not an
+unseen-building generalization claim. Metrics explicitly record `target_visible: true` and
+`learned_policy: false` for demonstrations.

@@ -36,6 +36,7 @@ pub(in crate::app) struct Entry {
 /// What the capture form holds.
 #[derive(Debug, Clone)]
 pub(in crate::app) struct CaptureForm {
+    pub(in crate::app) building_only: bool,
     pub(in crate::app) name: String,
     pub(in crate::app) planes: u8,
     pub(in crate::app) terrain: bool,
@@ -46,6 +47,7 @@ pub(in crate::app) struct CaptureForm {
 impl Default for CaptureForm {
     fn default() -> Self {
         Self {
+            building_only: true,
             name: String::new(),
             planes: 1,
             terrain: true,
@@ -266,6 +268,21 @@ impl PrefabRuntime {
         self.store.write(file, &edited)?;
         entry.prefab = edited;
         Ok(())
+    }
+
+    /// Detached authoring cannot overwrite a newer library edit from the world or another window.
+    pub(in crate::app) fn replace_if_unchanged(
+        &mut self,
+        file: &str,
+        baseline: &Prefab,
+        replacement: Prefab,
+    ) -> Result<(), String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        self.load();
+        if self.entry(file).map(|e| &e.prefab) != Some(baseline) {
+            return Err("This prefab changed in the library while the workspace was open. Revert to reload it, or Save as new to keep your work.".into());
+        }
+        self.edit(file, |p| *p = replacement)
     }
 
     pub(in crate::app) fn remove(&mut self, file: &str) -> Result<(), String> {

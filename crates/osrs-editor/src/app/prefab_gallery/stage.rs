@@ -1,4 +1,4 @@
-//! The gallery's stage: a second, isolated editor over a blank corner of the map, where the
+//! The gallery's stage: a second, isolated editor over a synthetic map, where the
 //! selected prefab is placed so it can be looked at from every side with the real renderer.
 //!
 //! The stage owns its own world, document, history and renderer (sharing only the GPU device), the
@@ -10,20 +10,17 @@ use crate::app::{EditorApp, editing::commit_map_patch, interaction_runtime::Came
 use eframe::egui;
 use osrs_core::{
     coords::{MapTile, SourcePlane},
-    ids::{FloorUnderlayId, ObjectId},
+    ids::ObjectId,
 };
-use osrs_edit::{
-    LocKind, MapOp, MapPatch, MapPosition, PlaceSpec, Prefab, TerrainTile, plan_place_exact,
-    turned_size,
-};
+use osrs_edit::{LocKind, PlaceSpec, Prefab, plan_place_exact, turned_size};
 
-/// Centre of the stage (world tile): the middle of map square (50, 33), inside a block of nine
-/// squares the cache keeps empty (no objects, no floors), so nothing else is ever in the picture.
+/// Coordinates of the virtual stage. No terrain or placements are read from this cache location.
 pub(in crate::app) const CENTRE: (i32, i32) = (3232, 2144);
 /// Half the side of the floor laid under the prefab, in tiles.
 const PAD_HALF: i32 = 72;
 /// Underlay of the stage floor: the grass most captured buildings stand on.
-const GROUND_UNDERLAY: u32 = 50;
+#[cfg(not(target_arch = "wasm32"))]
+const GROUND_UNDERLAY: u16 = 50;
 
 /// What is on the stage now.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +55,7 @@ impl Stage {
             (CENTRE.1.div_euclid(64) - 1) * 64,
             false,
         )?;
+        viewer.world.use_virtual_map(GROUND_UNDERLAY);
         viewer.prefabs.stage_region = Some(MapTile::new(CENTRE.0, CENTRE.1).split_region().0);
         viewer.settings.prefs = parent.settings.prefs.clone();
         viewer
@@ -74,6 +72,7 @@ impl Stage {
         prefs.load_radius = 1;
         // A quiet backdrop: the edge of the floor is never in the way of the prefab.
         prefs.sky_color = [0.30, 0.33, 0.38];
+        viewer.palettes.load(parent.project.source().clone());
         viewer.teleport_to(Destination::Tile {
             x: CENTRE.0,
             y: CENTRE.1,
@@ -112,8 +111,8 @@ impl Stage {
                 .is_ready()
     }
 
-    /// Once per frame: let the stage's world stream and animate, and lay its floor when the empty
-    /// map square has loaded.
+    /// Once per frame: let the synthetic source stream and animate. Its floor is source
+    /// baseline data, so opening the workspace creates no undo entry.
     pub(in crate::app) fn step(&mut self, ctx: &egui::Context) {
         let viewer = self.viewer.as_deref_mut().unwrap_or_else(|| unreachable!());
         viewer.rebase_if_needed();
@@ -122,6 +121,7 @@ impl Stage {
         viewer.palettes.poll();
         viewer.poll_catalog();
         viewer.assets.poll(ctx);
+        crate::app::prefab_panel::update(viewer);
         self.since_shown = self.since_shown.saturating_add(1);
         if !self.padded
             && self.problem.is_none()
@@ -145,43 +145,7 @@ impl Stage {
             if !covered {
                 return;
             }
-            let inside = |t: MapTile| {
-                (CENTRE.0 - PAD_HALF..CENTRE.0 + PAD_HALF).contains(&t.x)
-                    && (CENTRE.1 - PAD_HALF..CENTRE.1 + PAD_HALF).contains(&t.y)
-            };
-            if doc.object_entries().iter().any(|p| inside(p.position.tile))
-                || doc
-                    .terrain_entries()
-                    .any(|(p, t)| inside(p.tile) && t != TerrainTile::default())
-            {
-                self.problem=Some("This cache has content in the isolated stage area. Choose a compatible source before opening Studio.".into());
-                return;
-            }
-            let plane = SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane 0 exists"));
-            let mut ops = Vec::new();
-            for dx in -PAD_HALF..PAD_HALF {
-                for dy in -PAD_HALF..PAD_HALF {
-                    let coord = MapPosition::new(MapTile::new(CENTRE.0 + dx, CENTRE.1 + dy), plane);
-                    let before = viewer.session.document().terrain_at(coord);
-                    let after = TerrainTile {
-                        underlay: Some(FloorUnderlayId::new(GROUND_UNDERLAY)),
-                        overlay: None,
-                        flags: 0,
-                    };
-                    if before != after {
-                        ops.push(MapOp::SetTerrain {
-                            coord,
-                            before,
-                            after,
-                        });
-                    }
-                }
-            }
-            self.padded = crate::app::editing::apply_baseline_patch(
-                viewer,
-                MapPatch::new(ops),
-                "Stage floor",
-            );
+            self.padded = true;
         }
     }
 

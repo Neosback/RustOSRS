@@ -16,7 +16,11 @@ through the existing gateway and history.
 
 Native Prefab Studio reuses an isolated stage, renderer and ordinary editing controllers.
 History-free initialization uses a transactional gateway baseline; authored history starts empty.
-The world document stays parked. The pristine stage floor is excluded when saving.
+The world and prefab have independent semantic sessions and histories. Native Studio uses an
+immediate child viewport on the UI thread, sharing the GPU device while the world editor continues
+its own frame. Child input and undo remain local; closing either window preserves dirty-navigation
+prompts, and a detached save refuses a newer library revision. The pristine stage floor is excluded
+when saving.
 
 `osrs-lab` depends only on core, edit and scene, plus serialization. It owns a headless document,
 history, private target and tool action trace. Agent actions use planners; they cannot submit raw
@@ -37,3 +41,10 @@ Portable semantics retain WASM compatibility. Native cache-backed capture and is
 are the initial authoring surface. Renderer caches, visibility groups and training feedback cannot
 mutate the authoritative map. New path tasks must move only pure fitting code out of the editor
 and retain its existing oracle tests; this decision does not duplicate that fitter in the Lab.
+
+The native copy-demonstration workflow exports an immutable reconstruction task, invokes the
+existing visible-target tool baseline off-thread, and independently validates its replay before
+loading actions into the Lab. Cancellation cannot mutate authored documents. These artifacts are
+training demonstrations, explicitly marked as target-visible and not a fitted policy. Direct editor
+scripts pause in Lab mode; only host replay/navigation controls execute there. Learned policy fitting
+and evaluation on held-out building families remain distinct from demonstrating one exact copy.

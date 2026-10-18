@@ -14,10 +14,13 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
     match words.next().unwrap_or_default() {
         "studio" => {
             use crate::app::prefab_studio::SceneCommand;
-            let name = words
-                .next()
-                .ok_or("studio NAME|save|new|revert|exit|report")?;
+            let Some(name) = words.next() else {
+                crate::app::prefab_studio::open_library(app);
+                return Ok(());
+            };
             app.prefabs.studio_command = match name {
+                "demo" => Some(SceneCommand::Demonstrate),
+                "play" => Some(SceneCommand::PlayReplay),
                 "save" => Some(SceneCommand::Save),
                 "new" => Some(SceneCommand::SaveAsNew),
                 "exit" => Some(SceneCommand::Close),

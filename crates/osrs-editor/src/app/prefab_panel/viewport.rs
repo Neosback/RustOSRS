@@ -331,8 +331,9 @@ pub(in crate::app) fn draw_world(
             Color32::from_rgb(110, 190, 255),
         );
     }
-    if app.settings.prefs.properties_panel
-        && app.settings.prefs.rail_tab == crate::settings::RailTab::Prefabs
+    if (app.prefabs.stage_region.is_some()
+        || (app.settings.prefs.properties_panel
+            && app.settings.prefs.rail_tab == crate::settings::RailTab::Prefabs))
         && app.prefabs.page == crate::app::prefab_runtime::Page::Build
     {
         if let Some((origin, w, h)) = build.site_rect() {

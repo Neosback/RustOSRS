@@ -134,8 +134,13 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         if ui
             .button(format!(
-                "{} Apply to the map",
-                egui_phosphor::regular::CHECK
+                "{} {}",
+                egui_phosphor::regular::CHECK,
+                if app.prefabs.stage_region.is_some() {
+                    "Apply to prefab scene"
+                } else {
+                    "Apply to the map"
+                }
             ))
             .on_hover_text("One undo step")
             .clicked()

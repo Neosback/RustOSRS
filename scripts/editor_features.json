@@ -289,5 +289,69 @@
       "file": "crates/osrs-lab/src/tests.rs",
       "symbol": "failures_do_not_destroy_redo_and_budget_is_bounded"
     }
+  },
+  "WFC prefab floors": {
+    "kind": "workspace",
+    "mutates_document": true,
+    "controller": {
+      "file": "crates/osrs-editor/src/app/prefab_studio/catalog.rs",
+      "symbol": "show"
+    },
+    "planner": {
+      "file": "crates/osrs-edit/src/building_learning/placement.rs",
+      "symbol": "plan_wfc_floors"
+    },
+    "gateway": {
+      "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
+      "symbol": "commit_map_patch"
+    },
+    "planning_test": {
+      "file": "crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs",
+      "symbol": "wfc_preview_cancel_leaves_author_document_and_history_unchanged"
+    },
+    "cancellation_test": {
+      "file": "crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs",
+      "symbol": "wfc_preview_cancel_leaves_author_document_and_history_unchanged"
+    },
+    "commit_test": {
+      "file": "crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs",
+      "symbol": "wfc_author_commit_survives_save_and_exact_undo_redo"
+    },
+    "undo_test": {
+      "file": "crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs",
+      "symbol": "wfc_author_commit_survives_save_and_exact_undo_redo"
+    }
+  },
+  "Building copy demonstration": {
+    "kind": "workspace",
+    "mutates_document": true,
+    "controller": {
+      "file": "crates/osrs-editor/src/app/prefab_studio/lab.rs",
+      "symbol": "generate_demonstration"
+    },
+    "planner": {
+      "file": "crates/osrs-lab/src/reconstruction.rs",
+      "symbol": "reconstruction_task"
+    },
+    "gateway": {
+      "file": "crates/osrs-lab/src/env.rs",
+      "symbol": "step"
+    },
+    "planning_test": {
+      "file": "crates/osrs-lab/src/reconstruction_tests.rs",
+      "symbol": "reconstruction_preserves_sparse_tiles_occurrences_and_geographic_family"
+    },
+    "cancellation_test": {
+      "file": "crates/osrs-lab/src/tests.rs",
+      "symbol": "invalid_actions_preserve_document_and_raw_target_writes_are_unrepresentable"
+    },
+    "commit_test": {
+      "file": "crates/osrs-lab/src/reconstruction_tests.rs",
+      "symbol": "copy_task_legal_actions_reach_exact_and_undo_redo"
+    },
+    "undo_test": {
+      "file": "crates/osrs-lab/src/reconstruction_tests.rs",
+      "symbol": "copy_task_legal_actions_reach_exact_and_undo_redo"
+    }
   }
 }

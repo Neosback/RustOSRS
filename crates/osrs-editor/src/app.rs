@@ -130,9 +130,7 @@ impl eframe::App for EditorApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        if prefab_studio::frame(self, ui, &ctx) {
-            return;
-        }
+        prefab_studio::window(self, &ctx);
         #[cfg(not(target_arch = "wasm32"))]
         if self.export_inspection_ui(ui) {
             self.diagnostics.finish_frame(&ctx);

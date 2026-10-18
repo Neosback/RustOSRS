@@ -1,5 +1,11 @@
 //! Tool-driven Lab authority with a read-only scene projection. Authored session/history are parked.
+mod accept;
 mod projection;
+#[cfg(not(target_arch = "wasm32"))]
+mod runner;
+#[cfg(target_arch = "wasm32")]
+#[path = "lab/runner_web.rs"]
+mod runner;
 use super::*;
 use crate::app::{
     edit_runtime::EditRuntime,
@@ -8,7 +14,7 @@ use crate::app::{
 };
 use osrs_edit::plan_document_sync;
 use osrs_lab::{Action, Env, LabTask, ObservationMode};
-use projection::{project, task_from_prefab};
+use projection::project;
 use std::collections::VecDeque;
 #[derive(Default)]
 pub(super) struct LabPanel {
@@ -21,19 +27,57 @@ pub(super) struct LabPanel {
     feedback: Option<bool>,
     pub(super) accepted: Option<Prefab>,
     replay: VecDeque<Action>,
+    replay_source: Vec<Action>,
     playing: bool,
+    replay_rate: f64,
+    next_replay_at: f64,
     seed: u64,
     hidden: bool,
     problem: Option<String>,
-    catalog: super::catalog::CatalogView,
+    demonstration: Option<runner::Job>,
+    demonstration_result: Option<(f64, usize, std::path::PathBuf)>,
 }
 #[derive(Clone, Copy)]
 enum Import {
     Task,
     Replay,
-    Catalog,
 }
 impl LabPanel {
+    pub(super) fn generate_demonstration(
+        &mut self,
+        viewer: &mut EditorApp,
+        pad: &MapDocument,
+        original: &Prefab,
+    ) -> Result<(), String> {
+        if self.hidden {
+            return Err("Teacher demonstrations require a visible target".into());
+        }
+        let task = osrs_lab::reconstruction_task(original, &|id, _| {
+            viewer
+                .placer
+                .known_object_size(id.get())
+                .map(|(w, h)| (u16::from(w), u16::from(h)))
+        })?;
+        self.load(viewer, pad, task.clone())?;
+        self.active = true;
+        self.demonstration = Some(runner::Job::start(task, self.seed)?);
+        Ok(())
+    }
+    pub(super) fn play_replay(&mut self) {
+        self.playing = !self.replay.is_empty();
+    }
+    pub(super) fn report(&self) {
+        if let Some(env) = &self.env {
+            eprintln!(
+                "smoke: lab: score {:.6}, exact {}, objects {}, replay {}, running {}",
+                env.score().total,
+                env.score().exact,
+                env.document().object_entries().len(),
+                self.replay.len(),
+                self.demonstration.is_some()
+            );
+        }
+    }
     pub(super) fn author_revision(&self, viewer: &EditorApp) -> u64 {
         self.parked.as_ref().map_or_else(
             || viewer.session.edit_revision(),
@@ -59,7 +103,12 @@ impl LabPanel {
             viewer.terrain = terrain;
             viewer.interaction.clear_selection();
         }
+        self.demonstration = None;
         self.active = false;
+        self.task = None;
+        self.replay.clear();
+        self.replay_source.clear();
+        self.demonstration_result = None;
         self.env = None;
         self.playing = false;
         Ok(())
@@ -71,7 +120,13 @@ impl LabPanel {
         task: LabTask,
     ) -> Result<(), String> {
         let env = Env::reset(task.clone(), self.seed).map_err(|e| e.to_string())?;
-        if self.parked.is_none() {
+        self.demonstration = None;
+        self.demonstration_result = None;
+        self.replay.clear();
+        self.replay_source.clear();
+        self.playing = false;
+        let already_parked = self.parked.is_some();
+        if !already_parked {
             viewer.cancel_stroke();
             let clone = viewer.session.document().clone();
             let session = std::mem::replace(
@@ -81,7 +136,13 @@ impl LabPanel {
             let terrain = std::mem::take(&mut viewer.terrain);
             self.parked = Some((session, terrain));
         }
-        project(viewer, pad, &env)?;
+        if let Err(error) = project(viewer, pad, &env) {
+            if !already_parked && let Some((session, terrain)) = self.parked.take() {
+                viewer.session = session;
+                viewer.terrain = terrain;
+            }
+            return Err(error);
+        }
         self.env = Some(env);
         self.task = Some(task);
         self.problem = None;
@@ -95,6 +156,64 @@ impl LabPanel {
         original: &Prefab,
         ui: &mut egui::Ui,
     ) {
+        if let Some(job) = &mut self.demonstration
+            && let Some(result) = job.poll()
+        {
+            self.demonstration = None;
+            match result {
+                Ok(result) => {
+                    self.demonstration_result =
+                        Some((result.score, result.actions.len(), result.directory));
+                    self.replay_source = result.actions.clone();
+                    self.replay = result.actions.into();
+                    self.problem = None;
+                }
+                Err(e) => self.problem = Some(e),
+            }
+        }
+        ui.heading("Copy a building");
+        ui.label(format!(
+            "Saved target: {} · {}×{} · {} objects",
+            original.name,
+            original.width,
+            original.height,
+            original.objects.len()
+        ));
+        ui.weak("Start empty, reconstruct with legal tools, then compare every placement, rotation, floor and height. Teacher demonstrations create training data; they do not fit an AI model.");
+        egui::CollapsingHeader::new("What training needs next").show(ui, |ui| {
+            ui.label("1. Verify the copy demonstration and its tool actions.");
+            ui.label("2. Train a policy on scene observations and the next tool action; measure reconstruction rewards.");
+            ui.label("3. Add varied reviewed buildings and wall/door/roof labels. Keep copies and rotations together when splitting training from evaluation.");
+            ui.label("One building tests memorization. New held-out buildings test whether the policy learned reusable rules.");
+        });
+        if !self.hidden {
+            egui::CollapsingHeader::new("Target floor plan").show(ui, |ui| {
+                crate::app::prefab_panel::preview::show(ui, original, 180.0);
+            });
+        }
+        let demonstrate = ui
+            .add_enabled(
+                !self.hidden && self.demonstration.is_none() && !cfg!(target_arch = "wasm32"),
+                egui::Button::new("Generate copy demonstration"),
+            )
+            .clicked();
+        if demonstrate && let Err(e) = self.generate_demonstration(viewer, pad, original) {
+            self.problem = Some(e);
+        }
+        if let Some(job) = &self.demonstration {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(job.phase);
+            });
+            if ui.button("Cancel demonstration").clicked() {
+                self.demonstration = None;
+            }
+        }
+        if let Some((score, actions, directory)) = &self.demonstration_result {
+            ui.label(format!("Verified teacher score {score:.3} · {actions} actions. Step or play the reconstruction below."));
+            ui.add(egui::Label::new(directory.display().to_string()).truncate())
+                .on_hover_text(directory.display().to_string());
+        }
         if let Some(job) = &mut self.save
             && let Some(result) = job.poll()
         {
@@ -116,17 +235,11 @@ impl LabPanel {
                             .map(|task| task_to_load = Some(task))
                             .map_err(|e| e.to_string()),
                         Import::Replay => serde_json::from_str::<Vec<Action>>(&file.text)
-                            .map(|actions| self.replay = actions.into())
+                            .map(|actions| {
+                                self.replay_source = actions.clone();
+                                self.replay = actions.into();
+                            })
                             .map_err(|e| e.to_string()),
-                        Import::Catalog => {
-                            serde_json::from_str::<osrs_edit::LearnedCatalog>(&file.text)
-                                .map_err(|e| e.to_string())
-                                .and_then(|catalog| {
-                                    catalog.compile().map_err(|e| e.to_string())?;
-                                    self.catalog.catalog = Some(catalog);
-                                    Ok(())
-                                })
-                        }
                     };
                     if let Err(e) = result {
                         self.problem = Some(e)
@@ -139,7 +252,17 @@ impl LabPanel {
         ui.horizontal_wrapped(|ui| {
             ui.label("Task seed");
             ui.add(egui::DragValue::new(&mut self.seed));
-            ui.checkbox(&mut self.hidden, "Private target benchmark");
+            if ui
+                .checkbox(&mut self.hidden, "Private target benchmark")
+                .changed()
+            {
+                self.demonstration = None;
+                self.demonstration_result = None;
+                self.replay.clear();
+                self.replay_source.clear();
+                self.playing = false;
+                task_to_load = self.task.clone();
+            }
             if ui.button("Generated tavern").clicked() {
                 match super::super::prefab_runtime::starter_kit(0)
                     .and_then(|kit| osrs_lab::generated_tavern(&kit, self.seed))
@@ -161,18 +284,50 @@ impl LabPanel {
                 }
             }
             if ui.button("This prefab").clicked() {
-                task_to_load = Some(task_from_prefab(original));
+                match osrs_lab::reconstruction_task(original, &|id, _| {
+                    viewer
+                        .placer
+                        .known_object_size(id.get())
+                        .map(|(w, h)| (u16::from(w), u16::from(h)))
+                }) {
+                    Ok(task) => task_to_load = Some(task),
+                    Err(e) => self.problem = Some(e),
+                }
+            }
+            if ui.button("Export task").clicked() {
+                let result = self
+                    .task
+                    .clone()
+                    .map(Ok)
+                    .unwrap_or_else(|| {
+                        osrs_lab::reconstruction_task(original, &|id, _| {
+                            viewer
+                                .placer
+                                .known_object_size(id.get())
+                                .map(|(w, h)| (u16::from(w), u16::from(h)))
+                        })
+                    })
+                    .and_then(|task| {
+                        serde_json::to_string_pretty(&task).map_err(|e| e.to_string())
+                    });
+                match result {
+                    Ok(text) => {
+                        self.save = Some(crate::app::npc_runtime::save_text("copy-task.json", text))
+                    }
+                    Err(e) => self.problem = Some(e),
+                }
             }
             if ui.button("Import task").clicked() {
                 self.import = Some((Import::Task, open_text("Load a Lab task", "json")));
             }
         });
-        if let Some(task) = task_to_load
+        if let Some(task) = task_to_load.take()
             && let Err(e) = self.load(viewer, pad, task)
         {
             self.problem = Some(e)
         }
         let mut action = None;
+        let mut reset_replay = false;
         if let Some(env) = &self.env {
             let score = env.score();
             ui.strong(format!(
@@ -187,7 +342,18 @@ impl LabPanel {
                     score.terrain, score.height, score.objects, score.edges
                 ));
             }
+            ui.label(format!("{} replay actions remaining", self.replay.len()));
+            if let Some(next) = self.replay.front() {
+                egui::CollapsingHeader::new("Next tool action").show(ui, |ui| {
+                    if let Ok(text) = serde_json::to_string_pretty(next) {
+                        ui.monospace(text);
+                    }
+                });
+            }
             ui.horizontal_wrapped(|ui| {
+                if ui.button("Reset reconstruction").clicked() {
+                    reset_replay = true;
+                }
                 if ui
                     .add_enabled(env.legal_mask().can_undo, egui::Button::new("Undo action"))
                     .clicked()
@@ -204,6 +370,10 @@ impl LabPanel {
                     action = self.replay.pop_front();
                 }
                 ui.checkbox(&mut self.playing, "Play replay");
+                if self.replay_rate <= 0.0 {
+                    self.replay_rate = 10.0;
+                }
+                ui.add(egui::Slider::new(&mut self.replay_rate, 1.0..=30.0).text("Actions / sec"));
                 if ui.button("Save action trace").clicked() {
                     match serde_json::to_string_pretty(env.trace()) {
                         Ok(text) => {
@@ -217,102 +387,7 @@ impl LabPanel {
             ui.horizontal_wrapped(|ui| {
                 if ui.button("Accept as new prefab").clicked() {
                     self.feedback = Some(true);
-                    let current = env.observation(ObservationMode::ScoreOnly).current;
-                    let legal = env.legal_mask();
-                    let building = (!current.tiles.is_empty()).then(|| {
-                        let floors: Vec<_> = current
-                            .tiles
-                            .iter()
-                            .map(|t| osrs_edit::PrefabCell {
-                                x: t.x,
-                                y: t.y,
-                                plane: t.plane,
-                            })
-                            .collect();
-                        let mut support = std::collections::BTreeSet::new();
-                        for f in &floors {
-                            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-                                support.insert(osrs_edit::PrefabCell {
-                                    x: f.x + dx,
-                                    y: f.y + dy,
-                                    plane: f.plane,
-                                });
-                            }
-                        }
-                        let mut object_sizes = original
-                            .building
-                            .as_ref()
-                            .map(|b| b.object_sizes.clone())
-                            .unwrap_or_default();
-                        for o in &current.objects {
-                            let (w, h) = *object_sizes.entry(o.id).or_insert_with(|| {
-                                let (sw, sh) = viewer.placer.object_size(o.id);
-                                (u16::from(sw), u16::from(sh))
-                            });
-                            let (w, h) = if o.orientation & 1 == 1 {
-                                (h, w)
-                            } else {
-                                (w, h)
-                            };
-                            for dx in 0..=w {
-                                for dy in 0..=h {
-                                    if o.x + dx <= legal.width && o.y + dy <= legal.height {
-                                        support.insert(osrs_edit::PrefabCell {
-                                            x: o.x + dx,
-                                            y: o.y + dy,
-                                            plane: o.plane,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                        let height_set: std::collections::BTreeSet<_> = current
-                            .heights
-                            .iter()
-                            .map(|h| (h.x, h.y, h.plane))
-                            .collect();
-                        support.retain(|c| height_set.contains(&(c.x, c.y, c.plane)));
-                        let source_datum = current
-                            .heights
-                            .iter()
-                            .find(|h| h.plane == 0)
-                            .map_or(0, |h| h.value);
-                        osrs_edit::PrefabBuilding {
-                            floors,
-                            support: support.into_iter().collect(),
-                            source_datum,
-                            object_sizes,
-                            provenance: original
-                                .building
-                                .as_ref()
-                                .map_or_else(|| "lab-accepted".into(), |b| b.provenance.clone()),
-                            relations: vec![],
-                            reviewed: true,
-                            labels: Default::default(),
-                        }
-                    });
-                    let mut candidate = Prefab {
-                        format: osrs_edit::PREFAB_FORMAT.into(),
-                        version: osrs_edit::PREFAB_VERSION,
-                        name: format!("{} reconstruction", original.name),
-                        tags: vec!["lab-reviewed".into()],
-                        notes: format!(
-                            "Accepted local reconstruction; score {} seed {}",
-                            score.total, self.seed
-                        ),
-                        source: osrs_edit::PrefabSource::Authored,
-                        width: legal.width,
-                        height: legal.height,
-                        planes: legal.planes,
-                        tiles: current.tiles,
-                        heights: current.heights,
-                        objects: current.objects,
-                        building,
-                    };
-                    if candidate.validate().is_err() {
-                        candidate.building = None;
-                    }
-                    self.accepted = Some(candidate);
+                    self.accepted = Some(accept::prefab(viewer, original, env));
                 }
                 if ui.button("Reject result").clicked() {
                     self.feedback = Some(false);
@@ -332,11 +407,30 @@ impl LabPanel {
                     }
                 }
             });
-            if self.playing && action.is_none() && viewer.world.in_flight_count() == 0 {
+            let now = ui.input(|i| i.time);
+            if self.playing
+                && action.is_none()
+                && now >= self.next_replay_at
+                && viewer.world.in_flight_count() == 0
+            {
+                self.next_replay_at = now + 1.0 / self.replay_rate.max(1.0);
                 action = self.replay.pop_front();
                 if action.is_none() {
                     self.playing = false;
                 }
+            }
+        }
+        if reset_replay && let Some(task) = self.task.clone() {
+            action = None;
+            let source = self.replay_source.clone();
+            let result = self.demonstration_result.clone();
+            match self.load(viewer, pad, task) {
+                Ok(()) => {
+                    self.replay_source = source.clone();
+                    self.replay = source.into();
+                    self.demonstration_result = result;
+                }
+                Err(e) => self.problem = Some(e),
             }
         }
         if let Some(action) = action
@@ -357,14 +451,6 @@ impl LabPanel {
                 }
             }
         }
-        ui.separator();
-        if ui.button("Import learned WFC catalog").clicked() {
-            self.import = Some((
-                Import::Catalog,
-                open_text("Load learned WFC catalog", "json"),
-            ));
-        }
-        self.catalog.show(ui, self.seed, viewer);
         if let Some(problem) = &self.problem {
             ui.colored_label(ui.visuals().error_fg_color, problem);
         }
