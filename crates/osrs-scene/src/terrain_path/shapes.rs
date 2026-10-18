@@ -1,11 +1,11 @@
 //! The twelve overlay shapes of an OSRS tile, as triangles built from the real terrain tables so
 //! thumbnails, the shape atlas and the renderer cannot drift apart.
 
-use osrs_core::coords::SceneTile;
-use osrs_scene::{
+use crate::{
     terrain::{ShapedTerrainInput, ShapedTerrainSurface, TerrainColorSource, TerrainCorners},
     terrain_appearance::shape_row,
 };
+use osrs_core::coords::SceneTile;
 
 /// Triangles of one overlay shape on a unit square (`y` up) and whether each is overlay
 /// (otherwise underlay).

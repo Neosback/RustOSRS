@@ -66,6 +66,8 @@ pub(super) fn task_from_prefab(p: &Prefab) -> LabTask {
             .filter_map(|t| t.overlay.as_ref().map(|o| o.id))
             .collect(),
         underlays: p.tiles.iter().filter_map(|t| t.underlay).collect(),
+        dont_care_tiles: vec![],
+        dont_care_heights: vec![],
     }
 }
 pub(super) fn project(viewer: &mut EditorApp, pad: &MapDocument, env: &Env) -> Result<(), String> {

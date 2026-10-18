@@ -109,5 +109,7 @@ pub fn relocation_task(prefab: &Prefab, seed: u64) -> Result<LabTask, String> {
             .filter_map(|t| t.overlay.as_ref().map(|o| o.id))
             .collect(),
         underlays: prefab.tiles.iter().filter_map(|t| t.underlay).collect(),
+        dont_care_tiles: vec![],
+        dont_care_heights: vec![],
     })
 }

@@ -148,7 +148,10 @@ mod tests {
             _ => (None, 0),
         });
 
-        let profile = catalog.overlays.get(&12).expect("overlay 12 profile");
+        let profile = catalog
+            .overlays
+            .get(&12)
+            .unwrap_or_else(|| unreachable!("overlay 12 profile"));
         assert_eq!(profile.total_tiles, 3);
         assert_eq!(profile.flat_tiles, 1);
         assert_eq!(profile.shaped_tiles, 2);

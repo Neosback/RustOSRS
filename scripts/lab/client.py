@@ -22,10 +22,13 @@ class LabClient:
 
     def reset(self, task, seed=0, visible=False):
         return self.call({'cmd': 'reset', 'task': str(Path(task).resolve()), 'seed': seed,
-                          'mode': 'visible' if visible else 'score_only'})
+                           'mode': 'visible' if visible else 'score_only'})
 
-    def step(self, action):
-        return self.call({'cmd': 'step', 'action': action})
+    def step(self, action, observe=True):
+        cmd = {'cmd': 'step', 'action': action}
+        if not observe:
+            cmd['observe'] = False
+        return self.call(cmd)
 
     def close(self):
         self.process.stdin.close()

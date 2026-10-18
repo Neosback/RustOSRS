@@ -80,7 +80,6 @@ fn catmull_rom(p0: f64, p1: f64, p2: f64, p3: f64, t: f64, t2: f64, t3: f64) -> 
 /// The overlay tiles for a polyline of tile coordinates (a tile `(x, y)` spans `[x, x + 1]` on
 /// both axes) drawn `width` tiles wide, sorted by tile. `edge_weight` is how strongly neighbouring
 /// tiles are made to line up; zero fits every tile on its own.
-#[cfg(test)]
 pub fn fit(line: &[(f64, f64)], width: f64, edge_weight: f64) -> Vec<FittedTile> {
     fit_bounded(line, width, edge_weight, (32768, 32768))
 }
@@ -236,7 +235,25 @@ fn mismatch(a: &[bool; SAMPLES], b: &[bool; SAMPLES]) -> usize {
 
 /// Distance from a point to a polyline (to the point itself for a one-point line).
 fn distance_to_path(line: &[(f64, f64)], x: f64, y: f64) -> f64 {
-    osrs_edit::distance_to_line(line, x, y)
+    match line {
+        [] => f64::INFINITY,
+        [only] => (x - only.0).hypot(y - only.1),
+        _ => line
+            .windows(2)
+            .map(|pair| distance_to_segment(pair[0], pair[1], x, y))
+            .fold(f64::INFINITY, f64::min),
+    }
+}
+
+fn distance_to_segment(a: (f64, f64), b: (f64, f64), x: f64, y: f64) -> f64 {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let length_squared = dx * dx + dy * dy;
+    let t = if length_squared == 0.0 {
+        0.0
+    } else {
+        (((x - a.0) * dx + (y - a.1) * dy) / length_squared).clamp(0.0, 1.0)
+    };
+    (x - (a.0 + t * dx)).hypot(y - (a.1 + t * dy))
 }
 
 /// "No overlay", the full tile, then every shape in four rotations.

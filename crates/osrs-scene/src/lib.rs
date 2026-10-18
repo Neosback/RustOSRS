@@ -26,6 +26,7 @@ pub mod terrain_appearance;
 pub mod terrain_build;
 pub mod terrain_contract;
 pub mod terrain_load;
+pub mod terrain_path;
 
 pub use dynamic_model::{
     DynamicLitModelLookup, DynamicModelError, DynamicModelInput, ResolvedDynamicModel,

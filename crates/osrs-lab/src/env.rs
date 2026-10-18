@@ -32,6 +32,7 @@ pub struct Observation {
 pub struct StepResult {
     pub score: f64,
     pub reward: f64,
+    pub breakdown: Score,
     pub exact: bool,
     pub done: bool,
     pub steps: u32,
@@ -133,13 +134,7 @@ impl Env {
         }
     }
     pub fn score(&self) -> Score {
-        crate::score::measure(
-            &self.document,
-            &self.target,
-            self.task.width,
-            self.task.height,
-            self.task.planes,
-        )
+        crate::score::measure(&self.document, &self.target, &self.task)
     }
     pub fn document(&self) -> &MapDocument {
         &self.document
@@ -196,6 +191,7 @@ impl Env {
         Ok(StepResult {
             score: score.total,
             reward: score.total - before - 0.001 / f64::from(self.task.budget),
+            breakdown: score.clone(),
             exact: score.exact,
             done: score.exact || self.steps >= self.task.budget,
             steps: self.steps,

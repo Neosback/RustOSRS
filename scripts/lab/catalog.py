@@ -46,8 +46,8 @@ def learn(prefabs, style, role):
                 if neighbor is not None:
                     pairs.add((pattern, direction, neighbor))
     ordered = sorted(counts)
-    if not 0 < len(ordered) <= 128:
-        raise ValueError(f'Catalog has {len(ordered)} patterns; supported range is 1..128')
+    if not 0 < len(ordered) <= 512:
+        raise ValueError(f'Catalog has {len(ordered)} patterns; supported range is 1..512')
     ids = {p: i for i, p in enumerate(ordered)}
     return {'format': 'rustosrs-learned-catalog', 'version': 1, 'style': style, 'role': role,
             'source': '; '.join(sorted(sources)),

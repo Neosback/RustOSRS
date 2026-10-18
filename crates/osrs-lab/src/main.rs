@@ -1,11 +1,18 @@
 //! JSON-lines server. Each environment retains a private target and exposes only tool actions.
-use osrs_lab::{Action, Env, LabTask, ObservationMode, generated_tavern};
+use osrs_lab::{
+    Action, Env, LabTask, ObservationMode, generated_paths, generated_tavern, prefab_paths_task,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     io::{self, BufRead, Write},
 };
+
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
@@ -18,6 +25,8 @@ enum Command {
     },
     Step {
         action: Action,
+        #[serde(default = "default_true")]
+        observe: bool,
     },
     Observe,
     Legal,
@@ -32,6 +41,7 @@ enum Command {
         source: String,
     },
 }
+
 #[derive(Deserialize)]
 struct Request {
     #[serde(default)]
@@ -39,12 +49,14 @@ struct Request {
     #[serde(flatten)]
     command: Command,
 }
+
 struct Running {
     env: Env,
     mode: ObservationMode,
     task: LabTask,
     seed: u64,
 }
+
 fn run(request: Request, envs: &mut BTreeMap<u32, Running>) -> Result<Value, String> {
     let id = request.env;
     match request.command {
@@ -54,7 +66,7 @@ fn run(request: Request, envs: &mut BTreeMap<u32, Running>) -> Result<Value, Str
                     .map_err(|e| e.to_string())?;
             let env = Env::reset(task.clone(), seed).map_err(|e| e.to_string())?;
             let observation = env.observation(mode);
-            let score = env.score().total;
+            let breakdown = env.score();
             envs.insert(
                 id,
                 Running {
@@ -64,7 +76,11 @@ fn run(request: Request, envs: &mut BTreeMap<u32, Running>) -> Result<Value, Str
                     seed,
                 },
             );
-            Ok(json!({"observation":observation,"score":score}))
+            Ok(json!({
+                "observation": observation,
+                "score": breakdown.total,
+                "breakdown": breakdown,
+            }))
         }
         Command::Learn {
             grids,
@@ -72,35 +88,54 @@ fn run(request: Request, envs: &mut BTreeMap<u32, Running>) -> Result<Value, Str
             role,
             source,
         } => {
-            let catalog =
-                osrs_edit::learn_catalog(&grids, style, role, source).map_err(|e| e.to_string())?;
-            Ok(json!({"catalog":catalog}))
+            let catalog = osrs_edit::learn_catalog_with_rotations(&grids, style, role, source)
+                .map_err(|e| e.to_string())?;
+            Ok(json!({"catalog": catalog}))
         }
         command => {
             let running = envs.get_mut(&id).ok_or("reset this environment first")?;
             match command {
-                Command::Step { action } => Ok(
-                    json!({"result":running.env.step(action).map_err(|e|e.to_string())?,"observation":running.env.observation(running.mode)}),
-                ),
-                Command::Undo => {
-                    Ok(json!({"result":running.env.step(Action::Undo).map_err(|e|e.to_string())?}))
+                Command::Step { action, observe } => {
+                    let result = running.env.step(action).map_err(|e| e.to_string())?;
+                    if observe {
+                        Ok(json!({
+                            "result": result,
+                            "observation": running.env.observation(running.mode),
+                        }))
+                    } else {
+                        Ok(json!({ "result": result }))
+                    }
                 }
-                Command::Observe => Ok(
-                    json!({"observation":running.env.observation(running.mode),"score":running.env.score().total}),
+                Command::Undo => Ok(
+                    json!({"result": running.env.step(Action::Undo).map_err(|e| e.to_string())?}),
                 ),
-                Command::Legal => Ok(json!({"legal":running.env.legal_mask()})),
+                Command::Observe => {
+                    let breakdown = running.env.score();
+                    Ok(json!({
+                        "observation": running.env.observation(running.mode),
+                        "score": breakdown.total,
+                        "breakdown": breakdown,
+                    }))
+                }
+                Command::Legal => Ok(json!({"legal": running.env.legal_mask()})),
                 Command::Replay { actions } => {
                     let replay = Env::replay(running.task.clone(), running.seed, &actions)
                         .map_err(|e| e.to_string())?;
                     let observation = replay.observation(running.mode);
                     running.env = replay;
-                    Ok(json!({"observation":observation,"score":running.env.score().total}))
+                    let breakdown = running.env.score();
+                    Ok(json!({
+                        "observation": observation,
+                        "score": breakdown.total,
+                        "breakdown": breakdown,
+                    }))
                 }
                 _ => Err("unsupported command".into()),
             }
         }
     }
 }
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|s| s == "task-relocate") {
@@ -120,8 +155,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", serde_json::to_string(&generated_tavern(&kit, seed)?)?);
         return Ok(());
     }
+    if args.first().is_some_and(|s| s == "task-paths") {
+        match args.get(1) {
+            None => {
+                println!("{}", serde_json::to_string(&generated_paths(1)?)?);
+            }
+            Some(arg) => {
+                if let Ok(seed) = arg.parse::<u64>() {
+                    println!("{}", serde_json::to_string(&generated_paths(seed)?)?);
+                } else {
+                    let prefab = serde_json::from_str(&std::fs::read_to_string(arg)?)?;
+                    let seed = args.get(2).map_or(Ok(1), |s| s.parse::<u64>())?;
+                    println!(
+                        "{}",
+                        serde_json::to_string(&prefab_paths_task(&prefab, seed)?)?
+                    );
+                }
+            }
+        }
+        return Ok(());
+    }
     if args.first().is_some_and(|s| s != "serve") {
-        return Err("use serve or task-tavern KIT_JSON [SEED]".into());
+        return Err("use serve, task-tavern KIT_JSON [SEED], task-relocate PREFAB_JSON [SEED], or task-paths [SEED|PREFAB_JSON] [SEED]".into());
     }
     let mut envs = BTreeMap::new();
     let mut stdout = io::stdout().lock();
@@ -138,8 +193,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .map_err(|e| e.to_string())
                                 .and_then(|r| run(r, &mut envs))
                             {
-                                Ok(v) => json!({"ok":true,"data":v}),
-                                Err(e) => json!({"ok":false,"error":e}),
+                                Ok(v) => json!({"ok": true, "data": v}),
+                                Err(e) => json!({"ok": false, "error": e}),
                             }
                         })
                         .collect(),
@@ -152,8 +207,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         })();
         let response = match response {
-            Ok(data) => json!({"ok":true,"data":data}),
-            Err(error) => json!({"ok":false,"error":error}),
+            Ok(data) => json!({"ok": true, "data": data}),
+            Err(error) => json!({"ok": false, "error": error}),
         };
         writeln!(stdout, "{response}")?;
         stdout.flush()?;

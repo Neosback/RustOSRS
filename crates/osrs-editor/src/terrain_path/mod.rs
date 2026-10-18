@@ -6,12 +6,10 @@
 //! tuning. This module only plans; committing is `osrs-edit`'s `path` and `path_height`.
 
 mod appearance;
-mod fit;
-mod java_order;
-mod shapes;
 
 pub use appearance::{PathAppearance, path_appearance, reference_palette};
 #[cfg(test)]
-pub use fit::fit;
-pub use fit::{FittedTile, fit_bounded, smooth};
-pub use shapes::{overlay_triangles, shape_triangles};
+pub use osrs_scene::terrain_path::fit;
+pub use osrs_scene::terrain_path::{
+    FittedTile, fit_bounded, overlay_triangles, shape_triangles, smooth,
+};

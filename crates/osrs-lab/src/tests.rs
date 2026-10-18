@@ -1,5 +1,9 @@
 use super::*;
-use osrs_edit::{PrefabHeight, PrefabObject};
+use osrs_edit::{
+    PrefabCell, PrefabHeight, PrefabObject, PrefabOverlay, PrefabTile,
+    height::{Falloff, HeightOp},
+};
+
 fn task() -> LabTask {
     let initial = Snapshot {
         heights: (0..=4)
@@ -35,8 +39,11 @@ fn task() -> LabTask {
         }],
         overlays: vec![],
         underlays: vec![],
+        dont_care_tiles: vec![],
+        dont_care_heights: vec![],
     }
 }
+
 fn object() -> PrefabObject {
     PrefabObject {
         id: 10,
@@ -47,6 +54,7 @@ fn object() -> PrefabObject {
         orientation: 0,
     }
 }
+
 #[test]
 fn tool_actions_undo_redo_and_replay_restore_exact_state() {
     let task = task();
@@ -64,6 +72,7 @@ fn tool_actions_undo_redo_and_replay_restore_exact_state() {
     let replay = Env::replay(task, 42, env.trace()).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(replay.document(), env.document());
 }
+
 #[test]
 fn score_only_observations_never_serialize_target() {
     let env = Env::reset(task(), 1).unwrap_or_else(|e| panic!("{e}"));
@@ -73,6 +82,7 @@ fn score_only_observations_never_serialize_target() {
     assert!(hidden.get("current").is_some());
     assert!(env.observation(ObservationMode::Visible).target.is_some());
 }
+
 #[test]
 fn invalid_actions_preserve_document_and_raw_target_writes_are_unrepresentable() {
     let mut env = Env::reset(task(), 1).unwrap_or_else(|e| panic!("{e}"));
@@ -83,6 +93,7 @@ fn invalid_actions_preserve_document_and_raw_target_writes_are_unrepresentable()
     assert_eq!(*env.document(), initial);
     assert!(serde_json::from_str::<Action>(r#"{"tool":"replace_region","target":{}}"#).is_err());
 }
+
 #[test]
 fn failures_do_not_destroy_redo_and_budget_is_bounded() {
     let mut env = Env::reset(task(), 1).unwrap_or_else(|e| panic!("{e}"));
@@ -119,6 +130,7 @@ fn failed_attempts_replay_with_identical_budget_and_state() {
     assert_eq!(replay.document(), env.document());
     assert_eq!(replay.legal_mask().remaining, env.legal_mask().remaining);
 }
+
 #[test]
 fn task_height_coverage_must_match_and_nearer_occurrences_earn_partial_credit() {
     let mut bad = task();
@@ -142,6 +154,7 @@ fn task_height_coverage_must_match_and_nearer_occurrences_earn_partial_credit() 
     .unwrap_or_else(|e| panic!("{e}"));
     assert!(env.score().placement > initial.placement);
 }
+
 #[test]
 fn mult_tile_scene_capacity_checks_every_covered_tile() {
     let mut t = task();
@@ -171,4 +184,173 @@ fn mult_tile_scene_capacity_checks_every_covered_tile() {
     let before = env.document().clone();
     assert!(env.step(Action::Place { object: o }).is_err());
     assert_eq!(env.document(), &before);
+}
+
+#[test]
+fn path_lay_reconstructs_generated_paths_task_with_exact_match_and_reversible_undo() {
+    let path_task = generated_paths(1).unwrap_or_else(|e| panic!("{e}"));
+    let mut env = Env::reset(path_task, 1).unwrap_or_else(|e| panic!("{e}"));
+    let initial_doc = env.document().clone();
+    assert!(!env.score().exact);
+
+    let step = env
+        .step(Action::PathLay {
+            plane: 0,
+            points: vec![[2.5, 4.5], [9.5, 9.5], [17.5, 14.5]],
+            width: 3.0,
+            edge_weight: 1.5,
+            smooth_curve: true,
+            overlay_id: 4,
+            companion_underlay: Some(10),
+            smooth_heights: Some(PathSmoothSpec {
+                passes: 2,
+                blend: 1.5,
+            }),
+        })
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert!(step.exact);
+    assert!((step.score - 1.0).abs() < 1e-9);
+    assert!((step.breakdown.terrain - 1.0).abs() < 1e-9);
+    assert!((step.breakdown.height - 1.0).abs() < 1e-9);
+
+    env.step(Action::Undo).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(*env.document(), initial_doc);
+}
+
+#[test]
+fn height_brush_room_rect_corners_hip_roof_and_partial_terrain_credit_work() {
+    let mut t = task();
+    t.overlays = vec![4];
+    t.underlays = vec![2, 10];
+    t.palette = vec![
+        PaletteEntry {
+            id: 10,
+            kind: 0,
+            size: [1, 1],
+        },
+        PaletteEntry {
+            id: 11,
+            kind: 2,
+            size: [1, 1],
+        },
+        PaletteEntry {
+            id: 20,
+            kind: 12,
+            size: [1, 1],
+        },
+        PaletteEntry {
+            id: 21,
+            kind: 13,
+            size: [1, 1],
+        },
+    ];
+    t.target.tiles = vec![PrefabTile {
+        x: 0,
+        y: 0,
+        plane: 0,
+        underlay: Some(10),
+        overlay: Some(PrefabOverlay {
+            id: 4,
+            shape: 2,
+            rotation: 1,
+        }),
+        flags: 0,
+    }];
+    t.dont_care_tiles = vec![PrefabCell {
+        x: 3,
+        y: 3,
+        plane: 0,
+    }];
+    let mut env = Env::reset(t, 1).unwrap_or_else(|e| panic!("{e}"));
+    let baseline = env.score().terrain;
+
+    // Painting matching underlay + overlay ID with wrong shape earns partial terrain credit.
+    let res = env
+        .step(Action::PaintRect {
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            plane: 0,
+            overlay: Some(4),
+            underlay: Some(10),
+            shape: 0,
+            rotation: 0,
+            flags: Some(0),
+        })
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert!(res.breakdown.terrain > baseline);
+    assert!(res.breakdown.terrain < 1.0);
+
+    // Painting inside a dont_care_tiles cell does not reduce terrain score.
+    let before_masked = env.score().terrain;
+    env.step(Action::PaintRect {
+        x: 3,
+        y: 3,
+        width: 1,
+        height: 1,
+        plane: 0,
+        overlay: Some(4),
+        underlay: Some(2),
+        shape: 0,
+        rotation: 0,
+        flags: Some(0),
+    })
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert!((env.score().terrain - before_masked).abs() < 1e-9);
+
+    // RoomRect with corner_id places walls and 4 corners; HipRoof places gable roof; HeightBrush sculpts.
+    env.step(Action::RoomRect {
+        object: PrefabObject {
+            id: 10,
+            x: 0,
+            y: 0,
+            plane: 0,
+            kind: 0,
+            orientation: 0,
+        },
+        width: 3,
+        height: 3,
+        corner_id: Some(11),
+    })
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        env.document()
+            .object_entries()
+            .iter()
+            .filter(|o| o.kind.get() == 2)
+            .count(),
+        4
+    );
+
+    env.step(Action::HipRoof {
+        plane: 0,
+        x0: 0,
+        y0: 0,
+        x1: 2,
+        y1: 2,
+        slope_id: 20,
+        edge_id: None,
+        ridge_id: Some(21),
+    })
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        env.document()
+            .object_entries()
+            .iter()
+            .any(|o| o.kind.get() == 13 && o.object_id.get() == 21)
+    );
+
+    env.step(Action::HeightBrush {
+        plane: 0,
+        points: vec![[2, 2]],
+        radius: 1,
+        circle: false,
+        op: HeightOp::Raise,
+        strength: 24,
+        falloff: Falloff::Flat,
+        flatten_to: None,
+        seed: 1,
+    })
+    .unwrap_or_else(|e| panic!("{e}"));
 }

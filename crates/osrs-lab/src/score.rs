@@ -46,33 +46,74 @@ fn edges(document: &MapDocument) -> BTreeSet<(u8, MapTile, u8)> {
     }
     result
 }
-pub(crate) fn measure(
-    current: &MapDocument,
-    target: &MapDocument,
-    width: u16,
-    height: u16,
-    planes: u8,
-) -> Score {
-    let mut equal = 0usize;
-    let count = usize::from(width) * usize::from(height) * usize::from(planes);
+pub(crate) fn measure(current: &MapDocument, target: &MapDocument, task: &crate::LabTask) -> Score {
+    let (width, height, planes) = (task.width, task.height, task.planes);
+    let dont_care_tiles: std::collections::HashSet<(u16, u16, u8)> = task
+        .dont_care_tiles
+        .iter()
+        .map(|c| (c.x, c.y, c.plane))
+        .collect();
+    let dont_care_heights: std::collections::HashSet<(u16, u16, u8)> = task
+        .dont_care_heights
+        .iter()
+        .map(|c| (c.x, c.y, c.plane))
+        .collect();
+
+    let mut terrain_sum = 0.0;
+    let mut terrain_count = 0usize;
+    let mut terrain_exact = true;
     for p in 0..planes {
         let Some(plane) = SourcePlane::new(p) else {
             continue;
         };
         for x in 0..width {
             for y in 0..height {
+                if dont_care_tiles.contains(&(x, y, p)) {
+                    continue;
+                }
                 let c = MapPosition::new(MapTile::new(i32::from(x), i32::from(y)), plane);
-                equal += usize::from(current.terrain_at(c) == target.terrain_at(c));
+                let cur = current.terrain_at(c);
+                let tgt = target.terrain_at(c);
+                terrain_count += 1;
+                if cur == tgt {
+                    terrain_sum += 1.0;
+                } else {
+                    terrain_exact = false;
+                    let mut credit = 0.0;
+                    if cur.underlay == tgt.underlay {
+                        credit += 0.4;
+                    }
+                    if cur.overlay == tgt.overlay {
+                        credit += 0.5;
+                    } else if cur.overlay.map(|o| o.id) == tgt.overlay.map(|o| o.id) {
+                        credit += 0.35;
+                    }
+                    if cur.flags == tgt.flags {
+                        credit += 0.1;
+                    }
+                    terrain_sum += credit;
+                }
             }
         }
     }
     let mut l1 = 0u64;
     let mut heights = 0;
+    let mut height_exact = true;
     for (coord, value) in target.height_entries() {
+        let cx = u16::try_from(coord.corner.x).unwrap_or(u16::MAX);
+        let cy = u16::try_from(coord.corner.y).unwrap_or(u16::MAX);
+        let cp = coord.plane.index().get();
+        if dont_care_heights.contains(&(cx, cy, cp)) {
+            continue;
+        }
         heights += 1;
-        l1 += current
+        let diff = current
             .height_at(coord)
             .map_or(32768, |h| i64::from(h).abs_diff(i64::from(value)));
+        if diff != 0 {
+            height_exact = false;
+        }
+        l1 += diff;
     }
     let height_score = 1.0 / (1.0 + l1 as f64 / (8.0 * (heights.max(1) as f64)));
     let a = current.object_entries();
@@ -118,19 +159,27 @@ pub(crate) fn measure(
     } else {
         2.0 * credit / (a.len() + b.len()) as f64
     };
-    let terrain = equal as f64 / count.max(1) as f64;
-    let exact = current == target;
+    let terrain = if terrain_count == 0 {
+        1.0
+    } else {
+        terrain_sum / terrain_count as f64
+    };
+    let objects_exact = matches == a.len() && matches == b.len();
+    let exact = terrain_exact && height_exact && objects_exact;
+    let total = if exact {
+        1.0
+    } else if a.is_empty() && b.is_empty() {
+        (0.65 * terrain + 0.35 * height_score).min(0.999999)
+    } else {
+        ((terrain + height_score + objects + placement + 2.0 * edge_score) / 6.0).min(0.999999)
+    };
     Score {
         terrain,
         height: height_score,
         objects,
         edges: edge_score,
         placement,
-        total: if exact {
-            1.0
-        } else {
-            ((terrain + height_score + objects + placement + 2.0 * edge_score) / 6.0).min(0.999999)
-        },
+        total,
         exact,
     }
 }
