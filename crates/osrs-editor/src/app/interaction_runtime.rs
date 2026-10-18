@@ -23,11 +23,21 @@ pub(super) struct Marquee {
     pub(super) current: egui::Pos2,
     pub(super) additive: bool,
     pub(super) toggle: bool,
+    /// The ground tile under the press and under the pointer now: the box is the rectangle of
+    /// tiles between them, in the map's own axes, not a rectangle on the screen.
+    pub(super) start_tile: Option<(i32, i32)>,
+    pub(super) current_tile: Option<(i32, i32)>,
 }
 
 impl Marquee {
     pub(super) fn rect(&self) -> egui::Rect {
         egui::Rect::from_two_pos(self.start, self.current)
+    }
+
+    /// The south-west and north-east tile of the box, once both corners are on the ground.
+    pub(super) fn tile_box(&self) -> Option<((i32, i32), (i32, i32))> {
+        let (a, b) = (self.start_tile?, self.current_tile?);
+        Some(((a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1))))
     }
 }
 
@@ -293,7 +303,25 @@ impl InteractionRuntime {
             current: position,
             additive,
             toggle,
+            start_tile: None,
+            current_tile: None,
         });
+    }
+
+    /// Record the ground tiles under the press and under the pointer.
+    pub(super) fn track_marquee_tiles(
+        &mut self,
+        start: Option<(i32, i32)>,
+        current: Option<(i32, i32)>,
+    ) {
+        if let Some(marquee) = &mut self.marquee {
+            if marquee.start_tile.is_none() {
+                marquee.start_tile = start;
+            }
+            if current.is_some() {
+                marquee.current_tile = current;
+            }
+        }
     }
 
     pub(super) fn update_marquee(

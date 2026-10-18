@@ -17,6 +17,29 @@ const MAX_DRAWN_TILES: usize = 6000;
 /// A drag shorter than this is a click.
 const MIN_BOX: f32 = 4.0;
 
+/// The ground tile under a screen position (what a click there would land on), or `None` off the
+/// loaded map.
+fn ground_tile_at(
+    app: &EditorApp,
+    position: Pos2,
+    viewport: Rect,
+    pixels_per_point: f32,
+    width: u32,
+    height: u32,
+) -> Option<(i32, i32)> {
+    let ray = pick::ray_through_pixel(
+        app.interaction.camera(),
+        app.renderer.render_origin(),
+        width as f32,
+        height as f32,
+        (position.x - viewport.min.x) * pixels_per_point,
+        (position.y - viewport.min.y) * pixels_per_point,
+    );
+    pick::pick(app.world.infos(), &ray, app.interaction.view_plane())
+        .tile
+        .map(|tile| tile.tile)
+}
+
 impl EditorApp {
     pub(super) fn clear_selection(&mut self) {
         self.interaction.clear_selection();
@@ -115,12 +138,23 @@ impl EditorApp {
             additive,
             toggle,
         );
+        if self.interaction.marquee().is_some() {
+            let press = ctx.input(|i| i.pointer.press_origin());
+            let start =
+                press.and_then(|p| ground_tile_at(self, p, rect, pixels_per_point, width, height));
+            let now = ctx
+                .input(|i| i.pointer.interact_pos())
+                .and_then(|p| ground_tile_at(self, p, rect, pixels_per_point, width, height));
+            self.interaction.track_marquee_tiles(start, now);
+        }
         if response.drag_stopped_by(primary)
             && let Some(marquee) = self.interaction.finish_marquee()
         {
             let area = marquee.rect();
-            if area.width() >= MIN_BOX || area.height() >= MIN_BOX {
-                self.marquee_select(area, marquee, rect, pixels_per_point, width, height);
+            if (area.width() >= MIN_BOX || area.height() >= MIN_BOX)
+                && let Some(tiles) = marquee.tile_box()
+            {
+                self.marquee_select(tiles, marquee);
             }
             return;
         }
@@ -167,77 +201,32 @@ impl EditorApp {
         }
     }
 
-    fn marquee_select(
-        &mut self,
-        area: Rect,
-        marquee: Marquee,
-        viewport: Rect,
-        pixels_per_point: f32,
-        width: u32,
-        height: u32,
-    ) {
+    /// Select what lies in the rectangle of tiles `((x0, y0), (x1, y1))`: tiles and objects by
+    /// the tile they stand on, in the map's own axes.
+    fn marquee_select(&mut self, area: ((i32, i32), (i32, i32)), marquee: Marquee) {
         let mode = if self.settings.prefs.tool == crate::paint::Tool::Objects {
             SelectMode::Objects
         } else {
             self.settings.prefs.select_mode
         };
         let plane = self.interaction.view_plane();
-        let to_screen = |app: &Self, point: [f64; 3]| -> Option<Pos2> {
-            pick::project(
-                app.interaction.camera(),
-                app.renderer.render_origin(),
-                width as f32,
-                height as f32,
-                point,
-            )
-            .map(|p| {
-                Pos2::new(
-                    viewport.min.x + p[0] / pixels_per_point,
-                    viewport.min.y + p[1] / pixels_per_point,
-                )
-            })
-        };
+        let ((x0, y0), (x1, y1)) = area;
+        let inside = |tile: (i32, i32)| (x0..=x1).contains(&tile.0) && (y0..=y1).contains(&tile.1);
         let mut tiles: HashSet<(i32, i32)> = HashSet::new();
         let mut objects: Vec<ObjectPick> = Vec::new();
-        for (region, info) in self.world.infos() {
-            if mode.tiles() {
-                for lx in 0..64 {
-                    for ly in 0..64 {
-                        let tile = (region.0 * 64 + lx, region.1 * 64 + ly);
-                        let Some(corners) = interact::tile_corners(self.world.infos(), tile, plane)
-                        else {
-                            continue;
-                        };
-                        let centre = [
-                            f64::from(tile.0) * 128.0 + 64.0,
-                            corners.iter().map(|c| c[1]).sum::<f64>() / 4.0,
-                            f64::from(tile.1) * 128.0 + 64.0,
-                        ];
-                        if let Some(position) = to_screen(self, centre)
-                            && area.contains(position)
-                        {
-                            tiles.insert(tile);
-                        }
+        if mode.tiles() {
+            for x in x0..=x1 {
+                for y in y0..=y1 {
+                    if interact::tile_corners(self.world.infos(), (x, y), plane).is_some() {
+                        tiles.insert((x, y));
                     }
                 }
             }
-            if mode.objects() {
+        }
+        if mode.objects() {
+            for (region, info) in self.world.infos() {
                 for (index, loc) in info.locs.iter().enumerate() {
-                    if loc.plane != plane {
-                        continue;
-                    }
-                    let Some(corners) = interact::tile_corners(self.world.infos(), loc.tile, plane)
-                    else {
-                        continue;
-                    };
-                    let centre = [
-                        f64::from(loc.tile.0) * 128.0 + 64.0,
-                        corners.iter().map(|c| c[1]).sum::<f64>() / 4.0,
-                        f64::from(loc.tile.1) * 128.0 + 64.0,
-                    ];
-                    if let Some(position) = to_screen(self, centre)
-                        && area.contains(position)
-                    {
+                    if loc.plane == plane && inside(loc.tile) {
                         objects.push(ObjectPick {
                             region: *region,
                             index,
@@ -375,19 +364,48 @@ impl EditorApp {
                 ));
             }
         }
-        if let Some(marquee) = self.interaction.marquee() {
+        if let Some(marquee) = self.interaction.marquee()
+            && let Some(((x0, y0), (x1, y1))) = marquee.tile_box()
+        {
             let accent = self
                 .settings
                 .prefs
                 .colors
                 .get(ColorKey::TileSelectionOutline);
-            painter.rect(
-                marquee.rect(),
-                2.0,
-                accent.gamma_multiply(0.16),
-                Stroke::new(1.0, accent),
-                egui::StrokeKind::Inside,
-            );
+            let plane = self.interaction.view_plane();
+            let project = |tile: (i32, i32), corner: usize| {
+                interact::tile_corners(self.world.infos(), tile, plane)
+                    .map(|c| c[corner])
+                    .and_then(|p| self.screen_point(p, viewport, pixels_per_point, width, height))
+            };
+            // Walk the box's edge tile by tile so the outline follows the ground.
+            let mut ring: Vec<Pos2> = Vec::new();
+            ring.extend((x0..=x1).filter_map(|x| project((x, y0), 0)));
+            ring.extend(project((x1, y0), 1));
+            ring.extend((y0..=y1).filter_map(|y| project((x1, y), 1)));
+            ring.extend(project((x1, y1), 2));
+            ring.extend((x0..=x1).rev().filter_map(|x| project((x, y1), 3)));
+            ring.extend((y0..=y1).rev().filter_map(|y| project((x0, y), 3)));
+            // A light fill on the four corners, and the outline along the ground.
+            let corners: Vec<Pos2> = [
+                project((x0, y0), 0),
+                project((x1, y0), 1),
+                project((x1, y1), 2),
+                project((x0, y1), 3),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            if corners.len() == 4 {
+                painter.add(egui::Shape::convex_polygon(
+                    corners,
+                    accent.gamma_multiply(0.12),
+                    Stroke::NONE,
+                ));
+            }
+            if ring.len() >= 3 {
+                painter.add(egui::Shape::closed_line(ring, Stroke::new(2.0, accent)));
+            }
         }
     }
 }

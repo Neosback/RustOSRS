@@ -472,6 +472,8 @@ impl BuildingKit {
             .map_err(wrap)?;
             self.lift_roof(patch)
         };
+        // One wall piece per tile, or the game drops the extras.
+        let (body, _unplaced) = crate::resolve_wall_slots(&body);
         Ok(match &self.finish {
             Some(finish) => finish.apply(&body, &building, refined.edges(), snapshot),
             None => body,

@@ -125,6 +125,45 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
                 (None, error) => eprintln!("smoke: building failed: {error:?}"),
             }
         }
+        "check" => {
+            // Every object of the current building plan must be in the rendered world.
+            let Some(preview) = app.prefabs.build.preview.clone() else {
+                return Err("no building plan to check".into());
+            };
+            let (mut total, mut missing) = (0, Vec::new());
+            for op in preview.building.ops() {
+                let osrs_edit::MapOp::AddObject { placement } = op else {
+                    continue;
+                };
+                total += 1;
+                let tile = placement.position.tile;
+                let region = (tile.x.div_euclid(64), tile.y.div_euclid(64));
+                let found = app.world.infos().get(&region).is_some_and(|info| {
+                    info.locs.iter().any(|loc| {
+                        loc.tile == (tile.x, tile.y)
+                            && loc.plane == placement.position.plane.index().get()
+                            && loc.loc_type == placement.kind.get()
+                            && loc.orientation == placement.orientation.get()
+                            && loc.definition.identity.id.get() == placement.object_id.get()
+                    })
+                });
+                if !found {
+                    missing.push((
+                        placement.object_id.get(),
+                        placement.kind.get(),
+                        tile.x,
+                        tile.y,
+                        placement.position.plane.index().get(),
+                        placement.orientation.get(),
+                    ));
+                }
+            }
+            eprintln!(
+                "smoke: check: {total} planned objects, {} missing from the rendered world: {:?}",
+                missing.len(),
+                &missing[..missing.len().min(12)]
+            );
+        }
         "page" => {
             app.prefabs.page = match words.next() {
                 Some("build") => crate::app::prefab_runtime::Page::Build,

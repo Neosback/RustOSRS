@@ -196,17 +196,26 @@ fn window_decoration_stands_on_the_right_tile_facing_the_wall() {
         .generate(&snapshot, 0)
         .unwrap_or_else(|e| unreachable!("{e:?}"));
     let placed = objects(&patch);
-    let walls: HashSet<(MapTile, u8)> = placed
-        .iter()
-        .filter(|p| p.object_id.get() == 1902 && p.kind.get() == 0)
-        .map(|p| (p.position.tile, p.orientation.get()))
-        .collect();
     let step = |o: u8| match o & 3 {
         0 => (-1, 0),
         1 => (0, 1),
         2 => (1, 0),
         _ => (0, -1),
     };
+    // A wall is an edge: either tile beside it may hold the piece.
+    let mut walls: HashSet<(MapTile, u8)> = HashSet::new();
+    for p in placed
+        .iter()
+        .filter(|p| p.object_id.get() == 1902 && p.kind.get() == 0)
+    {
+        let o = p.orientation.get();
+        walls.insert((p.position.tile, o));
+        let (dx, dy) = step(o);
+        walls.insert((
+            MapTile::new(p.position.tile.x + dx, p.position.tile.y + dy),
+            (o + 2) & 3,
+        ));
+    }
     let mut checked = 0;
     for inside in placed.iter().filter(|p| p.object_id.get() == 1822) {
         let o = inside.orientation.get();
@@ -390,4 +399,77 @@ fn a_row_of_booths_stands_side_by_side_against_one_wall_all_facing_the_same_way(
         );
     }
     assert!(rows >= 5, "most seeds manage a row of four");
+}
+
+/// Every side of a floor tile that faces the outside must have a wall piece, door or window on it,
+/// and no wall piece may stand where two floor tiles meet unless it is a real divider.
+fn assert_closed(patch: &MapPatch, label: &str) {
+    let floor: HashSet<MapTile> = patch
+        .ops()
+        .iter()
+        .filter_map(|op| match op {
+            MapOp::SetTerrain { coord, .. } => Some(coord.tile),
+            _ => None,
+        })
+        .collect();
+    assert!(!floor.is_empty(), "{label}: no floor");
+    let step = |direction: u8| match direction & 3 {
+        0 => (-1, 0),
+        1 => (0, 1),
+        2 => (1, 0),
+        _ => (0, -1),
+    };
+    let mut edges: HashSet<(MapTile, u8)> = HashSet::new();
+    for piece in objects(patch).iter().filter(|p| p.kind.get() == 0) {
+        let o = piece.orientation.get();
+        edges.insert((piece.position.tile, o));
+        let (dx, dy) = step(o);
+        edges.insert((
+            MapTile::new(piece.position.tile.x + dx, piece.position.tile.y + dy),
+            (o + 2) & 3,
+        ));
+    }
+    let mut leaks = Vec::new();
+    for tile in &floor {
+        for side in 0..4u8 {
+            let (dx, dy) = step(side);
+            let next = MapTile::new(tile.x + dx, tile.y + dy);
+            if !floor.contains(&next) && !edges.contains(&(*tile, side)) {
+                leaks.push((tile.x, tile.y, side));
+            }
+        }
+    }
+    leaks.sort_unstable();
+    assert!(
+        leaks.is_empty(),
+        "{label}: open outside edges (x, y, side): {leaks:?}"
+    );
+}
+
+#[test]
+fn every_generated_building_is_closed_on_the_outside() {
+    let compiled = kit().compile().unwrap_or_else(|e| unreachable!("{e}"));
+    let mut built = 0;
+    for archetype in [
+        BuildingArchetype::House,
+        BuildingArchetype::Shop,
+        BuildingArchetype::Tavern,
+        BuildingArchetype::Bank,
+        BuildingArchetype::Church,
+        BuildingArchetype::Warehouse,
+        BuildingArchetype::Castle,
+        BuildingArchetype::Dungeon,
+    ] {
+        for (w, h) in [(14u16, 12u16), (18, 14), (22, 16), (30, 20)] {
+            for seed in 0..12u64 {
+                let (_, snapshot) = site(archetype, seed, w, h);
+                let Ok(patch) = compiled.generate(&snapshot, (seed % 3) as u32) else {
+                    continue;
+                };
+                built += 1;
+                assert_closed(&patch, &format!("{archetype:?} {w}x{h} seed {seed}"));
+            }
+        }
+    }
+    assert!(built > 200, "most requests produce a building ({built})");
 }

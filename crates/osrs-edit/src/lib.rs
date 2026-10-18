@@ -32,6 +32,7 @@ mod building_routing;
 mod building_topology;
 mod building_validation;
 mod building_vertical;
+mod building_walls;
 mod building_wfc;
 mod document;
 mod history;
@@ -145,6 +146,7 @@ pub use building_vertical::{
     StairAnchor, StairAsset, StairConstraintError, StairPalette, StairPatternSet,
     StairRealizationError, build_stair_patch, plan_vertical_connectivity, stair_wfc_constraints,
 };
+pub use building_walls::resolve_wall_slots;
 pub use building_wfc::{
     MAX_WFC_PATTERNS, PatternDomain, WfcCatalog, WfcCatalogError, WfcConstraint, WfcCoord,
     WfcPattern, WfcPatternId, WfcPatternSpec, WfcSocket, WfcSolution, WfcSolveError, solve_wfc,

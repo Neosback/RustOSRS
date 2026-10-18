@@ -335,3 +335,35 @@ fn cancel_gizmo_drag_clears_capture_state() {
     assert!(interaction.gizmo_drag().is_none());
     assert!(!interaction.gizmo_busy);
 }
+
+#[test]
+fn the_box_is_the_rectangle_of_ground_tiles_between_the_press_and_the_pointer() {
+    let mut interaction = runtime();
+    let bounds = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(100.0, 100.0));
+    interaction.begin_marquee(Pos2::new(10.0, 20.0), false, false);
+    // Nothing is a box until both corners are on the ground.
+    assert_eq!(
+        interaction.marquee().and_then(super::Marquee::tile_box),
+        None
+    );
+    interaction.track_marquee_tiles(Some((3250, 3240)), None);
+    assert_eq!(
+        interaction.marquee().and_then(super::Marquee::tile_box),
+        None
+    );
+    // The pointer moves to the south-west of where the press was: the box is still min/max.
+    interaction.track_marquee_tiles(Some((9999, 9999)), Some((3244, 3236)));
+    interaction.update_marquee(Some(Pos2::new(50.0, 60.0)), bounds, false, false);
+    assert_eq!(
+        interaction.marquee().and_then(super::Marquee::tile_box),
+        Some(((3244, 3236), (3250, 3240))),
+        "the first press tile is kept; later ones do not move the start"
+    );
+    // Leaving the ground keeps the last tile instead of collapsing the box.
+    interaction.track_marquee_tiles(None, None);
+    assert_eq!(
+        interaction.marquee().and_then(super::Marquee::tile_box),
+        Some(((3244, 3236), (3250, 3240)))
+    );
+    assert!(interaction.finish_marquee().is_some());
+}
