@@ -38,6 +38,33 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
                 None => Step::Retry,
             })
         }
+        Some("pointer") => {
+            use crate::app::interaction_runtime::ScriptedPointer;
+            let pointer = match words.next() {
+                Some("off") => None,
+                Some("center") => Some(ScriptedPointer::Centre),
+                other => {
+                    let x: f32 = number(other, "x")?;
+                    let y: f32 = number(words.next(), "y")?;
+                    Some(ScriptedPointer::At(x, y))
+                }
+            };
+            app.interaction.set_scripted_pointer(pointer);
+            Ok(Step::Done)
+        }
+        Some("hover") => {
+            // What the pipeline picked under the (scripted) pointer: proof that picking runs
+            // with nothing selected.
+            let hover = app.interaction.hover();
+            let object = hover.object.as_ref().map(|o| (o.region, o.index));
+            let tile = hover.tile.map(|t| t.tile);
+            eprintln!(
+                "smoke: hover tile {tile:?} object {object:?} (selected objects {}, tiles {})",
+                app.interaction.selection_objects().len(),
+                app.interaction.selection_tiles().len()
+            );
+            Ok(Step::Done)
+        }
         Some("report") => {
             // How many selected objects have their geometry ready to draw, by plane.
             let mut by_plane = std::collections::BTreeMap::<u8, (usize, usize)>::new();
@@ -57,7 +84,7 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
             Ok(Step::Done)
         }
         other => Err(format!(
-            "select object, tiles, building or report, not {other:?}"
+            "select object, tiles, building, pointer, hover or report, not {other:?}"
         )),
     }
 }

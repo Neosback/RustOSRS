@@ -2,6 +2,9 @@
 
 use super::*;
 
+mod outlines;
+use outlines::{MAX_OUTLINED, queue_selection_outlines};
+
 impl EditorApp {
     /// Hover / click / right-click picking against the resident regions' inspection data.
     pub(super) fn update_picking(
@@ -12,93 +15,91 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
-        // A selection of many objects (a whole building) is drawn from their real geometry, so
-        // every one of them needs its outline.
-        let many: Vec<((i32, i32), usize)> = self
+        queue_selection_outlines(self);
+        // Camera drags (right and middle button) freeze picking; a left drag paints or selects.
+        if response.dragged() && !response.dragged_by(egui::PointerButton::Primary) {
+            return;
+        }
+        // The HUD sits over the viewport's corner; with the pointer on it the viewport is not hovered,
+        // and dropping the pick there would hide the HUD, uncover the pointer and flicker. So the
+        // world under the HUD keeps being picked.
+        let over_hud = || {
+            let pointer = response.ctx.input(|i| i.pointer.latest_pos())?;
+            self.ui.hud_rect.filter(|hud| hud.contains(pointer))?;
+            Some(pointer)
+        };
+        let scripted = self
             .interaction
-            .selection_objects()
-            .iter()
-            .take(MAX_OUTLINED)
-            .map(|object| (object.region, object.index))
-            .collect();
-        for key in many {
-            self.world.queue_outline(key);
-            // Camera drags (right and middle button) freeze picking; a left drag paints or selects.
-            if response.dragged() && !response.dragged_by(egui::PointerButton::Primary) {
-                return;
-            }
-            // The HUD sits over the viewport's corner; with the pointer on it the viewport is not hovered,
-            // and dropping the pick there would hide the HUD, uncover the pointer and flicker. So the
-            // world under the HUD keeps being picked.
-            let over_hud = || {
-                let pointer = response.ctx.input(|i| i.pointer.latest_pos())?;
-                self.ui.hud_rect.filter(|hud| hud.contains(pointer))?;
-                Some(pointer)
-            };
-            let Some(position) = response.hover_pos().or_else(over_hud) else {
-                self.interaction.clear_hover();
-                // The pointer left the viewport: a stroke or box in progress ends here.
-                if !response.ctx.input(|i| i.pointer.primary_down()) {
-                    self.end_stroke();
-                    self.interaction.cancel_marquee();
+            .scripted_pointer()
+            .map(|pointer| match pointer {
+                interaction_runtime::ScriptedPointer::Centre => rect.center(),
+                interaction_runtime::ScriptedPointer::At(x, y) => {
+                    egui::pos2(rect.min.x + x, rect.min.y + y)
                 }
-                return;
-            };
-            let ray = pick::ray_through_pixel(
-                self.interaction.camera(),
-                self.renderer.render_origin(),
-                width as f32,
-                height as f32,
-                (position.x - rect.min.x) * pixels_per_point,
-                (position.y - rect.min.y) * pixels_per_point,
+            });
+        let Some(position) = response.hover_pos().or_else(over_hud).or(scripted) else {
+            self.interaction.clear_hover();
+            // The pointer left the viewport: a stroke or box in progress ends here.
+            if !response.ctx.input(|i| i.pointer.primary_down()) {
+                self.end_stroke();
+                self.interaction.cancel_marquee();
+            }
+            return;
+        };
+        let ray = pick::ray_through_pixel(
+            self.interaction.camera(),
+            self.renderer.render_origin(),
+            width as f32,
+            height as f32,
+            (position.x - rect.min.x) * pixels_per_point,
+            (position.y - rect.min.y) * pixels_per_point,
+        );
+        let mut hover = pick::pick(self.world.infos(), &ray, self.interaction.view_plane());
+        // Selecting tools read the tile an object stands on, not the ground the ray reaches behind it.
+        if matches!(
+            self.settings.prefs.tool,
+            crate::paint::Tool::Select | crate::paint::Tool::Objects
+        ) && let Some(object) = &hover.object
+            && let Some(loc) = self
+                .world
+                .infos()
+                .get(&object.region)
+                .and_then(|info| info.locs.get(object.index))
+        {
+            hover.tile = Some(pick::TilePick { tile: loc.tile });
+        }
+        self.interaction.set_hover(hover);
+        // The brush tools keep the left button for painting; Select clicks and boxes.
+        let consumed = npc_panel::armed_input(self, response)
+            || prefab_panel::armed_input(self, response)
+            || sound_panel::marker_click(self, response, rect, pixels_per_point, width, height);
+        if !consumed {
+            self.brush_input(&response.ctx, response);
+            self.spline_input(&response.ctx, response);
+            self.selection_input(
+                &response.ctx,
+                response,
+                rect,
+                pixels_per_point,
+                width,
+                height,
             );
-            let mut hover = pick::pick(self.world.infos(), &ray, self.interaction.view_plane());
-            // Selecting tools read the tile an object stands on, not the ground the ray reaches behind it.
-            if matches!(
-                self.settings.prefs.tool,
-                crate::paint::Tool::Select | crate::paint::Tool::Objects
-            ) && let Some(object) = &hover.object
-                && let Some(loc) = self
-                    .world
-                    .infos()
-                    .get(&object.region)
-                    .and_then(|info| info.locs.get(object.index))
-            {
-                hover.tile = Some(pick::TilePick { tile: loc.tile });
-            }
-            self.interaction.set_hover(hover);
-            // The brush tools keep the left button for painting; Select clicks and boxes.
-            let consumed = npc_panel::armed_input(self, response)
-                || prefab_panel::armed_input(self, response)
-                || sound_panel::marker_click(self, response, rect, pixels_per_point, width, height);
-            if !consumed {
-                self.brush_input(&response.ctx, response);
-                self.spline_input(&response.ctx, response);
-                self.selection_input(
-                    &response.ctx,
-                    response,
-                    rect,
-                    pixels_per_point,
-                    width,
-                    height,
-                );
-            }
-            if response.secondary_clicked() && response.ctx.input(|i| i.modifiers.shift) {
-                self.interaction.capture_context_pick();
-                self.ui.context_menu = response.interact_pointer_pos();
-            }
-            let wanted: Vec<ObjectPick> = [
-                self.interaction.hover().object.clone(),
-                self.interaction.selected().clone(),
-                self.interaction.context_pick().object.clone(),
-            ]
-            .into_iter()
-            .flatten()
-            .collect();
-            for object in wanted {
-                let key = (object.region, object.index);
-                self.world.queue_outline(key);
-            }
+        }
+        if response.secondary_clicked() && response.ctx.input(|i| i.modifiers.shift) {
+            self.interaction.capture_context_pick();
+            self.ui.context_menu = response.interact_pointer_pos();
+        }
+        let wanted: Vec<ObjectPick> = [
+            self.interaction.hover().object.clone(),
+            self.interaction.selected().clone(),
+            self.interaction.context_pick().object.clone(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        for object in wanted {
+            let key = (object.region, object.index);
+            self.world.queue_outline(key);
         }
     }
 
@@ -416,9 +417,6 @@ impl EditorApp {
         self.renderer.ensure_targets(width, height);
     }
 }
-
-/// Most selected objects whose geometry is drawn as a ghost (a big building is a few hundred).
-const MAX_OUTLINED: usize = 1500;
 
 /// Project one object's outline triangles to the screen and add them to `mesh` in `fill`.
 #[allow(clippy::too_many_arguments)]

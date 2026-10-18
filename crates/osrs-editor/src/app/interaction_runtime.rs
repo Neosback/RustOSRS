@@ -78,6 +78,17 @@ pub(super) struct InteractionRuntime {
     gizmo: transform_gizmo_egui::Gizmo,
     gizmo_drag: Option<gizmo::GizmoDrag>,
     gizmo_busy: bool,
+    /// Smoke runs only: where picking acts as if the pointer were, when it has no real one.
+    scripted_pointer: Option<ScriptedPointer>,
+}
+
+/// A pointer position a script supplies (smoke runs), so picking runs through the real pipeline.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) enum ScriptedPointer {
+    /// The middle of the viewport.
+    Centre,
+    /// A position in points from the viewport's top-left corner.
+    At(f32, f32),
 }
 
 impl InteractionRuntime {
@@ -101,7 +112,16 @@ impl InteractionRuntime {
             gizmo: transform_gizmo_egui::Gizmo::default(),
             gizmo_drag: None,
             gizmo_busy: false,
+            scripted_pointer: None,
         }
+    }
+
+    pub(super) fn scripted_pointer(&self) -> Option<ScriptedPointer> {
+        self.scripted_pointer
+    }
+
+    pub(super) fn set_scripted_pointer(&mut self, pointer: Option<ScriptedPointer>) {
+        self.scripted_pointer = pointer;
     }
 
     pub(super) fn hover(&self) -> &Pick {
