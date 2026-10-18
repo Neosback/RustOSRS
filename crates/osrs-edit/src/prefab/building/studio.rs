@@ -64,10 +64,27 @@ pub fn capture_prefab_over(
     p.notes = original.notes.clone();
     p.building = original.building.clone();
     if let Some(b) = &mut p.building {
-        // Object edits can invalidate occurrence indices. Human labels survive; derived relations
-        // must be recomputed rather than silently pointing at a different occurrence.
+        // Object edits can invalidate occurrence indices. Human labels and surviving human-confirmed
+        // relations are remapped to the new occurrence order; derived relations are dropped.
         if p.objects != original.objects {
-            b.relations.clear();
+            b.relations = b
+                .relations
+                .iter()
+                .filter(|r| r.human)
+                .filter_map(|r| {
+                    let from_obj = original.objects.get(r.from)?;
+                    let to_obj = original.objects.get(r.to)?;
+                    let from = p.objects.iter().position(|o| o == from_obj)?;
+                    let to = p.objects.iter().position(|o| o == to_obj)?;
+                    (from != to).then(|| PrefabRelation {
+                        from,
+                        to,
+                        kind: r.kind.clone(),
+                        evidence: r.evidence.clone(),
+                        human: true,
+                    })
+                })
+                .collect();
             b.labels
                 .retain(|key, _| !key.starts_with("inferred:member:"));
             b.reviewed = false;

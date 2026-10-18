@@ -33,6 +33,7 @@ impl ProjectRuntime {
             persistence: native::ProjectPersistence::default(),
         }
     }
+    #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn source(&self) -> &CacheSource {
         &self.source
     }

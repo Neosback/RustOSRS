@@ -46,15 +46,24 @@ pub(super) fn fit(
             return Err(error(BuildingPrefabError::IncompatibleGround(coord)));
         }
     }
-    let source_levels: BTreeSet<_> = prefab
+    let source_floor_heights: BTreeMap<(u16, u16), i32> = prefab
         .heights
         .iter()
         .filter(|h| h.plane == 0 && floor_vertices.contains(&(h.x, h.y)))
-        .map(|h| h.value)
+        .map(|h| ((h.x, h.y), h.value))
         .collect();
-    if source_levels.len() != 1 {
-        return Err(error(BuildingPrefabError::SteppedFoundation));
+    if !floor_vertices.is_empty() && source_floor_heights.is_empty() {
+        return Err(error(BuildingPrefabError::EmptyFloor));
     }
+    let source_levels: BTreeSet<_> = source_floor_heights.values().copied().collect();
+    let stepped = source_levels.len() > 1;
+    let source_plane0_heights: BTreeMap<(u16, u16), i32> = prefab
+        .heights
+        .iter()
+        .filter(|h| h.plane == 0)
+        .map(|h| ((h.x, h.y), h.value))
+        .collect();
+    let mut support_local = Vec::new();
     for h in building.support.iter().filter(|h| h.plane == 0) {
         let (x, y) = turn(
             i32::from(h.x),
@@ -63,7 +72,24 @@ pub(super) fn fit(
             spec.quarter_turns,
             true,
         );
-        support.insert(MapTile::new(spec.origin.x + x, spec.origin.y + y));
+        let tile = MapTile::new(spec.origin.x + x, spec.origin.y + y);
+        support.insert(tile);
+        let src_h = source_floor_heights
+            .get(&(h.x, h.y))
+            .copied()
+            .or_else(|| {
+                source_floor_heights
+                    .iter()
+                    .min_by_key(|((fx, fy), _)| {
+                        let dx = i32::from(*fx) - i32::from(h.x);
+                        let dy = i32::from(*fy) - i32::from(h.y);
+                        dx * dx + dy * dy
+                    })
+                    .map(|(_, &v)| v)
+            })
+            .or_else(|| source_plane0_heights.get(&(h.x, h.y)).copied())
+            .unwrap_or(building.source_datum);
+        support_local.push((tile, src_h));
     }
     let mut heights = Vec::new();
     for &corner in &support {
@@ -84,16 +110,30 @@ pub(super) fn fit(
     let delta = level
         .checked_sub(building.source_datum)
         .ok_or_else(|| error(BuildingPrefabError::CoordinateOverflow))?;
-    let mut targets = BTreeMap::new();
-    for &v in &support {
+    let mut targets: BTreeMap<MapTile, (i32, i32)> = BTreeMap::new();
+    for (v, src_h) in support_local {
+        let v_target = if stepped {
+            src_h
+                .checked_add(delta)
+                .ok_or_else(|| error(BuildingPrefabError::CoordinateOverflow))?
+                .div_euclid(8)
+                * 8
+        } else {
+            level
+        };
         for dx in -2..=2 {
             for dy in -2..=2 {
                 let tile = MapTile::new(v.x + dx, v.y + dy);
                 let distance = dx.abs().max(dy.abs());
                 targets
                     .entry(tile)
-                    .and_modify(|d: &mut i32| *d = (*d).min(distance))
-                    .or_insert(distance);
+                    .and_modify(|(d, t)| {
+                        if distance < *d || (distance == *d && v_target < *t) {
+                            *d = distance;
+                            *t = v_target;
+                        }
+                    })
+                    .or_insert((distance, v_target));
             }
         }
     }
@@ -104,20 +144,15 @@ pub(super) fn fit(
         .filter(|o| !matches!(o, MapOp::SetHeight { .. }))
         .cloned()
         .collect();
-    for (corner, distance) in targets {
+    for (corner, (distance, target)) in targets {
         let coord = HeightVertexCoord::new(corner, spec.base_plane);
         let before = document
             .height_at(coord)
             .ok_or_else(|| error(BuildingPrefabError::MissingHeight(coord)))?;
         let after = match distance {
-            0 => level,
-            1 => ((i64::from(before) + i64::from(level)) / 2) as i32,
-            _ => before,
-        };
-        let after = if distance == 1 {
-            after.div_euclid(8) * 8
-        } else {
-            after
+            0 => target,
+            1 => (((i64::from(before) + i64::from(target)) / 2) as i32).div_euclid(8) * 8,
+            _ => (((3 * i64::from(before) + i64::from(target)) / 4) as i32).div_euclid(8) * 8,
         };
         if before != after {
             ops.push(MapOp::SetHeight {

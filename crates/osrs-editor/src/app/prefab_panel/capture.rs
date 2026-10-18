@@ -8,11 +8,10 @@ use osrs_edit::{
     BuildingCaptureSpec, HeightVertexCoord, MapDocument, MapPosition, ObjectPlacement,
     PrefabRelation,
 };
+use osrs_scene::building_census::description::BuildingDescription;
+#[cfg(not(target_arch = "wasm32"))]
 use osrs_scene::{
-    building_census::{
-        CensusArea, Ground, ObjectInfo, ObjectTable,
-        description::{BuildingDescription, describe},
-    },
+    building_census::{CensusArea, Ground, ObjectInfo, ObjectTable, description::describe},
     object_semantics::Placed,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -25,12 +24,15 @@ pub(in crate::app) struct CaptureReview {
 }
 #[derive(Clone)]
 struct Review {
+    #[cfg(not(target_arch = "wasm32"))]
     inputs: std::sync::Arc<ReviewInputs>,
     rooms: Vec<RoomChoice>,
     overrides: Vec<(ObjectPlacement, bool)>,
     labels: BTreeMap<String, String>,
     predictions: BTreeMap<(osrs_core::ids::ObjectId, u8), String>,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     source: u64,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     revision: u64,
     description: BuildingDescription,
     objects: Vec<ObjectPlacement>,
@@ -41,6 +43,7 @@ struct Review {
     confirmed: bool,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct ReviewInputs {
     area: CensusArea,
     placements: Vec<Placed>,
@@ -54,7 +57,9 @@ struct RoomChoice {
     role: String,
 }
 
-pub(super) fn poll(app: &mut EditorApp) {
+pub(super) fn poll(
+    #[cfg_attr(target_arch = "wasm32", allow(unused_variables))] app: &mut EditorApp,
+) {
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(receiver) = &app.prefabs.capture_review.pending {
         match receiver.try_recv() {
@@ -258,8 +263,31 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
                 .selected_text(&room.role)
                 .show_ui(ui, |ui| {
                     for role in [
-                        "general", "living", "kitchen", "bedroom", "storage", "bank", "church",
-                        "workshop", "tavern",
+                        "general",
+                        "living",
+                        "kitchen",
+                        "bedroom",
+                        "Pub",
+                        "smithy",
+                        "chapel",
+                        "bank",
+                        "shop",
+                        "dining",
+                        "study",
+                        "storage",
+                        "workshop",
+                        "throne",
+                        "prison",
+                        "crypt",
+                        "classroom",
+                        "magic_shop",
+                        "armoury",
+                        "archery_shop",
+                        "clothes_shop",
+                        "crafting_shop",
+                        "fishing_shop",
+                        "food_shop",
+                        "farming_shop",
                     ] {
                         ui.selectable_value(&mut room.role, role.into(), role);
                     }

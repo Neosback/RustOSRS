@@ -31,6 +31,7 @@ pub(in crate::app) struct Studio {
     session: StudioSession,
     problem: Option<String>,
     relations: bool,
+    pub(super) auto_own_painted_floors: bool,
 }
 impl Studio {
     fn new(app: &mut EditorApp, file: String, ctx: &egui::Context) -> Result<Self, String> {
@@ -45,6 +46,7 @@ impl Studio {
             None => Box::new(Stage::new(app, ctx)?),
         };
         stage.clear_preview();
+        stage.viewer().prefabs.sync_entries_from(&app.prefabs);
         app.prefabs.gallery.open = false;
         Ok(Self {
             stage,
@@ -59,6 +61,7 @@ impl Studio {
             session: StudioSession::default(),
             problem: None,
             relations: true,
+            auto_own_painted_floors: true,
         })
     }
     fn initialize(&mut self) -> Result<(), String> {
@@ -148,8 +151,34 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
     }
     let ready = studio.pad.is_some();
     if studio.relations && !studio.lab.active {
+        let mut live_prefab = studio.original.clone();
+        if ready {
+            let origin = studio.origin;
+            let mut objs: Vec<_> = studio
+                .stage
+                .viewer()
+                .session
+                .document()
+                .object_entries()
+                .into_iter()
+                .filter_map(|p| {
+                    let lx = p.position.tile.x - origin.x;
+                    let ly = p.position.tile.y - origin.y;
+                    (lx >= 0 && ly >= 0).then(|| osrs_edit::PrefabObject {
+                        id: p.object_id.get(),
+                        x: lx as u16,
+                        y: ly as u16,
+                        plane: p.position.plane.index().get(),
+                        kind: p.kind.get(),
+                        orientation: p.orientation.get(),
+                    })
+                })
+                .collect();
+            objs.sort_by_key(|o| (o.plane, o.y, o.x, o.kind, o.id, o.orientation));
+            live_prefab.objects = objs;
+        }
         studio.stage.viewer().prefabs.studio_overlay = Some(overlays::Overlay {
-            prefab: studio.original.clone(),
+            prefab: live_prefab,
             origin: studio.origin,
             selected: studio
                 .stage
@@ -166,6 +195,7 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
     let dirty = studio.session.dirty(revision);
     let mut save = false;
     let mut save_as = false;
+    let mut expand_bounds = false;
     let mut leave = ctx.input(|i| i.viewport().close_requested());
     if leave {
         ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -174,8 +204,11 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
     egui::Panel::top("prefab-studio-header").show(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
             ui.strong(format!(
-                "Prefab Studio · {}{}",
+                "Prefab Studio · {} ({}×{}×{}){}",
                 studio.original.name,
+                studio.original.width,
+                studio.original.height,
+                studio.original.planes,
                 if dirty { " · Unsaved" } else { "" }
             ));
             save = ui
@@ -185,6 +218,15 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
                 .add_enabled(
                     ready && !studio.lab.active,
                     egui::Button::new("Save as new"),
+                )
+                .clicked();
+            expand_bounds = ui
+                .add_enabled(
+                    ready && !studio.lab.active,
+                    egui::Button::new("Expand bounds"),
+                )
+                .on_hover_text(
+                    "Grow prefab dimensions to encompass all placed objects and painted terrain",
                 )
                 .clicked();
             revert = ui
@@ -205,6 +247,9 @@ pub(super) fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context)
             ui.colored_label(ui.visuals().error_fg_color, problem);
         }
     });
+    if expand_bounds && let Err(e) = save::expand_bounds_to_fit(&mut studio) {
+        studio.problem = Some(e);
+    }
     if ready {
         if ctx.input_mut(|i| {
             i.consume_shortcut(&egui::KeyboardShortcut::new(

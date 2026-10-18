@@ -260,3 +260,119 @@ fn incomplete_floor_support_cannot_be_claimed_complete() {
         Err(PrefabError::Building(BuildingPrefabError::MissingHeight(_)))
     ));
 }
+
+#[test]
+fn stepped_foundations_preserve_relative_steps_and_blend_two_ring_apron() {
+    let (mut doc, spec) = source();
+    // Raise x >= 3 on plane 0 by -64 to create a split-level stepped foundation.
+    let step_ops: Vec<_> = (3..=5)
+        .flat_map(|x| {
+            (0..=5).map(move |y| {
+                let coord = HeightVertexCoord::new(MapTile::new(x, y), plane(0));
+                MapOp::SetHeight {
+                    coord,
+                    before: 0,
+                    after: -64,
+                }
+            })
+        })
+        .collect();
+    doc.apply_patch(&MapPatch::new(step_ops))
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    let p = capture_building_prefab(&doc, &spec, "stepped-house").unwrap_or_else(|e| panic!("{e}"));
+    let heights = (0..2).flat_map(|pl| {
+        (20..45).flat_map(move |x| {
+            (20..45).map(move |y| {
+                (
+                    HeightVertexCoord::new(MapTile::new(x, y), plane(pl)),
+                    -800 - i32::from(pl) * 240,
+                )
+            })
+        })
+    });
+    let mut destination = MapDocument::from_parts([], heights, []);
+    let before = destination.clone();
+    let placed = plan_place_prefab(
+        &destination,
+        &p,
+        PlaceSpec {
+            origin: MapTile::new(30, 30),
+            base_plane: plane(0),
+            quarter_turns: 0,
+            terrain: true,
+            heights: true,
+            objects: true,
+            replace_objects: false,
+        },
+        &|_, _| (1, 1),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    destination
+        .apply_patch(&placed.patch)
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    let low = destination
+        .height_at(HeightVertexCoord::new(MapTile::new(31, 31), plane(0)))
+        .unwrap_or_default();
+    let high = destination
+        .height_at(HeightVertexCoord::new(MapTile::new(34, 31), plane(0)))
+        .unwrap_or_default();
+    assert_eq!(high - low, -64);
+    destination
+        .apply_patch(&placed.patch.inverse())
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(destination, before);
+}
+
+#[test]
+fn studio_capture_remaps_human_relations_and_drops_inferred_relations_on_object_edit() {
+    let (doc, mut spec) = source();
+    spec.relations = vec![
+        PrefabRelation {
+            from: 0,
+            to: 1,
+            kind: "supports".into(),
+            evidence: "human".into(),
+            human: true,
+        },
+        PrefabRelation {
+            from: 1,
+            to: 0,
+            kind: "near".into(),
+            evidence: "inferred".into(),
+            human: false,
+        },
+    ];
+    let p = capture_building_prefab(&doc, &spec, "house").unwrap_or_else(|e| panic!("{e}"));
+    let pad = MapDocument::from_parts([], doc.height_entries(), []);
+    let mut scene = doc.clone();
+    // Insert a new object at (0, 0) on plane 0 so it sorts before the existing objects.
+    let extra = ObjectPlacement {
+        object_id: ObjectId::new(10),
+        position: MapPosition::new(MapTile::new(0, 0), plane(0)),
+        kind: LocKind::new(10).unwrap_or_else(|| unreachable!()),
+        orientation: ObjectOrientation::new(0).unwrap_or_else(|| unreachable!()),
+    };
+    scene
+        .apply_patch(&MapPatch::new(vec![MapOp::AddObject { placement: extra }]))
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    let capture = CaptureSpec {
+        origin: MapTile::new(0, 0),
+        width: p.width,
+        height: p.height,
+        base_plane: plane(0),
+        planes: p.planes,
+        terrain: true,
+        heights: true,
+        objects: true,
+    };
+    let saved = capture_prefab_over(&scene, &pad, capture, &p).unwrap_or_else(|e| panic!("{e}"));
+    let relations = &saved
+        .building
+        .as_ref()
+        .unwrap_or_else(|| unreachable!())
+        .relations;
+    assert_eq!(relations.len(), 1);
+    assert!(relations[0].human);
+    assert_eq!(relations[0].from, 1);
+    assert_eq!(relations[0].to, 2);
+}

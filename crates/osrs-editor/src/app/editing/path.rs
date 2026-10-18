@@ -6,7 +6,9 @@
 
 use super::{EditStep, EditorApp, PathTile, TileKey};
 use crate::app::edit_runtime::{EditExecution, EditExecutionError};
-use crate::app::path_commit::{build_terrain_path_patch, path_intent};
+#[cfg(test)]
+use crate::app::path_commit::build_terrain_path_patch;
+use crate::app::path_commit::path_intent;
 use crate::paint::TileValues;
 use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::{HeightVertexCoord, MapOp, MapPatch, MapPosition, MapQuery, TerrainTile};

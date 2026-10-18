@@ -1,11 +1,112 @@
 //! Save the scene through the existing prefab library, excluding its pristine pad.
 use super::*;
 use osrs_edit::{CaptureSpec, capture_prefab_over};
+pub(super) fn expand_bounds_to_fit(studio: &mut Studio) -> Result<bool, String> {
+    let pad = studio.pad.as_ref().ok_or("The scene is still loading")?;
+    let scene = studio.stage.viewer().session.document().clone();
+    let mut min_x = studio.origin.x;
+    let mut min_y = studio.origin.y;
+    let mut max_x = studio.origin.x + i32::from(studio.original.width);
+    let mut max_y = studio.origin.y + i32::from(studio.original.height);
+    let mut max_plane = studio.original.planes.max(1);
+    for p in scene.object_entries() {
+        let size = studio
+            .original
+            .building
+            .as_ref()
+            .and_then(|b| b.object_sizes.get(&p.object_id.get()).copied())
+            .or_else(|| {
+                studio
+                    .stage
+                    .viewer()
+                    .placer
+                    .known_object_size(p.object_id.get())
+                    .map(|(w, h)| (u16::from(w), u16::from(h)))
+            })
+            .unwrap_or((1, 1));
+        let (w, h) = if p.orientation.get() & 1 == 1 {
+            (i32::from(size.1), i32::from(size.0))
+        } else {
+            (i32::from(size.0), i32::from(size.1))
+        };
+        min_x = min_x.min(p.position.tile.x);
+        min_y = min_y.min(p.position.tile.y);
+        max_x = max_x.max(p.position.tile.x + w);
+        max_y = max_y.max(p.position.tile.y + h);
+        max_plane = max_plane.max(p.position.plane.index().get() + 1);
+    }
+    for (p, t) in scene.terrain_entries() {
+        if t != pad.terrain_at(p) {
+            min_x = min_x.min(p.tile.x);
+            min_y = min_y.min(p.tile.y);
+            max_x = max_x.max(p.tile.x + 1);
+            max_y = max_y.max(p.tile.y + 1);
+            max_plane = max_plane.max(p.plane.index().get() + 1);
+        }
+    }
+    for (c, h) in scene.height_entries() {
+        if Some(h) != pad.height_at(c) {
+            min_x = min_x.min(c.corner.x);
+            min_y = min_y.min(c.corner.y);
+            max_x = max_x.max(c.corner.x);
+            max_y = max_y.max(c.corner.y);
+            max_plane = max_plane.max(c.plane.index().get() + 1);
+        }
+    }
+    let new_width = u16::try_from((max_x - min_x).max(1))
+        .map_err(|_| "Expanded prefab width exceeds limits")?;
+    let new_height = u16::try_from((max_y - min_y).max(1))
+        .map_err(|_| "Expanded prefab height exceeds limits")?;
+    if min_x == studio.origin.x
+        && min_y == studio.origin.y
+        && new_width == studio.original.width
+        && new_height == studio.original.height
+        && max_plane == studio.original.planes
+    {
+        return Ok(false);
+    }
+    let dx = u16::try_from(studio.origin.x - min_x).unwrap_or(0);
+    let dy = u16::try_from(studio.origin.y - min_y).unwrap_or(0);
+    if dx > 0 || dy > 0 {
+        for t in &mut studio.original.tiles {
+            t.x += dx;
+            t.y += dy;
+        }
+        for h in &mut studio.original.heights {
+            h.x += dx;
+            h.y += dy;
+        }
+        for o in &mut studio.original.objects {
+            o.x += dx;
+            o.y += dy;
+        }
+        if let Some(b) = &mut studio.original.building {
+            for f in &mut b.floors {
+                f.x += dx;
+                f.y += dy;
+            }
+            for s in &mut b.support {
+                s.x += dx;
+                s.y += dy;
+            }
+        }
+    }
+    studio.origin = MapTile::new(min_x, min_y);
+    studio.original.width = new_width;
+    studio.original.height = new_height;
+    studio.original.planes = max_plane.min(4);
+    studio.session.metadata_changed();
+    Ok(true)
+}
+
 pub(super) fn save(
     studio: &mut Studio,
     parent: &mut EditorApp,
     as_new: bool,
 ) -> Result<(), String> {
+    if studio.auto_own_painted_floors {
+        expand_bounds_to_fit(studio)?;
+    }
     let pad = studio.pad.as_ref().ok_or("The scene is still loading")?;
     let scene = studio.stage.viewer().session.document().clone();
     let max_x = studio.origin.x + i32::from(studio.original.width);
@@ -55,7 +156,24 @@ pub(super) fn save(
         }
     }
     if let Some(b) = &mut source.building {
+        if studio.auto_own_painted_floors {
+            for (p, t) in scene.terrain_entries() {
+                if !outside_tile(p.tile, p.plane, false) && t != pad.terrain_at(p) {
+                    let cell = osrs_edit::PrefabCell {
+                        x: (p.tile.x - studio.origin.x) as u16,
+                        y: (p.tile.y - studio.origin.y) as u16,
+                        plane: p.plane.index().get(),
+                    };
+                    if !b.floors.contains(&cell) {
+                        b.floors.push(cell);
+                    }
+                }
+            }
+            b.floors.sort();
+            b.floors.dedup();
+        }
         let changed_objects = scene.object_entries().len() != source.objects.len()
+            || studio.auto_own_painted_floors
             || source.objects.iter().any(|o| {
                 !scene.object_entries().iter().any(|p| {
                     p.object_id.get() == o.id

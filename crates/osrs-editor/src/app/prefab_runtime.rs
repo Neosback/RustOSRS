@@ -193,6 +193,63 @@ impl PrefabRuntime {
         Ok(file)
     }
 
+    pub(in crate::app) fn sync_entries_from(&mut self, other: &Self) {
+        self.entries = other.entries.clone();
+    }
+
+    pub(in crate::app) fn create_blank_scene(&mut self) -> Result<String, String> {
+        let floors: Vec<_> = (0..12)
+            .flat_map(|y| (0..12).map(move |x| osrs_edit::PrefabCell { x, y, plane: 0 }))
+            .collect();
+        let support: Vec<_> = (0..=12)
+            .flat_map(|y| (0..=12).map(move |x| osrs_edit::PrefabCell { x, y, plane: 0 }))
+            .collect();
+        let tiles = floors
+            .iter()
+            .map(|c| osrs_edit::PrefabTile {
+                x: c.x,
+                y: c.y,
+                plane: c.plane,
+                underlay: Some(50),
+                overlay: None,
+                flags: 0,
+            })
+            .collect();
+        let heights = support
+            .iter()
+            .map(|c| osrs_edit::PrefabHeight {
+                x: c.x,
+                y: c.y,
+                plane: c.plane,
+                value: 0,
+            })
+            .collect();
+        self.add(Prefab {
+            format: osrs_edit::PREFAB_FORMAT.into(),
+            version: osrs_edit::PREFAB_VERSION,
+            name: "Blank scene".into(),
+            tags: vec!["scene".into()],
+            notes: "Authored in Prefab Studio".into(),
+            source: PrefabSource::Authored,
+            width: 12,
+            height: 12,
+            planes: 1,
+            tiles,
+            heights,
+            objects: vec![],
+            building: Some(osrs_edit::PrefabBuilding {
+                floors,
+                support,
+                source_datum: 0,
+                object_sizes: Default::default(),
+                provenance: "authored".into(),
+                relations: vec![],
+                reviewed: true,
+                labels: Default::default(),
+            }),
+        })
+    }
+
     /// Change a prefab's name, tags or notes and save it.
     pub(in crate::app) fn edit(
         &mut self,
@@ -235,6 +292,7 @@ impl PrefabRuntime {
     /// Add prefabs from a file's text (one prefab per file).
     pub(in crate::app) fn import_text(&mut self, text: &str) -> Result<String, String> {
         let prefab: Prefab = serde_json::from_str(text).map_err(|error| error.to_string())?;
+        prefab.validate().map_err(|error| error.to_string())?;
         self.add(prefab)
     }
 

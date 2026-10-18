@@ -300,14 +300,14 @@ mod tests {
             ProfileDigest::from_lower_hex(
                 "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7",
             )
-            .expect("valid profile digest"),
+            .unwrap_or_else(|e| panic!("{e:?}")),
             CacheFingerprint::from_lower_hex(
                 "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38",
             )
-            .expect("valid cache fingerprint"),
+            .unwrap_or_else(|e| panic!("{e:?}")),
             1,
         )
-        .expect("valid provenance");
+        .unwrap_or_else(|e| panic!("{e:?}"));
         let def = ObjectDefinition {
             identity: DefinitionIdentity::new(ObjectId::new(100), provenance),
             name: Some("Chest".to_owned()),

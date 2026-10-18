@@ -125,12 +125,16 @@ fn companion_underlay_sets_underlay_and_reverses_on_undo() {
         &[intent(tile, 7, 4, 1)],
         Some(9),
     )
-    .expect("valid companion path patch");
+    .unwrap_or_else(|e| panic!("{e:?}"));
     assert_eq!(patch.len(), 1);
-    document.apply_patch(&patch).expect("apply patch");
+    document
+        .apply_patch(&patch)
+        .unwrap_or_else(|e| panic!("{e:?}"));
     let after = document.terrain_at(position(tile));
     assert_eq!(after.underlay, Some(FloorUnderlayId::new(9)));
     assert_eq!(after.overlay.map(|o| o.id.get()), Some(7));
-    document.apply_patch(&patch.inverse()).expect("undo patch");
+    document
+        .apply_patch(&patch.inverse())
+        .unwrap_or_else(|e| panic!("{e:?}"));
     assert_eq!(document.terrain_at(position(tile)), before);
 }

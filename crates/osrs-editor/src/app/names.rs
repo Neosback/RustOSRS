@@ -23,7 +23,7 @@ impl NameBook {
         self.tables.get(table)?.get(&id).map(String::as_str)
     }
 
-    pub(super) fn object(&self, id: u32) -> Option<&str> {
+    pub(in crate::app) fn object(&self, id: u32) -> Option<&str> {
         self.get("loc", id)
     }
 
@@ -92,6 +92,11 @@ impl NameRuntime {
 
     pub(super) fn book(&self) -> Option<&NameBook> {
         self.book.as_deref()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(in crate::app) fn book_arc(&self) -> Option<Arc<NameBook>> {
+        self.book.clone()
     }
 
     pub(super) fn note(&self) -> Option<&str> {

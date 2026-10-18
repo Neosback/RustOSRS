@@ -137,6 +137,7 @@ impl Default for BuildState {
 }
 
 impl BuildState {
+    #[cfg(not(target_arch = "wasm32"))]
     pub(in crate::app) fn learned_roles(&self) -> Option<osrs_edit::LearnedRoleModel> {
         self.kits.get(self.form.kit)?.kit.learned_roles().cloned()
     }

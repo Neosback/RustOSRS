@@ -156,9 +156,18 @@ fn import_and_export_round_trip_and_reject_foreign_files() {
     assert!(other.import_text("{\"format\": \"x\"}").is_err());
     assert!(
         other
-            .import_text(&text.replace("\"version\": 1", "\"version\": 7"))
+            .import_text(&text.replace(&format!("\"version\": {PREFAB_VERSION}"), "\"version\": 7"))
             .is_err()
     );
+    let blank = other
+        .create_blank_scene()
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let blank_entry = other.entry(&blank).unwrap_or_else(|| unreachable!());
+    assert_eq!(
+        (blank_entry.prefab.width, blank_entry.prefab.height),
+        (12, 12)
+    );
+    assert!(blank_entry.prefab.building.is_some());
 }
 
 #[test]

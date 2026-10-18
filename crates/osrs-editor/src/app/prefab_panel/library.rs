@@ -40,16 +40,30 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
             app.prefabs.start_import();
         }
     });
-    if ui
-        .button(format!(
-            "{} Open the 3D gallery",
-            egui_phosphor::regular::CUBE
-        ))
-        .on_hover_text("Browse every prefab and look at it from all sides in a window of its own")
-        .clicked()
-    {
-        app.prefabs.gallery.open = true;
-    }
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .button(format!(
+                "{} Open the 3D gallery",
+                egui_phosphor::regular::CUBE
+            ))
+            .on_hover_text(
+                "Browse every prefab and look at it from all sides in a window of its own",
+            )
+            .clicked()
+        {
+            app.prefabs.gallery.open = true;
+        }
+        if ui
+            .button(format!("{} New scene", egui_phosphor::regular::PLUS))
+            .on_hover_text("Create a blank 12×12 scene prefab and open it in Prefab Studio")
+            .clicked()
+        {
+            match app.prefabs.create_blank_scene() {
+                Ok(file) => crate::app::prefab_studio::request(app, file),
+                Err(error) => app.prefabs.say(error),
+            }
+        }
+    });
     super::capture::show(app, ui);
     capture_section(app, ui);
     ui.separator();

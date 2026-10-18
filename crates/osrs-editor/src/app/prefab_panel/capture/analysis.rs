@@ -5,6 +5,7 @@ pub(in crate::app) fn start(app: &mut EditorApp, tile: MapTile) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let source = app.project.source().clone();
+        let book = app.names.book_arc();
         let model = app.prefabs.build.learned_roles();
         let generation = app.project.generation();
         let revision = app.session.map_revision();
@@ -47,7 +48,11 @@ pub(in crate::app) fn start(app: &mut EditorApp, tile: MapTile) {
                         p.object_id,
                         ObjectInfo {
                             name: d.name.clone().unwrap_or_default().to_lowercase(),
-                            symbol: String::new(),
+                            symbol: book
+                                .as_ref()
+                                .and_then(|b| b.object(p.object_id.get()))
+                                .unwrap_or_default()
+                                .to_lowercase(),
                             actions: d
                                 .actions
                                 .iter()
