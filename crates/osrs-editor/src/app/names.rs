@@ -3,6 +3,8 @@
 //! (`loc.castledoubledoorl`). They are read in the background when the open cache is that
 //! installation's own LIVE cache, and shown wherever the cache has no name of its own. They are
 //! hints for people, not identifiers: nothing keys on them.
+mod custom;
+pub(super) use custom::CustomNames;
 use std::{
     collections::HashMap,
     path::Path,
@@ -45,6 +47,8 @@ pub(super) struct NameRuntime {
     job: Option<mpsc::Receiver<Result<NameBook, String>>>,
     /// Why names are missing, for the one place that explains it.
     note: Option<String>,
+    /// The names people gave objects.
+    custom: CustomNames,
 }
 
 /// The OpenRune checkout a cache folder belongs to, when it is the usual `.data/cache/LIVE`.
@@ -60,6 +64,7 @@ impl NameRuntime {
     /// A cache was opened: forget the old names and read the installation's, if there is one.
     pub(super) fn source_opened(&mut self, cache: &Path, build: u32) {
         *self = Self::default();
+        self.custom = CustomNames::open(build);
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(root) = installation_of(cache) {
             let (tx, rx) = mpsc::channel();
@@ -97,6 +102,24 @@ impl NameRuntime {
     #[cfg(not(target_arch = "wasm32"))]
     pub(in crate::app) fn book_arc(&self) -> Option<Arc<NameBook>> {
         self.book.clone()
+    }
+
+    pub(in crate::app) fn custom(&self) -> &CustomNames {
+        &self.custom
+    }
+
+    pub(in crate::app) fn custom_mut(&mut self) -> &mut CustomNames {
+        &mut self.custom
+    }
+
+    /// The name to show for object `id`: yours, then the cache's, then the game's internal name.
+    pub(in crate::app) fn resolve(
+        &self,
+        id: u32,
+        cache_name: Option<&str>,
+    ) -> osrs_core::object_names::Resolved {
+        self.custom
+            .resolve(id, cache_name, self.book().and_then(|b| b.object(id)))
     }
 
     pub(super) fn note(&self) -> Option<&str> {

@@ -14,6 +14,19 @@ pub(super) struct Store {
     directory: Option<PathBuf>,
 }
 
+/// `file`, or `file` with a number before the `.prefab.json` when `folder` already has it.
+#[cfg(not(target_arch = "wasm32"))]
+fn free_name(folder: &std::path::Path, file: &str) -> String {
+    if !folder.join(file).exists() {
+        return file.to_owned();
+    }
+    let stem = file.strip_suffix(SUFFIX).unwrap_or(file);
+    (2..)
+        .map(|n| format!("{stem}-{n}{SUFFIX}"))
+        .find(|candidate| !folder.join(candidate).exists())
+        .unwrap_or_else(|| file.to_owned())
+}
+
 /// A file-system safe stem for a prefab name.
 fn slug(name: &str) -> String {
     let mut stem: String = name
@@ -169,6 +182,44 @@ impl Store {
     #[cfg(target_arch = "wasm32")]
     pub(super) fn delete(&self, _file: &str) -> Result<(), String> {
         Ok(())
+    }
+
+    /// Move `file` into the `.trash` folder (a number is added when the name is taken). Returns
+    /// the name it has there.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) fn trash(&self, file: &str) -> Result<String, String> {
+        let Some(directory) = &self.directory else {
+            return Ok(file.to_owned());
+        };
+        let bin = directory.join(".trash");
+        std::fs::create_dir_all(&bin).map_err(|e| format!("{}: {e}", bin.display()))?;
+        let name = free_name(&bin, file);
+        std::fs::rename(directory.join(file), bin.join(&name))
+            .map_err(|e| format!("{file}: {e}"))?;
+        Ok(name)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn trash(&self, file: &str) -> Result<String, String> {
+        Ok(file.to_owned())
+    }
+
+    /// Move `name` back out of the trash as `wanted` (or a free variation of it). Returns the
+    /// file name it has in the library.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) fn restore(&self, name: &str, wanted: &str) -> Result<String, String> {
+        let Some(directory) = &self.directory else {
+            return Ok(wanted.to_owned());
+        };
+        let back = free_name(directory, wanted);
+        std::fs::rename(directory.join(".trash").join(name), directory.join(&back))
+            .map_err(|e| format!("{name}: {e}"))?;
+        Ok(back)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn restore(&self, _name: &str, wanted: &str) -> Result<String, String> {
+        Ok(wanted.to_owned())
     }
 }
 

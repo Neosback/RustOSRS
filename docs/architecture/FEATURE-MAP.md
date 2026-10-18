@@ -22,6 +22,8 @@ UI/input → controller intent → pure MapQuery planner → MapPatch
 | Prefab Studio | `app/prefab_studio/`, `workspace.rs` (library / Builder / WFC) | `capture_prefab_over`, `plan_place_exact` | synthetic map source, isolated baseline then normal tool history; sparse save |
 | WFC prefab floors | `app/prefab_studio/catalog.rs` | `osrs-edit::plan_wfc_floors` | authored scene gateway, undo and sparse save; never the Lab mirror |
 | Procedural Lab | `app/prefab_studio/lab/`, `osrs-lab` JSON-lines | existing edit planners, WFC, foundation fitting | parked author runtime; Lab history; read-only scene projection |
+| Workshop (window, not a `Tool`) | `app/workshop.rs`, `workshop/{strip,buildings,teach,table}.rs`, `workshop/train/` (job thread, model list, Try it) | none: library, name book and model files only; objects named through `osrs-edit::name_book` (`osrs-core::object_names`); training and building in `osrs-lab` (`train_model`, `build_with_model`) | no document edit; "Place" and "Open in scene editor" reuse the Prefabs commit and Studio routes; deletes move files to `.trash` |
+| Object names | `app/names.rs`, `app/names/custom.rs`, `app/inspector/naming.rs` | `osrs-core::object_names` (precedence), `osrs-scene::building_census::guess` (suggestions) | settings-adjacent `names/objects.names.json`, written atomically; no map change |
 | Tile paste | `app/editing/paste.rs`, `app/tile_clipboard.rs` | Paint planner | Existing Path history projection |
 
 Application paths are relative to `crates/osrs-editor/src`. `osrs-edit` paths are relative to `crates`.

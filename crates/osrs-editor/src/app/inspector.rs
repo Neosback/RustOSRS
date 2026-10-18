@@ -5,6 +5,7 @@
 //! The dock itself (rail, panel, tabs) is in `workspace.rs`; settings live in `settings_window.rs`.
 
 mod collision;
+mod naming;
 
 use super::EditorApp;
 use super::widgets::{OverlayFill, empty_state, paint_tile};
@@ -315,14 +316,9 @@ impl EditorApp {
             return;
         };
         let id = loc.definition.identity.id.get();
-        let name = loc
-            .definition
-            .name
-            .as_deref()
-            .filter(|name| !name.is_empty() && *name != "null")
-            .or_else(|| self.names.book().and_then(|b| b.object(id)))
-            .unwrap_or("Unnamed object");
-        ui.label(egui::RichText::new(name).heading());
+        let cache_name = loc.definition.name.clone().unwrap_or_default();
+        let resolved = self.names.resolve(id, Some(&cache_name));
+        ui.label(egui::RichText::new(naming::title(&resolved)).heading());
         ui.weak(format!(
             "Object {id}  \u{b7}  {}",
             loc_type_name(loc.loc_type)
@@ -353,6 +349,8 @@ impl EditorApp {
                     field(ui, label, &value);
                 }
             });
+        ui.add_space(8.0);
+        naming::card(self, ui, id, &cache_name, &resolved);
         ui.add_space(8.0);
         ui.horizontal_wrapped(|ui| {
             let pick = Pick {

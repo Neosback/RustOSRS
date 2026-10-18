@@ -215,6 +215,10 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
                 crate::app::prefab_gallery::queue_missing_stills(app);
             }
         }
+        "workshop" => {
+            let rest: Vec<&str> = words.collect();
+            crate::app::workshop::script(app, &rest)?;
+        }
         "page" => {
             app.prefabs.page = match words.next() {
                 Some("build") => crate::app::prefab_runtime::Page::Build,

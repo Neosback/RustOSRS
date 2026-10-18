@@ -65,6 +65,7 @@ mod user_tools;
 mod viewer;
 mod viewport;
 mod widgets;
+mod workshop;
 mod workspace;
 mod world_runtime;
 mod worldmap;
@@ -217,6 +218,7 @@ impl eframe::App for EditorApp {
         self.assets.poll(&ctx);
         self.world_map_window(&ctx);
         prefab_gallery::window(self, &ctx);
+        workshop::window(self, &ctx);
         if let Some(destination) = self.ui.teleport.show(&ctx) {
             self.teleport_to(destination);
         }

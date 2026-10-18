@@ -6,7 +6,9 @@ pub(in crate::app) mod overlays;
 mod save;
 mod session;
 mod window;
-pub(super) use window::{show as window, viewport_id};
+pub(super) use window::show as window;
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) use window::viewport_id;
 pub(in crate::app) mod workspace;
 use super::{
     EditorApp,
@@ -41,6 +43,11 @@ pub(in crate::app) struct Studio {
     pub(super) auto_own_painted_floors: bool,
 }
 impl Studio {
+    /// Whether the scene is open on this library file.
+    pub(in crate::app) fn is_editing(&self, file: &str) -> bool {
+        self.file == file
+    }
+
     fn new(app: &mut EditorApp, file: String, ctx: &egui::Context) -> Result<Self, String> {
         let original = app
             .prefabs

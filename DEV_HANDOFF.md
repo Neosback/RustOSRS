@@ -4,6 +4,43 @@ Last updated: 2026-10-18
 
 Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md` and `scripts/editor_features.json` locate feature ownership and tests. Live Git state is authoritative for branch/SHA facts; CI claims require actual run evidence.
 
+## Workshop, name book and trained building models — 2026-10-18
+
+Baseline is `main` at `f6e760d0d7d8bbcde68435b2076123996dfb1146` plus the checkpoint commits listed
+by `git log` (local, unpushed). Plain-language goal: a non-programmer can pick saved buildings,
+name what is in them, train a small model on them and ask it for a new building with no example.
+
+- **Building judge** (`osrs-scene::building_census::{judge,guess}`): one target-free check for real
+  and generated buildings (rooms, entrances, reachability, blocked doorways, a 16-number feature
+  vector). `guess_objects` suggests what an unnamed object is from census evidence.
+- **Name book** (`osrs-core::object_names`, `osrs-edit::name_book`): one name per object id, shared by
+  every building. Precedence: your name, cache name, readable symbol, accepted guess. Stored beside
+  the settings in `names/objects.names.json`. Inspector "Name this", object-search tokens (`role:`,
+  `unnamed`) and capture/census all read it through `app/names.rs`.
+- **`osrs-lab` trainer** (`generate`, `style`, `critic`, `model`, `train`): learns a kit from saved
+  prefabs, an integer-weight realism critic against 3,944 real buildings (`data/real-buildings.json`,
+  geographic split), room-count table by size, best-of-N building. A model is one checksummed
+  `models/<id>.model.json`. CLI: `generate`, `judge`, `train-model`, `build-model`. Pure Rust, no
+  Python needed; cancel and progress callbacks.
+- **Workshop window** (`app/workshop*`): left list (search, filters, multi-select, delete to
+  `prefabs/.trash`, restore) and tabs Buildings / Teach / Train. Train is Pick, Name, Teach it (progress
+  bar and log run on a worker thread), Ask a model (brief form, best-of-N, keep, rate). Open it from
+  the Prefabs Library page or `prefab workshop [buildings|teach|train|train NAME [PREFAB...]]`.
+- **Verification run**: focused gate `python3 scripts/verify.py -p osrs-core -p osrs-edit -p osrs-scene
+  -p osrs-lab -p osrs-world -p osrs-editor`: architecture/format/clippy and 947 tests passed, 20 ignored;
+  the run was flagged non-stable only because a doc file changed while it ran. A headless test
+  (`workshop::train::tests`) trains on one building through the real worker thread, saves, reloads,
+  builds twice from a brief and gets identical output, then trashes the model. Full gate: see the
+  entry below if recorded; otherwise not run.
+- **Not verified / open**: the window was screenshotted (Train tab) but the machine's display went
+  idle, so the trained-state view and real-mouse behaviour were not seen. A model trained on one
+  generated or captured building separates real from generated buildings easily (critic AUC about 1.0)
+  but its "looks real" score stays low (about 2 to 5 percent): the generator still differs from real
+  buildings in room count, furniture density and roofs. The WFC step-through viewer, the shared
+  Rust/Python split, train-only furniture and critic in `scripts/lab/train.py`, the Door socket fix in
+  `scripts/lab/catalog.py`, "Lab-accepted outputs are not reviewed" and PROCGEN-LEARNING.md updates
+  (512 patterns) are not done. No neural policy; the planner still requires at least two rooms.
+
 ## Audit baseline — 2026-10-18
 
 Audit baseline: clean `main` at exact `ada7c6277fac47527e481994ef6d44798ecc66f3`.

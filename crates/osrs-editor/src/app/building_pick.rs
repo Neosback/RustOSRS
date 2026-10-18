@@ -136,6 +136,15 @@ pub(super) fn select_building(app: &mut EditorApp, tile: Tile, additive: bool) -
             };
             for loc in &info.locs {
                 let id = ObjectId::new(loc.definition.identity.id.get());
+                let names = osrs_edit::census_name(
+                    app.names.custom().book(),
+                    id.get(),
+                    loc.definition.name.as_deref().unwrap_or_default(),
+                    app.names
+                        .book()
+                        .and_then(|b| b.object(id.get()))
+                        .unwrap_or_default(),
+                );
                 placements.push(Placed {
                     id,
                     kind: loc.loc_type,
@@ -144,18 +153,8 @@ pub(super) fn select_building(app: &mut EditorApp, tile: Tile, additive: bool) -
                     plane: loc.plane,
                 });
                 table.entry(id).or_insert_with(|| ObjectInfo {
-                    name: loc
-                        .definition
-                        .name
-                        .clone()
-                        .unwrap_or_default()
-                        .to_lowercase(),
-                    symbol: app
-                        .names
-                        .book()
-                        .and_then(|b| b.object(id.get()))
-                        .unwrap_or_default()
-                        .to_owned(),
+                    name: names.0.clone(),
+                    symbol: names.1.clone(),
                     actions: loc
                         .definition
                         .actions

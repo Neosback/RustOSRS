@@ -6,6 +6,7 @@ pub(in crate::app) fn start(app: &mut EditorApp, tile: MapTile) {
     {
         let source = app.project.source().clone();
         let book = app.names.book_arc();
+        let custom = std::sync::Arc::new(app.names.custom().book().clone());
         let model = app.prefabs.build.learned_roles();
         let generation = app.project.generation();
         let revision = app.session.map_revision();
@@ -44,15 +45,21 @@ pub(in crate::app) fn start(app: &mut EditorApp, tile: MapTile) {
                         .object(p.object_id)
                         .map_err(|e| e.to_string())?
                         .ok_or_else(|| format!("Missing definition {}", p.object_id.get()))?;
+                    let (name, symbol) = osrs_edit::census_name(
+                        &custom,
+                        p.object_id.get(),
+                        d.name.as_deref().unwrap_or_default(),
+                        &book
+                            .as_ref()
+                            .and_then(|b| b.object(p.object_id.get()))
+                            .unwrap_or_default()
+                            .to_lowercase(),
+                    );
                     table.insert(
                         p.object_id,
                         ObjectInfo {
-                            name: d.name.clone().unwrap_or_default().to_lowercase(),
-                            symbol: book
-                                .as_ref()
-                                .and_then(|b| b.object(p.object_id.get()))
-                                .unwrap_or_default()
-                                .to_lowercase(),
+                            name,
+                            symbol,
                             actions: d
                                 .actions
                                 .iter()

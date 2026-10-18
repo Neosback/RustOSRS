@@ -29,6 +29,8 @@ pub(in crate::app) struct PlaceState {
     search: String,
     target: Option<PlaceTarget>,
     symbols_applied: bool,
+    /// The name-book generation the catalog's custom names were taken from.
+    names_generation: Option<u64>,
 }
 
 /// The client's name for a loc type, for the type picker.
@@ -51,6 +53,11 @@ fn loc_type_label(loc_type: u8) -> &'static str {
 impl PlaceState {
     pub(in crate::app) fn is_armed(&self) -> bool {
         self.target.is_some()
+    }
+
+    /// The catalog's entry for an object (None until the catalog has loaded).
+    pub(in crate::app) fn catalog_entry(&self, id: u32) -> Option<&osrs_world::ObjectEntry> {
+        self.catalog.as_ref().and_then(|catalog| catalog.get(id))
     }
 
     /// An object's base size in tiles from the catalog; one tile when the catalog has not loaded
@@ -109,6 +116,7 @@ impl EditorApp {
                 Ok(Ok(catalog)) => {
                     self.placer.catalog = Some(Arc::new(catalog));
                     self.placer.symbols_applied = false;
+                    self.placer.names_generation = None;
                     self.placer.loading = None;
                 }
                 Ok(Err(error)) => {
@@ -127,6 +135,19 @@ impl EditorApp {
         {
             Arc::make_mut(catalog).apply_symbols(|id| book.object(id).map(str::to_owned));
             self.placer.symbols_applied = true;
+        }
+        // Names people gave objects: again whenever the name book changes.
+        let generation = self.names.custom().generation();
+        if self.placer.names_generation != Some(generation)
+            && let Some(catalog) = &mut self.placer.catalog
+        {
+            let book = self.names.custom().book();
+            Arc::make_mut(catalog).apply_custom(|id| {
+                book.get(id).map_or((None, None), |entry| {
+                    (entry.name.clone(), entry.role.clone())
+                })
+            });
+            self.placer.names_generation = Some(generation);
         }
     }
 

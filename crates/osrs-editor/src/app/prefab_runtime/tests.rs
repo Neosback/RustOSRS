@@ -460,3 +460,59 @@ fn detached_save_refuses_a_newer_library_edit_and_preserves_both_versions() {
     assert_eq!(world.entries().len(), 2);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn deleting_moves_to_the_trash_and_can_be_taken_back_even_with_a_name_clash() {
+    let dir = temp_dir("trash");
+    let mut library = PrefabRuntime::in_directory(dir.clone());
+    let a = library.add(prefab("tavern")).unwrap_or_default();
+    let b = library.add(prefab("church")).unwrap_or_default();
+    library.selected = Some(a.clone());
+    library.trash.checked.insert(a.clone());
+
+    assert_eq!(
+        library.move_to_trash(std::slice::from_ref(&a)).unwrap_or(0),
+        1
+    );
+    assert!(library.entry(&a).is_none());
+    assert!(library.selected.is_none() && library.trash.checked.is_empty());
+    assert!(!dir.join(&a).exists(), "out of the library folder");
+    assert!(dir.join(".trash").join(&a).exists(), "but not erased");
+    // The trash folder is not read as prefabs.
+    let reopened = PrefabRuntime::in_directory(dir.clone());
+    assert_eq!(reopened.entries().len(), 1);
+
+    // A new prefab takes the old name; restoring must not overwrite it.
+    let again = library.add(prefab("tavern")).unwrap_or_default();
+    assert_eq!(again, a);
+    let restored = library.restore_last().unwrap_or_default();
+    assert_eq!(restored.len(), 1);
+    assert_ne!(restored[0], a, "got a free name instead of overwriting");
+    assert_eq!(library.entries().len(), 3);
+    assert!(
+        library.restore_last().is_err(),
+        "nothing left to bring back"
+    );
+    assert!(library.entry(&b).is_some());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn several_files_go_to_the_trash_together_and_come_back_together() {
+    let dir = temp_dir("trash-many");
+    let mut library = PrefabRuntime::in_directory(dir.clone());
+    let files: Vec<String> = ["a", "b", "c"]
+        .iter()
+        .map(|n| library.add(prefab(n)).unwrap_or_default())
+        .collect();
+    library.ask_to_delete(files[..2].to_vec());
+    assert_eq!(library.trash.asking.as_ref().map(Vec::len), Some(2));
+    assert_eq!(library.move_to_trash(&files[..2]).unwrap_or(0), 2);
+    library.trash.asking = None;
+    assert_eq!(library.entries().len(), 1);
+    assert_eq!(library.restore_last().unwrap_or_default().len(), 2);
+    assert_eq!(library.entries().len(), 3);
+    library.ask_to_delete(Vec::new());
+    assert!(library.trash.asking.is_none(), "nothing to ask about");
+    let _ = std::fs::remove_dir_all(dir);
+}

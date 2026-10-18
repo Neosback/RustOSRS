@@ -15,7 +15,7 @@ pub(super) use placement_review::show as review_placement;
 use crate::app::{EditorApp, prefab_runtime::Page};
 use eframe::egui;
 
-pub(in crate::app) use library::arm;
+pub(in crate::app) use library::{arm, text_field};
 pub(super) use viewport::{armed_input, draw_world, place};
 
 /// The same generator controls inside the isolated authoring workspace.

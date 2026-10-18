@@ -42,6 +42,15 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     });
     ui.horizontal_wrapped(|ui| {
         if ui
+            .button(format!("{} Open the Workshop", egui_phosphor::regular::GRADUATION_CAP))
+            .on_hover_text(
+                "Look after your saved buildings, name what is in them, and teach the editor to build new ones",
+            )
+            .clicked()
+        {
+            app.prefabs.workshop.open = true;
+        }
+        if ui
             .button(format!(
                 "{} Open Builder / Prefab Studio",
                 egui_phosphor::regular::CUBE
@@ -245,7 +254,12 @@ pub(in crate::app) fn arm(app: &mut EditorApp, file: &str) {
 }
 
 /// A text field that reports the new value once, when the user leaves it changed.
-fn text_field(ui: &mut egui::Ui, key: &str, current: &str, multiline: bool) -> Option<String> {
+pub(in crate::app) fn text_field(
+    ui: &mut egui::Ui,
+    key: &str,
+    current: &str,
+    multiline: bool,
+) -> Option<String> {
     let id = ui.id().with(key);
     let mut text = ui
         .data_mut(|d| d.get_temp::<(String, String)>(id))

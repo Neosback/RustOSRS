@@ -6,6 +6,8 @@
 
 mod build;
 mod store;
+mod trash;
+pub(in crate::app) use trash::TrashState;
 
 use crate::app::npc_runtime::{OpenTask, SaveTask, open_text, save_text};
 pub(in crate::app) use build::starter_kit;
@@ -79,12 +81,14 @@ pub(in crate::app) struct PrefabRuntime {
     pub(in crate::app) placement_review:
         Option<crate::app::prefab_panel::placement_review::PlacementReview>,
     pub(in crate::app) gallery: crate::app::prefab_gallery::Gallery,
+    pub(in crate::app) workshop: crate::app::workshop::Workshop,
     pub(in crate::app) capture_review: crate::app::prefab_panel::capture::CaptureReview,
     pub(in crate::app) studio: Option<Box<crate::app::prefab_studio::Studio>>,
     pub(in crate::app) studio_overlay: Option<crate::app::prefab_studio::overlays::Overlay>,
     pub(in crate::app) stage_region: Option<osrs_core::coords::RegionCoord>,
     pub(in crate::app) studio_request: Option<String>,
     pub(in crate::app) studio_command: Option<crate::app::prefab_studio::SceneCommand>,
+    pub(in crate::app) trash: TrashState,
     notice: Option<String>,
     import_task: Option<OpenTask>,
     export_task: Option<SaveTask>,
@@ -246,7 +250,8 @@ impl PrefabRuntime {
                 object_sizes: Default::default(),
                 provenance: "authored".into(),
                 relations: vec![],
-                reviewed: true,
+                // A blank scene is not a reviewed building and must not teach anything.
+                reviewed: false,
                 labels: Default::default(),
             }),
         })
