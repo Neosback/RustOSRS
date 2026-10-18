@@ -5,6 +5,8 @@
 //! ECS/runtime state. Presentation and infrastructure layers adapt to and from the
 //! types defined here.
 
+mod name_book;
+pub use name_book::{census_name, name_book_from_json, name_book_to_json, named_objects};
 mod building;
 mod building_detail;
 mod building_finish;

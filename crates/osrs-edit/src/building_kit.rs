@@ -434,6 +434,16 @@ impl BuildingKit {
         snapshot: &GenerationSnapshot,
         variation: u32,
     ) -> Result<MapPatch, KitGenerateError> {
+        self.generate_with_rooms(snapshot, variation, None)
+    }
+
+    /// [`Self::generate`] with at most `max_rooms` rooms (the program's most important ones).
+    pub fn generate_with_rooms(
+        &self,
+        snapshot: &GenerationSnapshot,
+        variation: u32,
+        max_rooms: Option<usize>,
+    ) -> Result<MapPatch, KitGenerateError> {
         let wrap = KitGenerateError::Generation;
         let request = snapshot.request();
         if !(1..=3).contains(&request.floors) {
@@ -457,7 +467,10 @@ impl BuildingKit {
         let site = floor0_request.site;
         let interior =
             u32::from(site.width().saturating_sub(2)) * u32::from(site.height().saturating_sub(2));
-        let program = building_program(floor0_request.archetype).fitted_to_area(interior);
+        let mut program = building_program(floor0_request.archetype).fitted_to_area(interior);
+        if let Some(count) = max_rooms {
+            program = program.limited_to(count);
+        }
         let layout = pack_building_program(&program, site, floor0_request.seed)
             .map_err(|e| wrap(BuildingGenerationError::Layout(e)))?;
         let building = build_bsp_building_plan(floor0_request, &program, &layout)

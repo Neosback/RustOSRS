@@ -12,10 +12,14 @@
 
 pub mod description;
 mod edges;
+mod guess;
+mod judge;
 mod rooms;
 mod tags;
 
 pub use edges::{Dir, EdgeFeature, EdgePiece, Edges, OPENING_OBJECT};
+pub use guess::{Guess, guess_objects};
+pub use judge::{FEATURE_NAMES, FEATURES, Judgement, judge};
 pub use rooms::analyze;
 pub use tags::{RoomTag, tag_room};
 

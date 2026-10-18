@@ -80,6 +80,17 @@ impl BuildingProgram {
         let wanted = usize::try_from(area / TILES_PER_ROOM)
             .unwrap_or(usize::MAX)
             .clamp(2, self.rooms.len().max(2));
+        self.keep_first(wanted)
+    }
+
+    /// At most `count` rooms (never fewer than two: the planner joins rooms through corridors and
+    /// cannot build a one-room building yet): the most important ones, still connected. A real
+    /// building of the sizes the generator makes is usually one or two rooms, not five.
+    pub fn limited_to(&self, count: usize) -> Self {
+        self.keep_first(count.clamp(2, self.rooms.len().max(2)))
+    }
+
+    fn keep_first(&self, wanted: usize) -> Self {
         let rooms: Vec<ProgramRoom> = self.rooms.iter().copied().take(wanted).collect();
         let kept = |id: RoomId| rooms.iter().any(|room| room.id == id);
         let mut connections: Vec<ProgramConnection> = self

@@ -114,5 +114,21 @@ pub(super) fn record(
     let relations:Vec<_>=description.connections.iter().map(|r|json!({"from":r.from,"to":r.to,"kind":format!("{:?}",r.kind),"evidence":format!("{:?}",r.evidence),"source":"inference"})).collect();
     let portals:Vec<_>=description.portals.iter().map(|p|json!({"member":p.member,"approaches":p.approaches.map(|t|[t.x-min.x,t.y-min.y]),"exterior":p.exterior,"collision_state":"initial_cache_state"})).collect();
     let _ = objects;
-    json!({"format":"rustosrs-building-dataset","version":2,"id":format!("b{base}_{}_{}",key.x,key.y),"source":source,"region":[region.x,region.y],"origin":[min.x,min.y],"size":[max.x-min.x+1,max.y-min.y+1],"group":group,"split":split,"reviewed":false,"coverage_complete":complete,"review":description.review,"area_names":named,"area_label_source":"117hd_weak","rooms":rooms,"floor_tiles":floor.iter().map(|(p,t)|json!({"tile":[t.x-min.x,t.y-min.y],"plane":p})).collect::<Vec<_>>(),"objects":occurrences,"walls":walls,"portals":portals,"relations":relations,"terrain":terrain,"height_vertices":heights,"walkability":walkable,"edge_socket_grid":sockets})
+    // The same numbers the lab's judge gives a generated building, so a model trained on real
+    // buildings can score generated ones.
+    let judgement = osrs_scene::building_census::judge(building);
+    let judgement = json!({
+        "usable": judgement.is_usable(),
+        "problems": judgement.problems(),
+        "rooms": judgement.rooms,
+        "entrances": judgement.entrances,
+        "rooms_reachable": judgement.rooms_reachable,
+        "blocked_doorways": judgement.blocked_doorways,
+        "features": osrs_scene::building_census::FEATURE_NAMES
+            .iter()
+            .zip(judgement.features)
+            .map(|(name, value)| (name.to_string(), json!(value)))
+            .collect::<serde_json::Map<String, Value>>(),
+    });
+    json!({"format":"rustosrs-building-dataset","version":2,"id":format!("b{base}_{}_{}",key.x,key.y),"source":source,"region":[region.x,region.y],"origin":[min.x,min.y],"size":[max.x-min.x+1,max.y-min.y+1],"group":group,"split":split,"reviewed":false,"coverage_complete":complete,"review":description.review,"area_names":named,"area_label_source":"117hd_weak","rooms":rooms,"floor_tiles":floor.iter().map(|(p,t)|json!({"tile":[t.x-min.x,t.y-min.y],"plane":p})).collect::<Vec<_>>(),"objects":occurrences,"walls":walls,"portals":portals,"relations":relations,"terrain":terrain,"height_vertices":heights,"walkability":walkable,"edge_socket_grid":sockets,"judgement":judgement})
 }

@@ -22,6 +22,9 @@ pub struct ObjectEntry {
     pub name: String,
     /// Readable gameval symbol (`castle door l`) when populated from an installation's `NameBook`.
     pub symbol: Option<String>,
+    /// A name a person gave this object (it wins over the cache's), and what they said it is.
+    pub custom_name: Option<String>,
+    pub custom_role: Option<String>,
     pub size_x: u16,
     pub size_y: u16,
     /// Loc types the definition has models for, ascending (untyped models count as scenery).
@@ -52,9 +55,11 @@ impl ObjectEntry {
         }
     }
 
-    /// Human-readable label for UI lists: cache name, else `[symbol]`, else `Object <id>`.
+    /// Human-readable label for UI lists: your name, else cache name, else `[symbol]`, else `Object <id>`.
     pub fn display_name(&self) -> String {
-        if !self.name.is_empty() {
+        if let Some(custom) = &self.custom_name {
+            custom.clone()
+        } else if !self.name.is_empty() {
             self.name.clone()
         } else if let Some(symbol) = &self.symbol {
             format!("[{symbol}]")
@@ -118,6 +123,16 @@ impl ObjectCatalog {
         }
     }
 
+    /// Attach names people gave objects (`(name, role)` by id): every entry is set from the
+    /// closure, so a forgotten name goes away.
+    pub fn apply_custom(&mut self, custom: impl Fn(u32) -> (Option<String>, Option<String>)) {
+        for entry in &mut self.entries {
+            let (name, role) = custom(entry.id);
+            entry.custom_name = name.filter(|n| !n.is_empty());
+            entry.custom_role = role.filter(|r| !r.is_empty());
+        }
+    }
+
     /// Up to `limit` entries matching `query`: an exact id first, then names starting with the
     /// query, then names containing it, then symbol/filter matches (case-insensitive, every word
     /// and filter token must match). Supports `category:<id>`, `scene:<id>`, `icon:<id>`, and
@@ -137,6 +152,8 @@ impl ObjectCatalog {
         let mut req_scene: Option<u32> = None;
         let mut req_icon: Option<u32> = None;
         let mut req_slot: Option<&str> = None;
+        let mut req_role: Option<&str> = None;
+        let mut only_unnamed = false;
 
         for token in query.split_whitespace() {
             if let Some(val) = token
@@ -159,6 +176,10 @@ impl ObjectCatalog {
                 req_icon = Some(id);
             } else if let Some(val) = token.strip_prefix("slot:") {
                 req_slot = Some(val);
+            } else if let Some(val) = token.strip_prefix("role:") {
+                req_role = Some(val);
+            } else if token == "unnamed" {
+                only_unnamed = true;
             } else {
                 text_words.push(token);
             }
@@ -193,9 +214,17 @@ impl ObjectCatalog {
             {
                 continue;
             }
+            if let Some(role) = req_role
+                && entry.custom_role.as_deref() != Some(role)
+            {
+                continue;
+            }
+            if only_unnamed && (!entry.name.is_empty() || entry.custom_name.is_some()) {
+                continue;
+            }
 
             if text_words.is_empty() {
-                if !entry.name.is_empty() {
+                if !entry.name.is_empty() || entry.custom_name.is_some() {
                     contains.push(entry);
                 } else {
                     fallback.push(entry);
@@ -203,7 +232,11 @@ impl ObjectCatalog {
                 continue;
             }
 
-            let name = entry.name.to_lowercase();
+            let name = entry
+                .custom_name
+                .as_deref()
+                .unwrap_or(&entry.name)
+                .to_lowercase();
             if !name.is_empty() && text_words.iter().all(|word| name.contains(word)) {
                 if name.starts_with(&text_query) {
                     prefix.push(entry);
@@ -256,6 +289,8 @@ pub fn load_object_catalog(
             id,
             name,
             symbol: None,
+            custom_name: None,
+            custom_role: None,
             size_x: definition.size_x.max(1),
             size_y: definition.size_y.max(1),
             loc_types,
@@ -278,6 +313,8 @@ mod tests {
             id,
             name: name.to_owned(),
             symbol: None,
+            custom_name: None,
+            custom_role: None,
             size_x: 2,
             size_y: 1,
             loc_types: loc_types.to_vec(),
@@ -301,6 +338,28 @@ mod tests {
             entry(7, "Bank booth", &[10]),
             unnamed_wall,
         ])
+    }
+
+    #[test]
+    fn names_people_gave_win_in_lists_and_searches_and_can_be_filtered_by_role() {
+        let mut catalog = catalog();
+        catalog.apply_custom(|id| {
+            if id == 99 {
+                (Some("Brick wall".to_owned()), Some("wall".to_owned()))
+            } else {
+                (None, None)
+            }
+        });
+        let found = catalog.search("brick", 10);
+        assert_eq!(found.iter().map(|e| e.id).collect::<Vec<_>>(), vec![99]);
+        assert_eq!(found[0].display_name(), "Brick wall");
+        let by_role = catalog.search("role:wall", 10);
+        assert_eq!(by_role.iter().map(|e| e.id).collect::<Vec<_>>(), vec![99]);
+        // Once it is named it is no longer in the unnamed list; forgetting brings it back.
+        assert!(catalog.search("unnamed", 10).iter().all(|e| e.id != 99));
+        catalog.apply_custom(|_| (None, None));
+        assert!(catalog.search("unnamed", 10).iter().any(|e| e.id == 99));
+        assert!(catalog.search("brick", 10).is_empty());
     }
 
     #[test]

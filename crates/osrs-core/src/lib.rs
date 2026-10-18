@@ -26,6 +26,7 @@ pub mod model_construction;
 pub mod model_identity;
 pub mod morph;
 pub mod normals;
+pub mod object_names;
 pub mod orientation;
 pub mod player;
 pub mod provenance;
