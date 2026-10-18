@@ -14,6 +14,7 @@ use crate::{
     WorldScene,
     extract::{
         OwnedTiles, WorldZoneKey, effective_level, geometry_tile_selected, lit_model, loc_slots,
+        roof_above, roof_grid,
     },
 };
 use osrs_core::coords::{SceneTile, StoragePlane};
@@ -22,7 +23,7 @@ use osrs_scene::SemanticTile;
 use std::collections::BTreeSet;
 
 /// `TILE_FLAG_VIS_BELOW`: the floor of this tile is visible from the level below.
-const TILE_FLAG_VIS_BELOW: u8 = 4;
+const TILE_FLAG_VIS_BELOW: u8 = 8;
 
 fn tile_input<'a>(
     world: &WorldScene,
@@ -106,6 +107,7 @@ pub(crate) fn extract_owned_geometry_hd_zones(
     let (zone_base_x, zone_base_z) = (world.window.base_x / 8, world.window.base_y / 8);
     let in_range =
         |x: u32, y: u32| geometry_tile_selected(owned, zones, (zone_base_x, zone_base_z), x, y);
+    let roofs = roof_grid(world);
 
     // Terrain: every storage tile, then its linked-below (bridge) tile.
     for slot in &input.tiles {
@@ -155,9 +157,10 @@ pub(crate) fn extract_owned_geometry_hd_zones(
             if faces.is_empty() && surface.is_empty() {
                 continue;
             }
+            let roof = roof_above(world, &roofs, slot.plane, main.x as u32, main.y as u32);
             let builder = geometry
                 .zone_mut(zone_base_x + scene_zone_x, zone_base_z + scene_zone_z)
-                .group_mut(level, min_plane);
+                .group_roof_mut(level, min_plane, roof);
             if !faces.is_empty() {
                 builder.push_hd_faces(&faces, [0, 0, 0]);
             }
@@ -221,9 +224,16 @@ pub(crate) fn extract_owned_geometry_hd_zones(
             if faces.is_empty() {
                 continue;
             }
+            let roof = roof_above(
+                world,
+                &roofs,
+                loc.plane.index().get(),
+                loc.tile.x,
+                loc.tile.y,
+            );
             geometry
                 .zone_mut(zone_base_x + scene_zone_x, zone_base_z + scene_zone_z)
-                .group_mut(level, min_plane)
+                .group_roof_mut(level, min_plane, roof)
                 .push_hd_faces(&faces, [slot.x, slot.y, slot.z]);
         }
     }

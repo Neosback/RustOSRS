@@ -43,6 +43,7 @@ pub(super) enum Row {
     LoadRadius,
     DrawDistance,
     AnimateObjects,
+    Roofs,
     SmoothTerrain,
     SkyColor,
     Profile,
@@ -117,7 +118,12 @@ pub(super) const QUICK: &[(&str, &[Row])] = &[
     ),
     (
         "World",
-        &[Row::DrawDistance, Row::LoadRadius, Row::AnimateObjects],
+        &[
+            Row::DrawDistance,
+            Row::LoadRadius,
+            Row::AnimateObjects,
+            Row::Roofs,
+        ],
     ),
     (
         "Graphics",

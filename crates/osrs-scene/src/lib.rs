@@ -16,6 +16,7 @@ pub mod placement;
 pub mod placement_height;
 pub mod planes;
 pub mod reference_finalization;
+pub mod roofs;
 pub mod scene;
 pub mod semantic_hash;
 pub mod side_effects;

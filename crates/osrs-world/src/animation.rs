@@ -71,6 +71,8 @@ pub struct AnimatedInstance {
     pub zone: (i32, i32),
     pub level: u8,
     pub min_plane: u8,
+    /// The roof volume above the tile (`0` for none), see `osrs_scene::roofs`.
+    pub roof: u32,
     /// Model origin in zone-local units.
     pub local: (i32, i32, i32),
     /// Extra instance rotation in JAU.
@@ -301,7 +303,7 @@ impl AnimationSystem {
             };
             let builder = geometry
                 .zone_mut(instance.zone.0, instance.zone.1)
-                .group_mut(instance.level, instance.min_plane);
+                .group_roof_mut(instance.level, instance.min_plane, instance.roof);
             if let Some(hd) = &instance.hd {
                 let faces = model_faces_resolved(
                     &hd.materials,

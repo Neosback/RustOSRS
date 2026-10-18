@@ -191,6 +191,13 @@ impl RenderRuntime {
         self.scene.set_hd_params(params);
     }
 
+    /// Choose which upper floors and roofs the next frames draw.
+    pub(super) fn set_roof_view(&mut self, view: osrs_render::gpu::RoofView) {
+        if self.scene.set_roof_view(view) {
+            self.reuse.invalidate();
+        }
+    }
+
     pub(super) fn install_hd_materials(&mut self, data: HdGpuData) -> Result<(), String> {
         self.reuse.invalidate();
         data.install(&mut self.scene)

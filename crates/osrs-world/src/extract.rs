@@ -15,7 +15,10 @@ use osrs_core::{
     lighting::ReferenceLitModel,
 };
 use osrs_render::{ModelPlacement, SceneGeometry, ZONE_LOCAL_UNITS};
-use osrs_scene::placement::PlacementKind;
+use osrs_scene::{
+    placement::PlacementKind,
+    roofs::{NO_ROOF, RoofGrid},
+};
 use std::{collections::BTreeSet, sync::Arc};
 
 /// Inclusive-exclusive tile range `[min, max)` in scene coordinates that a window owns.
@@ -77,6 +80,7 @@ pub(crate) fn extract_owned_geometry_zones(
     let (zone_base_x, zone_base_z) = (world.window.base_x / 8, world.window.base_y / 8);
     let in_range =
         |x: u32, y: u32| geometry_tile_selected(owned, zones, (zone_base_x, zone_base_z), x, y);
+    let roofs = roof_grid(world);
 
     // Terrain: every storage tile, then its linked-below (bridge) tile.
     for plane_index in 0..4_u8 {
@@ -104,11 +108,9 @@ pub(crate) fn extract_owned_geometry_zones(
                             scene_zone_x * ZONE_LOCAL_UNITS,
                             scene_zone_z * ZONE_LOCAL_UNITS,
                         );
-                        zone.group_mut(level, source.min_plane()).push_terrain(
-                            surface,
-                            (x as i32, y as i32),
-                            origin,
-                        );
+                        let roof = roof_above(world, &roofs, plane_index, x, y);
+                        zone.group_roof_mut(level, source.min_plane(), roof)
+                            .push_terrain(surface, (x as i32, y as i32), origin);
                     }
                 }
             }
@@ -134,7 +136,14 @@ pub(crate) fn extract_owned_geometry_zones(
             continue;
         }
         let zone = geometry.zone_mut(zone_base_x + scene_zone_x, zone_base_z + scene_zone_z);
-        let builder = zone.group_mut(level, min_plane);
+        let roof = roof_above(
+            world,
+            &roofs,
+            loc.plane.index().get(),
+            loc.tile.x,
+            loc.tile.y,
+        );
+        let builder = zone.group_roof_mut(level, min_plane, roof);
         for slot in slots {
             if let Some(model) = lit_model(world, slot.renderable) {
                 builder.push_model(
@@ -150,6 +159,38 @@ pub(crate) fn extract_owned_geometry_zones(
         }
     }
     geometry
+}
+
+/// Roof volumes of the window, from the tile settings.
+pub(crate) fn roof_grid(world: &WorldScene) -> RoofGrid {
+    RoofGrid::build(
+        (world.window.base_x, world.window.base_y),
+        world.load.size_x(),
+        world.load.size_y(),
+        |plane, x, y| world.load.settings(plane, x, y),
+    )
+}
+
+/// The roof volume that geometry stored on `storage_plane` at scene tile `(x, y)` belongs to:
+/// the volume of the tile below it (`SceneUploader.uploadZoneLevelRoof`), none on the ground
+/// plane or where the tile is visible from below.
+pub(crate) fn roof_above(
+    world: &WorldScene,
+    roofs: &RoofGrid,
+    storage_plane: u8,
+    x: u32,
+    y: u32,
+) -> u32 {
+    if storage_plane == 0
+        || world
+            .load
+            .settings(usize::from(storage_plane), x as usize, y as usize)
+            & 8
+            != 0
+    {
+        return NO_ROOF;
+    }
+    roofs.id(usize::from(storage_plane) - 1, x as usize, y as usize)
 }
 
 /// Level and minimum plane of the tile a loc ended up on after bridge relinking.
@@ -271,11 +312,19 @@ pub fn extract_animated_instances(
 ) -> Vec<AnimatedInstance> {
     let (zone_base_x, zone_base_z) = (world.window.base_x / 8, world.window.base_y / 8);
     let mut instances = Vec::new();
+    let roofs = roof_grid(world);
     for loc in &world.locs {
         if owned.is_some_and(|range| !range.contains(loc.tile.x, loc.tile.y)) {
             continue;
         }
         let (level, min_plane) = effective_level(world, loc.plane, loc.tile);
+        let roof = roof_above(
+            world,
+            &roofs,
+            loc.plane.index().get(),
+            loc.tile.x,
+            loc.tile.y,
+        );
         let (scene_zone_x, scene_zone_z) = (loc.tile.x as i32 / 8, loc.tile.y as i32 / 8);
         let origin = (
             scene_zone_x * ZONE_LOCAL_UNITS,
@@ -312,6 +361,7 @@ pub fn extract_animated_instances(
                 zone,
                 level,
                 min_plane,
+                roof,
                 local: (slot.x, slot.y, slot.z),
                 rotation: slot.rotation,
             });

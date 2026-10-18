@@ -93,6 +93,9 @@ pub struct KitFinish {
     pub grade: bool,
 }
 
+/// Terrain setting bit for a ground tile with a roof above it (`osrs_scene::roofs::UNDER_ROOF`).
+const UNDER_ROOF: u8 = 4;
+
 /// A room role as the kit files spell it.
 pub fn role_name(role: BuildingRoomRole) -> &'static str {
     use BuildingRoomRole as R;
@@ -261,6 +264,9 @@ impl KitFinish {
                 continue;
             };
             let mut after = body_floor.get(&tile).copied().unwrap_or(before);
+            // The tile has a roof above it, like every real roofed building: the game and roof
+            // removal read this setting to know which roof goes with which floor.
+            after.flags |= UNDER_ROOF;
             if let Some(floor) = role_name_of(tile)
                 .and_then(|name| self.floor_for(name))
                 .or_else(|| self.floor_for("default"))

@@ -3,7 +3,9 @@
 use super::EditorApp;
 use super::catalog::Row;
 use crate::camera::CameraMode;
-use crate::settings::{ColorblindChoice, ContextMenuStyle, MinimapSize, ProfileChoice, Settings};
+use crate::settings::{
+    ColorblindChoice, ContextMenuStyle, MinimapSize, ProfileChoice, RoofChoice, Settings,
+};
 use eframe::egui;
 use osrs_hd::{
     environment::{DefaultSky, FogDepthMode},
@@ -209,6 +211,15 @@ impl EditorApp {
             }
             Row::AnimateObjects => {
                 crate::theme::toggle(ui, &mut prefs.animate_objects, "Play object animations");
+            }
+            Row::Roofs => {
+                egui::ComboBox::from_id_salt("setting_roofs")
+                    .selected_text(prefs.roofs.label())
+                    .show_ui(ui, |ui| {
+                        for choice in RoofChoice::ALL {
+                            ui.selectable_value(&mut prefs.roofs, choice, choice.label());
+                        }
+                    });
             }
             Row::SmoothTerrain => {
                 if ui

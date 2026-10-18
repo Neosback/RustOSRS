@@ -21,6 +21,22 @@ impl EditorApp {
                     ui.selectable_value(&mut view_plane, plane, plane.to_string())
                         .on_hover_text(format!("Show plane {plane}"));
                 }
+                let roofs = self.settings.prefs.roofs;
+                if ui
+                    .button(format!(
+                        "{} {}",
+                        egui_phosphor::regular::HOUSE_LINE,
+                        roofs.label()
+                    ))
+                    .on_hover_text(
+                        "Roofs and upper floors: Hidden shows nothing above the plane, \
+                         Visible shows everything, Cutaway shows everything except the roof over \
+                         the cursor, camera and selection. Click to change.",
+                    )
+                    .clicked()
+                {
+                    self.settings.prefs.roofs = roofs.next();
+                }
                 ui.separator();
                 ui.selectable_value(
                     &mut camera_mode,

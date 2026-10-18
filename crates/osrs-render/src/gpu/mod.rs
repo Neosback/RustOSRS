@@ -29,6 +29,7 @@ pub mod hd;
 mod overlay;
 mod profile;
 mod resources;
+mod roof;
 pub mod theme;
 mod timing;
 pub use counters::RenderCounters;
@@ -36,6 +37,7 @@ pub use resources::texture_storage_bytes;
 
 pub use overlay::LineVertex;
 pub use profile::{HdLighting, HdParams, RenderProfile};
+pub use roof::RoofView;
 
 use osrs_hd::shadows::{ShadowCamera, ShadowFit, ShadowSettings};
 
@@ -245,6 +247,7 @@ struct ZoneUniform {
 struct DrawRange {
     level: u8,
     min_plane: u8,
+    roof: u32,
     start: u32,
     count: u32,
     /// Vertices at the start of the range that are terrain (HD geometry only).
@@ -257,6 +260,7 @@ struct DrawRange {
 struct GpuAlphaModel {
     level: u8,
     min_plane: u8,
+    roof: u32,
     first_vertex: u32,
     vertex_count: u32,
     origin: [i32; 3],
@@ -526,6 +530,8 @@ pub struct SceneRenderer {
     auxiliary_timers: std::cell::RefCell<[Option<timing::GpuTimer>; 3]>,
     /// Editor guide lines drawn over the scene.
     lines: overlay::LineOverlay,
+    /// Which upper floors and roofs the frame draws (see [`RoofView`]).
+    roof_view: RoofView,
 }
 
 impl SceneRenderer {
@@ -682,6 +688,7 @@ impl SceneRenderer {
             timer: std::cell::RefCell::new(timer),
             auxiliary_timers: std::cell::RefCell::new(auxiliary_timers),
             lines,
+            roof_view: RoofView::default(),
         }
     }
 
@@ -827,6 +834,7 @@ impl SceneRenderer {
                     opaque_ranges.push(DrawRange {
                         level: group.level,
                         min_plane: group.min_plane,
+                        roof: group.roof,
                         start: opaque.len() as u32,
                         count: group.geometry.opaque.len() as u32,
                         terrain_count: group.geometry.hd_terrain_opaque,
@@ -841,6 +849,7 @@ impl SceneRenderer {
                         alpha_models.push(GpuAlphaModel {
                             level: group.level,
                             min_plane: group.min_plane,
+                            roof: group.roof,
                             first_vertex: base + model.first_vertex,
                             vertex_count: model.vertex_count,
                             origin: model.origin,
@@ -1539,7 +1548,11 @@ impl SceneRenderer {
                     pass.set_vertex_buffer(1, hd_buffer.slice(..));
                     for range in &zone.opaque_ranges {
                         // Hidden roofs only cast when roof shadows are on.
-                        if !(settings.roof_shadows || range.min_plane <= view_plane) {
+                        if !(settings.roof_shadows
+                            || self
+                                .roof_view
+                                .shows(range.min_plane, range.roof, view_plane))
+                        {
                             continue;
                         }
                         // The ground plane's terrain only exists in the terrain map; the main
@@ -1775,7 +1788,10 @@ impl SceneRenderer {
                     pass.set_vertex_buffer(1, hd_buffer.slice(..));
                 }
                 for range in &zone.opaque_ranges {
-                    if range.min_plane <= params.view_plane {
+                    if self
+                        .roof_view
+                        .shows(range.min_plane, range.roof, params.view_plane)
+                    {
                         // Cutout vertices sit at the end of an HD range: drawn below.
                         let solid = if hd_buffer.is_some() {
                             range.count - range.cutout_count.min(range.count)
@@ -1799,11 +1815,12 @@ impl SceneRenderer {
                     let (Some(buffer), Some(hd_buffer)) = (&zone.opaque, &zone.opaque_hd) else {
                         continue;
                     };
-                    if zone
-                        .opaque_ranges
-                        .iter()
-                        .all(|range| range.cutout_count == 0 || range.min_plane > params.view_plane)
-                    {
+                    if zone.opaque_ranges.iter().all(|range| {
+                        range.cutout_count == 0
+                            || !self
+                                .roof_view
+                                .shows(range.min_plane, range.roof, params.view_plane)
+                    }) {
                         continue;
                     }
                     if !bound {
@@ -1816,7 +1833,11 @@ impl SceneRenderer {
                     pass.set_vertex_buffer(0, buffer.slice(..));
                     pass.set_vertex_buffer(1, hd_buffer.slice(..));
                     for range in &zone.opaque_ranges {
-                        if range.min_plane <= params.view_plane && range.cutout_count > 0 {
+                        if self
+                            .roof_view
+                            .shows(range.min_plane, range.roof, params.view_plane)
+                            && range.cutout_count > 0
+                        {
                             let end = range.start + range.count;
                             self.counters.draw(range.cutout_count.min(range.count));
                             pass.draw(end - range.cutout_count.min(range.count)..end, 0..1);
@@ -1871,6 +1892,19 @@ impl SceneRenderer {
     /// Replace the editor guide lines (pairs of vertices, render-local positions).
     pub fn set_overlay_lines(&mut self, lines: &[LineVertex]) {
         self.lines.set(&self.device, &self.queue, lines);
+    }
+
+    /// Choose how upper floors and roofs are drawn from the next frame on.
+    ///
+    /// Returns whether the view changed (a cached image of the previous frame is then stale).
+    pub fn set_roof_view(&mut self, view: RoofView) -> bool {
+        if self.roof_view == view {
+            return false;
+        }
+        // Hidden roofs matter to the shadow maps only when roof shadows are on.
+        self.shadow_geometry_version += 1;
+        self.roof_view = view;
+        true
     }
 
     /// Call after the encoder from [`Self::encode_frame`] was submitted: collects GPU timings.
@@ -1937,7 +1971,10 @@ impl SceneRenderer {
                 let mut models: Vec<(f32, &GpuAlphaModel)> = zone
                     .alpha_models
                     .iter()
-                    .filter(|m| m.level == level && m.min_plane <= params.view_plane)
+                    .filter(|m| {
+                        m.level == level
+                            && self.roof_view.shows(m.min_plane, m.roof, params.view_plane)
+                    })
                     .map(|m| {
                         let dx = base_x + m.origin[0] as f32 - camera.x;
                         let dy = m.origin[1] as f32 - camera.y;

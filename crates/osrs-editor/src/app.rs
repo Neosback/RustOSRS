@@ -42,6 +42,7 @@ mod prefab_runtime;
 mod project;
 mod project_runtime;
 mod render_runtime;
+mod roof_view;
 mod script;
 mod selection;
 mod settings_io;

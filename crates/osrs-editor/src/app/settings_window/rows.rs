@@ -200,6 +200,14 @@ pub(super) const ROWS: &[RowDef] = &[
         Any,
     ),
     def(
+        Row::Roofs,
+        CameraWorld,
+        "World",
+        "Roofs and upper floors",
+        "roof cutaway upper plane hide show",
+        Any,
+    ),
+    def(
         Row::SmoothTerrain,
         CameraWorld,
         "World",

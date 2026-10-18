@@ -140,6 +140,39 @@ impl ProfileChoice {
     }
 }
 
+/// How the floors and roofs above the viewed plane are drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum RoofChoice {
+    /// Nothing above the viewed plane (best for working on an upper floor's underside).
+    Hidden,
+    /// Every plane, always.
+    Visible,
+    /// Every plane, except the roof over the tile under the cursor, the camera and the
+    /// selection (RuneLite's roof removal).
+    #[default]
+    Cutaway,
+}
+
+impl RoofChoice {
+    pub const ALL: [Self; 3] = [Self::Hidden, Self::Visible, Self::Cutaway];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Hidden => "Hidden",
+            Self::Visible => "Visible",
+            Self::Cutaway => "Cutaway",
+        }
+    }
+
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Hidden => Self::Visible,
+            Self::Visible => Self::Cutaway,
+            Self::Cutaway => Self::Hidden,
+        }
+    }
+}
+
 /// Revision 1: HD lighting comes from the area environments. Exposures saved while the HD profile
 /// had a placeholder sun (often raised to brighten it) would now blow the image out.
 pub const HD_LIGHTING_REVISION: u32 = 1;
@@ -168,6 +201,8 @@ pub struct Settings {
     pub hover_tile: bool,
     /// Reference (RuneLite parity, default) or HD (117 HD port).
     pub render_profile: ProfileChoice,
+    /// Roofs and upper floors seen from a lower plane.
+    pub roofs: RoofChoice,
     /// Bumped when the meaning of the HD lighting settings changed; older files are migrated in
     /// [`Settings::sanitized`].
     #[serde(default)]
@@ -277,6 +312,7 @@ impl Default for Settings {
             mouse_tooltips: true,
             hover_tile: true,
             render_profile: ProfileChoice::Reference,
+            roofs: RoofChoice::Cutaway,
             hd_lighting_revision: HD_LIGHTING_REVISION,
             hd_brightness: 100.0,
             hd_exposure: HdParams::default().exposure,

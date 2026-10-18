@@ -361,6 +361,7 @@ impl EditorApp {
             let phase = Instant::now();
             self.renderer
                 .set_hd_params(self.hd.params(self.settings.prefs.hd_params()));
+            super::roof_view::apply(self);
             if let Some(mut frame) = self.renderer.encode_viewport(FrameParams {
                 camera: self.interaction.camera().reference(width as f32),
                 view_plane: self.interaction.view_plane(),

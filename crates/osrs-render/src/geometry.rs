@@ -372,15 +372,17 @@ pub fn face_uvs(model: &ReferenceLitModel, face_index: usize, indices: [u32; 3])
 /// Size of a renderer zone in scene-local units (8 tiles of 128).
 pub const ZONE_LOCAL_UNITS: i32 = 1024;
 
-/// Geometry of one `(level, minimum plane)` bucket inside a zone.
+/// Geometry of one `(level, minimum plane, roof)` bucket inside a zone.
 ///
 /// Splitting by level and minimum plane lets the frame choose visible content for the viewing
 /// plane without rebuilding buffers (the reference draws level `<=` view plane and tiles whose
-/// minimum plane is `<=` the view plane).
+/// minimum plane is `<=` the view plane). The roof id (RuneLite's roof bucketing, `0` for none)
+/// lets a frame hide one building's roof and upper floors without touching the rest.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ZoneGroup {
     pub level: u8,
     pub min_plane: u8,
+    pub roof: u32,
     pub geometry: GeometryBuilder,
 }
 
@@ -402,16 +404,20 @@ impl ZoneGeometry {
     }
 
     pub fn group_mut(&mut self, level: u8, min_plane: u8) -> &mut GeometryBuilder {
-        if let Some(index) = self
-            .groups
-            .iter()
-            .position(|group| group.level == level && group.min_plane == min_plane)
-        {
+        self.group_roof_mut(level, min_plane, 0)
+    }
+
+    /// The bucket for geometry that lies under roof volume `roof` (`0` for none).
+    pub fn group_roof_mut(&mut self, level: u8, min_plane: u8, roof: u32) -> &mut GeometryBuilder {
+        if let Some(index) = self.groups.iter().position(|group| {
+            group.level == level && group.min_plane == min_plane && group.roof == roof
+        }) {
             return &mut self.groups[index].geometry;
         }
         self.groups.push(ZoneGroup {
             level,
             min_plane,
+            roof,
             geometry: GeometryBuilder::default(),
         });
         let last = self.groups.len() - 1;
