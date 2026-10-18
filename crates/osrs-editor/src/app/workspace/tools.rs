@@ -19,6 +19,7 @@ pub fn select_mode_icon(mode: SelectMode) -> &'static str {
         SelectMode::Auto => icons::SELECT_AUTO,
         SelectMode::Objects => icons::SELECT_OBJECTS,
         SelectMode::Tiles => icons::SELECT_TILES,
+        SelectMode::Building => icons::SELECT_BUILDING,
     }
 }
 

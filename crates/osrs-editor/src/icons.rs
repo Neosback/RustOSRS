@@ -49,6 +49,7 @@ pub const TOOL_SPLINE: &str = ph::BEZIER_CURVE;
 pub const SELECT_OBJECTS: &str = ph::CUBE;
 pub const SELECT_TILES: &str = ph::SQUARES_FOUR;
 pub const SELECT_AUTO: &str = ph::CURSOR;
+pub const SELECT_BUILDING: &str = ph::BUILDINGS;
 pub const EYEDROPPER: &str = ph::EYEDROPPER;
 pub const DRAWER: &str = ph::CARET_DOWN;
 pub const BRUSH_SQUARE: &str = ph::SQUARE;

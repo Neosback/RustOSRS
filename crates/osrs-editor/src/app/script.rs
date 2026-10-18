@@ -10,7 +10,7 @@ mod path;
 mod prefab;
 mod window;
 
-use super::EditorApp;
+use super::{EditorApp, building_pick};
 use crate::hud::Destination;
 use crate::paint::{Fill, Tool};
 use eframe::egui;
@@ -32,7 +32,7 @@ edge N                 neighbour edge smoothing, 0–4
 height off|PASSES [BLEND]  optional height smoothing, 1–250 passes, 0–30 tile blend
 lay                    lay the path
 select object X Y      the nearest named object within 4 tiles (waits for it)
-select tiles X0 Y0 X1 Y1
+select tiles X0 Y0 X1 Y1 | building X Y
 menu                   open the context menu on the selected object
 move DX DY             move the selected objects
 count                  log how many objects the camera's region has
@@ -324,7 +324,18 @@ impl EditorApp {
                         }
                     }
                 }
-                other => return Err(format!("select object or tiles, not {other:?}")),
+                Some("building") => {
+                    let x: i32 = number(words.next(), "x")?;
+                    let y: i32 = number(words.next(), "y")?;
+                    return Ok(match building_pick::select_building(self, (x, y), false) {
+                        Some(message) => {
+                            eprintln!("smoke: {message}");
+                            Step::Done
+                        }
+                        None => Step::Retry,
+                    });
+                }
+                other => return Err(format!("select object, tiles or building, not {other:?}")),
             },
             "menu" => {
                 let Some(object) = self.interaction.selected().clone() else {

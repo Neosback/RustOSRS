@@ -120,16 +120,19 @@ pub enum SelectMode {
     Auto,
     Objects,
     Tiles,
+    /// A click inside a building takes all of it: floor, walls, furniture and roof.
+    Building,
 }
 
 impl SelectMode {
-    pub const ALL: [Self; 3] = [Self::Auto, Self::Objects, Self::Tiles];
+    pub const ALL: [Self; 4] = [Self::Auto, Self::Objects, Self::Tiles, Self::Building];
 
     pub const fn label(self) -> &'static str {
         match self {
             Self::Auto => "Auto",
             Self::Objects => "Objects",
             Self::Tiles => "Tiles",
+            Self::Building => "Building",
         }
     }
 
@@ -140,15 +143,18 @@ impl SelectMode {
             }
             Self::Objects => "Only objects: click one, or drag a box",
             Self::Tiles => "Only tiles: click one, or drag a box",
+            Self::Building => {
+                "Click inside a building to take all of it: floor, walls, furniture and roof"
+            }
         }
     }
 
     pub const fn objects(self) -> bool {
-        matches!(self, Self::Auto | Self::Objects)
+        matches!(self, Self::Auto | Self::Objects | Self::Building)
     }
 
     pub const fn tiles(self) -> bool {
-        matches!(self, Self::Auto | Self::Tiles)
+        matches!(self, Self::Auto | Self::Tiles | Self::Building)
     }
 }
 

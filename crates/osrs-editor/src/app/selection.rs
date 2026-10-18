@@ -13,6 +13,8 @@ use eframe::egui::{self, Pos2, Rect, Stroke};
 use std::collections::HashSet;
 
 /// Most tiles drawn as selected at once (a box over a whole region is thousands).
+/// Most selected objects that get their own footprint drawn.
+const MAX_FOOTPRINTS: usize = 40;
 const MAX_DRAWN_TILES: usize = 6000;
 /// A drag shorter than this is a click.
 const MIN_BOX: f32 = 4.0;
@@ -171,6 +173,15 @@ impl EditorApp {
         };
         let object = self.interaction.hover().object.clone();
         let tile = self.interaction.hover().tile.map(|pick| pick.tile);
+        if self.settings.prefs.select_mode == SelectMode::Building
+            && self.settings.prefs.tool == crate::paint::Tool::Select
+        {
+            let message = tile
+                .and_then(|tile| super::building_pick::select_building(self, tile, additive))
+                .unwrap_or_else(|| "Click inside a building to select all of it".to_owned());
+            self.ui.notify(message);
+            return;
+        }
         if !additive && !toggle {
             if mode.objects() {
                 self.interaction.clear_objects();
@@ -306,29 +317,65 @@ impl EditorApp {
                 .collect();
             (points.len() == 4).then_some(points)
         };
-        for tile in self
+        // The selected tiles as one shape: a single fill with no lines between tiles, and an
+        // outline only along the edges where a selected tile meets one that is not.
+        let selected: HashSet<(i32, i32)> = self
             .interaction
             .selection_tiles()
             .iter()
             .take(MAX_DRAWN_TILES)
-        {
-            if let Some(corners) = interact::tile_corners(self.world.infos(), *tile, plane)
-                && let Some(points) = quad(corners)
-            {
-                painter.add(egui::Shape::convex_polygon(
-                    points,
-                    self.settings.prefs.colors.get(ColorKey::TileSelectionFill),
-                    Stroke::new(
-                        1.0,
-                        self.settings
-                            .prefs
-                            .colors
-                            .get(ColorKey::TileSelectionOutline),
-                    ),
-                ));
+            .copied()
+            .collect();
+        if !selected.is_empty() {
+            let fill = self.settings.prefs.colors.get(ColorKey::TileSelectionFill);
+            let outline = self
+                .settings
+                .prefs
+                .colors
+                .get(ColorKey::TileSelectionOutline);
+            let mut mesh = egui::epaint::Mesh::default();
+            let mut edges: Vec<[Pos2; 2]> = Vec::new();
+            for &tile in &selected {
+                let Some(corners) = interact::tile_corners(self.world.infos(), tile, plane) else {
+                    continue;
+                };
+                let Some(points) = quad(corners) else {
+                    continue;
+                };
+                let base = u32::try_from(mesh.vertices.len()).unwrap_or(0);
+                for point in &points {
+                    mesh.colored_vertex(*point, fill);
+                }
+                mesh.add_triangle(base, base + 1, base + 2);
+                mesh.add_triangle(base, base + 2, base + 3);
+                // Corner order is south-west, south-east, north-east, north-west; a side is on
+                // the outline when the tile beside it is not selected.
+                let sides = [
+                    ((tile.0, tile.1 - 1), 0, 1),
+                    ((tile.0 + 1, tile.1), 1, 2),
+                    ((tile.0, tile.1 + 1), 2, 3),
+                    ((tile.0 - 1, tile.1), 3, 0),
+                ];
+                for (beside, from, to) in sides {
+                    if !selected.contains(&beside) {
+                        edges.push([points[from], points[to]]);
+                    }
+                }
+            }
+            painter.add(egui::Shape::mesh(mesh));
+            let stroke = Stroke::new(2.5, outline);
+            for [a, b] in edges {
+                painter.line_segment([a, b], stroke);
             }
         }
-        for object in self.interaction.selection_objects() {
+        // A whole building is hundreds of objects: their footprints would bury the tile shape.
+        let few_objects = self.interaction.selection_objects().len() <= MAX_FOOTPRINTS;
+        for object in self
+            .interaction
+            .selection_objects()
+            .iter()
+            .filter(|_| few_objects)
+        {
             if self.interaction.is_primary_object(object) {
                 continue;
             }

@@ -6,6 +6,7 @@ mod input;
 mod interaction_runtime;
 
 mod audio_runtime;
+mod building_pick;
 mod cache_picker;
 mod camera_ops;
 mod context_menu;
