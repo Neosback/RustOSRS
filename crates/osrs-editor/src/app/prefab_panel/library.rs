@@ -40,6 +40,16 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
             app.prefabs.start_import();
         }
     });
+    if ui
+        .button(format!(
+            "{} Open the 3D gallery",
+            egui_phosphor::regular::CUBE
+        ))
+        .on_hover_text("Browse every prefab and look at it from all sides in a window of its own")
+        .clicked()
+    {
+        app.prefabs.gallery.open = true;
+    }
     capture_section(app, ui);
     ui.separator();
     list(app, ui);
@@ -164,7 +174,18 @@ fn list(app: &mut EditorApp, ui: &mut egui::Ui) {
         let response = frame
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    preview::show(ui, &entry.prefab, THUMB);
+                    let still = crate::app::prefab_gallery::still_of(app, &file);
+                    match still {
+                        Some(texture) => {
+                            ui.add(
+                                egui::Image::new((texture.id(), egui::vec2(THUMB * 1.33, THUMB)))
+                                    .corner_radius(3.0),
+                            );
+                        }
+                        None => {
+                            preview::show(ui, &entry.prefab, THUMB);
+                        }
+                    }
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new(&entry.prefab.name).strong());
                         ui.weak(entry.prefab.summary());
@@ -189,7 +210,7 @@ fn list(app: &mut EditorApp, ui: &mut egui::Ui) {
 }
 
 /// Start placing `file`: it owns the next viewport click.
-pub(super) fn arm(app: &mut EditorApp, file: &str) {
+pub(in crate::app) fn arm(app: &mut EditorApp, file: &str) {
     app.placer.disarm();
     app.npcs.cancel_gesture();
     app.prefabs.selected = Some(file.to_owned());

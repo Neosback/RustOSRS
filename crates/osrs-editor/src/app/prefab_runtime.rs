@@ -73,6 +73,7 @@ pub(in crate::app) struct PrefabRuntime {
     pub(in crate::app) page: Page,
     pub(in crate::app) build: BuildState,
     pub(in crate::app) armed: Option<Armed>,
+    pub(in crate::app) gallery: crate::app::prefab_gallery::Gallery,
     notice: Option<String>,
     import_task: Option<OpenTask>,
     export_task: Option<SaveTask>,

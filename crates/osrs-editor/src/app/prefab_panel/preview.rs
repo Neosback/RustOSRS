@@ -10,7 +10,7 @@ fn colour_for(id: u32, saturation: f32, value: f32) -> Color32 {
 }
 
 /// Paint plane 0 (and the plane above it, faintly) of `prefab` into a square of `side` points.
-pub(super) fn show(ui: &mut egui::Ui, prefab: &Prefab, side: f32) -> egui::Response {
+pub(in crate::app) fn show(ui: &mut egui::Ui, prefab: &Prefab, side: f32) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(side), Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 3.0, ui.visuals().extreme_bg_color);

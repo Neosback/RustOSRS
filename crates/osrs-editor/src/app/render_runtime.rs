@@ -191,6 +191,16 @@ impl RenderRuntime {
         self.scene.set_hd_params(params);
     }
 
+    /// One frame into an offscreen target, as tightly packed RGBA8 (a still, not the viewport).
+    pub(super) fn render_to_rgba(
+        &self,
+        params: FrameParams,
+        width: u32,
+        height: u32,
+    ) -> Option<Vec<u8>> {
+        self.scene.render_to_rgba(params, width, height).ok()
+    }
+
     /// Choose which upper floors and roofs the next frames draw.
     pub(super) fn set_roof_view(&mut self, view: osrs_render::gpu::RoofView) {
         if self.scene.set_roof_view(view) {

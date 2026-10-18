@@ -36,6 +36,7 @@ mod player_panel;
 mod player_runtime;
 mod plugin_runtime;
 mod plugins;
+mod prefab_gallery;
 mod prefab_panel;
 mod prefab_runtime;
 #[cfg_attr(target_arch = "wasm32", path = "app/project_web.rs")]
@@ -308,6 +309,7 @@ impl eframe::App for EditorApp {
         self.export_window(&ctx);
         self.assets.poll(&ctx);
         self.world_map_window(&ctx);
+        prefab_gallery::window(self, &ctx);
         if let Some(destination) = self.ui.teleport.show(&ctx) {
             self.teleport_to(destination);
         }

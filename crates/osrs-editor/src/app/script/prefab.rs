@@ -1,4 +1,4 @@
-//! `prefab capture|place|build|page|list`: the prefab library from a script (smoke tests).
+//! `prefab capture|place|build|gallery|page|list`: the prefab library from a script (smoke tests).
 
 use crate::app::{EditorApp, prefab_runtime::Armed};
 use osrs_core::coords::{MapTile, SourcePlane};
@@ -168,6 +168,24 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
                 missing.len(),
                 &missing[..missing.len().min(12)]
             );
+        }
+        "gallery" => {
+            let rest: Vec<&str> = words.collect();
+            if let Some(name) = rest.iter().find(|w| **w != "render") {
+                let name = spoken(name);
+                let file = app
+                    .prefabs
+                    .entries()
+                    .iter()
+                    .find(|entry| entry.prefab.name == name)
+                    .map(|entry| entry.file.clone())
+                    .ok_or_else(|| format!("no prefab named {name:?}"))?;
+                app.prefabs.selected = Some(file);
+            }
+            app.prefabs.gallery.open = true;
+            if rest.contains(&"render") {
+                crate::app::prefab_gallery::queue_missing_stills(app);
+            }
         }
         "page" => {
             app.prefabs.page = match words.next() {

@@ -6,12 +6,13 @@
 
 mod build;
 mod library;
-mod preview;
+pub(in crate::app) mod preview;
 mod viewport;
 
 use crate::app::{EditorApp, prefab_runtime::Page};
 use eframe::egui;
 
+pub(in crate::app) use library::arm;
 pub(super) use viewport::{armed_input, draw_world, place};
 
 /// Once per frame: finish file dialogs and keep the generator's preview current while it shows.
