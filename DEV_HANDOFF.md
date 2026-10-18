@@ -50,8 +50,28 @@ Known deliberate constraints: stepped foundations require support-group design b
 fitting; unverified destination overlays are conservatively rejected. Studio saved bounds/planes
 are fixed and out-of-bounds edits are rejected. Learned catalogs require explicit kit asset binding;
 private JSON observations do not sandbox an untrusted process's filesystem. No trained neural
-policy or accuracy on an absent human-reviewed corpus is claimed. Path fitting stays on its existing
-editor owner until path tasks are added. See ADR-0015 and the feature registry for ownership/tests.
+policy or accuracy on an absent human-reviewed corpus is claimed. See ADR-0015 and the feature
+registry for ownership/tests.
+
+### Follow-on checkpoints 4–5 (2026-10-18, local commits on `main`)
+
+- `ef8e6fb9`: WFC widened to 512 patterns (`PatternDomain([u64; 8])`, `WfcPatternId(u16)`),
+  weighted Shannon-entropy cell choice, `solve_wfc_with_repair`, rotation-synthesised learned
+  catalogs, multi-floor (`floors: 1..=3`) generation with paired stairs and lifted roofs, and
+  "Apply 8×8 to Studio Scene" from the Studio catalog.
+- `92477b00`: pure path fitting (`smooth`, `fit`, `fit_bounded`, shape triangles, Java-order oracle
+  and goldens) now lives in `osrs-scene::terrain_path`; `osrs-editor::terrain_path` re-exports it.
+  `osrs-lab` adds `PathLay`, `HeightBrush`, `HipRoof`, `RoomRect.corner_id`, `task-paths`
+  (procedural network or prefab with buildings masked), `dont_care_tiles/heights`, partial
+  terrain credit, active-channel weighting, `StepResult.breakdown` and `observe:false` steps.
+  `scripts/lab/train.py` compiles targets into rect/wall-line gestures, searches in stages, and
+  exports furniture priors plus a structural critic (`best_of_n`).
+- Checks run on `92477b00` plus the `train.py` undo fix: `python3 scripts/verify.py --full` PASS
+  (1,260 passed / 0 failed / 22 ignored; fmt, native clippy, wasm check and wasm clippy green,
+  1,743.9 s). Smoke: `osrs-lab task-paths 1` + visible `imitate` reached exact score 1.0 in 93
+  tool actions; hidden-target `search` (12 rounds x 6 candidates) scored 0.816 in 49 actions with
+  no target in the observation. This search score is a baseline, not an accuracy claim. No remote
+  CI, no native visual smoke of the Studio "Apply 8x8" button and no trained neural policy.
 
 ## Current boundary and standing workflow
 

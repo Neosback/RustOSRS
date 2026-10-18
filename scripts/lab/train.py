@@ -258,7 +258,10 @@ def reconstruct(args):
                         actions.append(action)  # Failed attempts consume budget and replay deterministically.
                         continue
                     actions.append(action)
-                    client.step({'tool': 'undo'}, observe=False)
+                    try:
+                        client.step({'tool': 'undo'}, observe=False)
+                    except RuntimeError:
+                        pass  # A no-op candidate leaves no history; the attempt still replays deterministically.
                     actions.append({'tool': 'undo'})
                     if candidate > best_score:
                         best, best_score, best_breakdown = action, candidate, cand_breakdown
