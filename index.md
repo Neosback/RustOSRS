@@ -131,6 +131,10 @@ Important current facts:
 
 [Tile appearance and paths](docs/research/TILE-APPEARANCE-AND-PATHS.md) traces the pinned client's tile pipeline, maps it to current code, documents the exact Eiken path contract and ranks subsequent appearance improvements. It is research; the semantic specifications remain authoritative.
 
+[RuneLite, deobfuscated-client and 117HD finds (2026-10-18)](docs/research/RUNELITE-DEOB-FINDS-2026-10-18.md) records how the client and RuneLite decide which roofs to draw, what the editor does about it, and the data in those sources that can label buildings. Research; code wins.
+
+[Procgen learning](docs/plans/PROCGEN-LEARNING.md) lists what the building generator's WFC cannot see, the labelled building dataset that now exists (`building_dataset` example) and the phased plan for learned patterns and small offline models. A plan, not an accepted design.
+
 ## Legacy research corpus
 
 `docs/RUNELITE_*.md` files predate the canonical blueprint and are retained for source discovery and historical reasoning only. Before using any statement from them, read `docs/research/README.md`.

@@ -146,6 +146,8 @@ Facade refinement runs only after that topology is fixed. Its first pass convert
 - [x] Apply as one history transaction (composite route, `app/editing/prefab_commit.rs`)
 - [x] save a generated building to the prefab library
 - [x] room program sized to the site; rooms at least 3x3; hip roof from real piece semantics (`building_roof_hip.rs`)
+- [x] 3D prefab gallery (stage window, stills) and roof cutaway while editing (2026-10-18)
+- [ ] gallery accept/reject and label corrections (see `docs/plans/PROCGEN-LEARNING.md`)
 
 ## Checkpoint 9: building instances and regeneration
 
