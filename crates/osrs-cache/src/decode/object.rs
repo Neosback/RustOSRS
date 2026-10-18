@@ -59,6 +59,7 @@ pub fn decode_object_definition(
     let mut map_icon = None;
     let mut category = None;
     let mut interactive_hint = None;
+    let mut blocking_mask = 0_u8;
     let mut sound: Option<ObjectSound> = None;
     let mut sound_extras = SoundExtras::default();
     let mut actions: [Option<String>; 5] = std::array::from_fn(|_| None);
@@ -124,10 +125,7 @@ pub fn decode_object_definition(
             66 => scale.y = reader.read_u16_be()?,
             67 => scale.z = reader.read_u16_be()?,
             68 => map_scene = Some(MapSceneId::new(u32::from(reader.read_u16_be()?))),
-            69 => {
-                // Client clip-mask metadata is not currently canonical state.
-                reader.skip(1)?;
-            }
+            69 => blocking_mask = reader.read_u8()?,
             70 => translation.x = i32::from(reader.read_i16_be()?),
             71 => translation.y = i32::from(reader.read_i16_be()?),
             72 => translation.z = i32::from(reader.read_i16_be()?),
@@ -237,6 +235,7 @@ pub fn decode_object_definition(
         category,
         actions,
         interactive_hint,
+        blocking_mask,
         sound,
     })
 }
@@ -716,6 +715,7 @@ mod tests {
         let definition = decode_object_definition(ObjectId::new(109), &bytes, &context, &source)?;
 
         assert_eq!(definition.size_x, 4);
+        assert_eq!(definition.blocking_mask, 4);
         // Opcode 79 follows 78, so the random-sound range and radii are the later ones; the
         // looping sound from 78 is kept.
         let sound = definition.sound.ok_or("sound retained")?;

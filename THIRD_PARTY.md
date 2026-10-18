@@ -72,3 +72,11 @@ whose LICENSE is MIT, Copyright (c) 2021 RSPSi. Exact source SHA-256 identities 
 are recorded in `scripts/path_oracle/sources.json`; `scripts/path_oracle/LICENSE-RSPSi` retains
 the complete notice. The oracle executes the original Java algorithms. The local references are
 not modified. See `docs/research/TILE-APPEARANCE-AND-PATHS.md` for scope and evidence.
+
+## RuneLite roof-removal overrides — `crates/osrs-scene/src/roofs/overrides.rs`
+
+Region-local `UNDER_ROOF` override rectangles in `crates/osrs-scene/src/roofs/overrides.rs` are
+derived from `runelite-client/src/main/resources/net/runelite/client/plugins/roofremoval/overrides.jsonc`
+and `RoofRemovalPlugin.java` in RuneLite (`melxin/runelite@1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc`),
+under the BSD 2-Clause License above (Copyright (c) 2018, Adam <Adam@sigterm.info> and contributors).
+

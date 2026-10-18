@@ -195,7 +195,7 @@ pub fn render_region(
             usize::from(location.tile.x()),
             usize::from(location.tile.y()),
         );
-        let Ok(Some(definition)) = definitions.object(location.object_id) else {
+        let Some(definition) = resolved_object(definitions, location.object_id)? else {
             continue;
         };
         let (px, py) = (lx * TILE_PX, (63 - ly) * TILE_PX);
@@ -213,14 +213,12 @@ pub fn render_region(
                 .and_then(|id| catalog.map_scene(id.get()))
         };
         if let Some(scene) = scene {
-            let (size_x, size_y) = (
-                i32::from(definition.size_x) * TILE_PX as i32,
-                i32::from(definition.size_y) * TILE_PX as i32,
-            );
+            let (tiles_x, tiles_y) =
+                minimap_footprint(definition.size_x, definition.size_y, rotation);
+            let (size_x, size_y) = (tiles_x * TILE_PX as i32, tiles_y * TILE_PX as i32);
             let (frame_w, frame_h) = scene.frame_size();
             let x = lx as i32 * TILE_PX as i32 + (size_x - frame_w) / 2;
-            let y = (64 - ly as i32 - i32::from(definition.size_y)) * TILE_PX as i32
-                + (size_y - frame_h) / 2;
+            let y = (64 - ly as i32 - tiles_y) * TILE_PX as i32 + (size_y - frame_h) / 2;
             scene.blit(x, y, |sx, sy, rgb| {
                 if sx >= 0 && sy >= 0 {
                     image.set(sx as usize, sy as usize, rgb);
@@ -308,5 +306,48 @@ fn edge(image: &mut Image, px: usize, py: usize, rotation: u8, colour: u32) {
             _ => (px + step, py + 3),
         };
         image.set(x, y, colour);
+    }
+}
+
+fn resolved_object(
+    definitions: &mut WorldDefinitions,
+    id: osrs_core::ids::ObjectId,
+) -> Result<Option<std::sync::Arc<osrs_core::definitions::ObjectDefinition>>, WorldError> {
+    let Some(definition) = definitions.object(id)? else {
+        return Ok(None);
+    };
+    if let Some(morphs) = &definition.morphs {
+        let Some(target) = morphs
+            .transforms
+            .first()
+            .copied()
+            .flatten()
+            .or(morphs.fallback)
+        else {
+            return Ok(None);
+        };
+        return definitions.object(target);
+    }
+    Ok(Some(definition))
+}
+
+fn minimap_footprint(size_x: u16, size_y: u16, rotation: u8) -> (i32, i32) {
+    if rotation == 1 || rotation == 3 {
+        (i32::from(size_y), i32::from(size_x))
+    } else {
+        (i32::from(size_x), i32::from(size_y))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::minimap_footprint;
+
+    #[test]
+    fn minimap_footprint_swaps_axes_on_odd_rotations() {
+        assert_eq!(minimap_footprint(3, 1, 0), (3, 1));
+        assert_eq!(minimap_footprint(3, 1, 1), (1, 3));
+        assert_eq!(minimap_footprint(3, 1, 2), (3, 1));
+        assert_eq!(minimap_footprint(3, 1, 3), (1, 3));
     }
 }

@@ -92,6 +92,7 @@ fn object_definition(
         category: None,
         actions: std::array::from_fn(|_| None),
         interactive_hint: None,
+        blocking_mask: 0,
         sound: None,
     })
 }

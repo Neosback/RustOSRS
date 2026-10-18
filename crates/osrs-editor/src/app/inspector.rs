@@ -314,16 +314,17 @@ impl EditorApp {
         else {
             return;
         };
+        let id = loc.definition.identity.id.get();
         let name = loc
             .definition
             .name
             .as_deref()
-            .filter(|name| !name.is_empty())
+            .filter(|name| !name.is_empty() && *name != "null")
+            .or_else(|| self.names.book().and_then(|b| b.object(id)))
             .unwrap_or("Unnamed object");
         ui.label(egui::RichText::new(name).heading());
         ui.weak(format!(
-            "Object {}  \u{b7}  {}",
-            loc.definition.identity.id.get(),
+            "Object {id}  \u{b7}  {}",
             loc_type_name(loc.loc_type)
         ));
         ui.add_space(4.0);
@@ -348,6 +349,9 @@ impl EditorApp {
                     &format!("{} \u{d7} {}", loc.definition.size_x, loc.definition.size_y),
                 );
                 field(ui, "Draw level", &loc.level.to_string());
+                for (label, value) in pick::object_extra_fields(&loc.definition) {
+                    field(ui, label, &value);
+                }
             });
         ui.add_space(8.0);
         ui.horizontal_wrapped(|ui| {

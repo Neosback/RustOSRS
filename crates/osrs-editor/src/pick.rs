@@ -2,7 +2,10 @@
 
 mod describe;
 
-pub use describe::{describe_neighbourhood, describe_object, describe_tile, summary, tile_values};
+pub use describe::{
+    describe_neighbourhood, describe_object, describe_tile, object_extra_fields, summary,
+    tile_values,
+};
 
 use crate::camera::FlyCamera;
 use osrs_render::gpu::RoofView;

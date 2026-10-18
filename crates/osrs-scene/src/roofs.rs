@@ -13,6 +13,9 @@
 //! * a tile without the flag that touches a flagged tile joins that component, because roofs
 //!   overhang the walls by one tile and the overhang must go with the roof.
 
+mod overrides;
+pub use overrides::is_overridden_under_roof;
+
 /// Tile setting bit: this ground tile has a roof above it.
 pub const UNDER_ROOF: u8 = 4;
 
@@ -47,7 +50,14 @@ impl RoofGrid {
         let mut ids = vec![NO_ROOF; 4 * width * height];
         let index = |plane: usize, x: usize, y: usize| (plane * width + x) * height + y;
         for plane in 0..4_usize {
-            let flagged = |x: usize, y: usize| flags(plane, x, y) & UNDER_ROOF != 0;
+            let flagged = |x: usize, y: usize| {
+                flags(plane, x, y) & UNDER_ROOF != 0
+                    || is_overridden_under_roof(
+                        plane as u8,
+                        origin.0 + x as i32,
+                        origin.1 + y as i32,
+                    )
+            };
             let mut seen = vec![false; width * height];
             // Scanning x-major then y puts the component's south-west-most tile first, which is
             // what names it.
@@ -204,5 +214,20 @@ mod tests {
             "....",
         ]);
         assert_eq!(g.id(0, 0, 3), g.id(0, 1, 2));
+    }
+
+    #[test]
+    fn runelite_region_overrides_supply_missing_under_roof_flags() {
+        // Region 11828 (Falador Castle Gate): rx = 46, ry = 52 -> base (2944, 3328).
+        // Override box [18, 21, 21, 22, 0, 1] -> world (2962..=2965, 3349..=3350), planes 0..=1.
+        assert!(is_overridden_under_roof(0, 2962, 3349));
+        assert!(is_overridden_under_roof(1, 2965, 3350));
+        assert!(!is_overridden_under_roof(2, 2962, 3349));
+        let g = RoofGrid::build((2960, 3347), 8, 8, |_, _, _| 0);
+        let expected_p0 = roof_id(0, 2961, 3347);
+        let expected_p1 = roof_id(1, 2962, 3349);
+        assert_eq!(g.id_at_world(0, 2963, 3350), expected_p0);
+        assert_eq!(g.id_at_world(1, 2963, 3350), expected_p1);
+        assert_eq!(g.id_at_world(2, 2963, 3350), NO_ROOF);
     }
 }

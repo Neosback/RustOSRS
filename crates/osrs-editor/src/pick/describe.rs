@@ -84,6 +84,17 @@ pub(super) fn write_loc(out: &mut String, loc: &LocInfo) {
     );
     let _ = writeln!(
         out,
+        "    def: category={:?} map_scene={:?} map_icon={:?} blocking_mask={:#04x} support_items={:?} actions={:?} params={}",
+        def.category.map(|c| c.get()),
+        def.map_scene.map(|s| s.get()),
+        def.map_icon.map(|i| i.get()),
+        def.blocking_mask,
+        def.support_items,
+        def.actions,
+        def.parameters.len(),
+    );
+    let _ = writeln!(
+        out,
         "    def: scale={:?} translation={:?} recolors={:?} retextures={:?} ground_raise={} full_recolor={:?} placement={:?}",
         def.scale,
         def.translation,
@@ -94,6 +105,49 @@ pub(super) fn write_loc(out: &mut String, loc: &LocInfo) {
         def.placement,
     );
     let _ = writeln!(out, "    def: models={:?}", def.models);
+}
+
+/// Non-empty definition metadata rows for the object inspector grid.
+pub fn object_extra_fields(
+    def: &osrs_core::definitions::ObjectDefinition,
+) -> Vec<(&'static str, String)> {
+    let mut rows = Vec::new();
+    let actions: Vec<&str> = def.actions.iter().filter_map(Option::as_deref).collect();
+    if !actions.is_empty() {
+        rows.push(("Actions", actions.join(", ")));
+    }
+    if let Some(cat) = def.category {
+        rows.push(("Category", cat.get().to_string()));
+    }
+    if let Some(scene) = def.map_scene {
+        rows.push(("Map scene", scene.get().to_string()));
+    }
+    if let Some(icon) = def.map_icon {
+        rows.push(("Map icon", icon.get().to_string()));
+    }
+    if def.blocking_mask != 0 {
+        let mut blocked = Vec::new();
+        for (bit, dir) in [(1, "N"), (2, "E"), (4, "S"), (8, "W")] {
+            if def.blocking_mask & bit != 0 {
+                blocked.push(dir);
+            }
+        }
+        rows.push((
+            "Approach mask",
+            format!("{:#04x} (blocks {})", def.blocking_mask, blocked.join("/")),
+        ));
+    }
+    if let Some(support) = def.support_items.filter(|&s| s != 0) {
+        rows.push(("Supports items", support.to_string()));
+    }
+    if let Some(morphs) = &def.morphs {
+        let count = morphs.transforms.iter().flatten().count();
+        rows.push(("Morphs", format!("{count} target(s)")));
+    }
+    if !def.parameters.is_empty() {
+        rows.push(("Parameters", format!("{} entry(s)", def.parameters.len())));
+    }
+    rows
 }
 
 pub(super) fn info_for(infos: &Infos, tile: (i32, i32)) -> Option<&Arc<RegionInfo>> {
@@ -222,4 +276,105 @@ pub fn tile_values(infos: &Infos, tile: (i32, i32), plane: u8) -> Option<crate::
         height: info.heights[0],
         flags: info.settings,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use osrs_core::{
+        definitions::{
+            DefinitionIdentity, ModelScale, ModelTranslation, ObjectDefinition, ObjectMorphs,
+            ObjectParameter, ObjectPlacementFlags,
+        },
+        ids::{CategoryId, MapIconId, MapSceneId, ObjectId, VarbitId},
+        provenance::{CacheFingerprint, ProfileDigest, TargetProvenance},
+    };
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn object_extra_fields_formats_approach_mask_morphs_and_params() {
+        let mut params = BTreeMap::new();
+        params.insert(10, ObjectParameter::Integer(42));
+        let provenance = TargetProvenance::new(
+            "osrs-live-241-2026-09-30-openrs2-2727",
+            ProfileDigest::from_lower_hex(
+                "cfdefa9ef99eff799fcef4fdf0ec78d9fdcd72d8e5be78e1c154d018ab4575b7",
+            )
+            .expect("valid profile digest"),
+            CacheFingerprint::from_lower_hex(
+                "ae76dad78b4990d1b404e68e77a85ed2c96cf4a56c16f7b017cb97d1e92fdb38",
+            )
+            .expect("valid cache fingerprint"),
+            1,
+        )
+        .expect("valid provenance");
+        let def = ObjectDefinition {
+            identity: DefinitionIdentity::new(ObjectId::new(100), provenance),
+            name: Some("Chest".to_owned()),
+            models: None,
+            size_x: 1,
+            size_y: 1,
+            placement: ObjectPlacementFlags {
+                interact_type: 2,
+                blocks_projectiles: true,
+                obstructs_ground: false,
+                clipped: true,
+                solid: true,
+                model_clipped: false,
+            },
+            decoration_displacement: 16,
+            support_items: Some(1),
+            is_rotated: false,
+            non_flat_shading: false,
+            contour_clip: None,
+            full_recolor: None,
+            ground_raise: 0,
+            random_animation_start: false,
+            animation: None,
+            ambient: 0,
+            contrast: 0,
+            scale: ModelScale {
+                x: 128,
+                y: 128,
+                z: 128,
+            },
+            translation: ModelTranslation { x: 0, y: 0, z: 0 },
+            recolors: Vec::new(),
+            retextures: Vec::new(),
+            morphs: Some(ObjectMorphs {
+                transform_varbit: Some(VarbitId::new(1)),
+                transform_varp: None,
+                transforms: vec![Some(ObjectId::new(101)), None],
+                fallback: Some(ObjectId::new(102)),
+            }),
+            map_scene: Some(MapSceneId::new(12)),
+            map_icon: Some(MapIconId::new(5)),
+            category: Some(CategoryId::new(207)),
+            actions: [
+                Some("Open".to_owned()),
+                Some("Search".to_owned()),
+                None,
+                None,
+                None,
+            ],
+            interactive_hint: None,
+            blocking_mask: 0x05,
+            sound: None,
+            parameters: params,
+        };
+        let rows = object_extra_fields(&def);
+        assert_eq!(
+            rows,
+            vec![
+                ("Actions", "Open, Search".to_owned()),
+                ("Category", "207".to_owned()),
+                ("Map scene", "12".to_owned()),
+                ("Map icon", "5".to_owned()),
+                ("Approach mask", "0x05 (blocks N/S)".to_owned()),
+                ("Supports items", "1".to_owned()),
+                ("Morphs", "1 target(s)".to_owned()),
+                ("Parameters", "1 entry(s)".to_owned()),
+            ]
+        );
+    }
 }

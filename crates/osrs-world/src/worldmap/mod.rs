@@ -1717,9 +1717,13 @@ impl RegionRenderer {
                 let Ok(object) = u32::try_from(decoration.object) else {
                     continue;
                 };
-                let Ok(Some(definition)) = definitions.object(ObjectId::new(object)) else {
+                let Some(definition) = resolved_worldmap_object(definitions, ObjectId::new(object))
+                else {
                     continue;
                 };
+                if definition.map_scene.is_some() {
+                    continue;
+                }
                 let colour: u32 = if definition.map_interactive() {
                     0xFFCC_0000
                 } else {
@@ -1767,7 +1771,7 @@ impl RegionRenderer {
         }
     }
 
-    /// `method6804`: map-scene sprites for scenery (trees, rocks ...).
+    /// `method6804`: map-scene sprites for scenery, roofs and map-scene walls.
     fn draw_scenes(
         canvas: &mut Canvas,
         definitions: &mut WorldDefinitions,
@@ -1781,13 +1785,14 @@ impl RegionRenderer {
         for plane in 0..geography.planes {
             for decoration in &geography.decorations[plane][at] {
                 let kind = i32::from(decoration.kind);
-                if !(kind == 10 || kind == 11 || kind == 22) {
+                if (4..=8).contains(&kind) {
                     continue;
                 }
                 let Ok(object) = u32::try_from(decoration.object) else {
                     continue;
                 };
-                let Ok(Some(definition)) = definitions.object(ObjectId::new(object)) else {
+                let Some(definition) = resolved_worldmap_object(definitions, ObjectId::new(object))
+                else {
                     continue;
                 };
                 let Some(scene) = definition.map_scene else {
@@ -1805,6 +1810,23 @@ impl RegionRenderer {
             }
         }
     }
+}
+
+fn resolved_worldmap_object(
+    definitions: &mut WorldDefinitions,
+    id: ObjectId,
+) -> Option<std::sync::Arc<osrs_core::definitions::ObjectDefinition>> {
+    let definition = definitions.object(id).ok()??;
+    if let Some(morphs) = &definition.morphs {
+        let target = morphs
+            .transforms
+            .first()
+            .copied()
+            .flatten()
+            .or(morphs.fallback)?;
+        return definitions.object(target).ok()?;
+    }
+    Some(definition)
 }
 
 /// The overview picture of an area (`compositetexture`), decoded to RGBA.

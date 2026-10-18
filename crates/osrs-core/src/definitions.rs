@@ -235,6 +235,8 @@ pub struct ObjectDefinition {
     pub actions: [Option<String>; 5],
     /// Raw opcode 19 (`int1`), the client's interaction hint; `None` when the definition omits it.
     pub interactive_hint: Option<u8>,
+    /// Opcode 69 (`blockingMask`), 4-bit directional approach/entry mask; `0` when omitted.
+    pub blocking_mask: u8,
     /// The object's ambient sound, when it has one.
     pub sound: Option<ObjectSound>,
     pub parameters: std::collections::BTreeMap<u32, ObjectParameter>,

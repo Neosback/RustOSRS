@@ -568,6 +568,7 @@ mod tests {
             category: None,
             actions: [None, None, None, None, None],
             interactive_hint: None,
+            blocking_mask: 0,
             sound: None,
         })
     }
