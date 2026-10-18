@@ -5,93 +5,6 @@ use super::*;
 impl EditorApp {
     /// Fire the editor's own bound actions (none while a text field has keyboard focus, and none
     /// while a binding is being captured in the Keyboard Shortcuts window).
-    pub(super) fn editor_actions(&mut self, ctx: &egui::Context) {
-        self.tool_release(ctx);
-        if self.keys_blocked(ctx) {
-            return;
-        }
-        let pressed = |id: &str| ctx.input(|i| self.settings.keymap.pressed(i, id));
-        let mut open_teleport = false;
-        let mut toggle_panel = false;
-        let mut toggle_camera = false;
-        let mut focus = false;
-        let mut clear = false;
-        let mut plane = None;
-        if pressed("teleport.open") {
-            open_teleport = true;
-        }
-        if pressed("panel.properties") {
-            toggle_panel = true;
-        }
-        if pressed("camera.mode") {
-            toggle_camera = true;
-        }
-        if pressed("camera.focus") {
-            focus = true;
-        }
-        if pressed("selection.clear") {
-            clear = true;
-        }
-        let toggle_map = pressed("worldmap.toggle");
-
-        let open_settings = pressed("settings.open");
-        let switch_menu = pressed("contextmenu.style");
-        for (index, id) in ["plane.0", "plane.1", "plane.2", "plane.3"]
-            .into_iter()
-            .enumerate()
-        {
-            if pressed(id) {
-                plane = Some(index as u8);
-            }
-        }
-        if toggle_map {
-            self.toggle_world_map();
-        }
-        if open_settings {
-            self.open_settings(None);
-            self.ui.settings_focus_search = true;
-        }
-        if switch_menu {
-            self.settings.prefs.context_menu = match self.settings.prefs.context_menu {
-                crate::settings::ContextMenuStyle::Editor => {
-                    crate::settings::ContextMenuStyle::Game
-                }
-                crate::settings::ContextMenuStyle::Game => {
-                    crate::settings::ContextMenuStyle::Editor
-                }
-            };
-            self.ui.notify(format!(
-                "Context menu: {}",
-                self.settings.prefs.context_menu.label()
-            ));
-        }
-        if open_teleport {
-            self.open_teleport();
-        }
-        if toggle_panel {
-            self.settings.prefs.properties_panel = !self.settings.prefs.properties_panel;
-        }
-        if toggle_camera {
-            self.interaction.toggle_camera_mode();
-        }
-        if focus {
-            self.focus_selection();
-        }
-        if clear {
-            self.escape_action();
-        }
-        if let Some(plane) = plane {
-            self.interaction.set_view_plane(plane);
-        }
-        self.tool_actions(ctx);
-        self.edit_actions(ctx);
-        self.clipboard_actions(ctx);
-        self.project_actions(ctx);
-        self.script_frame(ctx);
-        self.object_actions(ctx);
-        self.resolve_reselect();
-    }
-
     pub(super) fn handle_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
         let dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
         let delta = response.drag_delta();
@@ -147,4 +60,89 @@ impl EditorApp {
                 dt,
             });
     }
+}
+
+pub(super) fn editor_actions(app: &mut EditorApp, ctx: &egui::Context, include_projects: bool) {
+    app.tool_release(ctx);
+    if app.keys_blocked(ctx) {
+        return;
+    }
+    let pressed = |id: &str| ctx.input(|i| app.settings.keymap.pressed(i, id));
+    let mut open_teleport = false;
+    let mut toggle_panel = false;
+    let mut toggle_camera = false;
+    let mut focus = false;
+    let mut clear = false;
+    let mut plane = None;
+    if pressed("teleport.open") {
+        open_teleport = true;
+    }
+    if pressed("panel.properties") {
+        toggle_panel = true;
+    }
+    if pressed("camera.mode") {
+        toggle_camera = true;
+    }
+    if pressed("camera.focus") {
+        focus = true;
+    }
+    if pressed("selection.clear") {
+        clear = true;
+    }
+    let toggle_map = pressed("worldmap.toggle");
+
+    let open_settings = pressed("settings.open");
+    let switch_menu = pressed("contextmenu.style");
+    for (index, id) in ["plane.0", "plane.1", "plane.2", "plane.3"]
+        .into_iter()
+        .enumerate()
+    {
+        if pressed(id) {
+            plane = Some(index as u8);
+        }
+    }
+    if toggle_map {
+        app.toggle_world_map();
+    }
+    if open_settings {
+        app.open_settings(None);
+        app.ui.settings_focus_search = true;
+    }
+    if switch_menu {
+        app.settings.prefs.context_menu = match app.settings.prefs.context_menu {
+            crate::settings::ContextMenuStyle::Editor => crate::settings::ContextMenuStyle::Game,
+            crate::settings::ContextMenuStyle::Game => crate::settings::ContextMenuStyle::Editor,
+        };
+        app.ui.notify(format!(
+            "Context menu: {}",
+            app.settings.prefs.context_menu.label()
+        ));
+    }
+    if open_teleport {
+        app.open_teleport();
+    }
+    if toggle_panel {
+        app.settings.prefs.properties_panel = !app.settings.prefs.properties_panel;
+    }
+    if toggle_camera {
+        app.interaction.toggle_camera_mode();
+    }
+    if focus {
+        app.focus_selection();
+    }
+    if clear {
+        app.escape_action();
+    }
+    if let Some(plane) = plane {
+        app.interaction.switch_plane(plane);
+    }
+    app.tool_actions(ctx);
+    app.edit_actions(ctx);
+    app.clipboard_actions(ctx);
+    if include_projects {
+        app.project_actions(ctx);
+    }
+    app.script_frame(ctx);
+    app.object_actions(ctx);
+    app.resolve_reselect();
 }

@@ -29,6 +29,7 @@ fn finish() -> KitFinish {
         size,
     };
     KitFinish {
+        learned_roles: None,
         floors: BTreeMap::from([
             ("default".to_owned(), floor(5)),
             ("hallway".to_owned(), floor(81)),

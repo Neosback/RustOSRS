@@ -13,13 +13,13 @@ use osrs_core::{
     ids::{FloorUnderlayId, ObjectId},
 };
 use osrs_edit::{
-    LocKind, MapOp, MapPatch, MapPosition, PlaceSpec, Prefab, TerrainTile, plan_place_prefab,
+    LocKind, MapOp, MapPatch, MapPosition, PlaceSpec, Prefab, TerrainTile, plan_place_exact,
     turned_size,
 };
 
 /// Centre of the stage (world tile): the middle of map square (50, 33), inside a block of nine
 /// squares the cache keeps empty (no objects, no floors), so nothing else is ever in the picture.
-pub(super) const CENTRE: (i32, i32) = (3232, 2144);
+pub(in crate::app) const CENTRE: (i32, i32) = (3232, 2144);
 /// Half the side of the floor laid under the prefab, in tiles.
 const PAD_HALF: i32 = 72;
 /// Underlay of the stage floor: the grass most captured buildings stand on.
@@ -32,34 +32,38 @@ struct Shown {
     turns: u8,
 }
 
-pub(super) struct Stage {
-    viewer: Box<EditorApp>,
+pub(in crate::app) struct Stage {
+    viewer: Option<Box<EditorApp>>,
     padded: bool,
     shown: Option<Shown>,
     /// Frames since the prefab was last put on the stage (the world needs a few to build it).
     since_shown: u32,
     /// Why the last placement failed (shown under the view).
-    pub(super) problem: Option<String>,
+    pub(in crate::app) problem: Option<String>,
 }
 
 impl Stage {
     /// A stage sharing `parent`'s GPU device and cache. Native only: the browser build cannot
     /// read a cache folder or share the device this way.
     #[cfg(not(target_arch = "wasm32"))]
-    pub(super) fn new(parent: &EditorApp, ctx: &egui::Context) -> Result<Self, String> {
+    pub(in crate::app) fn new(parent: &EditorApp, ctx: &egui::Context) -> Result<Self, String> {
         use crate::hud::Destination;
-        use osrs_cache::source::CacheSource;
         let label = parent.project.cache_label().clone();
         let mut viewer = EditorApp::from_source(
             ctx,
             parent.renderer.render_state(),
-            CacheSource::Dir(label.clone()),
+            parent.project.source().clone(),
             label,
             (CENTRE.0.div_euclid(64) - 1) * 64,
             (CENTRE.1.div_euclid(64) - 1) * 64,
             false,
         )?;
+        viewer.prefabs.stage_region = Some(MapTile::new(CENTRE.0, CENTRE.1).split_region().0);
         viewer.settings.prefs = parent.settings.prefs.clone();
+        viewer
+            .settings
+            .keymap
+            .load(&parent.settings.keymap.to_saved());
         let prefs = &mut viewer.settings.prefs;
         prefs.tool = crate::paint::Tool::Select;
         prefs.properties_panel = false;
@@ -79,7 +83,7 @@ impl Stage {
             .interaction
             .set_camera_mode(crate::camera::CameraMode::Orbit);
         Ok(Self {
-            viewer: Box::new(viewer),
+            viewer: Some(Box::new(viewer)),
             padded: false,
             shown: None,
             since_shown: 0,
@@ -88,22 +92,30 @@ impl Stage {
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub(super) fn new(_parent: &EditorApp, _ctx: &egui::Context) -> Result<Self, String> {
+    pub(in crate::app) fn new(_parent: &EditorApp, _ctx: &egui::Context) -> Result<Self, String> {
         Err("The 3D gallery needs the desktop app.".to_owned())
     }
 
-    pub(super) fn viewer(&mut self) -> &mut EditorApp {
-        &mut self.viewer
+    pub(in crate::app) fn viewer(&mut self) -> &mut EditorApp {
+        self.viewer
+            .as_deref_mut()
+            .unwrap_or_else(|| unreachable!("stage viewer exists until drop"))
     }
 
-    pub(super) fn ready(&self) -> bool {
-        self.padded && self.viewer.world.is_ready()
+    pub(in crate::app) fn ready(&self) -> bool {
+        self.padded
+            && self
+                .viewer
+                .as_deref()
+                .unwrap_or_else(|| unreachable!())
+                .world
+                .is_ready()
     }
 
     /// Once per frame: let the stage's world stream and animate, and lay its floor when the empty
     /// map square has loaded.
-    pub(super) fn step(&mut self, ctx: &egui::Context) {
-        let viewer = &mut self.viewer;
+    pub(in crate::app) fn step(&mut self, ctx: &egui::Context) {
+        let viewer = self.viewer.as_deref_mut().unwrap_or_else(|| unreachable!());
         viewer.rebase_if_needed();
         viewer.stream(ctx);
         viewer.update_animations();
@@ -111,7 +123,40 @@ impl Stage {
         viewer.poll_catalog();
         viewer.assets.poll(ctx);
         self.since_shown = self.since_shown.saturating_add(1);
-        if !self.padded && viewer.world.is_ready() && viewer.world.resident_regions() > 0 {
+        if !self.padded
+            && self.problem.is_none()
+            && viewer.world.is_ready()
+            && viewer.world.resident_regions() > 0
+        {
+            let doc = viewer.session.document();
+            let covered = (CENTRE.0 - PAD_HALF..=CENTRE.0 + PAD_HALF).all(|x| {
+                (CENTRE.1 - PAD_HALF..=CENTRE.1 + PAD_HALF).all(|y| {
+                    (0..4).all(|p| {
+                        SourcePlane::new(p).is_some_and(|plane| {
+                            doc.height_at(osrs_edit::HeightVertexCoord::new(
+                                MapTile::new(x, y),
+                                plane,
+                            ))
+                            .is_some()
+                        })
+                    })
+                })
+            });
+            if !covered {
+                return;
+            }
+            let inside = |t: MapTile| {
+                (CENTRE.0 - PAD_HALF..CENTRE.0 + PAD_HALF).contains(&t.x)
+                    && (CENTRE.1 - PAD_HALF..CENTRE.1 + PAD_HALF).contains(&t.y)
+            };
+            if doc.object_entries().iter().any(|p| inside(p.position.tile))
+                || doc
+                    .terrain_entries()
+                    .any(|(p, t)| inside(p.tile) && t != TerrainTile::default())
+            {
+                self.problem=Some("This cache has content in the isolated stage area. Choose a compatible source before opening Studio.".into());
+                return;
+            }
             let plane = SourcePlane::new(0).unwrap_or_else(|| unreachable!("plane 0 exists"));
             let mut ops = Vec::new();
             for dx in -PAD_HALF..PAD_HALF {
@@ -132,13 +177,17 @@ impl Stage {
                     }
                 }
             }
-            self.padded = commit_map_patch(viewer, MapPatch::new(ops), "Stage floor");
+            self.padded = crate::app::editing::apply_baseline_patch(
+                viewer,
+                MapPatch::new(ops),
+                "Stage floor",
+            );
         }
     }
 
     /// Put `prefab` (turned `turns` quarter turns) on the stage when it is not already there.
     /// `size_of` gives an object's footprint (the catalog of the editor being worked in).
-    pub(super) fn show(
+    pub(in crate::app) fn show(
         &mut self,
         file: &str,
         prefab: &Prefab,
@@ -155,7 +204,7 @@ impl Stage {
         if self.shown.as_ref() == Some(&want) {
             return;
         }
-        let viewer = &mut self.viewer;
+        let viewer = self.viewer.as_deref_mut().unwrap_or_else(|| unreachable!());
         if self.shown.take().is_some() {
             viewer.undo();
         }
@@ -178,7 +227,7 @@ impl Stage {
             objects: true,
             replace_objects: false,
         };
-        match plan_place_prefab(viewer.session.document(), prefab, spec, size_of) {
+        match plan_place_exact(viewer.session.document(), prefab, spec, size_of) {
             Ok(placed) => {
                 if commit_map_patch(viewer, placed.patch, "Gallery preview") {
                     self.shown = Some(want);
@@ -201,19 +250,33 @@ impl Stage {
         );
     }
 
+    pub(in crate::app) fn clear_preview(&mut self) {
+        if self.shown.take().is_some() {
+            self.viewer().undo();
+        }
+    }
+
     /// The file and turns of the prefab on the stage.
-    pub(super) fn shown(&self) -> Option<(&str, u8)> {
+    pub(in crate::app) fn shown(&self) -> Option<(&str, u8)> {
         self.shown.as_ref().map(|s| (s.file.as_str(), s.turns))
     }
 
     /// Whether the prefab on the stage is built and drawn (so a still of it is complete).
-    pub(super) fn settled(&self) -> bool {
-        self.shown.is_some() && self.since_shown >= 45 && self.viewer.world.in_flight_count() == 0
+    pub(in crate::app) fn settled(&self) -> bool {
+        self.shown.is_some()
+            && self.since_shown >= 45
+            && self
+                .viewer
+                .as_deref()
+                .unwrap_or_else(|| unreachable!())
+                .world
+                .in_flight_count()
+                == 0
     }
 
     /// A still of the stage, `width` x `height` RGBA8, in the stage's own view.
-    pub(super) fn still(&self, width: u32, height: u32) -> Option<Vec<u8>> {
-        let viewer = &self.viewer;
+    pub(in crate::app) fn still(&self, width: u32, height: u32) -> Option<Vec<u8>> {
+        let viewer = self.viewer.as_deref().unwrap_or_else(|| unreachable!());
         let prefs = &viewer.settings.prefs;
         let params = osrs_render::gpu::FrameParams {
             camera: viewer.interaction.camera().reference(width as f32),
@@ -231,11 +294,21 @@ impl Stage {
     }
 
     /// Turn the camera round the prefab by `pixels` of drag (what a right drag of that length does).
-    pub(super) fn spin(&mut self, pixels: f32) {
-        self.viewer.interaction.apply_camera_input(CameraInput {
+    pub(in crate::app) fn spin(&mut self, pixels: f32) {
+        self.viewer().interaction.apply_camera_input(CameraInput {
             delta: [pixels, 0.0],
             secondary_drag: true,
             ..CameraInput::default()
         });
+    }
+}
+
+impl Drop for Stage {
+    fn drop(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(mut viewer) = self.viewer.take() {
+            viewer.world.shutdown_in_background();
+            viewer.assets.shutdown_in_background();
+        }
     }
 }

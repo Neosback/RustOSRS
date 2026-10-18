@@ -193,6 +193,13 @@ impl ObjectSound {
     }
 }
 
+/// Cache-native opcode-249 value. Keys are revision-specific; retention does not assign meaning.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ObjectParameter {
+    Integer(i32),
+    String(String),
+}
+
 /// Canonical object/loc definition inputs required by later semantic milestones.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ObjectDefinition {
@@ -230,6 +237,7 @@ pub struct ObjectDefinition {
     pub interactive_hint: Option<u8>,
     /// The object's ambient sound, when it has one.
     pub sound: Option<ObjectSound>,
+    pub parameters: std::collections::BTreeMap<u32, ObjectParameter>,
 }
 
 impl ObjectDefinition {

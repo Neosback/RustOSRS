@@ -10,6 +10,7 @@ fn temp_dir(tag: &str) -> PathBuf {
 
 fn prefab(name: &str) -> Prefab {
     Prefab {
+        building: None,
         format: PREFAB_FORMAT.into(),
         version: PREFAB_VERSION,
         name: name.into(),

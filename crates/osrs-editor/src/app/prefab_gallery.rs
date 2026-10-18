@@ -7,7 +7,7 @@
 //! placement gesture.
 
 mod list;
-mod stage;
+pub(in crate::app) mod stage;
 
 use crate::app::{EditorApp, prefab_runtime::Page};
 use crate::settings::RoofChoice;
@@ -360,4 +360,18 @@ fn draw_stage(
         viewer.handle_input(ctx, response);
     }
     viewer.render_viewport_image(ui, rect, width, height);
+}
+
+pub(in crate::app) fn take_stage(app: &mut EditorApp, file: &str) -> Option<Box<Stage>> {
+    if app
+        .prefabs
+        .gallery
+        .stage
+        .as_ref()
+        .is_some_and(|s| s.shown() == Some((file, 0)))
+    {
+        app.prefabs.gallery.stage.take()
+    } else {
+        None
+    }
 }

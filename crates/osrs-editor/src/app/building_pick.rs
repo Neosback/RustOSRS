@@ -24,12 +24,15 @@ pub(super) struct Found {
     /// The floor: every tile of every room.
     pub(super) footprint: HashSet<Tile>,
     /// The tiles around the floor where the building's walls, decoration and roof overhang stand.
+    #[cfg_attr(not(test), allow(dead_code))]
     ring: HashSet<Tile>,
+    members: HashSet<Placed>,
 }
 
 impl Found {
     /// Whether an object belongs to the building: anything on the floor, boundary pieces and
     /// wall decoration on the ring, and roof pieces on the plane above, over the floor or ring.
+    #[cfg(test)]
     pub(super) fn owns(&self, tile: Tile, plane: u8, loc_type: u8) -> bool {
         let on_floor = self.footprint.contains(&tile);
         let on_ring = self.ring.contains(&tile);
@@ -43,8 +46,17 @@ impl Found {
     }
 }
 
-fn found_from(building: &Building) -> Found {
-    let footprint: HashSet<Tile> = building.tiles().collect();
+fn found_from(
+    building: &Building,
+    description: osrs_scene::building_census::description::BuildingDescription,
+) -> Found {
+    let footprint: HashSet<Tile> = description
+        .floors
+        .get(&building.plane)
+        .into_iter()
+        .flatten()
+        .map(|t| (t.x, t.y))
+        .collect();
     let mut ring = HashSet::new();
     for &(x, y) in &footprint {
         for dx in -1..=1 {
@@ -61,6 +73,11 @@ fn found_from(building: &Building) -> Found {
         rooms: building.rooms.len(),
         footprint,
         ring,
+        members: description
+            .members
+            .into_iter()
+            .map(|m| m.placement)
+            .collect(),
     }
 }
 
@@ -88,7 +105,17 @@ pub(super) fn find(
                         .any(|t| (t.0 - tile.0).abs() <= 1 && (t.1 - tile.1).abs() <= 1)
                 };
                 if hit {
-                    return Some(found_from(building));
+                    let seed = building
+                        .tiles()
+                        .min_by_key(|t| ((t.0 - tile.0).abs() + (t.1 - tile.1).abs(), *t))?;
+                    let description = osrs_scene::building_census::description::describe(
+                        &area,
+                        placements,
+                        objects,
+                        osrs_core::coords::MapTile::new(seed.0, seed.1),
+                        candidate,
+                    )?;
+                    return Some(found_from(building, description));
                 }
             }
         }
@@ -165,7 +192,15 @@ pub(super) fn select_building(app: &mut EditorApp, tile: Tile, additive: bool) -
                 .locs
                 .iter()
                 .enumerate()
-                .filter(|(_, loc)| found.owns(loc.tile, loc.plane, loc.loc_type))
+                .filter(|(_, loc)| {
+                    found.members.contains(&Placed {
+                        id: loc.definition.identity.id,
+                        kind: loc.loc_type,
+                        orientation: loc.orientation,
+                        tile: loc.tile,
+                        plane: loc.plane,
+                    })
+                })
                 .map(|(index, _)| crate::pick::ObjectPick {
                     region: (gx, gy),
                     index,

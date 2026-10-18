@@ -2623,6 +2623,7 @@ dependencies = [
  "osrs-core",
  "osrs-edit",
  "osrs-hd",
+ "osrs-lab",
  "osrs-playtest",
  "osrs-render",
  "osrs-scene",
@@ -2663,6 +2664,17 @@ dependencies = [
  "serde_json",
  "sha2",
  "zip",
+]
+
+[[package]]
+name = "osrs-lab"
+version = "0.0.0"
+dependencies = [
+ "osrs-core",
+ "osrs-edit",
+ "osrs-scene",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

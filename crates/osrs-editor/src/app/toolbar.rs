@@ -61,7 +61,7 @@ impl EditorApp {
                     "Orbit camera: right drag orbits, shift+right drag pans, scroll zooms",
                 );
                 self.interaction.set_camera_mode(camera_mode);
-                self.interaction.set_view_plane(view_plane);
+                self.interaction.switch_plane(view_plane);
                 ui.separator();
                 if self.settings.prefs.tool != crate::paint::Tool::Select
                     || self.can_undo()

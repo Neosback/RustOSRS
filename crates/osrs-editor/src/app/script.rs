@@ -53,6 +53,7 @@ tcopy | tpaste X Y     copy the selected tiles / paste them with their corner at
 place ID X Y [TURNS]  place an object from the catalog at a tile
 inspect X Y            log a tile's projected and document values (smoke tests)
 prefab capture NAME X0 Y0 X1 Y1 [PLANES] | place NAME X Y [TURNS] [replace]
+                       studio NAME|save|new|revert|exit|report\n\
                        build X Y W H SEED [kind=bank] [kit=1] [apply] | list
 status TEXT
 # a comment";
@@ -71,6 +72,9 @@ pub struct ScriptRunner {
 }
 
 impl ScriptRunner {
+    pub(super) fn rebase_frames(&mut self, from: u64, to: u64) {
+        self.wait_until = to.saturating_add(self.wait_until.saturating_sub(from));
+    }
     pub fn is_running(&self) -> bool {
         !self.queue.is_empty()
     }
@@ -148,6 +152,9 @@ impl EditorApp {
                     self.script.log.push(format!("{line}: {error}"));
                     self.ui.set_status(format!("script: {line}: {error}"));
                 }
+            }
+            if self.prefabs.studio_request.is_some() || self.prefabs.studio_command.is_some() {
+                return;
             }
         }
     }
@@ -318,6 +325,7 @@ impl EditorApp {
                 self.interaction.set_context_pick(crate::pick::Pick {
                     object: Some(object),
                     tile: anchor,
+                    roof: None,
                 });
                 self.ui.context_menu = Some(egui::pos2(400.0, 300.0));
             }
@@ -389,6 +397,9 @@ impl EditorApp {
                 self.script.wait_until = number::<u64>(words.next(), "frame")?;
             }
             "project" => {
+                if self.prefabs.stage_region.is_some() {
+                    return Err("Return to the world before opening or saving a project".into());
+                }
                 let action = words.next().unwrap_or_default();
                 let path: Vec<&str> = words.collect();
                 let message = self.script_project(action, &path.join(" "))?;

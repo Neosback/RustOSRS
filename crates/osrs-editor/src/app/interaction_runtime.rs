@@ -4,6 +4,8 @@
 //! application routes to `EditorSession`; it never commits map mutations itself.
 
 mod camera;
+mod selection;
+pub(super) use selection::EscapeLayer;
 mod spline;
 pub(super) use spline::{PathExtent, PathOptions, SplineStatus, fit_points};
 
@@ -80,6 +82,8 @@ pub(super) struct InteractionRuntime {
     gizmo_busy: bool,
     /// Smoke runs only: where picking acts as if the pointer were, when it has no real one.
     scripted_pointer: Option<ScriptedPointer>,
+    /// The roof the cursor peeled away (kept while the cursor stays over that building).
+    peeled_roof: Option<u32>,
 }
 
 /// A pointer position a script supplies (smoke runs), so picking runs through the real pipeline.
@@ -112,8 +116,17 @@ impl InteractionRuntime {
             gizmo: transform_gizmo_egui::Gizmo::default(),
             gizmo_drag: None,
             gizmo_busy: false,
+            peeled_roof: None,
             scripted_pointer: None,
         }
+    }
+
+    pub(super) fn peeled_roof(&self) -> Option<u32> {
+        self.peeled_roof
+    }
+
+    pub(super) fn set_peeled_roof(&mut self, roof: Option<u32>) {
+        self.peeled_roof = roof;
     }
 
     pub(super) fn scripted_pointer(&self) -> Option<ScriptedPointer> {
@@ -166,7 +179,7 @@ impl InteractionRuntime {
         self.view_plane
     }
     pub(super) fn set_view_plane(&mut self, plane: u8) {
-        self.view_plane = plane.min(3);
+        self.switch_plane(plane);
     }
     pub(super) fn gizmo_busy(&self) -> bool {
         self.gizmo_busy
@@ -194,183 +207,6 @@ impl InteractionRuntime {
     }
     pub(super) fn copy_tiles(&mut self, clipboard: super::tile_clipboard::TileClipboard) {
         self.clipboard = Some(clipboard);
-    }
-
-    fn same_object(a: &ObjectPick, b: &ObjectPick) -> bool {
-        a.region == b.region && a.index == b.index
-    }
-
-    pub(super) fn set_hover(&mut self, hover: Pick) {
-        if let Some(tile) = hover.tile {
-            self.last_hover_tile = Some(tile.tile);
-        }
-        self.hover = hover;
-    }
-
-    pub(super) fn clear_hover(&mut self) {
-        self.hover = Pick::default();
-    }
-
-    pub(super) fn capture_context_pick(&mut self) {
-        self.context_pick = self.hover.clone();
-    }
-
-    pub(super) fn is_primary_object(&self, object: &ObjectPick) -> bool {
-        self.selected
-            .as_ref()
-            .is_some_and(|selected| Self::same_object(selected, object))
-    }
-
-    pub(super) fn clear_selection(&mut self) {
-        self.selected = None;
-        self.selection_objects.clear();
-        self.selection_tiles.clear();
-        self.inspect_tile = None;
-    }
-
-    pub(super) fn clear_objects(&mut self) {
-        self.selected = None;
-        self.selection_objects.clear();
-    }
-
-    pub(super) fn clear_tiles(&mut self) {
-        self.selection_tiles.clear();
-    }
-
-    pub(super) fn select_only_object(
-        &mut self,
-        object: ObjectPick,
-        inspect_tile: Option<(i32, i32)>,
-    ) {
-        if let Some(tile) = inspect_tile {
-            self.inspect_tile = Some(tile);
-        }
-        self.selection_objects = vec![object.clone()];
-        self.selected = Some(object);
-    }
-
-    pub(super) fn replace_objects(&mut self, objects: Vec<ObjectPick>) {
-        self.selected = objects.last().cloned();
-        self.selection_objects = objects;
-    }
-
-    pub(super) fn add_object(&mut self, object: ObjectPick, inspect_tile: Option<(i32, i32)>) {
-        if let Some(tile) = inspect_tile {
-            self.inspect_tile = Some(tile);
-        }
-        if !self
-            .selection_objects
-            .iter()
-            .any(|selected| Self::same_object(selected, &object))
-        {
-            self.selection_objects.push(object.clone());
-        }
-        self.selected = Some(object);
-    }
-
-    pub(super) fn toggle_object(&mut self, object: ObjectPick, inspect_tile: Option<(i32, i32)>) {
-        if let Some(index) = self
-            .selection_objects
-            .iter()
-            .position(|selected| Self::same_object(selected, &object))
-        {
-            self.selection_objects.remove(index);
-            self.selected = self.selection_objects.last().cloned();
-        } else {
-            self.add_object(object, inspect_tile);
-        }
-    }
-
-    pub(super) fn add_tile(&mut self, tile: (i32, i32)) {
-        self.selection_tiles.insert(tile);
-    }
-
-    pub(super) fn select_tile(&mut self, tile: (i32, i32)) {
-        self.selection_tiles.insert(tile);
-        self.inspect_tile = Some(tile);
-    }
-
-    pub(super) fn toggle_tile(&mut self, tile: (i32, i32)) {
-        if !self.selection_tiles.remove(&tile) {
-            self.select_tile(tile);
-        }
-    }
-
-    pub(super) fn selection_counts(&self) -> (usize, usize) {
-        (self.selection_objects.len(), self.selection_tiles.len())
-    }
-
-    pub(super) fn set_pending_reselect(&mut self, specs: Vec<osrs_world::LocSpec>) {
-        self.pending_reselect = specs;
-    }
-
-    pub(super) fn pending_reselect(&self) -> &[osrs_world::LocSpec] {
-        &self.pending_reselect
-    }
-
-    pub(super) fn complete_reselect(&mut self, objects: Vec<ObjectPick>) -> bool {
-        if self.pending_reselect.is_empty() || objects.len() != self.pending_reselect.len() {
-            return false;
-        }
-        self.replace_objects(objects);
-        self.pending_reselect.clear();
-        true
-    }
-
-    pub(super) fn begin_marquee(&mut self, position: egui::Pos2, additive: bool, toggle: bool) {
-        self.marquee = Some(Marquee {
-            start: position,
-            current: position,
-            additive,
-            toggle,
-            start_tile: None,
-            current_tile: None,
-        });
-    }
-
-    /// Record the ground tiles under the press and under the pointer.
-    pub(super) fn track_marquee_tiles(
-        &mut self,
-        start: Option<(i32, i32)>,
-        current: Option<(i32, i32)>,
-    ) {
-        if let Some(marquee) = &mut self.marquee {
-            if marquee.start_tile.is_none() {
-                marquee.start_tile = start;
-            }
-            if current.is_some() {
-                marquee.current_tile = current;
-            }
-        }
-    }
-
-    pub(super) fn update_marquee(
-        &mut self,
-        position: Option<egui::Pos2>,
-        bounds: egui::Rect,
-        additive: bool,
-        toggle: bool,
-    ) {
-        let Some(marquee) = &mut self.marquee else {
-            return;
-        };
-        if let Some(position) = position {
-            marquee.current = position.clamp(bounds.min, bounds.max);
-        }
-        marquee.additive |= additive;
-        marquee.toggle |= toggle;
-    }
-
-    pub(super) fn cancel_marquee(&mut self) {
-        self.marquee = None;
-    }
-
-    pub(super) fn finish_marquee(&mut self) -> Option<Marquee> {
-        self.marquee.take()
-    }
-
-    pub(super) fn marquee(&self) -> Option<&Marquee> {
-        self.marquee.as_ref()
     }
 
     pub(super) fn press_tool_key(

@@ -12,6 +12,14 @@ import check_architecture
 
 
 class ArchitectureGuardTests(unittest.TestCase):
+    def test_lab_rejects_editor_and_gpu_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            self.write_manifest(root,"osrs-lab",'[dependencies]\nosrs-editor = "0.0.0"\nwgpu = "30"\n')
+            errors=check_architecture.check_workspace(root)
+            self.assertTrue(any("illegal internal dependencies: osrs-editor" in e for e in errors))
+            self.assertTrue(any("UI/GPU/platform dependency leakage: wgpu" in e for e in errors))
+
     def test_filestore_boundary_is_enforced(self) -> None:
         for owner, dependency in [
             ("osrs-filestore", "osrs-core"),

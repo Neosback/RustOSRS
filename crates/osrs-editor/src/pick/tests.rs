@@ -83,7 +83,7 @@ fn picking_straight_down_finds_the_object_under_the_ray() -> Result<(), Box<dyn 
             origin: [center[0], -20_000.0, center[1]],
             dir: [0.0, 1.0, 0.0],
         };
-        let pick = pick(&infos, &ray, 0);
+        let pick = pick(&infos, &ray, 0, &osrs_render::gpu::RoofView::hidden_above());
         let Some(object) = pick.object else { continue };
         let hit = &infos[&object.region].locs[object.index];
         // The hit object's footprint must contain the ray column.
@@ -154,7 +154,7 @@ fn objects_are_pickable_at_their_projected_centre() -> Result<(), Box<dyn std::e
             continue;
         }
         let ray = ray_through_pixel(&camera, (0, 0), width, height, pixel[0], pixel[1]);
-        let pick = pick(&infos, &ray, 0);
+        let pick = pick(&infos, &ray, 0, &osrs_render::gpu::RoofView::hidden_above());
         total += 1;
         let ok = pick.object.as_ref().is_some_and(|object| {
             let hit = &infos[&object.region].locs[object.index];
@@ -191,4 +191,54 @@ fn ray_box_any(ray: &Ray, loc: &osrs_world::LocInfo) -> bool {
     loc.slots
         .iter()
         .any(|slot| ray_box(ray, slot.min, slot.max).is_some())
+}
+
+/// Needs the pinned cache (`RUSTOSRS_TARGET_CACHE_DIR`).
+#[test]
+#[ignore = "requires the pinned build-241 cache"]
+fn a_drawn_roof_is_reported_and_a_hidden_one_is_not() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::var("RUSTOSRS_TARGET_CACHE_DIR")?;
+    let mut definitions = osrs_world::WorldDefinitions::open(dir)?;
+    let region = osrs_core::coords::RegionCoord::new(50, 50);
+    let built = osrs_world::build_region_geometry(
+        &mut definitions,
+        region,
+        osrs_world::TerrainPresentation::default(),
+    )?
+    .ok_or("region 50,50 missing")?;
+    let mut infos = Infos::new();
+    infos.insert((50, 50), built.info.clone());
+    let roof_loc = built
+        .info
+        .locs
+        .iter()
+        .find(|loc| loc.min_plane > 0 && loc.roof != 0 && !loc.slots.is_empty())
+        .ok_or("no roof piece in region 50,50")?;
+    let slot = &roof_loc.slots[0];
+    let centre = [
+        f64::from(slot.min[0] + slot.max[0]) / 2.0,
+        f64::from(slot.min[2] + slot.max[2]) / 2.0,
+    ];
+    let ray = Ray {
+        origin: [centre[0], -20_000.0, centre[1]],
+        dir: [0.0, 1.0, 0.0],
+    };
+    let drawn = pick(
+        &infos,
+        &ray,
+        0,
+        &osrs_render::gpu::RoofView::all_but(Default::default()),
+    );
+    assert!(
+        drawn.roof.is_some(),
+        "the roof over the ray column is not reported"
+    );
+    let cut = osrs_render::gpu::RoofView::all_but(drawn.roof.into_iter().collect());
+    assert!(
+        pick(&infos, &ray, 0, &cut).roof.is_none(),
+        "a hidden roof must not be picked"
+    );
+    let hidden = pick(&infos, &ray, 0, &osrs_render::gpu::RoofView::hidden_above());
+    assert!(hidden.roof.is_none());
+    Ok(())
 }

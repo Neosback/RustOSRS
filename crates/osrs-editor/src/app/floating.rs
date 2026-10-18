@@ -111,6 +111,10 @@ impl EditorApp {
                         }
                         if mode == SelectMode::Auto {
                             auto_button = Some(response.rect);
+                            // Right click opens the slide-out and keeps it (no hover on touch).
+                            if response.secondary_clicked() {
+                                ctx.data_mut(|d| d.insert_temp(egui::Id::new(FLYOUT_PIN), true));
+                            }
                         }
                     }
                     if !self.settings.prefs.picker_collapsed {
@@ -132,6 +136,9 @@ impl EditorApp {
     }
 }
 
+/// Memory id of "the Auto slide-out was opened by right click and stays".
+const FLYOUT_PIN: &str = "auto_flyout_pinned";
+
 /// Choosing a picker stops whatever else is going on: the active tool, an object waiting to be
 /// placed, an NPC placement, a prefab being placed.
 fn choose_picker(app: &mut EditorApp, mode: SelectMode, selecting: bool) {
@@ -151,9 +158,22 @@ fn auto_flyout(app: &mut EditorApp, ctx: &egui::Context, button: egui::Rect, sel
     let zone_id = egui::Id::new("auto_flyout_zone");
     let last: Option<egui::Rect> = ctx.data(|d| d.get_temp(zone_id));
     let zone = last.map_or(button, |last| button.union(last)).expand(4.0);
-    let over = ctx
-        .input(|i| i.pointer.hover_pos())
-        .is_some_and(|p| zone.contains(p));
+    let pin_id = egui::Id::new(FLYOUT_PIN);
+    let pinned = ctx.data(|d| d.get_temp::<bool>(pin_id)).unwrap_or(false);
+    // A drag that started elsewhere (a box across the rail) must not open it; a click outside
+    // the zone lets a pinned one go.
+    let (hover, down, press) = ctx.input(|i| {
+        (
+            i.pointer.hover_pos(),
+            i.pointer.any_down(),
+            i.pointer.press_origin(),
+        )
+    });
+    let started_elsewhere = down && press.is_some_and(|p| !zone.contains(p));
+    if pinned && ctx.input(|i| i.pointer.any_click()) && hover.is_some_and(|p| !zone.contains(p)) {
+        ctx.data_mut(|d| d.remove::<bool>(pin_id));
+    }
+    let over = pinned || (hover.is_some_and(|p| zone.contains(p)) && !started_elsewhere);
     let t = ctx.animate_bool_with_time(egui::Id::new("auto_flyout_open"), over, 0.12);
     if t <= 0.0 {
         ctx.data_mut(|d| d.remove::<egui::Rect>(zone_id));
@@ -193,6 +213,7 @@ fn auto_flyout(app: &mut EditorApp, ctx: &egui::Context, button: egui::Rect, sel
                         .clicked()
                         {
                             choose_picker(app, mode, selecting);
+                            ctx.data_mut(|d| d.remove::<bool>(pin_id));
                         }
                     }
                 });

@@ -10,6 +10,7 @@
 //! It is pure analysis over canonical values: it reads no cache and writes nothing, so the same
 //! code runs over a decoded region, a loaded editor map, or a hand-made test grid.
 
+pub mod description;
 mod edges;
 mod rooms;
 mod tags;

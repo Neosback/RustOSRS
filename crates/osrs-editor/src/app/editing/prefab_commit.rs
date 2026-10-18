@@ -24,6 +24,18 @@ struct Projection {
 /// Commit `patch` as one history step labelled `label` (shown as the notice). Returns whether
 /// it committed; the reason is shown to the user when it did not.
 pub(in crate::app) fn commit_map_patch(app: &mut EditorApp, patch: MapPatch, label: &str) -> bool {
+    commit_patch(app, patch, label, false)
+}
+
+pub(in crate::app) fn apply_baseline_patch(
+    app: &mut EditorApp,
+    patch: MapPatch,
+    label: &str,
+) -> bool {
+    commit_patch(app, patch, label, true)
+}
+
+fn commit_patch(app: &mut EditorApp, patch: MapPatch, label: &str, baseline: bool) -> bool {
     let mut keys = BTreeSet::new();
     let mut include_height = false;
     let (mut removed, mut added) = (Vec::new(), Vec::new());
@@ -61,7 +73,7 @@ pub(in crate::app) fn commit_map_patch(app: &mut EditorApp, patch: MapPatch, lab
     let has_objects = !removed.is_empty() || !added.is_empty();
     let route = ObjectHistoryRoute::new(removed, added);
 
-    let execution = app.session.execute_named("prefab", patch, |document| {
+    let prepare = |document: &osrs_edit::MapDocument| {
         let mut tiles = Vec::with_capacity(current.len());
         for (key, current) in &current {
             let current = current
@@ -79,7 +91,12 @@ pub(in crate::app) fn commit_map_patch(app: &mut EditorApp, patch: MapPatch, lab
             None
         };
         Ok::<_, String>(Projection { tiles, objects })
-    });
+    };
+    let execution = if baseline {
+        app.session.execute_baseline(patch, prepare)
+    } else {
+        app.session.execute_named("prefab", patch, prepare)
+    };
     let (receipt, projection) = match execution {
         Ok(EditExecution::Committed {
             receipt,
@@ -135,11 +152,13 @@ pub(in crate::app) fn commit_map_patch(app: &mut EditorApp, patch: MapPatch, lab
         route
     });
     app.world.invalidate_semantic_edit(&receipt);
-    app.push_step(EditStep::semantic_composite(
-        keys,
-        include_height,
-        object_route,
-    ));
+    if !baseline {
+        app.push_step(EditStep::semantic_composite(
+            keys,
+            include_height,
+            object_route,
+        ));
+    }
     app.ui.notify(label.to_owned());
     true
 }

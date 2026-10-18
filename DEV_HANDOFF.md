@@ -1,8 +1,57 @@
 # RustOSRS Development Handoff
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md` and `scripts/editor_features.json` locate feature ownership and tests. Live Git state is authoritative for branch/SHA facts; CI claims require actual run evidence.
+
+## Building correctness / Prefab Studio / procedural Lab (2026-10-18)
+
+This section supersedes older operational status below for this checkpoint. Work started on `main`
+at exact SHA `5d0d5a47f18862973a195e6abe93da63c6d19d85`, with existing interaction/picking/roof
+changes already uncommitted. Those edits were preserved. No branch, worktree, push or PR was created.
+All current implementation changes remain uncommitted while integration verification is in progress.
+
+- Building descriptions live in `osrs-scene::building_census::description`. They retain exact
+  occurrences, canonical wall arms, portals/approaches, attachments and candidate roof/stair links.
+  Inferences carry evidence and uncertain/shared membership requires capture review.
+- Prefab v2 persists sparse floors/support, dimensions, indexed relations, provenance and human
+  labels. V1 remains readable. Outside anchors do not copy outside terrain. Studio saves compare
+  the authored document with the pristine stage and retain intentionally default owned floors.
+- Building relocation uses median support fitting, preserves relative upper heights, blends two
+  tiles and rejects incomplete/stepped/occupied/unverified sites. Replacement lists exact removals
+  and commits once after revision/source-stamped review. Rectangle capture remains separate.
+- Native Studio parks the world, reuses the gallery stage and normal controllers, initializes an
+  untracked baseline, and provides isolated undo/history, Save/new/Revert and dirty navigation.
+  Overlays explain masks, outside anchors, wall arms, door approaches, roofs and relationship
+  evidence. Human labels survive inferred-link invalidation. Native stages reject nonempty source
+  pads, preserve keymaps and release worker joins off the frame thread.
+- `osrs-lab` is a portable core/edit/scene boundary for tool actions, private targets, budgeted
+  scoring, undo/replay and JSON-lines batching. Studio projects Lab state read-only while parking
+  authored history. Tasks include generated tavern, prefab reconstruction and terrain relocation;
+  accept/reject feedback and action traces remain local. No raw-patch or target-paste action exists.
+- Learned WFC catalogs restrict compatibility to observed pairs, retain integer counts and report
+  the 128-pattern limit. Kits accept versioned catalogs and quantized role suggestions. Python
+  baselines and learners are documented in `scripts/lab/README.md`; confirmed human labels and
+  geographic/family holdouts remain separate from weak census/117HD labels.
+- Dataset v2 uses neighbor context and resolved terrain/collision; it emits exact roof/object
+  occurrences, sparse floors, terrain channels, vertices, evidence, unknown/truncated coverage and
+  source fingerprints. Opcode-249 object parameters retain typed values without guessing key meanings.
+- Interaction fixes clear selection on every plane path, stamp outline requests/results, reuse
+  roof grids, merge large-selection boundary segments and layer Escape/flyout behavior. The runtime
+  extraction respects the existing 500-line cap; the EditorApp surface was reduced, not widened.
+
+Actual checks so far: architecture guard and 27 guard tests passed; 266 edit + 71 scene + 4 Lab
+library tests passed before the latest integration additions; five Python learning tests passed.
+A visible-target tavern reconstruction reached exact score 1 through 950 tool actions. A seeded
+private-target search smoke returned no target snapshot. Full native/WASM gate and native visual
+smoke are still pending; no remote CI or independent visual-oracle acceptance is claimed.
+
+Known deliberate constraints: stepped foundations require support-group design before automatic
+fitting; unverified destination overlays are conservatively rejected. Studio saved bounds/planes
+are fixed and out-of-bounds edits are rejected. Learned catalogs require explicit kit asset binding;
+private JSON observations do not sandbox an untrusted process's filesystem. No trained neural
+policy or accuracy on an absent human-reviewed corpus is claimed. Path fitting stays on its existing
+editor owner until path tasks are added. See ADR-0015 and the feature registry for ownership/tests.
 
 ## Current boundary and standing workflow
 

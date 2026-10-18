@@ -65,6 +65,12 @@ jobs:
         with:
           shared-key: "workspace-fast-ci"
 
+      - name: Check offline learning contracts
+        run: python3 scripts/test_lab_training.py
+
+      - name: Run headless Lab tests
+        run: cargo test --locked -p osrs-lab
+
       - name: Run vertical procgen tests
         run: cargo test --locked -p osrs-edit building_vertical
 

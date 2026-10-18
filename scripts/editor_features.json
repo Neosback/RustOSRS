@@ -2,7 +2,7 @@
   "Select": {
     "mutates_document": false,
     "controller": {
-      "file": "crates/osrs-editor/src/app/interaction_runtime.rs",
+      "file": "crates/osrs-editor/src/app/interaction_runtime/selection.rs",
       "symbol": "begin_marquee"
     }
   },
@@ -224,6 +224,70 @@
     "undo_test": {
       "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
       "symbol": "composite_undo_and_redo_replay_terrain_height_and_object_together"
+    }
+  },
+  "Prefab Studio": {
+    "kind": "workspace",
+    "mutates_document": true,
+    "controller": {
+      "file": "crates/osrs-editor/src/app/prefab_studio/mod.rs",
+      "symbol": "frame"
+    },
+    "planner": {
+      "file": "crates/osrs-edit/src/prefab/building/studio.rs",
+      "symbol": "capture_prefab_over"
+    },
+    "gateway": {
+      "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
+      "symbol": "commit_map_patch"
+    },
+    "planning_test": {
+      "file": "crates/osrs-edit/src/prefab/building/tests.rs",
+      "symbol": "sparse_courtyard_capture_and_studio_roundtrip_exclude_pad_and_keep_default_floor"
+    },
+    "cancellation_test": {
+      "file": "crates/osrs-editor/src/app/prefab_studio/session.rs",
+      "symbol": "failed_save_and_cancel_leave_the_scene_available"
+    },
+    "commit_test": {
+      "file": "crates/osrs-editor/src/app/prefab_studio/tests.rs",
+      "symbol": "studio_baseline_is_untracked_and_user_commit_is_one_entry"
+    },
+    "undo_test": {
+      "file": "crates/osrs-editor/src/app/prefab_studio/tests.rs",
+      "symbol": "studio_undo_returns_to_prefab_and_parked_world_never_changes"
+    }
+  },
+  "Procedural Lab": {
+    "kind": "workspace",
+    "mutates_document": true,
+    "controller": {
+      "file": "crates/osrs-editor/src/app/prefab_studio/lab.rs",
+      "symbol": "show"
+    },
+    "planner": {
+      "file": "crates/osrs-lab/src/action.rs",
+      "symbol": "plan"
+    },
+    "gateway": {
+      "file": "crates/osrs-lab/src/env.rs",
+      "symbol": "step"
+    },
+    "planning_test": {
+      "file": "crates/osrs-lab/src/tests.rs",
+      "symbol": "tool_actions_undo_redo_and_replay_restore_exact_state"
+    },
+    "cancellation_test": {
+      "file": "crates/osrs-lab/src/tests.rs",
+      "symbol": "invalid_actions_preserve_document_and_raw_target_writes_are_unrepresentable"
+    },
+    "commit_test": {
+      "file": "crates/osrs-lab/src/tests.rs",
+      "symbol": "tool_actions_undo_redo_and_replay_restore_exact_state"
+    },
+    "undo_test": {
+      "file": "crates/osrs-lab/src/tests.rs",
+      "symbol": "failures_do_not_destroy_redo_and_budget_is_bounded"
     }
   }
 }

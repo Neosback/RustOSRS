@@ -110,7 +110,7 @@ impl EditorApp {
                             )
                             .clicked()
                         {
-                            self.interaction.set_view_plane(plane);
+                            self.interaction.switch_plane(plane);
                         }
                     }
                     ui.separator();

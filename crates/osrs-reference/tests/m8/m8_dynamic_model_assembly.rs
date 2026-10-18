@@ -268,6 +268,7 @@ fn object_definition(
     morphs: Option<ObjectMorphs>,
 ) -> Result<ObjectDefinition, Box<dyn Error>> {
     Ok(ObjectDefinition {
+        parameters: Default::default(),
         identity: DefinitionIdentity::new(id, provenance()?),
         name: Some(format!("fixture-{}", id.get())),
         models: Some(ObjectModels::Untyped(vec![ModelId::new(77)])),

@@ -70,6 +70,7 @@ crates/
 ├── osrs-hd/         # reusable 117HD data/settings/material/environment semantics
 ├── osrs-render/     # wgpu projection only, GPU resources, pipelines, shaders, mesh upload
 ├── osrs-world/      # streaming/orchestration, async scene construction, projection workers
+├── osrs-lab/        # headless tool environments, private targets, deterministic scoring/replay
 ├── osrs-reference/  # reference fixtures/parity infrastructure, never a production dependency
 └── osrs-editor/     # composition root, UI, input, tools/controllers, platform integration
 ```
@@ -1070,3 +1071,11 @@ ADR-0011 records the current ownership refinement. `docs/architecture/FEATURE-MA
 `scripts/editor_app_surface.json` records existing broad application methods and composition fields. New feature behavior must go on its owner. Removed methods require pruning their entries, so the baseline can only ratchet down during routine extraction. Deliberate composition/API changes require explicit ownership review rather than automatic baseline regeneration. The ratchet complements Rust privacy and behavioral tests; it cannot prove cohesion or detect all possible alternate implementations.
 
 Every new mutating Tool variant must register actual planning, cancellation, commit and undo tests. Existing parity fixtures and dependency-proof invalidation are retained.
+
+## Reviewed buildings and isolated learning
+
+[ADR-0015](docs/adr/ADR-0015-building-ownership-and-lab.md) defines the boundary:
+scene descriptions are evidence; reviewed sparse ownership is persisted in `osrs-edit` prefabs.
+Studio parks the world session and initializes a separate stage through a transactional untracked
+baseline. Lab actions use planners and history; raw patches/snapshots remain infrastructure inputs.
+The Lab depends only on core/edit/scene and serialization, with no cache, GPU or UI dependency.

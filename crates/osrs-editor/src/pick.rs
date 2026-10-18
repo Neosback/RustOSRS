@@ -5,6 +5,7 @@ mod describe;
 pub use describe::{describe_neighbourhood, describe_object, describe_tile, summary, tile_values};
 
 use crate::camera::FlyCamera;
+use osrs_render::gpu::RoofView;
 use osrs_world::{LocInfo, RegionInfo, SurfaceKind, TileInfo};
 use std::{collections::HashMap, sync::Arc};
 
@@ -145,10 +146,14 @@ pub struct TilePick {
 pub struct Pick {
     pub object: Option<ObjectPick>,
     pub tile: Option<TilePick>,
+    /// The roof volume drawn over everything the ray would otherwise pick (an upper floor or
+    /// roof the viewed plane does not edit), when one is.
+    pub roof: Option<u32>,
 }
 
-/// Find the nearest visible object and the terrain tile along `ray`.
-pub fn pick(infos: &Infos, ray: &Ray, view_plane: u8) -> Pick {
+/// Find the nearest editable object and the terrain tile of the viewed plane along `ray`, and the
+/// roof (as drawn under `roofs`) that hides them, if any.
+pub fn pick(infos: &Infos, ray: &Ray, view_plane: u8, roofs: &RoofView) -> Pick {
     let plane = usize::from(view_plane.min(3));
     let terrain = terrain_hit(infos, ray, plane);
     let tile = terrain.map(|distance| {
@@ -160,9 +165,13 @@ pub fn pick(infos: &Infos, ray: &Ray, view_plane: u8) -> Pick {
     });
 
     let mut best: Option<(f64, f64, ObjectPick)> = None;
+    let mut roof_best: Option<(f64, u32)> = None;
     for (key, info) in infos {
         for (index, loc) in info.locs.iter().enumerate() {
-            if loc.min_plane > view_plane {
+            // Above the viewed plane nothing is editable, but what is drawn still hides what is
+            // below it.
+            let editable = loc.min_plane <= view_plane;
+            if !editable && (loc.roof == 0 || !roofs.shows(loc.min_plane, loc.roof, view_plane)) {
                 continue;
             }
             for slot in &loc.slots {
@@ -181,6 +190,12 @@ pub fn pick(infos: &Infos, ray: &Ray, view_plane: u8) -> Pick {
                 };
                 // Ignore boxes that are only reached behind the terrain.
                 if terrain.is_some_and(|ground| distance > ground + 16.0) {
+                    continue;
+                }
+                if !editable {
+                    if roof_best.is_none_or(|(d, _)| distance < d) {
+                        roof_best = Some((distance, loc.roof));
+                    }
                     continue;
                 }
                 let volume = f64::from((slot.max[0] - slot.min[0]).max(1))
@@ -202,9 +217,19 @@ pub fn pick(infos: &Infos, ray: &Ray, view_plane: u8) -> Pick {
             }
         }
     }
+    let nearest_below = best
+        .as_ref()
+        .map(|(d, _, _)| *d)
+        .into_iter()
+        .chain(terrain)
+        .reduce(f64::min);
+    let roof = roof_best
+        .filter(|(d, _)| nearest_below.is_none_or(|below| *d < below))
+        .map(|(_, id)| id);
     Pick {
         object: best.map(|(_, _, pick)| pick),
         tile,
+        roof,
     }
 }
 

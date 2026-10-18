@@ -28,6 +28,7 @@ pub fn decode_object_definition(
     let mut reader = BinaryReader::new(bytes, context, source)
         .with_subject(DecodeSubject::ObjectDefinition(id.get()));
 
+    let mut parameters = std::collections::BTreeMap::new();
     let mut name = None;
     let mut models = None;
     let mut size_x = 1_u16;
@@ -184,7 +185,7 @@ pub fn decode_object_definition(
             100 => consume_entity_sub_op(&mut reader)?,
             101 => consume_conditional_op(&mut reader)?,
             102 => consume_conditional_sub_op(&mut reader)?,
-            249 => consume_parameters(&mut reader)?,
+            249 => decode_parameters(&mut reader, &mut parameters)?,
             _ => {
                 return Err(reader.unsupported_opcode(
                     "object-definition",
@@ -201,6 +202,7 @@ pub fn decode_object_definition(
         sound_extras.apply(sound);
     }
     Ok(ObjectDefinition {
+        parameters,
         identity: DefinitionIdentity::new(id, context.target_provenance().clone()),
         name,
         models,
@@ -422,16 +424,21 @@ fn consume_conditional_sub_op(reader: &mut BinaryReader<'_>) -> DecodeResult<()>
     Ok(())
 }
 
-fn consume_parameters(reader: &mut BinaryReader<'_>) -> DecodeResult<()> {
-    let count = usize::from(reader.read_u8()?);
+fn decode_parameters(
+    reader: &mut BinaryReader<'_>,
+    parameters: &mut std::collections::BTreeMap<u32, osrs_core::definitions::ObjectParameter>,
+) -> DecodeResult<()> {
+    use osrs_core::definitions::ObjectParameter;
+    let count = reader.read_u8()?;
     for _ in 0..count {
         let is_string = reader.read_u8()? == 1;
-        reader.skip(3)?;
-        if is_string {
-            let _ = reader.read_cp1252_string()?;
+        let key = reader.read_u24_be()?;
+        let value = if is_string {
+            ObjectParameter::String(reader.read_cp1252_string()?)
         } else {
-            reader.skip(4)?;
-        }
+            ObjectParameter::Integer(reader.read_i32_be()?)
+        };
+        parameters.insert(key, value);
     }
     Ok(())
 }

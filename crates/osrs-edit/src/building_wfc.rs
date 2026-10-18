@@ -140,6 +140,7 @@ pub enum WfcCatalogError {
     EmptyCatalog,
     TooManyPatterns { count: usize },
     ZeroWeight { pattern: usize },
+    InvalidAdjacency { from: u8, to: u8 },
 }
 
 impl WfcCatalog {
@@ -186,6 +187,33 @@ impl WfcCatalog {
             patterns,
             compatibility,
         })
+    }
+
+    /// Build an observed compatibility table, intersected with semantic sockets. Reverse edges
+    /// are installed together because an observation describes one physical shared boundary.
+    pub fn from_adjacencies(
+        specs: impl IntoIterator<Item = WfcPatternSpec>,
+        edges: &[(WfcPatternId, CardinalDirection, WfcPatternId)],
+    ) -> Result<Self, WfcCatalogError> {
+        let mut catalog = Self::new(specs)?;
+        let semantic = catalog.compatibility.clone();
+        catalog.compatibility.fill([PatternDomain::empty(); 4]);
+        for &(from, direction, to) in edges {
+            if usize::from(from.get()) >= catalog.pattern_count()
+                || usize::from(to.get()) >= catalog.pattern_count()
+                || !semantic[usize::from(from.get())][direction.index()].contains(to)
+            {
+                return Err(WfcCatalogError::InvalidAdjacency {
+                    from: from.get(),
+                    to: to.get(),
+                });
+            }
+            let reverse = opposite(direction);
+            catalog.compatibility[usize::from(from.get())][direction.index()].0 |=
+                1u128 << to.get();
+            catalog.compatibility[usize::from(to.get())][reverse.index()].0 |= 1u128 << from.get();
+        }
+        Ok(catalog)
     }
 
     pub fn patterns(&self) -> &[WfcPattern] {

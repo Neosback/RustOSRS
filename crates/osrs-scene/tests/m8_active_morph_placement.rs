@@ -57,6 +57,7 @@ fn object_definition(
     morphs: Option<ObjectMorphs>,
 ) -> Result<ObjectDefinition, Box<dyn Error>> {
     Ok(ObjectDefinition {
+        parameters: Default::default(),
         identity: DefinitionIdentity::new(ObjectId::new(id), provenance()?),
         name: None,
         models: None,

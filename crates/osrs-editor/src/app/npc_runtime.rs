@@ -135,6 +135,11 @@ impl NpcRuntime {
         self.catalog_requested = true;
     }
 
+    /// Drop an armed gesture; whether one was armed.
+    pub(super) fn take_gesture(&mut self) -> bool {
+        std::mem::replace(&mut self.arm, Arm::None) != Arm::None
+    }
+
     /// Drop an armed placement or destination click (choosing any picker or tool does this).
     pub(super) fn cancel_gesture(&mut self) {
         self.arm = Arm::None;

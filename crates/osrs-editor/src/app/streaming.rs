@@ -81,9 +81,15 @@ impl EditorApp {
                     self.renderer.cancel_theme_preparation();
                     self.audio.source_opened();
                     self.player_model.source_opened(&mut self.renderer);
-                    self.names.source_opened(self.project.cache_label(), build);
-                    self.npcs
-                        .source_opened(fingerprint, build, &self.world, &mut self.renderer);
+                    if self.prefabs.stage_region.is_none() {
+                        self.names.source_opened(self.project.cache_label(), build);
+                        self.npcs.source_opened(
+                            fingerprint,
+                            build,
+                            &self.world,
+                            &mut self.renderer,
+                        );
+                    }
                     self.cache_opened(ctx, profile_id, build);
                     self.renderer.set_textures(&textures);
                     self.palettes.set_textures(textures);
@@ -148,11 +154,14 @@ impl EditorApp {
                     );
                 }
                 StreamEvent::Outline {
+                    identity,
                     region,
                     index,
                     triangles,
                 } => {
-                    if let Some(latency_ms) = self.world.install_outline((region, index), triangles)
+                    if let Some(latency_ms) =
+                        self.world
+                            .install_outline((region, index), identity, triangles)
                     {
                         self.diagnostics.event("outline.latency", latency_ms);
                     }
@@ -195,8 +204,15 @@ impl EditorApp {
         self.world.set_semantic_revision(self.session.revision());
         self.world.flush_dirty_regions();
 
-        let center = self.camera_region();
-        let radius = self.settings.prefs.load_radius;
+        let center = self
+            .prefabs
+            .stage_region
+            .map_or_else(|| self.camera_region(), |r| (r.x, r.y));
+        let radius = if self.prefabs.stage_region.is_some() {
+            1
+        } else {
+            self.settings.prefs.load_radius
+        };
         self.world.request_missing(center, radius);
         for key in self.world.unload_stale(center, radius) {
             let _ = self.session.unload_region(RegionCoord::new(key.0, key.1));

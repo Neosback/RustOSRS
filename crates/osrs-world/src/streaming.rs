@@ -296,6 +296,14 @@ fn load_hd(definitions: &WorldDefinitions) -> Result<(HdContext, Box<HdGpuData>)
 }
 
 /// Messages from the streaming worker.
+/// Identity of an outline projection, echoed unchanged by the FIFO worker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OutlineIdentity {
+    pub source_generation: u64,
+    pub projection_epoch: u64,
+    pub request_id: u64,
+}
+
 pub enum StreamEvent {
     NpcAssets(crate::npc::NpcAssetsUpdate),
     PlayerGeometry(crate::npc::PlayerGeometryUpdate),
@@ -333,6 +341,7 @@ pub enum StreamEvent {
     Empty(RegionCoord),
     /// Triangles of one picked loc (`[[x, height, z]; 3]` world units).
     Outline {
+        identity: OutlineIdentity,
         region: (i32, i32),
         index: usize,
         triangles: Vec<[[i32; 3]; 3]>,
@@ -359,6 +368,7 @@ enum Request {
     Edit(Vec<crate::TileEdit>),
     EditLocs(Vec<crate::LocEdit>),
     Outline {
+        identity: OutlineIdentity,
         region: (i32, i32),
         index: usize,
         loc: Box<crate::LocInfo>,
@@ -454,10 +464,16 @@ impl StreamWorker {
                 );
                 let _ = events.send(StreamEvent::NpcGeometry(update));
             }
-            Request::Outline { region, index, loc } => {
+            Request::Outline {
+                identity,
+                region,
+                index,
+                loc,
+            } => {
                 let triangles =
                     crate::loc_outline_triangles(&mut self.definitions, &loc).unwrap_or_default();
                 let _ = events.send(StreamEvent::Outline {
+                    identity,
                     region,
                     index,
                     triangles,
@@ -583,6 +599,17 @@ struct LocalStreamer {
 }
 
 impl RegionStreamer {
+    /// Stop a disposable scene worker without waiting for its current cache/build job on the UI thread.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn shutdown_in_background(&mut self) {
+        let _ = self.requests.send(Request::Shutdown);
+        if let Some(worker) = self.worker.take() {
+            std::thread::spawn(move || {
+                let _ = worker.join();
+            });
+        }
+    }
+
     pub fn spawn(source: impl Into<CacheSource>, presentation: TerrainPresentation) -> Self {
         let source = source.into();
         let (request_tx, request_rx) = channel::<Request>();
@@ -660,8 +687,15 @@ impl RegionStreamer {
     }
 
     /// Ask the worker for the triangles of a picked loc.
-    pub fn request_outline(&self, region: (i32, i32), index: usize, loc: crate::LocInfo) {
+    pub fn request_outline(
+        &self,
+        identity: OutlineIdentity,
+        region: (i32, i32),
+        index: usize,
+        loc: crate::LocInfo,
+    ) {
         let _ = self.requests.send(Request::Outline {
+            identity,
             region,
             index,
             loc: Box::new(loc),

@@ -1,0 +1,16 @@
+[package]
+name = "osrs-lab"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+osrs-core = { path = "../osrs-core" }
+osrs-edit = { path = "../osrs-edit" }
+osrs-scene = { path = "../osrs-scene" }
+serde.workspace = true
+serde_json = "1.0.152"
+
+[lints]
+workspace = true

@@ -75,6 +75,8 @@ pub struct KitFloorFile {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KitFinish {
+    #[serde(default)]
+    pub learned_roles: Option<crate::LearnedRoleModel>,
     /// Floor by room role (`living`, `bank_lobby`... see `role_name`) and `hallway`.
     #[serde(default)]
     pub floors: BTreeMap<String, KitFloorFile>,
@@ -424,6 +426,12 @@ const ROLE_NAMES: &[&str] = &[
 impl KitFinish {
     /// Check the section: known role names, valid kinds, floors that make sense.
     pub fn validate(&self) -> Result<(), crate::KitError> {
+        if let Some(model) = &self.learned_roles {
+            model
+                .validate()
+                .map_err(|e| crate::building_kit::KitError::Roof(e.to_string()))?;
+        }
+
         let bad = |what: &'static str, value: u32| crate::KitError::Value { what, value };
         for name in self.floors.keys().chain(self.furniture.keys()) {
             if !ROLE_NAMES.contains(&name.as_str()) {

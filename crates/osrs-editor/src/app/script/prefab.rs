@@ -12,6 +12,31 @@ fn spoken(name: &str) -> String {
 
 pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Result<(), String> {
     match words.next().unwrap_or_default() {
+        "studio" => {
+            use crate::app::prefab_studio::SceneCommand;
+            let name = words
+                .next()
+                .ok_or("studio NAME|save|new|revert|exit|report")?;
+            app.prefabs.studio_command = match name {
+                "save" => Some(SceneCommand::Save),
+                "new" => Some(SceneCommand::SaveAsNew),
+                "exit" => Some(SceneCommand::Close),
+                "revert" => Some(SceneCommand::Revert),
+                "report" => Some(SceneCommand::Report),
+                _ => {
+                    let name = spoken(name);
+                    let file = app
+                        .prefabs
+                        .entries()
+                        .iter()
+                        .find(|e| e.prefab.name == name)
+                        .map(|e| e.file.clone())
+                        .ok_or("No prefab with that name")?;
+                    app.prefabs.studio_request = Some(file);
+                    None
+                }
+            };
+        }
         "capture" => {
             let name = spoken(words.next().ok_or("a name is missing")?);
             let x0 = super::number::<i32>(words.next(), "x0")?;

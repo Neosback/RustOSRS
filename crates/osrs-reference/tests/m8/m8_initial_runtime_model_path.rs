@@ -93,6 +93,7 @@ fn source_model() -> Result<SourceModel, Box<dyn Error>> {
 
 fn object_definition() -> Result<ObjectDefinition, Box<dyn Error>> {
     Ok(ObjectDefinition {
+        parameters: Default::default(),
         identity: DefinitionIdentity::new(ObjectId::new(980), provenance()?),
         name: Some("M8 initial/runtime path fixture".to_owned()),
         models: Some(ObjectModels::Untyped(vec![ModelId::new(9_801)])),

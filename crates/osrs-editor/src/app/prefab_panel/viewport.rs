@@ -51,7 +51,17 @@ pub(super) fn plan(
         objects: armed.objects,
         replace_objects: armed.replace_objects,
     };
-    let size_of = |id: ObjectId, _: LocKind| app.placer.object_size(id.get());
+    let size_of = |id: ObjectId, _: LocKind| {
+        entry
+            .prefab
+            .building
+            .as_ref()
+            .and_then(|b| b.object_sizes.get(&id.get()))
+            .map_or_else(
+                || app.placer.object_size(id.get()),
+                |&(x, y)| (x as u8, y as u8),
+            )
+    };
     plan_place_prefab(app.session.document(), &entry.prefab, spec, &size_of)
         .map(|placed| (placed, origin))
 }
@@ -113,6 +123,24 @@ pub(in crate::app) fn place(app: &mut EditorApp, armed: &Armed, hover: (i32, i32
         .map_or_else(String::new, |entry| entry.prefab.name.clone());
     match plan(app, armed, hover) {
         Ok((placed, _)) => {
+            if app
+                .prefabs
+                .entry(&armed.file)
+                .is_some_and(|e| e.prefab.building.is_some())
+                && placed
+                    .patch
+                    .ops()
+                    .iter()
+                    .any(|op| matches!(op, MapOp::RemoveObject { .. }))
+            {
+                app.prefabs.placement_review = Some(super::placement_review::PlacementReview::new(
+                    placed.patch,
+                    app.session.map_revision(),
+                    app.project.generation(),
+                    name,
+                ));
+                return false;
+            }
             let skipped = placed.skipped_heights;
             let committed =
                 crate::app::editing::commit_map_patch(app, placed.patch, &format!("Placed {name}"));
@@ -182,6 +210,37 @@ impl Ghost<'_> {
             let (placement, tint) = match op {
                 MapOp::AddObject { placement } => (placement, Color32::from_rgb(120, 230, 140)),
                 MapOp::RemoveObject { placement } => (placement, Color32::from_rgb(240, 100, 90)),
+                MapOp::SetHeight {
+                    coord,
+                    before,
+                    after,
+                } => {
+                    if coord.plane.index().get() == self.plane
+                        && let Some(at) = self.project(
+                            [
+                                f64::from(coord.corner.x) * 128.0,
+                                f64::from(*after),
+                                f64::from(coord.corner.y) * 128.0,
+                            ],
+                            10.0,
+                        )
+                    {
+                        self.painter
+                            .circle_stroke(at, 3.0, Stroke::new(1.5, Color32::ORANGE));
+                        if let Some(old) = self.project(
+                            [
+                                f64::from(coord.corner.x) * 128.0,
+                                f64::from(*before),
+                                f64::from(coord.corner.y) * 128.0,
+                            ],
+                            10.0,
+                        ) {
+                            self.painter
+                                .line_segment([old, at], Stroke::new(1.0, Color32::ORANGE));
+                        }
+                    }
+                    continue;
+                }
                 _ => continue,
             };
             if placement.position.plane.index().get() != self.plane {

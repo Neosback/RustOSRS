@@ -18,6 +18,9 @@ UI/input → controller intent → pure MapQuery planner → MapPatch
 | Appearance (View tab, not a `Tool`) | `app/theme_studio/`, UI drafts in `UiRuntime` | `osrs-hd::theme::ThemePatch` | `EditRuntime::execute_appearance`, same generic chronological history |
 | Prefabs (rail tab, not a `Tool`) | `app/prefab_panel/` (library, placement gesture and ghost), `app/prefab_runtime.rs` (library and files) | `osrs-edit/src/prefab/` | `app/editing/prefab_commit.rs`, composite history route (terrain keys plus object route) |
 | Buildings (Prefabs panel Build page) | `app/prefab_panel/build.rs`, `app/prefab_runtime/build.rs` | `osrs-edit` `building_*` generator through `BuildingKit` (`building_kit.rs`) | same prefab commit and composite route |
+| Building capture | `app/prefab_panel/capture/` and `capture.rs` | `osrs-scene::building_census::description`, `osrs-edit::capture_building_prefab` | explicit room/plane/piece review, source/revision-stamped acceptance |
+| Prefab Studio | `app/prefab_studio/` | `capture_prefab_over`, `plan_place_exact` | isolated stage; baseline gateway then normal tool history; sparse save |
+| Procedural Lab | `app/prefab_studio/lab/`, `osrs-lab` JSON-lines | existing edit planners, WFC, foundation fitting | parked author runtime; Lab history; read-only scene projection |
 | Tile paste | `app/editing/paste.rs`, `app/tile_clipboard.rs` | Paint planner | Existing Path history projection |
 
 Application paths are relative to `crates/osrs-editor/src`. `osrs-edit` paths are relative to `crates`.
@@ -86,3 +89,14 @@ Authored appearance is owned by `EditorSession`; `HdRuntime` retains only resolv
 environment transition state. The current renderer accepts global/area environment rules and WGSL
 hooks; image-material/terrain/object selectors are rejected until their projections are implemented.
 See `docs/plans/THEME-STUDIO.md` for the explicit incomplete boundary.
+
+Building relocation defaults to median support fitting with a two-tile blend. Missing support,
+stepped source foundations and unverified bridge/overlay sites fail explicitly. Existing structures
+cannot be changed through height fitting without a reviewed removal. The replacement modal lists
+the exact removals and rejects stale map/source stamps. Rectangle capture remains a separate flow.
+
+Studio relationship overlays project persisted masks, wall arms, outside anchors, door approaches
+and inferred links; their explanation panel exposes evidence. Object edits invalidate inferred
+occurrence links; human labels survive. Metadata edits participate in dirty navigation.
+See [local training commands](../../scripts/lab/README.md) for source-stamped exports, integer role
+models, observed WFC catalogs, held-out groups and the distinction between curriculum and evaluation.

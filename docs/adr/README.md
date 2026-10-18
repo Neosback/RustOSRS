@@ -69,6 +69,8 @@ Numbers are monotonic and never reused.
 | [ADR-0012-first-class-filestore.md](ADR-0012-first-class-filestore.md) | owned JS5 filestore, safe lazy native reads, verified incremental repacking |
 | [ADR-0014-authored-appearance.md](ADR-0014-authored-appearance.md) | application-owned theme snapshots, shared chronological history and validated GPU candidates |
 
+| [ADR-0015-building-ownership-and-lab.md](ADR-0015-building-ownership-and-lab.md) | reviewed sparse building ownership, isolated Studio and tool-driven procedural Lab |
+
 ## Proposed ADRs
 
 | ADR | Decision |

@@ -33,6 +33,10 @@ impl ProjectRuntime {
             persistence: native::ProjectPersistence::default(),
         }
     }
+    pub(super) fn source(&self) -> &CacheSource {
+        &self.source
+    }
+
     pub(super) fn generation(&self) -> u64 {
         self.generation
     }

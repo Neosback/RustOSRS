@@ -18,15 +18,23 @@ use osrs_core::{
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fmt};
 
+mod building;
+mod capture;
+mod foundation;
 mod place;
+pub use building::{
+    BuildingCaptureSpec, BuildingPrefabError, PrefabBuilding, PrefabCell, PrefabRelation,
+    capture_building_prefab, capture_prefab_over,
+};
+pub use capture::{capture_prefab, prefab_from_patch};
 
-pub use place::{PlaceSpec, PlacedPrefab, plan_place_prefab, turned_size};
+pub use place::{PlaceSpec, PlacedPrefab, plan_place_exact, plan_place_prefab, turned_size};
 
 #[cfg(test)]
 mod tests;
 
 pub const PREFAB_FORMAT: &str = "rustosrs-prefab";
-pub const PREFAB_VERSION: u32 = 1;
+pub const PREFAB_VERSION: u32 = 2;
 /// The largest side of a prefab, in tiles (two map regions).
 pub const MAX_PREFAB_SIDE: u16 = 128;
 
@@ -100,6 +108,8 @@ pub struct Prefab {
     pub tiles: Vec<PrefabTile>,
     pub heights: Vec<PrefabHeight>,
     pub objects: Vec<PrefabObject>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub building: Option<PrefabBuilding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,6 +144,7 @@ pub enum PrefabError {
     },
     Nothing,
     Patch(PatchApplyError),
+    Building(BuildingPrefabError),
 }
 
 impl fmt::Display for PrefabError {
@@ -161,6 +172,7 @@ impl fmt::Display for PrefabError {
                 write!(f, "{planes} planes do not fit above plane {base}")
             }
             Self::Nothing => write!(f, "there is nothing to put in the prefab"),
+            Self::Building(error) => write!(f, "building: {error}"),
             Self::Patch(error) => write!(f, "the placement does not apply: {error:?}"),
         }
     }
@@ -174,7 +186,7 @@ impl Prefab {
         if self.format != PREFAB_FORMAT {
             return Err(PrefabError::Format(self.format.clone()));
         }
-        if self.version != PREFAB_VERSION {
+        if self.version != 1 && self.version != PREFAB_VERSION {
             return Err(PrefabError::Version(self.version));
         }
         if self.name.trim().is_empty() {
@@ -251,6 +263,9 @@ impl Prefab {
                 });
             }
         }
+        if let Some(building) = &self.building {
+            building.validate(self).map_err(PrefabError::Building)?;
+        }
         Ok(())
     }
 
@@ -320,7 +335,7 @@ pub(crate) fn footprint(
 ) -> (i32, i32) {
     // Boundary pieces, wall decorations, diagonal walls and ground decoration take one tile
     // whatever the definition's size says.
-    if kind <= 9 || kind == 22 {
+    if !matches!(kind, 10 | 11) {
         return (1, 1);
     }
     let (sx, sy) = LocKind::new(kind).map_or((1, 1), |kind| size_of(id, kind));
@@ -355,231 +370,6 @@ pub fn objects_overlapping_rect(
 
 pub(crate) fn plane_at(base: SourcePlane, offset: u8) -> Option<SourcePlane> {
     SourcePlane::new(base.index().get().checked_add(offset)?)
-}
-
-/// Copy a rectangle of the map into a prefab. Terrain tiles equal to the default are left out,
-/// and a height vertex the document has no value for is left out; objects are taken by the tile
-/// their placement is stored on.
-pub fn capture_prefab(
-    document: &MapDocument,
-    spec: CaptureSpec,
-    name: impl Into<String>,
-    source: PrefabSource,
-) -> Result<Prefab, PrefabError> {
-    let side = 1..=MAX_PREFAB_SIDE;
-    if !side.contains(&spec.width)
-        || !side.contains(&spec.height)
-        || !(1..=4).contains(&spec.planes)
-    {
-        return Err(PrefabError::BadSize {
-            width: spec.width,
-            height: spec.height,
-            planes: spec.planes,
-        });
-    }
-    if plane_at(spec.base_plane, spec.planes - 1).is_none() {
-        return Err(PrefabError::PlaneOverflow {
-            base: spec.base_plane.index().get(),
-            planes: spec.planes,
-        });
-    }
-    let (min_x, min_y) = (spec.origin.x, spec.origin.y);
-    let (max_x, max_y) = (
-        min_x + i32::from(spec.width),
-        min_y + i32::from(spec.height),
-    );
-    let mut prefab = Prefab {
-        format: PREFAB_FORMAT.to_owned(),
-        version: PREFAB_VERSION,
-        name: name.into(),
-        tags: Vec::new(),
-        notes: String::new(),
-        source,
-        width: spec.width,
-        height: spec.height,
-        planes: spec.planes,
-        tiles: Vec::new(),
-        heights: Vec::new(),
-        objects: Vec::new(),
-    };
-    for offset in 0..spec.planes {
-        let Some(plane) = plane_at(spec.base_plane, offset) else {
-            continue;
-        };
-        if spec.terrain {
-            for y in 0..spec.height {
-                for x in 0..spec.width {
-                    let tile = MapTile::new(min_x + i32::from(x), min_y + i32::from(y));
-                    let terrain = document.terrain_at(MapPosition::new(tile, plane));
-                    if terrain == TerrainTile::default() {
-                        continue;
-                    }
-                    prefab.tiles.push(PrefabTile {
-                        x,
-                        y,
-                        plane: offset,
-                        underlay: terrain.underlay.map(FloorUnderlayId::get),
-                        overlay: terrain.overlay.map(|overlay| PrefabOverlay {
-                            id: overlay.id.get(),
-                            shape: overlay.shape.get(),
-                            rotation: overlay.rotation.get(),
-                        }),
-                        flags: terrain.flags,
-                    });
-                }
-            }
-        }
-        if spec.heights {
-            for y in 0..=spec.height {
-                for x in 0..=spec.width {
-                    let corner = MapTile::new(min_x + i32::from(x), min_y + i32::from(y));
-                    if let Some(value) = document.height_at(HeightVertexCoord::new(corner, plane)) {
-                        prefab.heights.push(PrefabHeight {
-                            x,
-                            y,
-                            plane: offset,
-                            value,
-                        });
-                    }
-                }
-            }
-        }
-        if spec.objects {
-            for placement in objects_in_rect(document, (min_x, min_y), (max_x, max_y), plane) {
-                let tile = placement.position.tile;
-                prefab.objects.push(PrefabObject {
-                    id: placement.object_id.get(),
-                    x: (tile.x - min_x) as u16,
-                    y: (tile.y - min_y) as u16,
-                    plane: offset,
-                    kind: placement.kind.get(),
-                    orientation: placement.orientation.get(),
-                });
-            }
-        }
-    }
-    prefab.tiles.sort_by_key(|t| (t.plane, t.y, t.x));
-    prefab.heights.sort_by_key(|h| (h.plane, h.y, h.x));
-    prefab
-        .objects
-        .sort_by_key(|o| (o.plane, o.y, o.x, o.kind, o.id, o.orientation));
-    if prefab.tiles.is_empty() && prefab.heights.is_empty() && prefab.objects.is_empty() {
-        return Err(PrefabError::Nothing);
-    }
-    prefab.validate()?;
-    Ok(prefab)
-}
-
-/// Build a prefab from a generated or hand-made patch: the patch's added objects and terrain
-/// results, relative to `origin`, with the planes it touches. The patch is not applied.
-pub fn prefab_from_patch(
-    patch: &MapPatch,
-    origin: MapTile,
-    base_plane: SourcePlane,
-    width: u16,
-    height: u16,
-    name: impl Into<String>,
-    source: PrefabSource,
-) -> Result<Prefab, PrefabError> {
-    let mut planes = 1u8;
-    let rel = |tile: MapTile, plane: SourcePlane| -> Option<(u16, u16, u8)> {
-        let x = u16::try_from(tile.x - origin.x).ok()?;
-        let y = u16::try_from(tile.y - origin.y).ok()?;
-        let p = plane.index().get().checked_sub(base_plane.index().get())?;
-        Some((x, y, p))
-    };
-    let mut prefab = Prefab {
-        format: PREFAB_FORMAT.to_owned(),
-        version: PREFAB_VERSION,
-        name: name.into(),
-        tags: Vec::new(),
-        notes: String::new(),
-        source,
-        width,
-        height,
-        planes: 1,
-        tiles: Vec::new(),
-        heights: Vec::new(),
-        objects: Vec::new(),
-    };
-    let mut removed = HashSet::<ObjectPlacement>::new();
-    for op in patch.ops() {
-        if let MapOp::RemoveObject { placement } = op {
-            removed.insert(*placement);
-        }
-    }
-    for op in patch.ops() {
-        match *op {
-            MapOp::SetTerrain { coord, after, .. } => {
-                let (x, y, plane) = rel(coord.tile, coord.plane).ok_or(PrefabError::OutOfBox {
-                    what: "a tile",
-                    x: 0,
-                    y: 0,
-                    plane: 0,
-                })?;
-                planes = planes.max(plane + 1);
-                prefab.tiles.push(PrefabTile {
-                    x,
-                    y,
-                    plane,
-                    underlay: after.underlay.map(FloorUnderlayId::get),
-                    overlay: after.overlay.map(|overlay: TerrainOverlay| PrefabOverlay {
-                        id: overlay.id.get(),
-                        shape: overlay.shape.get(),
-                        rotation: overlay.rotation.get(),
-                    }),
-                    flags: after.flags,
-                });
-            }
-            MapOp::SetHeight { coord, after, .. } => {
-                let (x, y, plane) =
-                    rel(coord.corner, coord.plane).ok_or(PrefabError::OutOfBox {
-                        what: "a height",
-                        x: 0,
-                        y: 0,
-                        plane: 0,
-                    })?;
-                planes = planes.max(plane + 1);
-                prefab.heights.push(PrefabHeight {
-                    x,
-                    y,
-                    plane,
-                    value: after,
-                });
-            }
-            MapOp::AddObject { placement } if !removed.contains(&placement) => {
-                let (x, y, plane) = rel(placement.position.tile, placement.position.plane).ok_or(
-                    PrefabError::OutOfBox {
-                        what: "an object",
-                        x: 0,
-                        y: 0,
-                        plane: 0,
-                    },
-                )?;
-                planes = planes.max(plane + 1);
-                prefab.objects.push(PrefabObject {
-                    id: placement.object_id.get(),
-                    x,
-                    y,
-                    plane,
-                    kind: placement.kind.get(),
-                    orientation: placement.orientation.get(),
-                });
-            }
-            MapOp::AddObject { .. } | MapOp::RemoveObject { .. } => {}
-        }
-    }
-    prefab.planes = planes;
-    prefab.tiles.sort_by_key(|t| (t.plane, t.y, t.x));
-    prefab.heights.sort_by_key(|h| (h.plane, h.y, h.x));
-    prefab
-        .objects
-        .sort_by_key(|o| (o.plane, o.y, o.x, o.kind, o.id, o.orientation));
-    if prefab.tiles.is_empty() && prefab.heights.is_empty() && prefab.objects.is_empty() {
-        return Err(PrefabError::Nothing);
-    }
-    prefab.validate()?;
-    Ok(prefab)
 }
 
 fn placement_of(

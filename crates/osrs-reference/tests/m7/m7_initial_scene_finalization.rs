@@ -156,6 +156,7 @@ fn object_definition(
     contrast: i16,
 ) -> Result<ObjectDefinition, Box<dyn Error>> {
     Ok(ObjectDefinition {
+        parameters: Default::default(),
         identity: DefinitionIdentity::new(ObjectId::new(object_id), provenance()?),
         name: Some("M7 scene finalization fixture".to_owned()),
         models: Some(ObjectModels::Typed(vec![TypedObjectModel {

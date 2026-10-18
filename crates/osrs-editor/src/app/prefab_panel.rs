@@ -5,9 +5,12 @@
 //! plans a patch against the authoritative document and commits it through the edit gateway.
 
 mod build;
+pub(in crate::app) mod capture;
 mod library;
+pub(in crate::app) mod placement_review;
 pub(in crate::app) mod preview;
 mod viewport;
+pub(super) use placement_review::show as review_placement;
 
 use crate::app::{EditorApp, prefab_runtime::Page};
 use eframe::egui;
@@ -18,6 +21,7 @@ pub(super) use viewport::{armed_input, draw_world, place};
 /// Once per frame: finish file dialogs and keep the generator's preview current while it shows.
 pub(super) fn update(app: &mut EditorApp) {
     viewport::poll(app);
+    capture::poll(app);
     let showing = app.settings.prefs.properties_panel
         && app.settings.prefs.rail_tab == crate::settings::RailTab::Prefabs
         && app.prefabs.page == Page::Build;

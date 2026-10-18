@@ -1,0 +1,229 @@
+//! Reproducible simple-tiled catalogs learned from reviewed symbolic grids.
+mod model;
+use crate::{
+    CardinalDirection, MAX_WFC_PATTERNS, WfcCatalog, WfcPatternId, WfcPatternSpec, WfcSocket,
+};
+pub use model::LearnedRoleModel;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct LearnedPattern {
+    pub floor_class: u32,
+    /// Explicit north/east/south/west order, independent of census enum discriminants.
+    pub sockets: [u16; 4],
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LearningGrid {
+    pub width: u16,
+    pub height: u16,
+    pub cells: Vec<LearnedPattern>,
+    pub reviewed: bool,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LearnedCatalog {
+    pub format: String,
+    pub version: u32,
+    pub style: String,
+    pub role: String,
+    pub source: String,
+    pub patterns: Vec<LearnedPattern>,
+    pub weights: Vec<u32>,
+    /// Pattern, direction (N=0,E=1,S=2,W=3), neighboring pattern.
+    pub adjacency: Vec<(u8, u8, u8)>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LearningError {
+    Unreviewed,
+    InvalidGrid,
+    TooManyPatterns(usize),
+    CountOverflow,
+    InvalidCatalog,
+}
+impl std::fmt::Display for LearningError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "learning catalog: {self:?}")
+    }
+}
+impl std::error::Error for LearningError {}
+
+impl LearnedCatalog {
+    pub fn compile(&self) -> Result<WfcCatalog, LearningError> {
+        if self.format != "rustosrs-learned-catalog"
+            || self.version != 1
+            || self.patterns.len() != self.weights.len()
+            || self.patterns.is_empty()
+        {
+            return Err(LearningError::InvalidCatalog);
+        }
+        let specs = self
+            .patterns
+            .iter()
+            .zip(&self.weights)
+            .map(|(p, &weight)| WfcPatternSpec {
+                weight,
+                sockets: p.sockets.map(WfcSocket),
+            });
+        let mut edges = Vec::new();
+        for &(a, d, b) in &self.adjacency {
+            let direction = *CardinalDirection::ALL
+                .get(usize::from(d))
+                .ok_or(LearningError::InvalidCatalog)?;
+            edges.push((
+                WfcPatternId::new(a).ok_or(LearningError::InvalidCatalog)?,
+                direction,
+                WfcPatternId::new(b).ok_or(LearningError::InvalidCatalog)?,
+            ));
+        }
+        WfcCatalog::from_adjacencies(specs, &edges).map_err(|_| LearningError::InvalidCatalog)
+    }
+}
+
+pub fn learn_catalog(
+    grids: &[LearningGrid],
+    style: String,
+    role: String,
+    source: String,
+) -> Result<LearnedCatalog, LearningError> {
+    let mut counts = BTreeMap::<LearnedPattern, u32>::new();
+    for grid in grids {
+        if !grid.reviewed {
+            return Err(LearningError::Unreviewed);
+        }
+        if grid.width == 0
+            || grid.height == 0
+            || grid.cells.len() != usize::from(grid.width) * usize::from(grid.height)
+        {
+            return Err(LearningError::InvalidGrid);
+        }
+        for p in &grid.cells {
+            let count = counts.entry(p.clone()).or_default();
+            *count = count.checked_add(1).ok_or(LearningError::CountOverflow)?;
+        }
+    }
+    if counts.len() > MAX_WFC_PATTERNS {
+        return Err(LearningError::TooManyPatterns(counts.len()));
+    }
+    if counts.is_empty() {
+        return Err(LearningError::InvalidGrid);
+    }
+    let patterns: Vec<_> = counts.keys().cloned().collect();
+    let weights = counts.values().copied().collect();
+    let ids: BTreeMap<_, _> = patterns
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p.clone(), i as u8))
+        .collect();
+    let mut adjacency = BTreeSet::new();
+    for grid in grids {
+        let w = usize::from(grid.width);
+        let h = usize::from(grid.height);
+        for y in 0..h {
+            for x in 0..w {
+                let a = ids[&grid.cells[y * w + x]];
+                for (d, dx, dy) in [(0, 0, 1), (1, 1, 0), (2, 0, -1), (3, -1, 0)] {
+                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                    if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h {
+                        adjacency.insert((a, d, ids[&grid.cells[ny as usize * w + nx as usize]]));
+                    }
+                }
+            }
+        }
+    }
+    let catalog = LearnedCatalog {
+        format: "rustosrs-learned-catalog".into(),
+        version: 1,
+        style,
+        role,
+        source,
+        patterns,
+        weights,
+        adjacency: adjacency.into_iter().collect(),
+    };
+    catalog.compile()?;
+    Ok(catalog)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn pattern(class: u32) -> LearnedPattern {
+        LearnedPattern {
+            floor_class: class,
+            sockets: [0; 4],
+        }
+    }
+    #[test]
+    fn observations_do_not_allow_unseen_pairs_with_identical_sockets() {
+        let grids = [LearningGrid {
+            width: 2,
+            height: 1,
+            cells: vec![pattern(1), pattern(2)],
+            reviewed: true,
+        }];
+        let learned = learn_catalog(&grids, "town".into(), "house".into(), "fixture".into())
+            .unwrap_or_else(|e| panic!("{e}"));
+        let catalog = learned.compile().unwrap_or_else(|e| panic!("{e}"));
+        let a = WfcPatternId::new(0).unwrap_or_else(|| unreachable!());
+        let b = WfcPatternId::new(1).unwrap_or_else(|| unreachable!());
+        assert!(
+            catalog
+                .compatible_domain(a, CardinalDirection::East)
+                .contains(b)
+        );
+        assert!(
+            !catalog
+                .compatible_domain(a, CardinalDirection::East)
+                .contains(a)
+        );
+        assert!(
+            catalog
+                .compatible_domain(b, CardinalDirection::West)
+                .contains(a)
+        );
+        assert_eq!(learned.weights, [1, 1]);
+    }
+    #[test]
+    fn catalogs_are_sorted_and_reject_unreviewed_or_oversized_input() {
+        let a = LearningGrid {
+            width: 1,
+            height: 1,
+            cells: vec![pattern(2)],
+            reviewed: true,
+        };
+        let b = LearningGrid {
+            width: 1,
+            height: 1,
+            cells: vec![pattern(1)],
+            reviewed: true,
+        };
+        assert_eq!(
+            learn_catalog(&[a.clone(), b.clone()], "s".into(), "r".into(), "x".into()),
+            learn_catalog(&[b, a], "s".into(), "r".into(), "x".into())
+        );
+        let grid = LearningGrid {
+            width: 129,
+            height: 1,
+            cells: (0..129).map(pattern).collect(),
+            reviewed: true,
+        };
+        assert_eq!(
+            learn_catalog(&[grid], "".into(), "".into(), "".into()),
+            Err(LearningError::TooManyPatterns(129))
+        );
+        assert_eq!(
+            learn_catalog(
+                &[LearningGrid {
+                    width: 1,
+                    height: 1,
+                    cells: vec![pattern(0)],
+                    reviewed: false
+                }],
+                "".into(),
+                "".into(),
+                "".into()
+            ),
+            Err(LearningError::Unreviewed)
+        );
+    }
+}

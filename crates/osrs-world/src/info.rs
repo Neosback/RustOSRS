@@ -3,7 +3,7 @@
 
 use crate::{
     LocRenderable, WorldScene,
-    extract::{effective_level, lit_model, loc_slots},
+    extract::{effective_level, lit_model, loc_slots, roof_above, roof_grid},
 };
 use osrs_core::{
     coords::{RegionCoord, SceneTile, StoragePlane},
@@ -83,6 +83,8 @@ pub struct LocInfo {
     /// Draw level after bridge relinking, and the tile's minimum plane.
     pub level: u8,
     pub min_plane: u8,
+    /// The roof volume above the tile (`0` for none): what hiding a roof hides.
+    pub roof: u32,
     /// World tile of the placement anchor.
     pub tile: (i32, i32),
     pub plan: PlacementPlan,
@@ -313,6 +315,7 @@ pub fn extract_region_info(
         }
     }
 
+    let roofs = roof_grid(world);
     let mut locs = Vec::new();
     let mut by_tile: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
     for loc in &world.locs {
@@ -323,6 +326,13 @@ pub fn extract_region_info(
             continue;
         };
         let (level, min_plane) = effective_level(world, loc.plane, loc.tile);
+        let roof = roof_above(
+            world,
+            &roofs,
+            loc.plane.index().get(),
+            loc.tile.x,
+            loc.tile.y,
+        );
         let mut slots = Vec::new();
         for slot in loc_slots(loc, (0, 0)) {
             let model = match slot.renderable {
@@ -390,6 +400,7 @@ pub fn extract_region_info(
             plane: loc.plane.index().get(),
             level,
             min_plane,
+            roof,
             tile,
             plan: loc.plan,
             slots,

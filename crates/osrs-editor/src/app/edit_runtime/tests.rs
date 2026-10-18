@@ -547,3 +547,30 @@ mod scenario {
         assert_eq!(runtime, before);
     }
 }
+
+#[test]
+fn scene_baselines_are_untracked_and_failed_projection_restores_every_state() {
+    let c = vertex(3200, 3200);
+    let mut runtime = EditRuntime::new(EditorSession::new(MapDocument::from_parts(
+        [],
+        [(c, 0)],
+        [],
+    )));
+    let before = runtime.clone();
+    let result = runtime.execute_baseline(height_patch(c, 0, 32), |_| Err::<(), _>("unavailable"));
+    assert!(matches!(
+        result,
+        Err(EditExecutionError::Projection("unavailable"))
+    ));
+    assert_eq!(runtime, before);
+    runtime
+        .execute_baseline(height_patch(c, 0, 32), |_| Ok::<_, ()>(()))
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(runtime.document().height_at(c), Some(32));
+    assert!(!runtime.can_undo());
+    runtime
+        .commit(height_patch(c, 32, 64))
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    runtime.undo().unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(runtime.document().height_at(c), Some(32));
+}

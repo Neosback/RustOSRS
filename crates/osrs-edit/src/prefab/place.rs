@@ -38,6 +38,25 @@ pub struct PlacedPrefab {
     pub already_present: usize,
 }
 
+/// Place a prefab; reviewed building captures fit their foundation by default when heights are on.
+pub fn plan_place_prefab(
+    document: &MapDocument,
+    prefab: &Prefab,
+    spec: PlaceSpec,
+    size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
+) -> Result<PlacedPrefab, PrefabError> {
+    let placed = plan_place_exact(document, prefab, spec, size_of)?;
+    let placed = if prefab.building.is_some() && spec.heights {
+        super::foundation::fit(document, prefab, spec, placed)?
+    } else {
+        placed
+    };
+    if prefab.building.is_some() {
+        super::foundation::validate_conflicts(document, &placed.patch, size_of)?;
+    }
+    Ok(placed)
+}
+
 /// The size of a `width` x `height` rectangle after `turns` quarter turns.
 pub fn turned_size(width: u16, height: u16, turns: u8) -> (u16, u16) {
     if turns.is_multiple_of(2) {
@@ -58,7 +77,7 @@ fn turn_tile(x: i32, y: i32, w: i32) -> (i32, i32) {
 /// scenery and roof pieces, whose stored tile is the south-west corner of their footprint and so
 /// moves when the prefab is turned. Terrain and heights already equal to the prefab's values
 /// produce no operation.
-pub fn plan_place_prefab(
+pub fn plan_place_exact(
     document: &MapDocument,
     prefab: &Prefab,
     spec: PlaceSpec,
@@ -141,6 +160,43 @@ pub fn plan_place_prefab(
                     plane(offset),
                     size_of,
                 ) {
+                    if let Some(building) = &prefab.building {
+                        let (w, h) = footprint(
+                            placement.object_id,
+                            placement.kind.get(),
+                            placement.orientation.get(),
+                            size_of,
+                        );
+                        if !building
+                            .floors
+                            .iter()
+                            .filter(|f| f.plane == offset)
+                            .any(|f| {
+                                let (x, y) = super::foundation::turn(
+                                    i32::from(f.x),
+                                    i32::from(f.y),
+                                    prefab,
+                                    turns,
+                                    false,
+                                );
+                                let (x, y) = (spec.origin.x + x, spec.origin.y + y);
+                                let t = placement.position.tile;
+                                x >= t.x && x < t.x + w && y >= t.y && y < t.y + h
+                            })
+                            && !prefab.objects.iter().any(|o| {
+                                let (x, y) = super::foundation::turn(
+                                    i32::from(o.x),
+                                    i32::from(o.y),
+                                    prefab,
+                                    turns,
+                                    false,
+                                );
+                                o.plane == offset && placement.position.tile == world(x, y)
+                            })
+                        {
+                            continue;
+                        }
+                    }
                     if removing.insert(placement) {
                         ops.push(MapOp::RemoveObject { placement });
                     }

@@ -99,6 +99,7 @@ fn object_definition(
     non_flat_shading: bool,
 ) -> Result<ObjectDefinition, Box<dyn Error>> {
     Ok(ObjectDefinition {
+        parameters: Default::default(),
         identity: DefinitionIdentity::new(ObjectId::new(object_id), provenance()?),
         name: Some("M7 identity threading fixture".to_owned()),
         models: None,

@@ -1894,6 +1894,11 @@ impl SceneRenderer {
         self.lines.set(&self.device, &self.queue, lines);
     }
 
+    /// The roof view the frames are drawn with (what picking must agree with).
+    pub fn roof_view(&self) -> &RoofView {
+        &self.roof_view
+    }
+
     /// Choose how upper floors and roofs are drawn from the next frame on.
     ///
     /// Returns whether the view changed (a cached image of the previous frame is then stale).

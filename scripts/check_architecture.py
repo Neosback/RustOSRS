@@ -26,6 +26,7 @@ ALLOWED_INTERNAL: dict[str, set[str]] = {
     "osrs-core": set(),
     # Headless editable-map semantics may reuse only the canonical value vocabulary.
     "osrs-edit": {"osrs-core"},
+    "osrs-lab": {"osrs-core", "osrs-edit", "osrs-scene"},
     "osrs-filestore": set(),
     "osrs-playtest": {"osrs-core"},
     "osrs-cache": {"osrs-core", "osrs-filestore"},
@@ -48,11 +49,13 @@ ALLOWED_INTERNAL: dict[str, set[str]] = {
         "osrs-world",
         "osrs-hd",
         "osrs-playtest",
+        "osrs-lab",
     },
 }
 
 DEPENDENCY_SECTIONS = {"dependencies", "dev-dependencies", "build-dependencies"}
 CORE_FORBIDDEN = {
+    "osrs-lab",
     "osrs-edit",
     "osrs-cache",
     "osrs-scene",
@@ -127,7 +130,7 @@ def check_workspace(crates_root: Path = CRATES) -> list[str]:
         if crate != "osrs-reference" and "osrs-reference" in dependencies:
             errors.append(f"{crate}: production crates must never depend on osrs-reference")
 
-        if crate in {"osrs-edit", "osrs-filestore", "osrs-playtest"}:
+        if crate in {"osrs-edit", "osrs-filestore", "osrs-playtest", "osrs-lab"}:
             forbidden = sorted(dependencies & EDIT_FORBIDDEN)
             if forbidden:
                 errors.append(f"{crate}: UI/GPU/platform dependency leakage: " + ", ".join(forbidden))

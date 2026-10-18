@@ -380,3 +380,19 @@ fn replacing_also_clears_big_objects_that_reach_into_the_area_from_outside() {
         "a neighbour that only touches the edge stays"
     );
 }
+
+#[test]
+fn non_scenery_rotation_uses_scene_storage_footprints_even_with_large_definitions() {
+    let source = MapDocument::from_parts([], [], [object(900, 3201, 3201, 0, 12, 0)]);
+    let p = capture_of(&source, (3200, 3200), 4, 3);
+    let placed = plan_place_prefab(
+        &empty_ground((3300, 3300), 3, 4),
+        &p,
+        spec((3300, 3300), 1),
+        &|_, _| (3, 2),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert!(placed.patch.ops().contains(&MapOp::AddObject {
+        placement: object(900, 3301, 3302, 0, 12, 1)
+    }));
+}

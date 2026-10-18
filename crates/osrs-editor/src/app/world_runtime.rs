@@ -7,6 +7,7 @@
 mod builds;
 mod height_dependencies;
 mod inspection;
+mod lifecycle;
 pub(in crate::app) use inspection::CollisionInspection;
 mod invalidation;
 mod npc;
@@ -22,7 +23,7 @@ use self::{
 use osrs_core::coords::RegionCoord;
 use osrs_render::SceneGeometry;
 use osrs_world::{
-    AnimatedInstance, AnimationWorker, HeightDependencySnapshot, LocEdit, LocInfo, RegionStreamer,
+    AnimatedInstance, AnimationWorker, HeightDependencySnapshot, LocEdit, RegionStreamer,
     StreamEvent, TerrainPresentation, TileEdit,
 };
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -299,10 +300,6 @@ impl WorldRuntime {
             self.animation.dirty = true;
         }
         stale
-    }
-
-    pub(super) fn request_outline(&self, region: RegionKey, index: usize, loc: LocInfo) {
-        self.streamer.request_outline(region, index, loc);
     }
 
     // ------------------------------------------------------- edit projection mirror

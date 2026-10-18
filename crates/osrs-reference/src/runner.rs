@@ -489,6 +489,7 @@ fn object_definition(
     translation: ModelTranslation,
 ) -> Result<ObjectDefinition, String> {
     Ok(ObjectDefinition {
+        parameters: Default::default(),
         identity: DefinitionIdentity::new(ObjectId::new(0), fixture_provenance()?),
         name: None,
         models,

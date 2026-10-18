@@ -36,6 +36,7 @@ fn hover_bookkeeping_latches_last_tile_and_clear_preserves_it() {
     interaction.set_hover(Pick {
         object: Some(object((1, 2), 3)),
         tile: Some(TilePick { tile: (10, 11) }),
+        roof: None,
     });
 
     assert_eq!(interaction.last_hover_tile, Some((10, 11)));
@@ -54,11 +55,13 @@ fn context_pick_captures_hover_snapshot() {
     interaction.set_hover(Pick {
         object: Some(object((1, 2), 3)),
         tile: Some(TilePick { tile: (10, 11) }),
+        roof: None,
     });
     interaction.capture_context_pick();
     interaction.set_hover(Pick {
         object: Some(object((4, 5), 6)),
         tile: Some(TilePick { tile: (12, 13) }),
+        roof: None,
     });
 
     assert_eq!(
@@ -366,4 +369,40 @@ fn the_box_is_the_rectangle_of_ground_tiles_between_the_press_and_the_pointer() 
         Some(((3244, 3236), (3250, 3240)))
     );
     assert!(interaction.finish_marquee().is_some());
+}
+
+#[test]
+fn switching_plane_drops_what_belonged_to_the_old_one_but_staying_keeps_it() {
+    let mut interaction = runtime();
+    interaction.add_tile((10, 11));
+    interaction.set_hover(Pick {
+        object: Some(object((1, 2), 3)),
+        tile: Some(TilePick { tile: (10, 11) }),
+        roof: Some(5),
+    });
+    interaction.set_peeled_roof(Some(5));
+
+    interaction.switch_plane(0);
+    assert_eq!(
+        interaction.selection_tiles().len(),
+        1,
+        "same plane keeps it"
+    );
+
+    interaction.switch_plane(2);
+    assert_eq!(interaction.view_plane(), 2);
+    assert!(interaction.selection_tiles().is_empty());
+    assert!(interaction.hover().tile.is_none());
+    assert_eq!(interaction.peeled_roof(), None);
+}
+
+#[test]
+fn escape_consumes_only_the_topmost_layer() {
+    use super::EscapeLayer as E;
+    assert_eq!(E::choose(true, true, true, true, false), E::Menu);
+    assert_eq!(E::choose(false, true, true, true, false), E::QuickHud);
+    assert_eq!(E::choose(false, false, true, true, false), E::Marquee);
+    assert_eq!(E::choose(false, false, false, true, false), E::Armed);
+    assert_eq!(E::choose(false, false, false, false, false), E::Tool);
+    assert_eq!(E::choose(false, false, false, false, true), E::Selection);
 }

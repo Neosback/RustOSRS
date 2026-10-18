@@ -137,6 +137,10 @@ impl Default for BuildState {
 }
 
 impl BuildState {
+    pub(in crate::app) fn learned_roles(&self) -> Option<osrs_edit::LearnedRoleModel> {
+        self.kits.get(self.form.kit)?.kit.learned_roles().cloned()
+    }
+
     /// Add a kit from file text; a bad kit is reported, never dropped silently.
     pub(in crate::app) fn add_kit_text(&mut self, source: &str, text: &str) -> bool {
         let compiled = serde_json::from_str::<KitFile>(text)
@@ -423,4 +427,9 @@ fn describe_apply(error: &osrs_edit::PatchApplyError) -> String {
         ),
         other => format!("{other:?}"),
     }
+}
+
+pub(in crate::app) fn starter_kit(index: usize) -> Result<KitFile, String> {
+    serde_json::from_str(STARTER_KITS.get(index).ok_or("unknown starter kit")?.1)
+        .map_err(|e| e.to_string())
 }

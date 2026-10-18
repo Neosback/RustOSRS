@@ -19,7 +19,9 @@ pub(super) struct InspectionProjection {
     /// The floor definitions the terrain builder reads, for appearance previews.
     floors: Option<Arc<FloorTable>>,
     /// Outlines asked of the worker, with the request time (latency observation only).
-    requested: HashMap<OutlineKey, Instant>,
+    requested: HashMap<OutlineKey, (osrs_world::OutlineIdentity, Instant)>,
+    next_outline: u64,
+    roofs: crate::app::roof_view::RoofCache,
 }
 
 pub(in crate::app) enum CollisionInspection<'a> {
@@ -44,6 +46,29 @@ fn collision_view(
 }
 
 impl WorldRuntime {
+    pub(in crate::app) fn request_outline(
+        &self,
+        identity: osrs_world::OutlineIdentity,
+        region: RegionKey,
+        index: usize,
+        loc: osrs_world::LocInfo,
+    ) {
+        self.streamer.request_outline(identity, region, index, loc);
+    }
+
+    pub(in crate::app) fn roofs_over(
+        &mut self,
+        plane: u8,
+        focus: &[(i32, i32)],
+    ) -> std::collections::HashSet<u32> {
+        let inspection = &mut self.inspection;
+        inspection
+            .roofs
+            .query(inspection.version, plane, focus, &|p, x, y| {
+                crate::app::roof_view::tile_flags(&inspection.infos, p, (x, y))
+            })
+    }
+
     pub(in crate::app) fn collision_inspection(&self, tile: MapTile) -> CollisionInspection<'_> {
         let region = tile.split_region().0;
         let key = (region.x, region.y);
@@ -86,6 +111,12 @@ impl WorldRuntime {
         self.inspection.version += 1;
     }
     pub(in crate::app) fn remove_info(&mut self, key: RegionKey) {
+        self.inspection
+            .outlines
+            .retain(|(region, _), _| *region != key);
+        self.inspection
+            .requested
+            .retain(|(region, _), _| *region != key);
         self.inspection.infos.remove(&key);
         self.inspection.info_epochs.remove(&key);
         self.inspection.version += 1;
@@ -103,13 +134,16 @@ impl WorldRuntime {
     pub(in crate::app) fn install_outline(
         &mut self,
         key: OutlineKey,
+        identity: osrs_world::OutlineIdentity,
         triangles: Vec<[[i32; 3]; 3]>,
     ) -> Option<f32> {
-        self.inspection.outlines.insert(key, Arc::new(triangles));
-        self.inspection
-            .requested
-            .get(&key)
-            .map(|requested| requested.elapsed().as_secs_f32() * 1000.0)
+        self.inspection.accept_outline(
+            key,
+            identity,
+            self.builds.source_generation(),
+            self.builds.projection_epoch(key.0),
+            triangles,
+        )
     }
     pub(in crate::app) fn outline(&self, key: &OutlineKey) -> Option<&Triangles> {
         self.inspection.outlines.get(key)
@@ -120,7 +154,6 @@ impl WorldRuntime {
         {
             return;
         }
-        self.inspection.requested.insert(key, Instant::now());
         if let Some(loc) = self
             .inspection
             .infos
@@ -128,8 +161,40 @@ impl WorldRuntime {
             .and_then(|info| info.locs.get(key.1))
             .cloned()
         {
-            self.request_outline(key.0, key.1, loc);
+            self.inspection.next_outline += 1;
+            let identity = osrs_world::OutlineIdentity {
+                source_generation: self.builds.source_generation(),
+                projection_epoch: self.builds.projection_epoch(key.0),
+                request_id: self.inspection.next_outline,
+            };
+            self.inspection
+                .requested
+                .insert(key, (identity, Instant::now()));
+            self.request_outline(identity, key.0, key.1, loc);
         }
+    }
+}
+
+impl InspectionProjection {
+    fn accept_outline(
+        &mut self,
+        key: OutlineKey,
+        identity: osrs_world::OutlineIdentity,
+        source: u64,
+        epoch: u64,
+        triangles: Vec<[[i32; 3]; 3]>,
+    ) -> Option<f32> {
+        let (wanted, started) = self.requested.get(&key)?;
+        if *wanted != identity
+            || identity.source_generation != source
+            || identity.projection_epoch != epoch
+        {
+            return None;
+        }
+        let elapsed = started.elapsed().as_secs_f32() * 1000.0;
+        self.outlines.insert(key, Arc::new(triangles));
+        self.requested.remove(&key);
+        Some(elapsed)
     }
 }
 
@@ -137,6 +202,43 @@ impl WorldRuntime {
 mod tests {
     use super::*;
     use osrs_scene::collision::CollisionSnapshotBuilder;
+
+    #[test]
+    fn outlines_reject_old_requests_even_when_the_same_index_was_requested_again() {
+        let mut projection = InspectionProjection::default();
+        let key = ((50, 50), 7);
+        let old = osrs_world::OutlineIdentity {
+            source_generation: 1,
+            projection_epoch: 2,
+            request_id: 3,
+        };
+        let current = osrs_world::OutlineIdentity {
+            request_id: 4,
+            ..old
+        };
+        projection.requested.insert(key, (current, Instant::now()));
+        assert!(projection.accept_outline(key, old, 1, 2, vec![]).is_none());
+        assert!(
+            projection
+                .accept_outline(key, current, 2, 2, vec![])
+                .is_none()
+        );
+        assert!(
+            projection
+                .accept_outline(key, current, 1, 3, vec![])
+                .is_none()
+        );
+        assert!(
+            projection
+                .accept_outline(key, current, 1, 2, vec![])
+                .is_some()
+        );
+        assert!(
+            projection
+                .accept_outline(key, current, 1, 2, vec![])
+                .is_none()
+        );
+    }
 
     #[test]
     fn collision_view_hides_stale_pending_and_replaced_source_results() {

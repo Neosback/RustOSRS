@@ -2,6 +2,9 @@
 
 use super::*;
 
+mod frame;
+mod hover;
+pub(super) use frame::{draw as frame, read_only};
 mod outlines;
 use outlines::{MAX_OUTLINED, queue_selection_outlines};
 
@@ -54,12 +57,15 @@ impl EditorApp {
             (position.x - rect.min.x) * pixels_per_point,
             (position.y - rect.min.y) * pixels_per_point,
         );
-        let mut hover = pick::pick(self.world.infos(), &ray, self.interaction.view_plane());
+        let mut hover = pick::pick(
+            self.world.infos(),
+            &ray,
+            self.interaction.view_plane(),
+            self.renderer.roof_view(),
+        );
         // Selecting tools read the tile an object stands on, not the ground the ray reaches behind it.
-        if matches!(
-            self.settings.prefs.tool,
-            crate::paint::Tool::Select | crate::paint::Tool::Objects
-        ) && let Some(object) = &hover.object
+        if hover::anchors_on_objects(self)
+            && let Some(object) = &hover.object
             && let Some(loc) = self
                 .world
                 .infos()
@@ -186,7 +192,9 @@ impl EditorApp {
             }
             painter.add(egui::Shape::mesh(mesh));
         }
-        if let Some(object) = self.interaction.hover().object.as_ref() {
+        if hover::anchors_on_objects(self)
+            && let Some(object) = self.interaction.hover().object.as_ref()
+        {
             outline(
                 object,
                 colors.get(ColorKey::ObjectHoverFill),
@@ -205,7 +213,7 @@ impl EditorApp {
         if self.settings.prefs.hover_tile
             && let Some(tile) = self.interaction.hover().tile
         {
-            let brushing = self.settings.prefs.tool != crate::paint::Tool::Select;
+            let brushing = self.settings.prefs.tool.uses_brush();
             let tiles = if brushing {
                 self.settings.prefs.brush.footprint_tiles(tile.tile)
             } else {

@@ -5,6 +5,7 @@
 //! Read/query and source/project lifecycle operations are exposed explicitly; transaction lifecycle
 //! primitives stay private to this runtime so callers cannot bypass gateway policy accidentally.
 
+mod baseline;
 mod footprint;
 pub(super) use footprint::{EditFootprint, EditTouches};
 

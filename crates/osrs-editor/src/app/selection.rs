@@ -4,6 +4,8 @@
 //! toolbar. Tiles are selected on the viewed plane; objects are those placed on it. The selection is
 //! what other tools act on ("apply to the selected tiles").
 
+mod boundary;
+
 use super::{EditorApp, interaction_runtime::Marquee};
 use crate::interact;
 use crate::paint::SelectMode;
@@ -15,7 +17,10 @@ use std::collections::HashSet;
 /// Most tiles drawn as selected at once (a box over a whole region is thousands).
 /// Most selected objects that get their own footprint drawn.
 const MAX_FOOTPRINTS: usize = 40;
-const MAX_DRAWN_TILES: usize = 6000;
+/// Most selected tiles drawn with a fill; a larger selection is outlined only.
+const MAX_DRAWN_TILES: usize = 20_000;
+/// Longest side of a box selection, in tiles.
+const MAX_BOX_SIDE: i32 = 160;
 /// A drag shorter than this is a click.
 const MIN_BOX: f32 = 4.0;
 
@@ -37,9 +42,14 @@ fn ground_tile_at(
         (position.x - viewport.min.x) * pixels_per_point,
         (position.y - viewport.min.y) * pixels_per_point,
     );
-    pick::pick(app.world.infos(), &ray, app.interaction.view_plane())
-        .tile
-        .map(|tile| tile.tile)
+    pick::pick(
+        app.world.infos(),
+        &ray,
+        app.interaction.view_plane(),
+        app.renderer.roof_view(),
+    )
+    .tile
+    .map(|tile| tile.tile)
 }
 
 impl EditorApp {
@@ -166,6 +176,7 @@ impl EditorApp {
     }
 
     fn click_select(&mut self, additive: bool, toggle: bool) {
+        self.interaction.drop_pending_reselect();
         let mode = if self.settings.prefs.tool == crate::paint::Tool::Objects {
             SelectMode::Objects
         } else {
@@ -215,6 +226,7 @@ impl EditorApp {
     /// Select what lies in the rectangle of tiles `((x0, y0), (x1, y1))`: tiles and objects by
     /// the tile they stand on, in the map's own axes.
     fn marquee_select(&mut self, area: ((i32, i32), (i32, i32)), marquee: Marquee) {
+        self.interaction.drop_pending_reselect();
         let mode = if self.settings.prefs.tool == crate::paint::Tool::Objects {
             SelectMode::Objects
         } else {
@@ -222,6 +234,7 @@ impl EditorApp {
         };
         let plane = self.interaction.view_plane();
         let ((x0, y0), (x1, y1)) = area;
+        let (x1, y1) = (x1.min(x0 + MAX_BOX_SIDE), y1.min(y0 + MAX_BOX_SIDE));
         let inside = |tile: (i32, i32)| (x0..=x1).contains(&tile.0) && (y0..=y1).contains(&tile.1);
         let mut tiles: HashSet<(i32, i32)> = HashSet::new();
         let mut objects: Vec<ObjectPick> = Vec::new();
@@ -319,13 +332,8 @@ impl EditorApp {
         };
         // The selected tiles as one shape: a single fill with no lines between tiles, and an
         // outline only along the edges where a selected tile meets one that is not.
-        let selected: HashSet<(i32, i32)> = self
-            .interaction
-            .selection_tiles()
-            .iter()
-            .take(MAX_DRAWN_TILES)
-            .copied()
-            .collect();
+        let selected = self.interaction.selection_tiles();
+        let filled = selected.len() <= MAX_DRAWN_TILES;
         if !selected.is_empty() {
             let fill = self.settings.prefs.colors.get(ColorKey::TileSelectionFill);
             let outline = self
@@ -334,38 +342,59 @@ impl EditorApp {
                 .colors
                 .get(ColorKey::TileSelectionOutline);
             let mut mesh = egui::epaint::Mesh::default();
-            let mut edges: Vec<[Pos2; 2]> = Vec::new();
-            for &tile in &selected {
+            for &tile in selected {
                 let Some(corners) = interact::tile_corners(self.world.infos(), tile, plane) else {
                     continue;
                 };
                 let Some(points) = quad(corners) else {
                     continue;
                 };
-                let base = u32::try_from(mesh.vertices.len()).unwrap_or(0);
-                for point in &points {
-                    mesh.colored_vertex(*point, fill);
-                }
-                mesh.add_triangle(base, base + 1, base + 2);
-                mesh.add_triangle(base, base + 2, base + 3);
-                // Corner order is south-west, south-east, north-east, north-west; a side is on
-                // the outline when the tile beside it is not selected.
-                let sides = [
-                    ((tile.0, tile.1 - 1), 0, 1),
-                    ((tile.0 + 1, tile.1), 1, 2),
-                    ((tile.0, tile.1 + 1), 2, 3),
-                    ((tile.0 - 1, tile.1), 3, 0),
-                ];
-                for (beside, from, to) in sides {
-                    if !selected.contains(&beside) {
-                        edges.push([points[from], points[to]]);
+                if filled {
+                    let base = u32::try_from(mesh.vertices.len()).unwrap_or(0);
+                    for point in &points {
+                        mesh.colored_vertex(*point, fill);
                     }
+                    mesh.add_triangle(base, base + 1, base + 2);
+                    mesh.add_triangle(base, base + 2, base + 3);
                 }
             }
             painter.add(egui::Shape::mesh(mesh));
             let stroke = Stroke::new(2.5, outline);
-            for [a, b] in edges {
-                painter.line_segment([a, b], stroke);
+            for run in boundary::runs(selected) {
+                let mut points = Vec::new();
+                for (x, y) in run {
+                    let point = [
+                        ((x, y), 0),
+                        ((x - 1, y), 1),
+                        ((x - 1, y - 1), 2),
+                        ((x, y - 1), 3),
+                    ]
+                    .into_iter()
+                    .find_map(|(tile, corner)| {
+                        interact::tile_corners(self.world.infos(), tile, plane).and_then(|c| {
+                            self.screen_point(c[corner], viewport, pixels_per_point, width, height)
+                        })
+                    });
+                    if let Some(point) = point {
+                        points.push(point);
+                    } else if points.len() >= 2 {
+                        painter.add(egui::Shape::line(std::mem::take(&mut points), stroke));
+                    } else {
+                        points.clear();
+                    }
+                }
+                if points.len() >= 2 {
+                    painter.add(egui::Shape::line(points, stroke));
+                }
+            }
+            if !filled {
+                painter.text(
+                    viewport.left_top() + egui::vec2(12.0, 12.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("{} tiles (outline only)", selected.len()),
+                    egui::FontId::proportional(13.0),
+                    outline,
+                );
             }
         }
         // A whole building is hundreds of objects: their footprints would bury the tile shape.

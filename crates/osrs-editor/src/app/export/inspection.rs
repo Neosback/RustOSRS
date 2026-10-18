@@ -124,6 +124,7 @@ impl ExportInspection {
                         viewer.world.infos(),
                         &ray,
                         viewer.interaction.view_plane(),
+                        viewer.renderer.roof_view(),
                     ));
                     if response.clicked() {
                         viewer.clear_selection();

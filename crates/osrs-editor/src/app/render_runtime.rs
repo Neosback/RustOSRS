@@ -201,6 +201,11 @@ impl RenderRuntime {
         self.scene.render_to_rgba(params, width, height).ok()
     }
 
+    /// The roof view the viewport is drawn with.
+    pub(super) fn roof_view(&self) -> &osrs_render::gpu::RoofView {
+        self.scene.roof_view()
+    }
+
     /// Choose which upper floors and roofs the next frames draw.
     pub(super) fn set_roof_view(&mut self, view: osrs_render::gpu::RoofView) {
         if self.scene.set_roof_view(view) {

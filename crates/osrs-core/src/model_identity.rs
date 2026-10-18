@@ -289,6 +289,7 @@ mod tests {
 
     fn object_definition() -> Result<ObjectDefinition, Box<dyn Error>> {
         Ok(ObjectDefinition {
+            parameters: Default::default(),
             identity: DefinitionIdentity::new(ObjectId::new(1), provenance("target-a")?),
             name: Some("identity transform fixture".to_owned()),
             models: None,

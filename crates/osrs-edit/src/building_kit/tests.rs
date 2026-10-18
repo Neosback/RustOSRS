@@ -43,6 +43,7 @@ fn kit() -> KitFile {
         roof_hip: None,
         finish: None,
         roof: Some(KitRoof {
+            learned: None,
             patterns: (0..12u32)
                 .map(|index| KitRoofPattern {
                     id: 20_000 + index,

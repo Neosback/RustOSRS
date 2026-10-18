@@ -187,6 +187,28 @@ impl MapDocument {
         self.objects.contains(&placement)
     }
 
+    /// Sorted sparse terrain entries, suitable for reproducible snapshots and analysis.
+    pub fn terrain_entries(&self) -> impl Iterator<Item = (MapPosition, TerrainTile)> + '_ {
+        self.terrain.iter().map(|(&c, &t)| (c, t))
+    }
+    /// Sorted absolute height vertices; absent vertices remain absent.
+    pub fn height_entries(&self) -> impl Iterator<Item = (HeightVertexCoord, i32)> + '_ {
+        self.heights.iter().map(|(&c, &h)| (c, h))
+    }
+    /// Deterministically ordered exact placement occurrences.
+    pub fn object_entries(&self) -> Vec<ObjectPlacement> {
+        let mut objects: Vec<_> = self.objects.iter().copied().collect();
+        objects.sort_by_key(|p| {
+            (
+                p.position,
+                p.kind.get(),
+                p.object_id.get(),
+                p.orientation.get(),
+            )
+        });
+        objects
+    }
+
     pub fn terrain_entry_count(&self) -> usize {
         self.terrain.len()
     }

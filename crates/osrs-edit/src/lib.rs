@@ -10,6 +10,7 @@ mod building_detail;
 mod building_finish;
 mod building_generation;
 mod building_kit;
+mod building_learning;
 mod building_program;
 mod building_realization;
 mod building_refinement;
@@ -34,7 +35,12 @@ mod building_validation;
 mod building_vertical;
 mod building_walls;
 mod building_wfc;
+pub use building_learning::{
+    LearnedCatalog, LearnedPattern, LearnedRoleModel, LearningError, LearningGrid, learn_catalog,
+};
 mod document;
+mod document_diff;
+pub use document_diff::{HeightDomainChanged, plan_document_sync};
 mod history;
 mod object;
 mod object_edit;
@@ -161,10 +167,11 @@ pub use object_edit::{ObjectEditError, build_object_patch};
 pub use patch::{ChangeImpact, MapOp, MapPatch};
 pub use position::{HeightVertexCoord, MapPosition};
 pub use prefab::{
-    CaptureSpec, MAX_PREFAB_SIDE, PREFAB_FORMAT, PREFAB_VERSION, PlaceSpec, PlacedPrefab, Prefab,
-    PrefabError, PrefabHeight, PrefabObject, PrefabOverlay, PrefabSource, PrefabTile,
-    capture_prefab, objects_in_rect, objects_overlapping_rect, plan_place_prefab,
-    prefab_from_patch, turned_size,
+    BuildingCaptureSpec, BuildingPrefabError, CaptureSpec, MAX_PREFAB_SIDE, PREFAB_FORMAT,
+    PREFAB_VERSION, PlaceSpec, PlacedPrefab, Prefab, PrefabBuilding, PrefabCell, PrefabError,
+    PrefabHeight, PrefabObject, PrefabOverlay, PrefabRelation, PrefabSource, PrefabTile,
+    capture_building_prefab, capture_prefab, capture_prefab_over, objects_in_rect,
+    objects_overlapping_rect, plan_place_exact, plan_place_prefab, prefab_from_patch, turned_size,
 };
 pub use query::MapQuery;
 pub use region::{MapRegionSnapshot, RegionSnapshotError};

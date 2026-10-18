@@ -6,6 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+osrs-lab = { path = "../osrs-lab" }
 osrs-core = { path = "../osrs-core" }
 osrs-edit = { path = "../osrs-edit" }
 osrs-cache = { path = "../osrs-cache" }

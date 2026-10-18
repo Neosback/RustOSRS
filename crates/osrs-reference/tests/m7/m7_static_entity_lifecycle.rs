@@ -202,6 +202,7 @@ fn flat_and_non_flat_branches_preserve_distinct_semantic_representations()
         0,
     )?;
     let non_flat_definition = ObjectDefinition {
+        parameters: Default::default(),
         non_flat_shading: true,
         ..flat_definition.clone()
     };
@@ -256,6 +257,7 @@ fn object_definition(
     contrast: i16,
 ) -> Result<ObjectDefinition, Box<dyn Error>> {
     Ok(ObjectDefinition {
+        parameters: Default::default(),
         identity: DefinitionIdentity::new(ObjectId::new(object_id), provenance()?),
         name: Some("M7 static entity fixture".to_owned()),
         models,

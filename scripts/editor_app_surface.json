@@ -180,7 +180,6 @@
       "new"
     ],
     "app/input.rs": [
-      "editor_actions",
       "handle_input"
     ],
     "app/inspector.rs": [

@@ -24,6 +24,7 @@ fn provenance() -> Result<TargetProvenance, Box<dyn std::error::Error>> {
 
 fn definition() -> Result<ObjectDefinition, Box<dyn std::error::Error>> {
     Ok(ObjectDefinition {
+        parameters: Default::default(),
         identity: DefinitionIdentity::new(ObjectId::new(1), provenance()?),
         name: Some("transform-fixture".to_owned()),
         models: None,

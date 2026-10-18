@@ -55,6 +55,11 @@ pub struct Assets {
 }
 
 impl Assets {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn shutdown_in_background(&mut self) {
+        self.worker.shutdown_in_background();
+    }
+
     pub fn new(source: impl Into<osrs_cache::source::CacheSource>) -> Self {
         Self {
             worker: AssetWorker::spawn(source),

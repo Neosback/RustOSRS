@@ -255,3 +255,30 @@ fn checked_in_m3_p0_vectors_match_canonical_outputs() -> Result<(), Box<dyn std:
 
     Ok(())
 }
+
+#[test]
+fn object_parameters_retain_typed_values_and_reject_truncation()
+-> Result<(), Box<dyn std::error::Error>> {
+    use osrs_core::definitions::ObjectParameter;
+    let context = context()?;
+    let source = ArchiveFileProvenance::new(2, 6, Some(42));
+    let mut bytes = vec![249, 2, 0, 1, 2, 3];
+    bytes.extend((-42i32).to_be_bytes());
+    bytes.extend([1, 4, 5, 6, b'w', b'a', b'l', b'l', 0, 0]);
+    let definition = decode_object_definition(ObjectId::new(42), &bytes, &context, &source)?;
+    assert_eq!(
+        definition.parameters.get(&0x010203),
+        Some(&ObjectParameter::Integer(-42))
+    );
+    assert_eq!(
+        definition.parameters.get(&0x040506),
+        Some(&ObjectParameter::String("wall".into()))
+    );
+    for end in 1..bytes.len() {
+        assert!(
+            decode_object_definition(ObjectId::new(42), &bytes[..end], &context, &source).is_err(),
+            "truncated parameter stream at {end}"
+        );
+    }
+    Ok(())
+}

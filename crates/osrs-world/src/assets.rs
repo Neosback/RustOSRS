@@ -248,6 +248,17 @@ struct LocalAssets {
 }
 
 impl AssetWorker {
+    /// Stop a disposable scene worker without waiting for its current cache/build job on the UI thread.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn shutdown_in_background(&mut self) {
+        let _ = self.requests.send(Request::Shutdown);
+        if let Some(worker) = self.worker.take() {
+            std::thread::spawn(move || {
+                let _ = worker.join();
+            });
+        }
+    }
+
     pub fn spawn(source: impl Into<CacheSource>) -> Self {
         let source = source.into();
         let (request_tx, request_rx) = channel::<Request>();

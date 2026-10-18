@@ -39,6 +39,7 @@ mod plugins;
 mod prefab_gallery;
 mod prefab_panel;
 mod prefab_runtime;
+mod prefab_studio;
 #[cfg_attr(target_arch = "wasm32", path = "app/project_web.rs")]
 mod project;
 mod project_runtime;
@@ -129,6 +130,9 @@ impl eframe::App for EditorApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        if prefab_studio::frame(self, ui, &ctx) {
+            return;
+        }
         #[cfg(not(target_arch = "wasm32"))]
         if self.export_inspection_ui(ui) {
             self.diagnostics.finish_frame(&ctx);
@@ -145,7 +149,7 @@ impl eframe::App for EditorApp {
             self.spline_update();
         }
         self.quit_guard(&ctx);
-        self.editor_actions(&ctx);
+        input::editor_actions(self, &ctx, true);
         self.plugin_actions(&ctx);
         if let Some((vx, vz)) = self.diagnostics.autofly() {
             let step = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
@@ -163,6 +167,7 @@ impl eframe::App for EditorApp {
         npc_panel::update(self, &ctx);
         player_panel::update_model(self, &ctx);
         prefab_panel::update(self);
+        prefab_panel::review_placement(self, &ctx);
         if self.settings.prefs.sound_overlay {
             sound_panel::refresh(self);
         }
@@ -198,103 +203,7 @@ impl eframe::App for EditorApp {
         self.tool_shelf(ui);
         self.diagnostics.phase("chrome", phase);
 
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE)
-            .show(ui, |ui| {
-                let available = ui.available_size();
-                let (rect, response) =
-                    ui.allocate_exact_size(available, egui::Sense::click_and_drag());
-                // The viewport renders at the window's pixel density times the resolution scale; every
-                // pick and overlay maps target pixels back to points through the same factor.
-                let pixels_per_point = ctx.pixels_per_point() * self.settings.prefs.render_scale;
-                let width = ((rect.width() * pixels_per_point) as u32).max(16);
-                let height = ((rect.height() * pixels_per_point) as u32).max(16);
-
-                let phase = Instant::now();
-                self.handle_input(&ctx, &response);
-                self.diagnostics.phase("input", phase);
-                let phase = Instant::now();
-                self.update_picking(&response, rect, pixels_per_point, width, height);
-                self.diagnostics.phase("pick", phase);
-
-                self.render_viewport_image(ui, rect, width, height);
-                let phase = Instant::now();
-                self.draw_selection(ui, rect, pixels_per_point, width, height);
-                self.draw_selection_extras(
-                    &ui.painter().with_clip_rect(rect),
-                    rect,
-                    pixels_per_point,
-                    width,
-                    height,
-                );
-                self.draw_place_ghost(
-                    &ui.painter().with_clip_rect(rect),
-                    rect,
-                    pixels_per_point,
-                    width,
-                    height,
-                );
-                self.draw_map_icons_3d(
-                    &ui.painter().with_clip_rect(rect),
-                    rect,
-                    pixels_per_point,
-                    width,
-                    height,
-                );
-                self.draw_object_drag(
-                    &ui.painter().with_clip_rect(rect),
-                    rect,
-                    pixels_per_point,
-                    width,
-                    height,
-                );
-                self.draw_spline(
-                    &ui.painter().with_clip_rect(rect),
-                    rect,
-                    pixels_per_point,
-                    width,
-                    height,
-                );
-                sound_panel::draw_world(
-                    self,
-                    &ui.painter().with_clip_rect(rect),
-                    rect,
-                    pixels_per_point,
-                    width,
-                    height,
-                );
-                prefab_panel::draw_world(
-                    self,
-                    &ui.painter().with_clip_rect(rect),
-                    rect,
-                    pixels_per_point,
-                    width,
-                    height,
-                );
-                npc_panel::draw_world(
-                    self,
-                    &ui.painter().with_clip_rect(rect),
-                    rect,
-                    pixels_per_point,
-                    width,
-                    height,
-                );
-                player_panel::draw_world(
-                    self,
-                    &ui.painter().with_clip_rect(rect),
-                    rect,
-                    pixels_per_point,
-                    width,
-                    height,
-                );
-                self.object_gizmo(ui, rect, &response);
-                self.diagnostics.phase("overlays", phase);
-                let phase = Instant::now();
-                self.viewport_overlays(ui, rect);
-                self.floating_toolbar(&ctx, rect);
-                self.context_menu(&ctx);
-                self.diagnostics.phase("viewport_ui", phase);
-            });
+        viewport::frame(self, ui, &ctx);
         let phase = Instant::now();
         self.quick_tools_hud(&ctx);
         self.cache_welcome(&ctx);

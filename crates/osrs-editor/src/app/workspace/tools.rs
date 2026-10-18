@@ -195,7 +195,7 @@ impl EditorApp {
                                         "Orbit",
                                     );
                                     self.interaction.set_camera_mode(camera_mode);
-                                    self.interaction.set_view_plane(view_plane);
+                                    self.interaction.switch_plane(view_plane);
                                 });
                             });
                     });
@@ -330,16 +330,42 @@ impl EditorApp {
         }
     }
 
-    /// Esc: back to Select; in Select it clears the selection.
+    /// Esc, one layer at a time: a box being dragged, an armed placement, then back to Select, and
+    /// in Select the selection. (The viewport menu and quick HUD close on Esc before this runs.)
     pub(in crate::app) fn escape_action(&mut self) {
-        if self.placer.disarm() || self.prefabs.disarm() {
-            return;
+        use crate::app::interaction_runtime::EscapeLayer;
+        let layer = EscapeLayer::choose(
+            self.ui.context_menu.is_some(),
+            self.ui.quick_open.is_some(),
+            self.interaction.marquee().is_some(),
+            self.placer.is_armed()
+                || self.prefabs.armed.is_some()
+                || self.npcs.arm != crate::app::npc_runtime::Arm::None,
+            self.settings.prefs.tool == Tool::Select,
+        );
+        match layer {
+            EscapeLayer::Menu => {
+                self.ui.context_menu = None;
+            }
+            EscapeLayer::QuickHud => {
+                self.ui.quick_open = None;
+            }
+            EscapeLayer::Marquee => {
+                self.interaction.cancel_marquee();
+            }
+            EscapeLayer::Armed => {
+                self.placer.disarm();
+                self.prefabs.disarm();
+                self.npcs.take_gesture();
+            }
+            EscapeLayer::Tool => {
+                self.interaction.clear_spline_points();
+                self.set_tool(Tool::Select);
+            }
+            EscapeLayer::Selection => self.clear_selection(),
         }
-        if self.settings.prefs.tool != Tool::Select {
-            self.interaction.clear_spline_points();
-            self.set_tool(Tool::Select);
-        } else {
-            self.clear_selection();
+        if !matches!(layer, EscapeLayer::Menu | EscapeLayer::QuickHud) {
+            self.interaction.drop_pending_reselect();
         }
     }
 

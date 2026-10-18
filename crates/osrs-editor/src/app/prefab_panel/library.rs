@@ -50,6 +50,7 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     {
         app.prefabs.gallery.open = true;
     }
+    super::capture::show(app, ui);
     capture_section(app, ui);
     ui.separator();
     list(app, ui);
@@ -286,6 +287,9 @@ fn details(app: &mut EditorApp, ui: &mut egui::Ui, file: &str) {
         && let Err(error) = app.prefabs.edit(file, |p| p.notes = notes)
     {
         app.prefabs.say(error);
+    }
+    if ui.button("Edit this prefab").clicked() {
+        crate::app::prefab_studio::request(app, file.to_owned());
     }
     place_controls(app, ui, file);
     ui.horizontal(|ui| {

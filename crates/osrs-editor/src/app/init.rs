@@ -114,7 +114,9 @@ impl EditorApp {
         }
         app.start_catalog_loader(initial_source.clone());
         #[cfg(not(target_arch = "wasm32"))]
-        app.palettes.load(initial_source);
+        if authoring {
+            app.palettes.load(initial_source);
+        }
         #[cfg(target_arch = "wasm32")]
         if let Some(base) = crate::platform::web::cache_url_param() {
             app.pick_cache_url(ctx, base);

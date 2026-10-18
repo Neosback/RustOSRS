@@ -76,6 +76,8 @@ pub struct KitJunction {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KitRoof {
+    #[serde(default)]
+    pub learned: Option<crate::LearnedCatalog>,
     /// A pattern's number is its position in this list.
     pub patterns: Vec<KitRoofPattern>,
     pub ridge: Vec<u8>,
@@ -328,11 +330,27 @@ impl KitFile {
 
 fn compile_pattern_roof(roof: &KitRoof) -> Result<PatternRoof, KitError> {
     let count = roof.patterns.len();
-    let catalog = WfcCatalog::new(roof.patterns.iter().map(|pattern| WfcPatternSpec {
+    let mut catalog = WfcCatalog::new(roof.patterns.iter().map(|pattern| WfcPatternSpec {
         weight: pattern.weight,
         sockets: pattern.sockets.map(WfcSocket),
     }))
     .map_err(|error| KitError::Roof(format!("{error:?}")))?;
+    if let Some(learned) = &roof.learned {
+        if learned.patterns.len() != count
+            || learned
+                .patterns
+                .iter()
+                .zip(&roof.patterns)
+                .any(|(a, b)| a.sockets != b.sockets)
+        {
+            return Err(KitError::Roof(
+                "learned catalog and roof assets must have the same ordered sockets".into(),
+            ));
+        }
+        catalog = learned
+            .compile()
+            .map_err(|e| KitError::Roof(e.to_string()))?;
+    }
     let mut entries = Vec::with_capacity(count);
     for (index, pattern) in roof.patterns.iter().enumerate() {
         entries.push(RoofPaletteEntry {
@@ -400,6 +418,10 @@ fn compile_pattern_roof(roof: &KitRoof) -> Result<PatternRoof, KitError> {
 }
 
 impl BuildingKit {
+    pub fn learned_roles(&self) -> Option<&crate::LearnedRoleModel> {
+        self.finish.as_ref()?.learned_roles.as_ref()
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
