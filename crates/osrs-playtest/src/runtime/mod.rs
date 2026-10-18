@@ -1,5 +1,5 @@
 //! Deterministic server movement with a separate 50 Hz client pose clock.
-mod actor;
+pub(crate) mod actor;
 mod occupancy;
 mod sequence;
 use crate::navigation::{Navigation, Route, RouteTarget, find_path};

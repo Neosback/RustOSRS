@@ -306,7 +306,7 @@ fn center(location: ActorLocation, size: u16) -> LocalXZ {
         LocalCoord::from_units(location.tile.y * 128 + i32::from(size) * 64),
     )
 }
-fn orientation(dx: i32, dz: i32) -> u16 {
+pub(crate) fn orientation(dx: i32, dz: i32) -> u16 {
     match (dx.signum(), dz.signum()) {
         (-1, -1) => 256,
         (-1, 0) => 512,
