@@ -52,7 +52,7 @@ tcopy | tpaste X Y     copy the selected tiles / paste them with their corner at
 place ID X Y [TURNS]  place an object from the catalog at a tile
 inspect X Y            log a tile's projected and document values (smoke tests)
 prefab capture NAME X0 Y0 X1 Y1 [PLANES] | place NAME X Y [TURNS] [replace]
-                       build X Y W H SEED [apply] | list
+                       build X Y W H SEED [kind=bank] [kit=1] [apply] | list
 status TEXT
 # a comment";
 

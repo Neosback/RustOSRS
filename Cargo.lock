@@ -2718,6 +2718,7 @@ dependencies = [
  "osrs-render",
  "osrs-scene",
  "png",
+ "serde_json",
  "web-time",
 ]
 

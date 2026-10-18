@@ -41,6 +41,7 @@ fn kit() -> KitFile {
             },
         ],
         roof_hip: None,
+        finish: None,
         roof: Some(KitRoof {
             patterns: (0..12u32)
                 .map(|index| KitRoofPattern {
@@ -282,7 +283,7 @@ fn hip_kit() -> KitFile {
 }
 
 #[test]
-fn a_hip_kit_roofs_the_whole_footprint_one_plane_up_with_one_piece_per_tile() {
+fn a_hip_kit_roofs_the_footprint_with_an_overhang_one_plane_up_with_one_piece_per_tile() {
     let compiled = hip_kit().compile().unwrap_or_else(|e| unreachable!("{e}"));
     let (_, snapshot) = snapshot(20, 14);
     let patch = compiled
@@ -311,7 +312,20 @@ fn a_hip_kit_roofs_the_whole_footprint_one_plane_up_with_one_piece_per_tile() {
         }
     }
     assert!(!roof_tiles.is_empty());
-    assert_eq!(roof_tiles, floor_tiles, "the roof covers exactly the floor");
+    // Real roofs overhang the walls by one tile on every side.
+    let mut overhung = std::collections::BTreeSet::new();
+    for tile in &floor_tiles {
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                overhung.insert(MapTile::new(tile.x + dx, tile.y + dy));
+            }
+        }
+    }
+    assert!(
+        roof_tiles == overhung,
+        "the roof covers the floor and one tile more on every side"
+    );
+    assert!(roof_tiles.len() > floor_tiles.len());
     assert_eq!(
         patch,
         compiled

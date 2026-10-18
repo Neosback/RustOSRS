@@ -5,6 +5,7 @@
 //! storage, exact location placement, plane relinking, and queryable scene state
 //! while keeping renderer/editor policy outside this crate.
 
+pub mod building_census;
 pub mod collision;
 pub mod dynamic_model;
 pub mod dynamic_placement;

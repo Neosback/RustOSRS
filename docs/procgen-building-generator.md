@@ -118,16 +118,18 @@ Facade refinement runs only after that topology is fixed. Its first pass convert
 
 ## Checkpoint 6: interiors
 
-- [ ] room-specific furnishing grammars
-- [ ] asset footprint and clearance masks
-- [ ] wall-mounted object sockets
+(Started 2026-10-17: `building_finish`, driven by measurements in `docs/building-census-findings.md`.)
+
+- [~] room-specific furnishing grammars (per role, in the kit)
+- [x] asset footprint and clearance masks (multi-tile footprints, doorway clearance, connectivity check)
+- [~] wall-mounted object sockets (wall decoration; windows as decoration pairs)
 - [ ] weighted furniture variants
 - [ ] sparse decoration sampling
-- [ ] walkability preserved after furnishing
+- [x] walkability preserved after furnishing (a room's free tiles stay one connected piece)
 
 ## Checkpoint 7: terrain fitting
 
-- [ ] Reject / Fit / Grade / Terrace policies
+- [~] Reject / Fit / Grade / Terrace policies (Grade only: level the footprint, blend across the site margin)
 - [ ] foundation-height sampling
 - [ ] deterministic grading patch
 - [ ] blend ring around foundation

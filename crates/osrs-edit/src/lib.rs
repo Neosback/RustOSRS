@@ -7,6 +7,7 @@
 
 mod building;
 mod building_detail;
+mod building_finish;
 mod building_generation;
 mod building_kit;
 mod building_program;
@@ -54,6 +55,9 @@ pub use building_detail::{
     BuildingDetailError, BuildingDetailPalette, CornerAsset, CornerTurn,
     DetailedBuildingArchitecture, DetailedBuildingElement, WeightedEdgeAsset,
     build_detailed_wfc_building_variation_patch, detail_refined_building_architecture,
+};
+pub use building_finish::{
+    KitDecor, KitFinish, KitFloorFile, KitFurniture, KitPlace, KitWindowDecor, role_name,
 };
 pub use building_generation::{
     BuildingGenerationConfig, BuildingGenerationError, generate_building_patch,

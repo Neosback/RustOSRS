@@ -7,17 +7,17 @@
 //! captured from real buildings, and kept beside prefabs.
 
 use crate::{
-    BuildingDetailPalette, BuildingGenerationConfig, BuildingGenerationError, BuildingPalette,
-    BuildingPlan, CardinalDirection, CornerAsset, EdgeAsset, FacadeRefinementPolicy,
-    FacadeWfcConfig, FloorMaterial, GenerationSnapshot, HipRoofAssets, LocKind, MapOp, MapPatch,
-    ObjectOrientation, OverlayRotation, OverlayShape, PatternDomain, RoofAsset,
-    RoofJunctionPatternKey, RoofJunctionPatternPalette, RoofJunctionPatternPaletteEntry,
-    RoofJunctionPatternRequirement, RoofPalette, RoofPaletteEntry, RoofPatternSet,
-    RoofSectionJunctionRepairRole, TerrainOverlay, WeightedEdgeAsset, WfcCatalog, WfcPatternId,
-    WfcPatternSpec, WfcSocket, build_bsp_building_plan,
+    BuildingArchitecture, BuildingDetailError, BuildingDetailPalette, BuildingGenerationConfig,
+    BuildingGenerationError, BuildingPalette, BuildingPlan, CardinalDirection, CornerAsset,
+    EdgeAsset, FacadeRefinementPolicy, FacadeWfcConfig, FloorMaterial, GenerationSnapshot,
+    HipRoofAssets, KitFinish, LocKind, MapOp, MapPatch, ObjectOrientation, OverlayRotation,
+    OverlayShape, PatternDomain, RoofAsset, RoofJunctionPatternKey, RoofJunctionPatternPalette,
+    RoofJunctionPatternPaletteEntry, RoofJunctionPatternRequirement, RoofPalette, RoofPaletteEntry,
+    RoofPatternSet, RoofSectionJunctionRepairRole, TerrainOverlay, WeightedEdgeAsset, WfcCatalog,
+    WfcPatternId, WfcPatternSpec, WfcSocket, build_bsp_building_plan,
     build_detailed_wfc_building_variation_patch, building_program, derive_building_architecture,
     generate_building_plan_patch, hip_roof_placements, pack_building_program,
-    route_program_connections,
+    refine_exterior_walls_for_variation, route_program_connections,
 };
 use osrs_core::ids::{FloorOverlayId, FloorUnderlayId, ObjectId};
 use serde::{Deserialize, Serialize};
@@ -106,6 +106,9 @@ pub struct KitFile {
     /// A hip roof built from the footprint (the real client's edge ring, slope ring and flat top);
     /// used instead of `roof` when both are given.
     pub roof_hip: Option<KitHipRoof>,
+    /// Floors by room role, windows and wall decoration, furniture and grading.
+    #[serde(default)]
+    pub finish: Option<KitFinish>,
     /// A roof solved from patterns with sockets; needed when there is no `roof_hip`.
     pub roof: Option<KitRoof>,
 }
@@ -149,6 +152,7 @@ pub struct BuildingKit {
     detail: BuildingDetailPalette,
     hip: Option<HipRoofAssets>,
     patterns: Option<PatternRoof>,
+    finish: Option<KitFinish>,
     roof_plane_offset: u8,
 }
 
@@ -308,11 +312,15 @@ impl KitFile {
             }
         };
 
+        if let Some(finish) = &self.finish {
+            finish.validate()?;
+        }
         Ok(BuildingKit {
             name: self.name.clone(),
             detail,
             hip,
             patterns,
+            finish: self.finish.clone(),
             roof_plane_offset: self.roof_plane_offset,
         })
     }
@@ -422,46 +430,65 @@ impl BuildingKit {
         route_program_connections(&building)
             .map_err(|e| wrap(BuildingGenerationError::Routing(e)))?;
         let plan: &BuildingPlan = &building.plan;
-
-        if let (Some(hip), None) = (self.hip, &self.patterns) {
-            return self.with_hip_roof(snapshot, plan, hip, variation);
-        }
-        let Some(roof) = &self.patterns else {
-            // `compile` guarantees one of the two roofs.
-            return Err(wrap(BuildingGenerationError::UnsupportedFloorCount {
-                floors: 0,
-            }));
-        };
-        let patch = generate_building_plan_patch(
-            snapshot,
-            plan,
-            BuildingGenerationConfig {
-                detail_palette: &self.detail,
-                facade_variation: variation,
-                facade_config: FacadeWfcConfig::default(),
-                facade_policy: FacadeRefinementPolicy::default(),
-                roof_catalog: &roof.catalog,
-                roof_patterns: roof.patterns,
-                roof_palette: &roof.palette,
-                roof_junction_patterns: &roof.junctions,
-                roof_max_backtracks: 64,
-            },
+        let architecture = derive_building_architecture(plan)
+            .map_err(|e| wrap(BuildingGenerationError::Architecture(e)))?;
+        let refined = refine_exterior_walls_for_variation(
+            &architecture,
+            request.seed,
+            variation,
+            FacadeWfcConfig::default(),
+            FacadeRefinementPolicy::default(),
         )
-        .map_err(wrap)?;
-        Ok(self.lift_roof(patch))
+        .map_err(|error| {
+            wrap(BuildingGenerationError::Detail(
+                BuildingDetailError::Refinement { error },
+            ))
+        })?;
+
+        let body = if let (Some(hip), None) = (self.hip, &self.patterns) {
+            self.with_hip_roof(snapshot, plan, &architecture, hip, variation)?
+        } else {
+            let Some(roof) = &self.patterns else {
+                // `compile` guarantees one of the two roofs.
+                return Err(wrap(BuildingGenerationError::UnsupportedFloorCount {
+                    floors: 0,
+                }));
+            };
+            let patch = generate_building_plan_patch(
+                snapshot,
+                plan,
+                BuildingGenerationConfig {
+                    detail_palette: &self.detail,
+                    facade_variation: variation,
+                    facade_config: FacadeWfcConfig::default(),
+                    facade_policy: FacadeRefinementPolicy::default(),
+                    roof_catalog: &roof.catalog,
+                    roof_patterns: roof.patterns,
+                    roof_palette: &roof.palette,
+                    roof_junction_patterns: &roof.junctions,
+                    roof_max_backtracks: 64,
+                },
+            )
+            .map_err(wrap)?;
+            self.lift_roof(patch)
+        };
+        Ok(match &self.finish {
+            Some(finish) => finish.apply(&body, &building, refined.edges(), snapshot),
+            None => body,
+        })
     }
 
-    /// The walls and floor from the facade pipeline, then a hip roof over the footprint.
+    /// The walls and floor from the facade pipeline, then a hip roof over the footprint and one
+    /// tile beyond it (real roofs overhang the walls).
     fn with_hip_roof(
         &self,
         snapshot: &GenerationSnapshot,
         plan: &BuildingPlan,
+        architecture: &BuildingArchitecture,
         hip: HipRoofAssets,
         variation: u32,
     ) -> Result<MapPatch, KitGenerateError> {
         let wrap = KitGenerateError::Generation;
-        let architecture = derive_building_architecture(plan)
-            .map_err(|e| wrap(BuildingGenerationError::Architecture(e)))?;
         let body = build_detailed_wfc_building_variation_patch(
             snapshot,
             plan,
@@ -475,9 +502,19 @@ impl BuildingKit {
         let plane = base.saturating_add(self.roof_plane_offset);
         let plane = osrs_core::coords::SourcePlane::new(plane)
             .ok_or(KitGenerateError::RoofPlane { plane })?;
+        let mut footprint: std::collections::BTreeSet<osrs_core::coords::MapTile> =
+            std::collections::BTreeSet::new();
+        for tile in architecture.floor_tiles() {
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    footprint.insert(osrs_core::coords::MapTile::new(tile.x + dx, tile.y + dy));
+                }
+            }
+        }
+        let footprint: Vec<_> = footprint.into_iter().collect();
         let mut ops: Vec<MapOp> = body.ops().to_vec();
         ops.extend(
-            hip_roof_placements(architecture.floor_tiles(), hip, plane)
+            hip_roof_placements(&footprint, hip, plane)
                 .into_iter()
                 .map(|placement| MapOp::AddObject { placement }),
         );

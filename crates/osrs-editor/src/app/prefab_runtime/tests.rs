@@ -250,8 +250,8 @@ fn the_built_in_kit_plans_a_building_that_applies_undoes_and_saves() {
     let mut library = PrefabRuntime::default();
     assert_eq!(
         library.build.kits().len(),
-        1,
-        "the built-in kit is there from the start"
+        2,
+        "the two built-in kits are there from the start"
     );
     assert!(library.build.kit_problems().is_empty());
     library.build.form.width = 14;
@@ -358,7 +358,7 @@ fn a_site_without_map_data_says_why_and_clearing_the_site_removes_what_stands_th
 fn a_bad_kit_file_is_reported_and_the_built_in_kit_stays() {
     let mut library = PrefabRuntime::default();
     assert!(!library.build.add_kit_text("broken.kit.json", "{ nope"));
-    assert_eq!(library.build.kits().len(), 1);
+    assert_eq!(library.build.kits().len(), 2);
     assert!(library.build.kit_problems()[0].starts_with("broken.kit.json"));
 }
 

@@ -11,7 +11,16 @@ use osrs_edit::{
     prefab_from_patch,
 };
 
-const STARTER_KIT: &str = include_str!("kits/timber-cottage.kit.json");
+const STARTER_KITS: [(&str, &str); 2] = [
+    (
+        "the Lumbridge brick kit",
+        include_str!("kits/lumbridge-brick.kit.json"),
+    ),
+    (
+        "the Timber town kit",
+        include_str!("kits/timber-town.kit.json"),
+    ),
+];
 
 /// Largest site side the panel offers, in tiles.
 pub(in crate::app) const MAX_SITE: u16 = 48;
@@ -117,7 +126,9 @@ impl Default for BuildState {
             error: None,
             made_from: None,
         };
-        state.add_kit_text("the built-in kit", STARTER_KIT);
+        for (source, text) in STARTER_KITS {
+            state.add_kit_text(source, text);
+        }
         state
     }
 }

@@ -71,8 +71,23 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
             let width = super::number::<u16>(words.next(), "width")?;
             let height = super::number::<u16>(words.next(), "height")?;
             let seed = super::number::<u64>(words.next(), "seed")?;
-            let apply = words.next() == Some("apply");
+            let mut apply = false;
             let build = &mut app.prefabs.build;
+            for word in words.by_ref() {
+                match word.split_once('=') {
+                    None if word == "apply" => apply = true,
+                    Some(("kind", value)) => {
+                        if let Some((archetype, _)) = crate::app::prefab_runtime::ARCHETYPES
+                            .iter()
+                            .find(|(_, label)| label.eq_ignore_ascii_case(value))
+                        {
+                            build.form.archetype = *archetype;
+                        }
+                    }
+                    Some(("kit", value)) => build.form.kit = value.parse().unwrap_or(0),
+                    _ => return Err(format!("unknown build option {word:?}")),
+                }
+            }
             build.form.width = width;
             build.form.height = height;
             build.form.seed = seed;

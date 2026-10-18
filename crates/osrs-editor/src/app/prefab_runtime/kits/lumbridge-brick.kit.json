@@ -1,0 +1,692 @@
+{
+ "format": "rustosrs-building-kit",
+ "version": 1,
+ "name": "Lumbridge brick",
+ "notes": "Brick walls, plain doors, curtained windows, red slate roof; floors, doors, windows, decoration and furniture ids measured on real revision-240 buildings (building_census example).",
+ "floor": {
+  "underlay": null,
+  "overlay": null
+ },
+ "exterior_wall": {
+  "id": 1902,
+  "kind": 0,
+  "orientations": [
+   1,
+   2,
+   3,
+   0
+  ]
+ },
+ "interior_wall": {
+  "id": 1902,
+  "kind": 0,
+  "orientations": [
+   1,
+   2,
+   3,
+   0
+  ]
+ },
+ "door": {
+  "id": 1535,
+  "kind": 0,
+  "orientations": [
+   1,
+   2,
+   3,
+   0
+  ]
+ },
+ "window": {
+  "id": 1902,
+  "kind": 0,
+  "orientations": [
+   1,
+   2,
+   3,
+   0
+  ]
+ },
+ "corner": null,
+ "door_variants": [
+  {
+   "asset": {
+    "id": 1535,
+    "kind": 0,
+    "orientations": [
+     1,
+     2,
+     3,
+     0
+    ]
+   },
+   "weight": 3
+  },
+  {
+   "asset": {
+    "id": 1540,
+    "kind": 0,
+    "orientations": [
+     1,
+     2,
+     3,
+     0
+    ]
+   },
+   "weight": 1
+  }
+ ],
+ "roof_plane_offset": 1,
+ "roof_hip": {
+  "slope_object": 1924,
+  "edge_object": 1790
+ },
+ "finish": {
+  "floors": {
+   "default": {
+    "underlay": null,
+    "overlay": [
+     5,
+     0,
+     0
+    ]
+   },
+   "hallway": {
+    "underlay": null,
+    "overlay": [
+     81,
+     0,
+     0
+    ]
+   },
+   "storage": {
+    "underlay": null,
+    "overlay": [
+     81,
+     0,
+     0
+    ]
+   },
+   "utility": {
+    "underlay": null,
+    "overlay": [
+     81,
+     0,
+     0
+    ]
+   },
+   "nave": {
+    "underlay": null,
+    "overlay": [
+     171,
+     0,
+     0
+    ]
+   },
+   "altar": {
+    "underlay": null,
+    "overlay": [
+     171,
+     0,
+     0
+    ]
+   },
+   "lobby": {
+    "underlay": null,
+    "overlay": [
+     171,
+     0,
+     0
+    ]
+   },
+   "vault": {
+    "underlay": null,
+    "overlay": [
+     171,
+     0,
+     0
+    ]
+   },
+   "great_hall": {
+    "underlay": null,
+    "overlay": [
+     171,
+     0,
+     0
+    ]
+   },
+   "vestry": {
+    "underlay": null,
+    "overlay": [
+     171,
+     0,
+     0
+    ]
+   },
+   "cell": {
+    "underlay": null,
+    "overlay": [
+     14,
+     0,
+     0
+    ]
+   },
+   "guard_room": {
+    "underlay": null,
+    "overlay": [
+     171,
+     0,
+     0
+    ]
+   },
+   "armory": {
+    "underlay": null,
+    "overlay": [
+     171,
+     0,
+     0
+    ]
+   }
+  },
+  "window_decor": {
+   "outside": {
+    "id": 1821,
+    "kind": 4,
+    "weight": 1
+   },
+   "inside": {
+    "id": 1822,
+    "kind": 4,
+    "weight": 1
+   }
+  },
+  "wall_decor": [
+   {
+    "id": 196,
+    "kind": 4,
+    "weight": 4
+   },
+   {
+    "id": 3474,
+    "kind": 4,
+    "weight": 1
+   }
+  ],
+  "wall_decor_percent": 10,
+  "furniture": {
+   "kitchen": [
+    {
+     "id": 26181,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 1,
+     "max": 1,
+     "size": [
+      1,
+      2
+     ]
+    },
+    {
+     "id": 873,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      2
+     ]
+    },
+    {
+     "id": 1013,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 1,
+     "max": 2,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 604,
+     "kind": 10,
+     "place": "center",
+     "relative": 0,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ],
+   "living": [
+    {
+     "id": 604,
+     "kind": 10,
+     "place": "center",
+     "relative": 0,
+     "min": 1,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 1102,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 1,
+     "max": 3,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 381,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 348,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ],
+   "bedroom": [
+    {
+     "id": 422,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 3,
+     "min": 1,
+     "max": 1,
+     "size": [
+      1,
+      2
+     ]
+    },
+    {
+     "id": 348,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 1102,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ],
+   "guest_room": [
+    {
+     "id": 422,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 3,
+     "min": 1,
+     "max": 2,
+     "size": [
+      1,
+      2
+     ]
+    },
+    {
+     "id": 348,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ],
+   "common_room": [
+    {
+     "id": 604,
+     "kind": 10,
+     "place": "center",
+     "relative": 0,
+     "min": 1,
+     "max": 3,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 1102,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 2,
+     "max": 4,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 362,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 1,
+     "max": 2,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ],
+   "bar": [
+    {
+     "id": 612,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 1,
+     "max": 1,
+     "size": [
+      2,
+      1
+     ]
+    },
+    {
+     "id": 362,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 1,
+     "max": 3,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ],
+   "sales_floor": [
+    {
+     "id": 612,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 1,
+     "max": 2,
+     "size": [
+      2,
+      1
+     ]
+    },
+    {
+     "id": 1015,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 2,
+     "max": 3,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 354,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 0,
+     "max": 2,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ],
+   "storage": [
+    {
+     "id": 354,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 2,
+     "max": 4,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 365,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 1,
+     "max": 3,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 375,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 1,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 362,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 1,
+     "max": 2,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ],
+   "workshop": [
+    {
+     "id": 2097,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 2,
+     "min": 1,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 1102,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 354,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ],
+   "lobby": [
+    {
+     "id": 10355,
+     "kind": 10,
+     "place": "row",
+     "relative": 0,
+     "min": 3,
+     "max": 6,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 375,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 1,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ],
+   "altar": [
+    {
+     "id": 409,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 1,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ],
+   "armory": [
+    {
+     "id": 817,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 3,
+     "min": 1,
+     "max": 3,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 375,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 1,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ],
+   "cell": [
+    {
+     "id": 422,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 3,
+     "min": 1,
+     "max": 1,
+     "size": [
+      1,
+      2
+     ]
+    }
+   ],
+   "office": [
+    {
+     "id": 604,
+     "kind": 10,
+     "place": "center",
+     "relative": 0,
+     "min": 1,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 381,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 1,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    },
+    {
+     "id": 1102,
+     "kind": 10,
+     "place": "against_wall",
+     "relative": 0,
+     "min": 0,
+     "max": 1,
+     "size": [
+      1,
+      1
+     ]
+    }
+   ]
+  },
+  "grade": true
+ }
+}
