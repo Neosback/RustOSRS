@@ -7,13 +7,13 @@
 use crate::CardinalDirection;
 use std::collections::VecDeque;
 
-pub const MAX_WFC_PATTERNS: usize = 128;
+pub const MAX_WFC_PATTERNS: usize = 512;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct WfcPatternId(u8);
+pub struct WfcPatternId(u16);
 
 impl WfcPatternId {
-    pub const fn new(value: u8) -> Option<Self> {
+    pub const fn new(value: u16) -> Option<Self> {
         if (value as usize) < MAX_WFC_PATTERNS {
             Some(Self(value))
         } else {
@@ -21,7 +21,7 @@ impl WfcPatternId {
         }
     }
 
-    pub const fn get(self) -> u8 {
+    pub const fn get(self) -> u16 {
         self.0
     }
 }
@@ -50,82 +50,153 @@ impl WfcPattern {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct PatternDomain(u128);
+pub struct PatternDomain([u64; 8]);
 
 impl PatternDomain {
     pub const fn empty() -> Self {
-        Self(0)
+        Self([0; 8])
     }
 
     pub const fn all(pattern_count: usize) -> Self {
         if pattern_count == 0 {
-            Self::empty()
-        } else if pattern_count >= MAX_WFC_PATTERNS {
-            Self(u128::MAX)
-        } else {
-            Self((1_u128 << pattern_count) - 1)
+            return Self::empty();
         }
+        let capped = if pattern_count > MAX_WFC_PATTERNS {
+            MAX_WFC_PATTERNS
+        } else {
+            pattern_count
+        };
+        let mut words = [0_u64; 8];
+        let full_words = capped / 64;
+        let rem_bits = capped % 64;
+        let mut i = 0;
+        while i < full_words {
+            words[i] = u64::MAX;
+            i += 1;
+        }
+        if rem_bits > 0 && full_words < 8 {
+            words[full_words] = (1_u64 << rem_bits) - 1;
+        }
+        Self(words)
     }
 
     pub const fn singleton(pattern: WfcPatternId) -> Self {
-        Self(1_u128 << pattern.0)
+        let idx = (pattern.0 as usize) / 64;
+        let bit = (pattern.0 as usize) % 64;
+        let mut words = [0_u64; 8];
+        words[idx] = 1_u64 << bit;
+        Self(words)
     }
 
     pub fn from_patterns(patterns: impl IntoIterator<Item = WfcPatternId>) -> Self {
         let mut domain = Self::empty();
         for pattern in patterns {
-            domain.0 |= 1_u128 << pattern.0;
+            let idx = usize::from(pattern.0) / 64;
+            let bit = usize::from(pattern.0) % 64;
+            domain.0[idx] |= 1_u64 << bit;
         }
         domain
     }
 
     pub const fn contains(self, pattern: WfcPatternId) -> bool {
-        self.0 & (1_u128 << pattern.0) != 0
+        let idx = (pattern.0 as usize) / 64;
+        let bit = (pattern.0 as usize) % 64;
+        (self.0[idx] & (1_u64 << bit)) != 0
     }
 
     pub const fn len(self) -> u32 {
-        self.0.count_ones()
+        self.0[0].count_ones()
+            + self.0[1].count_ones()
+            + self.0[2].count_ones()
+            + self.0[3].count_ones()
+            + self.0[4].count_ones()
+            + self.0[5].count_ones()
+            + self.0[6].count_ones()
+            + self.0[7].count_ones()
     }
 
     pub const fn is_empty(self) -> bool {
-        self.0 == 0
+        (self.0[0]
+            | self.0[1]
+            | self.0[2]
+            | self.0[3]
+            | self.0[4]
+            | self.0[5]
+            | self.0[6]
+            | self.0[7])
+            == 0
     }
 
     pub const fn is_singleton(self) -> bool {
-        self.0.count_ones() == 1
+        self.len() == 1
     }
 
     pub const fn intersect(self, other: Self) -> Self {
-        Self(self.0 & other.0)
+        Self([
+            self.0[0] & other.0[0],
+            self.0[1] & other.0[1],
+            self.0[2] & other.0[2],
+            self.0[3] & other.0[3],
+            self.0[4] & other.0[4],
+            self.0[5] & other.0[5],
+            self.0[6] & other.0[6],
+            self.0[7] & other.0[7],
+        ])
     }
 
     pub const fn union(self, other: Self) -> Self {
-        Self(self.0 | other.0)
+        Self([
+            self.0[0] | other.0[0],
+            self.0[1] | other.0[1],
+            self.0[2] | other.0[2],
+            self.0[3] | other.0[3],
+            self.0[4] | other.0[4],
+            self.0[5] | other.0[5],
+            self.0[6] | other.0[6],
+            self.0[7] | other.0[7],
+        ])
     }
 
     pub const fn without(self, pattern: WfcPatternId) -> Self {
-        Self(self.0 & !(1_u128 << pattern.0))
+        let idx = (pattern.0 as usize) / 64;
+        let bit = (pattern.0 as usize) % 64;
+        let mut words = self.0;
+        words[idx] &= !(1_u64 << bit);
+        Self(words)
+    }
+
+    pub fn first_pattern(self) -> Option<WfcPatternId> {
+        self.iter().next()
     }
 
     pub fn iter(self) -> PatternDomainIter {
-        PatternDomainIter { remaining: self.0 }
+        PatternDomainIter {
+            words: self.0,
+            word_index: 0,
+        }
     }
 }
 
 pub struct PatternDomainIter {
-    remaining: u128,
+    words: [u64; 8],
+    word_index: usize,
 }
 
 impl Iterator for PatternDomainIter {
     type Item = WfcPatternId;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.remaining == 0 {
-            return None;
+        while self.word_index < 8 {
+            let word = self.words[self.word_index];
+            if word != 0 {
+                let bit = word.trailing_zeros();
+                self.words[self.word_index] &= word - 1;
+                let id = u16::try_from(self.word_index * 64 + usize::try_from(bit).ok()?).ok()?;
+                return WfcPatternId::new(id);
+            }
+            self.word_index += 1;
         }
-        let bit = self.remaining.trailing_zeros();
-        self.remaining &= self.remaining - 1;
-        WfcPatternId::new(u8::try_from(bit).ok()?)
+        None
     }
 }
 
@@ -140,7 +211,7 @@ pub enum WfcCatalogError {
     EmptyCatalog,
     TooManyPatterns { count: usize },
     ZeroWeight { pattern: usize },
-    InvalidAdjacency { from: u8, to: u8 },
+    InvalidAdjacency { from: u16, to: u16 },
 }
 
 impl WfcCatalog {
@@ -159,7 +230,7 @@ impl WfcCatalog {
                 return Err(WfcCatalogError::ZeroWeight { pattern: index });
             }
             let id = WfcPatternId::new(
-                u8::try_from(index).unwrap_or_else(|_| unreachable!("catalog limit is 128")),
+                u16::try_from(index).unwrap_or_else(|_| unreachable!("catalog limit is 512")),
             )
             .unwrap_or_else(|| unreachable!("catalog limit guarantees a valid pattern id"));
             patterns.push(WfcPattern {
@@ -209,9 +280,12 @@ impl WfcCatalog {
                 });
             }
             let reverse = opposite(direction);
-            catalog.compatibility[usize::from(from.get())][direction.index()].0 |=
-                1u128 << to.get();
-            catalog.compatibility[usize::from(to.get())][reverse.index()].0 |= 1u128 << from.get();
+            catalog.compatibility[usize::from(from.get())][direction.index()] = catalog
+                .compatibility[usize::from(from.get())][direction.index()]
+            .union(PatternDomain::singleton(to));
+            catalog.compatibility[usize::from(to.get())][reverse.index()] = catalog.compatibility
+                [usize::from(to.get())][reverse.index()]
+            .union(PatternDomain::singleton(from));
         }
         Ok(catalog)
     }
@@ -354,7 +428,7 @@ pub fn solve_wfc(
     let mut backtracks = 0_u32;
 
     loop {
-        let Some(cell) = select_lowest_entropy_cell(&domains) else {
+        let Some(cell) = select_lowest_entropy_cell(catalog, &domains) else {
             let cells = domains
                 .iter()
                 .map(|domain| {
@@ -398,6 +472,44 @@ pub fn solve_wfc(
                 max_backtracks,
                 contradiction,
             )?;
+        }
+    }
+}
+
+/// Solve WFC and, if a contradiction occurs, relax constraints within a 2-tile radius around the
+/// contradiction cell and retry up to `max_repairs` times.
+pub fn solve_wfc_with_repair(
+    catalog: &WfcCatalog,
+    width: u16,
+    height: u16,
+    seed: u64,
+    constraints: &[WfcConstraint],
+    max_backtracks: u32,
+    max_repairs: u32,
+) -> Result<WfcSolution, WfcSolveError> {
+    let mut active = constraints.to_vec();
+    let mut current_seed = seed;
+    let mut repairs = 0_u32;
+    loop {
+        match solve_wfc(
+            catalog,
+            width,
+            height,
+            current_seed,
+            &active,
+            max_backtracks,
+        ) {
+            Ok(solution) => return Ok(solution),
+            Err(WfcSolveError::Contradiction { coord, backtracks }) => {
+                if repairs >= max_repairs {
+                    return Err(WfcSolveError::Contradiction { coord, backtracks });
+                }
+                repairs += 1;
+                active
+                    .retain(|c| c.coord.x.abs_diff(coord.x) > 2 || c.coord.y.abs_diff(coord.y) > 2);
+                current_seed = SplitMix64::new(current_seed).next_u64();
+            }
+            Err(other) => return Err(other),
         }
     }
 }
@@ -501,16 +613,36 @@ fn compatible_union(
         })
 }
 
-fn select_lowest_entropy_cell(domains: &[PatternDomain]) -> Option<usize> {
+fn shannon_entropy_micros(catalog: &WfcCatalog, domain: PatternDomain) -> u64 {
+    let mut sum_w = 0.0_f64;
+    let mut sum_w_ln_w = 0.0_f64;
+    for pattern in domain.iter() {
+        let w = catalog
+            .pattern(pattern)
+            .map_or(1.0, |p| f64::from(p.weight.max(1)));
+        sum_w += w;
+        sum_w_ln_w += w * w.ln();
+    }
+    if sum_w <= 0.0 {
+        return 0;
+    }
+    let entropy = (sum_w.ln() - sum_w_ln_w / sum_w).max(0.0);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    {
+        (entropy * 1_000_000.0).round() as u64
+    }
+}
+
+fn select_lowest_entropy_cell(catalog: &WfcCatalog, domains: &[PatternDomain]) -> Option<usize> {
     domains
         .iter()
         .enumerate()
         .filter_map(|(index, domain)| {
-            let entropy = domain.len();
-            (entropy > 1).then_some((entropy, index))
+            let count = domain.len();
+            (count > 1).then(|| (shannon_entropy_micros(catalog, *domain), count, index))
         })
         .min()
-        .map(|(_, index)| index)
+        .map(|(_, _, index)| index)
 }
 
 fn choose_weighted(
@@ -618,7 +750,7 @@ mod tests {
         }
     }
 
-    fn id(value: u8) -> WfcPatternId {
+    fn id(value: u16) -> WfcPatternId {
         WfcPatternId::new(value).unwrap_or_else(|| unreachable!("test pattern id is valid"))
     }
 
@@ -756,5 +888,69 @@ mod tests {
             WfcCatalog::new([pattern(0, 0, 0, 0, 0)]),
             Err(WfcCatalogError::ZeroWeight { pattern: 0 })
         );
+    }
+
+    #[test]
+    fn pattern_domain_and_catalog_support_up_to_512_patterns() {
+        let specs = (0..300).map(|i| pattern(1 + (i % 5), 0, 0, 0, 0));
+        let catalog = WfcCatalog::new(specs)
+            .unwrap_or_else(|error| unreachable!("300-pattern catalog is valid: {error:?}"));
+        assert_eq!(catalog.pattern_count(), 300);
+
+        let all = catalog.all_patterns();
+        assert_eq!(all.len(), 300);
+        assert!(all.contains(id(0)));
+        assert!(all.contains(id(299)));
+        assert!(!all.contains(id(300)));
+
+        let solution = solve_wfc(&catalog, 4, 4, 42, &[], 16)
+            .unwrap_or_else(|error| unreachable!("solvable 300-pattern WFC: {error:?}"));
+        assert_eq!(solution.cells().len(), 16);
+    }
+
+    #[test]
+    fn weighted_shannon_entropy_prefers_skewed_two_pattern_cell_over_uniform() {
+        let catalog = WfcCatalog::new([
+            pattern(100, 0, 0, 0, 0),
+            pattern(1, 0, 0, 0, 0),
+            pattern(10, 0, 0, 0, 0),
+            pattern(10, 0, 0, 0, 0),
+        ])
+        .unwrap_or_else(|error| unreachable!("valid catalog: {error:?}"));
+        let uniform = PatternDomain::from_patterns([id(2), id(3)]);
+        let skewed = PatternDomain::from_patterns([id(0), id(1)]);
+        assert!(
+            shannon_entropy_micros(&catalog, skewed) < shannon_entropy_micros(&catalog, uniform)
+        );
+        assert_eq!(
+            select_lowest_entropy_cell(&catalog, &[uniform, skewed]),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn solve_wfc_with_repair_relaxes_conflicting_radius_and_succeeds() {
+        let catalog = WfcCatalog::new([pattern(1, 0, 0, 0, 0), pattern(1, 1, 1, 1, 1)])
+            .unwrap_or_else(|error| unreachable!("valid test catalog: {error:?}"));
+        let constraints = [
+            WfcConstraint {
+                coord: WfcCoord::new(0, 0),
+                allowed: PatternDomain::singleton(id(0)),
+            },
+            WfcConstraint {
+                coord: WfcCoord::new(1, 0),
+                allowed: PatternDomain::singleton(id(1)),
+            },
+            WfcConstraint {
+                coord: WfcCoord::new(5, 0),
+                allowed: PatternDomain::singleton(id(0)),
+            },
+        ];
+        assert!(solve_wfc(&catalog, 6, 1, 5, &constraints, 8).is_err());
+
+        let repaired = solve_wfc_with_repair(&catalog, 6, 1, 5, &constraints, 8, 2)
+            .unwrap_or_else(|error| unreachable!("repair should relax conflict: {error:?}"));
+        // Far constraint at x=5 (outside radius 2) remains respected.
+        assert_eq!(repaired.at(WfcCoord::new(5, 0)), Some(id(0)));
     }
 }

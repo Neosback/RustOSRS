@@ -151,7 +151,8 @@ mod tests {
     }
 
     fn pattern(value: u8) -> WfcPatternId {
-        WfcPatternId::new(value).unwrap_or_else(|| unreachable!("test pattern id is valid"))
+        WfcPatternId::new(u16::from(value))
+            .unwrap_or_else(|| unreachable!("test pattern id is valid"))
     }
 
     fn domain(values: &[u8]) -> PatternDomain {

@@ -9,7 +9,7 @@ use eframe::egui;
 
 pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     let accent = ui.visuals().selection.stroke.color;
-    ui.weak("Plans rooms, doors, windows and a roof for the site, using the chosen kit's objects. One floor for now.");
+    ui.weak("Plans rooms, doors, windows, stairs and a roof for the site, using the chosen kit's objects (1 to 3 floors).");
     kit_picker(app, ui);
 
     let form = &mut app.prefabs.build.form;
@@ -48,6 +48,11 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
             egui::DragValue::new(&mut form.height)
                 .range(6..=MAX_SITE)
                 .suffix(" deep"),
+        );
+        ui.add(
+            egui::DragValue::new(&mut form.floors)
+                .range(1..=3)
+                .suffix(" floors"),
         );
     });
     let mut reroll = false;
@@ -101,7 +106,11 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
         summary.push_str(&format!(", {} already there", preview.standing));
     }
     ui.colored_label(accent, summary);
-    let roof_plane = preview.base_plane.index().get() + 1;
+    let roof_plane = preview
+        .base_plane
+        .index()
+        .get()
+        .saturating_add(preview.form.floors.clamp(1, 3));
     if roof_plane <= 3 {
         let viewing = app.interaction.view_plane() == roof_plane;
         ui.horizontal_wrapped(|ui| {
@@ -114,8 +123,11 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
                 .on_hover_text("Switch the view to the plane the roof is on, and back")
                 .clicked()
             {
-                app.interaction
-                    .set_view_plane(if viewing { roof_plane - 1 } else { roof_plane });
+                app.interaction.set_view_plane(if viewing {
+                    preview.base_plane.index().get()
+                } else {
+                    roof_plane
+                });
             }
         });
     }

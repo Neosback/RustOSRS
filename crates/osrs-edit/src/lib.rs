@@ -37,6 +37,7 @@ mod building_walls;
 mod building_wfc;
 pub use building_learning::{
     LearnedCatalog, LearnedPattern, LearnedRoleModel, LearningError, LearningGrid, learn_catalog,
+    learn_catalog_with_rotations,
 };
 mod document;
 mod document_diff;
@@ -156,6 +157,7 @@ pub use building_walls::resolve_wall_slots;
 pub use building_wfc::{
     MAX_WFC_PATTERNS, PatternDomain, WfcCatalog, WfcCatalogError, WfcConstraint, WfcCoord,
     WfcPattern, WfcPatternId, WfcPatternSpec, WfcSocket, WfcSolution, WfcSolveError, solve_wfc,
+    solve_wfc_with_repair,
 };
 pub use document::{MapDocument, PatchApplyError};
 pub use history::{

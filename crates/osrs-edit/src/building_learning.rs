@@ -13,6 +13,22 @@ pub struct LearnedPattern {
     /// Explicit north/east/south/west order, independent of census enum discriminants.
     pub sockets: [u16; 4],
 }
+impl LearnedPattern {
+    pub const fn rotate_cw(&self, turns: u8) -> Self {
+        let mut s = self.sockets;
+        let mut i = 0;
+        let count = turns & 3;
+        while i < count {
+            s = [s[3], s[0], s[1], s[2]];
+            i += 1;
+        }
+        Self {
+            floor_class: self.floor_class,
+            sockets: s,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LearningGrid {
     pub width: u16,
@@ -20,6 +36,40 @@ pub struct LearningGrid {
     pub cells: Vec<LearnedPattern>,
     pub reviewed: bool,
 }
+
+impl LearningGrid {
+    /// Rotate the grid and its cell sockets 90 degrees clockwise.
+    pub fn rotate_cw(&self) -> Self {
+        let w = usize::from(self.width);
+        let h = usize::from(self.height);
+        if w == 0 || h == 0 || self.cells.len() != w * h {
+            return self.clone();
+        }
+        let new_w = h;
+        let new_h = w;
+        let mut cells = vec![
+            LearnedPattern {
+                floor_class: 0,
+                sockets: [0; 4],
+            };
+            new_w * new_h
+        ];
+        for y in 0..h {
+            for x in 0..w {
+                let new_x = y;
+                let new_y = w - 1 - x;
+                cells[new_y * new_w + new_x] = self.cells[y * w + x].rotate_cw(1);
+            }
+        }
+        Self {
+            width: self.height,
+            height: self.width,
+            cells,
+            reviewed: self.reviewed,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LearnedCatalog {
     pub format: String,
@@ -30,7 +80,7 @@ pub struct LearnedCatalog {
     pub patterns: Vec<LearnedPattern>,
     pub weights: Vec<u32>,
     /// Pattern, direction (N=0,E=1,S=2,W=3), neighboring pattern.
-    pub adjacency: Vec<(u8, u8, u8)>,
+    pub adjacency: Vec<(u16, u8, u16)>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LearningError {
@@ -112,7 +162,12 @@ pub fn learn_catalog(
     let ids: BTreeMap<_, _> = patterns
         .iter()
         .enumerate()
-        .map(|(i, p)| (p.clone(), i as u8))
+        .map(|(i, p)| {
+            (
+                p.clone(),
+                u16::try_from(i).unwrap_or_else(|_| unreachable!("capped by MAX_WFC_PATTERNS")),
+            )
+        })
         .collect();
     let mut adjacency = BTreeSet::new();
     for grid in grids {
@@ -142,6 +197,24 @@ pub fn learn_catalog(
     };
     catalog.compile()?;
     Ok(catalog)
+}
+
+/// Learn a catalog across all four 90-degree clockwise rotations of `grids`.
+pub fn learn_catalog_with_rotations(
+    grids: &[LearningGrid],
+    style: String,
+    role: String,
+    source: String,
+) -> Result<LearnedCatalog, LearningError> {
+    let mut expanded = Vec::with_capacity(grids.len() * 4);
+    for grid in grids {
+        let r0 = grid.clone();
+        let r1 = r0.rotate_cw();
+        let r2 = r1.rotate_cw();
+        let r3 = r2.rotate_cw();
+        expanded.extend([r0, r1, r2, r3]);
+    }
+    learn_catalog(&expanded, style, role, source)
 }
 
 #[cfg(test)]
@@ -202,14 +275,14 @@ mod tests {
             learn_catalog(&[b, a], "s".into(), "r".into(), "x".into())
         );
         let grid = LearningGrid {
-            width: 129,
+            width: 513,
             height: 1,
-            cells: (0..129).map(pattern).collect(),
+            cells: (0..513).map(pattern).collect(),
             reviewed: true,
         };
         assert_eq!(
             learn_catalog(&[grid], "".into(), "".into(), "".into()),
-            Err(LearningError::TooManyPatterns(129))
+            Err(LearningError::TooManyPatterns(513))
         );
         assert_eq!(
             learn_catalog(
@@ -225,5 +298,29 @@ mod tests {
             ),
             Err(LearningError::Unreviewed)
         );
+    }
+
+    #[test]
+    fn rotation_synthesis_rotates_sockets_and_adjacencies() {
+        let grids = [LearningGrid {
+            width: 2,
+            height: 1,
+            cells: vec![
+                LearnedPattern {
+                    floor_class: 1,
+                    sockets: [10, 20, 30, 40],
+                },
+                LearnedPattern {
+                    floor_class: 2,
+                    sockets: [50, 60, 70, 20],
+                },
+            ],
+            reviewed: true,
+        }];
+        let learned =
+            learn_catalog_with_rotations(&grids, "town".into(), "house".into(), "fixture".into())
+                .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(learned.patterns.len(), 8);
+        assert!(learned.compile().is_ok());
     }
 }

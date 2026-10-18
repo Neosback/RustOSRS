@@ -364,7 +364,7 @@ impl LabPanel {
                 open_text("Load learned WFC catalog", "json"),
             ));
         }
-        self.catalog.show(ui, self.seed);
+        self.catalog.show(ui, self.seed, viewer);
         if let Some(problem) = &self.problem {
             ui.colored_label(ui.visuals().error_fg_color, problem);
         }

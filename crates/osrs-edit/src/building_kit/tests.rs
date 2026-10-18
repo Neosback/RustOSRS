@@ -384,3 +384,63 @@ fn bigger_sites_get_more_rooms_and_small_ones_stay_simple() {
         }
     }
 }
+
+#[test]
+fn two_floor_building_generates_upper_story_stairs_and_lifted_roof() {
+    let compiled = hip_kit().compile().unwrap_or_else(|e| unreachable!("{e}"));
+    let plane0 = SourcePlane::new(0).unwrap_or_else(|| unreachable!());
+    let request = BuildingRequest {
+        seed: 77,
+        site: RectSite::new(MapTile::new(3200, 3200), 16, 12).unwrap_or_else(|| unreachable!()),
+        base_plane: plane0,
+        floors: 2,
+        archetype: BuildingArchetype::House,
+        style: BuildingStyle::Generic,
+        constraints: BuildingConstraints::default(),
+    };
+    let mut heights = Vec::new();
+    for y in 0..=12 {
+        for x in 0..=16 {
+            heights.push((
+                HeightVertexCoord::new(MapTile::new(3200 + x, 3200 + y), plane0),
+                -64,
+            ));
+        }
+    }
+    let mut document = MapDocument::from_parts([], heights, []);
+    let original = document.clone();
+    let snapshot = capture_generation_snapshot(&document, request, []);
+    let patch = compiled
+        .generate(&snapshot, 0)
+        .unwrap_or_else(|e| unreachable!("{e:?}"));
+
+    let mut wall_planes = std::collections::BTreeSet::new();
+    let mut roof_planes = std::collections::BTreeSet::new();
+    let mut has_stair_up = false;
+    let mut has_stair_down = false;
+    for op in patch.ops() {
+        if let MapOp::AddObject { placement } = op {
+            let p = placement.position.plane.index().get();
+            if (0..=3).contains(&placement.kind.get()) {
+                wall_planes.insert(p);
+            } else if (12..=21).contains(&placement.kind.get()) {
+                roof_planes.insert(p);
+            } else if placement.object_id.get() == 16683 {
+                has_stair_up = true;
+            } else if placement.object_id.get() == 16679 {
+                has_stair_down = true;
+            }
+        }
+    }
+    assert_eq!(wall_planes, [0, 1].into());
+    assert_eq!(roof_planes, [2].into());
+    assert!(has_stair_up && has_stair_down);
+
+    document
+        .apply_patch(&patch)
+        .unwrap_or_else(|e| unreachable!("{e:?}"));
+    document
+        .apply_patch(&patch.inverse())
+        .unwrap_or_else(|e| unreachable!("{e:?}"));
+    assert_eq!(document, original);
+}

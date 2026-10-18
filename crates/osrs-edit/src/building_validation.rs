@@ -40,6 +40,7 @@ impl OccupiedFootprint {
 pub struct GenerationSnapshot {
     request: BuildingRequest,
     terrain: Vec<TerrainTile>,
+    upper_terrain: Vec<(SourcePlane, Vec<TerrainTile>)>,
     heights: Vec<Option<i32>>,
     occupancy: OccupancyGrid,
 }
@@ -49,12 +50,33 @@ impl GenerationSnapshot {
         self.request
     }
 
+    pub(crate) fn with_request(&self, request: BuildingRequest) -> Self {
+        Self {
+            request,
+            terrain: self.terrain.clone(),
+            upper_terrain: self.upper_terrain.clone(),
+            heights: self.heights.clone(),
+            occupancy: self.occupancy.clone(),
+        }
+    }
+
     pub const fn site(&self) -> RectSite {
         self.request.site
     }
 
     pub fn terrain_at(&self, tile: MapTile) -> Option<TerrainTile> {
         self.terrain_index(tile).map(|index| self.terrain[index])
+    }
+
+    pub fn terrain_at_plane(&self, tile: MapTile, plane: SourcePlane) -> Option<TerrainTile> {
+        if plane == self.request.base_plane {
+            return self.terrain_at(tile);
+        }
+        let index = self.terrain_index(tile)?;
+        self.upper_terrain
+            .iter()
+            .find(|(p, _)| *p == plane)
+            .map(|(_, tiles)| tiles[index])
     }
 
     pub fn height_at(&self, coord: HeightVertexCoord) -> Option<i32> {
@@ -138,6 +160,23 @@ pub fn capture_generation_snapshot(
         }
     }
 
+    let mut upper_terrain = Vec::new();
+    for offset in 1..request.floors {
+        if let Some(plane) =
+            SourcePlane::new(request.base_plane.index().get().saturating_add(offset))
+        {
+            let mut tiles =
+                Vec::with_capacity(usize::from(site.width()) * usize::from(site.height()));
+            for local_y in 0..u32::from(site.height()) {
+                for local_x in 0..u32::from(site.width()) {
+                    let tile = offset_tile(site.origin(), local_x, local_y);
+                    tiles.push(query.terrain_at(MapPosition::new(tile, plane)));
+                }
+            }
+            upper_terrain.push((plane, tiles));
+        }
+    }
+
     let height_width = usize::from(site.width()) + 1;
     let height_height = usize::from(site.height()) + 1;
     let mut heights = Vec::with_capacity(height_width * height_height);
@@ -166,6 +205,7 @@ pub fn capture_generation_snapshot(
     GenerationSnapshot {
         request,
         terrain,
+        upper_terrain,
         heights,
         occupancy,
     }

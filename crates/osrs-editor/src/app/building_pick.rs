@@ -52,8 +52,7 @@ fn found_from(
 ) -> Found {
     let footprint: HashSet<Tile> = description
         .floors
-        .get(&building.plane)
-        .into_iter()
+        .values()
         .flatten()
         .map(|t| (t.x, t.y))
         .collect();
@@ -151,7 +150,12 @@ pub(super) fn select_building(app: &mut EditorApp, tile: Tile, additive: bool) -
                         .clone()
                         .unwrap_or_default()
                         .to_lowercase(),
-                    symbol: String::new(),
+                    symbol: app
+                        .names
+                        .book()
+                        .and_then(|b| b.object(id.get()))
+                        .unwrap_or_default()
+                        .to_owned(),
                     actions: loc
                         .definition
                         .actions

@@ -14,10 +14,10 @@ use crate::{
 use osrs_core::coords::MapTile;
 use std::collections::{BTreeMap, HashSet};
 
-const STABLE_WALL_PATTERN: u8 = 0;
-const BEFORE_WINDOW_PATTERN: u8 = 1;
-const WINDOW_PATTERN: u8 = 2;
-const AFTER_WINDOW_PATTERN: u8 = 3;
+const STABLE_WALL_PATTERN: u16 = 0;
+const BEFORE_WINDOW_PATTERN: u16 = 1;
+const WINDOW_PATTERN: u16 = 2;
+const AFTER_WINDOW_PATTERN: u16 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FacadeWfcConfig {
@@ -309,7 +309,7 @@ fn mix64(mut value: u64) -> u64 {
     value ^ (value >> 31)
 }
 
-fn pattern(value: u8) -> WfcPatternId {
+fn pattern(value: u16) -> WfcPatternId {
     WfcPatternId::new(value).unwrap_or_else(|| unreachable!("facade pattern id is valid"))
 }
 

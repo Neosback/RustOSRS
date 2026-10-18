@@ -202,7 +202,7 @@ fn edge(asset: &KitAsset) -> Result<EdgeAsset, KitError> {
     })
 }
 
-fn pattern_id(value: u8) -> Result<WfcPatternId, KitError> {
+fn pattern_id(value: u16) -> Result<WfcPatternId, KitError> {
     WfcPatternId::new(value).ok_or(KitError::Value {
         what: "roof pattern",
         value: u32::from(value),
@@ -217,7 +217,7 @@ fn domain(values: &[u8], count: usize) -> Result<PatternDomain, KitError> {
                 "pattern {value} is used but only {count} patterns are listed"
             )));
         }
-        ids.push(pattern_id(value)?);
+        ids.push(pattern_id(u16::from(value))?);
     }
     Ok(PatternDomain::from_patterns(ids))
 }
@@ -354,8 +354,8 @@ fn compile_pattern_roof(roof: &KitRoof) -> Result<PatternRoof, KitError> {
     let mut entries = Vec::with_capacity(count);
     for (index, pattern) in roof.patterns.iter().enumerate() {
         entries.push(RoofPaletteEntry {
-            pattern: pattern_id(u8::try_from(index).map_err(|_| {
-                KitError::Roof("a kit holds at most 128 roof patterns".to_owned())
+            pattern: pattern_id(u16::try_from(index).map_err(|_| {
+                KitError::Roof("a kit holds at most 512 roof patterns".to_owned())
             })?)?,
             asset: RoofAsset {
                 object_id: ObjectId::new(pattern.id),
@@ -403,7 +403,7 @@ fn compile_pattern_roof(roof: &KitRoof) -> Result<PatternRoof, KitError> {
         }
         junction_entries.push(RoofJunctionPatternPaletteEntry {
             key: RoofJunctionPatternKey::new(requirements),
-            pattern: pattern_id(junction.pattern)?,
+            pattern: pattern_id(u16::from(junction.pattern))?,
         });
     }
     let junctions = RoofJunctionPatternPalette::new(junction_entries)
@@ -428,7 +428,7 @@ impl BuildingKit {
 
     /// Generate one building for the request in `snapshot`: rooms sized to the site, walls, doors
     /// and windows from the kit, and its roof. `variation` re-rolls the windows and doors without
-    /// moving rooms or corridors.
+    /// moving rooms or corridors. Supports 1..=3 floors.
     pub fn generate(
         &self,
         snapshot: &GenerationSnapshot,
@@ -436,18 +436,31 @@ impl BuildingKit {
     ) -> Result<MapPatch, KitGenerateError> {
         let wrap = KitGenerateError::Generation;
         let request = snapshot.request();
-        if request.floors != 1 {
+        if !(1..=3).contains(&request.floors) {
             return Err(wrap(BuildingGenerationError::UnsupportedFloorCount {
                 floors: request.floors,
             }));
         }
-        let site = request.site;
+        let extra_stories = request.floors.saturating_sub(1);
+        let roof_offset = extra_stories.saturating_add(self.roof_plane_offset);
+        let top_plane = request.base_plane.index().get().saturating_add(roof_offset);
+        if osrs_core::coords::SourcePlane::new(top_plane).is_none() {
+            return Err(KitGenerateError::RoofPlane { plane: top_plane });
+        }
+
+        let floor0_request = crate::BuildingRequest {
+            floors: 1,
+            ..request
+        };
+        let floor0_snapshot = snapshot.with_request(floor0_request);
+
+        let site = floor0_request.site;
         let interior =
             u32::from(site.width().saturating_sub(2)) * u32::from(site.height().saturating_sub(2));
-        let program = building_program(request.archetype).fitted_to_area(interior);
-        let layout = pack_building_program(&program, site, request.seed)
+        let program = building_program(floor0_request.archetype).fitted_to_area(interior);
+        let layout = pack_building_program(&program, site, floor0_request.seed)
             .map_err(|e| wrap(BuildingGenerationError::Layout(e)))?;
-        let building = build_bsp_building_plan(request, &program, &layout)
+        let building = build_bsp_building_plan(floor0_request, &program, &layout)
             .map_err(|e| wrap(BuildingGenerationError::Topology(e)))?;
         route_program_connections(&building)
             .map_err(|e| wrap(BuildingGenerationError::Routing(e)))?;
@@ -456,7 +469,7 @@ impl BuildingKit {
             .map_err(|e| wrap(BuildingGenerationError::Architecture(e)))?;
         let refined = refine_exterior_walls_for_variation(
             &architecture,
-            request.seed,
+            floor0_request.seed,
             variation,
             FacadeWfcConfig::default(),
             FacadeRefinementPolicy::default(),
@@ -468,7 +481,14 @@ impl BuildingKit {
         })?;
 
         let body = if let (Some(hip), None) = (self.hip, &self.patterns) {
-            self.with_hip_roof(snapshot, plan, &architecture, hip, variation)?
+            self.with_hip_roof(
+                &floor0_snapshot,
+                plan,
+                &architecture,
+                hip,
+                variation,
+                roof_offset,
+            )?
         } else {
             let Some(roof) = &self.patterns else {
                 // `compile` guarantees one of the two roofs.
@@ -477,7 +497,7 @@ impl BuildingKit {
                 }));
             };
             let patch = generate_building_plan_patch(
-                snapshot,
+                &floor0_snapshot,
                 plan,
                 BuildingGenerationConfig {
                     detail_palette: &self.detail,
@@ -492,14 +512,120 @@ impl BuildingKit {
                 },
             )
             .map_err(wrap)?;
-            self.lift_roof(patch)
+            self.lift_roof(patch, roof_offset)
         };
         // One wall piece per tile, or the game drops the extras.
         let (body, _unplaced) = crate::resolve_wall_slots(&body);
-        Ok(match &self.finish {
-            Some(finish) => finish.apply(&body, &building, refined.edges(), snapshot),
+        let ground_and_roof = match &self.finish {
+            Some(finish) => finish.apply(&body, &building, refined.edges(), &floor0_snapshot),
             None => body,
-        })
+        };
+        if extra_stories == 0 {
+            return Ok(ground_and_roof);
+        }
+        self.stack_upper_floors(snapshot, request, plan, &architecture, ground_and_roof)
+    }
+
+    fn stack_upper_floors(
+        &self,
+        snapshot: &GenerationSnapshot,
+        request: crate::BuildingRequest,
+        plan: &BuildingPlan,
+        architecture: &BuildingArchitecture,
+        ground_and_roof: MapPatch,
+    ) -> Result<MapPatch, KitGenerateError> {
+        let wrap = KitGenerateError::Generation;
+        let floor_tiles = vec![architecture.floor_tiles().to_vec(); usize::from(request.floors)];
+        let vertical = crate::plan_vertical_connectivity(request, &floor_tiles)
+            .map_err(|e| wrap(BuildingGenerationError::Vertical(e)))?;
+
+        let mut stair_reserved = std::collections::BTreeSet::new();
+        for stair in vertical.stairs() {
+            stair_reserved.insert(stair.tile);
+            if let Some(approach) = stair.approach_tile() {
+                stair_reserved.insert(approach);
+            }
+        }
+
+        let exterior_door_tiles: std::collections::BTreeSet<_> = plan
+            .connections
+            .iter()
+            .filter(|c| c.from.is_none())
+            .map(|c| c.doorway)
+            .collect();
+        let mut door_ids: std::collections::BTreeSet<ObjectId> =
+            std::collections::BTreeSet::from([self.detail.base.door.object_id]);
+        for variant in &self.detail.door_variants {
+            door_ids.insert(variant.asset.object_id);
+        }
+
+        let mut ops = Vec::new();
+        for &op in ground_and_roof.ops() {
+            if let MapOp::AddObject { placement } = op
+                && placement.position.plane == request.base_plane
+                && placement.kind.get() == 10
+                && stair_reserved.contains(&placement.position.tile)
+            {
+                continue;
+            }
+            ops.push(op);
+        }
+
+        for story in 1..request.floors {
+            let Some(story_plane) = osrs_core::coords::SourcePlane::new(
+                request.base_plane.index().get().saturating_add(story),
+            ) else {
+                continue;
+            };
+            for &op in ground_and_roof.ops() {
+                match op {
+                    MapOp::SetTerrain { coord, after, .. } if coord.plane == request.base_plane => {
+                        if let Some(before) = snapshot.terrain_at_plane(coord.tile, story_plane)
+                            && before != after
+                        {
+                            ops.push(MapOp::SetTerrain {
+                                coord: crate::MapPosition::new(coord.tile, story_plane),
+                                before,
+                                after,
+                            });
+                        }
+                    }
+                    MapOp::AddObject { mut placement }
+                        if placement.position.plane == request.base_plane
+                            && (0..=9).contains(&placement.kind.get()) =>
+                    {
+                        placement.position.plane = story_plane;
+                        if door_ids.contains(&placement.object_id)
+                            && exterior_door_tiles.contains(&placement.position.tile)
+                        {
+                            placement.object_id = self.detail.base.exterior_wall.object_id;
+                            placement.kind = self.detail.base.exterior_wall.kind;
+                        }
+                        ops.push(MapOp::AddObject { placement });
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let stair_orientations =
+            [0, 1, 2, 3].map(|o| ObjectOrientation::new(o).unwrap_or_else(|| unreachable!()));
+        let stair_palette = crate::StairPalette {
+            up: crate::StairAsset {
+                object_id: ObjectId::new(16683),
+                kind: LocKind::new(10).unwrap_or_else(|| unreachable!()),
+                orientations: stair_orientations,
+            },
+            down: crate::StairAsset {
+                object_id: ObjectId::new(16679),
+                kind: LocKind::new(10).unwrap_or_else(|| unreachable!()),
+                orientations: stair_orientations,
+            },
+        };
+        if let Ok(stairs) = crate::build_stair_patch(&vertical, stair_palette) {
+            ops.extend_from_slice(stairs.ops());
+        }
+        Ok(MapPatch::new(ops))
     }
 
     /// The walls and floor from the facade pipeline, then a hip roof over the footprint and one
@@ -511,6 +637,7 @@ impl BuildingKit {
         architecture: &BuildingArchitecture,
         hip: HipRoofAssets,
         variation: u32,
+        roof_offset: u8,
     ) -> Result<MapPatch, KitGenerateError> {
         let wrap = KitGenerateError::Generation;
         let body = build_detailed_wfc_building_variation_patch(
@@ -523,7 +650,7 @@ impl BuildingKit {
         )
         .map_err(|e| wrap(BuildingGenerationError::Detail(e)))?;
         let base = plan.request.base_plane.index().get();
-        let plane = base.saturating_add(self.roof_plane_offset);
+        let plane = base.saturating_add(roof_offset);
         let plane = osrs_core::coords::SourcePlane::new(plane)
             .ok_or(KitGenerateError::RoofPlane { plane })?;
         let mut footprint: std::collections::BTreeSet<osrs_core::coords::MapTile> =
@@ -545,9 +672,9 @@ impl BuildingKit {
         Ok(MapPatch::new(ops))
     }
 
-    /// Move roof pieces up by the kit's roof plane offset.
-    fn lift_roof(&self, patch: MapPatch) -> MapPatch {
-        if self.roof_plane_offset == 0 {
+    /// Move roof pieces up by the kit's roof plane offset (plus any upper floors).
+    fn lift_roof(&self, patch: MapPatch, roof_offset: u8) -> MapPatch {
+        if roof_offset == 0 {
             return patch;
         }
         let mut ops = Vec::with_capacity(patch.ops().len());
@@ -559,7 +686,7 @@ impl BuildingKit {
                         .plane
                         .index()
                         .get()
-                        .saturating_add(self.roof_plane_offset);
+                        .saturating_add(roof_offset);
                     // Above the top plane there is nowhere to put a roof: keep it where it is.
                     if let Some(plane) = osrs_core::coords::SourcePlane::new(plane) {
                         placement.position.plane = plane;

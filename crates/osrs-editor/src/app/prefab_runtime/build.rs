@@ -53,6 +53,7 @@ pub(in crate::app) struct BuildForm {
     pub(in crate::app) style: BuildingStyle,
     pub(in crate::app) width: u16,
     pub(in crate::app) height: u16,
+    pub(in crate::app) floors: u8,
     pub(in crate::app) seed: u64,
     /// Re-rolls windows and doors only; rooms stay put.
     pub(in crate::app) variation: u32,
@@ -69,6 +70,7 @@ impl Default for BuildForm {
             style: BuildingStyle::Generic,
             width: 12,
             height: 10,
+            floors: 1,
             seed: 1,
             variation: 0,
             kit: 0,
@@ -276,7 +278,7 @@ impl BuildState {
             seed: form.seed,
             site,
             base_plane,
-            floors: 1,
+            floors: form.floors.clamp(1, 3),
             archetype: form.archetype,
             style: form.style,
             constraints: BuildingConstraints::default(),
@@ -289,13 +291,11 @@ impl BuildState {
         let mut ops = Vec::new();
         let mut removed = 0;
         if form.clear_site {
-            for plane in [
-                Some(base_plane),
-                SourcePlane::new(base_plane.index().get() + 1),
-            ]
-            .into_iter()
-            .flatten()
-            {
+            let base = base_plane.index().get();
+            for offset in 0..=form.floors.clamp(1, 3) {
+                let Some(plane) = SourcePlane::new(base.saturating_add(offset)) else {
+                    continue;
+                };
                 for placement in osrs_edit::objects_overlapping_rect(
                     document,
                     (origin.x, origin.y),
@@ -383,7 +383,7 @@ impl BuildState {
                 archetype: archetype.to_owned(),
                 style: style.to_owned(),
                 seed: form.seed,
-                floors: 1,
+                floors: form.floors.clamp(1, 3),
             },
         )
         .map_err(|error| error.to_string())?;

@@ -464,7 +464,7 @@ mod tests {
     }
 
     fn pattern(value: u8) -> WfcPatternId {
-        WfcPatternId::new(value).unwrap_or_else(|| unreachable!("test pattern is valid"))
+        WfcPatternId::new(u16::from(value)).unwrap_or_else(|| unreachable!("test pattern is valid"))
     }
 
     #[test]
