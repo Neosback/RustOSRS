@@ -358,6 +358,7 @@ fn height_brush_room_rect_corners_hip_roof_and_partial_terrain_credit_work() {
 }
 
 #[test]
+#[allow(clippy::unwrap_used)] // Test fixture: a failing reset or serialization is the failure.
 fn policy_validation_is_target_free_and_preserves_budget_history_and_author_locks() {
     let mut task = task();
     let object = task.target.objects[0].clone();
