@@ -230,9 +230,10 @@ pub(in crate::app) fn input(app: &mut EditorApp, response: &egui::Response) -> b
         }
         Layer::Pieces | Layer::Upper => {
             if let Some(object) = object
-                && let Some(size) = size {
-                    change_piece(review, object, size, include);
-                }
+                && let Some(size) = size
+            {
+                change_piece(review, object, size, include);
+            }
         }
     }
     super::membership::refresh(review);

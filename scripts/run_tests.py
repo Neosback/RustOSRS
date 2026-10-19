@@ -202,7 +202,23 @@ def run(args):
         command.append('--all-targets')
     else:
         # Examples are tool binaries with no tests; clippy --all-targets already type-checks them.
-        command.extend(['--lib', '--bins', '--tests'])
+        if args.package:
+            kinds = set()
+            for pkg_name in args.package:
+                for p in packages.values():
+                    if p['name'] == pkg_name:
+                        for t in p['targets']:
+                            kinds.update(t.get('kind', []))
+            if 'lib' in kinds:
+                command.append('--lib')
+            if 'bin' in kinds:
+                command.append('--bins')
+            if 'test' in kinds:
+                command.append('--tests')
+            if not kinds.intersection({'lib', 'bin', 'test'}):
+                command.extend(['--bins', '--tests'])
+        else:
+            command.extend(['--lib', '--bins', '--tests'])
     print('Build:', ' '.join(command), flush=True)
     with (output / 'build.jsonl').open('w') as log:
         build = subprocess.run(command, cwd=ROOT, stdout=log, check=False)

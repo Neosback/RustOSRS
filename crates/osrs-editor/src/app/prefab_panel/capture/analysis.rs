@@ -179,9 +179,9 @@ pub(in crate::app) fn start_selection(
                                 orientation: p.orientation.get(),
                             }),
                         )
-                    {
-                        candidates.push(candidate);
-                    }
+                {
+                    candidates.push(candidate);
+                }
                 let sides = candidates.iter().map(|c| (c.seed, c.plane)).collect();
                 let seed_description = candidates.into_iter().next().map(|c| c.description)
                     .ok_or("No enclosed building here. Load the surrounding map or select an interior floor tile.")?;
