@@ -8,13 +8,11 @@ coding agents find an existing feature owner before introducing another implemen
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 from typing import Any, Iterable
 
-ROOT = Path(__file__).resolve().parents[1]
-REGISTRY_PATH = ROOT / "scripts" / "editor_features.json"
+from feature_registry import REGISTRY_PATH, RegistryError, load_registry
 
 REFERENCE_ORDER = (
     "controller",
@@ -25,38 +23,6 @@ REFERENCE_ORDER = (
     "commit_test",
     "undo_test",
 )
-
-
-class RegistryError(ValueError):
-    """Raised when the feature registry cannot be interpreted."""
-
-
-def load_registry(path: Path = REGISTRY_PATH) -> dict[str, dict[str, Any]]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise RegistryError(f"cannot read {path}: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise RegistryError(f"invalid JSON in {path}: {exc}") from exc
-
-    # Current registry is a flat feature map. Accept the planned versioned wrapper too so
-    # the navigation CLI does not need to change when CP1B adds schema metadata.
-    if isinstance(payload, dict) and isinstance(payload.get("features"), dict):
-        features = payload["features"]
-    else:
-        features = payload
-
-    if not isinstance(features, dict):
-        raise RegistryError("feature registry must contain a feature object")
-
-    result: dict[str, dict[str, Any]] = {}
-    for name, feature in features.items():
-        if not isinstance(name, str) or not name:
-            raise RegistryError("feature names must be non-empty strings")
-        if not isinstance(feature, dict):
-            raise RegistryError(f"feature {name!r} must be an object")
-        result[name] = feature
-    return result
 
 
 def iter_strings(value: Any) -> Iterable[str]:
