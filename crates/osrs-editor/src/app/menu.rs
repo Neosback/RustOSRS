@@ -162,6 +162,7 @@ impl EditorApp {
         let mut mode = self.interaction.camera().mode;
         ui.radio_value(&mut mode, CameraMode::Fly, "Fly   C");
         ui.radio_value(&mut mode, CameraMode::Orbit, "Orbit   C");
+        ui.radio_value(&mut mode, CameraMode::Game, "Game   C");
         self.interaction.set_camera_mode(mode);
     }
 }

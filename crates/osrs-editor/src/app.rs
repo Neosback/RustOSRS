@@ -16,6 +16,7 @@ mod editing;
 #[cfg_attr(target_arch = "wasm32", path = "app/export_web.rs")]
 mod export;
 mod floating;
+mod gameframe;
 mod gizmo;
 mod hd;
 mod inspector;
@@ -34,6 +35,7 @@ mod palette_runtime;
 mod path_commit;
 mod player_panel;
 mod player_runtime;
+mod player_window;
 mod plugin_runtime;
 mod plugins;
 mod prefab_gallery;
@@ -218,6 +220,7 @@ impl eframe::App for EditorApp {
         self.assets.poll(&ctx);
         self.world_map_window(&ctx);
         prefab_gallery::window(self, &ctx);
+        player_window::draw_player_window(self, &ctx);
         workshop::window(self, &ctx);
         if let Some(destination) = self.ui.teleport.show(&ctx) {
             self.teleport_to(destination);
