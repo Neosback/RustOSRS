@@ -115,11 +115,9 @@ impl EditorApp {
             EditReplayDescriptor::Scenario => DescriptorProjectionInput::Scenario,
             EditReplayDescriptor::Appearance => DescriptorProjectionInput::Appearance,
         };
-        let execution = self.session.replay(
-            direction.gateway(),
-            crate::app::edit_runtime::EditFootprint::default(),
-            |document| prepare_descriptor_projection(document, &descriptor, input),
-        );
+        let execution = self.session.replay(direction.gateway(), |document| {
+            prepare_descriptor_projection(document, &descriptor, input)
+        });
 
         let notice = match execution {
             Ok(EditExecution::Committed {
