@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), allow(dead_code))]
+
 use super::*;
 use osrs_edit::MapReplayFootprint;
 
@@ -58,9 +60,12 @@ mod tests {
     use super::*;
     use osrs_core::{
         coords::{MapTile, SourcePlane},
-        ids::{ObjectId},
+        ids::ObjectId,
     };
-    use osrs_edit::{LocKind, MapDocument, MapOp, MapPatch, MapPosition, ObjectOrientation, ObjectPlacement, ScenarioPatch};
+    use osrs_edit::{
+        LocKind, MapDocument, MapOp, MapPatch, MapPosition, ObjectOrientation, ObjectPlacement,
+        ScenarioPatch,
+    };
     use osrs_hd::theme::{ThemePack, ThemePatch};
 
     fn position() -> MapPosition {
