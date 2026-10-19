@@ -8,8 +8,8 @@ without compiling Rust:
   the application ``EditRuntime`` gateway.
 - ``--check-legacy-history`` rejects any reintroduction of legacy ``EditStep`` before/after payload
   fields or call-site usage now that CP2 removed that duplicate authority surface.
-- ``--check-application-history`` rejects a second application chronology or the retired
-  tool-specific history-routing types. ``EditorSession`` remains the only stored chronology.
+- ``--check-application-history`` rejects a second application chronology and every retired
+  application-history API. ``EditorSession`` remains the only stored chronology.
 """
 from __future__ import annotations
 
@@ -39,10 +39,13 @@ LEGACY_HISTORY_PATTERNS = (
     re.compile(r"\bpub\(super\)\s+(changes|removed|added)\s*:"),
 )
 
-APPLICATION_HISTORY_TYPE_PATTERNS = (
+APPLICATION_HISTORY_PATTERNS = (
+    re.compile(r"\bEditStep\b"),
     re.compile(r"\bSemanticPaintHistory\b"),
     re.compile(r"\bSemanticHeightHistory\b"),
     re.compile(r"\bSemanticPathHistory\b"),
+    re.compile(r"\bpush_step\s*\("),
+    re.compile(r"\brecord_scenario\s*\("),
 )
 
 AUTHORITY_WRITE_TOKENS = (
@@ -84,11 +87,14 @@ def scan(root: Path = ROOT) -> list[Hit]:
             if any(pattern.search(raw) for pattern in LEGACY_HISTORY_PATTERNS):
                 hits.append(Hit("legacy-history", relative, line_number, text))
             if relative.startswith(APP_PREFIX):
-                if any(pattern.search(raw) for pattern in APPLICATION_HISTORY_TYPE_PATTERNS):
-                    hits.append(Hit("application-history", relative, line_number, text))
-                if "redo_stack" in raw:
-                    hits.append(Hit("application-history", relative, line_number, text))
-                if relative == TERRAIN_CONTROLLER_FILE and re.search(r"\bhistory\s*:", raw):
+                application_history = any(
+                    pattern.search(raw) for pattern in APPLICATION_HISTORY_PATTERNS
+                )
+                application_history |= "redo_stack" in raw
+                application_history |= relative == TERRAIN_CONTROLLER_FILE and bool(
+                    re.search(r"\bhistory\s*:", raw)
+                )
+                if application_history:
                     hits.append(Hit("application-history", relative, line_number, text))
             if any(token in raw for token in AUTHORITY_WRITE_TOKENS):
                 hits.append(Hit("lifecycle-write", relative, line_number, text))
@@ -112,7 +118,7 @@ def legacy_history_violations(hits: Iterable[Hit]) -> list[Hit]:
 
 
 def application_history_violations(hits: Iterable[Hit]) -> list[Hit]:
-    """Return application-level chronology/routing types that must never return."""
+    """Return application-level chronology/routing APIs that must never return."""
     return sorted(hit for hit in hits if hit.category == "application-history")
 
 
@@ -157,7 +163,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--check-application-history",
         action="store_true",
-        help="fail if application-level chronology or retired tool history-routing types return",
+        help="fail if application-level chronology or retired history APIs return",
     )
     return parser
 
