@@ -34,6 +34,24 @@ fn example() {
                 ],
             )
 
+    def test_scan_marks_legacy_history_payload_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "crates/osrs-editor/src/app"
+            source.mkdir(parents=True)
+            (source / "history.rs").write_text(
+                """
+struct EditStep {
+    pub(super) changes: Vec<Change>,
+    pub(super) removed: Vec<Loc>,
+    pub(super) added: Vec<Loc>,
+}
+""",
+                encoding="utf-8",
+            )
+            hits = authority_audit.scan(root)
+            self.assertEqual(len([hit for hit in hits if hit.category == "legacy-history"]), 4)
+
     def test_scan_ignores_unrelated_history_words(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -76,6 +94,38 @@ fn example() {
             "self.session.commit_checkpointed(patch);",
         )
         self.assertEqual(authority_audit.gateway_violations([hit]), [hit])
+
+    def test_legacy_history_ratchet_allows_current_scaffold_ceiling(self):
+        hits = []
+        line = 1
+        for path, ceiling in authority_audit.LEGACY_HISTORY_BASELINE.items():
+            for _ in range(ceiling):
+                hits.append(authority_audit.Hit("legacy-history", path, line, "legacy"))
+                line += 1
+        self.assertEqual(authority_audit.legacy_history_violations(hits), [])
+
+    def test_legacy_history_ratchet_allows_debt_to_decrease(self):
+        path = "crates/osrs-editor/src/app/editing/tests.rs"
+        hits = [authority_audit.Hit("legacy-history", path, 1, "legacy")]
+        self.assertEqual(authority_audit.legacy_history_violations(hits), [])
+
+    def test_legacy_history_ratchet_rejects_new_file(self):
+        hit = authority_audit.Hit(
+            "legacy-history",
+            "crates/osrs-editor/src/app/new_tool.rs",
+            1,
+            "step.changes",
+        )
+        self.assertEqual(authority_audit.legacy_history_violations([hit]), [hit])
+
+    def test_legacy_history_ratchet_rejects_growth_in_allowed_file(self):
+        path = "crates/osrs-editor/src/app/editing/tests.rs"
+        ceiling = authority_audit.LEGACY_HISTORY_BASELINE[path]
+        hits = [
+            authority_audit.Hit("legacy-history", path, line, "legacy")
+            for line in range(1, ceiling + 2)
+        ]
+        self.assertEqual(authority_audit.legacy_history_violations(hits), [hits[-1]])
 
 
 if __name__ == "__main__":
