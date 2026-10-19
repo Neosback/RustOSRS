@@ -26,7 +26,7 @@ Read the nearest `AGENTS.md` for subsystem-specific rules. This root file contai
 
 ## Feature changes
 
-The machine-readable navigation source is `scripts/editor_features.json` and its canonical loader is `scripts/feature_registry.py`.
+The machine-readable navigation source is `scripts/editor_features.json` and its canonical loader is `scripts/feature_registry.py`. `docs/architecture/FEATURE-INDEX.md` is generated from that source; never edit the generated index by hand.
 
 For an authored/mutating feature, keep the registered controller, planner, gateway, planning test, cancellation test, commit test, and undo test accurate. Lower architecture baselines when ownership shrinks; never widen a ratchet only to silence a guard.
 
