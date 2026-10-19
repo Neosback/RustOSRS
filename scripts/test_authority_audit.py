@@ -52,7 +52,7 @@ struct EditStep {
             hits = authority_audit.scan(root)
             self.assertEqual(len([hit for hit in hits if hit.category == "legacy-history"]), 3)
 
-    def test_scan_ignores_editstep_type_declaration_but_marks_direct_construction(self):
+    def test_scan_ignores_editstep_type_declaration_for_legacy_payload_check_but_marks_direct_construction(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "crates/osrs-editor/src/app"
@@ -110,13 +110,13 @@ struct TerrainController {
                 ],
             )
 
-    def test_application_history_guard_ignores_session_history_and_zero_state_marker(self):
+    def test_application_history_guard_rejects_retired_marker_and_sinks_but_ignores_session_history(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             app = root / "crates/osrs-editor/src/app/editing"
             app.mkdir(parents=True)
             (app / "history.rs").write_text(
-                "pub(in crate::app) struct EditStep;\n",
+                "pub(in crate::app) struct EditStep;\npush_step(EditStep);\nrecord_scenario();\n",
                 encoding="utf-8",
             )
             session = root / "crates/osrs-editor/src/session"
@@ -130,7 +130,14 @@ struct TerrainController {
                 for hit in authority_audit.scan(root)
                 if hit.category == "application-history"
             ]
-            self.assertEqual(hits, [])
+            self.assertEqual(
+                [(hit.path, hit.line) for hit in hits],
+                [
+                    ("crates/osrs-editor/src/app/editing/history.rs", 1),
+                    ("crates/osrs-editor/src/app/editing/history.rs", 2),
+                    ("crates/osrs-editor/src/app/editing/history.rs", 3),
+                ],
+            )
 
     def test_scan_ignores_unrelated_history_words(self):
         with tempfile.TemporaryDirectory() as directory:
