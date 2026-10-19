@@ -316,8 +316,11 @@ pub fn generate_named(
     let compiled = kit.compile().map_err(|e| e.to_string())?;
     let patch = match &brief.sketch {
         Some(sketch) => compiled.generate_in_rooms(&snapshot, brief.variation, sketch),
-        None => compiled.generate_with_rooms(&snapshot, brief.variation, brief.rooms.map(usize::from)),
-    }.map_err(|e| format!("{e:?}"))?;
+        None => {
+            compiled.generate_with_rooms(&snapshot, brief.variation, brief.rooms.map(usize::from))
+        }
+    }
+    .map_err(|e| format!("{e:?}"))?;
     document.apply_patch(&patch).map_err(|e| format!("{e:?}"))?;
     let result = Snapshot::capture(&document);
     let mut table = kit_objects(kit);

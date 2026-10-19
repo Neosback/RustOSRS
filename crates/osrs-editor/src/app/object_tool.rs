@@ -11,7 +11,6 @@ mod drawer;
 
 use super::EditorApp;
 use super::edit_runtime::{EditExecution, EditExecutionError};
-use super::editing::EditStep;
 use crate::icons;
 use crate::paint::Tool;
 pub(super) use commit::spec_from_placement;
@@ -90,7 +89,7 @@ impl EditorApp {
             }
         };
 
-        let route = ObjectHistoryRoute::new(removed.clone(), added.clone());
+        let route = ObjectHistoryRoute::new(removed, added);
         let execution = self.session.execute_named("objects", patch, |document| {
             build_object_history_projection(document, &route, true)
         });
@@ -135,7 +134,6 @@ impl EditorApp {
 
         self.world.project_loc_edits(projection.edits);
         self.world.invalidate_semantic_edit(&receipt);
-        self.push_step(EditStep::semantic_object(removed, added));
         self.clear_selection();
         self.interaction.set_pending_reselect(projection.reselect);
         self.ui.notify(label.to_owned());

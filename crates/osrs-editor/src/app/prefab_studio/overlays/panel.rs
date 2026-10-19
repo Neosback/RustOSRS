@@ -235,7 +235,9 @@ fn set_floor(
         b.floors.push(cell);
     } else {
         b.floors.retain(|c| *c != cell);
-        for room in &mut b.semantics.rooms { room.cells.retain(|c| *c != cell); }
+        for room in &mut b.semantics.rooms {
+            room.cells.retain(|c| *c != cell);
+        }
         b.semantics.rooms.retain(|r| !r.cells.is_empty());
         b.semantics.portals.clear();
     }

@@ -18,7 +18,7 @@ mod region_diff;
 mod region_ingest;
 
 pub(crate) use edit_session::{
-    EditCheckpoint, EditCheckpointError, EditorSession, RegionSyncOutcome,
+    EditCheckpoint, EditCheckpointError, EditReplayDescriptor, EditorSession, RegionSyncOutcome,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use export::{

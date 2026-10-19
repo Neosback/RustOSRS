@@ -217,25 +217,6 @@ fn semantic_path_projection_tracks_undo_redo_and_the_separate_height_step() {
 }
 
 #[test]
-fn semantic_path_history_marker_carries_no_legacy_tile_authority() {
-    let key = (0, 3200, 3200);
-    let step = EditStep::semantic_path(vec![key], true);
-
-    assert!(step.changes.is_empty());
-    assert!(step.removed.is_empty());
-    assert!(step.added.is_empty());
-    assert!(step.semantic_paint.is_none());
-    assert!(step.semantic_height.is_none());
-    assert!(step.semantic_object.is_none());
-    let path = step
-        .semantic_path
-        .as_ref()
-        .unwrap_or_else(|| unreachable!("Path marker should be present"));
-    assert_eq!(path.keys, vec![key]);
-    assert!(path.include_height);
-}
-
-#[test]
 fn consecutive_path_transactions_follow_semantic_history_order() {
     let tile = MapTile::new(3200, 3200);
     let coord = MapPosition::new(tile, plane(0));

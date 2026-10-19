@@ -3,9 +3,8 @@
 use super::*;
 use crate::app::edit_runtime::{EditExecution, EditExecutionError};
 
-/// A committed stroke's routing marker for the global history stack, or `None` when there is
-/// nothing to record (rejected or no-op; the notice is already set).
-type StrokeOutcome = Option<EditStep>;
+/// Whether a stroke committed a non-empty semantic transaction.
+type StrokeOutcome = bool;
 
 /// One already-validated Paint projection from authoritative semantic state into the transitional
 /// preview/worker mirrors.
@@ -53,10 +52,10 @@ fn plan_height_projection(
 }
 
 impl EditorApp {
-    /// Finish the open stroke. Paint and Height commit exactly once to the semantic session and
-    /// leave only lightweight routing markers in the global mixed-history stack. Terrain paths
-    /// commit separately in `editing/path.rs`. There is no legacy fallback: a stroke without a
-    /// semantic planner is reverted, so every terrain mutation enters through `EditorSession`.
+    /// Finish the open stroke. Paint and Height commit exactly once to the semantic session.
+    /// Terrain paths commit separately in `editing/path.rs`. There is no legacy fallback: a stroke
+    /// without a semantic planner is reverted, so every terrain mutation enters through
+    /// `EditorSession`.
     pub(in crate::app) fn end_stroke(&mut self) {
         let Some(mut stroke) = self.terrain.stroke.take() else {
             return;
@@ -65,7 +64,7 @@ impl EditorApp {
             return;
         }
 
-        let outcome = if let Some(brush) = stroke.paint_brush.clone() {
+        let committed = if let Some(brush) = stroke.paint_brush.clone() {
             self.commit_paint_stroke(&mut stroke, brush)
         } else if let Some(spec) = stroke.height_spec.clone() {
             self.commit_height_stroke(&mut stroke, &spec)
@@ -78,15 +77,14 @@ impl EditorApp {
                 "Edit was not committed: no semantic planner for this stroke".to_owned(),
             )
         };
-        let Some(marker) = outcome else {
+        if !committed {
             return;
-        };
+        }
         // Projection may have reconciled every tile back to its original value.
         if stroke.is_empty() {
             return;
         }
-        let count = stroke.step.changes.len();
-        self.push_step(marker);
+        let count = stroke.changes.len();
         self.ui.notify(format!(
             "Changed {count} tile{}",
             if count == 1 { "" } else { "s" }
@@ -95,13 +93,12 @@ impl EditorApp {
 
     /// Undo the preview and report `message`.
     fn abandon_stroke(&mut self, stroke: &Stroke, message: String) -> StrokeOutcome {
-        self.revert(&stroke.step, false);
+        let edits = self
+            .terrain
+            .restore_stroke_preview(self.world.infos(), stroke);
+        self.send_edits(edits);
         self.ui.notify(message);
-        None
-    }
-
-    fn touched_keys(stroke: &Stroke) -> Vec<TileKey> {
-        stroke.step.changes.iter().map(|(key, _, _)| *key).collect()
+        false
     }
 
     /// Apply an already-validated Paint projection to the visible preview and worker mirror.
@@ -112,7 +109,7 @@ impl EditorApp {
     fn apply_paint_projection(&mut self, stroke: &mut Stroke, projection: PaintProjection) {
         let mut edits = Vec::new();
         for (index, key, values) in projection {
-            let after = &mut stroke.step.changes[index].2;
+            let after = &mut stroke.changes[index].2;
             if values != *after {
                 self.terrain.edited.insert(key, values);
                 edits.push(self.edit_for(key, values));
@@ -120,25 +117,19 @@ impl EditorApp {
             *after = values;
         }
         self.world.project_tile_edits(edits);
-        stroke
-            .step
-            .changes
-            .retain(|(_, before, after)| before != after);
+        stroke.changes.retain(|(_, before, after)| before != after);
     }
 
     fn commit_paint_stroke(&mut self, stroke: &mut Stroke, brush: Brush) -> StrokeOutcome {
-        let patch =
-            match build_paint_stroke_patch(self.session.document(), &brush, &stroke.step.changes) {
-                Ok(patch) => patch,
-                Err(error) => {
-                    return self.abandon_stroke(
-                        stroke,
-                        format!("Paint stroke was not committed: {error:?}"),
-                    );
-                }
-            };
+        let patch = match build_paint_stroke_patch(self.session.document(), &brush, &stroke.changes)
+        {
+            Ok(patch) => patch,
+            Err(error) => {
+                return self
+                    .abandon_stroke(stroke, format!("Paint stroke was not committed: {error:?}"));
+            }
+        };
         let projection_input: Vec<_> = stroke
-            .step
             .changes
             .iter()
             .enumerate()
@@ -153,17 +144,16 @@ impl EditorApp {
                 projection,
             }) => {
                 self.apply_paint_projection(stroke, projection);
-                self.world
-                    .invalidate_semantic_edit(&receipt);
-                Some(EditStep::semantic_paint(brush, Self::touched_keys(stroke)))
+                self.world.invalidate_semantic_edit(&receipt);
+                true
             }
             Ok(EditExecution::NoChange) => {
                 // The gateway intentionally skips projection for an empty patch. There is no
                 // semantic checkpoint to protect here, so preserve the existing preview adapter.
                 self.project_paint_stroke(stroke, &brush);
-                self.ui.notify(
-                    "Paint stroke made no semantic changes".to_owned());
-                None
+                self.ui
+                    .notify("Paint stroke made no semantic changes".to_owned());
+                false
             }
             Err(EditExecutionError::Semantic(error)) => self.abandon_stroke(
                 stroke,
@@ -197,7 +187,7 @@ impl EditorApp {
     fn apply_height_projection(&mut self, stroke: &mut Stroke, projection: HeightProjection) {
         let mut edits = Vec::new();
         for (index, key, values) in projection {
-            let after = &mut stroke.step.changes[index].2;
+            let after = &mut stroke.changes[index].2;
             self.terrain.height_edited.insert(key);
             if values != *after {
                 self.terrain.edited.insert(key, values);
@@ -206,10 +196,7 @@ impl EditorApp {
             *after = values;
         }
         self.world.project_tile_edits(edits);
-        stroke
-            .step
-            .changes
-            .retain(|(_, before, after)| before != after);
+        stroke.changes.retain(|(_, before, after)| before != after);
     }
 
     fn commit_height_stroke(
@@ -217,7 +204,7 @@ impl EditorApp {
         stroke: &mut Stroke,
         spec: &HeightStrokeSpec,
     ) -> StrokeOutcome {
-        let missing = stroke.step.changes.iter().find_map(|(key, _, _)| {
+        let missing = stroke.changes.iter().find_map(|(key, _, _)| {
             let plane = SourcePlane::new(key.0)?;
             let coord = HeightVertexCoord::new(MapTile::new(key.1, key.2), plane);
             self.session
@@ -244,7 +231,6 @@ impl EditorApp {
                 }
             };
         let projection_input: Vec<_> = stroke
-            .step
             .changes
             .iter()
             .enumerate()
@@ -259,18 +245,17 @@ impl EditorApp {
                 projection,
             }) => {
                 self.apply_height_projection(stroke, projection);
-                self.world
-                    .invalidate_semantic_edit(&receipt);
-                Some(EditStep::semantic_height(Self::touched_keys(stroke)))
+                self.world.invalidate_semantic_edit(&receipt);
+                true
             }
             Ok(EditExecution::NoChange) => {
                 // The gateway intentionally skips projection for an empty patch. There is no
                 // semantic checkpoint to protect here, so preserve the existing preview adapter.
                 let text = match self.project_height_stroke(stroke) {
                     Ok(()) => {
-                        self.ui.notify(
-                            "Height stroke made no semantic changes".to_owned());
-                        return None;
+                        self.ui
+                            .notify("Height stroke made no semantic changes".to_owned());
+                        return false;
                     }
                     Err(message) => format!("Height no-op projection failed: {message}"),
                 };

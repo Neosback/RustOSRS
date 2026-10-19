@@ -235,7 +235,7 @@ fn successful_undo_replay_finalizes_once_and_returns_receipt() {
     let footprint = EditFootprint::new([], [coord], []);
 
     let result = runtime
-        .replay(EditReplayDirection::Undo, footprint.clone(), |document| {
+        .replay(EditReplayDirection::Undo, |document| {
             assert_eq!(document.height_at(coord), Some(0));
             Ok::<_, &'static str>("undo projected")
         })
@@ -274,14 +274,10 @@ fn failed_redo_replay_projection_restores_exact_pre_transaction_state() {
         .unwrap_or_else(|error| unreachable!("valid setup Undo: {error:?}"));
     let before = runtime.clone();
 
-    let result = runtime.replay(
-        EditReplayDirection::Redo,
-        EditFootprint::new([], [coord], []),
-        |document| {
-            assert_eq!(document.height_at(coord), Some(64));
-            Err::<(), _>("injected Redo projection failure")
-        },
-    );
+    let result = runtime.replay(EditReplayDirection::Redo, |document| {
+        assert_eq!(document.height_at(coord), Some(64));
+        Err::<(), _>("injected Redo projection failure")
+    });
 
     assert_eq!(
         result,
@@ -433,16 +429,12 @@ mod scenario {
 
         let undo = |runtime: &mut EditRuntime| {
             runtime
-                .replay(EditReplayDirection::Undo, EditFootprint::default(), |_| {
-                    Ok::<_, &'static str>(())
-                })
+                .replay(EditReplayDirection::Undo, |_| Ok::<_, &'static str>(()))
                 .unwrap_or_else(|e| unreachable!("undo: {e:?}"))
         };
         let redo = |runtime: &mut EditRuntime| {
             runtime
-                .replay(EditReplayDirection::Redo, EditFootprint::default(), |_| {
-                    Ok::<_, &'static str>(())
-                })
+                .replay(EditReplayDirection::Redo, |_| Ok::<_, &'static str>(()))
                 .unwrap_or_else(|e| unreachable!("redo: {e:?}"))
         };
 
@@ -477,9 +469,7 @@ mod scenario {
         let mut runtime = runtime_with_scenario();
         let id = add(&mut runtime, 3201);
         runtime
-            .replay(EditReplayDirection::Undo, EditFootprint::default(), |_| {
-                Ok::<_, &'static str>(())
-            })
+            .replay(EditReplayDirection::Undo, |_| Ok::<_, &'static str>(()))
             .unwrap_or_else(|e| unreachable!("undo: {e:?}"));
         assert!(runtime.can_redo());
         let before = runtime.clone();
@@ -505,9 +495,7 @@ mod scenario {
         let mut runtime = runtime_with_scenario();
         let id = add(&mut runtime, 3201);
         runtime
-            .replay(EditReplayDirection::Undo, EditFootprint::default(), |_| {
-                Ok::<_, &'static str>(())
-            })
+            .replay(EditReplayDirection::Undo, |_| Ok::<_, &'static str>(()))
             .unwrap_or_else(|e| unreachable!("undo: {e:?}"));
         let id = {
             // Re-add under a fresh redo-free history: failure must restore *this* state.
