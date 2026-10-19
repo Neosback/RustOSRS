@@ -34,7 +34,7 @@ CHECKPOINT_TOKENS = (
 LEGACY_HISTORY_PATTERNS = (
     re.compile(r"\bstep\.(changes|removed|added)\b"),
     re.compile(r"\bstroke\.step\.(changes|removed|added)\b"),
-    re.compile(r"\bEditStep\s*\{"),
+    re.compile(r"(?<!struct )\bEditStep\s*\{"),
     re.compile(r"\bpub\(super\)\s+(changes|removed|added)\s*:"),
 )
 
