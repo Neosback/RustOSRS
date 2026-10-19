@@ -77,6 +77,25 @@ class FeatureRegistryTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(RegistryError):
                 normalize_registry({"version": 2, "features": {"Paint": value}})
 
+    def test_lookup_terms_cannot_point_to_two_features(self):
+        with self.assertRaisesRegex(RegistryError, "lookup term"):
+            normalize_registry(
+                {
+                    "version": 2,
+                    "features": {
+                        "Paint": feature("paint", aliases=["terrain"]),
+                        "Height": feature("height", aliases=["terrain"]),
+                    },
+                }
+            )
+
+    def test_name_and_id_may_repeat_within_the_same_feature(self):
+        payload = {
+            "version": 2,
+            "features": {"Paint": feature("paint", aliases=["Paint", "terrain paint"])},
+        }
+        self.assertIn("Paint", normalize_registry(payload))
+
     def test_loader_reports_invalid_json_as_registry_error(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "features.json"
