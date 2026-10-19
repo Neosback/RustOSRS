@@ -60,7 +60,7 @@ Legal session lifecycle exceptions to interactive history:
 - `load_appearance`: project loading of already validated authored appearance.
 - `reset`: backing-source replacement.
 
-These exceptions should remain narrow and named. New feature edits must not use them to bypass normal history.
+These exceptions remain narrow and named. New feature edits must not use them to bypass normal history.
 
 ### Application transaction gateway
 
@@ -102,7 +102,7 @@ Deleting any of these may lose presentation/cache work but must not lose an auth
 
 ## Transitional terrain adapter
 
-`TerrainController` is the largest remaining authority-shaped compatibility surface.
+`TerrainController` remains the largest authority-shaped compatibility surface.
 
 It currently owns:
 
@@ -110,14 +110,22 @@ It currently owns:
 - `height_edited`: projection markers for explicit heights
 - active `Stroke` preview state
 - stroke counter/seed state
-- chronological application history markers
+- chronological semantic application markers
 - redo markers
 
-Its source explicitly states that committed before/after authority belongs to `EditorSession` and that this controller is removable when workers consume semantic snapshots and session history supplies sufficient projection footprints.
+Its source explicitly states that committed before/after authority belongs to `EditorSession` and that this controller is removable when workers consume semantic snapshots and semantic replay supplies sufficient projection footprints.
 
-### What is already semantic
+### Active stroke preview is no longer history
 
-The following paths already plan/commit through `EditRuntime` and keep only projection-routing metadata in the mixed history stack:
+CP2 separated open Paint/Height gesture state from completed history routing.
+
+`Stroke` now owns its own transient `changes: Vec<StrokeChange>` preview buffer. It no longer embeds or constructs an `EditStep`. User cancellation restores that preview and its explicit-height markers; failed semantic commit restores the same visible tile values that the old preview rollback path restored.
+
+This removes a misleading coupling where an in-progress preview looked like a completed history entry.
+
+### Completed product edits are semantic
+
+The following paths plan/commit through `EditRuntime` and retain only projection-routing metadata in the application marker stack:
 
 - Paint
 - Height
@@ -130,18 +138,23 @@ The following paths already plan/commit through `EditRuntime` and keep only proj
 
 Paint and Height have no legacy commit fallback: a stroke without a semantic planner is reverted instead of recording separate tile-history authority.
 
-### Remaining mixed-history debt
+### Legacy runtime replay has been removed
 
-`editing/history.rs::EditStep` still has two kinds of data:
+Product `EditStep` values no longer carry tile/object before/after payloads. The runtime `revert(EditStep, ...)` fallback is gone.
 
-1. semantic routing markers (`semantic_paint`, `semantic_height`, `semantic_object`, `semantic_path`, `semantic_scenario`, `semantic_appearance`), and
-2. legacy before/after payloads (`changes`, `removed`, `added`).
+`Route::of(step) == None` is now treated as an invalid/out-of-sync semantic marker: undo or redo returns the marker to its stack, reports the problem, and changes no state. It does not replay worker values as authority.
 
-`Route::of(step) == None` is the remaining legacy replay path. That path directly replays the stored worker tile/object values instead of replaying semantic history.
+The remaining `changes`, `removed`, and `added` names exist only under `cfg(test)` in `EditStep`, solely so three existing contract tests can prove semantic constructors do not populate the retired payload categories. Product builds cannot access or consume those fields. CP2C2 should rewrite those tests around positive routing contracts and delete the test-only fields entirely.
 
-This is the primary CP2 migration target. Do not delete it until every remaining producer is identified and migrated. Do not add a new producer to it.
+### Remaining chronological-marker debt
 
-The chronological `TerrainController.history` / `redo_stack` are also transitional. For semantic entries they do not own before/after values, but they still duplicate chronological position so the editor can route session undo/redo to the correct projection adapter. A mismatch between this marker stack and `EditorSession` history is therefore a correctness risk even though the semantic document remains canonical.
+`TerrainController.history` / `redo_stack` are still transitional application-level chronological markers.
+
+They do not own semantic before/after state, but they duplicate chronological position so the editor can select the correct projection adapter while `EditorSession` performs authoritative undo/redo. A mismatch between the marker stack and semantic session history is therefore a correctness risk even though `MapDocument` remains canonical.
+
+The history router already mitigates this by replaying through `EditRuntime::replay`, preparing projection inside the gateway boundary, finalizing only after projection succeeds, and restoring the marker when semantic replay fails.
+
+The long-term removal path is to make semantic history/replay return an opaque descriptor or projection footprint sufficient for application replay, so the editor does not need a second chronological stack.
 
 ## EditorApp classification
 
@@ -157,28 +170,30 @@ The important distinction is:
 
 The existing `editor_app_surface.json` ratchet should continue preventing casual growth of direct `EditorApp` behavior/state.
 
+## Enforced CP2 ratchets
+
+`python3 scripts/check_authority.py` is a cheap source-level gate. It currently enforces two rules without compiling Rust:
+
+1. checkpoint lifecycle APIs may appear only inside `EditorSession` internals or `EditRuntime`, and
+2. legacy `EditStep` payload references may not escape or grow beyond the temporary CP2 test scaffold.
+
+The legacy-history baseline is deliberately a ceiling, not a required count. Debt may decrease without widening the baseline. Any new hit in another file or growth inside the temporary files fails the gate.
+
+When CP2C2 deletes the test-only scaffold, remove the baseline entries rather than preserving an allowance of zero-valued dead architecture.
+
 ## Cleanup priorities
 
-### A1. Eliminate legacy `EditStep` payload producers
+### A1. Remove final test-only legacy payload scaffold
 
-Inventory every constructor/write of `EditStep.changes`, `EditStep.removed`, and `EditStep.added` that can enter `TerrainController.history` after a completed action.
+Rewrite the three `EditStep` tests to assert the positive semantic routing contract directly, then delete the `cfg(test)` `changes`, `removed`, and `added` fields and reduce/remove the legacy-history baseline.
 
-For each remaining action:
+This is source/test cleanup only; runtime product authority is already semantic.
 
-1. find or create the pure semantic planner in the existing owning crate,
-2. commit through `EditRuntime`,
-3. plan projection from the authoritative post-commit document inside the gateway boundary,
-4. retain only the minimum projection-routing footprint,
-5. add exact commit/cancel/undo/redo coverage,
-6. remove that action's legacy payload route.
+### A2. Replace the second chronological marker stack
 
-Do this one feature at a time.
+Move the projection footprint needed for replay closer to semantic history/receipts so the application no longer needs a second chronological marker stack.
 
-### A2. Replace mixed chronological markers with session-owned replay descriptors
-
-After A1 reaches zero legacy payload producers, move the projection footprint needed for replay closer to semantic history/receipts so the application no longer needs a second chronological marker stack.
-
-Do not expose history internals merely to achieve this. Prefer an opaque replay descriptor/footprint returned by the semantic boundary.
+Do not expose mutable history internals merely to achieve this. Prefer an opaque replay descriptor/footprint returned by the semantic boundary. Preserve one logical semantic history and one authoritative ordering.
 
 ### A3. Retire `TerrainController.edited` as a semantic-looking tile mirror
 
@@ -188,13 +203,11 @@ Workers should eventually consume revisioned semantic snapshots/projections dire
 
 Project load, source hydration, region ingest/eviction, and appearance load are legitimate history-free boundaries. Keep them explicit and do not turn `apply_untracked` into a general escape hatch.
 
-## Guard candidates
+## Next guard candidates
 
 Add these only after their current legitimate call sites are inventoried:
 
-- reject new legacy `EditStep` before/after payload producers
-- ratchet the count of legacy history routes downward
-- reject new application call sites that mutate `MapDocument` directly instead of using `EditRuntime`/session policy
+- reject direct application mutation of `MapDocument` outside `EditRuntime`/session policy
 - reject new `TerrainController` fields that look like committed semantic authority
 - keep `EditRuntime.session` private
 - keep projection closures read-only over authoritative semantic state
@@ -207,7 +220,11 @@ The guard should ratchet existing debt down. It must not freeze legitimate hydra
 CP2 is complete when:
 
 - every completed user map edit is authoritative in `EditorSession`
-- no completed action relies on legacy `EditStep.changes/removed/added` for undo/redo truth
+- no product action relies on legacy `EditStep` before/after payloads for undo/redo truth
+- active preview data is separate from completed history routing
 - the remaining chronological routing metadata has an explicit removal path
 - cheap architecture tooling rejects new competing authority
+- the test-only retired payload scaffold is removed
 - no OSRS/rendering behavior changed as a side effect of the cleanup
+
+All runtime authority conditions above are now satisfied. The remaining CP2 work is removal of the test-only scaffold plus the longer-lived chronological-marker and worker-preview adapters identified for subsequent checkpoints.
