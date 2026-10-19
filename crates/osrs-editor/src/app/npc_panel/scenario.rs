@@ -18,10 +18,7 @@ pub(super) fn commit(app: &mut EditorApp, patch: ScenarioPatch) -> bool {
         .session
         .execute_scenario(patch, |_| Ok::<(), Infallible>(()))
     {
-        Ok(EditExecution::Committed { .. }) => {
-            app.terrain.record_scenario();
-            true
-        }
+        Ok(EditExecution::Committed { .. }) => true,
         Ok(EditExecution::NoChange) => false,
         Err(error) => {
             app.npcs.notice = Some(format!("Spawn change rejected: {error:?}"));
