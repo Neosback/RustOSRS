@@ -6,8 +6,8 @@ without compiling Rust:
 
 - ``--check-gateway`` keeps semantic checkpoint lifecycle APIs inside ``EditorSession`` internals or
   the application ``EditRuntime`` gateway.
-- ``--check-legacy-history`` prevents the transitional ``EditStep`` before/after payload surface
-  from growing or escaping the two temporary test-scaffold files that still mention it.
+- ``--check-legacy-history`` rejects any reintroduction of legacy ``EditStep`` before/after payload
+  fields or call-site usage now that CP2 removed that duplicate authority surface.
 """
 from __future__ import annotations
 
@@ -48,12 +48,11 @@ AUTHORITY_WRITE_TOKENS = (
 GATEWAY_ALLOWED_FILE = "crates/osrs-editor/src/app/edit_runtime.rs"
 SESSION_PREFIX = "crates/osrs-editor/src/session/"
 
-# Temporary CP2 scaffold only. This is a ceiling, never a target: counts may fall without changing
-# the baseline, but any increase or any legacy-history hit in another file is a violation. Remove the
-# entries entirely when CP2C2 deletes the final test-only payload fields/assertions.
+# CP2 eliminated the legacy EditStep payload surface. Keep the former scaffold paths explicit with
+# a zero ceiling so any reintroduction there, or in any new file, fails the cheap source-level gate.
 LEGACY_HISTORY_BASELINE = {
-    "crates/osrs-editor/src/app/editing/history.rs": 4,
-    "crates/osrs-editor/src/app/editing/tests.rs": 9,
+    "crates/osrs-editor/src/app/editing/history.rs": 0,
+    "crates/osrs-editor/src/app/editing/tests.rs": 0,
 }
 
 
@@ -99,7 +98,7 @@ def gateway_violations(hits: Iterable[Hit]) -> list[Hit]:
 
 
 def legacy_history_violations(hits: Iterable[Hit]) -> list[Hit]:
-    """Return legacy-history uses that escape or grow beyond the temporary CP2 baseline."""
+    """Return any legacy-history usage beyond the zero CP2 baseline."""
     legacy = [hit for hit in hits if hit.category == "legacy-history"]
     violations = [hit for hit in legacy if hit.path not in LEGACY_HISTORY_BASELINE]
     counts = Counter(hit.path for hit in legacy)
@@ -143,7 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--check-legacy-history",
         action="store_true",
-        help="fail if legacy EditStep payload usage escapes or grows beyond the CP2 baseline",
+        help="fail if any legacy EditStep payload authority is present",
     )
     return parser
 
@@ -164,12 +163,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.check_legacy_history:
         violations = legacy_history_violations(hits)
         if violations:
-            print("Legacy EditStep payload authority grew beyond the CP2 baseline:")
+            print("Legacy EditStep payload authority is forbidden after CP2:")
             for hit in violations:
                 print(f"{hit.path}:{hit.line}: {hit.text}")
             failed = True
         else:
-            print("legacy history authority ratchet: OK")
+            print("legacy history authority: zero")
     if args.check_gateway or args.check_legacy_history:
         return 1 if failed else 0
     print_report(hits, args.category)
