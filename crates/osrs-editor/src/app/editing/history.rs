@@ -110,6 +110,12 @@ impl EditStep {
     }
 }
 
+impl super::TerrainController {
+    /// Compatibility sink removed in CP2I. Scenario chronology is already recorded by
+    /// `EditorSession`; this method deliberately stores nothing.
+    pub(in crate::app) fn record_scenario(&mut self) {}
+}
+
 impl EditorApp {
     /// Compatibility sink for marker-producing commit paths that CP2I removes. The semantic
     /// transaction is already present in `EditorSession::history`; no second chronology is kept.
