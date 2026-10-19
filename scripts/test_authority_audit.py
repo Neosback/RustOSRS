@@ -74,6 +74,64 @@ fn direct() {
                 [(6, "let _ = EditStep { semantic: true };")],
             )
 
+    def test_scan_marks_application_history_fields_and_retired_route_types(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            editing = root / "crates/osrs-editor/src/app/editing.rs"
+            editing.parent.mkdir(parents=True)
+            editing.write_text(
+                """
+struct TerrainController {
+    history: Vec<EditStep>,
+    redo_stack: Vec<EditStep>,
+}
+""",
+                encoding="utf-8",
+            )
+            history = root / "crates/osrs-editor/src/app/editing/history.rs"
+            history.parent.mkdir(parents=True)
+            history.write_text(
+                "struct SemanticPaintHistory;\nstruct SemanticHeightHistory;\nstruct SemanticPathHistory;\n",
+                encoding="utf-8",
+            )
+            hits = [
+                hit
+                for hit in authority_audit.scan(root)
+                if hit.category == "application-history"
+            ]
+            self.assertEqual(
+                [(hit.path, hit.line) for hit in hits],
+                [
+                    ("crates/osrs-editor/src/app/editing.rs", 3),
+                    ("crates/osrs-editor/src/app/editing.rs", 4),
+                    ("crates/osrs-editor/src/app/editing/history.rs", 1),
+                    ("crates/osrs-editor/src/app/editing/history.rs", 2),
+                    ("crates/osrs-editor/src/app/editing/history.rs", 3),
+                ],
+            )
+
+    def test_application_history_guard_ignores_session_history_and_zero_state_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            app = root / "crates/osrs-editor/src/app/editing"
+            app.mkdir(parents=True)
+            (app / "history.rs").write_text(
+                "pub(in crate::app) struct EditStep;\n",
+                encoding="utf-8",
+            )
+            session = root / "crates/osrs-editor/src/session"
+            session.mkdir(parents=True)
+            (session / "history.rs").write_text(
+                "struct PatchHistory { history: Vec<u8>, redo_stack: Vec<u8> }\n",
+                encoding="utf-8",
+            )
+            hits = [
+                hit
+                for hit in authority_audit.scan(root)
+                if hit.category == "application-history"
+            ]
+            self.assertEqual(hits, [])
+
     def test_scan_ignores_unrelated_history_words(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -142,6 +200,30 @@ fn direct() {
         self.assertEqual(
             authority_audit.legacy_history_violations([new_file, unrelated, former_scaffold]),
             sorted([former_scaffold, new_file]),
+        )
+
+    def test_application_history_rejects_every_application_history_hit(self):
+        first = authority_audit.Hit(
+            "application-history",
+            "crates/osrs-editor/src/app/editing.rs",
+            1,
+            "redo_stack: Vec<EditStep>,",
+        )
+        second = authority_audit.Hit(
+            "application-history",
+            "crates/osrs-editor/src/app/editing/history.rs",
+            2,
+            "struct SemanticPaintHistory;",
+        )
+        unrelated = authority_audit.Hit(
+            "legacy-history",
+            "crates/osrs-editor/src/app/editing/tests.rs",
+            3,
+            "step.changes",
+        )
+        self.assertEqual(
+            authority_audit.application_history_violations([second, unrelated, first]),
+            sorted([first, second]),
         )
 
 
