@@ -50,7 +50,26 @@ struct EditStep {
                 encoding="utf-8",
             )
             hits = authority_audit.scan(root)
-            self.assertEqual(len([hit for hit in hits if hit.category == "legacy-history"]), 4)
+            self.assertEqual(len([hit for hit in hits if hit.category == "legacy-history"]), 3)
+
+    def test_scan_ignores_editstep_type_declaration_but_marks_direct_construction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "crates/osrs-editor/src/app"
+            source.mkdir(parents=True)
+            (source / "history.rs").write_text(
+                """
+pub(in crate::app) struct EditStep {
+    semantic: bool,
+}
+fn direct() {
+    let _ = EditStep { semantic: true };
+}
+""",
+                encoding="utf-8",
+            )
+            hits = [hit for hit in authority_audit.scan(root) if hit.category == "legacy-history"]
+            self.assertEqual([(hit.line, hit.text) for hit in hits], [(6, "let _ = EditStep { semantic: true };")])
 
     def test_scan_ignores_unrelated_history_words(self):
         with tempfile.TemporaryDirectory() as directory:
