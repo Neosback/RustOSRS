@@ -1,4 +1,4 @@
-//! Chronological undo and redo routing across semantic and legacy history entries.
+//! Chronological undo and redo routing across semantic history entries.
 //!
 //! Semantic replay is checkpointed by `EditRuntime`. This router snapshots only the transitional
 //! worker values needed for projection, prepares the projection from the authoritative post-replay
@@ -43,7 +43,7 @@ impl Direction {
         }
     }
 
-    /// The semantic replay succeeded: move its mixed-history marker to the opposite stack.
+    /// The semantic replay succeeded: move its history marker to the opposite stack.
     fn settle(self, history: &mut Vec<EditStep>, redo_stack: &mut Vec<EditStep>, step: EditStep) {
         match self {
             Self::Undo => redo_stack.push(step),
@@ -276,28 +276,28 @@ impl EditorApp {
         let Some(step) = self.terrain.history.pop() else {
             return;
         };
-        match Route::of(&step) {
-            Some(route) => self.route_semantic(Direction::Undo, step, &route),
-            None => {
-                self.revert(&step, false);
-                self.ui
-                    .notify(format!("Undid {} tile change(s)", step.changes.len()));
-                self.terrain.redo_stack.push(step);
-            }
-        }
+        let Some(route) = Route::of(&step) else {
+            self.terrain.history.push(step);
+            self.ui.notify(
+                "Undo history marker has no semantic route; no state was changed".to_owned(),
+            );
+            return;
+        };
+        self.route_semantic(Direction::Undo, step, &route);
     }
 
     pub(in crate::app) fn redo(&mut self) {
         let Some(step) = self.terrain.redo_stack.pop() else {
             return;
         };
-        match Route::of(&step) {
-            Some(route) => self.route_semantic(Direction::Redo, step, &route),
-            None => {
-                self.revert(&step, true);
-                self.terrain.history.push(step);
-            }
-        }
+        let Some(route) = Route::of(&step) else {
+            self.terrain.redo_stack.push(step);
+            self.ui.notify(
+                "Redo history marker has no semantic route; no state was changed".to_owned(),
+            );
+            return;
+        };
+        self.route_semantic(Direction::Redo, step, &route);
     }
 
     /// Replay one semantic step through `EditRuntime`, then apply its already-validated projection.

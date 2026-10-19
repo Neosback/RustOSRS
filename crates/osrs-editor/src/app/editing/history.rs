@@ -1,8 +1,8 @@
-//! Mixed editor history routing and worker projection.
+//! Semantic editor history routing and worker projection.
 //!
-//! Semantic Paint, Height, Object, and Path actions keep their authoritative before/after state in
-//! `EditorSession::history`. This module owns only the chronological application marker and the
-//! transitional worker/render projection required after semantic undo/redo.
+//! Paint, Height, Object, Path, Scenario, and Appearance actions keep authoritative before/after
+//! state in `EditorSession::history`. This module owns only chronological application markers and
+//! the transitional worker/render projection needed after semantic undo/redo.
 
 mod routing;
 
@@ -44,11 +44,11 @@ pub(super) struct SemanticPathHistory {
     pub(super) include_height: bool,
 }
 
-/// One chronological editor-history marker.
+/// One chronological semantic editor-history marker.
 ///
-/// Paint, Height, Objects, and Path use only semantic routing metadata. `changes`, `removed`, and
-/// `added` remain transitional storage for editor actions that have not migrated to the persistent
-/// session.
+/// Semantic tools use only the `semantic_*` routing metadata. `changes`, `removed`, and `added` are
+/// retained for one cleanup checkpoint solely so the existing no-legacy-authority tests continue to
+/// prove they are empty; runtime undo/redo no longer consumes them. CP2C2 removes these fields.
 #[derive(Debug, Clone, Default)]
 pub(in crate::app) struct EditStep {
     pub(super) changes: Vec<(TileKey, TileValues, TileValues)>,
@@ -125,8 +125,7 @@ impl EditStep {
 }
 
 impl EditorApp {
-    /// One finished undo step. Semantic tools carry only projection-routing metadata; remaining
-    /// legacy actions still carry their before/after values here.
+    /// One finished semantic undo marker.
     pub(in crate::app) fn push_step(&mut self, step: EditStep) {
         self.terrain.history.push(step);
         if self.terrain.history.len() > HISTORY_LIMIT {
@@ -141,28 +140,6 @@ impl EditorApp {
 
     pub(in crate::app) fn can_redo(&self) -> bool {
         !self.terrain.redo_stack.is_empty()
-    }
-
-    pub(super) fn revert(&mut self, step: &EditStep, forward: bool) {
-        let mut edits = Vec::new();
-        for (key, before, after) in &step.changes {
-            let values = if forward { *after } else { *before };
-            self.terrain.edited.insert(*key, values);
-            edits.push(self.edit_for(*key, values));
-        }
-        self.send_edits(edits);
-        if !step.removed.is_empty() || !step.added.is_empty() {
-            let (gone, came) = if forward {
-                (&step.removed, &step.added)
-            } else {
-                (&step.added, &step.removed)
-            };
-            let mut loc_edits: Vec<LocEdit> = gone.iter().map(|s| LocEdit::Remove(*s)).collect();
-            loc_edits.extend(came.iter().map(|s| LocEdit::Add(*s)));
-            self.send_loc_edits(loc_edits);
-            self.interaction.set_pending_reselect(came.clone());
-            self.clear_selection();
-        }
     }
 
     /// Hand object edits to the world worker and queue the regions they sit in for a rebuild.
