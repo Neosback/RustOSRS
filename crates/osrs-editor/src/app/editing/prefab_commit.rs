@@ -3,8 +3,8 @@
 //!
 //! The patch executes through the application edit gateway; the legacy tile mirror and the object
 //! mirror are projected from the authoritative post-commit document inside the gateway's fallible
-//! boundary, so a failure restores the exact pre-commit session. History records one composite
-//! step (path keys plus the object route) that undo and redo replay together.
+//! boundary, so a failure restores the exact pre-commit session. `EditorSession` records the patch
+//! as one semantic transaction, and undo/redo derive projection requirements from that history.
 
 use super::*;
 use crate::app::edit_runtime::{EditExecution, EditExecutionError};
@@ -21,8 +21,8 @@ struct Projection {
     objects: Option<ObjectHistoryProjection>,
 }
 
-/// Commit `patch` as one history step labelled `label` (shown as the notice). Returns whether
-/// it committed; the reason is shown to the user when it did not.
+/// Commit `patch` as one semantic transaction labelled `label` (shown as the notice). Returns
+/// whether it committed; the reason is shown to the user when it did not.
 pub(in crate::app) fn commit_map_patch(app: &mut EditorApp, patch: MapPatch, label: &str) -> bool {
     commit_patch(app, patch, label, false)
 }
@@ -145,20 +145,12 @@ fn commit_patch(app: &mut EditorApp, patch: MapPatch, label: &str, baseline: boo
         }
     }
     app.world.project_tile_edits(edits);
-    let object_route = objects.map(|projection| {
+    if let Some(projection) = objects {
         app.world.project_loc_edits(projection.edits);
         app.clear_selection();
         app.interaction.set_pending_reselect(projection.reselect);
-        route
-    });
-    app.world.invalidate_semantic_edit(&receipt);
-    if !baseline {
-        app.push_step(EditStep::semantic_composite(
-            keys,
-            include_height,
-            object_route,
-        ));
     }
+    app.world.invalidate_semantic_edit(&receipt);
     app.ui.notify(label.to_owned());
     true
 }

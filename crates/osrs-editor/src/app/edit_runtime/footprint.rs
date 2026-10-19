@@ -1,8 +1,11 @@
 //! Semantic transaction footprints and derived compatibility summaries. Coordinates and exact
 //! object mutation polarity survive through commit/replay into invalidation and diagnostics.
 use osrs_core::coords::{MapTile, RegionCoord};
-use osrs_edit::{HeightVertexCoord, MapOp, MapPatch, MapPosition, ObjectPlacement};
+use osrs_edit::{
+    HeightVertexCoord, MapOp, MapPatch, MapPosition, MapReplayFootprint, ObjectPlacement,
+};
 use std::{collections::BTreeSet, ops::Deref};
+
 /// Exact semantic coordinates touched by one application transaction.
 ///
 /// This remains renderer-independent. The world projection decides how far each class of source
@@ -94,6 +97,24 @@ impl EditFootprint {
         }
         Self::with_object_mutations(terrain_tiles, height_vertices, object_removed, object_added)
             .with_terrain_positions(positions)
+    }
+
+    /// Adapt the authoritative semantic replay footprint into the application's existing
+    /// invalidation/diagnostic summary. This is a one-way projection, not a second reconstruction
+    /// of history semantics.
+    pub(super) fn from_replay_footprint(footprint: &MapReplayFootprint) -> Self {
+        let positions = footprint
+            .terrain()
+            .iter()
+            .map(|change| change.coord)
+            .collect::<Vec<_>>();
+        Self::with_object_mutations(
+            positions.iter().map(|coord| coord.tile),
+            footprint.heights().iter().copied(),
+            footprint.removed_objects().iter().copied(),
+            footprint.added_objects().iter().copied(),
+        )
+        .with_terrain_positions(positions)
     }
 
     pub(super) fn into_touches(self) -> EditTouches {

@@ -9,10 +9,13 @@ RustOSRS has a canonical blueprint/specification system plus a current operation
 Before starting implementation work, read:
 
 1. `AGENTS.md` and `ARCHITECTURE.md` for contributor navigation and the current ownership contract;
-2. `DEV_HANDOFF.md` for the latest exact branch/SHA/CI boundary;
-3. `docs/PROJECT-STATUS.md` for the current completion audit and remaining work;
-4. `docs/architecture/FEATURE-MAP.md` for existing tool implementations and tests;
-5. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` for dependency/order and milestone reconciliation.
+2. `docs/architecture/RUSTOSRS-TECHNICAL-ARCHITECTURE-SPEC.md` for the preferred long-term technical architecture, performance, memory, projection, rendering, diagnostics, automation, and AI design target;
+3. `DEV_HANDOFF.md` for the latest exact branch/SHA/CI boundary;
+4. `docs/PROJECT-STATUS.md` for the current completion audit and remaining work;
+5. `docs/architecture/FEATURE-MAP.md` for existing tool implementations and tests;
+6. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` for dependency/order and milestone reconciliation.
+
+The technical architecture specification is a target design document, not a substitute for live implementation state, OSRS semantic specifications, or accepted ADRs.
 
 The project is no longer at the blueprint/M0 entry point. M0-M16 have substantial or complete production implementation; the remaining program is concentrated in architecture extraction, Reference parity/certification closure, entity/runtime/playtest work, 117HD completion, export generalization, and project lifecycle/recovery work.
 
@@ -21,17 +24,18 @@ The project is no longer at the blueprint/M0 entry point. M0-M16 have substantia
 For implementation work, read in this order:
 
 1. `ARCHITECTURE.md` and `AGENTS.md`
-2. `DEV_HANDOFF.md`
-3. `docs/PROJECT-STATUS.md`
-4. `docs/blueprint/04-PROJECT-CHARTER.md`
-5. `docs/blueprint/05-SYSTEM-ARCHITECTURE.md`
-6. `docs/blueprint/06-CRATE-ARCHITECTURE.md`
-7. `docs/blueprint/08-PARITY-MODEL.md`
-8. `docs/specs/README.md`
-9. the owning semantic spec(s) under `docs/specs/`
-10. the relevant accepted ADR(s) under `docs/adr/`
-11. `docs/verification/PARITY-MATRIX.md`
-12. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md`
+2. `docs/architecture/RUSTOSRS-TECHNICAL-ARCHITECTURE-SPEC.md` for target direction
+3. `DEV_HANDOFF.md`
+4. `docs/PROJECT-STATUS.md`
+5. `docs/blueprint/04-PROJECT-CHARTER.md`
+6. `docs/blueprint/05-SYSTEM-ARCHITECTURE.md`
+7. `docs/blueprint/06-CRATE-ARCHITECTURE.md`
+8. `docs/blueprint/08-PARITY-MODEL.md`
+9. `docs/specs/README.md`
+10. the owning semantic spec(s) under `docs/specs/`
+11. the relevant accepted ADR(s) under `docs/adr/`
+12. `docs/verification/PARITY-MATRIX.md`
+13. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md`
 
 The canonical blueprint registry is `docs/blueprint/README.md`.
 
@@ -46,6 +50,7 @@ the current appearance-authoring checkpoint and the remaining stock/530 implemen
 | What is implemented and what remains? | `docs/PROJECT-STATUS.md` |
 | What OSRS semantic behavior must be reproduced? | `docs/specs/` |
 | What are the current repository ownership/coding boundaries? | `ARCHITECTURE.md` |
+| What is the preferred long-term technical architecture and performance/memory design target? | `docs/architecture/RUSTOSRS-TECHNICAL-ARCHITECTURE-SPEC.md`, subordinate to semantic specs and accepted ADRs |
 | Why was a RustOSRS architecture/product decision accepted? | Accepted `docs/adr/` records; blueprint documents supply target/background context |
 | Where are a tool's controller, planner, gateway and tests? | `scripts/editor_features.json` + `docs/architecture/FEATURE-MAP.md` |
 | What source/revision proves a claim? | `docs/verification/SOURCE-PINS.md` + spec evidence |
@@ -161,8 +166,9 @@ If two documents disagree:
 2. verify live Git state and reconcile `DEV_HANDOFF.md`/`PROJECT-STATUS.md` before relying on operational notes;
 3. prefer the canonical semantic spec for OSRS behavior;
 4. use `ARCHITECTURE.md` for current ownership/coding constraints and the accepted ADR for its rationale;
-5. check exact source/fixture provenance;
-6. check the contradiction register for unresolved revision issues;
-7. if still unresolved, classify it as research/revision-sensitive and do not implement by intuition.
+5. use `docs/architecture/RUSTOSRS-TECHNICAL-ARCHITECTURE-SPEC.md` for the preferred target architecture only when it does not conflict with higher authority;
+6. check exact source/fixture provenance;
+7. check the contradiction register for unresolved revision issues;
+8. if still unresolved, classify it as research/revision-sensitive and do not implement by intuition.
 
 Do not repair an earlier-layer correctness failure with a renderer or editor workaround.

@@ -1,6 +1,6 @@
 //! Frame-boundary orchestration. Widgets only emit actions; EditRuntime owns commits.
 use super::{Action, ThemeStudio, files};
-use crate::app::{EditorApp, edit_runtime::EditExecution, editing::EditStep};
+use crate::app::{EditorApp, edit_runtime::EditExecution};
 use eframe::egui;
 use osrs_hd::theme::ThemePatch;
 use std::task::Poll;
@@ -145,7 +145,6 @@ fn begin(app: &mut EditorApp, mut pack: osrs_hd::theme::ThemePack) -> Result<(),
 fn settle(app: &mut EditorApp, result: Result<EditExecution<()>, String>) {
     match result {
         Ok(EditExecution::Committed { .. }) => {
-            app.push_step(EditStep::appearance());
             app.settings.prefs.render_profile = crate::settings::ProfileChoice::Hd;
             app.ui.themes.settled();
         }

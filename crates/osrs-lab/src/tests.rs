@@ -364,7 +364,7 @@ fn policy_validation_is_target_free_and_preserves_budget_history_and_author_lock
     let object = task.target.objects[0].clone();
     task.initial.objects.push(object.clone());
     task.locks.push(object.clone());
-    let mut env = Env::reset(task, 7).unwrap();
+    let mut env = Env::reset(task, 7).unwrap_or_else(|e| panic!("{e}"));
     let before = env.document().clone();
     let remaining = env.legal_mask().remaining;
     assert!(
@@ -378,7 +378,8 @@ fn policy_validation_is_target_free_and_preserves_budget_history_and_author_lock
     assert!(env.trace().is_empty());
     assert!(env.step(Action::Remove { object }).is_err());
     assert_eq!(env.document(), &before);
-    let json = serde_json::to_value(env.observation(ObservationMode::ScoreOnly)).unwrap();
+    let json = serde_json::to_value(env.observation(ObservationMode::ScoreOnly))
+        .unwrap_or_else(|e| panic!("{e}"));
     assert!(json.get("target").is_none());
     assert!(
         json["legal"]["locks"]

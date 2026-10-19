@@ -59,6 +59,7 @@ mod position;
 mod prefab;
 mod query;
 mod region;
+mod replay;
 mod scenario;
 mod terrain;
 mod workspace;
@@ -190,6 +191,7 @@ pub use prefab::{
 };
 pub use query::MapQuery;
 pub use region::{MapRegionSnapshot, RegionSnapshotError};
+pub use replay::{MapReplayFootprint, TerrainChannels, TerrainReplayChange};
 pub use scenario::{
     ScenarioDocument, ScenarioPatch, ScenarioPlanError, SpawnChange, SpawnDraft, plan_add_spawn,
     plan_remove_spawns, plan_replace_scenario, plan_update_spawn,

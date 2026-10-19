@@ -140,11 +140,9 @@ fn wfc_author_commit_survives_save_and_exact_undo_redo() {
     runtime.undo().unwrap_or_else(|e| panic!("{e:?}"));
     assert_eq!(runtime.document(), &pad);
     runtime
-        .replay(
-            crate::app::edit_runtime::EditReplayDirection::Redo,
-            crate::app::edit_runtime::EditFootprint::default(),
-            |_| Ok::<_, ()>(()),
-        )
+        .replay(crate::app::edit_runtime::EditReplayDirection::Redo, |_| {
+            Ok::<_, ()>(())
+        })
         .unwrap_or_else(|e| panic!("{e:?}"));
     assert_eq!(runtime.document(), &authored);
 }
