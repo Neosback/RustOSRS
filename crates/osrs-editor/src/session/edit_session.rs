@@ -441,5 +441,8 @@ fn patch_regions(patch: &MapPatch) -> BTreeSet<RegionCoord> {
         .collect()
 }
 
+mod replay;
+pub(crate) use replay::EditReplayDescriptor;
+
 #[cfg(test)]
 mod tests;
