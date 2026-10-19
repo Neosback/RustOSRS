@@ -91,6 +91,8 @@ pub fn relocation_task(prefab: &Prefab, seed: u64) -> Result<LabTask, String> {
         ),
     };
     Ok(LabTask {
+        locks: vec![],
+        object_names: Default::default(),
         format: "rustosrs-lab-task".into(),
         version: 1,
         name: format!("Relocate {}", prefab.name),

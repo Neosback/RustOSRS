@@ -63,6 +63,7 @@ pub(super) fn prefab(viewer: &EditorApp, original: &Prefab, env: &Env) -> Prefab
             .find(|h| h.plane == 0)
             .map_or(0, |h| h.value);
         osrs_edit::PrefabBuilding {
+            semantics: Default::default(),
             floors,
             support: support.into_iter().collect(),
             source_datum,
@@ -72,7 +73,7 @@ pub(super) fn prefab(viewer: &EditorApp, original: &Prefab, env: &Env) -> Prefab
                 .as_ref()
                 .map_or_else(|| "lab-accepted".into(), |b| b.provenance.clone()),
             relations: vec![],
-            reviewed: true,
+            reviewed: false,
             labels: Default::default(),
         }
     });

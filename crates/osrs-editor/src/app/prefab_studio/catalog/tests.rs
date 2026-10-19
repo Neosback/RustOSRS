@@ -10,6 +10,8 @@ fn data() -> LearnedCatalog {
         role: "floor".into(),
         source: "reviewed fixture".into(),
         patterns: vec![LearnedPattern {
+            shape: 0,
+            rotation: 0,
             floor_class: (3 << 16) | 8,
             sockets: [0; 4],
         }],
@@ -34,6 +36,33 @@ fn origin() -> MapTile {
 }
 fn p() -> SourcePlane {
     SourcePlane::new(0).unwrap_or_else(|| unreachable!())
+}
+#[test]
+fn changed_pins_and_pending_solves_cannot_apply_an_old_result() {
+    let catalog = data();
+    let mut view = CatalogView {
+        width: 8,
+        height: 8,
+        mask: vec![true; 64],
+        solution: Some(solution(&catalog)),
+        ..Default::default()
+    };
+    assert!(view.can_apply());
+    view.pins.push(WfcConstraint {
+        coord: WfcCoord::new(1, 1),
+        allowed: PatternDomain::singleton(WfcPatternId::new(1).unwrap()),
+    });
+    assert!(!view.can_apply());
+    view.pins.clear();
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let (_send, receive) = std::sync::mpsc::channel();
+        view.pending = Some(receive);
+        assert!(!view.can_apply());
+        view.use_cells(&[(4, 4), (5, 4)]);
+        assert!(view.pending.is_none());
+        assert!(!view.can_apply());
+    }
 }
 #[test]
 fn wfc_preview_cancel_leaves_author_document_and_history_unchanged() {

@@ -15,7 +15,7 @@ use eframe::egui::{self, Rect};
 /// Top-level gameframe drawer, called by `viewport_overlays`.
 pub(in crate::app) fn draw(app: &mut EditorApp, ui: &egui::Ui, rect: Rect) {
     let in_game = app.interaction.camera().mode == CameraMode::Game;
-    if !in_game && !app.settings.prefs.show_gameframe {
+    if !in_game || !app.settings.prefs.show_gameframe {
         return;
     }
     let scale = app.settings.prefs.minimap_size.scale();

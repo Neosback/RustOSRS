@@ -118,6 +118,8 @@ pub fn path_task(lesson: &PathLesson) -> Result<LabTask, String> {
         .collect();
     let underlays: BTreeSet<u32> = target.tiles.iter().filter_map(|t| t.underlay).collect();
     Ok(LabTask {
+        locks: vec![],
+        object_names: Default::default(),
         format: "rustosrs-lab-task".into(),
         version: 1,
         name: format!("Lay the paths of {}", lesson.name),

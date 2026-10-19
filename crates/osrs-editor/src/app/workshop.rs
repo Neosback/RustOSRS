@@ -13,6 +13,7 @@
 mod buildings;
 pub(in crate::app) mod paths;
 mod places;
+pub(in crate::app) mod policy;
 mod strip;
 mod table;
 mod teach;
@@ -90,11 +91,14 @@ pub(in crate::app) struct Workshop {
     paths: paths::PathsState,
 }
 
-const STRIP_WIDTH: f32 = 300.0;
+pub(in crate::app) fn browser(app: &mut EditorApp, ui: &mut egui::Ui) {
+    strip::show(app, ui);
+}
 
 /// Once per frame in the main window: take what the background trainers have said.
 pub(super) fn window(app: &mut EditorApp, _ctx: &egui::Context) {
     train::poll(app);
+    policy::poll(app);
     paths::poll(app);
 }
 
@@ -148,34 +152,46 @@ pub(in crate::app) fn library_page(app: &mut EditorApp, ui: &mut egui::Ui) {
 /// left where the tab works on one, then the tab itself.
 pub(in crate::app) fn page(app: &mut EditorApp, ui: &mut egui::Ui) {
     let tab = app.prefabs.workshop.tab;
-    ui.horizontal_top(|ui| {
-        // The list of saved buildings is not needed to teach paths.
-        if tab != Tab::Paths {
-            ui.allocate_ui_with_layout(
-                egui::vec2(STRIP_WIDTH, ui.available_height()),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| strip::show(app, ui),
-            );
-            ui.separator();
-        }
-        ui.vertical(|ui| {
-            let hint = Tab::ALL
-                .iter()
-                .find(|(t, ..)| *t == tab)
-                .map_or("", |(_, _, hint)| *hint);
-            ui.weak(hint);
-            ui.separator();
-            match tab {
-                Tab::Names => teach::show(app, ui),
-                Tab::Train => train::show(app, ui),
-                Tab::Paths => paths::show(app, ui),
-                Tab::Wfc => wfc::show(app, ui),
-                Tab::Scene | Tab::Practice => {}
-            }
-        });
-    });
+    match tab {
+        Tab::Names => teach::show(app, ui),
+        Tab::Train => train::show(app, ui),
+        Tab::Paths => paths::show(app, ui),
+        Tab::Wfc => wfc::show(app, ui),
+        Tab::Scene | Tab::Practice => {}
+    }
     ui.ctx()
         .request_repaint_after(std::time::Duration::from_millis(100));
+}
+
+/// Task inspectors keep the shared canvas visible and collapse the browser on small windows.
+pub(in crate::app) fn task_view(
+    viewer: &mut EditorApp,
+    app: &mut EditorApp,
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+) {
+    let wide = ui.available_width() >= 1180.0;
+    if wide {
+        egui::Panel::left("workshop-browser")
+            .default_size(240.0)
+            .size_range(180.0..=340.0)
+            .resizable(true)
+            .show(ui, |ui| {
+                crate::app::workshop::browser(app, ui);
+            });
+    }
+    egui::Panel::right("workshop-inspector")
+        .default_size(420.0)
+        .size_range(280.0..=640.0)
+        .resizable(true)
+        .show(ui, |ui| {
+            if !wide {
+                ui.collapsing("Library", |ui| crate::app::workshop::browser(app, ui));
+            }
+            crate::app::workshop::page(app, ui);
+        });
+    viewer.toolbar(ui);
+    crate::app::viewport::read_only(viewer, ui, ctx);
 }
 
 /// `prefab workshop [buildings|teach|train] [train NAME [PREFAB...]]` for smoke scripts: open a

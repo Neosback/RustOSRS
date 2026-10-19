@@ -16,8 +16,6 @@ pub fn plan_wfc_floors(
     origin: MapTile,
     plane: SourcePlane,
 ) -> Result<MapPatch, LearningError> {
-    let shape = OverlayShape::new(0).ok_or(LearningError::InvalidCatalog)?;
-    let rotation = OverlayRotation::new(0).ok_or(LearningError::InvalidCatalog)?;
     let mut ops = Vec::new();
     for y in 0..solution.height() {
         for x in 0..solution.width() {
@@ -50,6 +48,9 @@ pub fn plan_wfc_floors(
             } else {
                 before.underlay
             };
+            let shape = OverlayShape::new(pat.shape).ok_or(LearningError::InvalidCatalog)?;
+            let rotation =
+                OverlayRotation::new(pat.rotation).ok_or(LearningError::InvalidCatalog)?;
             let overlay = (raw_overlay != 0).then(|| TerrainOverlay {
                 id: FloorOverlayId::new(raw_overlay),
                 shape,

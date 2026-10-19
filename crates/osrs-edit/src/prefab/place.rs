@@ -71,6 +71,30 @@ fn turn_tile(x: i32, y: i32, w: i32) -> (i32, i32) {
     (y, w - 1 - x)
 }
 
+/// Cursor placement honoring an authored anchor, or the historical centered placement.
+pub fn prefab_placement_origin(prefab: &Prefab, cursor: MapTile, turns: u8) -> Option<MapTile> {
+    let (w, h) = turned_size(prefab.width, prefab.height, turns);
+    let (x, y) = if let Some(anchor) = prefab.building.as_ref().and_then(|b| b.semantics.anchor) {
+        let (mut x, mut y, mut width, mut height) = (
+            i32::from(anchor.x),
+            i32::from(anchor.y),
+            i32::from(prefab.width),
+            i32::from(prefab.height),
+        );
+        for _ in 0..(turns & 3) {
+            (x, y) = turn_tile(x, y, width);
+            std::mem::swap(&mut width, &mut height);
+        }
+        (x, y)
+    } else {
+        (i32::from(w) / 2, i32::from(h) / 2)
+    };
+    Some(MapTile::new(
+        cursor.x.checked_sub(x)?,
+        cursor.y.checked_sub(y)?,
+    ))
+}
+
 /// Plan the placement of `prefab` as one patch against `document`.
 ///
 /// `size_of` gives an object's base size in tiles (from its definition); it only matters for

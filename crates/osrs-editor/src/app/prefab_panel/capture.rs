@@ -1,9 +1,12 @@
 //! Building capture review over an immutable authoritative snapshot. Cache reads run off-thread.
 mod analysis;
 mod intent;
+mod membership;
+mod metadata;
 mod options;
+pub(in crate::app) mod refine;
 use crate::app::EditorApp;
-pub(in crate::app) use analysis::start;
+pub(in crate::app) use analysis::{start, start_selection};
 use eframe::egui;
 use intent::intent;
 use options::Options;
@@ -15,7 +18,7 @@ use osrs_edit::{
 use osrs_scene::building_census::description::BuildingDescription;
 #[cfg(not(target_arch = "wasm32"))]
 use osrs_scene::{
-    building_census::{CensusArea, Ground, ObjectInfo, ObjectTable, description::describe},
+    building_census::{CensusArea, Ground, ObjectInfo, ObjectTable},
     object_semantics::Placed,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -25,12 +28,17 @@ pub(in crate::app) struct CaptureReview {
     #[cfg(not(target_arch = "wasm32"))]
     pending: Option<std::sync::mpsc::Receiver<Result<Review, String>>>,
     review: Option<Review>,
+    refining: bool,
+    open: bool,
+    additive: bool,
+    layer: refine::Layer,
 }
 #[derive(Clone)]
 struct Review {
     #[cfg(not(target_arch = "wasm32"))]
     inputs: std::sync::Arc<ReviewInputs>,
     rooms: Vec<RoomChoice>,
+    sides: Vec<(MapTile, u8)>,
     overrides: Vec<(ObjectPlacement, bool)>,
     labels: BTreeMap<String, String>,
     predictions: BTreeMap<(osrs_core::ids::ObjectId, u8), String>,
@@ -75,8 +83,12 @@ pub(super) fn poll(
                         if review.source == app.project.generation()
                             && review.revision == app.session.map_revision() =>
                     {
+                        let additive = app.prefabs.capture_review.additive;
+                        refine::project(app, &review, additive);
                         app.prefabs.capture_review.review = Some(review);
-                        app.prefabs.clear_notice();
+                        app.prefabs.say(
+                            "Building selected. Shift adds, Alt removes; Enter reviews capture.",
+                        );
                     }
                     Ok(_) => app
                         .prefabs
@@ -95,6 +107,10 @@ pub(super) fn poll(
 }
 
 pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
+    if !app.prefabs.capture_review.open {
+        return;
+    }
+    refine::controls(app, ui);
     let Some(review) = &mut app.prefabs.capture_review.review else {
         return;
     };
@@ -266,43 +282,7 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
         next.confirmed = false;
         let (send, receive) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let mut active = next.description.clone();
-            active.floors.clear();
-            for room in next
-                .rooms
-                .iter()
-                .filter(|r| r.included && next.planes.contains(&r.plane))
-            {
-                active
-                    .floors
-                    .entry(room.plane)
-                    .or_default()
-                    .extend(room.tiles.iter().copied());
-            }
-            let active = osrs_scene::building_census::description::describe_floors(
-                &next.inputs.area,
-                &next.inputs.placements,
-                &next.inputs.table,
-                active,
-            );
-            for (i, o) in next.objects.iter().enumerate() {
-                let roof = next.description.members.get(i).is_some_and(|m| {
-                    m.role == osrs_scene::building_census::description::MemberRole::Roof
-                });
-                next.included[i] = (roof || next.planes.contains(&o.position.plane.index().get()))
-                    && next.overrides.iter().find(|(p, _)| p == o).map_or_else(
-                        || {
-                            active.members.iter().any(|m| {
-                                m.placement.id == o.object_id
-                                    && m.placement.tile == (o.position.tile.x, o.position.tile.y)
-                                    && m.placement.plane == o.position.plane.index().get()
-                                    && m.placement.kind == o.kind.get()
-                                    && m.placement.orientation == o.orientation.get()
-                            })
-                        },
-                        |(_, yes)| *yes,
-                    );
-            }
+            membership::refresh(&mut next);
             let _ = send.send(Ok(next));
         });
         Some(receive)
@@ -319,7 +299,7 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     #[cfg(target_arch = "wasm32")]
     let _ = rebuild;
     if cancel {
-        app.prefabs.capture_review.review = None;
+        refine::cancel(app);
     }
     if let Some(spec) = spec {
         let name = if app.prefabs.form.name.trim().is_empty() {
@@ -327,15 +307,22 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
         } else {
             &app.prefabs.form.name
         };
+        let reviewed = app.prefabs.capture_review.review.clone();
         let result = spec
             .and_then(|s| {
                 osrs_edit::capture_building_prefab(app.session.document(), &s, name)
                     .map_err(|e| e.to_string())
             })
-            .and_then(|p| app.prefabs.add(p));
+            .and_then(|mut p| {
+                if let Some(review) = &reviewed {
+                    metadata::apply(review, &mut p)?;
+                }
+                app.prefabs.add(p)
+            });
         match result {
             Ok(_) => {
-                app.prefabs.capture_review.review = None;
+                refine::cancel(app);
+                app.prefabs.studio_request = app.prefabs.selected.clone();
                 app.prefabs
                     .say("Building captured with sparse terrain ownership.");
             }

@@ -31,7 +31,7 @@ impl EditorApp {
         kinds.sort_by(|a, b| a.1.cmp(&b.1));
 
         let query = self.ui.world_map.search.trim().to_lowercase();
-        let mut jump = None;
+        let mut jump_coord = None;
         if !query.is_empty() {
             ui.strong("Search results");
             let mut shown = 0;
@@ -44,11 +44,25 @@ impl EditorApp {
                     continue;
                 }
                 if ui.selectable_label(false, name.as_str()).clicked() {
-                    jump = Some(name.to_owned());
+                    jump_coord = Some((f64::from(icon.x), f64::from(icon.y)));
                 }
                 shown += 1;
                 if shown >= 14 {
                     break;
+                }
+            }
+            if shown < 14 {
+                for label in crate::app::map_labels::all_labels() {
+                    let clean = label.clean_name();
+                    if clean.to_lowercase().contains(&query) && seen_names.insert(clean.clone()) {
+                        if ui.selectable_label(false, format!("📍 {clean}")).clicked() {
+                            jump_coord = Some((label.world_x as f64, label.world_y as f64));
+                        }
+                        shown += 1;
+                        if shown >= 14 {
+                            break;
+                        }
+                    }
                 }
             }
             if shown == 0 {
@@ -56,25 +70,9 @@ impl EditorApp {
             }
             ui.separator();
         }
-        if let Some(name) = jump {
-            // Nearest icon of that name to the view centre.
-            let center = self.ui.world_map.center;
-            let best = icons_in_area
-                .iter()
-                .filter(|icon| {
-                    element_name(catalog, &names, icon.element).as_deref() == Some(name.as_str())
-                })
-                .min_by(|a, b| {
-                    let da =
-                        (f64::from(a.x) - center.0).powi(2) + (f64::from(a.y) - center.1).powi(2);
-                    let db =
-                        (f64::from(b.x) - center.0).powi(2) + (f64::from(b.y) - center.1).powi(2);
-                    da.total_cmp(&db)
-                });
-            if let Some(icon) = best {
-                self.ui.world_map.center = (f64::from(icon.x), f64::from(icon.y));
-                self.ui.world_map.zoom_target = 4.0;
-            }
+        if let Some((x, y)) = jump_coord {
+            self.ui.world_map.center = (x, y);
+            self.ui.world_map.zoom_target = 4.0;
         }
 
         ui.strong("Key");

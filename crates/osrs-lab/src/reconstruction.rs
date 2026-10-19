@@ -59,6 +59,8 @@ pub fn reconstruction_task(
         }
     }
     Ok(LabTask {
+        locks: vec![],
+        object_names: Default::default(),
         format: "rustosrs-lab-task".into(),
         version: 1,
         name: p.name.clone(),

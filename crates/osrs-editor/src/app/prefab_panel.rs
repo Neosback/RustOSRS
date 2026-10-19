@@ -10,7 +10,10 @@ mod library;
 pub(in crate::app) mod placement_review;
 pub(in crate::app) mod preview;
 mod viewport;
-pub(super) use placement_review::show as review_placement;
+pub(super) fn review_placement(app: &mut EditorApp, ctx: &egui::Context) {
+    capture::refine::window(app, ctx);
+    placement_review::show(app, ctx);
+}
 
 use crate::app::{EditorApp, prefab_runtime::Page};
 use eframe::egui;

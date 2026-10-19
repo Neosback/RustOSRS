@@ -18,7 +18,7 @@ class RunnerTests(unittest.TestCase):
         return {'id': 'id', 'name': 'sample', 'version': '1.2.3-beta', 'authors': ['A', 'B'],
                 'manifest_path': str(root / 'Cargo.toml')}
 
-    def test_inventory_keeps_example_harnesses_and_deduplicates_executables(self):
+    def test_inventory_keeps_example_harnesses_if_cargo_builds_them_and_deduplicates_executables(self):
         package = self.package(Path('/project'))
         def artifact(path, test=True, target_test=True):
             return {'reason': 'compiler-artifact', 'package_id': 'id', 'executable': path,
@@ -78,15 +78,26 @@ class RunnerTests(unittest.TestCase):
     def test_full_gate_retains_every_required_scope_once(self):
         steps = dict(commands(True, [], 4, Path('/output')))
         self.assertNotIn('native-check', steps)
+        self.assertNotIn('wasm-check', steps)
         self.assertIn('--workspace', steps['native-clippy'])
-        self.assertIn('wasm-check', steps)
-        self.assertIn('wasm-clippy', steps)
+        self.assertEqual(steps['wasm-clippy'][steps['wasm-clippy'].index('--target') + 1], 'wasm32-unknown-unknown')
+        for package in ['osrs-editor', 'osrs-core', 'osrs-edit', 'osrs-cache', 'osrs-scene', 'osrs-hd',
+                        'osrs-render', 'osrs-world']:
+            self.assertIn(package, steps['wasm-clippy'])
         self.assertNotIn('-p', steps['tests'])
         self.assertEqual(sum(name == 'tests' for name, _ in commands(True, [], 4, Path('/output'))), 1)
         focused = dict(commands(False, ['osrs-hd'], 4, Path('/output')))
         self.assertNotIn('native-check', focused)
         self.assertNotIn('wasm-clippy', focused)
         self.assertIn('osrs-hd', focused['tests'])
+
+    def test_stages_split_the_gate_without_dropping_or_repeating_a_step(self):
+        everything = [name for name, _ in commands(True, [], 4, Path('/output'))]
+        quick = [name for name, _ in commands(True, [], 4, Path('/output'), 'quick')]
+        build = [name for name, _ in commands(True, [], 4, Path('/output'), 'build')]
+        self.assertEqual(quick + build, everything)
+        self.assertEqual(build, ['native-clippy', 'wasm-clippy', 'tests'])
+        self.assertIn('format', quick)
 
     def test_source_identity_changes_for_untracked_and_tracked_edits(self):
         import subprocess

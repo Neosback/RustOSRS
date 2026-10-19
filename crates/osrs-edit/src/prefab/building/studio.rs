@@ -85,6 +85,19 @@ pub fn capture_prefab_over(
                     })
                 })
                 .collect();
+            b.semantics.portals.iter_mut().for_each(|portal| {
+                portal.object = portal
+                    .object
+                    .and_then(|i| original.objects.get(i))
+                    .and_then(|o| p.objects.iter().position(|n| n == o));
+            });
+            b.semantics.locked_parts = b
+                .semantics
+                .locked_parts
+                .iter()
+                .filter_map(|&i| original.objects.get(i))
+                .filter_map(|o| p.objects.iter().position(|n| n == o))
+                .collect();
             b.labels
                 .retain(|key, _| !key.starts_with("inferred:member:"));
             b.reviewed = false;

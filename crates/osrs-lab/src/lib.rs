@@ -15,8 +15,10 @@ pub use paths::{
     lay_actions as path_lay_actions, path_task, pieces as path_pieces, train_paths,
     waypoints as path_waypoints,
 };
+mod split;
+pub use split::LearningSplit;
 mod train;
-pub use critic::{Critic, CriticMetrics, train_critic};
+pub use critic::{Critic, CriticMetrics, train_critic, train_critic_partitioned};
 pub use train::{Corpus, Progress, TrainRequest, train_model};
 mod env;
 mod generate;
@@ -33,7 +35,9 @@ pub use relocation::relocation_task;
 pub use style::{StyleReport, learn_style, prefab_buildings};
 mod task;
 pub use action::{Action, PathSmoothSpec};
-pub use env::{Env, LabError, LegalActions, Observation, ObservationMode, StepResult};
+pub use env::{
+    Env, LabError, LegalActions, Observation, ObservationMode, StepResult, validate_candidate,
+};
 pub use score::Score;
 pub use task::{
     LabTask, PaletteEntry, Snapshot, generated_paths, generated_tavern, prefab_paths_task,

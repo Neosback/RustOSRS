@@ -74,6 +74,7 @@ fn fixture() -> (MapDocument, Review) {
             placements: vec![],
             table: ObjectTable::new(),
         }),
+        sides: vec![],
         rooms: vec![RoomChoice {
             plane: 0,
             tiles: floors.clone(),
@@ -138,4 +139,37 @@ fn disabling_contents_keeps_structural_anchors_and_does_not_widen_terrain() {
     assert_eq!(spec.floors.len(), 8);
     assert!(spec.labels.contains_key("inferred:member:0:role"));
     assert!(!spec.labels.contains_key("inferred:member:1:role"));
+}
+
+#[test]
+fn manual_floor_and_missed_piece_corrections_survive_capture_without_map_edits() {
+    let (doc, mut review) = fixture();
+    let before = doc.clone();
+    refine::change_floor(&mut review, MapTile::new(2, 2), 0, true);
+    refine::change_floor(&mut review, MapTile::new(1, 1), 0, false);
+    let mut piece = review.objects[2];
+    piece.position.tile = MapTile::new(4, 4);
+    refine::change_piece(&mut review, piece, (1, 1), true);
+    let spec = intent(&review, &doc).unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        spec.floors
+            .contains(&MapPosition::new(MapTile::new(2, 2), p(0)))
+    );
+    assert!(
+        !spec
+            .floors
+            .contains(&MapPosition::new(MapTile::new(1, 1), p(0)))
+    );
+    assert!(
+        spec.objects.contains(&piece),
+        "missed occurrences need not be in the inferred candidate list"
+    );
+    assert_eq!(doc, before, "refinement is selection state, never an edit");
+    refine::change_piece(&mut review, piece, (1, 1), false);
+    assert!(
+        !intent(&review, &doc)
+            .unwrap_or_else(|e| panic!("{e}"))
+            .objects
+            .contains(&piece)
+    );
 }

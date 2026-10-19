@@ -7,7 +7,7 @@
 use crate::model::{MODEL_FORMAT, MODEL_VERSION, fingerprint};
 use crate::{
     Brief, Model, ModelMetrics, ModelName, Structure, TrainedOn, build_with_model, features_of,
-    generate_named, learn_style, prefab_buildings, train_critic,
+    generate_named, learn_style, prefab_buildings, train_critic_partitioned,
 };
 use osrs_edit::{KitFile, Prefab};
 use osrs_scene::building_census::{FEATURES, ObjectTable, judge};
@@ -28,11 +28,15 @@ impl Corpus {
         serde_json::from_str(include_str!("../data/real-buildings.json")).unwrap_or_default()
     }
 
-    fn usable(&self) -> impl Iterator<Item = (u16, u16, [f32; FEATURES])> + '_ {
-        self.rows.iter().filter_map(|row| {
+    fn usable(&self, split: u8) -> impl Iterator<Item = (u16, u16, [f32; FEATURES])> + '_ {
+        self.rows.iter().filter_map(move |row| {
             // Real roofed buildings only (the game also has fenced yards and ruins), from the
-            // train and validation splits.
-            if row.len() != 3 + FEATURES || row[2] > 1.5 || row[3] < 12.0 || row[3 + 7] < 0.3 {
+            // requested source partition only.
+            if row.len() != 3 + FEATURES
+                || row[2] != f32::from(split)
+                || row[3] < 12.0
+                || row[3 + 7] < 0.3
+            {
                 return None;
             }
             let (w, h) = (row[0] as u16, row[1] as u16);
@@ -79,6 +83,7 @@ const KINDS: [&str; 6] = ["house", "shop", "tavern", "bank", "church", "warehous
 
 fn brief(kind: &str, width: u16, height: u16, seed: u64) -> Brief {
     Brief {
+        sketch: None,
         kind: kind.to_owned(),
         width: width.clamp(6, 24),
         height: height.clamp(6, 24),
@@ -175,7 +180,7 @@ pub fn train_model(
     let mut rng = Rng(request.seed ^ 0x5bd1_e995_a3c2_f1d7);
     let real_rows: Vec<(u16, u16, [f32; FEATURES])> = request
         .corpus
-        .usable()
+        .usable(0)
         .filter(|(w, h, _)| (6..=24).contains(w) && (6..=24).contains(h))
         .collect();
     // Up to 500 real buildings, spread through the corpus.
@@ -193,7 +198,7 @@ pub fn train_model(
     let structure = Structure::from_buildings(
         request
             .corpus
-            .usable()
+            .usable(0)
             .map(|(_, _, f)| (f[0] as u32, f[1] as u32)),
     );
     let mut fake: Vec<[f32; FEATURES]> = Vec::new();
@@ -250,12 +255,40 @@ pub fn train_model(
 
     check(request)?;
     report(on, 55, "Teaching the critic what real buildings look like");
-    let (critic, critic_metrics) = train_critic(&real, &fake, 300, |fraction, _| {
-        on(Progress::Step {
-            percent: 55 + (fraction * 30.0) as u8,
-            message: "Teaching the critic what real buildings look like".to_owned(),
-        });
-    })?;
+    let mut real_validation = Vec::new();
+    let mut fake_validation = Vec::new();
+    for (index, (w, h, f)) in request.corpus.usable(1).take(100).enumerate() {
+        check(request)?;
+        if !(6..=24).contains(&w) || !(6..=24).contains(&h) {
+            continue;
+        }
+        if let Ok(made) = generate_named(
+            &kit,
+            &structured(
+                brief(KINDS[index % KINDS.len()], w, h, rng.next()),
+                &structure,
+                rng.next(),
+            ),
+            &table,
+        ) && made.verdict.usable
+        {
+            real_validation.push(f);
+            fake_validation.push(features_of(&made)?);
+        }
+    }
+    let (critic, critic_metrics) = train_critic_partitioned(
+        &real,
+        &fake,
+        &real_validation,
+        &fake_validation,
+        300,
+        |fraction, _| {
+            on(Progress::Step {
+                percent: 55 + (fraction * 30.0) as u8,
+                message: "Teaching the critic what real buildings look like".to_owned(),
+            });
+        },
+    )?;
 
     // A model without its checksum yet, enough to try building with.
     let trained_on: Vec<TrainedOn> = request
@@ -353,8 +386,7 @@ pub fn train_model(
     summary.push(format!(
         "Tried {built} new briefs: {usable} built a usable building. The critic thinks they look \
          {:.0}% real on the first try and {:.0}% real keeping the best of 16.",
-        metrics.realism_single * 100.0,
-        metrics.realism_best_of_16 * 100.0
+        metrics.realism_single, metrics.realism_best_of_16
     ));
     if request.prefabs.len() < 3 {
         summary.push(
@@ -476,6 +508,7 @@ mod tests {
 
         // It builds from a brief it was never shown, and the same brief gives the same building.
         let ask = Brief {
+            sketch: None,
             kind: "house".into(),
             width: 12,
             height: 10,

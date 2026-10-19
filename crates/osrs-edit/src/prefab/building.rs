@@ -1,6 +1,8 @@
 //! Explicit building capture: terrain ownership and placement anchors are independent.
+mod semantics;
 use super::*;
 use crate::MapQuery;
+pub use semantics::{PrefabPortal, PrefabRoom, PrefabSemantics};
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -20,6 +22,8 @@ pub struct PrefabRelation {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PrefabBuilding {
+    #[serde(default)]
+    pub semantics: PrefabSemantics,
     pub floors: Vec<PrefabCell>,
     pub support: Vec<PrefabCell>,
     pub source_datum: i32,
@@ -87,9 +91,10 @@ impl fmt::Display for BuildingPrefabError {
 impl std::error::Error for BuildingPrefabError {}
 impl PrefabBuilding {
     pub(super) fn validate(&self, p: &Prefab) -> Result<(), BuildingPrefabError> {
-        if p.version != PREFAB_VERSION || self.floors.is_empty() {
+        if !(2..=PREFAB_VERSION).contains(&p.version) || self.floors.is_empty() {
             return Err(BuildingPrefabError::InvalidMask);
         }
+        self.semantics.validate(p, &self.floors)?;
         for (cells, extra) in [(&self.floors, 0), (&self.support, 1)] {
             let mut unique = BTreeSet::new();
             for c in cells {
@@ -323,6 +328,7 @@ pub fn capture_building_prefab(
         .copied()
         .ok_or_else(|| building_error(BuildingPrefabError::EmptyFloor))?;
     p.building = Some(PrefabBuilding {
+        semantics: PrefabSemantics::default(),
         floors: spec.floors.iter().map(|c| local(c.tile, c.plane)).collect(),
         support: spec
             .support

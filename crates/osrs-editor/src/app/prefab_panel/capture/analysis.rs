@@ -2,8 +2,18 @@
 use super::*;
 
 pub(in crate::app) fn start(app: &mut EditorApp, tile: MapTile) {
+    start_selection(app, tile, false, true);
+}
+
+pub(in crate::app) fn start_selection(
+    app: &mut EditorApp,
+    tile: MapTile,
+    additive: bool,
+    open: bool,
+) {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        let hit = super::refine::hover_placement(app).filter(|p| p.position.tile == tile);
         let source = app.project.source().clone();
         let book = app.names.book_arc();
         let custom = std::sync::Arc::new(app.names.custom().book().clone());
@@ -16,6 +26,9 @@ pub(in crate::app) fn start(app: &mut EditorApp, tile: MapTile) {
         let (send, receive) = std::sync::mpsc::channel();
         app.prefabs.capture_review.pending = Some(receive);
         app.prefabs.capture_review.review = None;
+        app.prefabs.capture_review.refining = true;
+        app.prefabs.capture_review.open = open;
+        app.prefabs.capture_review.additive = additive;
         std::thread::spawn(move || {
             let result = (|| {
                 let mut definitions =
@@ -136,7 +149,43 @@ pub(in crate::app) fn start(app: &mut EditorApp, tile: MapTile) {
                         }
                     }
                 }
-                let seed_description=describe(&area,&raw,&table,tile,plane).ok_or("No enclosed building here; select an interior floor tile and load its surroundings.")?;
+                let mut candidates = osrs_scene::building_census::description::pick_candidates(
+                    &area,
+                    &raw,
+                    &table,
+                    tile,
+                    plane,
+                    hit.map(|p| Placed {
+                        id: p.object_id,
+                        tile: (p.position.tile.x, p.position.tile.y),
+                        plane: p.position.plane.index().get(),
+                        kind: p.kind.get(),
+                        orientation: p.orientation.get(),
+                    }),
+                );
+                if candidates.is_empty() {
+                    if let Some(candidate) =
+                        osrs_scene::building_census::description::incomplete_candidate(
+                            &area,
+                            &raw,
+                            &table,
+                            tile,
+                            plane,
+                            hit.map(|p| Placed {
+                                id: p.object_id,
+                                tile: (p.position.tile.x, p.position.tile.y),
+                                plane: p.position.plane.index().get(),
+                                kind: p.kind.get(),
+                                orientation: p.orientation.get(),
+                            }),
+                        )
+                    {
+                        candidates.push(candidate);
+                    }
+                }
+                let sides = candidates.iter().map(|c| (c.seed, c.plane)).collect();
+                let seed_description = candidates.into_iter().next().map(|c| c.description)
+                    .ok_or("No enclosed building here. Load the surrounding map or select an interior floor tile.")?;
                 let census = osrs_scene::building_census::analyze(&area, &raw, &table);
                 let mut rooms = Vec::new();
                 for b in &census {
@@ -159,6 +208,25 @@ pub(in crate::app) fn start(app: &mut EditorApp, tile: MapTile) {
                             tiles,
                             included,
                             role: r.tag.word().into(),
+                        });
+                    }
+                }
+                for (&plane, floor) in &seed_description.floors {
+                    let missing: Vec<_> = floor
+                        .iter()
+                        .filter(|t| {
+                            !rooms
+                                .iter()
+                                .any(|r| r.plane == plane && r.tiles.contains(t))
+                        })
+                        .copied()
+                        .collect();
+                    if !missing.is_empty() {
+                        rooms.push(RoomChoice {
+                            plane,
+                            tiles: missing,
+                            included: true,
+                            role: "general".into(),
                         });
                     }
                 }
@@ -224,6 +292,7 @@ pub(in crate::app) fn start(app: &mut EditorApp, tile: MapTile) {
                         table: table.clone(),
                     }),
                     rooms,
+                    sides,
                     overrides: vec![],
                     labels: BTreeMap::new(),
                     predictions,

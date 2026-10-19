@@ -54,8 +54,7 @@ pub(in crate::app) fn best_seed(app: &mut EditorApp) -> Result<String, String> {
     let (seed, realism) = pick_seed(&model, &form)?;
     app.prefabs.build.form.seed = seed;
     Ok(format!(
-        "The AI looked at 16 seeds and kept number {seed} ({:.0}% looks real to its judge).",
-        realism * 100.0
+        "The AI looked at 16 seeds and kept number {seed} (ranking score {realism:.3}; uncalibrated).",
     ))
 }
 
@@ -70,6 +69,7 @@ fn pick_seed(
         .find(|(a, _)| *a == form.archetype)
         .map_or("house".to_owned(), |(_, label)| label.to_lowercase());
     let brief = Brief {
+        sketch: None,
         kind: if ["house", "shop", "tavern", "bank", "church", "warehouse"].contains(&kind.as_str())
         {
             kind

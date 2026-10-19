@@ -10,6 +10,7 @@ import random
 import re
 import time
 from client import LabClient
+from splits import group_for, split_for
 
 
 def write_json(path, value):
@@ -291,19 +292,6 @@ def features(info, kind):
     return result
 
 
-def group_for(prefab):
-    source = prefab.get('source', {})
-    if source.get('from') == 'captured':
-        return f"geography:{source['tile_x'] // 512}:{source['tile_y'] // 512}"
-    # Seed/rotation variants from the same authored family stay in one evaluation group.
-    return 'family:' + prefab.get('name', '').split(' copy')[0]
-
-
-def split_for(group):
-    slot = int.from_bytes(hashlib.sha256(group.encode()).digest()[:4], 'big') % 5
-    return 'test' if slot == 0 else 'validation' if slot == 1 else 'train'
-
-
 def building_critic_features(record):
     """Extract compact structural quality features from a building census record or snapshot."""
     objs = record.get('objects', [])
@@ -431,6 +419,9 @@ def fit(args):
             if not line.strip():
                 continue
             building = json.loads(line)
+            group = building.get('group')
+            if not group or split_for(group) != 'train':
+                continue
             building_records.append(building)
             for room in building.get('rooms', []):
                 tiles = {tuple(t) for t in room['tiles']}

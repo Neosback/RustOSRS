@@ -113,6 +113,9 @@ impl EditorApp {
         width: u32,
         height: u32,
     ) {
+        if super::prefab_panel::capture::refine::input(self, response) {
+            return;
+        }
         let objects_tool = self.settings.prefs.tool == crate::paint::Tool::Objects;
         if !(self.settings.prefs.tool == crate::paint::Tool::Select || objects_tool)
             || self.ui.quick_open.is_some()

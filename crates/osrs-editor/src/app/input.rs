@@ -52,9 +52,9 @@ impl EditorApp {
         } else {
             ctx.input(|i| {
                 let yaw = if i.key_down(egui::Key::ArrowLeft) {
-                    1.0
-                } else if i.key_down(egui::Key::ArrowRight) {
                     -1.0
+                } else if i.key_down(egui::Key::ArrowRight) {
+                    1.0
                 } else {
                     0.0
                 };

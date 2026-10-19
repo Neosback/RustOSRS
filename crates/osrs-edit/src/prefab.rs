@@ -23,18 +23,21 @@ mod capture;
 mod foundation;
 mod place;
 pub use building::{
-    BuildingCaptureSpec, BuildingPrefabError, PrefabBuilding, PrefabCell, PrefabRelation,
-    capture_building_prefab, capture_prefab_over,
+    BuildingCaptureSpec, BuildingPrefabError, PrefabBuilding, PrefabCell, PrefabPortal,
+    PrefabRelation, PrefabRoom, PrefabSemantics, capture_building_prefab, capture_prefab_over,
 };
 pub use capture::{capture_prefab, prefab_from_patch};
 
-pub use place::{PlaceSpec, PlacedPrefab, plan_place_exact, plan_place_prefab, turned_size};
+pub use place::{
+    PlaceSpec, PlacedPrefab, plan_place_exact, plan_place_prefab, prefab_placement_origin,
+    turned_size,
+};
 
 #[cfg(test)]
 mod tests;
 
 pub const PREFAB_FORMAT: &str = "rustosrs-prefab";
-pub const PREFAB_VERSION: u32 = 2;
+pub const PREFAB_VERSION: u32 = 3;
 /// The largest side of a prefab, in tiles (two map regions).
 pub const MAX_PREFAB_SIDE: u16 = 128;
 
@@ -186,7 +189,7 @@ impl Prefab {
         if self.format != PREFAB_FORMAT {
             return Err(PrefabError::Format(self.format.clone()));
         }
-        if self.version != 1 && self.version != PREFAB_VERSION {
+        if !(1..=PREFAB_VERSION).contains(&self.version) {
             return Err(PrefabError::Version(self.version));
         }
         if self.name.trim().is_empty() {

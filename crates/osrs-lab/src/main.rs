@@ -28,11 +28,21 @@ enum Command {
         #[serde(default = "default_true")]
         observe: bool,
     },
+    Inspect,
+    Validate {
+        actions: Vec<Action>,
+    },
     Observe,
     Legal,
     Undo,
     Replay {
         actions: Vec<Action>,
+    },
+    LearnPrefabs {
+        prefabs: Vec<osrs_edit::Prefab>,
+        style: String,
+        role: String,
+        source: String,
     },
     Learn {
         grids: Vec<osrs_edit::LearningGrid>,
@@ -82,6 +92,19 @@ fn run(request: Request, envs: &mut BTreeMap<u32, Running>) -> Result<Value, Str
                 "breakdown": breakdown,
             }))
         }
+        Command::LearnPrefabs {
+            prefabs,
+            style,
+            role,
+            source,
+        } => {
+            let catalog =
+                osrs_edit::learn_prefab_catalog(&prefabs, style, role, source, &|_, _| {
+                    osrs_edit::WfcPieceClass::Wall
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(json!({"catalog":catalog}))
+        }
         Command::Learn {
             grids,
             style,
@@ -117,6 +140,10 @@ fn run(request: Request, envs: &mut BTreeMap<u32, Running>) -> Result<Value, Str
                         "breakdown": breakdown,
                     }))
                 }
+                Command::Inspect => Ok(json!({"verdict":running.env.judgement()})),
+                Command::Validate { actions } => Ok(
+                    json!({"valid": actions.iter().take(1024).map(|a| running.env.validate_action(a).unwrap_or(false)).collect::<Vec<_>>() }),
+                ),
                 Command::Legal => Ok(json!({"legal": running.env.legal_mask()})),
                 Command::Replay { actions } => {
                     let replay = Env::replay(running.task.clone(), running.seed, &actions)
@@ -198,6 +225,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let number =
                 |i: usize, default: &str| args.get(i).map_or(default, String::as_str).to_owned();
             osrs_lab::Brief {
+                sketch: None,
                 kind: second.clone(),
                 width: number(3, "12").parse()?,
                 height: number(4, "10").parse()?,
@@ -252,6 +280,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let number =
             |i: usize, default: &str| args.get(i).map_or(default, String::as_str).to_owned();
         let brief = osrs_lab::Brief {
+            sketch: None,
             kind: args.get(2).ok_or(usage)?.clone(),
             width: number(3, "12").parse()?,
             height: number(4, "10").parse()?,

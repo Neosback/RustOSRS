@@ -27,25 +27,24 @@ Use the pinned Rust toolchain in `rust-toolchain.toml` and Python **3.11+**. On 
 
 During implementation, use focused checks (`python3 scripts/verify.py -p <changed-crate>`) or the
 specific existing tests. Run the full gate once for a ready checkpoint, not after every small edit.
-Do not overlap focused/full Cargo runs or repeat green suites without changed inputs. The equivalent
-full local entry point is `python3 scripts/verify.py --full`; it preserves every gate below and runs
-Cargo's complete test-binary inventory with bounded concurrency. See `docs/LOCAL-VERIFICATION.md`
-for timing reports, focused/full scope and concurrent-source-change handling.
+Do not overlap focused/full Cargo runs or repeat green suites without changed inputs.
+`python3 scripts/verify.py --full` is the single definition of the gate; GitHub CI runs the same
+script (`--stage quick`, then `--stage build`). See `docs/LOCAL-VERIFICATION.md`. In order, it runs:
 
 ```sh
-python3 scripts/check_architecture.py
-python3 scripts/test_check_architecture.py
-python3 scripts/test_editor_architecture.py
-python3 scripts/test_reference_regeneration.py
-python3 scripts/test_deob_golden_index.py
+# quick stage (no compilation)
+python3 scripts/check_architecture.py          # plus the other Python guards listed in verify.py
 cargo fmt --all --check
-cargo check --locked --workspace --all-targets --all-features
+# build stage
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-cargo test --locked --workspace --all-targets --all-features
-cargo check --locked --target wasm32-unknown-unknown -p osrs-core -p osrs-edit -p osrs-cache -p osrs-scene -p osrs-hd -p osrs-render -p osrs-world
-cargo clippy --locked --target wasm32-unknown-unknown -p osrs-editor -- -D warnings
+cargo clippy --locked --target wasm32-unknown-unknown -p osrs-editor -p osrs-core -p osrs-edit -p osrs-lab -p osrs-cache -p osrs-scene -p osrs-hd -p osrs-render -p osrs-world -- -D warnings
+python3 scripts/run_tests.py                   # cargo test --lib --bins --tests, all features, bounded concurrency
 ```
 
-The full workspace tests include the permanent M3–M9 parity suites (run via Tier B in `.github/workflows/ci.yml`). External pinned-cache and independent visual-oracle tests retain their prerequisites; ignored tests are not proof of acceptance.
+Clippy replaces the separate `cargo check` commands (it compiles everything they do). Examples are
+type-checked by Clippy but not launched as test binaries. Each crate's integration tests are bundled
+into one `tests/integration.rs` binary: a new `tests/*.rs` file must be added as a module there.
+
+The full workspace tests include the permanent M3–M9 parity suites (they run in CI's single `verify` job). External pinned-cache and independent visual-oracle tests retain their prerequisites; ignored tests are not proof of acceptance.
 
 Update the current handoff when ownership changes. Report checks actually run, their results, the exact baseline SHA, and whether changes remain uncommitted. A local check does not certify remote CI or a later commit.

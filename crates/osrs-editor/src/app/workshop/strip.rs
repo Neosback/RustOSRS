@@ -225,6 +225,9 @@ fn row(app: &mut EditorApp, ui: &mut egui::Ui, file: &str, prefab: &Prefab) {
         .interact(egui::Sense::click());
     if response.clicked() {
         app.prefabs.selected = Some(file.to_owned());
+        if app.prefabs.workshop.tab.is_page() {
+            app.prefabs.studio_request = Some(file.to_owned());
+        }
     }
     if response.double_clicked() {
         app.prefabs.studio_request = Some(file.to_owned());

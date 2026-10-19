@@ -29,6 +29,8 @@ pub struct CriticMetrics {
     /// than a coin).
     pub held_out_auc: f32,
     pub trained_on: usize,
+    #[serde(default)]
+    pub held_out_examples: usize,
 }
 
 impl Critic {
@@ -122,13 +124,38 @@ pub fn train_critic(
     real: &[[f32; FEATURES]],
     fake: &[[f32; FEATURES]],
     epochs: usize,
-    mut progress: impl FnMut(f32, f32),
+    progress: impl FnMut(f32, f32),
 ) -> Result<(Critic, CriticMetrics), String> {
-    if real.len() < 5 || fake.len() < 5 {
-        return Err("the critic needs at least 5 real and 5 generated buildings".into());
-    }
     let (real_train, real_held) = split(real);
     let (fake_train, fake_held) = split(fake);
+    train_critic_partitioned(
+        &real_train.into_iter().copied().collect::<Vec<_>>(),
+        &fake_train.into_iter().copied().collect::<Vec<_>>(),
+        &real_held.into_iter().copied().collect::<Vec<_>>(),
+        &fake_held.into_iter().copied().collect::<Vec<_>>(),
+        epochs,
+        progress,
+    )
+}
+
+/// Fit only the supplied training partitions. Validation never affects normalization or weights.
+pub fn train_critic_partitioned(
+    real: &[[f32; FEATURES]],
+    fake: &[[f32; FEATURES]],
+    real_validation: &[[f32; FEATURES]],
+    fake_validation: &[[f32; FEATURES]],
+    epochs: usize,
+    mut progress: impl FnMut(f32, f32),
+) -> Result<(Critic, CriticMetrics), String> {
+    if real.len() < 4 || fake.len() < 4 || epochs == 0 {
+        return Err(
+            "the critic needs at least 4 training examples of each class and nonzero epochs".into(),
+        );
+    }
+    let real_train: Vec<_> = real.iter().collect();
+    let fake_train: Vec<_> = fake.iter().collect();
+    let real_held: Vec<_> = real_validation.iter().collect();
+    let fake_held: Vec<_> = fake_validation.iter().collect();
     let all: Vec<&[f32; FEATURES]> = real_train.iter().chain(&fake_train).copied().collect();
     let (mean, std) = mean_std(&all);
     let standard = |row: &[f32; FEATURES]| -> [f64; FEATURES] {
@@ -202,6 +229,7 @@ pub fn train_critic(
         held_out_accuracy: correct as f32 / held.max(1) as f32,
         held_out_auc: auc(&real_scores, &fake_scores) as f32,
         trained_on: real_train.len() + fake_train.len(),
+        held_out_examples: held,
     };
     Ok((critic, metrics))
 }

@@ -92,3 +92,96 @@ fn repeated_ids_are_distinct_placements_and_input_order_does_not_change_links() 
         12
     );
 }
+
+#[test]
+fn open_shell_candidate_is_bounded_and_explicitly_incomplete() {
+    let (mut area, mut placements, table) = house();
+    for x in 0..10 {
+        for y in 0..10 {
+            area.set(
+                0,
+                (x, y),
+                crate::building_census::Ground {
+                    height_known: true,
+                    overlay: 5,
+                    ..Default::default()
+                },
+            );
+        }
+    }
+    placements.retain(|p| p.tile.0 != 2 || p.kind != 0);
+    assert!(pick_candidates(&area, &placements, &table, MapTile::new(4, 4), 0, None).is_empty());
+    let candidate =
+        incomplete_candidate(&area, &placements, &table, MapTile::new(4, 4), 0, None).unwrap();
+    assert!(
+        candidate
+            .description
+            .review
+            .iter()
+            .any(|r| r.starts_with("INCOMPLETE"))
+    );
+    assert!(candidate.description.floors[&0].len() <= 17 * 17);
+    assert!(candidate.description.floors[&0].contains(&MapTile::new(4, 4)));
+    let empty = CensusArea::new((0, 0), 10, 10);
+    assert!(
+        incomplete_candidate(&empty, &placements, &table, MapTile::new(4, 4), 0, None).is_none()
+    );
+}
+
+#[test]
+fn wall_pick_and_capture_share_exact_document_membership() {
+    let (area, mut placements, table) = house();
+    let wall = object(10, 2, 4, 0, 2, 0);
+    let candidates = pick_candidates(
+        &area,
+        &placements,
+        &table,
+        MapTile::new(2, 4),
+        0,
+        Some(wall),
+    );
+    assert_eq!(candidates.len(), 1);
+    let picked = &candidates[0];
+    assert_eq!(
+        Some(picked.description.clone()),
+        describe(&area, &placements, &table, picked.seed, picked.plane)
+    );
+    // An edit removes an enclosure: the query must not reuse a renderer's old building.
+    placements.retain(|p| !(p.tile.0 == 2 && p.kind == 0));
+    assert!(
+        pick_candidates(
+            &area,
+            &placements,
+            &table,
+            MapTile::new(2, 4),
+            0,
+            Some(wall)
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn shared_wall_exposes_both_disconnected_interiors_and_roof_click_uses_lower_plane() {
+    let (_, left, table) = house();
+    let mut placements = left.clone();
+    placements.extend(left.into_iter().map(|mut p| {
+        p.tile.0 += 3;
+        p
+    }));
+    let area = CensusArea::new((0, 0), 13, 10);
+    let wall = object(10, 6, 4, 0, 0, 0);
+    let sides = pick_candidates(
+        &area,
+        &placements,
+        &table,
+        MapTile::new(6, 4),
+        0,
+        Some(wall),
+    );
+    assert_eq!(sides.len(), 2, "a party wall needs a side choice");
+    assert_ne!(sides[0].description.floors, sides[1].description.floors);
+    let roof = pick_candidates(&area, &placements, &table, MapTile::new(4, 4), 1, None);
+    assert!(!roof.is_empty());
+    assert_eq!(roof[0].plane, 0);
+}

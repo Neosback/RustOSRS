@@ -44,6 +44,7 @@ pub(in crate::app) fn panel(studio: &mut Studio, ctx: &egui::Context) {
     egui::Window::new("What belongs to this building")
         .default_width(380.0)
         .show(ctx, |ui| {
+            super::super::author::show(studio, ui);
             let Some(b) = &mut studio.original.building else {
                 ui.label(
                     "This is a plain rectangle of map, not a captured building, so there is \
@@ -234,7 +235,11 @@ fn set_floor(
         b.floors.push(cell);
     } else {
         b.floors.retain(|c| *c != cell);
+        for room in &mut b.semantics.rooms { room.cells.retain(|c| *c != cell); }
+        b.semantics.rooms.retain(|r| !r.cells.is_empty());
+        b.semantics.portals.clear();
     }
+    b.reviewed = false;
     b.floors.sort();
     b.floors.dedup();
     let mut support = std::collections::BTreeSet::new();

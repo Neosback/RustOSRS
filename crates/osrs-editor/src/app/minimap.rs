@@ -48,15 +48,59 @@ struct Sprites {
 impl EditorApp {
     /// The minimap assembly in the viewport's top-right corner.
     pub(super) fn minimap_hud(&mut self, ui: &egui::Ui, rect: egui::Rect) {
-        if !self.settings.prefs.show_minimap {
-            return;
-        }
-        let scale = self.settings.prefs.minimap_size.scale();
-        let (Some(frame), Some(map_mask), Some(compass_mask), Some(compass)) = (
-            self.assets.sprite_image(ids::FRAME),
-            self.assets.sprite_image(ids::MAP_MASK),
+        let (Some(compass_mask), Some(compass)) = (
             self.assets.sprite_image(ids::COMPASS_MASK),
             self.assets.sprite_image(sprite::COMPASS),
+        ) else {
+            return;
+        };
+        let scale = self.settings.prefs.minimap_size.scale();
+        let yaw = self.interaction.camera().yaw;
+        let ctx = ui.ctx().clone();
+
+        if !self.settings.prefs.show_minimap {
+            let compass_image = compose_compass(&compass, &compass_mask, yaw);
+            let compass_texture = match &mut self.ui.minimap_hud.compass {
+                Some(texture) => {
+                    texture.set(compass_image, egui::TextureOptions::NEAREST);
+                    texture.clone()
+                }
+                slot => slot
+                    .insert(ctx.load_texture(
+                        "minimap-compass",
+                        compass_image,
+                        egui::TextureOptions::NEAREST,
+                    ))
+                    .clone(),
+            };
+            let compass_size =
+                egui::vec2(compass_mask.width as f32, compass_mask.height as f32) * scale;
+            let compass_rect = egui::Rect::from_min_size(
+                egui::pos2(rect.right() - compass_size.x - 10.0, rect.top() + 10.0),
+                compass_size,
+            );
+            let painter = ui.painter().with_clip_rect(rect);
+            let full_uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+            painter.image(
+                compass_texture.id(),
+                compass_rect,
+                full_uv,
+                egui::Color32::WHITE,
+            );
+            let compass_response = ui.interact(
+                compass_rect,
+                egui::Id::new("standalone_compass"),
+                egui::Sense::click(),
+            );
+            if compass_response.on_hover_text("Face north").clicked() {
+                self.interaction.face_north();
+            }
+            return;
+        }
+
+        let (Some(frame), Some(map_mask)) = (
+            self.assets.sprite_image(ids::FRAME),
+            self.assets.sprite_image(ids::MAP_MASK),
         ) else {
             return;
         };
@@ -66,12 +110,10 @@ impl EditorApp {
             compass_mask,
             compass,
         };
-        let ctx = ui.ctx().clone();
         let frame_size =
             egui::vec2(sprites.frame.width as f32, sprites.frame.height as f32) * scale;
         let origin = egui::pos2(rect.right() - frame_size.x - 10.0, rect.top() + 10.0);
         let at = |x: f32, y: f32| origin + egui::vec2(x, y) * scale;
-        let yaw = self.interaction.camera().yaw;
         let (camera_x, camera_z) = self.world_position();
         let (tile_x, tile_y) = (camera_x / 128.0, camera_z / 128.0);
         let plane = self.interaction.view_plane();

@@ -140,10 +140,10 @@ fn models_list(app: &mut EditorApp, ui: &mut egui::Ui) {
             ui.vertical(|ui| {
                 ui.strong(&model.name);
                 ui.weak(format!(
-                    "{} \u{b7} learned from {} building(s) \u{b7} looks {:.0}% real (best of 16) \u{b7} {:.0}% usable",
+                    "{} \u{b7} learned from {} building(s) \u{b7} ranking score {:.3} (best of 16) \u{b7} {:.0}% usable",
                     model.created,
                     model.trained_on.len(),
-                    model.metrics.realism_best_of_16 * 100.0,
+                    model.metrics.realism_best_of_16,
                     model.metrics.usable_rate * 100.0
                 ));
             });
@@ -171,6 +171,7 @@ fn build(app: &mut EditorApp, file: &str) {
     };
     let t = &train.try_it;
     let brief = Brief {
+        sketch: None,
         kind: KINDS[t.kind.min(KINDS.len() - 1)].0.to_owned(),
         width: t.width,
         height: t.height,
@@ -235,10 +236,8 @@ fn result(app: &mut EditorApp, ui: &mut egui::Ui, file: &str) {
             ui.vertical(|ui| {
                 ui.strong(&name);
                 ui.label(format!(
-                    "{} room(s), {} way(s) in. It looks {:.0}% real to the judge.",
-                    verdict.rooms,
-                    verdict.entrances,
-                    built.realism * 100.0
+                    "{} room(s), {} way(s) in. Ranking score {:.3} (uncalibrated).",
+                    verdict.rooms, verdict.entrances, built.realism
                 ));
                 ui.weak(format!(
                     "It tried {} seed(s) and kept the best; {} could not be used.",

@@ -130,6 +130,24 @@ use egui::Key;
 /// Actions of the editor itself (plugins add their own).
 pub const CORE_ACTIONS: &[ActionDef] = &[
     ActionDef::new(
+        "building.review",
+        "Review selected building",
+        "Building capture",
+        Binding::key(Key::Enter),
+    ),
+    ActionDef::new(
+        "building.shrink",
+        "Shrink building floor",
+        "Building capture",
+        Binding::key(Key::OpenBracket),
+    ),
+    ActionDef::new(
+        "building.grow",
+        "Grow building floor",
+        "Building capture",
+        Binding::key(Key::CloseBracket),
+    ),
+    ActionDef::new(
         "camera.forward",
         "Move forward",
         "Camera",

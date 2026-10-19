@@ -144,6 +144,10 @@ pub struct LabTask {
     pub budget: u32,
     pub initial: Snapshot,
     pub target: Snapshot,
+    #[serde(default)]
+    pub locks: Vec<PrefabObject>,
+    #[serde(default)]
+    pub object_names: std::collections::BTreeMap<u32, String>,
     pub palette: Vec<PaletteEntry>,
     pub overlays: Vec<u32>,
     pub underlays: Vec<u32>,
@@ -226,6 +230,8 @@ pub fn generated_tavern(kit: &KitFile, seed: u64) -> Result<LabTask, String> {
         .into_iter()
         .collect();
     Ok(LabTask {
+        locks: vec![],
+        object_names: Default::default(),
         format: "rustosrs-lab-task".into(),
         version: 1,
         name: "Reconstruct a tavern".into(),
@@ -340,6 +346,8 @@ pub fn generated_paths(seed: u64) -> Result<LabTask, String> {
 
     let target = Snapshot::capture(&document);
     Ok(LabTask {
+        locks: vec![],
+        object_names: Default::default(),
         format: "rustosrs-lab-task".into(),
         version: 1,
         name: format!("Paths seed {seed}"),
@@ -456,6 +464,8 @@ pub fn prefab_paths_task(prefab: &Prefab, _seed: u64) -> Result<LabTask, String>
         .collect();
 
     Ok(LabTask {
+        locks: vec![],
+        object_names: Default::default(),
         format: "rustosrs-lab-task".into(),
         version: 1,
         name: format!("Paths {}", prefab.name),

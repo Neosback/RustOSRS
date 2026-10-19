@@ -40,7 +40,7 @@ mod building_wfc;
 mod wfc_lens;
 pub use building_learning::{
     LearnedCatalog, LearnedPattern, LearnedRoleModel, LearningError, LearningGrid, learn_catalog,
-    learn_catalog_with_rotations, plan_wfc_floors,
+    learn_catalog_with_rotations, learn_prefab_catalog, plan_wfc_floors,
 };
 pub use wfc_lens::{
     DIRECTIONS as WFC_DIRECTIONS, Lens as WfcLens, LensEdge as WfcLensEdge,
@@ -81,8 +81,9 @@ pub use building_generation::{
     generate_building_plan_patch,
 };
 pub use building_kit::{
-    BuildingKit, KIT_FORMAT, KIT_VERSION, KitAsset, KitError, KitFile, KitFloor, KitGenerateError,
-    KitHipRoof, KitJunction, KitOverlay, KitRoof, KitRoofPattern, KitWeightedAsset,
+    BuildingKit, BuildingStage, KIT_FORMAT, KIT_VERSION, KitAsset, KitError, KitFile, KitFloor,
+    KitGenerateError, KitHipRoof, KitJunction, KitOverlay, KitRoof, KitRoofPattern,
+    KitWeightedAsset,
 };
 pub use building_program::{
     BspCorridor, BspLayout, BspLayoutError, BspRoomPlacement, BuildingProgram, BuildingRoomRole,
@@ -151,7 +152,8 @@ pub use building_roof_solver::{
 pub use building_roof_wfc::{RoofConstraintError, RoofPatternSet, roof_wfc_constraints};
 pub use building_routing::{ProgramRoute, ProgramRoutingError, route_program_connections};
 pub use building_topology::{
-    BspBuildingPlan, BspTopologyError, ProgramRoomRole, build_bsp_building_plan,
+    BspBuildingPlan, BspTopologyError, BuildingSketch, ProgramRoomRole, build_bsp_building_plan,
+    plan_authored_rooms,
 };
 pub use building_validation::{
     BuildingDiagnostic, BuildingValidationReport, GenerationSnapshot, OccupiedFootprint,
@@ -165,8 +167,9 @@ pub use building_vertical::{
 pub use building_walls::resolve_wall_slots;
 pub use building_wfc::{
     MAX_WFC_PATTERNS, PatternDomain, WfcCatalog, WfcCatalogError, WfcConstraint, WfcCoord,
-    WfcEvent, WfcPattern, WfcPatternId, WfcPatternSpec, WfcSocket, WfcSolution, WfcSolveError,
-    solve_wfc, solve_wfc_observed, solve_wfc_with_repair,
+    WfcEvent, WfcPattern, WfcPatternId, WfcPatternSpec, WfcRepairReport, WfcRepairRequest,
+    WfcSocket, WfcSolution, WfcSolveError, repair_wfc, repair_wfc_masked, solve_wfc,
+    solve_wfc_masked, solve_wfc_observed, solve_wfc_with_repair,
 };
 pub use document::{MapDocument, PatchApplyError};
 pub use history::{
@@ -180,9 +183,10 @@ pub use position::{HeightVertexCoord, MapPosition};
 pub use prefab::{
     BuildingCaptureSpec, BuildingPrefabError, CaptureSpec, MAX_PREFAB_SIDE, PREFAB_FORMAT,
     PREFAB_VERSION, PlaceSpec, PlacedPrefab, Prefab, PrefabBuilding, PrefabCell, PrefabError,
-    PrefabHeight, PrefabObject, PrefabOverlay, PrefabRelation, PrefabSource, PrefabTile,
-    capture_building_prefab, capture_prefab, capture_prefab_over, objects_in_rect,
-    objects_overlapping_rect, plan_place_exact, plan_place_prefab, prefab_from_patch, turned_size,
+    PrefabHeight, PrefabObject, PrefabOverlay, PrefabPortal, PrefabRelation, PrefabRoom,
+    PrefabSemantics, PrefabSource, PrefabTile, capture_building_prefab, capture_prefab,
+    capture_prefab_over, objects_in_rect, objects_overlapping_rect, plan_place_exact,
+    plan_place_prefab, prefab_from_patch, prefab_placement_origin, turned_size,
 };
 pub use query::MapQuery;
 pub use region::{MapRegionSnapshot, RegionSnapshotError};

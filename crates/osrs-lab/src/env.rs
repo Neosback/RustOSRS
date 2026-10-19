@@ -20,6 +20,8 @@ pub struct LegalActions {
     pub can_undo: bool,
     pub can_redo: bool,
     pub remaining: u32,
+    pub locks: Vec<osrs_edit::PrefabObject>,
+    pub object_names: std::collections::BTreeMap<u32, String>,
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct Observation {
@@ -101,6 +103,14 @@ impl Env {
                 return Err(LabError::InvalidTask("invalid palette entry".into()));
             }
         }
+        for lock in &task.locks {
+            let p = crate::task::placement(lock, task.planes).map_err(LabError::InvalidTask)?;
+            if !document.contains_object(p) {
+                return Err(LabError::InvalidTask(
+                    "a locked occurrence is missing from the initial scene".into(),
+                ));
+            }
+        }
         validate_slots(&document, &task).map_err(LabError::InvalidTask)?;
         validate_slots(&target, &task).map_err(LabError::InvalidTask)?;
         Ok(Self {
@@ -124,6 +134,8 @@ impl Env {
             can_undo: self.history.can_undo(),
             can_redo: self.history.can_redo(),
             remaining: self.task.budget.saturating_sub(self.steps),
+            locks: self.task.locks.clone(),
+            object_names: self.task.object_names.clone(),
         }
     }
     pub fn observation(&self, mode: ObservationMode) -> Observation {
@@ -138,6 +150,35 @@ impl Env {
     }
     pub fn document(&self) -> &MapDocument {
         &self.document
+    }
+    /// Target-free structural checks over the current candidate, using supplied definition names.
+    pub fn judgement(&self) -> crate::Verdict {
+        let table = self
+            .task
+            .palette
+            .iter()
+            .map(|p| {
+                (
+                    osrs_core::ids::ObjectId::new(p.id),
+                    osrs_scene::building_census::ObjectInfo {
+                        name: self
+                            .task
+                            .object_names
+                            .get(&p.id)
+                            .cloned()
+                            .unwrap_or_default(),
+                        size: (p.size[0], p.size[1]),
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect();
+        crate::judge_snapshot(
+            &Snapshot::capture(&self.document),
+            self.task.width,
+            self.task.height,
+            &table,
+        )
     }
     pub fn trace(&self) -> &[Action] {
         &self.trace
@@ -174,14 +215,7 @@ impl Env {
                 }
             }
             _ => {
-                let patch = action
-                    .plan(&self.document, &self.task)
-                    .map_err(LabError::InvalidAction)?;
-                let mut candidate = self.document.clone();
-                candidate
-                    .apply_patch(&patch)
-                    .map_err(|e| LabError::InvalidAction(format!("{e:?}")))?;
-                validate_slots(&candidate, &self.task).map_err(LabError::InvalidAction)?;
+                let patch = self.plan_action(&action)?;
                 self.history
                     .commit(&mut self.document, patch)
                     .map_err(|e| LabError::InvalidAction(format!("{e:?}")))?;
@@ -197,6 +231,41 @@ impl Env {
             steps: self.steps,
         })
     }
+    fn plan_action(&self, action: &Action) -> Result<osrs_edit::MapPatch, LabError> {
+        let patch = action
+            .plan(&self.document, &self.task)
+            .map_err(LabError::InvalidAction)?;
+        let mut candidate = self.document.clone();
+        candidate
+            .apply_patch(&patch)
+            .map_err(|e| LabError::InvalidAction(format!("{e:?}")))?;
+        validate_slots(&candidate, &self.task).map_err(LabError::InvalidAction)?;
+        for lock in &self.task.locks {
+            let placement =
+                crate::task::placement(lock, self.task.planes).map_err(LabError::InvalidAction)?;
+            if !candidate.contains_object(placement) {
+                return Err(LabError::InvalidAction(
+                    "action changes a locked occurrence".into(),
+                ));
+            }
+        }
+        Ok(patch)
+    }
+
+    /// Read-only legality and no-op check for structured policies. No target, reward, budget,
+    /// history or trace changes are exposed through this operation.
+    pub fn validate_action(&self, action: &Action) -> Result<bool, LabError> {
+        if self.steps >= self.task.budget {
+            return Err(LabError::BudgetExhausted);
+        }
+        if matches!(action, Action::Undo | Action::Redo) {
+            return Err(LabError::InvalidAction(
+                "policy validation accepts semantic tools only".into(),
+            ));
+        }
+        self.plan_action(action).map(|p| !p.is_empty())
+    }
+
     pub fn replay(task: LabTask, seed: u64, actions: &[Action]) -> Result<Self, LabError> {
         let mut env = Self::reset(task, seed)?;
         for a in actions {
@@ -209,6 +278,40 @@ impl Env {
         Ok(env)
     }
 }
+/// Validate scene-slot capacity and compute target-free structural diagnostics for a preview.
+pub fn validate_candidate(
+    snapshot: Snapshot,
+    width: u16,
+    height: u16,
+    planes: u8,
+    palette: Vec<crate::PaletteEntry>,
+    object_names: std::collections::BTreeMap<u32, String>,
+) -> Result<crate::Verdict, String> {
+    let task = LabTask {
+        format: "rustosrs-lab-task".into(),
+        version: 1,
+        name: "candidate".into(),
+        source: "generator".into(),
+        group: "preview".into(),
+        width,
+        height,
+        planes,
+        budget: 1,
+        initial: snapshot.clone(),
+        target: snapshot,
+        palette,
+        object_names,
+        locks: vec![],
+        overlays: vec![],
+        underlays: vec![],
+        dont_care_tiles: vec![],
+        dont_care_heights: vec![],
+    };
+    Env::reset(task, 0)
+        .map(|env| env.judgement())
+        .map_err(|e| e.to_string())
+}
+
 fn validate_slots(document: &MapDocument, task: &LabTask) -> Result<(), String> {
     let mut slots = std::collections::BTreeSet::new();
     let mut games = std::collections::BTreeMap::<_, usize>::new();

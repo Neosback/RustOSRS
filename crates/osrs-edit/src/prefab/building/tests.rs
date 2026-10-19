@@ -140,6 +140,36 @@ fn rectangle_prefab_v1_still_loads_without_building_metadata() {
 }
 
 #[test]
+fn v2_migrates_to_typed_rooms_and_anchor_with_sparse_roundtrip_and_rotation() {
+    let (doc,spec)=source();
+    let mut p=capture_building_prefab(&doc,&spec,"rooms").unwrap();
+    p.version=2;
+    let mut value=serde_json::to_value(&p).unwrap();
+    value["building"].as_object_mut().unwrap().remove("semantics");
+    let mut loaded:Prefab=serde_json::from_value(value).unwrap();
+    assert!(loaded.validate().is_ok());
+    let b=loaded.building.as_mut().unwrap();
+    b.semantics.rooms.push(PrefabRoom {id:1,role:"living".into(),cells:b.floors.clone(),human:true});
+    let chosen=BTreeSet::from([b.floors[0]]);
+    let new=b.semantics.split(1,&chosen).unwrap();
+    assert!(b.semantics.rooms.iter().all(|r|r.human));
+    b.semantics.merge(1,new).unwrap();
+    assert_eq!(b.semantics.rooms[0].cells,b.floors);
+    b.semantics.anchor=Some(PrefabCell {x:1,y:2,plane:0});
+    loaded.version=PREFAB_VERSION;
+    loaded.validate().unwrap();
+    let encoded=serde_json::to_string(&loaded).unwrap();
+    assert_eq!(serde_json::from_str::<Prefab>(&encoded).unwrap(),loaded);
+    let cursor=MapTile::new(100,100);
+    for (turn,(x,y)) in [(1,2),(2,3),(3,2),(2,1)].into_iter().enumerate() {
+        assert_eq!(crate::prefab_placement_origin(&loaded,cursor,turn as u8),Some(MapTile::new(100-x,100-y)));
+    }
+    let b=loaded.building.as_mut().unwrap();
+    b.semantics.rooms[0].cells.push(PrefabCell {x:0,y:0,plane:0});
+    assert!(loaded.validate().is_err());
+}
+
+#[test]
 fn sparse_courtyard_capture_and_studio_roundtrip_exclude_pad_and_keep_default_floor() {
     let (doc, mut spec) = source();
     spec.floors

@@ -8,6 +8,7 @@ use web_time::Instant;
 const RECENT_TOOLS: usize = 3;
 
 pub(super) struct UiRuntime {
+    pub(in crate::app) building_policy: super::workshop::policy::Panel,
     #[cfg(not(target_arch = "wasm32"))]
     pub(super) studio_quit_pending: bool,
     pub(super) prefab_workspace: super::prefab_studio::workspace::Workspace,
@@ -42,6 +43,7 @@ pub(super) struct UiRuntime {
 impl UiRuntime {
     pub(super) fn new() -> Self {
         Self {
+            building_policy: super::workshop::policy::Panel::default(),
             #[cfg(not(target_arch = "wasm32"))]
             studio_quit_pending: false,
             prefab_workspace: super::prefab_studio::workspace::Workspace::default(),

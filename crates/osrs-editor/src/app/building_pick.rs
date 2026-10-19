@@ -7,16 +7,20 @@
 //! here changes the map.
 
 use super::EditorApp;
+#[cfg(test)]
 use osrs_core::ids::ObjectId;
+#[cfg(test)]
 use osrs_scene::{
     building_census::{Building, CensusArea, ObjectInfo, ObjectTable, analyze},
     object_semantics::Placed,
 };
+#[cfg(test)]
 use std::collections::HashSet;
 
 type Tile = (i32, i32);
 
 /// Which building a click landed in, and what belongs to it.
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Found {
     pub(super) plane: u8,
@@ -29,6 +33,7 @@ pub(super) struct Found {
     members: HashSet<Placed>,
 }
 
+#[cfg(test)]
 impl Found {
     /// The floor tile of the building nearest to `tile` (where a click on its wall points to).
     pub(super) fn seed_near(&self, tile: Tile) -> Option<Tile> {
@@ -54,6 +59,7 @@ impl Found {
     }
 }
 
+#[cfg(test)]
 fn found_from(
     building: &Building,
     description: osrs_scene::building_census::description::BuildingDescription,
@@ -89,6 +95,7 @@ fn found_from(
 }
 
 /// The building at `tile` on `plane` (or the one below it, when the click is on a roof).
+#[cfg(test)]
 pub(super) fn find(
     placements: &[Placed],
     objects: &ObjectTable,
@@ -130,156 +137,31 @@ pub(super) fn find(
     None
 }
 
-/// Select the building under `tile`; returns a line saying what was taken, or `None` when the
-/// tile is not in or beside a building.
+/// Building selection and capture consume one immutable document analysis.
 pub(super) fn select_building(app: &mut EditorApp, tile: Tile, additive: bool) -> Option<String> {
-    let plane = app.interaction.view_plane();
-    let (rx, ry) = (tile.0.div_euclid(64), tile.1.div_euclid(64));
-    let mut placements = Vec::new();
-    let mut table = ObjectTable::new();
-    for gx in rx - 1..=rx + 1 {
-        for gy in ry - 1..=ry + 1 {
-            let Some(info) = app.world.infos().get(&(gx, gy)) else {
-                continue;
-            };
-            for loc in &info.locs {
-                let id = ObjectId::new(loc.definition.identity.id.get());
-                let names = osrs_edit::census_name(
-                    app.names.custom().book(),
-                    id.get(),
-                    loc.definition.name.as_deref().unwrap_or_default(),
-                    app.names
-                        .book()
-                        .and_then(|b| b.object(id.get()))
-                        .unwrap_or_default(),
-                );
-                placements.push(Placed {
-                    id,
-                    kind: loc.loc_type,
-                    orientation: loc.orientation,
-                    tile: loc.tile,
-                    plane: loc.plane,
-                });
-                table.entry(id).or_insert_with(|| ObjectInfo {
-                    name: names.0.clone(),
-                    symbol: names.1.clone(),
-                    actions: loc
-                        .definition
-                        .actions
-                        .iter()
-                        .flatten()
-                        .map(|a| a.to_lowercase())
-                        .collect(),
-                    size: (
-                        u8::try_from(loc.definition.size_x).unwrap_or(1),
-                        u8::try_from(loc.definition.size_y).unwrap_or(1),
-                    ),
-                });
-            }
-        }
-    }
-    let found = find(
-        &placements,
-        &table,
-        ((rx - 1) * 64, (ry - 1) * 64),
-        192,
-        tile,
-        plane,
-    )?;
-    if !additive {
-        app.interaction.clear_objects();
-        app.interaction.clear_tiles();
-    }
-    app.prefabs.pending_building = found.seed_near(tile);
-    for &floor in &found.footprint {
-        app.interaction.add_tile(floor);
-    }
-    let mut taken = 0;
-    for gx in rx - 1..=rx + 1 {
-        for gy in ry - 1..=ry + 1 {
-            let Some(info) = app.world.infos().get(&(gx, gy)) else {
-                continue;
-            };
-            let picks: Vec<_> = info
-                .locs
-                .iter()
-                .enumerate()
-                .filter(|(_, loc)| {
-                    found.members.contains(&Placed {
-                        id: loc.definition.identity.id,
-                        kind: loc.loc_type,
-                        orientation: loc.orientation,
-                        tile: loc.tile,
-                        plane: loc.plane,
-                    })
-                })
-                .map(|(index, _)| crate::pick::ObjectPick {
-                    region: (gx, gy),
-                    index,
-                })
-                .collect();
-            for pick in picks {
-                app.interaction.add_object(pick, None);
-                taken += 1;
-            }
-        }
-    }
-    Some(format!(
-        "Selected a building: {} room{}, {} floor tiles, {taken} objects. Enter reviews it for saving as a prefab, Esc lets go.",
-        found.rooms,
-        if found.rooms == 1 { "" } else { "s" },
-        found.footprint.len()
-    ))
+    super::prefab_panel::capture::start_selection(
+        app,
+        osrs_core::coords::MapTile::new(tile.0, tile.1),
+        additive,
+        false,
+    );
+    Some("Analysing the edited building…".into())
 }
 
-/// A plain right-click on a wall (or a piece standing on one) picks the whole building. Shift
-/// right-click keeps its context menu and a right-drag still orbits.
 pub(super) fn right_click(app: &mut EditorApp) {
-    let Some(object) = app.interaction.hover().object.clone() else {
+    if app.settings.prefs.select_mode != crate::paint::SelectMode::Building {
+        return;
+    }
+    let Some(p) = super::prefab_panel::capture::refine::hover_placement(app) else {
         return;
     };
-    let Some(loc) = app
-        .world
-        .infos()
-        .get(&object.region)
-        .and_then(|info| info.locs.get(object.index))
-    else {
-        return;
-    };
-    // Walls, corners and the decoration on them (loc kinds 0 to 8).
-    if loc.loc_type > 8 {
-        return;
-    }
-    let tile = loc.tile;
-    let message = select_building(app, tile, false)
-        .unwrap_or_else(|| "That wall does not close a building here.".to_owned());
-    app.ui.notify(message);
-}
-
-/// Enter opens the capture review on the picked building; Escape forgets it.
-pub(super) fn keys(app: &mut EditorApp, ctx: &eframe::egui::Context) {
-    if app.prefabs.pending_building.is_none() {
-        return;
-    }
-    if app.settings.prefs.tool != crate::paint::Tool::Select {
-        return;
-    }
-    if ctx.input(|i| i.key_pressed(eframe::egui::Key::Escape)) {
-        app.prefabs.pending_building = None;
-    } else if ctx.input(|i| i.key_pressed(eframe::egui::Key::Enter)) {
-        review(app);
+    if p.kind.get() <= 8 {
+        select_building(app, (p.position.tile.x, p.position.tile.y), false);
     }
 }
 
-/// Open the capture review on the picked building.
 pub(super) fn review(app: &mut EditorApp) {
-    if let Some((x, y)) = app.prefabs.pending_building.take() {
-        // The review lives in the Prefabs panel: bring it up.
-        app.settings.prefs.properties_panel = true;
-        app.settings.prefs.rail_tab = crate::settings::RailTab::Prefabs;
-        app.prefabs.page = super::prefab_runtime::Page::Library;
-        super::prefab_panel::capture::start(app, osrs_core::coords::MapTile::new(x, y));
-    }
+    super::prefab_panel::capture::refine::open(app);
 }
 
 #[cfg(test)]

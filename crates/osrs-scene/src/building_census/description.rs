@@ -1,4 +1,7 @@
 //! Placement-level building evidence. A roof visibility component is never an ownership ID.
+mod pick;
+pub use pick::{BuildingCandidate, incomplete_candidate, pick_candidates};
+
 use super::{CensusArea, Dir, EdgeFeature, Edges, ObjectTable, analyze};
 use crate::object_semantics::Placed;
 use osrs_core::coords::MapTile;

@@ -4,6 +4,10 @@
 //! archetype, seed, kit), the kits available, and the last plan; it never touches the map.
 //! Applying a preview is the panel's job and goes through the edit gateway.
 
+mod candidates;
+mod design;
+mod plan;
+pub(in crate::app) use design::GenerationMode;
 use osrs_core::{
     coords::{MapTile, SourcePlane},
     ids::ObjectId,
@@ -61,6 +65,11 @@ pub(in crate::app) struct BuildForm {
     /// Remove the objects already on the site (and the plane above it) when applying.
     pub(in crate::app) clear_site: bool,
     pub(in crate::app) name: String,
+    pub(in crate::app) mode: GenerationMode,
+    pub(in crate::app) stage: Option<osrs_edit::BuildingStage>,
+    pub(in crate::app) sketch: Option<osrs_edit::BuildingSketch>,
+    pub(in crate::app) locks: Vec<osrs_edit::ObjectPlacement>,
+    pub(in crate::app) region: Option<RectSite>,
 }
 
 impl Default for BuildForm {
@@ -76,6 +85,11 @@ impl Default for BuildForm {
             kit: 0,
             clear_site: true,
             name: String::new(),
+            mode: GenerationMode::Generate,
+            stage: None,
+            sketch: None,
+            locks: vec![],
+            region: None,
         }
     }
 }
@@ -94,11 +108,15 @@ pub(in crate::app) struct Preview {
     pub(in crate::app) removed: usize,
     /// Pieces already standing exactly as wanted, left alone.
     pub(in crate::app) standing: usize,
+    pub(in crate::app) verdict: osrs_lab::Verdict,
+    pub(in crate::app) thumbnail: Prefab,
 }
 
+#[derive(Clone)]
 pub(in crate::app) struct Kit {
     pub(in crate::app) name: String,
     kit: BuildingKit,
+    file: KitFile,
 }
 
 pub(in crate::app) struct BuildState {
@@ -115,7 +133,11 @@ pub(in crate::app) struct BuildState {
     pub(in crate::app) preview: Option<Preview>,
     pub(in crate::app) error: Option<String>,
     /// What the preview was made from, so it refreshes only when this changes.
-    made_from: Option<(BuildForm, MapTile, u8, u64)>,
+    made_from: Option<(BuildForm, MapTile, u8, u64, u64)>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pending: Option<candidates::Job>,
+    pub(in crate::app) candidates: Vec<Preview>,
+    pub(in crate::app) failures: Vec<String>,
 }
 
 impl Default for BuildState {
@@ -130,6 +152,10 @@ impl Default for BuildState {
             preview: None,
             error: None,
             made_from: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            pending: None,
+            candidates: vec![],
+            failures: vec![],
         };
         for (source, text) in STARTER_KITS {
             state.add_kit_text(source, text);
@@ -139,6 +165,59 @@ impl Default for BuildState {
 }
 
 impl BuildState {
+    /// Explicit synchronous batch/script entry. Interactive previews use cancellable workers.
+    pub(in crate::app) fn refresh_for_script(
+        &mut self,
+        document: &MapDocument,
+        source: u64,
+        revision: u64,
+        size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
+    ) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.pending = None;
+        }
+        let Some(origin) = self.site else {
+            return;
+        };
+        let Some(plane) = SourcePlane::new(self.site_plane) else {
+            return;
+        };
+        let Some(kit) = self.kits.get(self.form.kit) else {
+            return;
+        };
+        self.made_from = Some((self.form.clone(), origin, self.site_plane, revision, source));
+        match plan::plan(&self.form, kit, document, origin, plane, size_of) {
+            Ok(preview) => {
+                self.candidates = vec![preview.clone()];
+                self.preview = Some(preview);
+                self.error = None;
+            }
+            Err(e) => {
+                self.preview = None;
+                self.error = Some(e);
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::app) fn refresh(
+        &mut self,
+        document: &MapDocument,
+        revision: u64,
+        size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
+    ) {
+        self.refresh_source(document, 0, revision, size_of);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while self.pending.is_some() && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+                self.refresh_source(document, 0, revision, size_of);
+            }
+        }
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub(in crate::app) fn learned_roles(&self) -> Option<osrs_edit::LearnedRoleModel> {
         self.kits.get(self.form.kit)?.kit.learned_roles().cloned()
@@ -148,12 +227,17 @@ impl BuildState {
     pub(in crate::app) fn add_kit_text(&mut self, source: &str, text: &str) -> bool {
         let compiled = serde_json::from_str::<KitFile>(text)
             .map_err(|error| error.to_string())
-            .and_then(|file| file.compile().map_err(|error| error.to_string()));
+            .and_then(|file| {
+                file.compile()
+                    .map(|kit| (kit, file))
+                    .map_err(|error| error.to_string())
+            });
         match compiled {
-            Ok(kit) => {
+            Ok((kit, file)) => {
                 self.kits.push(Kit {
                     name: kit.name().to_owned(),
                     kit,
+                    file,
                 });
                 true
             }
@@ -222,21 +306,39 @@ impl BuildState {
 
     /// Refresh the preview when the form, the site, the viewed plane or the map changed.
     /// `map_revision` is any number that changes whenever the document does.
-    pub(in crate::app) fn refresh(
+    pub(in crate::app) fn refresh_source(
         &mut self,
         document: &MapDocument,
+        source: u64,
         map_revision: u64,
         size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
     ) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(job) = &mut self.pending
+            && let Some(result) = job.poll()
+        {
+            self.pending = None;
+            self.candidates = result.0;
+            self.failures = result.1;
+            self.preview = self.candidates.first().cloned();
+            self.error = if self.preview.is_none() {
+                self.failures.first().cloned()
+            } else {
+                None
+            };
+        }
         let Some(base_plane) = SourcePlane::new(self.site_plane) else {
-            self.preview = None;
-            self.error = Some("the site is on an invalid plane".to_owned());
+            self.error = Some("Invalid site plane".into());
             return;
         };
         let Some(origin) = self.site else {
             self.preview = None;
-            self.error = None;
             self.made_from = None;
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                self.pending = None;
+            }
+            self.candidates.clear();
             return;
         };
         let key = (
@@ -244,118 +346,45 @@ impl BuildState {
             origin,
             base_plane.index().get(),
             map_revision,
+            source,
         );
         if self.made_from.as_ref() == Some(&key) {
             return;
         }
         self.made_from = Some(key);
-        match self.plan(document, origin, base_plane, size_of) {
-            Ok(preview) => {
-                self.preview = Some(preview);
-                self.error = None;
-            }
-            Err(error) => {
-                self.preview = None;
-                self.error = Some(error);
-            }
-        }
-    }
-
-    fn plan(
-        &self,
-        document: &MapDocument,
-        origin: MapTile,
-        base_plane: SourcePlane,
-        size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
-    ) -> Result<Preview, String> {
-        let form = &self.form;
-        let kit = self
-            .kits
-            .get(form.kit)
-            .ok_or("choose a building kit first")?;
-        let site = RectSite::new(origin, form.width, form.height).ok_or("the site is empty")?;
-        let request = BuildingRequest {
-            seed: form.seed,
-            site,
-            base_plane,
-            floors: form.floors.clamp(1, 3),
-            archetype: form.archetype,
-            style: form.style,
-            constraints: BuildingConstraints::default(),
+        self.preview = None;
+        self.candidates.clear();
+        self.failures.clear();
+        let Some(kit) = self.kits.get(self.form.kit).cloned() else {
+            self.error = Some("Choose a kit first".into());
+            return;
         };
-        let snapshot = capture_generation_snapshot(document, request, []);
-        let building = kit
-            .kit
-            .generate(&snapshot, form.variation)
-            .map_err(|error| describe(&error))?;
-        let mut ops = Vec::new();
-        let mut removed = 0;
-        if form.clear_site {
-            let base = base_plane.index().get();
-            for offset in 0..=form.floors.clamp(1, 3) {
-                let Some(plane) = SourcePlane::new(base.saturating_add(offset)) else {
-                    continue;
-                };
-                for placement in osrs_edit::objects_overlapping_rect(
-                    document,
-                    (origin.x, origin.y),
-                    (
-                        origin.x + i32::from(form.width),
-                        origin.y + i32::from(form.height),
-                    ),
-                    plane,
-                    size_of,
-                ) {
-                    ops.push(MapOp::RemoveObject { placement });
-                    removed += 1;
-                }
-            }
-        }
-        // A piece already standing exactly as the building wants it stays; adding it again would
-        // make the whole patch invalid (and removing then re-adding it would be pointless).
-        let removing: std::collections::HashSet<_> = ops
-            .iter()
-            .filter_map(|op| match op {
-                MapOp::RemoveObject { placement } => Some(*placement),
-                _ => None,
-            })
+        let sizes = document
+            .object_entries()
+            .into_iter()
+            .map(|p| (p.object_id, size_of(p.object_id, p.kind)))
             .collect();
-        let mut standing = 0;
-        for op in building.ops() {
-            match op {
-                MapOp::AddObject { placement }
-                    if document.contains_object(*placement) && !removing.contains(placement) =>
-                {
-                    standing += 1;
-                }
-                other => ops.push(*other),
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.pending = Some(candidates::Job::start(
+                document.clone(),
+                self.form.clone(),
+                kit,
+                origin,
+                base_plane,
+                sizes,
+            ));
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let size_of = |id, kind| sizes.get(&id).copied().unwrap_or_else(|| size_of(id, kind));
+            match plan::plan(&self.form, &kit, document, origin, base_plane, &size_of) {
+                Ok(p) => self.preview = Some(p),
+                Err(e) => self.error = Some(e),
             }
         }
-        let objects = building
-            .ops()
-            .iter()
-            .filter(|op| matches!(op, MapOp::AddObject { .. }))
-            .count();
-        let apply = MapPatch::new(ops);
-        document.validate_patch(&apply).map_err(|error| {
-            format!(
-                "the building does not fit the map: {}",
-                describe_apply(&error)
-            )
-        })?;
-        Ok(Preview {
-            origin,
-            base_plane,
-            form: form.clone(),
-            building,
-            apply,
-            objects,
-            removed,
-            standing,
-        })
     }
 
-    /// The preview as a prefab for the library.
     pub(in crate::app) fn to_prefab(&self) -> Result<Prefab, String> {
         let preview = self.preview.as_ref().ok_or("generate a building first")?;
         let form = &preview.form;
@@ -396,6 +425,7 @@ impl BuildState {
 fn describe(error: &osrs_edit::KitGenerateError) -> String {
     use osrs_edit::{BuildingGenerationError as G, KitGenerateError as K};
     match error {
+        K::Design(message) => message.to_string(),
         K::RoofPlane { plane } => format!("the roof would need plane {plane}, above the top plane"),
         K::Generation(G::UnsupportedFloorCount { floors }) => {
             format!("{floors} floors are not supported yet")

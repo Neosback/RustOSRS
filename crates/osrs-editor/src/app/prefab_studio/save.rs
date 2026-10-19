@@ -81,6 +81,22 @@ pub(super) fn expand_bounds_to_fit(studio: &mut Studio) -> Result<bool, String> 
             o.y += dy;
         }
         if let Some(b) = &mut studio.original.building {
+            for room in &mut b.semantics.rooms {
+                for c in &mut room.cells {
+                    c.x += dx;
+                    c.y += dy;
+                }
+            }
+            for portal in &mut b.semantics.portals {
+                for c in &mut portal.approaches {
+                    c.x += dx;
+                    c.y += dy;
+                }
+            }
+            if let Some(anchor) = &mut b.semantics.anchor {
+                anchor.x += dx;
+                anchor.y += dy;
+            }
             for f in &mut b.floors {
                 f.x += dx;
                 f.y += dy;
@@ -257,9 +273,6 @@ pub(super) fn save(
     .map_err(|e| e.to_string())?;
     // Saving is a human review of the edited layout. Old inferred occurrence links are already
     // removed by capture_prefab_over when object placements changed.
-    if let Some(b) = &mut prefab.building {
-        b.reviewed = true;
-    }
     if as_new {
         prefab.name = format!("{} copy", prefab.name);
         studio.file = parent.prefabs.add(prefab.clone())?;

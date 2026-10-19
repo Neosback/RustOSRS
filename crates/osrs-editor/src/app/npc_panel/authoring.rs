@@ -85,7 +85,11 @@ pub(super) fn place_section(app: &mut EditorApp, ui: &mut egui::Ui) {
                         " \u{b7} no model"
                     }
                 );
-                if ui.selectable_label(armed, label).clicked() {
+                let mut response = ui.selectable_label(armed, label);
+                if let Some(examine) = crate::app::examines::npc(entry.id.get()) {
+                    response = response.on_hover_text(format!("\"{examine}\""));
+                }
+                if response.clicked() {
                     app.npcs.arm = if armed {
                         Arm::None
                     } else {
@@ -157,6 +161,7 @@ pub(super) fn selection_section(app: &mut EditorApp, ui: &mut egui::Ui) {
     } else {
         ui.weak(&committed.symbol);
     }
+    crate::app::examines::show_npc(ui, committed.npc.get());
     let actor = app.npcs.actor(id);
     if let Some(actor) = &actor {
         ui.weak(status_text(&actor.status));

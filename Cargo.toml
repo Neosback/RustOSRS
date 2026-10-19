@@ -56,10 +56,13 @@ expect_used = "warn"
 
 [profile.dev]
 opt-level = 1
-debug = 1
+# Line tables keep panic backtraces readable; full variable info is only worth its build and disk
+# cost when debugging in an IDE (override with CARGO_PROFILE_DEV_DEBUG=2).
+debug = "line-tables-only"
 
 [profile.dev.package."*"]
 opt-level = 3
+debug = false
 
 [profile.release]
 opt-level = 3

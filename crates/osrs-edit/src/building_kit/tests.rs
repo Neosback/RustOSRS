@@ -444,3 +444,37 @@ fn two_floor_building_generates_upper_story_stairs_and_lifted_roof() {
         .unwrap_or_else(|e| unreachable!("{e:?}"));
     assert_eq!(document, original);
 }
+
+#[test]
+fn a_single_room_request_builds_one_room_with_an_exterior_door_and_undoes_exactly() {
+    let kit: KitFile = serde_json::from_str(include_str!(
+        "../../../osrs-editor/src/app/prefab_runtime/kits/lumbridge-brick.kit.json"
+    ))
+    .unwrap();
+    let kit = kit.compile().unwrap();
+    let request = BuildingRequest {
+        seed: 5,
+        site: RectSite::new(MapTile::new(3200, 3200), 9, 8).unwrap(),
+        base_plane: SourcePlane::new(0).unwrap(),
+        floors: 1,
+        archetype: BuildingArchetype::House,
+        style: BuildingStyle::Generic,
+        constraints: BuildingConstraints::default(),
+    };
+    let heights = (3198..=3212).flat_map(|x| {
+        (3198..=3212).map(move |y| {
+            (
+                HeightVertexCoord::new(MapTile::new(x, y), request.base_plane),
+                0,
+            )
+        })
+    });
+    let mut document = MapDocument::from_parts([], heights, []);
+    let before = document.clone();
+    let snapshot = crate::capture_generation_snapshot(&document, request, []);
+    let patch = kit.generate_with_rooms(&snapshot, 0, Some(1)).unwrap();
+    assert!(patch.ops().iter().any(|op| matches!(op,crate::MapOp::AddObject {placement} if placement.object_id.get()==1535 || placement.object_id.get()==1540)));
+    document.apply_patch(&patch).unwrap();
+    document.apply_patch(&patch.inverse()).unwrap();
+    assert_eq!(document, before);
+}

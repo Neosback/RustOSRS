@@ -63,6 +63,27 @@ impl LabPanel {
         self.demonstration = Some(runner::Job::start(task, self.seed)?);
         Ok(())
     }
+    pub(super) fn load_policy(
+        &mut self,
+        viewer: &mut EditorApp,
+        pad: &MapDocument,
+        task: LabTask,
+        actions: Vec<osrs_lab::Action>,
+    ) -> Result<(), String> {
+        let mut checked = Env::reset(task.clone(), self.seed).map_err(|e| e.to_string())?;
+        for action in &actions {
+            checked.step(action.clone()).map_err(|e| e.to_string())?;
+        }
+        self.load(viewer, pad, task)?;
+        self.hidden = true;
+        self.replay_source = actions.clone();
+        self.replay = actions.into();
+        self.problem = Some(
+            "Experimental learned policy. Replay was verified; review ownership before saving."
+                .into(),
+        );
+        Ok(())
+    }
     pub(super) fn play_replay(&mut self) {
         self.playing = !self.replay.is_empty();
     }

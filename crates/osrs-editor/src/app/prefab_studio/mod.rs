@@ -1,4 +1,6 @@
 //! Detached prefab authoring window with an independent semantic session and history.
+mod author;
+mod blueprint;
 mod catalog;
 mod initialize;
 mod lab;
@@ -263,10 +265,13 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
             save = true;
         }
         if studio.session.pending.is_none() {
+            egui::Panel::bottom("workshop-runs")
+                .default_size(100.0)
+                .resizable(true)
+                .show(ui, |ui| crate::app::workshop::policy::tray(app, ui));
             let viewer = studio.stage.viewer();
             if tab.is_page() {
-                // A tab drawn by the Workshop: the scene underneath is paused, not changed.
-                egui::CentralPanel::default().show(ui, |ui| crate::app::workshop::page(app, ui));
+                crate::app::workshop::task_view(viewer, app, ui, ctx);
             } else if studio.lab.active {
                 super::script::lab_controls(viewer, ctx);
                 viewer.settings.prefs.tool = crate::paint::Tool::Select;
@@ -290,7 +295,7 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
                 if std::mem::take(&mut app.prefabs.workshop.want_builder) {
                     workspace.show_builder();
                 }
-                workspace.show(viewer, &studio.file, ui, &mut |ui| {
+                workspace.show(viewer, &studio.file, &studio.original, ui, &mut |ui| {
                     crate::app::workshop::library_page(app, ui)
                 });
                 viewer.ui.prefab_workspace = workspace;
@@ -309,7 +314,12 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
             overlays::panel(&mut studio, ctx);
         }
         let viewer = studio.stage.viewer();
-        match viewer.prefabs.studio_command.take() {
+        match viewer
+            .prefabs
+            .studio_command
+            .take()
+            .or_else(|| app.prefabs.studio_command.take())
+        {
             Some(SceneCommand::Save) => save = true,
             Some(SceneCommand::SaveAsNew) => save_as = true,
             Some(SceneCommand::Close) => leave = true,
@@ -335,6 +345,15 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
                         .generate_demonstration(viewer, pad, &studio.original)
                 {
                     studio.problem = Some(e);
+                }
+            }
+            Some(SceneCommand::PolicyReplay(replay)) => {
+                if let Some(pad) = &studio.pad {
+                    let (task, actions) = *replay;
+                    match studio.lab.load_policy(viewer, pad, task, actions) {
+                        Ok(()) => app.prefabs.workshop.tab = crate::app::workshop::Tab::Practice,
+                        Err(e) => studio.problem = Some(e),
+                    }
                 }
             }
             Some(SceneCommand::PlayReplay) => studio.lab.play_replay(),

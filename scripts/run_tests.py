@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build Cargo's complete selected test inventory, then run its binaries concurrently.
+"""Build Cargo's selected test inventory (lib, bin and integration tests), then run it concurrently.
 
-No tests are cached or omitted. GPU-capable packages share one execution slot. Cargo builds
+Examples are not launched (they hold no tests); --examples adds them. No tests are cached or omitted. GPU-capable packages share one execution slot. Cargo builds
 remain serial with other gate phases; --jobs controls test executables, not compilation.
 """
 import argparse
@@ -118,7 +118,6 @@ def selected_binaries(messages, packages):
         if not row['profile']['test']:
             continue
         package = packages[row['package_id']]
-        # Examples have target.test=false but are still test harnesses under --all-targets.
         binary = TestBinary(package['name'], row['target']['name'], row['executable'],
                             str(Path(row['manifest_path']).parent),
                             package['name'] in GPU_PACKAGES and 'example' not in row['target']['kind'])
@@ -199,8 +198,11 @@ def run(args):
             command.extend(['--test', target])
     elif args.lib:
         command.append('--lib')
-    else:
+    elif args.examples:
         command.append('--all-targets')
+    else:
+        # Examples are tool binaries with no tests; clippy --all-targets already type-checks them.
+        command.extend(['--lib', '--bins', '--tests'])
     print('Build:', ' '.join(command), flush=True)
     with (output / 'build.jsonl').open('w') as log:
         build = subprocess.run(command, cwd=ROOT, stdout=log, check=False)
@@ -292,6 +294,8 @@ def main(argv=None):
     targets = parser.add_mutually_exclusive_group()
     targets.add_argument('--test', action='append', help='Focus on this integration target (repeatable)')
     targets.add_argument('--lib', action='store_true', help='Focus on unit tests')
+    targets.add_argument('--examples', action='store_true',
+                         help='Also build and launch example harnesses (all targets; they hold no tests)')
     parser.add_argument('-j', '--jobs', type=int, default=4, help='Concurrent test executables (default: 4)')
     parser.add_argument('--test-threads', type=int, help='Override libtest threads per executable')
     parser.add_argument('--timeout', type=float, default=600, help='Seconds per test executable (default: 600)')

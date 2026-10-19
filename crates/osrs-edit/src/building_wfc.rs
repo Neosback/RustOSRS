@@ -4,7 +4,11 @@
 //! Patterns expose only directional sockets and weights. Higher building layers decide what those
 //! patterns mean and later resolve the semantic result through normal building realization.
 
+mod solve;
+pub use solve::{solve_wfc_masked, solve_wfc_observed};
+mod repair;
 use crate::CardinalDirection;
+pub use repair::{WfcRepairReport, WfcRepairRequest, repair_wfc, repair_wfc_masked};
 use std::collections::VecDeque;
 
 pub const MAX_WFC_PATTERNS: usize = 512;
@@ -341,6 +345,7 @@ pub struct WfcSolution {
     width: u16,
     height: u16,
     cells: Vec<WfcPatternId>,
+    active: Vec<bool>,
     backtracks: u32,
 }
 
@@ -363,7 +368,11 @@ impl WfcSolution {
 
     pub fn at(&self, coord: WfcCoord) -> Option<WfcPatternId> {
         let index = grid_index(self.width, self.height, coord)?;
-        self.cells.get(index).copied()
+        self.active
+            .get(index)
+            .copied()
+            .unwrap_or(false)
+            .then(|| self.cells[index])
     }
 }
 
@@ -420,116 +429,8 @@ pub fn solve_wfc(
     )
 }
 
-/// [`solve_wfc`] that reports every step to `observe`. The result is the same as without it.
-pub fn solve_wfc_observed(
-    catalog: &WfcCatalog,
-    width: u16,
-    height: u16,
-    seed: u64,
-    constraints: &[WfcConstraint],
-    max_backtracks: u32,
-    observe: &mut dyn FnMut(WfcEvent<'_>),
-) -> Result<WfcSolution, WfcSolveError> {
-    if width == 0 || height == 0 {
-        return Err(WfcSolveError::InvalidDimensions { width, height });
-    }
-    let cell_count = usize::from(width)
-        .checked_mul(usize::from(height))
-        .ok_or(WfcSolveError::CellCountOverflow)?;
-    let all_patterns = catalog.all_patterns();
-    let mut domains = vec![all_patterns; cell_count];
-
-    for constraint in constraints {
-        let Some(index) = grid_index(width, height, constraint.coord) else {
-            return Err(WfcSolveError::ConstraintOutsideGrid {
-                coord: constraint.coord,
-            });
-        };
-        let narrowed = domains[index].intersect(constraint.allowed.intersect(all_patterns));
-        if narrowed.is_empty() {
-            return Err(WfcSolveError::ConstraintHasNoValidPatterns {
-                coord: constraint.coord,
-            });
-        }
-        domains[index] = narrowed;
-    }
-
-    let initial_queue = (0..cell_count).collect::<VecDeque<_>>();
-    if let Err(cell) = propagate(catalog, width, height, &mut domains, initial_queue) {
-        return Err(WfcSolveError::Contradiction {
-            coord: coord_from_index(width, cell),
-            backtracks: 0,
-        });
-    }
-
-    observe(WfcEvent::Start { domains: &domains });
-    let mut rng = SplitMix64::new(seed);
-    let mut decisions = Vec::<DecisionFrame>::new();
-    let mut backtracks = 0_u32;
-
-    loop {
-        let Some(cell) = select_lowest_entropy_cell(catalog, &domains) else {
-            let cells = domains
-                .iter()
-                .map(|domain| {
-                    domain
-                        .iter()
-                        .next()
-                        .unwrap_or_else(|| unreachable!("solved domains are singletons"))
-                })
-                .collect();
-            return Ok(WfcSolution {
-                width,
-                height,
-                cells,
-                backtracks,
-            });
-        };
-
-        let before = domains.clone();
-        let options = domains[cell].len();
-        let chosen = choose_weighted(catalog, domains[cell], &mut rng);
-        let remaining = domains[cell].without(chosen);
-        if !remaining.is_empty() {
-            decisions.push(DecisionFrame {
-                domains: before,
-                cell,
-                remaining,
-            });
-        }
-        domains[cell] = PatternDomain::singleton(chosen);
-
-        let propagated = propagate(catalog, width, height, &mut domains, VecDeque::from([cell]));
-        match propagated {
-            Ok(()) => observe(WfcEvent::Collapse {
-                cell: coord_from_index(width, cell),
-                chosen,
-                options,
-                domains: &domains,
-            }),
-            Err(contradiction) => observe(WfcEvent::Contradiction {
-                cell: coord_from_index(width, contradiction),
-            }),
-        }
-        if let Err(contradiction) = propagated {
-            restore_after_contradiction(
-                catalog,
-                width,
-                height,
-                &mut domains,
-                &mut decisions,
-                &mut rng,
-                &mut backtracks,
-                max_backtracks,
-                contradiction,
-            )?;
-            observe(WfcEvent::Backtrack { domains: &domains });
-        }
-    }
-}
-
-/// Solve WFC and, if a contradiction occurs, relax constraints within a 2-tile radius around the
-/// contradiction cell and retry up to `max_repairs` times.
+/// Solve with immutable author constraints. To relax solver-generated suggestions, use
+/// [`repair_wfc`] and pass them separately from author locks.
 pub fn solve_wfc_with_repair(
     catalog: &WfcCatalog,
     width: u16,
@@ -539,31 +440,20 @@ pub fn solve_wfc_with_repair(
     max_backtracks: u32,
     max_repairs: u32,
 ) -> Result<WfcSolution, WfcSolveError> {
-    let mut active = constraints.to_vec();
-    let mut current_seed = seed;
-    let mut repairs = 0_u32;
-    loop {
-        match solve_wfc(
-            catalog,
+    repair_wfc(
+        catalog,
+        WfcRepairRequest {
             width,
             height,
-            current_seed,
-            &active,
+            seed,
             max_backtracks,
-        ) {
-            Ok(solution) => return Ok(solution),
-            Err(WfcSolveError::Contradiction { coord, backtracks }) => {
-                if repairs >= max_repairs {
-                    return Err(WfcSolveError::Contradiction { coord, backtracks });
-                }
-                repairs += 1;
-                active
-                    .retain(|c| c.coord.x.abs_diff(coord.x) > 2 || c.coord.y.abs_diff(coord.y) > 2);
-                current_seed = SplitMix64::new(current_seed).next_u64();
-            }
-            Err(other) => return Err(other),
-        }
-    }
+            max_repairs,
+            radius: 2,
+        },
+        constraints,
+        &[],
+    )
+    .map(|r| r.solution)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -571,6 +461,7 @@ fn restore_after_contradiction(
     catalog: &WfcCatalog,
     width: u16,
     height: u16,
+    active: &[bool],
     domains: &mut Vec<PatternDomain>,
     decisions: &mut Vec<DecisionFrame>,
     rng: &mut SplitMix64,
@@ -609,6 +500,7 @@ fn restore_after_contradiction(
             catalog,
             width,
             height,
+            active,
             domains,
             VecDeque::from([frame.cell]),
         ) {
@@ -622,10 +514,14 @@ fn propagate(
     catalog: &WfcCatalog,
     width: u16,
     height: u16,
+    active: &[bool],
     domains: &mut [PatternDomain],
     mut queue: VecDeque<usize>,
 ) -> Result<(), usize> {
     while let Some(cell) = queue.pop_front() {
+        if !active[cell] {
+            continue;
+        }
         let source = domains[cell];
         if source.is_empty() {
             return Err(cell);
@@ -638,6 +534,9 @@ fn propagate(
             };
             let neighbor = grid_index(width, height, neighbor_coord)
                 .unwrap_or_else(|| unreachable!("bounded neighbor must have an index"));
+            if !active[neighbor] {
+                continue;
+            }
             let allowed = compatible_union(catalog, source, direction);
             let narrowed = domains[neighbor].intersect(allowed);
             if narrowed == domains[neighbor] {
@@ -981,7 +880,7 @@ mod tests {
     }
 
     #[test]
-    fn solve_wfc_with_repair_relaxes_conflicting_radius_and_succeeds() {
+    fn solve_wfc_with_repair_keeps_conflicting_pins_immutable() {
         let catalog = WfcCatalog::new([pattern(1, 0, 0, 0, 0), pattern(1, 1, 1, 1, 1)])
             .unwrap_or_else(|error| unreachable!("valid test catalog: {error:?}"));
         let constraints = [
@@ -1000,9 +899,6 @@ mod tests {
         ];
         assert!(solve_wfc(&catalog, 6, 1, 5, &constraints, 8).is_err());
 
-        let repaired = solve_wfc_with_repair(&catalog, 6, 1, 5, &constraints, 8, 2)
-            .unwrap_or_else(|error| unreachable!("repair should relax conflict: {error:?}"));
-        // Far constraint at x=5 (outside radius 2) remains respected.
-        assert_eq!(repaired.at(WfcCoord::new(5, 0)), Some(id(0)));
+        assert!(solve_wfc_with_repair(&catalog, 6, 1, 5, &constraints, 8, 2).is_err());
     }
 }

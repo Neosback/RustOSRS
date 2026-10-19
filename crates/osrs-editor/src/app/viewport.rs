@@ -102,7 +102,6 @@ impl EditorApp {
                 super::building_pick::right_click(self);
             }
         }
-        super::building_pick::keys(self, &response.ctx);
         let wanted: Vec<ObjectPick> = [
             self.interaction.hover().object.clone(),
             self.interaction.selected().clone(),

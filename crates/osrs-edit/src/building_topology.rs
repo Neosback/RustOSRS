@@ -4,10 +4,13 @@
 //! open/door portals, and one deterministic exterior entrance while retaining the exact archetype
 //! room roles for later furnishing and WFC refinement.
 
+mod authored;
+mod single;
 use crate::{
     BspLayout, BuildingPlan, BuildingProgram, BuildingRequest, BuildingRoomRole, PortalKind,
     ProgramConnection, RoomConnection, RoomId, RoomKind, RoomRect, RoomSpec,
 };
+pub use authored::{BuildingSketch, plan_authored_rooms};
 use osrs_core::coords::MapTile;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -71,6 +74,9 @@ pub fn build_bsp_building_plan(
     }
     if layout.site != request.site {
         return Err(BspTopologyError::SiteMismatch);
+    }
+    if program.rooms().len() == 1 {
+        return single::build(request, program, layout);
     }
     if layout.corridors().is_empty() {
         return Err(BspTopologyError::NoCorridors);

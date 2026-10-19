@@ -10,6 +10,7 @@ pub(in crate::app) enum SceneCommand {
     Report,
     Demonstrate,
     PlayReplay,
+    PolicyReplay(Box<(osrs_lab::LabTask, Vec<osrs_lab::Action>)>),
     /// Open the Workshop (in the main window) on a tab, with this scene's building picked.
     Workshop(crate::app::workshop::Tab),
 }

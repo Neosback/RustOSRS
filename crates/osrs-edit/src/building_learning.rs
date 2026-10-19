@@ -1,4 +1,6 @@
 //! Reproducible simple-tiled catalogs learned from reviewed symbolic grids.
+mod capture;
+pub use capture::learn_prefab_catalog;
 mod model;
 mod placement;
 use crate::{
@@ -12,9 +14,14 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct LearnedPattern {
     pub floor_class: u32,
-    /// Explicit north/east/south/west order, independent of census enum discriminants.
+    /// Explicit north/east/south/west order. 0..3: open/wall/door/window; +4: exterior; 8: unknown.
     pub sockets: [u16; 4],
+    #[serde(default)]
+    pub shape: u8,
+    #[serde(default)]
+    pub rotation: u8,
 }
+
 impl LearnedPattern {
     pub const fn rotate_cw(&self, turns: u8) -> Self {
         let mut s = self.sockets;
@@ -25,6 +32,12 @@ impl LearnedPattern {
             i += 1;
         }
         Self {
+            shape: self.shape,
+            rotation: if self.floor_class & 0xffff == 0 {
+                0
+            } else {
+                (self.rotation + turns) & 3
+            },
             floor_class: self.floor_class,
             sockets: s,
         }
@@ -37,6 +50,8 @@ pub struct LearningGrid {
     pub height: u16,
     pub cells: Vec<LearnedPattern>,
     pub reviewed: bool,
+    #[serde(default)]
+    pub active: Vec<bool>,
 }
 
 impl LearningGrid {
@@ -51,6 +66,8 @@ impl LearningGrid {
         let new_h = w;
         let mut cells = vec![
             LearnedPattern {
+                shape: 0,
+                rotation: 0,
                 floor_class: 0,
                 sockets: [0; 4],
             };
@@ -68,6 +85,17 @@ impl LearningGrid {
             height: self.width,
             cells,
             reviewed: self.reviewed,
+            active: if self.active.is_empty() {
+                vec![]
+            } else {
+                let mut active = vec![false; self.active.len()];
+                for y in 0..h {
+                    for x in 0..w {
+                        active[(w - 1 - x) * h + y] = self.active[y * w + x];
+                    }
+                }
+                active
+            },
         }
     }
 }
@@ -102,9 +130,10 @@ impl std::error::Error for LearningError {}
 impl LearnedCatalog {
     pub fn compile(&self) -> Result<WfcCatalog, LearningError> {
         if self.format != "rustosrs-learned-catalog"
-            || self.version != 1
+            || !(1..=2).contains(&self.version)
             || self.patterns.len() != self.weights.len()
             || self.patterns.is_empty()
+            || self.patterns.iter().any(|p| p.shape > 11 || p.rotation > 3)
         {
             return Err(LearningError::InvalidCatalog);
         }
@@ -145,10 +174,14 @@ pub fn learn_catalog(
         if grid.width == 0
             || grid.height == 0
             || grid.cells.len() != usize::from(grid.width) * usize::from(grid.height)
+            || (!grid.active.is_empty() && grid.active.len() != grid.cells.len())
         {
             return Err(LearningError::InvalidGrid);
         }
-        for p in &grid.cells {
+        for (index, p) in grid.cells.iter().enumerate() {
+            if !grid.active.is_empty() && !grid.active[index] {
+                continue;
+            }
             let count = counts.entry(p.clone()).or_default();
             *count = count.checked_add(1).ok_or(LearningError::CountOverflow)?;
         }
@@ -177,10 +210,18 @@ pub fn learn_catalog(
         let h = usize::from(grid.height);
         for y in 0..h {
             for x in 0..w {
+                if !grid.active.is_empty() && !grid.active[y * w + x] {
+                    continue;
+                }
                 let a = ids[&grid.cells[y * w + x]];
                 for (d, dx, dy) in [(0, 0, 1), (1, 1, 0), (2, 0, -1), (3, -1, 0)] {
                     let (nx, ny) = (x as i32 + dx, y as i32 + dy);
-                    if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h {
+                    if nx >= 0
+                        && ny >= 0
+                        && (nx as usize) < w
+                        && (ny as usize) < h
+                        && (grid.active.is_empty() || grid.active[ny as usize * w + nx as usize])
+                    {
                         adjacency.insert((a, d, ids[&grid.cells[ny as usize * w + nx as usize]]));
                     }
                 }
@@ -189,7 +230,7 @@ pub fn learn_catalog(
     }
     let catalog = LearnedCatalog {
         format: "rustosrs-learned-catalog".into(),
-        version: 1,
+        version: 2,
         style,
         role,
         source,
@@ -224,6 +265,8 @@ mod tests {
     use super::*;
     fn pattern(class: u32) -> LearnedPattern {
         LearnedPattern {
+            shape: 0,
+            rotation: 0,
             floor_class: class,
             sockets: [0; 4],
         }
@@ -231,6 +274,7 @@ mod tests {
     #[test]
     fn observations_do_not_allow_unseen_pairs_with_identical_sockets() {
         let grids = [LearningGrid {
+            active: vec![],
             width: 2,
             height: 1,
             cells: vec![pattern(1), pattern(2)],
@@ -261,12 +305,14 @@ mod tests {
     #[test]
     fn catalogs_are_sorted_and_reject_unreviewed_or_oversized_input() {
         let a = LearningGrid {
+            active: vec![],
             width: 1,
             height: 1,
             cells: vec![pattern(2)],
             reviewed: true,
         };
         let b = LearningGrid {
+            active: vec![],
             width: 1,
             height: 1,
             cells: vec![pattern(1)],
@@ -277,6 +323,7 @@ mod tests {
             learn_catalog(&[b, a], "s".into(), "r".into(), "x".into())
         );
         let grid = LearningGrid {
+            active: vec![],
             width: 513,
             height: 1,
             cells: (0..513).map(pattern).collect(),
@@ -289,6 +336,7 @@ mod tests {
         assert_eq!(
             learn_catalog(
                 &[LearningGrid {
+                    active: vec![],
                     width: 1,
                     height: 1,
                     cells: vec![pattern(0)],
@@ -305,14 +353,19 @@ mod tests {
     #[test]
     fn rotation_synthesis_rotates_sockets_and_adjacencies() {
         let grids = [LearningGrid {
+            active: vec![],
             width: 2,
             height: 1,
             cells: vec![
                 LearnedPattern {
+                    shape: 0,
+                    rotation: 0,
                     floor_class: 1,
                     sockets: [10, 20, 30, 40],
                 },
                 LearnedPattern {
+                    shape: 0,
+                    rotation: 0,
                     floor_class: 2,
                     sockets: [50, 60, 70, 20],
                 },

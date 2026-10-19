@@ -34,6 +34,7 @@ impl Workspace {
         &mut self,
         viewer: &mut EditorApp,
         current: &str,
+        original: &osrs_edit::Prefab,
         ui: &mut egui::Ui,
         library: &mut dyn FnMut(&mut egui::Ui),
     ) {
@@ -70,6 +71,7 @@ impl Workspace {
                             library(ui);
                         },
                         Page::Builder => {
+                            super::blueprint::controls(viewer, original, ui);
                             viewer.prefabs.page = crate::app::prefab_runtime::Page::Build;
                             if ui.button("Use scene footprint").clicked()
                                 && let Some(prefab) = viewer.prefabs.entry(current).map(|e| e.prefab.clone()) {
@@ -93,7 +95,7 @@ impl Workspace {
                             });
                             ui.label("Pattern seed");
                             ui.add(egui::DragValue::new(&mut self.seed));
-                            self.catalog.show(ui, self.seed, viewer);
+                            self.catalog.show(ui, self.seed, viewer, current);
                         }
                     }
                 });

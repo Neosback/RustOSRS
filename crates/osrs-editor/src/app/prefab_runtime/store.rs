@@ -155,7 +155,10 @@ impl Store {
             return Ok(());
         };
         std::fs::create_dir_all(directory).map_err(|e| format!("{}: {e}", directory.display()))?;
-        let text = serde_json::to_string_pretty(prefab).map_err(|e| e.to_string())?;
+        let mut migrated = prefab.clone();
+        migrated.version = osrs_edit::PREFAB_VERSION;
+        migrated.validate().map_err(|e| e.to_string())?;
+        let text = serde_json::to_string_pretty(&migrated).map_err(|e| e.to_string())?;
         let target = directory.join(file);
         let temporary = directory.join(format!("{file}.tmp"));
         std::fs::write(&temporary, text).map_err(|e| format!("{}: {e}", temporary.display()))?;

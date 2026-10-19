@@ -72,22 +72,22 @@ impl BuildingProgram {
     }
 
     /// The same program with only as many rooms as `area` tiles can hold comfortably (about 22
-    /// tiles each, never fewer than two, never more than the program lists). Rooms are listed most
+    /// tiles each, never fewer than one, never more than the program lists). Rooms are listed most
     /// important first, so the least important go first. Connections to dropped rooms are removed
     /// and a room left on its own is joined to the entrance room, so the program stays connected.
     pub fn fitted_to_area(&self, area: u32) -> Self {
         const TILES_PER_ROOM: u32 = 22;
         let wanted = usize::try_from(area / TILES_PER_ROOM)
             .unwrap_or(usize::MAX)
-            .clamp(2, self.rooms.len().max(2));
+            .clamp(1, self.rooms.len().max(1));
         self.keep_first(wanted)
     }
 
-    /// At most `count` rooms (never fewer than two: the planner joins rooms through corridors and
+    /// At most `count` rooms (never fewer than one: the planner joins rooms through corridors and
     /// cannot build a one-room building yet): the most important ones, still connected. A real
     /// building of the sizes the generator makes is usually one or two rooms, not five.
     pub fn limited_to(&self, count: usize) -> Self {
-        self.keep_first(count.clamp(2, self.rooms.len().max(2)))
+        self.keep_first(count.clamp(1, self.rooms.len().max(1)))
     }
 
     fn keep_first(&self, wanted: usize) -> Self {

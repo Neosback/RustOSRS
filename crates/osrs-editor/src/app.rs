@@ -13,6 +13,7 @@ mod context_menu;
 mod drawer;
 mod edit_runtime;
 mod editing;
+mod examines;
 #[cfg_attr(target_arch = "wasm32", path = "app/export_web.rs")]
 mod export;
 mod floating;
@@ -21,6 +22,7 @@ mod gizmo;
 mod hd;
 mod inspector;
 mod map_icons;
+pub(crate) mod map_labels;
 mod menu;
 mod minimap;
 pub(crate) mod modal;

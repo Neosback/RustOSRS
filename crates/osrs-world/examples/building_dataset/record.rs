@@ -37,11 +37,7 @@ pub(super) fn record(
         region.x.div_euclid(8),
         region.y.div_euclid(8)
     );
-    let split = match (region.x.div_euclid(8) * 31 + region.y.div_euclid(8)).rem_euclid(5) {
-        0 => "test",
-        1 => "validation",
-        _ => "train",
-    };
+    let split = osrs_lab::LearningSplit::for_group(&group);
     let named: Vec<_> = areas
         .iter()
         .filter(|a| {

@@ -1,8 +1,13 @@
 name: CI
 
+# One Linux job, cheapest checks first, defined by scripts/verify.py (the same gate as local
+# `python3 scripts/verify.py --full`). Markdown-only changes and superseded runs cost nothing.
 on:
   push:
+    branches: [main]
+    paths-ignore: ["**/*.md"]
   pull_request:
+    paths-ignore: ["**/*.md"]
   workflow_dispatch:
 
 permissions:
@@ -15,93 +20,38 @@ concurrency:
 env:
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: "10"
+  RUST_BACKTRACE: short
+  # Debug info only costs compile and cache time here; panics still print file:line.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
-  fast-gate:
-    name: Fast Quality Gate (Format & Clippy)
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-      - name: Install pinned Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v2
-        with:
-          components: clippy, rustfmt
-          cache: false
-
-      - name: Install Linux build dependencies
-        run: sudo apt-get update -qq && sudo apt-get install -qq -y pkg-config libasound2-dev
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "workspace-fast-ci"
-
-      - name: Check architecture boundaries
-        run: python3 scripts/check_architecture.py
-
-      - name: Check formatting
-        run: cargo fmt --all --check
-
-      - name: Clippy
-        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-
-  procgen-semantic-tests:
-    name: Targeted Procgen Semantic Tests
-    needs: fast-gate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Install pinned Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v2
+      # rust-toolchain.toml pins the version, components and the wasm32 target.
+      # rustflags: "" keeps the action from setting RUSTFLAGS, which would override
+      # .cargo/config.toml (the wasm getrandom cfg).
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           cache: false
+          rustflags: ""
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+      # Seconds, no compilation: Python guards and rustfmt. Fails before the cache is restored.
+      - name: Quick gates
+        run: python3 scripts/verify.py --full --stage quick
+
+      - name: Linux build dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -qq -y --no-install-recommends pkg-config libasound2-dev
+
+      # Only main writes the cache; pull requests restore it.
+      - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "workspace-fast-ci"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Check offline learning contracts
-        run: python3 scripts/test_lab_training.py
-
-      - name: Run headless Lab tests
-        run: cargo test --locked -p osrs-lab
-
-      - name: Run vertical procgen tests
-        run: cargo test --locked -p osrs-edit building_vertical
-
-      - name: Run roof procgen tests
-        run: cargo test --locked -p osrs-edit building_roof
-
-      - name: Run end-to-end building procgen tests
-        run: cargo test --locked -p osrs-edit building_generation
-
-  tests:
-    name: Full Test Suite
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[full-ci]'))
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Install pinned Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v2
-        with:
-          cache: false
-
-      - name: Install Linux build dependencies
-        run: sudo apt-get update -qq && sudo apt-get install -qq -y mold pkg-config libasound2-dev
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "workspace-fast-ci"
-
-      - name: Run workspace tests
-        env:
-          RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
-        run: cargo test --locked --workspace --all-targets --all-features
+      - name: Clippy (native and wasm) and tests
+        run: python3 scripts/verify.py --full --stage build

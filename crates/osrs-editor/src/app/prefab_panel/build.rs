@@ -1,6 +1,7 @@
 //! The Build page: choose a kit, size and seed, put the site on the map, look at the ghost, then
 //! apply the building as one undoable step or keep it in the library.
 
+mod experiments;
 use crate::app::{
     EditorApp,
     prefab_runtime::{ARCHETYPES, MAX_SITE, STYLES},
@@ -11,6 +12,7 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     let accent = ui.visuals().selection.stroke.color;
     ui.weak("Plans rooms, doors, windows, stairs and a roof for the site, using the chosen kit's objects (1 to 3 floors).");
     kit_picker(app, ui);
+    experiments::controls(app, ui);
 
     let form = &mut app.prefabs.build.form;
     egui::ComboBox::from_label("Kind")
@@ -276,7 +278,10 @@ pub(super) fn refresh(app: &mut EditorApp) {
     let revision = app.session.map_revision();
     let size_of =
         |id: osrs_core::ids::ObjectId, _: osrs_edit::LocKind| app.placer.object_size(id.get());
-    app.prefabs
-        .build
-        .refresh(app.session.document(), revision, &size_of);
+    app.prefabs.build.refresh_source(
+        app.session.document(),
+        app.project.generation(),
+        revision,
+        &size_of,
+    );
 }

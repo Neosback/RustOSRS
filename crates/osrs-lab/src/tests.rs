@@ -21,6 +21,8 @@ fn task() -> LabTask {
     let mut target = initial.clone();
     target.objects.push(object());
     LabTask {
+        locks: vec![],
+        object_names: Default::default(),
         format: "rustosrs-lab-task".into(),
         version: 1,
         name: "fixture".into(),
@@ -353,4 +355,33 @@ fn height_brush_room_rect_corners_hip_roof_and_partial_terrain_credit_work() {
         seed: 1,
     })
     .unwrap_or_else(|e| panic!("{e}"));
+}
+
+#[test]
+fn policy_validation_is_target_free_and_preserves_budget_history_and_author_locks() {
+    let mut task = task();
+    let object = task.target.objects[0].clone();
+    task.initial.objects.push(object.clone());
+    task.locks.push(object.clone());
+    let mut env = Env::reset(task, 7).unwrap();
+    let before = env.document().clone();
+    let remaining = env.legal_mask().remaining;
+    assert!(
+        env.validate_action(&Action::Remove {
+            object: object.clone()
+        })
+        .is_err()
+    );
+    assert_eq!(env.document(), &before);
+    assert_eq!(env.legal_mask().remaining, remaining);
+    assert!(env.trace().is_empty());
+    assert!(env.step(Action::Remove { object }).is_err());
+    assert_eq!(env.document(), &before);
+    let json = serde_json::to_value(env.observation(ObservationMode::ScoreOnly)).unwrap();
+    assert!(json.get("target").is_none());
+    assert!(
+        json["legal"]["locks"]
+            .as_array()
+            .is_some_and(|a| a.len() == 1)
+    );
 }

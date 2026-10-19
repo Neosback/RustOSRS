@@ -4,6 +4,7 @@ version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true
 publish = false
+autotests = false
 
 [dependencies]
 osrs-core = { path = "../osrs-core" }
@@ -20,3 +21,7 @@ serde_json = "1.0.152"
 
 [lints]
 workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

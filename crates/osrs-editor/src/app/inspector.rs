@@ -323,6 +323,7 @@ impl EditorApp {
             "Object {id}  \u{b7}  {}",
             loc_type_name(loc.loc_type)
         ));
+        super::examines::show_object(ui, id);
         ui.add_space(4.0);
         footprint(
             ui,

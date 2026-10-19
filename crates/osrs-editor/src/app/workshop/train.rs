@@ -97,19 +97,22 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            intro(ui);
-            pick(app, ui);
-            names(app, ui);
-            teach(app, ui);
-            try_it::show(app, ui);
+            super::policy::show(app, ui);
+            ui.separator();
+            egui::CollapsingHeader::new("Learn style tables and use the procedural generator")
+                .show(ui, |ui| {
+                    intro(ui);
+                    pick(app, ui);
+                    names(app, ui);
+                    teach(app, ui);
+                    try_it::show(app, ui);
+                });
         });
 }
 
 fn intro(ui: &mut egui::Ui) {
     ui.weak(
-        "Training means the editor studies your saved buildings (the walls, doors, floors, roofs \
-         and furniture they use, and where things stand) and keeps what it learned as a \"model\". \
-         You can then ask a model for a brand new building, with no example to copy.",
+        "Learn style extracts asset and placement tables and fits a ranking critic. It uses the procedural planner; this is separate from training a tool-action policy.",
     );
     ui.add_space(6.0);
 }
@@ -341,9 +344,15 @@ fn results(ui: &mut egui::Ui, done: &Finished) {
             ui.label(format!("\u{2022} {line}"));
         }
         ui.add_space(4.0);
-        ui.label("How real do the buildings it makes look?");
-        bar(ui, "first try", done.metrics.realism_single);
-        bar(ui, "best of 16 tries", done.metrics.realism_best_of_16);
+        ui.label("Procedural generation checks and ranking scores");
+        ui.label(format!(
+            "First-try ranking score: {:.3}",
+            done.metrics.realism_single
+        ));
+        ui.label(format!(
+            "Best-of-16 ranking score: {:.3}",
+            done.metrics.realism_best_of_16
+        ));
         bar(ui, "built a usable building", done.metrics.usable_rate);
         ui.weak(
             "\"Look real\" is a score from a small judge trained on real buildings of the game. \
@@ -373,6 +382,7 @@ mod tests {
         let kit = starter_kit(0).unwrap_or_else(|e| panic!("{e}"));
         let objects = kit_objects(&kit);
         let brief = Brief {
+            sketch: None,
             kind: "tavern".to_owned(),
             width: 16,
             height: 12,
@@ -408,6 +418,7 @@ mod tests {
         let kit = starter_kit(0).unwrap_or_else(|e| panic!("{e}"));
         let objects = kit_objects(&kit);
         let brief = Brief {
+            sketch: None,
             kind: "tavern".to_owned(),
             width: 16,
             height: 12,
@@ -448,6 +459,7 @@ mod tests {
         assert_eq!(models.entries.len(), 1);
         assert!(models.problems.is_empty(), "{:?}", models.problems);
         let ask = Brief {
+            sketch: None,
             kind: "house".to_owned(),
             width: 12,
             height: 10,

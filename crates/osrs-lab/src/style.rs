@@ -398,6 +398,7 @@ mod tests {
 
     fn brief(kind: &str, seed: u64) -> Brief {
         Brief {
+            sketch: None,
             kind: kind.to_owned(),
             width: 16,
             height: 12,

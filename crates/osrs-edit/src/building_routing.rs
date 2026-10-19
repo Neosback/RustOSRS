@@ -32,6 +32,9 @@ pub enum ProgramRoutingError {
 pub fn route_program_connections(
     building: &BspBuildingPlan,
 ) -> Result<Vec<ProgramRoute>, ProgramRoutingError> {
+    if building.plan.rooms.len() == 1 && building.preferred_connections().is_empty() {
+        return Ok(vec![]);
+    }
     let corridor_ids = building
         .plan
         .rooms

@@ -124,9 +124,12 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
             let size_of = |id: osrs_core::ids::ObjectId, _: osrs_edit::LocKind| {
                 app.placer.object_size(id.get())
             };
-            app.prefabs
-                .build
-                .refresh(app.session.document(), revision, &size_of);
+            app.prefabs.build.refresh_for_script(
+                app.session.document(),
+                app.project.generation(),
+                revision,
+                &size_of,
+            );
             match (&app.prefabs.build.preview, &app.prefabs.build.error) {
                 (Some(preview), _) => {
                     eprintln!(

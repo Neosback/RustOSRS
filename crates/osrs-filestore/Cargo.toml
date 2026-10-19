@@ -15,7 +15,7 @@ serde = ["dep:serde", "dep:serde-big-array"]
 [dependencies]
 bzip2 = "0.6.0"
 flate2 = "1.0.27"
-itertools = "0.14"
+itertools = "0.15"
 lzma-rs = { version = "0.3", optional = true }
 nom = "8.0.0"
 serde = { workspace = true, optional = true }

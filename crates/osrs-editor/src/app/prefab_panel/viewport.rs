@@ -40,8 +40,12 @@ pub(super) fn plan(
             height: 0,
             planes: 0,
         })?;
-    let (width, height) = turned_size(entry.prefab.width, entry.prefab.height, armed.turns);
-    let origin = origin_for(hover, width, height);
+    let origin = osrs_edit::prefab_placement_origin(
+        &entry.prefab,
+        MapTile::new(hover.0, hover.1),
+        armed.turns,
+    )
+    .ok_or(PrefabError::Nothing)?;
     let spec = PlaceSpec {
         origin,
         base_plane,

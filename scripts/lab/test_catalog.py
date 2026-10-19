@@ -8,10 +8,10 @@ class CatalogTests(unittest.TestCase):
              'building': {'reviewed': True, 'provenance': 'fixture',
                           'floors': [{'x': 1, 'y': 0, 'plane': 0}, {'x': 1, 'y': 1, 'plane': 0}]}}
         learned = learn([p], 'town', 'house')
-        self.assertEqual(learned['patterns'][1]['sockets'], (0, 0, 0, 1))
-        self.assertIn((1, 0, 0), learned['adjacency'])
-        self.assertIn((0, 2, 1), learned['adjacency'])
-        self.assertNotIn((1, 1, 0), learned['adjacency'])
+        self.assertEqual(learned['patterns'][0]['sockets'], (0, 4, 4, 5))
+        self.assertIn((0, 0, 1), learned['adjacency'])
+        self.assertIn((1, 2, 0), learned['adjacency'])
+        self.assertNotIn((0, 1, 1), learned['adjacency'])
 
     def test_sparse_holes_never_become_observed_neighbors(self):
         p = {'tiles': [], 'objects': [], 'building': {'reviewed': True, 'provenance': 'fixture',

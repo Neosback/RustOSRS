@@ -36,6 +36,8 @@ pub struct Brief {
     /// At most this many rooms; leave out to let the planner choose from the size.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rooms: Option<u8>,
+    #[serde(default)]
+    pub sketch: Option<osrs_edit::BuildingSketch>,
 }
 
 fn one() -> u8 {
@@ -311,11 +313,11 @@ pub fn generate_named(
         constraints: BuildingConstraints::default(),
     };
     let snapshot = capture_generation_snapshot(&document, request, []);
-    let patch = kit
-        .compile()
-        .map_err(|e| e.to_string())?
-        .generate_with_rooms(&snapshot, brief.variation, brief.rooms.map(usize::from))
-        .map_err(|e| format!("{e:?}"))?;
+    let compiled = kit.compile().map_err(|e| e.to_string())?;
+    let patch = match &brief.sketch {
+        Some(sketch) => compiled.generate_in_rooms(&snapshot, brief.variation, sketch),
+        None => compiled.generate_with_rooms(&snapshot, brief.variation, brief.rooms.map(usize::from)),
+    }.map_err(|e| format!("{e:?}"))?;
     document.apply_patch(&patch).map_err(|e| format!("{e:?}"))?;
     let result = Snapshot::capture(&document);
     let mut table = kit_objects(kit);
@@ -350,6 +352,7 @@ mod tests {
 
     fn brief(kind: &str, width: u16, height: u16, seed: u64) -> Brief {
         Brief {
+            sketch: None,
             kind: kind.to_owned(),
             width,
             height,
