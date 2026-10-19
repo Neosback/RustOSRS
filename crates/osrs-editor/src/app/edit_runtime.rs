@@ -167,11 +167,7 @@ impl EditRuntime {
     /// Test fixture convenience that still exercises the production replay gateway.
     #[cfg(test)]
     pub(super) fn undo(&mut self) -> Result<(), EditExecutionError<Infallible>> {
-        let _ = self.replay(
-            EditReplayDirection::Undo,
-            EditFootprint::default(),
-            |_| Ok::<_, Infallible>(()),
-        )?;
+        let _ = self.replay(EditReplayDirection::Undo, |_| Ok::<_, Infallible>(()))?;
         Ok(())
     }
 
@@ -287,13 +283,10 @@ impl EditRuntime {
     /// Replay one semantic Undo/Redo as an application transaction.
     ///
     /// The authoritative replay footprint is derived from `EditorSession`'s exact next history
-    /// patch. `_legacy_footprint` is a temporary compatibility input for existing callers and is
-    /// intentionally ignored. Remove it when R3B migrates replay projection to the semantic
-    /// descriptor directly.
+    /// descriptor. Callers provide only the disposable post-replay projection.
     pub(super) fn replay<T, E>(
         &mut self,
         direction: EditReplayDirection,
-        _legacy_footprint: EditFootprint,
         project: impl FnOnce(&MapDocument) -> Result<T, E>,
     ) -> Result<EditExecution<T>, EditExecutionError<E>> {
         let before = self.revision();
