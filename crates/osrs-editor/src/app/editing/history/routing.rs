@@ -1,8 +1,8 @@
-//! Chronological undo and redo routing across semantic history entries.
+//! Undo and redo projection from authoritative semantic history.
 //!
-//! Semantic replay is checkpointed by `EditRuntime`. Active worker projection is derived from the
-//! exact authoritative `EditReplayDescriptor`; the parallel `EditStep` stack remains temporarily
-//! only for chronological labels/stack movement until CP2H removes it.
+//! `EditorSession` owns the only chronology. `EditRuntime` derives the exact replay descriptor from
+//! that history, checkpoints the semantic transition, and restores it exactly if projection fails.
+//! The application keeps only disposable worker/UI projection state.
 
 #[cfg(test)]
 use super::super::path::project_semantic_path_values;
@@ -11,13 +11,12 @@ use super::super::plan::{project_height_values, project_paint_values};
 use super::replay_projection::{
     MapReplayInput, PreparedMapReplay, capture_map_replay_input, prepare_map_replay,
 };
-use super::{EditStep, EditorApp, SemanticHeightHistory, SemanticPaintHistory, SemanticPathHistory};
+use super::EditorApp;
 #[cfg(test)]
-use super::TileKey;
+use super::{EditStep, SemanticHeightHistory, SemanticPaintHistory, SemanticPathHistory, TileKey};
 use crate::app::edit_runtime::{EditExecution, EditExecutionError, EditReplayDirection};
 #[cfg(test)]
-use crate::app::object_tool::build_object_history_projection;
-use crate::app::object_tool::ObjectHistoryRoute;
+use crate::app::object_tool::{ObjectHistoryRoute, build_object_history_projection};
 #[cfg(test)]
 use crate::paint::TileValues;
 use crate::session::EditReplayDescriptor;
@@ -53,7 +52,8 @@ impl Direction {
         }
     }
 
-    /// The semantic replay succeeded: move its temporary chronology marker to the opposite stack.
+    /// Transitional parity helper retained only for the CP2I test oracle.
+    #[cfg(test)]
     fn settle(self, history: &mut Vec<EditStep>, redo_stack: &mut Vec<EditStep>, step: EditStep) {
         match self {
             Self::Undo => redo_stack.push(step),
@@ -61,7 +61,8 @@ impl Direction {
         }
     }
 
-    /// The semantic replay did not complete: return its temporary marker to its source stack.
+    /// Transitional parity helper retained only for the CP2I test oracle.
+    #[cfg(test)]
     fn restore(self, history: &mut Vec<EditStep>, redo_stack: &mut Vec<EditStep>, step: EditStep) {
         match self {
             Self::Undo => history.push(step),
@@ -70,10 +71,9 @@ impl Direction {
     }
 }
 
-/// The semantic transaction label carried by the temporary application chronology marker.
-///
-/// Payloads remain only for CP2H/CP2I compatibility and focused parity tests. Active projection no
-/// longer reads them.
+/// Tool-shaped replay route retained only as a focused parity oracle until CP2I deletes the old
+/// tool-specific replay projectors. Production replay does not construct or consult this type.
+#[cfg(test)]
 #[allow(dead_code)]
 enum Route {
     Appearance,
@@ -82,7 +82,6 @@ enum Route {
     Height(SemanticHeightHistory),
     Path(SemanticPathHistory),
     Object(ObjectHistoryRoute),
-    /// Terrain and objects changed by one transaction (prefabs, generated buildings).
     Composite(SemanticPathHistory, ObjectHistoryRoute),
 }
 
@@ -100,7 +99,7 @@ enum DescriptorProjection {
     Appearance,
 }
 
-/// Transitional route-specific replay input retained only as a parity oracle during CP2G.
+/// Transitional route-specific replay input retained only as a parity oracle during CP2I.
 #[cfg(test)]
 enum ProjectionInput {
     Tiles(Vec<(TileKey, Option<TileValues>)>),
@@ -132,6 +131,7 @@ enum PreparedProjection {
     },
 }
 
+#[cfg(test)]
 impl Route {
     fn of(step: &EditStep) -> Option<Self> {
         if step.semantic_appearance {
@@ -151,22 +151,6 @@ impl Route {
         }
     }
 
-    fn matches_descriptor(&self, descriptor: &EditReplayDescriptor) -> bool {
-        matches!(
-            (self, descriptor),
-            (Self::Appearance, EditReplayDescriptor::Appearance)
-                | (Self::Scenario, EditReplayDescriptor::Scenario)
-                | (
-                    Self::Paint(_)
-                        | Self::Height(_)
-                        | Self::Path(_)
-                        | Self::Object(_)
-                        | Self::Composite(..),
-                    EditReplayDescriptor::Map(_)
-                )
-        )
-    }
-
     fn label(&self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
@@ -179,7 +163,6 @@ impl Route {
         }
     }
 
-    /// "3 painted tiles", "1 object": what a success notice counts.
     fn counted(&self, count: usize) -> String {
         let (noun, plural) = match self {
             Self::Appearance => ("appearance change", "s"),
@@ -193,7 +176,6 @@ impl Route {
         format!("{count} {noun}{}", if count == 1 { "" } else { plural })
     }
 
-    #[cfg(test)]
     fn prepare_projection(
         &self,
         query: &impl MapQuery,
@@ -298,6 +280,23 @@ impl Route {
     }
 }
 
+fn descriptor_label(descriptor: &EditReplayDescriptor) -> &'static str {
+    match descriptor {
+        EditReplayDescriptor::Map(_) => "Map edit",
+        EditReplayDescriptor::Scenario => "NPC scenario",
+        EditReplayDescriptor::Appearance => "Appearance",
+    }
+}
+
+fn descriptor_counted(descriptor: &EditReplayDescriptor, count: usize) -> String {
+    let noun = match descriptor {
+        EditReplayDescriptor::Map(_) => "map change",
+        EditReplayDescriptor::Scenario => "NPC scenario change",
+        EditReplayDescriptor::Appearance => "appearance change",
+    };
+    format!("{count} {noun}{}", if count == 1 { "" } else { "s" })
+}
+
 fn prepare_descriptor_projection(
     query: &impl MapQuery,
     descriptor: &EditReplayDescriptor,
@@ -319,59 +318,21 @@ fn prepare_descriptor_projection(
 
 impl EditorApp {
     pub(in crate::app) fn undo(&mut self) {
-        let Some(step) = self.terrain.history.pop() else {
-            return;
-        };
-        let Some(route) = Route::of(&step) else {
-            self.terrain.history.push(step);
-            self.ui.notify(
-                "Undo history marker has no semantic route; no state was changed".to_owned(),
-            );
-            return;
-        };
-        self.route_semantic(Direction::Undo, step, &route);
+        self.route_semantic(Direction::Undo);
     }
 
     pub(in crate::app) fn redo(&mut self) {
-        let Some(step) = self.terrain.redo_stack.pop() else {
-            return;
-        };
-        let Some(route) = Route::of(&step) else {
-            self.terrain.redo_stack.push(step);
-            self.ui.notify(
-                "Redo history marker has no semantic route; no state was changed".to_owned(),
-            );
-            return;
-        };
-        self.route_semantic(Direction::Redo, step, &route);
+        self.route_semantic(Direction::Redo);
     }
 
-    /// Replay one semantic step through `EditRuntime`, then apply a projection derived from the
-    /// exact authoritative replay descriptor. `EditStep` participates only in the temporary
-    /// chronology stack and success-label compatibility until CP2H removes that duplicate stack.
-    fn route_semantic(&mut self, direction: Direction, step: EditStep, route: &Route) {
-        let (label, word) = (route.label(), direction.word());
+    /// Replay the exact authoritative semantic history head and apply its already-validated
+    /// projection. No application-level marker stack participates in ordering or rollback.
+    fn route_semantic(&mut self, direction: Direction) {
         let Some(descriptor) = self.session.replay_descriptor(direction.gateway()) else {
-            direction.restore(
-                &mut self.terrain.history,
-                &mut self.terrain.redo_stack,
-                step,
-            );
-            self.ui
-                .notify(format!("{label} {word} history is out of sync with the semantic session"));
             return;
         };
-        if !route.matches_descriptor(&descriptor) {
-            direction.restore(
-                &mut self.terrain.history,
-                &mut self.terrain.redo_stack,
-                step,
-            );
-            self.ui.notify(format!(
-                "{label} {word} marker does not match the authoritative semantic history; no state was changed"
-            ));
-            return;
-        }
+        let label = descriptor_label(&descriptor);
+        let word = direction.word();
         let input = match &descriptor {
             EditReplayDescriptor::Map(footprint) => DescriptorProjectionInput::Map(
                 capture_map_replay_input(footprint, |key| self.current_tile(key)),
@@ -392,57 +353,31 @@ impl EditorApp {
             }) => {
                 let count = self.apply_descriptor_projection(projection);
                 self.world.invalidate_semantic_edit(&receipt);
-                direction.settle(
-                    &mut self.terrain.history,
-                    &mut self.terrain.redo_stack,
-                    step,
-                );
-                format!("{} {}", direction.past(), route.counted(count))
+                format!(
+                    "{} {}",
+                    direction.past(),
+                    descriptor_counted(&descriptor, count)
+                )
             }
             Ok(EditExecution::NoChange) => {
-                direction.restore(
-                    &mut self.terrain.history,
-                    &mut self.terrain.redo_stack,
-                    step,
-                );
                 format!("{label} {word} history is out of sync with the semantic session")
             }
             Err(EditExecutionError::Semantic(error)) => {
-                direction.restore(
-                    &mut self.terrain.history,
-                    &mut self.terrain.redo_stack,
-                    step,
-                );
                 format!("{label} {word} was rejected by the semantic session: {error:?}")
             }
             Err(EditExecutionError::Projection(message)) => {
-                direction.restore(
-                    &mut self.terrain.history,
-                    &mut self.terrain.redo_stack,
-                    step,
-                );
                 format!("{label} {word} was rolled back: {message}")
             }
             Err(EditExecutionError::Rollback {
                 projection,
                 rollback,
             }) => {
-                direction.restore(
-                    &mut self.terrain.history,
-                    &mut self.terrain.redo_stack,
-                    step,
-                );
                 format!(
                     "{label} {word} projection failed and semantic rollback failed: \
                      {projection} ({rollback:?})"
                 )
             }
             Err(EditExecutionError::Finalize(error)) => {
-                direction.restore(
-                    &mut self.terrain.history,
-                    &mut self.terrain.redo_stack,
-                    step,
-                );
                 format!(
                     "{label} {word} projection succeeded but semantic finalize failed: {error:?}"
                 )
