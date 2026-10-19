@@ -60,8 +60,39 @@ impl EditorApp {
                 .on_hover_text(
                     "Orbit camera: right drag orbits, shift+right drag pans, scroll zooms",
                 );
+                ui.selectable_value(
+                    &mut camera_mode,
+                    CameraMode::Game,
+                    if compact {
+                        icons::PLAYER.to_owned()
+                    } else {
+                        format!("{} Game", icons::PLAYER)
+                    },
+                )
+                .on_hover_text(
+                    "Game mode: camera follows player, click to walk, OSRS client controls",
+                );
                 self.interaction.set_camera_mode(camera_mode);
                 self.interaction.switch_plane(view_plane);
+                let mut menu_style = self.settings.prefs.context_menu;
+                ui.separator();
+                egui::ComboBox::from_id_salt("toolbar_context_menu_style")
+                    .selected_text(menu_style.short_label())
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut menu_style,
+                            crate::settings::ContextMenuStyle::Editor,
+                            crate::settings::ContextMenuStyle::Editor.label(),
+                        );
+                        ui.selectable_value(
+                            &mut menu_style,
+                            crate::settings::ContextMenuStyle::Game,
+                            crate::settings::ContextMenuStyle::Game.label(),
+                        );
+                    })
+                    .response
+                    .on_hover_text("Context menu style: Editor menu vs Game menu (OSRS)");
+                self.settings.prefs.context_menu = menu_style;
                 ui.separator();
                 if self.settings.prefs.tool != crate::paint::Tool::Select
                     || self.can_undo()
@@ -102,9 +133,18 @@ impl EditorApp {
                             .on_hover_text(
                                 "Outline the tile (or the brush footprint) under the cursor",
                             );
+                        ui.checkbox(
+                            &mut self.settings.prefs.player.show_overlay,
+                            "Player overlay",
+                        )
+                        .on_hover_text(
+                            "Show the 2D tile outline and name label marker over the player",
+                        );
                         ui.checkbox(&mut self.settings.prefs.stats_overlay, "Statistics")
                             .on_hover_text("Frame rate, timings and the camera tile");
                         ui.checkbox(&mut self.settings.prefs.show_minimap, "Minimap");
+                        ui.checkbox(&mut self.settings.prefs.show_gameframe, "Gameframe HUD")
+                            .on_hover_text("OSRS orbs, stone tabs and chatbox");
                         ui.checkbox(
                             &mut self.settings.prefs.map_icons_3d,
                             "Map icons in the world",

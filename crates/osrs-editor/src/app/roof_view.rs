@@ -34,7 +34,10 @@ pub(super) fn apply(app: &mut EditorApp) {
 fn cut_roofs(app: &mut EditorApp) -> HashSet<u32> {
     let plane = app.interaction.view_plane();
     let mut focus: Vec<(i32, i32)> = vec![app.camera_tile()];
-    if app.interaction.camera().mode == CameraMode::Orbit {
+    if matches!(
+        app.interaction.camera().mode,
+        CameraMode::Orbit | CameraMode::Game
+    ) {
         // The orbit pivot is what the camera looks at.
         let pivot = app.interaction.camera().pivot();
         let origin = app.renderer.render_origin();
@@ -42,6 +45,9 @@ fn cut_roofs(app: &mut EditorApp) -> HashSet<u32> {
             ((origin.0 as f32 + pivot[0]) / 128.0).floor() as i32,
             ((origin.1 as f32 + pivot[2]) / 128.0).floor() as i32,
         ));
+    }
+    if let Some(stand) = app.settings.prefs.player.stand {
+        focus.push((stand.x, stand.y));
     }
     let hover_tile = app.interaction.hover().tile.map(|pick| pick.tile);
     focus.extend(hover_tile);

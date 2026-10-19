@@ -20,6 +20,7 @@ impl EditorApp {
         let ctx = ui.ctx().clone();
         let phase = web_time::Instant::now();
         self.minimap_hud(ui, rect);
+        super::gameframe::draw(self, ui, rect);
         self.diagnostics.phase("minimap", phase);
         self.run_plugins(|plugin, cx| plugin.overlay(&ctx, rect, cx));
 

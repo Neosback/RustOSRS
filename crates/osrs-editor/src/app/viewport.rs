@@ -78,7 +78,8 @@ impl EditorApp {
         // The brush tools keep the left button for painting; Select clicks and boxes.
         let consumed = npc_panel::armed_input(self, response)
             || prefab_panel::armed_input(self, response)
-            || sound_panel::marker_click(self, response, rect, pixels_per_point, width, height);
+            || sound_panel::marker_click(self, response, rect, pixels_per_point, width, height)
+            || player_panel::handle_game_mode_click(self, response);
         if !consumed {
             self.brush_input(&response.ctx, response);
             self.spline_input(&response.ctx, response);
@@ -91,7 +92,10 @@ impl EditorApp {
                 height,
             );
         }
-        if response.secondary_clicked() && response.ctx.input(|i| i.modifiers.shift) {
+        if response.secondary_clicked()
+            && (response.ctx.input(|i| i.modifiers.shift)
+                || self.interaction.camera().mode == CameraMode::Game)
+        {
             self.interaction.capture_context_pick();
             self.ui.context_menu = response.interact_pointer_pos();
         }

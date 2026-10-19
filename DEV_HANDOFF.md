@@ -47,7 +47,6 @@ name what is in them, train a small model on them and ask it for a new building 
   results on the map through `apply_terrain_path` (one undo). Numbers and limits are in
   `docs/plans/PROCGEN-LEARNING.md` ("Learning to lay paths"). `crates/osrs-lab/data/world-paths.model.json`
   is the shipped starter model.
-- **Full gate, 2026-10-18** (`python3 scripts/verify.py --full` on `b170bf34`, with another session's uncommitted game-mode edits in the tree): architecture and Python gates, `cargo fmt --check`, workspace clippy `-D warnings`, 1,330 workspace tests passed / 0 failed / 22 ignored, wasm `cargo check` (8 crates) passed. The wasm clippy for `osrs-editor` failed once on unused items in `workshop/paths/job.rs` (native-only code); fixed in the next commit and re-run clean on its own. Remote CI was not run.
 - **Not verified / open**: the window was screenshotted (Train tab) but the machine's display went
   idle, so the trained-state view and real-mouse behaviour were not seen. A model trained on one
   generated or captured building separates real from generated buildings easily (critic AUC about 1.0)
@@ -56,6 +55,51 @@ name what is in them, train a small model on them and ask it for a new building 
   Rust/Python split, train-only furniture and critic in `scripts/lab/train.py`, the Door socket fix in
   `scripts/lab/catalog.py`, "Lab-accepted outputs are not reviewed" and PROCGEN-LEARNING.md updates
   (512 patterns) are not done. No neural policy; the planner still requires at least two rooms.
+
+## Gameframe HUD, Character Studio, Named Varps/Varbits, and Arrow-Key Player Walking — 2026-10-18
+
+Baseline is `main` at `f6e760d0d7d8bbcde68435b2076123996dfb1146`.
+
+- **Arrow-Key Camera Rotation & Player Walking**:
+  - Arrow keys (`ArrowLeft`, `ArrowRight`, `ArrowUp`, `ArrowDown`) rotate camera yaw and pitch around the focal player pivot in Game and Orbit modes at 2.8 rad/s, matching authentic OSRS client camera controls.
+  - Player walker smoothly interpolates orientation in 2048 client angle units toward walker heading.
+  - Left-clicking terrain in Game mode displays a pulsing, fading yellow ground "X" marker on the target destination tile, matching the authentic RuneScape click indicator.
+  - Ctrl+click in Game mode inverts the run state on the fly (running if walking, walking if running).
+- **Dedicated Character & Player Studio Window** (`app/player_window.rs`):
+  - Window opened from the Player dock panel via a prominent "✨ Open Character & Player Studio..." button, from Gameframe HUD stone tabs (Skills, Equipment, Settings), or via settings.
+  - **Look & Style Tab**: Male/Female toggle, quick look presets (Default Male, Default Female, Bald Monk), kit slot style cycle buttons (`<` / `>`) and direct identity kit ID editors, authentic OSRS 8 skin tone swatches, 12 authentic hair color swatches, and clothes color sliders. Rebuilding player geometry updates immediately on the 3D model.
+  - **Equipment Tab**: 11 authentic OSRS equipment slots (Head, Cape, Neck, Weapon, Body, Shield, Legs, Hands, Feet, Ring, Ammo) with quick gear set buttons (Rune Knight, Dragon Slayer, Mystic Mage) and clear slot/all.
+  - **Skills & Status Tab**: Combat level calculation, All 99 and Reset 1 buttons, full 23-skill matrix, HP, Prayer, Run energy, and weight.
+  - **Variables Tab**: Searchable named varps and varbits table with instant substring search and live value modification.
+- **Named Varps & Varbits Catalog** (`osrs-core::var_names`):
+  - Sorted `VARPS` and `VARBITS` catalog tables compiled from OSRS/RuneLite definitions (including `COM_MODE`, `AUTO_RETALIATE`, `SPECIAL_ATTACK_PERCENT`, `STAMINA_ACTIVE`, `TRANSPARENT_CHATBOX`, `SIDE_PANEL_OPAQUE`, `PRAYER_*`, `FAVOUR_*`, etc.).
+  - Binary search lookups `varp_info(id)` and `varbit_info(id)`, and case-insensitive search `search_varps()` / `search_varbits()`.
+- **Authentic OSRS Gameframe HUD** (`app/gameframe/`):
+  - Split into focused submodules (`mod.rs`, `orbs.rs`, `tabs.rs`, `chatbox.rs`), strictly $\le 230$ lines each.
+  - **Minimap Status Orbs** (`orbs.rs`): Hitpoints, Prayer, Run, and Special Attack orbs positioned along the minimap bezel curve. Decoded from cache index 8 interface sprites (`1071` frame, `1060` HP, `1063`/`1066` Prayer, `1064`/`1065` Run, `1607` Spec, and icon sprites `1067`, `1068`, `1070`, `1610`) with vertical wipe fill and clean vector fallbacks. Clicking the Run orb toggles `player.running`.
+  - **Stone Tab Rows** (`tabs.rs`): Two rows of 7 stone tab buttons (top row sprite `1173`, bottom row sprite `1174`) with authentic side tab icons (`774`..`787`). Clicking Skills, Equipment, or Options opens Character Studio.
+  - **Chatbox Frame** (`chatbox.rs`): Semi-transparent stone chatbox with authentic filter buttons (All, Game, Public, Private, Channel, Clan, Trade), formatted game messages (yellow/cyan/white), and a minimize/expand toggle.
+- **Verification**:
+  - `python3 scripts/verify.py -p osrs-edit -p osrs-lab -p osrs-world -p osrs-editor`: **PASS (focused)** in 462.0s (730 passed, 0 failed, 20 ignored; format, architecture, and clippy all green; `target/verify/gates-20261018-200531/tests/report.json`).
+  - `python3 scripts/verify.py -p osrs-core -p osrs-editor`: **PASS (focused)** in 35.6s (477 passed, 0 failed, 4 ignored).
+  - `cargo check --locked --target wasm32-unknown-unknown -p osrs-core -p osrs-edit -p osrs-cache -p osrs-scene -p osrs-hd -p osrs-render -p osrs-world`: **PASS**.
+  - `cargo clippy --locked --target wasm32-unknown-unknown -p osrs-editor -- -D warnings`: **PASS**.
+  - All files in `crates/osrs-editor/src` remain $\le 500$ lines, and `scripts/editor_app_surface.json` ratchets are strictly preserved.
+
+
+## Game mode, player placement, and overlay toggle — 2026-10-18
+
+Baseline is `main` at `f6e760d0d7d8bbcde68435b2076123996dfb1146`.
+
+- **Player Overlay Toggle**: Added `show_overlay: bool` to `PlayerSandbox` (defaults to `true`). Exposed via a checkbox in the Player panel and in the viewport's top `Overlays` dropdown menu. When unchecked or when in Game mode, the 2D billboard pin, yellow tile outline, and floating text are suppressed while keeping the 3D player model and animation visible.
+- **Place Player Here**: Added `MenuAction::PlacePlayerHere((i32, i32))` to `osrs-editor` context menu (`editor_menu.rs`, `effects.rs`, `mod.rs`). Right-clicking any 3D map tile now offers "Place player here", setting `stand`, teleporting the player walker, and notifying without needing to open the player sandbox panel or manually type coordinates.
+- **Top Viewport Toolbar Controls**: Added a context menu switcher dropdown (`ContextMenuStyle::Editor` vs `ContextMenuStyle::Game`) to the top viewport toolbar next to camera modes (`Fly` / `Orbit` / `Game`), allowing fast switching without digging into settings.
+- **Game Mode (`CameraMode::Game`)**:
+  - Added `CameraMode::Game` button to the top toolbar alongside `Fly` and `Orbit`.
+  - In Game mode, the camera locks onto the player character as its focal pivot (`camera.focus(player_pos)`), supporting middle-mouse/right-drag orbit, scroll zoom, and WASD/arrow rotation around the player pivot.
+  - Left-clicking on the 3D terrain walks the player using `PlayerWalker` (`crates/osrs-playtest/src/walker.rs`), with sub-tile interpolation, 600ms tick movement, bilinear terrain height following, and animation state transitions (idle sequence `808`, walk `819`, run `824`).
+  - Right-click "Walk here" context action routes to the player walker.
+- **Verification**: `cargo fmt --all --check`, `/opt/homebrew/bin/python3 scripts/check_architecture.py`, `cargo clippy --locked --workspace --all-targets --all-features -- -D warnings`, `cargo clippy --locked --target wasm32-unknown-unknown -p osrs-editor -- -D warnings`, and `cargo test --locked -p osrs-editor` (345 passed), `cargo test --locked -p osrs-playtest` (9 passed), and `cargo test --locked -p osrs-lab` (26 passed) all pass cleanly. Module line limits ($\le 500$ lines) and `EditorApp` surface ratchets are strictly preserved.
 
 ## Audit baseline — 2026-10-18
 

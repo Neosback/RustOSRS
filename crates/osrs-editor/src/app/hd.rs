@@ -77,7 +77,7 @@ impl EditorApp {
         // The focal point: the orbit pivot, or the camera itself when flying.
         let origin = self.renderer.render_origin();
         let (x, z) = match self.interaction.camera().mode {
-            CameraMode::Orbit => {
+            CameraMode::Orbit | CameraMode::Game => {
                 let pivot = self.interaction.camera().pivot();
                 (pivot[0], pivot[2])
             }

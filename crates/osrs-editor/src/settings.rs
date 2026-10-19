@@ -193,6 +193,9 @@ pub struct Settings {
     /// The minimap assembly (map, compass, globe) in the viewport's corner.
     pub show_minimap: bool,
     pub minimap_size: MinimapSize,
+    /// Authentic OSRS gameframe HUD (orbs, stone tabs, chatbox) in Game mode or viewport.
+    #[serde(default = "default_true")]
+    pub show_gameframe: bool,
     /// Play object animations (off shows every animated object in its rest pose).
     pub animate_objects: bool,
     /// The in-game style action text next to the cursor (RuneLite's mouse tooltips).
@@ -308,6 +311,7 @@ impl Default for Settings {
             stats_overlay: true,
             show_minimap: true,
             minimap_size: MinimapSize::Medium,
+            show_gameframe: true,
             animate_objects: true,
             mouse_tooltips: true,
             hover_tile: true,
@@ -470,6 +474,10 @@ impl Settings {
         fs::write(&temporary, text)?;
         fs::rename(&temporary, path)
     }
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 #[cfg(test)]

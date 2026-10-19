@@ -194,6 +194,11 @@ impl EditorApp {
                                         crate::camera::CameraMode::Orbit,
                                         "Orbit",
                                     );
+                                    ui.selectable_value(
+                                        &mut camera_mode,
+                                        crate::camera::CameraMode::Game,
+                                        "Game",
+                                    );
                                     self.interaction.set_camera_mode(camera_mode);
                                     self.interaction.switch_plane(view_plane);
                                 });

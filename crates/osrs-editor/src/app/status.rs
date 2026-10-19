@@ -27,6 +27,13 @@ const ORBIT_HINTS: &[(&str, &str)] = &[
     ("F", "focus"),
     ("T", "teleport"),
 ];
+const GAME_HINTS: &[(&str, &str)] = &[
+    ("Click", "walk"),
+    ("Right drag", "orbit"),
+    ("Scroll", "zoom"),
+    ("Right click", "menu"),
+    ("WASD / Arrows", "turn"),
+];
 
 impl EditorApp {
     pub(super) fn status_bar(&mut self, ui: &mut egui::Ui) {
@@ -49,6 +56,7 @@ impl EditorApp {
                 for (key, action) in match self.interaction.camera().mode {
                     crate::camera::CameraMode::Fly => FLY_HINTS,
                     crate::camera::CameraMode::Orbit => ORBIT_HINTS,
+                    crate::camera::CameraMode::Game => GAME_HINTS,
                 } {
                     if wide || *key == "Click" {
                         crate::theme::key_hint(ui, key, action);

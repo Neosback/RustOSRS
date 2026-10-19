@@ -157,7 +157,10 @@ fn settle(app: &mut EditorApp, result: Result<EditExecution<()>, String>) {
 pub(in crate::app) fn panel(app: &mut EditorApp, ui: &mut egui::Ui) {
     let origin = app.renderer.render_origin();
     let camera = app.interaction.camera();
-    let pivot = if camera.mode == crate::camera::CameraMode::Orbit {
+    let pivot = if matches!(
+        camera.mode,
+        crate::camera::CameraMode::Orbit | crate::camera::CameraMode::Game
+    ) {
         camera.pivot()
     } else {
         [camera.x, camera.y, camera.z]

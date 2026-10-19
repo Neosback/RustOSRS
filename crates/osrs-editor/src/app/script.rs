@@ -280,6 +280,7 @@ impl EditorApp {
                 let mode = match words.next() {
                     Some("fly") => crate::camera::CameraMode::Fly,
                     Some("orbit") => crate::camera::CameraMode::Orbit,
+                    Some("game") => crate::camera::CameraMode::Game,
                     other => return Err(format!("unknown camera {other:?}")),
                 };
                 self.interaction.set_camera_mode(mode);

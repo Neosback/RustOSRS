@@ -163,12 +163,16 @@ impl EditorApp {
                 .on_hover_text("Above 100% renders more pixels than the window has and smooths edges; below saves GPU time");
             }
             Row::CameraMode => {
-                let mut at = usize::from(self.interaction.camera().mode == CameraMode::Orbit);
-                if crate::theme::segmented(ui, "camera_mode", &mut at, &["Fly", "Orbit"]) {
-                    let mode = if at == 0 {
-                        CameraMode::Fly
-                    } else {
-                        CameraMode::Orbit
+                let mut at = match self.interaction.camera().mode {
+                    CameraMode::Fly => 0,
+                    CameraMode::Orbit => 1,
+                    CameraMode::Game => 2,
+                };
+                if crate::theme::segmented(ui, "camera_mode", &mut at, &["Fly", "Orbit", "Game"]) {
+                    let mode = match at {
+                        0 => CameraMode::Fly,
+                        1 => CameraMode::Orbit,
+                        _ => CameraMode::Game,
                     };
                     self.interaction.set_camera_mode(mode);
                 }
