@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Report semantic-authority hotspots without compiling the workspace.
 
-This is an inventory tool, not an acceptance gate. It makes transitional edit/history ownership
-visible to contributors and coding agents before CP2 turns stable findings into no-growth guards.
+The default mode is an inventory report. ``--check-gateway`` is deliberately narrower: it enforces
+one already-established invariant that semantic checkpoint lifecycle APIs stay inside
+``EditorSession`` internals or the application ``EditRuntime`` gateway.
 """
 from __future__ import annotations
 
@@ -38,6 +39,9 @@ AUTHORITY_WRITE_TOKENS = (
     ".unload_region(",
 )
 
+GATEWAY_ALLOWED_FILE = "crates/osrs-editor/src/app/edit_runtime.rs"
+SESSION_PREFIX = "crates/osrs-editor/src/session/"
+
 
 @dataclass(frozen=True, order=True)
 class Hit:
@@ -69,6 +73,17 @@ def scan(root: Path = ROOT) -> list[Hit]:
     return sorted(hits)
 
 
+def gateway_violations(hits: Iterable[Hit]) -> list[Hit]:
+    """Return checkpoint-lifecycle uses outside the session/gateway ownership boundary."""
+    return [
+        hit
+        for hit in hits
+        if hit.category == "checkpoint-lifecycle"
+        and hit.path != GATEWAY_ALLOWED_FILE
+        and not hit.path.startswith(SESSION_PREFIX)
+    ]
+
+
 def print_report(hits: list[Hit], category: str | None = None) -> None:
     selected = [hit for hit in hits if category is None or hit.category == category]
     current: str | None = None
@@ -92,12 +107,27 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("checkpoint-lifecycle", "legacy-history", "lifecycle-write"),
         help="show only one hotspot category",
     )
+    parser.add_argument(
+        "--check-gateway",
+        action="store_true",
+        help="fail if checkpoint lifecycle APIs are used outside EditorSession/EditRuntime",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    print_report(scan(), args.category)
+    hits = scan()
+    if args.check_gateway:
+        violations = gateway_violations(hits)
+        if violations:
+            print("Semantic checkpoint lifecycle escaped the EditRuntime gateway:")
+            for hit in violations:
+                print(f"{hit.path}:{hit.line}: {hit.text}")
+            return 1
+        print("semantic checkpoint gateway: OK")
+        return 0
+    print_report(hits, args.category)
     return 0
 
 
