@@ -1,6 +1,8 @@
 """Target-free policy inference; the host evaluates/replays actions separately."""
 import argparse
 import json
+import random
+import subprocess
 from pathlib import Path
 from client import LabClient
 from splits import split_for
@@ -8,6 +10,8 @@ from .codec import ACTION, SCHEMAS, TOOLS, TOOL, allowed, decode
 from .context import encode_context
 from .data import digest, emit, write
 from .fit import resolve_bundle
+from .geometry import signature,similarity
+from .baseline import generate as procedural
 
 
 def load_model(bundle):
@@ -111,7 +115,17 @@ def evaluate(args):
         raise ValueError('Held-out evaluation has a training-group overlap')
     out=Path(args.out)
     out.mkdir(parents=True,exist_ok=True)
+    baseline=data.get('baseline')
+    if baseline and (digest(root/baseline['kit'])!=baseline['kit_sha256'] or digest(args.binary)!=baseline['binary_sha256']):
+        raise ValueError('The frozen procedural kit or Lab binary changed; prepare a new dataset for this comparison')
+    candidate_budget=baseline['candidates'] if baseline else 8
+    references=[]
+    for item in data['tasks']:
+        if item['split']=='train':
+            references.append((item['id'],signature(json.loads((root/'tasks'/f"{item['id']}.task.json").read_text())['target'])))
     results=[]
+    blind=[]
+    method_key={}
     for item in cases[:args.episodes]:
         if args.cancel_file and Path(args.cancel_file).exists():
             break
@@ -120,19 +134,59 @@ def evaluate(args):
             if not task.exists():
                 continue
             request=argparse.Namespace(bundle=args.bundle,task=str(task),goal=str(root/'tasks'/f"{item['id']}.goal.json"),
-                                       binary=args.binary,steps=args.steps,seed=7+len(results),temperature=0.6)
-            result=run(model,bundle,request)
-            write(out/f"{item['id']}-{kind}.actions.json",result['actions'])
-            results.append({'task':item['id'],'group':item['group'],'kind':kind,'score':result['target_score'],
-                            'exact':result['target_exact'],'usable':result['verdict']['usable'],
-                            'steps':len(result['actions']),'replay_verified':result['replay_verified']})
-            emit(stage='evaluate',episodes=len(results),message=f"Held-out {kind}: {item['id']}")
+                                       binary=args.binary,steps=args.steps,seed=7+len(results)*candidate_budget,temperature=0.6,cancel_file=args.cancel_file)
+            policy=[]
+            comparison=[]
+            failures=[]
+            for attempt in range(candidate_budget):
+                if args.cancel_file and Path(args.cancel_file).exists(): break
+                request.seed=7+len(results)*candidate_budget+attempt
+                try:
+                    candidate=run(model,bundle,request)
+                    policy.append(candidate)
+                    write(out/f"{item['id']}-{kind}-{attempt}.actions.json",candidate['actions'])
+                except (ValueError,RuntimeError) as error:
+                    failures.append({'method':'policy','seed':request.seed,'reason':str(error)})
+                if baseline:
+                    try: comparison.append(procedural(request,root/baseline['kit'],kind,request.seed))
+                    except (ValueError,RuntimeError,subprocess.CalledProcessError) as error:
+                        failures.append({'method':'procedural','seed':request.seed,'reason':str(error)})
+            # Ranking uses validity and circulation only. The host's target score never selects outputs.
+            rank=lambda r:(r['verdict']['usable'],r['verdict']['rooms_reachable'],-r['verdict']['blocked_doorways'])
+            chosen=max(policy,key=rank) if policy else None
+            selected_baseline=max(comparison,key=rank) if comparison else None
+            near=None
+            if chosen and references:
+                near=max(({'source':ident,'object_jaccard':similarity(signature(chosen['snapshot']),sig)} for ident,sig in references),key=lambda r:r['object_jaccard'])
+            diversity=[1-similarity(signature(a['snapshot']),signature(b['snapshot'])) for i,a in enumerate(policy) for b in policy[i+1:]]
+            record={'task':item['id'],'group':item['group'],'kind':kind,'candidate_budget':candidate_budget,
+                    'score':chosen['target_score'] if chosen else None,'exact':chosen['target_exact'] if chosen else False,
+                    'usable':bool(chosen and chosen['verdict']['usable']),'valid_candidates':sum(r['verdict']['usable'] for r in policy),
+                    'steps':len(chosen['actions']) if chosen else 0,'replay_verified':bool(chosen and chosen['replay_verified']),
+                    'nearest_training_example':near,'mean_pairwise_object_distance':sum(diversity)/len(diversity) if diversity else None,
+                    'procedural_usable':bool(selected_baseline and selected_baseline['verdict']['usable']) if baseline else None,
+                    'procedural_score':selected_baseline['target_score'] if selected_baseline else None,'failures':failures}
+            results.append(record)
+            # Blind packets contain snapshots and requirements; the method key is a separate file.
+            pair=[('policy',chosen),('procedural',selected_baseline)]
+            random.Random(request.seed).shuffle(pair)
+            for label,candidate in pair:
+                if candidate:
+                    identifier=f'comparison-{len(blind):04d}'
+                    blind.append({'id':identifier,'task':item['id'],'kind':kind,'goal':json.loads(Path(request.goal).read_text()),'snapshot':candidate['snapshot']})
+                    method_key[identifier]=label
+            emit(stage='evaluate',episodes=len(results),message=f"Held-out {kind}: {item['id']}; equal candidate budgets")
     count=len(results)
+    measured=[r['score'] for r in results if r['score'] is not None]
     report={'format':'rustosrs-policy-evaluation','version':1,'status':'experimental','split':args.split,
             'episodes':count,'groups':len({r['group'] for r in results}), 'policy_target_visible':False,
             'exact_rate':sum(r['exact'] for r in results)/count if count else None,
             'usable_rate':sum(r['usable'] for r in results)/count if count else None,
-            'mean_target_score':sum(r['score'] for r in results)/count if count else None,
-            'baseline_comparison':None,'human_preference':None,'recommended':False,'results':results}
+            'mean_target_score':sum(measured)/len(measured) if measured else None,
+            'baseline_comparison':{'candidate_budget':candidate_budget,'procedural_usable_rate':sum(bool(r['procedural_usable']) for r in results)/count if count else None,'frozen':baseline} if baseline else None,
+            'insufficient_evaluation_data':len({r['group'] for r in results})<10,
+            'human_preference':None,'recommended':False,'results':results}
     write(out/'evaluation.json',report)
-    emit(stage='ready',report=str(out/'evaluation.json'),message='Held-out evaluation saved; baseline and human review remain separate')
+    write(out/'blind-review.json',blind)
+    write(out/'blind-method-key.json',method_key)
+    emit(stage='ready',report=str(out/'evaluation.json'),message='Held-out comparison saved; blind human review is still unmeasured')
