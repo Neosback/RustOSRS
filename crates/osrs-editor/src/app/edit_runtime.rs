@@ -155,7 +155,11 @@ impl EditRuntime {
     /// Test fixture convenience that still exercises the production replay gateway.
     #[cfg(test)]
     pub(super) fn undo(&mut self) -> Result<(), EditExecutionError<Infallible>> {
-        let _ = self.replay(EditReplayDirection::Undo, |_, _| Ok::<_, Infallible>(()))?;
+        let _ = self.replay(
+            EditReplayDirection::Undo,
+            EditFootprint::default(),
+            |_| Ok::<_, Infallible>(()),
+        )?;
         Ok(())
     }
 
@@ -270,13 +274,15 @@ impl EditRuntime {
 
     /// Replay one semantic Undo/Redo as an application transaction.
     ///
-    /// The exact replay descriptor comes from `EditorSession`'s authoritative history before the
-    /// history transition begins. The application receives only that immutable descriptor plus the
-    /// authoritative post-replay `MapDocument`; raw history patches never escape the session.
+    /// The authoritative replay footprint is derived from `EditorSession`'s exact next history
+    /// patch. `_legacy_footprint` is a temporary compatibility input for existing callers and is
+    /// intentionally ignored. Remove it when R3B migrates replay projection to the semantic
+    /// descriptor directly.
     pub(super) fn replay<T, E>(
         &mut self,
         direction: EditReplayDirection,
-        project: impl FnOnce(&MapDocument, &EditReplayDescriptor) -> Result<T, E>,
+        _legacy_footprint: EditFootprint,
+        project: impl FnOnce(&MapDocument) -> Result<T, E>,
     ) -> Result<EditExecution<T>, EditExecutionError<E>> {
         let before = self.revision();
         let descriptor = match direction {
@@ -297,7 +303,7 @@ impl EditRuntime {
             EditFootprint::default()
         };
         let result = (|| {
-            let Some(descriptor) = descriptor else {
+            let Some(_descriptor) = descriptor else {
                 return Ok(EditExecution::NoChange);
             };
             let replay = match direction {
@@ -309,7 +315,7 @@ impl EditRuntime {
                 return Ok(EditExecution::NoChange);
             };
 
-            let projection = project(self.session.document(), &descriptor);
+            let projection = project(self.session.document());
             self.finish_execution(
                 commit.revision,
                 commit.impact,
