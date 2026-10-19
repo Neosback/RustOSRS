@@ -14,110 +14,56 @@ use crate::paint::Brush;
 use eframe::egui;
 use osrs_world::{LocEdit, LocSpec};
 
-/// Transitional tool-specific metadata retained only until CP2I removes the old replay parity
-/// oracle and its marker-producing call sites. These values are no longer stored chronologically or
-/// consulted by production undo/redo.
-#[derive(Debug, Clone)]
-pub(super) struct SemanticPaintHistory {
-    pub(super) brush: Brush,
-    pub(super) keys: Vec<TileKey>,
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct SemanticHeightHistory {
-    pub(super) keys: Vec<TileKey>,
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct SemanticPathHistory {
-    pub(super) keys: Vec<TileKey>,
-    pub(super) include_height: bool,
-}
-
-/// Transitional test/parity marker retained until CP2I.
+/// Zero-state compatibility marker for commit paths that still call the retired application-history
+/// API. It carries no routing metadata, is never stored, and is never consulted by undo/redo.
 ///
-/// Production chronology is exclusively `EditorSession::history`; `EditStep` is never stored by
-/// the application after CP2H.
-#[derive(Debug, Clone, Default)]
-pub(in crate::app) struct EditStep {
-    pub(super) semantic_paint: Option<SemanticPaintHistory>,
-    pub(super) semantic_height: Option<SemanticHeightHistory>,
-    pub(super) semantic_object: Option<ObjectHistoryRoute>,
-    pub(super) semantic_path: Option<SemanticPathHistory>,
-    pub(super) semantic_scenario: bool,
-    pub(super) semantic_appearance: bool,
-}
+/// CP2J removes the remaining producer calls together with the architecture ratchet that prevents a
+/// second application chronology from being reintroduced.
+#[derive(Debug, Clone, Copy, Default)]
+pub(in crate::app) struct EditStep;
 
 impl EditStep {
     pub(in crate::app) fn appearance() -> Self {
-        Self {
-            semantic_appearance: true,
-            ..Default::default()
-        }
+        Self
     }
+
     pub(in crate::app) fn scenario() -> Self {
-        Self {
-            semantic_scenario: true,
-            ..Default::default()
-        }
-    }
-    pub(super) fn semantic_paint(brush: Brush, keys: Vec<TileKey>) -> Self {
-        Self {
-            semantic_paint: Some(SemanticPaintHistory { brush, keys }),
-            ..Self::default()
-        }
+        Self
     }
 
-    pub(super) fn semantic_height(keys: Vec<TileKey>) -> Self {
-        Self {
-            semantic_height: Some(SemanticHeightHistory { keys }),
-            ..Self::default()
-        }
+    pub(super) fn semantic_paint(_brush: Brush, _keys: Vec<TileKey>) -> Self {
+        Self
     }
 
-    pub(in crate::app) fn semantic_object(removed: Vec<LocSpec>, added: Vec<LocSpec>) -> Self {
-        Self {
-            semantic_object: Some(ObjectHistoryRoute::new(removed, added)),
-            ..Self::default()
-        }
+    pub(super) fn semantic_height(_keys: Vec<TileKey>) -> Self {
+        Self
     }
 
-    /// One semantic transaction that changed terrain and/or objects together (a prefab or a
-    /// generated building). Retained only as the CP2I parity oracle.
+    pub(in crate::app) fn semantic_object(_removed: Vec<LocSpec>, _added: Vec<LocSpec>) -> Self {
+        Self
+    }
+
     pub(super) fn semantic_composite(
-        keys: Vec<TileKey>,
-        include_height: bool,
-        objects: Option<ObjectHistoryRoute>,
+        _keys: Vec<TileKey>,
+        _include_height: bool,
+        _objects: Option<ObjectHistoryRoute>,
     ) -> Self {
-        Self {
-            semantic_path: (!keys.is_empty()).then_some(SemanticPathHistory {
-                keys,
-                include_height,
-            }),
-            semantic_object: objects,
-            ..Self::default()
-        }
+        Self
     }
 
-    pub(super) fn semantic_path(keys: Vec<TileKey>, include_height: bool) -> Self {
-        Self {
-            semantic_path: Some(SemanticPathHistory {
-                keys,
-                include_height,
-            }),
-            ..Self::default()
-        }
+    pub(super) fn semantic_path(_keys: Vec<TileKey>, _include_height: bool) -> Self {
+        Self
     }
 }
 
 impl super::TerrainController {
-    /// Compatibility sink removed in CP2I. Scenario chronology is already recorded by
+    /// Compatibility sink for scenario commit paths. Scenario chronology is already recorded by
     /// `EditorSession`; this method deliberately stores nothing.
     pub(in crate::app) fn record_scenario(&mut self) {}
 }
 
 impl EditorApp {
-    /// Compatibility sink for marker-producing commit paths that CP2I removes. The semantic
+    /// Compatibility sink for commit paths that still construct `EditStep`. The semantic
     /// transaction is already present in `EditorSession::history`; no second chronology is kept.
     pub(in crate::app) fn push_step(&mut self, _step: EditStep) {}
 

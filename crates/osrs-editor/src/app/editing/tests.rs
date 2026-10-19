@@ -6,7 +6,6 @@ use crate::session::EditorSession;
 use osrs_core::ids::{FloorOverlayId, FloorUnderlayId};
 use osrs_edit::{MapDocument, TerrainOverlay, TerrainTile};
 use osrs_edit::{MapPosition, OverlayRotation, OverlayShape};
-use osrs_world::LocSpec;
 
 fn semantic_terrain(values: TileValues) -> Option<TerrainTile> {
     let underlay = (values.underlay != 0).then(|| FloorUnderlayId::new(u32::from(values.underlay)));
@@ -365,70 +364,6 @@ fn new_semantic_paint_commit_invalidates_semantic_redo() {
             .map(|overlay| overlay.id),
         Some(FloorOverlayId::new(2))
     );
-}
-
-#[test]
-fn semantic_paint_history_marker_carries_no_legacy_tile_authority() {
-    let brush = Brush::default();
-    let keys = vec![(0, 3200, 3200)];
-    let step = EditStep::semantic_paint(brush.clone(), keys.clone());
-
-    let route = step
-        .semantic_paint
-        .as_ref()
-        .unwrap_or_else(|| unreachable!("Paint marker should be present"));
-    assert_eq!(&route.brush, &brush);
-    assert_eq!(&route.keys, &keys);
-    assert!(step.semantic_height.is_none());
-    assert!(step.semantic_object.is_none());
-    assert!(step.semantic_path.is_none());
-    assert!(!step.semantic_scenario);
-    assert!(!step.semantic_appearance);
-}
-
-#[test]
-fn semantic_height_history_marker_carries_no_legacy_tile_authority() {
-    let keys = vec![(0, 3200, 3200)];
-    let step = EditStep::semantic_height(keys.clone());
-
-    let route = step
-        .semantic_height
-        .as_ref()
-        .unwrap_or_else(|| unreachable!("Height marker should be present"));
-    assert_eq!(&route.keys, &keys);
-    assert!(step.semantic_paint.is_none());
-    assert!(step.semantic_object.is_none());
-    assert!(step.semantic_path.is_none());
-    assert!(!step.semantic_scenario);
-    assert!(!step.semantic_appearance);
-}
-
-#[test]
-fn semantic_object_history_marker_carries_no_legacy_object_authority() {
-    let removed = LocSpec {
-        object_id: 100,
-        tile: (3200, 3200),
-        plane: 0,
-        loc_type: 10,
-        orientation: 1,
-    };
-    let added = LocSpec {
-        tile: (3201, 3200),
-        ..removed
-    };
-    let step = EditStep::semantic_object(vec![removed], vec![added]);
-
-    assert!(step.semantic_paint.is_none());
-    assert!(step.semantic_height.is_none());
-    assert!(step.semantic_path.is_none());
-    assert!(!step.semantic_scenario);
-    assert!(!step.semantic_appearance);
-    let object = step
-        .semantic_object
-        .as_ref()
-        .unwrap_or_else(|| unreachable!("Object marker should be present"));
-    assert_eq!(object.removed(), &[removed]);
-    assert_eq!(object.added(), &[added]);
 }
 
 #[test]
