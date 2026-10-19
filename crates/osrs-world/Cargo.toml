@@ -17,6 +17,7 @@ png = "0.18"
 web-time.workspace = true
 
 [dev-dependencies]
+osrs-lab = { path = "../osrs-lab" }
 serde_json = "1.0.152"
 
 [lints]
