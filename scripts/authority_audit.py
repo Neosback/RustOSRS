@@ -12,7 +12,6 @@ without compiling Rust:
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -47,13 +46,6 @@ AUTHORITY_WRITE_TOKENS = (
 
 GATEWAY_ALLOWED_FILE = "crates/osrs-editor/src/app/edit_runtime.rs"
 SESSION_PREFIX = "crates/osrs-editor/src/session/"
-
-# CP2 eliminated the legacy EditStep payload surface. Keep the former scaffold paths explicit with
-# a zero ceiling so any reintroduction there, or in any new file, fails the cheap source-level gate.
-LEGACY_HISTORY_BASELINE = {
-    "crates/osrs-editor/src/app/editing/history.rs": 0,
-    "crates/osrs-editor/src/app/editing/tests.rs": 0,
-}
 
 
 @dataclass(frozen=True, order=True)
@@ -98,17 +90,8 @@ def gateway_violations(hits: Iterable[Hit]) -> list[Hit]:
 
 
 def legacy_history_violations(hits: Iterable[Hit]) -> list[Hit]:
-    """Return any legacy-history usage beyond the zero CP2 baseline."""
-    legacy = [hit for hit in hits if hit.category == "legacy-history"]
-    violations = [hit for hit in legacy if hit.path not in LEGACY_HISTORY_BASELINE]
-    counts = Counter(hit.path for hit in legacy)
-    for path, ceiling in LEGACY_HISTORY_BASELINE.items():
-        excess = counts[path] - ceiling
-        if excess <= 0:
-            continue
-        path_hits = [hit for hit in legacy if hit.path == path]
-        violations.extend(path_hits[-excess:])
-    return sorted(violations)
+    """Return every legacy-history hit; CP2 permits no legacy payload authority anywhere."""
+    return sorted(hit for hit in hits if hit.category == "legacy-history")
 
 
 def print_report(hits: list[Hit], category: str | None = None) -> None:
