@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-sys.dont_writebytecode = True
+sys.dont_write_bytecode = True
 from run_tests import ROOT, source_identity, verification_lock
 
 PYTHON_CHECKS = [
