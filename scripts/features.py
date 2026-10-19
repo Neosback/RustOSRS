@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Search the canonical RustOSRS editor feature registry.
 
-This command is intentionally dependency-free and read-only. It helps contributors and
-coding agents find an existing feature owner before introducing another implementation.
+This command is intentionally dependency-free and read-only. It helps contributors and coding
+agents find an existing feature owner before introducing another implementation.
 """
 
 from __future__ import annotations
@@ -47,9 +47,11 @@ def score_feature(name: str, feature: dict[str, Any], query: str) -> int:
     if not needle:
         return 0
 
-    folded_name = name.casefold()
-    if needle == folded_name:
+    exact_terms = [name, feature["id"], *feature["aliases"]]
+    if any(needle == term.casefold() for term in exact_terms):
         return 1000
+
+    folded_name = name.casefold()
     if folded_name.startswith(needle):
         return 800
 
@@ -79,6 +81,17 @@ def find_features(
     )
 
 
+def exact_feature(
+    features: dict[str, dict[str, Any]], query: str
+) -> tuple[str, dict[str, Any]] | None:
+    needle = query.strip().casefold()
+    for name, feature in features.items():
+        terms = [name, feature["id"], *feature["aliases"]]
+        if any(needle == term.casefold() for term in terms):
+            return name, feature
+    return None
+
+
 def describe_reference(reference: Any) -> str | None:
     if not isinstance(reference, dict):
         return None
@@ -89,20 +102,21 @@ def describe_reference(reference: Any) -> str | None:
     return None
 
 
+def describe_owner(feature: dict[str, Any]) -> str:
+    owner = feature["owner"]
+    return f"{owner['crate']}::{owner['area']}"
+
+
 def print_feature(name: str, feature: dict[str, Any]) -> None:
     kind = feature.get("kind", "tool")
     mutates = bool(feature.get("mutates_document"))
     print(name)
+    print(f"  id: {feature['id']}")
+    print(f"  status: {feature['status']}")
+    print(f"  owner: {describe_owner(feature)}")
     print(f"  kind: {kind}")
     print(f"  mutates document: {'yes' if mutates else 'no'}")
-
-    aliases = feature.get("aliases")
-    if isinstance(aliases, list) and all(isinstance(alias, str) for alias in aliases):
-        print(f"  aliases: {', '.join(aliases)}")
-
-    owner = feature.get("owner")
-    if isinstance(owner, str):
-        print(f"  owner: {owner}")
+    print(f"  aliases: {', '.join(feature['aliases'])}")
 
     for role in REFERENCE_ORDER:
         if rendered := describe_reference(feature.get(role)):
@@ -114,7 +128,9 @@ def command_list(features: dict[str, dict[str, Any]]) -> int:
         feature = features[name]
         kind = feature.get("kind", "tool")
         mutation = "mutating" if feature.get("mutates_document") else "read-only"
-        print(f"{name}\t{kind}\t{mutation}")
+        print(
+            f"{feature['id']}\t{name}\t{feature['status']}\t{describe_owner(feature)}\t{kind}\t{mutation}"
+        )
     return 0
 
 
@@ -131,29 +147,21 @@ def command_find(features: dict[str, dict[str, Any]], query: str) -> int:
     return 0
 
 
-def command_show(features: dict[str, dict[str, Any]], name: str) -> int:
-    exact = next(
-        (
-            (feature_name, feature)
-            for feature_name, feature in features.items()
-            if feature_name.casefold() == name.casefold()
-        ),
-        None,
-    )
-    if exact is not None:
+def command_show(features: dict[str, dict[str, Any]], query: str) -> int:
+    if exact := exact_feature(features, query):
         print_feature(*exact)
         return 0
 
-    matches = find_features(features, name)
+    matches = find_features(features, query)
     if len(matches) == 1:
         print_feature(matches[0][0], matches[0][1])
         return 0
 
     if not matches:
-        print(f"No registered feature matches {name!r}.", file=sys.stderr)
+        print(f"No registered feature matches {query!r}.", file=sys.stderr)
     else:
         print(
-            f"{name!r} is ambiguous. Matches: "
+            f"{query!r} is ambiguous. Matches: "
             + ", ".join(match[0] for match in matches),
             file=sys.stderr,
         )
@@ -175,14 +183,14 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("list", help="list registered features")
 
     find_parser = subparsers.add_parser(
-        "find", help="search feature names, paths, symbols, aliases and metadata"
+        "find", help="search feature names, ids, aliases, paths, symbols and metadata"
     )
     find_parser.add_argument("query", nargs="+", help="concept to search for")
 
     show_parser = subparsers.add_parser(
-        "show", help="show one feature by name (or one unambiguous search match)"
+        "show", help="show one feature by exact name, id or alias (or one search match)"
     )
-    show_parser.add_argument("name", nargs="+", help="feature name")
+    show_parser.add_argument("name", nargs="+", help="feature name, id or alias")
     return parser
 
 
