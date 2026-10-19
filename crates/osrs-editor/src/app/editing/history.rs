@@ -9,8 +9,6 @@ mod routing;
 use super::{EditorApp, TileKey};
 use crate::app::object_tool::ObjectHistoryRoute;
 use crate::paint::Brush;
-#[cfg(test)]
-use crate::paint::TileValues;
 use eframe::egui;
 use osrs_world::{LocEdit, LocSpec};
 
@@ -48,17 +46,10 @@ pub(super) struct SemanticPathHistory {
 
 /// One chronological semantic editor-history marker.
 ///
-/// Product builds carry routing metadata only. The three `cfg(test)` legacy fields exist for one
-/// cleanup checkpoint so the existing contract tests can still prove semantic constructors never
-/// populate old before/after payloads; runtime undo/redo cannot access or consume those fields.
+/// This type stores routing metadata only. Authoritative before/after state remains in
+/// `EditorSession::history`; `EditStep` never carries duplicate tile or object payload authority.
 #[derive(Debug, Clone, Default)]
 pub(in crate::app) struct EditStep {
-    #[cfg(test)]
-    pub(super) changes: Vec<(TileKey, TileValues, TileValues)>,
-    #[cfg(test)]
-    pub(super) removed: Vec<LocSpec>,
-    #[cfg(test)]
-    pub(super) added: Vec<LocSpec>,
     pub(super) semantic_paint: Option<SemanticPaintHistory>,
     pub(super) semantic_height: Option<SemanticHeightHistory>,
     pub(super) semantic_object: Option<ObjectHistoryRoute>,
