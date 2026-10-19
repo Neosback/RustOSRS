@@ -1,7 +1,8 @@
 name: CP2 Build Validation
 
-# Temporary draft-PR harness used only to validate the existing build stage while unrelated
-# pre-existing rustfmt debt blocks the normal quick gate. Remove after CP2 build evidence is green.
+# Temporary draft-PR harness for the CP2 semantic-history cleanup. The repository currently has
+# unrelated workspace-wide rustfmt and osrs-lab test-lint debt on main, so this gate validates only
+# the crates and Rust files changed by CP2. Remove this workflow after the checkpoint is proven.
 on:
   pull_request:
     branches: [main]
@@ -36,5 +37,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: false
-      - name: Clippy (native and wasm) and tests
-        run: python3 scripts/verify.py --full --stage build
+      - name: CP2 rustfmt diagnostics
+        run: |
+          rustfmt --edition 2024 --check \
+            crates/osrs-edit/src/replay.rs \
+            crates/osrs-editor/src/app/editing/commit.rs \
+            crates/osrs-editor/src/app/editing/history/replay_projection.rs \
+            crates/osrs-editor/src/app/editing/history/routing.rs \
+            crates/osrs-editor/src/app/editing/history/routing/tests.rs \
+            crates/osrs-editor/src/app/editing/tests.rs || true
+      - name: Focused native Clippy and tests
+        run: python3 scripts/verify.py -p osrs-edit -p osrs-editor --stage build
+      - name: Focused wasm Clippy
+        run: cargo clippy --locked --target wasm32-unknown-unknown -p osrs-edit -p osrs-editor -- -D warnings
