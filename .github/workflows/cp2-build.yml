@@ -1,7 +1,7 @@
-name: CP2 Merge Prep
+name: CP2 Stopping Point Finalizer
 
-# One-shot merge-preparation harness. It fixes the final stale replay test caller and applies the
-# repository formatter, commits only those mechanical changes, and is deleted before merge.
+# One-shot documentation finalizer. It records the deliberate CP2 stopping point in the roadmap.
+# This workflow is deleted before merge.
 on:
   pull_request:
     branches: [main]
@@ -10,11 +10,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: cp2-merge-prep-${{ github.event.pull_request.number }}
+  group: cp2-stopping-point-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  format-and-fix:
+  finalize-roadmap:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
@@ -22,36 +22,64 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
-      - uses: actions-rust-lang/setup-rust-toolchain@v2
-        with:
-          cache: false
-      - name: Apply merge-prep fix and formatting
+      - name: Mark deliberate merge stopping point
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path("crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs")
+          path = Path("docs/plans/ARCHITECTURE-AI-FOUNDATION.md")
           text = path.read_text(encoding="utf-8")
-          old = """        .replay(\n            crate::app::edit_runtime::EditReplayDirection::Redo,\n            crate::app::edit_runtime::EditFootprint::default(),\n            |_| Ok::<_, ()>(()),\n        )\n"""
-          new = """        .replay(\n            crate::app::edit_runtime::EditReplayDirection::Redo,\n            |_| Ok::<_, ()>(()),\n        )\n"""
-          count = text.count(old)
-          if count not in (0, 1):
-              raise SystemExit(f"expected zero or one stale replay caller, found {count}")
-          if count == 1:
-              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replacements = {
+              "Status: active incremental refactor plan":
+                  "Status: deliberate merge stopping point after CP2 semantic authority cleanup; CP3+ deferred to future work",
+              "11. Merge only after the complete roadmap's merge-readiness checkpoint succeeds.":
+                  "11. For a deliberate stopping-point merge, integrate only after merge-readiness checks for the implemented scope succeed and deferred roadmap phases are recorded explicitly.",
+              "### CP2 - semantic authority and duplicate chronology cleanup - ACTIVE":
+                  "### CP2 - semantic authority and duplicate chronology cleanup - COMPLETE AT MERGE STOPPING POINT",
+              "#### CP2G / Replay R3B - wire semantic descriptor into active replay routing - NEXT":
+                  "#### CP2G / Replay R3B - wire semantic descriptor into active replay routing - COMPLETE",
+              "#### CP2H / Replay R4A - remove parallel chronological marker stacks":
+                  "#### CP2H / Replay R4A - remove parallel chronological marker stacks - COMPLETE",
+              "#### CP2I / Replay R4B - remove obsolete tool-specific replay projection code":
+                  "#### CP2I / Replay R4B - remove obsolete tool-specific replay projection code - COMPLETE",
+              "#### CP2J / Replay R5 - authority ratchets and architecture dashboard baseline":
+                  "#### CP2J / Replay R5 - authority ratchets and architecture dashboard baseline - COMPLETE",
+          }
+
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one roadmap marker {old!r}, found {count}")
+              text = text.replace(old, new, 1)
+
+          anchor = "Baseline main: `ff7a1be7020f6202987beaef2c792b569c8164da`\n"
+          note = """
+
+## Deliberate stopping-point decision - 2026-10-19
+
+This branch is being integrated into `main` after the CP2 semantic-authority, replay, chronology, authority-ratchet, and architecture-dashboard work reached a coherent boundary. CP3 through CP11 remain useful roadmap work, but they are explicitly deferred to future branches and are not blockers for this stopping-point merge.
+
+The merge-readiness requirement for this stop is the implemented scope: canonical authority checks, feature/architecture guards, semantic replay/history coverage, repository formatting, focused editor/edit validation, and normal repository CI on the final branch head. No unfinished CP3+ implementation is being partially merged under this decision.
+"""
+          if "## Deliberate stopping-point decision - 2026-10-19" not in text:
+              if text.count(anchor) != 1:
+                  raise SystemExit("could not locate baseline-main anchor for stopping-point note")
+              text = text.replace(anchor, anchor + note, 1)
+
+          path.write_text(text, encoding="utf-8")
           PY
-          cargo fmt --all
           git diff --check
-      - name: Commit mechanical merge prep
+      - name: Commit stopping-point roadmap
         shell: bash
         run: |
           if git diff --quiet; then
-            echo "No merge-prep changes needed."
+            echo "Roadmap already finalized."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "chore: format architecture merge checkpoint"
+          git add docs/plans/ARCHITECTURE-AI-FOUNDATION.md
+          git commit -m "docs: mark architecture foundation stopping point"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
