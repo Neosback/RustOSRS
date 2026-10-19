@@ -1,0 +1,40 @@
+name: CP2 Build Validation
+
+# Temporary draft-PR harness used only to validate the existing build stage while unrelated
+# pre-existing rustfmt debt blocks the normal quick gate. Remove after CP2 build evidence is green.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cp2-build-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: "10"
+  RUST_BACKTRACE: short
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
+jobs:
+  verify-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache: false
+          rustflags: ""
+      - name: Linux build dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -qq -y --no-install-recommends pkg-config libasound2-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+      - name: Clippy (native and wasm) and tests
+        run: python3 scripts/verify.py --full --stage build
