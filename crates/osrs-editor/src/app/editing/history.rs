@@ -8,7 +8,9 @@ mod routing;
 
 use super::{EditorApp, TileKey};
 use crate::app::object_tool::ObjectHistoryRoute;
-use crate::paint::{Brush, TileValues};
+use crate::paint::Brush;
+#[cfg(test)]
+use crate::paint::TileValues;
 use eframe::egui;
 use osrs_world::{LocEdit, LocSpec};
 
@@ -46,13 +48,16 @@ pub(super) struct SemanticPathHistory {
 
 /// One chronological semantic editor-history marker.
 ///
-/// Semantic tools use only the `semantic_*` routing metadata. `changes`, `removed`, and `added` are
-/// retained for one cleanup checkpoint solely so the existing no-legacy-authority tests continue to
-/// prove they are empty; runtime undo/redo no longer consumes them. CP2C2 removes these fields.
+/// Product builds carry routing metadata only. The three `cfg(test)` legacy fields exist for one
+/// cleanup checkpoint so the existing contract tests can still prove semantic constructors never
+/// populate old before/after payloads; runtime undo/redo cannot access or consume those fields.
 #[derive(Debug, Clone, Default)]
 pub(in crate::app) struct EditStep {
+    #[cfg(test)]
     pub(super) changes: Vec<(TileKey, TileValues, TileValues)>,
+    #[cfg(test)]
     pub(super) removed: Vec<LocSpec>,
+    #[cfg(test)]
     pub(super) added: Vec<LocSpec>,
     pub(super) semantic_paint: Option<SemanticPaintHistory>,
     pub(super) semantic_height: Option<SemanticHeightHistory>,
