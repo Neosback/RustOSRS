@@ -1,8 +1,8 @@
-//! Semantic editor history routing and worker projection.
+//! Semantic editor undo/redo projection.
 //!
 //! Paint, Height, Object, Path, Scenario, and Appearance actions keep authoritative before/after
-//! state in `EditorSession::history`. This module owns only chronological application markers and
-//! the transitional worker/render projection needed after semantic undo/redo.
+//! state and chronological ordering in `EditorSession::history`. This module owns only the
+//! transitional worker/render projection needed after semantic undo/redo.
 
 mod replay_projection;
 mod routing;
@@ -13,42 +13,30 @@ use crate::paint::Brush;
 use eframe::egui;
 use osrs_world::{LocEdit, LocSpec};
 
-/// Most global undo steps kept by the editor shell.
-const HISTORY_LIMIT: usize = 200;
-
-/// Global-history routing metadata for one semantic Paint transaction.
-///
-/// The authoritative before/after state stays in `EditorSession::history`; this stores only enough
-/// adapter information to project semantic undo/redo back into the still-transitional worker path.
+/// Transitional tool-specific metadata retained only until CP2I removes the old replay parity
+/// oracle and its marker-producing call sites. These values are no longer stored chronologically or
+/// consulted by production undo/redo.
 #[derive(Debug, Clone)]
 pub(super) struct SemanticPaintHistory {
     pub(super) brush: Brush,
     pub(super) keys: Vec<TileKey>,
 }
 
-/// Global-history routing metadata for one semantic Height transaction.
-///
-/// Heights themselves remain exclusively in `EditorSession::history`; the keys only tell the
-/// worker/render projection which tiles need to mirror the authoritative semantic state.
 #[derive(Debug, Clone)]
 pub(super) struct SemanticHeightHistory {
     pub(super) keys: Vec<TileKey>,
 }
 
-/// Global-history routing metadata for one semantic terrain-Path transaction.
-///
-/// Terrain and optional Height before/after state remain exclusively in `EditorSession::history`.
-/// The route only identifies touched worker tiles and whether Height participates in projection.
 #[derive(Debug, Clone)]
 pub(super) struct SemanticPathHistory {
     pub(super) keys: Vec<TileKey>,
     pub(super) include_height: bool,
 }
 
-/// One chronological semantic editor-history marker.
+/// Transitional test/parity marker retained until CP2I.
 ///
-/// This type stores routing metadata only. Authoritative before/after state remains in
-/// `EditorSession::history`; `EditStep` never carries duplicate tile or object payload authority.
+/// Production chronology is exclusively `EditorSession::history`; `EditStep` is never stored by
+/// the application after CP2H.
 #[derive(Debug, Clone, Default)]
 pub(in crate::app) struct EditStep {
     pub(super) semantic_paint: Option<SemanticPaintHistory>,
@@ -94,7 +82,7 @@ impl EditStep {
     }
 
     /// One semantic transaction that changed terrain and/or objects together (a prefab or a
-    /// generated building). Both routes set means undo and redo replay them as one step.
+    /// generated building). Retained only as the CP2I parity oracle.
     pub(super) fn semantic_composite(
         keys: Vec<TileKey>,
         include_height: bool,
@@ -122,21 +110,16 @@ impl EditStep {
 }
 
 impl EditorApp {
-    /// One finished semantic undo marker.
-    pub(in crate::app) fn push_step(&mut self, step: EditStep) {
-        self.terrain.history.push(step);
-        if self.terrain.history.len() > HISTORY_LIMIT {
-            self.terrain.history.remove(0);
-        }
-        self.terrain.redo_stack.clear();
-    }
+    /// Compatibility sink for marker-producing commit paths that CP2I removes. The semantic
+    /// transaction is already present in `EditorSession::history`; no second chronology is kept.
+    pub(in crate::app) fn push_step(&mut self, _step: EditStep) {}
 
     pub(in crate::app) fn can_undo(&self) -> bool {
-        !self.terrain.history.is_empty()
+        self.session.can_undo()
     }
 
     pub(in crate::app) fn can_redo(&self) -> bool {
-        !self.terrain.redo_stack.is_empty()
+        self.session.can_redo()
     }
 
     /// Hand object edits to the world worker and queue the regions they sit in for a rebuild.
