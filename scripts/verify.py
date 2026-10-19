@@ -12,11 +12,11 @@ sys.dont_write_bytecode = True
 from run_tests import ROOT, source_identity, verification_lock
 
 PYTHON_CHECKS = [
-    'check_architecture.py', 'check_authority.py', 'test_check_architecture.py',
-    'test_editor_architecture.py', 'test_authority_audit.py', 'test_feature_registry.py',
-    'test_features.py', 'test_reference_regeneration.py', 'test_deob_golden_index.py',
-    'check_hd_sources.py', 'test_hd_sources.py', 'test_audit_hd_config.py', 'test_run_tests.py',
-    'test_lab_training.py',
+    'check_architecture.py', 'check_authority.py', 'check_feature_index.py',
+    'test_check_architecture.py', 'test_editor_architecture.py', 'test_authority_audit.py',
+    'test_feature_registry.py', 'test_features.py', 'test_feature_index.py',
+    'test_reference_regeneration.py', 'test_deob_golden_index.py', 'check_hd_sources.py',
+    'test_hd_sources.py', 'test_audit_hd_config.py', 'test_run_tests.py', 'test_lab_training.py',
 ]
 # Every crate that must build for wasm32. osrs-editor is the web entry point; the rest are its
 # portable libraries, listed so their lints are enforced with -D warnings too.
