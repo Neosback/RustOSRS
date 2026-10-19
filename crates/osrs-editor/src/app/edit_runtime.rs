@@ -124,6 +124,18 @@ impl EditRuntime {
         self.session.can_redo()
     }
 
+    /// Immutable projection requirements for the exact semantic history entry that would replay
+    /// next. The underlying history patch remains private to `EditorSession`.
+    pub(super) fn replay_descriptor(
+        &self,
+        direction: EditReplayDirection,
+    ) -> Option<EditReplayDescriptor> {
+        match direction {
+            EditReplayDirection::Undo => self.session.next_undo_replay_descriptor(),
+            EditReplayDirection::Redo => self.session.next_redo_replay_descriptor(),
+        }
+    }
+
     /// Apply a project diff outside interactive history while preserving semantic authority.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(super) fn apply_untracked(&mut self, patch: &MapPatch) -> Result<bool, PatchApplyError> {
@@ -285,10 +297,7 @@ impl EditRuntime {
         project: impl FnOnce(&MapDocument) -> Result<T, E>,
     ) -> Result<EditExecution<T>, EditExecutionError<E>> {
         let before = self.revision();
-        let descriptor = match direction {
-            EditReplayDirection::Undo => self.session.next_undo_replay_descriptor(),
-            EditReplayDirection::Redo => self.session.next_redo_replay_descriptor(),
-        };
+        let descriptor = self.replay_descriptor(direction);
         let footprint = match descriptor.as_ref() {
             Some(EditReplayDescriptor::Map(footprint)) => {
                 EditFootprint::from_replay_footprint(footprint)
