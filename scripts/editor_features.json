@@ -1,357 +1,360 @@
 {
-  "Select": {
-    "mutates_document": false,
-    "controller": {
-      "file": "crates/osrs-editor/src/app/interaction_runtime/selection.rs",
-      "symbol": "begin_marquee"
-    }
-  },
-  "Paint": {
-    "mutates_document": true,
-    "controller": {
-      "file": "crates/osrs-editor/src/app/editing.rs",
-      "symbol": "paint_at"
-    },
-    "planner": {
-      "file": "crates/osrs-edit/src/paint.rs",
-      "symbol": "build_terrain_paint_patch"
-    },
-    "gateway": {
-      "file": "crates/osrs-editor/src/app/editing/commit.rs",
-      "symbol": "commit_paint_stroke"
-    },
-    "planning_test": {
-      "file": "crates/osrs-edit/src/paint.rs",
-      "symbol": "repeated_samples_fold_to_one_final_operation_per_channel"
-    },
-    "cancellation_test": {
-      "file": "crates/osrs-editor/src/app/editing/controller_tests.rs",
-      "symbol": "cancelling_paint_preview_restores_channels_without_consuming_redo"
-    },
-    "commit_test": {
-      "file": "crates/osrs-editor/src/app/editing/tests.rs",
-      "symbol": "one_paint_stroke_is_one_semantic_session_history_entry"
-    },
-    "undo_test": {
-      "file": "crates/osrs-editor/src/app/editing/tests.rs",
-      "symbol": "semantic_paint_projection_tracks_undo_redo_and_preserves_unarmed_height"
-    }
-  },
-  "Height": {
-    "mutates_document": true,
-    "controller": {
-      "file": "crates/osrs-editor/src/app/editing.rs",
-      "symbol": "sculpt_at"
-    },
-    "planner": {
-      "file": "crates/osrs-edit/src/height/commit.rs",
-      "symbol": "build_terrain_height_patch"
-    },
-    "gateway": {
-      "file": "crates/osrs-editor/src/app/editing/commit.rs",
-      "symbol": "commit_height_stroke"
-    },
-    "planning_test": {
-      "file": "crates/osrs-edit/src/height/commit.rs",
-      "symbol": "repeated_samples_fold_into_one_final_height_operation"
-    },
-    "cancellation_test": {
-      "file": "crates/osrs-editor/src/app/editing/controller_tests.rs",
-      "symbol": "cancelling_height_preview_restores_absolute_height_and_existing_overrides"
-    },
-    "commit_test": {
-      "file": "crates/osrs-editor/src/app/editing/tests.rs",
-      "symbol": "one_height_stroke_is_one_semantic_session_history_entry"
-    },
-    "undo_test": {
-      "file": "crates/osrs-editor/src/app/editing/tests.rs",
-      "symbol": "semantic_height_projection_tracks_undo_redo_and_preserves_other_channels"
-    }
-  },
-  "Spline": {
-    "mutates_document": true,
-    "controller": {
-      "file": "crates/osrs-editor/src/app/spline_tool/input.rs",
-      "symbol": "spline_input"
-    },
-    "planner": {
-      "file": "crates/osrs-edit/src/path.rs",
-      "symbol": "build_terrain_path_patch"
-    },
-    "gateway": {
-      "file": "crates/osrs-editor/src/app/editing/path.rs",
-      "symbol": "apply_terrain_path"
-    },
-    "planning_test": {
-      "file": "crates/osrs-edit/src/path/tests.rs",
-      "symbol": "path_patch_sets_the_overlay_and_keeps_everything_else"
-    },
-    "cancellation_test": {
-      "file": "crates/osrs-editor/src/app/interaction_runtime/spline/tests.rs",
-      "symbol": "remove_last_and_clear_reset_the_preview_state"
-    },
-    "commit_test": {
-      "file": "crates/osrs-editor/src/app/editing/path/tests.rs",
-      "symbol": "one_path_patch_is_one_persistent_session_revision"
-    },
-    "undo_test": {
-      "file": "crates/osrs-editor/src/app/editing/path/tests.rs",
-      "symbol": "semantic_path_projection_tracks_undo_redo_and_the_separate_height_step"
-    }
-  },
-  "Objects": {
-    "mutates_document": true,
-    "controller": {
-      "file": "crates/osrs-editor/src/app/object_tool.rs",
-      "symbol": "object_actions"
-    },
-    "planner": {
-      "file": "crates/osrs-edit/src/object_edit.rs",
-      "symbol": "build_object_patch"
-    },
-    "gateway": {
-      "file": "crates/osrs-editor/src/app/object_tool.rs",
-      "symbol": "edit_objects"
-    },
-    "planning_test": {
-      "file": "crates/osrs-edit/src/object_edit.rs",
-      "symbol": "move_is_remove_then_add_in_one_patch"
-    },
-    "cancellation_test": {
-      "file": "crates/osrs-editor/src/app/interaction_runtime/tests.rs",
-      "symbol": "cancel_object_drag_discards_in_progress_gesture"
-    },
-    "commit_test": {
-      "file": "crates/osrs-editor/src/app/object_tool/gateway_tests.rs",
-      "symbol": "successful_object_gateway_projection_uses_post_commit_state_and_finalizes_once"
-    },
-    "undo_test": {
-      "file": "crates/osrs-editor/src/app/object_tool/commit.rs",
-      "symbol": "semantic_object_undo_projection_is_validated_from_session_state"
-    }
-  },
-  "Appearance": {
-    "kind": "workspace",
-    "mutates_document": true,
-    "controller": {
-      "file": "crates/osrs-editor/src/app/theme_studio/mod.rs",
-      "symbol": "draw"
-    },
-    "planner": {
-      "file": "crates/osrs-hd/src/theme/mod.rs",
-      "symbol": "plan"
-    },
-    "gateway": {
-      "file": "crates/osrs-editor/src/app/edit_runtime.rs",
-      "symbol": "execute_appearance"
-    },
-    "planning_test": {
-      "file": "crates/osrs-hd/tests/themes.rs",
-      "symbol": "ordered_rules_override_only_authored_properties_and_explain_winners"
-    },
-    "cancellation_test": {
-      "file": "crates/osrs-editor/src/app/theme_studio/mod.rs",
-      "symbol": "cancelling_preview_keeps_authority_and_restores_the_visible_base"
-    },
-    "commit_test": {
-      "file": "crates/osrs-editor/src/session/appearance_tests.rs",
-      "symbol": "failed_projection_and_empty_theme_gesture_preserve_redo_and_dirty_regions"
-    },
-    "undo_test": {
-      "file": "crates/osrs-editor/src/session/appearance_tests.rs",
-      "symbol": "mixed_history_preserves_map_revision_and_restores_appearance_exactly"
-    }
-  },
-  "Prefabs": {
-    "kind": "workspace",
-    "mutates_document": true,
-    "controller": {
-      "file": "crates/osrs-editor/src/app/prefab_panel/viewport.rs",
-      "symbol": "armed_input"
-    },
-    "planner": {
-      "file": "crates/osrs-edit/src/prefab/place.rs",
-      "symbol": "plan_place_prefab"
-    },
-    "gateway": {
-      "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
-      "symbol": "commit_map_patch"
-    },
-    "planning_test": {
-      "file": "crates/osrs-edit/src/prefab/tests.rs",
-      "symbol": "one_turn_moves_things_where_a_clockwise_quarter_turn_puts_them"
-    },
-    "cancellation_test": {
-      "file": "crates/osrs-editor/src/app/prefab_runtime/tests.rs",
-      "symbol": "removing_the_armed_prefab_disarms_it"
-    },
-    "commit_test": {
-      "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
-      "symbol": "a_missing_tile_fails_the_composite_projection_and_restores_the_session"
-    },
-    "undo_test": {
-      "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
-      "symbol": "composite_undo_and_redo_replay_terrain_height_and_object_together"
-    }
-  },
-  "Buildings": {
-    "kind": "workspace",
-    "mutates_document": true,
-    "controller": {
-      "file": "crates/osrs-editor/src/app/prefab_panel/build.rs",
-      "symbol": "show"
-    },
-    "planner": {
-      "file": "crates/osrs-edit/src/building_kit/generate.rs",
-      "symbol": "generate"
-    },
-    "gateway": {
-      "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
-      "symbol": "commit_map_patch"
-    },
-    "planning_test": {
-      "file": "crates/osrs-editor/src/app/prefab_runtime/tests.rs",
-      "symbol": "the_built_in_kit_plans_a_building_that_applies_undoes_and_saves"
-    },
-    "cancellation_test": {
-      "file": "crates/osrs-editor/src/app/prefab_runtime/tests.rs",
-      "symbol": "choosing_a_site_ends_the_gesture_and_centres_the_site_on_the_click"
-    },
-    "commit_test": {
-      "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
-      "symbol": "a_missing_tile_fails_the_composite_projection_and_restores_the_session"
-    },
-    "undo_test": {
-      "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
-      "symbol": "composite_undo_and_redo_replay_terrain_height_and_object_together"
-    }
-  },
-  "Prefab Studio": {
-    "kind": "workspace",
-    "mutates_document": true,
-    "controller": {
-      "file": "crates/osrs-editor/src/app/prefab_studio/mod.rs",
-      "symbol": "frame"
-    },
-    "planner": {
-      "file": "crates/osrs-edit/src/prefab/building/studio.rs",
-      "symbol": "capture_prefab_over"
-    },
-    "gateway": {
-      "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
-      "symbol": "commit_map_patch"
-    },
-    "planning_test": {
-      "file": "crates/osrs-edit/src/prefab/building/tests.rs",
-      "symbol": "sparse_courtyard_capture_and_studio_roundtrip_exclude_pad_and_keep_default_floor"
-    },
-    "cancellation_test": {
-      "file": "crates/osrs-editor/src/app/prefab_studio/session.rs",
-      "symbol": "failed_save_and_cancel_leave_the_scene_available"
-    },
-    "commit_test": {
-      "file": "crates/osrs-editor/src/app/prefab_studio/tests.rs",
-      "symbol": "studio_baseline_is_untracked_and_user_commit_is_one_entry"
-    },
-    "undo_test": {
-      "file": "crates/osrs-editor/src/app/prefab_studio/tests.rs",
-      "symbol": "studio_undo_returns_to_prefab_and_parked_world_never_changes"
-    }
-  },
-  "Procedural Lab": {
-    "kind": "workspace",
-    "mutates_document": true,
-    "controller": {
-      "file": "crates/osrs-editor/src/app/prefab_studio/lab.rs",
-      "symbol": "show"
-    },
-    "planner": {
-      "file": "crates/osrs-lab/src/action.rs",
-      "symbol": "plan"
-    },
-    "gateway": {
-      "file": "crates/osrs-lab/src/env.rs",
-      "symbol": "step"
-    },
-    "planning_test": {
-      "file": "crates/osrs-lab/src/tests.rs",
-      "symbol": "tool_actions_undo_redo_and_replay_restore_exact_state"
-    },
-    "cancellation_test": {
-      "file": "crates/osrs-lab/src/tests.rs",
-      "symbol": "invalid_actions_preserve_document_and_raw_target_writes_are_unrepresentable"
-    },
-    "commit_test": {
-      "file": "crates/osrs-lab/src/tests.rs",
-      "symbol": "tool_actions_undo_redo_and_replay_restore_exact_state"
-    },
-    "undo_test": {
-      "file": "crates/osrs-lab/src/tests.rs",
-      "symbol": "failures_do_not_destroy_redo_and_budget_is_bounded"
-    }
-  },
-  "WFC prefab floors": {
-    "kind": "workspace",
-    "mutates_document": true,
-    "controller": {
-      "file": "crates/osrs-editor/src/app/prefab_studio/catalog.rs",
-      "symbol": "show"
-    },
-    "planner": {
-      "file": "crates/osrs-edit/src/building_learning/placement.rs",
-      "symbol": "plan_wfc_floors"
-    },
-    "gateway": {
-      "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
-      "symbol": "commit_map_patch"
-    },
-    "planning_test": {
-      "file": "crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs",
-      "symbol": "wfc_preview_cancel_leaves_author_document_and_history_unchanged"
-    },
-    "cancellation_test": {
-      "file": "crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs",
-      "symbol": "wfc_preview_cancel_leaves_author_document_and_history_unchanged"
-    },
-    "commit_test": {
-      "file": "crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs",
-      "symbol": "wfc_author_commit_survives_save_and_exact_undo_redo"
-    },
-    "undo_test": {
-      "file": "crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs",
-      "symbol": "wfc_author_commit_survives_save_and_exact_undo_redo"
-    }
-  },
-  "Building copy demonstration": {
-    "kind": "workspace",
-    "mutates_document": true,
-    "controller": {
-      "file": "crates/osrs-editor/src/app/prefab_studio/lab.rs",
-      "symbol": "generate_demonstration"
-    },
-    "planner": {
-      "file": "crates/osrs-lab/src/reconstruction.rs",
-      "symbol": "reconstruction_task"
-    },
-    "gateway": {
-      "file": "crates/osrs-lab/src/env.rs",
-      "symbol": "step"
-    },
-    "planning_test": {
-      "file": "crates/osrs-lab/src/reconstruction_tests.rs",
-      "symbol": "reconstruction_preserves_sparse_tiles_occurrences_and_geographic_family"
-    },
-    "cancellation_test": {
-      "file": "crates/osrs-lab/src/tests.rs",
-      "symbol": "invalid_actions_preserve_document_and_raw_target_writes_are_unrepresentable"
-    },
-    "commit_test": {
-      "file": "crates/osrs-lab/src/reconstruction_tests.rs",
-      "symbol": "copy_task_legal_actions_reach_exact_and_undo_redo"
-    },
-    "undo_test": {
-      "file": "crates/osrs-lab/src/reconstruction_tests.rs",
-      "symbol": "copy_task_legal_actions_reach_exact_and_undo_redo"
+  "version": 1,
+  "features": {
+    "Select": {
+      "mutates_document": false,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/interaction_runtime/selection.rs",
+        "symbol": "begin_marquee"
+      }
+    },
+    "Paint": {
+      "mutates_document": true,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/editing.rs",
+        "symbol": "paint_at"
+      },
+      "planner": {
+        "file": "crates/osrs-edit/src/paint.rs",
+        "symbol": "build_terrain_paint_patch"
+      },
+      "gateway": {
+        "file": "crates/osrs-editor/src/app/editing/commit.rs",
+        "symbol": "commit_paint_stroke"
+      },
+      "planning_test": {
+        "file": "crates/osrs-edit/src/paint.rs",
+        "symbol": "repeated_samples_fold_to_one_final_operation_per_channel"
+      },
+      "cancellation_test": {
+        "file": "crates/osrs-editor/src/app/editing/controller_tests.rs",
+        "symbol": "cancelling_paint_preview_restores_channels_without_consuming_redo"
+      },
+      "commit_test": {
+        "file": "crates/osrs-editor/src/app/editing/tests.rs",
+        "symbol": "one_paint_stroke_is_one_semantic_session_history_entry"
+      },
+      "undo_test": {
+        "file": "crates/osrs-editor/src/app/editing/tests.rs",
+        "symbol": "semantic_paint_projection_tracks_undo_redo_and_preserves_unarmed_height"
+      }
+    },
+    "Height": {
+      "mutates_document": true,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/editing.rs",
+        "symbol": "sculpt_at"
+      },
+      "planner": {
+        "file": "crates/osrs-edit/src/height/commit.rs",
+        "symbol": "build_terrain_height_patch"
+      },
+      "gateway": {
+        "file": "crates/osrs-editor/src/app/editing/commit.rs",
+        "symbol": "commit_height_stroke"
+      },
+      "planning_test": {
+        "file": "crates/osrs-edit/src/height/commit.rs",
+        "symbol": "repeated_samples_fold_into_one_final_height_operation"
+      },
+      "cancellation_test": {
+        "file": "crates/osrs-editor/src/app/editing/controller_tests.rs",
+        "symbol": "cancelling_height_preview_restores_absolute_height_and_existing_overrides"
+      },
+      "commit_test": {
+        "file": "crates/osrs-editor/src/app/editing/tests.rs",
+        "symbol": "one_height_stroke_is_one_semantic_session_history_entry"
+      },
+      "undo_test": {
+        "file": "crates/osrs-editor/src/app/editing/tests.rs",
+        "symbol": "semantic_height_projection_tracks_undo_redo_and_preserves_other_channels"
+      }
+    },
+    "Spline": {
+      "mutates_document": true,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/spline_tool/input.rs",
+        "symbol": "spline_input"
+      },
+      "planner": {
+        "file": "crates/osrs-edit/src/path.rs",
+        "symbol": "build_terrain_path_patch"
+      },
+      "gateway": {
+        "file": "crates/osrs-editor/src/app/editing/path.rs",
+        "symbol": "apply_terrain_path"
+      },
+      "planning_test": {
+        "file": "crates/osrs-edit/src/path/tests.rs",
+        "symbol": "path_patch_sets_the_overlay_and_keeps_everything_else"
+      },
+      "cancellation_test": {
+        "file": "crates/osrs-editor/src/app/interaction_runtime/spline/tests.rs",
+        "symbol": "remove_last_and_clear_reset_the_preview_state"
+      },
+      "commit_test": {
+        "file": "crates/osrs-editor/src/app/editing/path/tests.rs",
+        "symbol": "one_path_patch_is_one_persistent_session_revision"
+      },
+      "undo_test": {
+        "file": "crates/osrs-editor/src/app/editing/path/tests.rs",
+        "symbol": "semantic_path_projection_tracks_undo_redo_and_the_separate_height_step"
+      }
+    },
+    "Objects": {
+      "mutates_document": true,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/object_tool.rs",
+        "symbol": "object_actions"
+      },
+      "planner": {
+        "file": "crates/osrs-edit/src/object_edit.rs",
+        "symbol": "build_object_patch"
+      },
+      "gateway": {
+        "file": "crates/osrs-editor/src/app/object_tool.rs",
+        "symbol": "edit_objects"
+      },
+      "planning_test": {
+        "file": "crates/osrs-edit/src/object_edit.rs",
+        "symbol": "move_is_remove_then_add_in_one_patch"
+      },
+      "cancellation_test": {
+        "file": "crates/osrs-editor/src/app/interaction_runtime/tests.rs",
+        "symbol": "cancel_object_drag_discards_in_progress_gesture"
+      },
+      "commit_test": {
+        "file": "crates/osrs-editor/src/app/object_tool/gateway_tests.rs",
+        "symbol": "successful_object_gateway_projection_uses_post_commit_state_and_finalizes_once"
+      },
+      "undo_test": {
+        "file": "crates/osrs-editor/src/app/object_tool/commit.rs",
+        "symbol": "semantic_object_undo_projection_is_validated_from_session_state"
+      }
+    },
+    "Appearance": {
+      "kind": "workspace",
+      "mutates_document": true,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/theme_studio/mod.rs",
+        "symbol": "draw"
+      },
+      "planner": {
+        "file": "crates/osrs-hd/src/theme/mod.rs",
+        "symbol": "plan"
+      },
+      "gateway": {
+        "file": "crates/osrs-editor/src/app/edit_runtime.rs",
+        "symbol": "execute_appearance"
+      },
+      "planning_test": {
+        "file": "crates/osrs-hd/tests/themes.rs",
+        "symbol": "ordered_rules_override_only_authored_properties_and_explain_winners"
+      },
+      "cancellation_test": {
+        "file": "crates/osrs-editor/src/app/theme_studio/mod.rs",
+        "symbol": "cancelling_preview_keeps_authority_and_restores_the_visible_base"
+      },
+      "commit_test": {
+        "file": "crates/osrs-editor/src/session/appearance_tests.rs",
+        "symbol": "failed_projection_and_empty_theme_gesture_preserve_redo_and_dirty_regions"
+      },
+      "undo_test": {
+        "file": "crates/osrs-editor/src/session/appearance_tests.rs",
+        "symbol": "mixed_history_preserves_map_revision_and_restores_appearance_exactly"
+      }
+    },
+    "Prefabs": {
+      "kind": "workspace",
+      "mutates_document": true,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/prefab_panel/viewport.rs",
+        "symbol": "armed_input"
+      },
+      "planner": {
+        "file": "crates/osrs-edit/src/prefab/place.rs",
+        "symbol": "plan_place_prefab"
+      },
+      "gateway": {
+        "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
+        "symbol": "commit_map_patch"
+      },
+      "planning_test": {
+        "file": "crates/osrs-edit/src/prefab/tests.rs",
+        "symbol": "one_turn_moves_things_where_a_clockwise_quarter_turn_puts_them"
+      },
+      "cancellation_test": {
+        "file": "crates/osrs-editor/src/app/prefab_runtime/tests.rs",
+        "symbol": "removing_the_armed_prefab_disarms_it"
+      },
+      "commit_test": {
+        "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
+        "symbol": "a_missing_tile_fails_the_composite_projection_and_restores_the_session"
+      },
+      "undo_test": {
+        "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
+        "symbol": "composite_undo_and_redo_replay_terrain_height_and_object_together"
+      }
+    },
+    "Buildings": {
+      "kind": "workspace",
+      "mutates_document": true,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/prefab_panel/build.rs",
+        "symbol": "show"
+      },
+      "planner": {
+        "file": "crates/osrs-edit/src/building_kit/generate.rs",
+        "symbol": "generate"
+      },
+      "gateway": {
+        "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
+        "symbol": "commit_map_patch"
+      },
+      "planning_test": {
+        "file": "crates/osrs-editor/src/app/prefab_runtime/tests.rs",
+        "symbol": "the_built_in_kit_plans_a_building_that_applies_undoes_and_saves"
+      },
+      "cancellation_test": {
+        "file": "crates/osrs-editor/src/app/prefab_runtime/tests.rs",
+        "symbol": "choosing_a_site_ends_the_gesture_and_centres_the_site_on_the_click"
+      },
+      "commit_test": {
+        "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
+        "symbol": "a_missing_tile_fails_the_composite_projection_and_restores_the_session"
+      },
+      "undo_test": {
+        "file": "crates/osrs-editor/src/app/editing/history/routing/tests.rs",
+        "symbol": "composite_undo_and_redo_replay_terrain_height_and_object_together"
+      }
+    },
+    "Prefab Studio": {
+      "kind": "workspace",
+      "mutates_document": true,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/prefab_studio/mod.rs",
+        "symbol": "frame"
+      },
+      "planner": {
+        "file": "crates/osrs-edit/src/prefab/building/studio.rs",
+        "symbol": "capture_prefab_over"
+      },
+      "gateway": {
+        "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
+        "symbol": "commit_map_patch"
+      },
+      "planning_test": {
+        "file": "crates/osrs-edit/src/prefab/building/tests.rs",
+        "symbol": "sparse_courtyard_capture_and_studio_roundtrip_exclude_pad_and_keep_default_floor"
+      },
+      "cancellation_test": {
+        "file": "crates/osrs-editor/src/app/prefab_studio/session.rs",
+        "symbol": "failed_save_and_cancel_leave_the_scene_available"
+      },
+      "commit_test": {
+        "file": "crates/osrs-editor/src/app/prefab_studio/tests.rs",
+        "symbol": "studio_baseline_is_untracked_and_user_commit_is_one_entry"
+      },
+      "undo_test": {
+        "file": "crates/osrs-editor/src/app/prefab_studio/tests.rs",
+        "symbol": "studio_undo_returns_to_prefab_and_parked_world_never_changes"
+      }
+    },
+    "Procedural Lab": {
+      "kind": "workspace",
+      "mutates_document": true,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/prefab_studio/lab.rs",
+        "symbol": "show"
+      },
+      "planner": {
+        "file": "crates/osrs-lab/src/action.rs",
+        "symbol": "plan"
+      },
+      "gateway": {
+        "file": "crates/osrs-lab/src/env.rs",
+        "symbol": "step"
+      },
+      "planning_test": {
+        "file": "crates/osrs-lab/src/tests.rs",
+        "symbol": "tool_actions_undo_redo_and_replay_restore_exact_state"
+      },
+      "cancellation_test": {
+        "file": "crates/osrs-lab/src/tests.rs",
+        "symbol": "invalid_actions_preserve_document_and_raw_target_writes_are_unrepresentable"
+      },
+      "commit_test": {
+        "file": "crates/osrs-lab/src/tests.rs",
+        "symbol": "tool_actions_undo_redo_and_replay_restore_exact_state"
+      },
+      "undo_test": {
+        "file": "crates/osrs-lab/src/tests.rs",
+        "symbol": "failures_do_not_destroy_redo_and_budget_is_bounded"
+      }
+    },
+    "WFC prefab floors": {
+      "kind": "workspace",
+      "mutates_document": true,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/prefab_studio/catalog.rs",
+        "symbol": "show"
+      },
+      "planner": {
+        "file": "crates/osrs-edit/src/building_learning/placement.rs",
+        "symbol": "plan_wfc_floors"
+      },
+      "gateway": {
+        "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
+        "symbol": "commit_map_patch"
+      },
+      "planning_test": {
+        "file": "crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs",
+        "symbol": "wfc_preview_cancel_leaves_author_document_and_history_unchanged"
+      },
+      "cancellation_test": {
+        "file": "crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs",
+        "symbol": "wfc_preview_cancel_leaves_author_document_and_history_unchanged"
+      },
+      "commit_test": {
+        "file": "crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs",
+        "symbol": "wfc_author_commit_survives_save_and_exact_undo_redo"
+      },
+      "undo_test": {
+        "file": "crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs",
+        "symbol": "wfc_author_commit_survives_save_and_exact_undo_redo"
+      }
+    },
+    "Building copy demonstration": {
+      "kind": "workspace",
+      "mutates_document": true,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/prefab_studio/lab.rs",
+        "symbol": "generate_demonstration"
+      },
+      "planner": {
+        "file": "crates/osrs-lab/src/reconstruction.rs",
+        "symbol": "reconstruction_task"
+      },
+      "gateway": {
+        "file": "crates/osrs-lab/src/env.rs",
+        "symbol": "step"
+      },
+      "planning_test": {
+        "file": "crates/osrs-lab/src/reconstruction_tests.rs",
+        "symbol": "reconstruction_preserves_sparse_tiles_occurrences_and_geographic_family"
+      },
+      "cancellation_test": {
+        "file": "crates/osrs-lab/src/tests.rs",
+        "symbol": "invalid_actions_preserve_document_and_raw_target_writes_are_unrepresentable"
+      },
+      "commit_test": {
+        "file": "crates/osrs-lab/src/reconstruction_tests.rs",
+        "symbol": "copy_task_legal_actions_reach_exact_and_undo_redo"
+      },
+      "undo_test": {
+        "file": "crates/osrs-lab/src/reconstruction_tests.rs",
+        "symbol": "copy_task_legal_actions_reach_exact_and_undo_redo"
+      }
     }
   }
 }
