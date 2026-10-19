@@ -1,7 +1,14 @@
 {
-  "version": 1,
+  "version": 2,
   "features": {
     "Select": {
+      "id": "select",
+      "aliases": ["selection", "marquee", "marquee select"],
+      "owner": {
+        "crate": "osrs-editor",
+        "area": "interaction_runtime/selection"
+      },
+      "status": "implemented",
       "mutates_document": false,
       "controller": {
         "file": "crates/osrs-editor/src/app/interaction_runtime/selection.rs",
@@ -9,6 +16,13 @@
       }
     },
     "Paint": {
+      "id": "paint",
+      "aliases": ["terrain paint", "overlay paint", "underlay paint", "tile paint"],
+      "owner": {
+        "crate": "osrs-edit",
+        "area": "paint"
+      },
+      "status": "implemented",
       "mutates_document": true,
       "controller": {
         "file": "crates/osrs-editor/src/app/editing.rs",
@@ -40,6 +54,13 @@
       }
     },
     "Height": {
+      "id": "height",
+      "aliases": ["terrain height", "sculpt", "height sculpt", "flatten terrain"],
+      "owner": {
+        "crate": "osrs-edit",
+        "area": "height"
+      },
+      "status": "implemented",
       "mutates_document": true,
       "controller": {
         "file": "crates/osrs-editor/src/app/editing.rs",
@@ -71,6 +92,13 @@
       }
     },
     "Spline": {
+      "id": "spline",
+      "aliases": ["path", "terrain path", "spline path", "road path"],
+      "owner": {
+        "crate": "osrs-edit",
+        "area": "path"
+      },
+      "status": "implemented",
       "mutates_document": true,
       "controller": {
         "file": "crates/osrs-editor/src/app/spline_tool/input.rs",
@@ -102,6 +130,13 @@
       }
     },
     "Objects": {
+      "id": "objects",
+      "aliases": ["object edit", "objects", "locs", "placements", "object placement"],
+      "owner": {
+        "crate": "osrs-edit",
+        "area": "object_edit"
+      },
+      "status": "implemented",
       "mutates_document": true,
       "controller": {
         "file": "crates/osrs-editor/src/app/object_tool.rs",
@@ -133,6 +168,13 @@
       }
     },
     "Appearance": {
+      "id": "appearance",
+      "aliases": ["theme", "theme studio", "appearance theme", "hd theme"],
+      "owner": {
+        "crate": "osrs-hd",
+        "area": "theme"
+      },
+      "status": "implemented",
       "kind": "workspace",
       "mutates_document": true,
       "controller": {
@@ -165,6 +207,13 @@
       }
     },
     "Prefabs": {
+      "id": "prefabs",
+      "aliases": ["prefab", "prefab placement", "paste prefab", "place prefab"],
+      "owner": {
+        "crate": "osrs-edit",
+        "area": "prefab"
+      },
+      "status": "implemented",
       "kind": "workspace",
       "mutates_document": true,
       "controller": {
@@ -197,6 +246,13 @@
       }
     },
     "Buildings": {
+      "id": "buildings",
+      "aliases": ["building generator", "procedural building", "procgen building", "building kit"],
+      "owner": {
+        "crate": "osrs-edit",
+        "area": "building_kit"
+      },
+      "status": "implemented",
       "kind": "workspace",
       "mutates_document": true,
       "controller": {
@@ -229,6 +285,13 @@
       }
     },
     "Prefab Studio": {
+      "id": "prefab-studio",
+      "aliases": ["prefab authoring", "prefab capture", "capture prefab", "prefab editor"],
+      "owner": {
+        "crate": "osrs-edit",
+        "area": "prefab/building/studio"
+      },
+      "status": "implemented",
       "kind": "workspace",
       "mutates_document": true,
       "controller": {
@@ -261,6 +324,13 @@
       }
     },
     "Procedural Lab": {
+      "id": "procedural-lab",
+      "aliases": ["procgen lab", "lab", "procedural environment", "training environment"],
+      "owner": {
+        "crate": "osrs-lab",
+        "area": "action/env"
+      },
+      "status": "implemented",
       "kind": "workspace",
       "mutates_document": true,
       "controller": {
@@ -293,6 +363,13 @@
       }
     },
     "WFC prefab floors": {
+      "id": "wfc-prefab-floors",
+      "aliases": ["wfc floors", "wave function collapse floors", "floor synthesis", "wfc prefab"],
+      "owner": {
+        "crate": "osrs-edit",
+        "area": "building_learning"
+      },
+      "status": "implemented",
       "kind": "workspace",
       "mutates_document": true,
       "controller": {
@@ -325,6 +402,13 @@
       }
     },
     "Building copy demonstration": {
+      "id": "building-copy-demonstration",
+      "aliases": ["building reconstruction", "copy demonstration", "building copy", "reconstruction task"],
+      "owner": {
+        "crate": "osrs-lab",
+        "area": "reconstruction"
+      },
+      "status": "implemented",
       "kind": "workspace",
       "mutates_document": true,
       "controller": {
