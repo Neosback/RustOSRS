@@ -95,7 +95,7 @@ struct EditStep {
         )
         self.assertEqual(authority_audit.gateway_violations([hit]), [hit])
 
-    def test_legacy_history_ratchet_allows_current_scaffold_ceiling(self):
+    def test_legacy_history_ratchet_allows_zero_baseline(self):
         hits = []
         line = 1
         for path, ceiling in authority_audit.LEGACY_HISTORY_BASELINE.items():
@@ -104,10 +104,10 @@ struct EditStep {
                 line += 1
         self.assertEqual(authority_audit.legacy_history_violations(hits), [])
 
-    def test_legacy_history_ratchet_allows_debt_to_decrease(self):
+    def test_legacy_history_ratchet_rejects_reintroduction_in_former_scaffold_file(self):
         path = "crates/osrs-editor/src/app/editing/tests.rs"
-        hits = [authority_audit.Hit("legacy-history", path, 1, "legacy")]
-        self.assertEqual(authority_audit.legacy_history_violations(hits), [])
+        hit = authority_audit.Hit("legacy-history", path, 1, "legacy")
+        self.assertEqual(authority_audit.legacy_history_violations([hit]), [hit])
 
     def test_legacy_history_ratchet_rejects_new_file(self):
         hit = authority_audit.Hit(
