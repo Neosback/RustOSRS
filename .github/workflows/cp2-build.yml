@@ -3,24 +3,24 @@ name: CP2 Stopping Point Finalizer
 # One-shot documentation finalizer. It records the deliberate CP2 stopping point in the roadmap.
 # This workflow is deleted before merge.
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches:
+      - refactor/architecture-ai-foundation
 
 permissions:
   contents: write
 
 concurrency:
-  group: cp2-stopping-point-${{ github.event.pull_request.number }}
+  group: cp2-stopping-point
   cancel-in-progress: true
 
 jobs:
   finalize-roadmap:
-    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: refactor/architecture-ai-foundation
           fetch-depth: 0
       - name: Mark deliberate merge stopping point
         shell: bash
@@ -50,9 +50,12 @@ jobs:
 
           for old, new in replacements.items():
               count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"expected exactly one roadmap marker {old!r}, found {count}")
-              text = text.replace(old, new, 1)
+              if count == 1:
+                  text = text.replace(old, new, 1)
+              elif count == 0 and new in text:
+                  pass
+              else:
+                  raise SystemExit(f"unexpected roadmap marker count for {old!r}: {count}")
 
           anchor = "Baseline main: `ff7a1be7020f6202987beaef2c792b569c8164da`\n"
           note = """
@@ -82,4 +85,4 @@ The merge-readiness requirement for this stop is the implemented scope: canonica
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/plans/ARCHITECTURE-AI-FOUNDATION.md
           git commit -m "docs: mark architecture foundation stopping point"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin HEAD:refactor/architecture-ai-foundation
