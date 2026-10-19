@@ -213,7 +213,7 @@ pub(in crate::app) fn input(app: &mut EditorApp, response: &egui::Response) -> b
         .object
         .as_ref()
         .and_then(|p| app.world.infos().get(&p.region)?.locs.get(p.index))
-        .map(|l| (l.definition.size_x as u16, l.definition.size_y as u16));
+        .map(|l| (l.definition.size_x, l.definition.size_y));
     let state = &mut app.prefabs.capture_review;
     let Some(review) = &mut state.review else {
         return true;
@@ -229,11 +229,10 @@ pub(in crate::app) fn input(app: &mut EditorApp, response: &egui::Response) -> b
             }
         }
         Layer::Pieces | Layer::Upper => {
-            if let Some(object) = object {
-                if let Some(size) = size {
+            if let Some(object) = object
+                && let Some(size) = size {
                     change_piece(review, object, size, include);
                 }
-            }
         }
     }
     super::membership::refresh(review);

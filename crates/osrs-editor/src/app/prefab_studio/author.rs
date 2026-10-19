@@ -50,9 +50,8 @@ pub(super) fn show(studio: &mut Studio, ui: &mut egui::Ui) {
                 ui.weak(if room.human { "Human label" } else { "Inferred / unreviewed label" });
             });
         }
-        if let Some(id) = split {
-            if let Err(e) = building.semantics.split(id,&selected) { studio.problem = Some(e.to_string()); }
-        }
+        if let Some(id) = split
+            && let Err(e) = building.semantics.split(id,&selected) { studio.problem = Some(e.to_string()); }
         if let Some(id) = assign {
             let cells: Vec<_> = selected.iter().filter(|c| building.floors.contains(c)).copied().collect();
             for r in &mut building.semantics.rooms { r.cells.retain(|c| !cells.contains(c)); if r.id == id { r.cells.extend(cells.iter().copied()); r.human = true; } }

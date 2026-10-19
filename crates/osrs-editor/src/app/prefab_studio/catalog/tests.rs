@@ -38,6 +38,7 @@ fn p() -> SourcePlane {
     SourcePlane::new(0).unwrap_or_else(|| unreachable!())
 }
 #[test]
+#[allow(clippy::unwrap_used)] // Test fixture: id 1 is a valid pattern id.
 fn changed_pins_and_pending_solves_cannot_apply_an_old_result() {
     let catalog = data();
     let mut view = CatalogView {
