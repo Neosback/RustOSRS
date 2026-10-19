@@ -1,9 +1,9 @@
 //! Copy and paste of the selected tiles (terrain channels and heights).
 //!
-//! A paste plans one Paint-style patch against the authoritative session, executes it through the
-//! application edit gateway, and records chronological history only after semantic commit,
-//! projection planning, and checkpoint finalization all succeed. The resulting legacy worker
-//! projection is already validated and therefore applied infallibly after gateway success.
+//! A paste plans one Paint-style patch against the authoritative session and executes it through
+//! the application edit gateway. `EditorSession` records the semantic transaction chronologically;
+//! the resulting legacy worker projection is already validated and therefore applied infallibly
+//! after gateway success.
 
 use super::path::project_semantic_path_values;
 use super::*;
@@ -178,7 +178,6 @@ impl EditorApp {
         self.world.invalidate_semantic_edit(&receipt);
 
         let count = keys.len();
-        self.push_step(EditStep::semantic_path(keys, true));
         self.interaction.replace_tiles(tiles);
         self.ui.notify(format!(
             "Pasted {count} tile{}",

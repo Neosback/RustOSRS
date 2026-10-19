@@ -56,6 +56,7 @@ AUTHORITY_WRITE_TOKENS = (
 )
 
 GATEWAY_ALLOWED_FILE = "crates/osrs-editor/src/app/edit_runtime.rs"
+GATEWAY_TEST_PREFIX = "crates/osrs-editor/src/app/edit_runtime/"
 SESSION_PREFIX = "crates/osrs-editor/src/session/"
 APP_PREFIX = "crates/osrs-editor/src/app/"
 TERRAIN_CONTROLLER_FILE = "crates/osrs-editor/src/app/editing.rs"
@@ -108,6 +109,7 @@ def gateway_violations(hits: Iterable[Hit]) -> list[Hit]:
         for hit in hits
         if hit.category == "checkpoint-lifecycle"
         and hit.path != GATEWAY_ALLOWED_FILE
+        and not hit.path.startswith(GATEWAY_TEST_PREFIX)
         and not hit.path.startswith(SESSION_PREFIX)
     ]
 

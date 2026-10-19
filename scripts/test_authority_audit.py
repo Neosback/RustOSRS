@@ -170,6 +170,12 @@ struct TerrainController {
                 30,
                 "self.session.commit_checkpointed(patch);",
             ),
+            authority_audit.Hit(
+                "checkpoint-lifecycle",
+                "crates/osrs-editor/src/app/edit_runtime/tests.rs",
+                40,
+                "runtime.session.commit_checkpointed(patch);",
+            ),
         ]
         self.assertEqual(authority_audit.gateway_violations(hits), [])
 
