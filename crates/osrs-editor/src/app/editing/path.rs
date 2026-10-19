@@ -4,7 +4,7 @@
 //! `app/path_commit.rs`. This module owns only the application boundary: plan against the persistent
 //! editor session, commit through `EditRuntime`, then apply an already-validated worker projection.
 
-use super::{EditStep, EditorApp, PathTile, TileKey};
+use super::{EditorApp, PathTile, TileKey};
 use crate::app::edit_runtime::{EditExecution, EditExecutionError};
 #[cfg(test)]
 use crate::app::path_commit::build_terrain_path_patch;
@@ -231,7 +231,7 @@ fn commit_semantic_path(
         };
         projection_input.push((*key, before));
     }
-    let route_keys = keys;
+    let count = keys.len();
     let execution = app.session.execute_named("path", patch, |document| {
         plan_path_projection(document, &projection_input, include_height)
     });
@@ -287,10 +287,8 @@ fn commit_semantic_path(
         app.terrain.edited.insert(*key, *after);
         edits.push(app.edit_for(*key, *after));
     }
-    let count = route_keys.len();
     app.world.project_tile_edits(edits);
     app.world.invalidate_semantic_edit(&receipt);
-    app.push_step(EditStep::semantic_path(route_keys, include_height));
     app.ui.notify(summary(count));
     count
 }
