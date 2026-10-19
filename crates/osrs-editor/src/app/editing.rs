@@ -2,7 +2,7 @@
 //!
 //! A *stroke* is everything painted between pressing and releasing the left button (or one menu
 //! action). Stroke construction stays here; terrain-path commit lives in `editing/path.rs`, and
-//! chronological undo/redo routing lives in `editing/history.rs` so the editor shell does not
+//! semantic undo/redo projection lives in `editing/history.rs` so the editor shell does not
 //! accumulate another god module.
 
 #[cfg(test)]
@@ -58,8 +58,7 @@ type StrokeChange = (TileKey, TileValues, TileValues);
 
 /// A stroke being painted.
 ///
-/// This is preview/gesture state only. Completed chronological history is represented separately by
-/// `EditStep`, while authoritative before/after state is committed to `EditorSession`.
+/// This is preview/gesture state only. Completed chronological history lives in `EditorSession`.
 #[derive(Debug)]
 pub struct Stroke {
     changes: Vec<StrokeChange>,
@@ -121,25 +120,17 @@ pub fn affected_regions(tile: (i32, i32)) -> Vec<(i32, i32)> {
     regions
 }
 
-/// Transitional terrain preview and chronological history-routing metadata. The authoritative
-/// before/after values for committed edits live only in `EditorSession`. Remove this adapter when
-/// workers consume semantic snapshots and session history supplies projection footprints directly.
+/// Transitional terrain preview/projection state. Authoritative map state and chronology live only
+/// in `EditorSession`; this adapter can be rebuilt from semantic state plus worker/source data.
 #[derive(Default)]
 pub(super) struct TerrainController {
     edited: HashMap<TileKey, TileValues>,
     height_edited: HashSet<TileKey>,
     stroke: Option<Stroke>,
     stroke_counter: u64,
-    history: Vec<EditStep>,
-    redo_stack: Vec<EditStep>,
 }
 
 impl TerrainController {
-    pub(in crate::app) fn record_scenario(&mut self) {
-        self.history.push(EditStep::scenario());
-        self.redo_stack.clear();
-    }
-
     pub(in crate::app) fn reset(&mut self) {
         *self = Self::default();
     }
@@ -265,9 +256,8 @@ impl EditorApp {
 
     /// Restore transient stroke tile values after a commit attempt fails.
     ///
-    /// This intentionally mirrors the old `revert(EditStep, false)` behavior: it restores visible
-    /// tile values only. User cancellation remains the path that also clears newly-explicit Height
-    /// preview markers.
+    /// This restores visible tile values only. User cancellation remains the path that also clears
+    /// newly-explicit Height preview markers.
     fn revert_stroke_preview(&mut self, stroke: &Stroke) {
         let mut edits = Vec::with_capacity(stroke.changes.len());
         for (key, before, _) in &stroke.changes {
