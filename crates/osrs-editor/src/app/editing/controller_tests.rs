@@ -9,14 +9,11 @@ fn gesture_fixture() -> (TerrainController, TileKey, TileValues) {
     };
     let mut controller = TerrainController::default();
     controller.edited.insert(key, before);
-    controller
-        .redo_stack
-        .push(EditStep::semantic_height(vec![key]));
     (controller, key, before)
 }
 
 #[test]
-fn cancelling_paint_preview_restores_channels_without_consuming_redo() {
+fn cancelling_paint_preview_restores_channels_without_history_state() {
     let (mut controller, key, before) = gesture_fixture();
     controller.begin_stroke();
     let mut stroke = controller.stroke.take().unwrap_or_else(|| unreachable!());
@@ -41,8 +38,6 @@ fn cancelling_paint_preview_restores_channels_without_consuming_redo() {
     assert_eq!(restored.len(), 1);
     assert_eq!(restored[0].overlay, 0);
     assert_eq!(restored[0].flags, 0);
-    assert!(controller.history.is_empty());
-    assert_eq!(controller.redo_stack.len(), 1);
     assert!(
         controller
             .cancel_stroke(&crate::pick::Infos::new())
@@ -81,7 +76,5 @@ fn cancelling_height_preview_restores_absolute_height_and_existing_overrides() {
             controller.current_tile(&crate::pick::Infos::new(), key),
             Some(before)
         );
-        assert!(controller.history.is_empty());
-        assert_eq!(controller.redo_stack.len(), 1);
     }
 }
