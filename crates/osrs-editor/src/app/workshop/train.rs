@@ -50,6 +50,11 @@ impl Default for TrainState {
     }
 }
 
+/// Today as `YYYY-MM-DD`.
+pub(super) fn today() -> String {
+    job::today()
+}
+
 /// Once per frame: take what the trainer has said, and save the model when it finishes.
 pub(super) fn poll(app: &mut EditorApp) {
     let train = &mut app.prefabs.workshop.train;

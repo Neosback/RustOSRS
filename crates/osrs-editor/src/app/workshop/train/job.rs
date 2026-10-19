@@ -1,6 +1,8 @@
 //! Training in the background: a worker thread runs the trainer and reports its steps, so the
 //! window keeps drawing a progress bar. Native only (the browser build has no threads here).
 
+#![cfg_attr(target_arch = "wasm32", allow(unused_imports, dead_code))]
+
 use osrs_edit::{KitFile, Prefab};
 use osrs_lab::{Corpus, Model, Progress, TrainRequest};
 use osrs_scene::building_census::ObjectTable;

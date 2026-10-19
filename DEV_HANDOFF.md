@@ -32,11 +32,26 @@ name what is in them, train a small model on them and ask it for a new building 
   (`workshop::train::tests`) trains on one building through the real worker thread, saves, reloads,
   builds twice from a brief and gets identical output, then trashes the model. Full gate: see the
   entry below if recorded; otherwise not run.
+- **Path learning, WFC lens and plain-language Studio (second pass)**: Workshop tabs *Paths* and
+  *What WFC sees*; Studio header has "Open the Workshop" and the old Relationships window is now
+  "What belongs to this building" (plain sentences, legend with colours, "Yes, they go together" or
+  "Forget this note"). `osrs-edit::wfc_lens` builds WFC's view of a prefab (tile kinds, what it
+  ignores, who sits beside whom) and runs "floor this building again" (walls pinned, solver
+  chooses floor) or a free solve, with a step-through via `solve_wfc_observed` (new observer, same
+  result). Finding: a catalog from one building cannot solve a free area (outer walls need an
+  outside to touch) and, given its own walls, can only give the same floor back; it mixes only with
+  several buildings. `osrs-lab::paths`: path lessons from real map areas, a 26-input network
+  (`paths/net.rs`), least-cost router, `PathModel::attempt` (given the ends, or alone), lab task
+  `path_task` + `lay_actions` (laid with `Action::PathLay`, scored by the lab, real paths hidden),
+  `train-paths`, `paths-census|show|stats` CLI and the `path_lessons` world example; the Workshop lays
+  results on the map through `apply_terrain_path` (one undo). Numbers and limits are in
+  `docs/plans/PROCGEN-LEARNING.md` ("Learning to lay paths"). `crates/osrs-lab/data/world-paths.model.json`
+  is the shipped starter model.
 - **Not verified / open**: the window was screenshotted (Train tab) but the machine's display went
   idle, so the trained-state view and real-mouse behaviour were not seen. A model trained on one
   generated or captured building separates real from generated buildings easily (critic AUC about 1.0)
   but its "looks real" score stays low (about 2 to 5 percent): the generator still differs from real
-  buildings in room count, furniture density and roofs. The WFC step-through viewer, the shared
+  buildings in room count, furniture density and roofs. The shared
   Rust/Python split, train-only furniture and critic in `scripts/lab/train.py`, the Door socket fix in
   `scripts/lab/catalog.py`, "Lab-accepted outputs are not reviewed" and PROCGEN-LEARNING.md updates
   (512 patterns) are not done. No neural policy; the planner still requires at least two rooms.

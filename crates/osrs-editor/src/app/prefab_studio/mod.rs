@@ -27,6 +27,8 @@ pub(in crate::app) enum SceneCommand {
     Report,
     Demonstrate,
     PlayReplay,
+    /// Open the Workshop (in the main window) on a tab, with this scene's building picked.
+    Workshop(crate::app::workshop::Tab),
 }
 
 pub(in crate::app) struct Studio {
@@ -192,6 +194,7 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
         ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
     }
     let mut revert = false;
+    let mut open_workshop: Option<crate::app::workshop::Tab> = None;
     egui::Panel::top("prefab-studio-header").show(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
             ui.strong(format!(
@@ -224,16 +227,30 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
                 .add_enabled(ready && !studio.lab.active, egui::Button::new("Revert"))
                 .clicked();
             leave |= ui.button("Close workspace").clicked();
-            ui.checkbox(&mut studio.relations, "Relationships");
+            ui.checkbox(&mut studio.relations, "What belongs to this building")
+                .on_hover_text(
+                    "Show which floor tiles and pieces are part of this building, and fix them",
+                );
+            if ui
+                .button("Open the Workshop")
+                .on_hover_text("The plain-language place to name things, teach the AI and see what the floor-pattern builder learned")
+                .clicked()
+            {
+                open_workshop = Some(crate::app::workshop::Tab::Buildings);
+            }
             ui.checkbox(
                 &mut studio.stage.viewer().ui.prefab_workspace.open,
                 "Workspace tools",
             );
-            if ui.selectable_label(studio.lab.active, "AI Lab").clicked() {
+            if ui
+                .selectable_label(studio.lab.active, "AI practice room (advanced)")
+                .on_hover_text("Watch a robot rebuild this building step by step with the editor's own tools")
+                .clicked()
+            {
                 studio.lab.active = true;
             }
             if ui
-                .selectable_label(!studio.lab.active, "Edit / WFC")
+                .selectable_label(!studio.lab.active, "Edit scene")
                 .clicked()
                 && let Err(e) = studio.lab.leave(studio.stage.viewer())
             {
@@ -324,6 +341,7 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
                 }
             }
             Some(SceneCommand::PlayReplay) => studio.lab.play_replay(),
+            Some(SceneCommand::Workshop(tab)) => open_workshop = Some(tab),
             None => {}
         }
         if let Some(file) = viewer.prefabs.studio_request.take() {
@@ -377,6 +395,13 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
             Destination::Revert,
             studio.stage.viewer().session.edit_revision(),
         );
+    }
+    if let Some(tab) = open_workshop {
+        // The Workshop lives in the main window: show it there, on this building.
+        app.prefabs.workshop.open = true;
+        app.prefabs.workshop.tab = tab;
+        app.prefabs.selected = Some(studio.file.clone());
+        ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus);
     }
     if studio.session.pending.is_some() {
         let mut choice = None;

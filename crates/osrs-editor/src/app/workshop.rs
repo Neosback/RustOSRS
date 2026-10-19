@@ -8,10 +8,12 @@
 //! library, the name book or the models.
 
 mod buildings;
+mod paths;
 mod strip;
 mod table;
 mod teach;
 mod train;
+mod wfc;
 
 use crate::app::EditorApp;
 use eframe::egui;
@@ -22,10 +24,12 @@ pub(in crate::app) enum Tab {
     Buildings,
     Teach,
     Train,
+    Paths,
+    Wfc,
 }
 
 impl Tab {
-    const ALL: [(Self, &'static str, &'static str); 3] = [
+    const ALL: [(Self, &'static str, &'static str); 5] = [
         (Self::Buildings, "Buildings", "Look at your saved buildings"),
         (
             Self::Teach,
@@ -37,6 +41,16 @@ impl Tab {
             "Train",
             "Let the editor learn from your buildings and build new ones",
         ),
+        (
+            Self::Paths,
+            "Paths",
+            "Teach the editor to lay roads and trails from real ones",
+        ),
+        (
+            Self::Wfc,
+            "What WFC sees",
+            "Run the floor-pattern builder on a building and see what it learned",
+        ),
     ];
 }
 
@@ -47,6 +61,8 @@ pub(in crate::app) struct Workshop {
     strip: strip::StripState,
     teach: teach::TeachState,
     train: train::TrainState,
+    wfc: wfc::WfcState,
+    paths: paths::PathsState,
 }
 
 const STRIP_WIDTH: f32 = 300.0;
@@ -55,6 +71,7 @@ const STRIP_WIDTH: f32 = 300.0;
 pub(super) fn window(app: &mut EditorApp, ctx: &egui::Context) {
     strip::ask(app, ctx);
     train::poll(app);
+    paths::poll(app);
     if !app.prefabs.workshop.open {
         return;
     }
@@ -67,12 +84,15 @@ pub(super) fn window(app: &mut EditorApp, ctx: &egui::Context) {
         .resizable(true)
         .show(ctx, |ui| {
             ui.horizontal_top(|ui| {
-                ui.allocate_ui_with_layout(
-                    egui::vec2(STRIP_WIDTH, ui.available_height()),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| strip::show(app, ui),
-                );
-                ui.separator();
+                // The list of saved buildings is not needed to teach paths.
+                if app.prefabs.workshop.tab != Tab::Paths {
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(STRIP_WIDTH, ui.available_height()),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| strip::show(app, ui),
+                    );
+                    ui.separator();
+                }
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         for (tab, label, hint) in Tab::ALL {
@@ -90,6 +110,8 @@ pub(super) fn window(app: &mut EditorApp, ctx: &egui::Context) {
                         Tab::Buildings => buildings::show(app, ui),
                         Tab::Teach => teach::show(app, ui),
                         Tab::Train => train::show(app, ui),
+                        Tab::Paths => paths::show(app, ui),
+                        Tab::Wfc => wfc::show(app, ui),
                     }
                 });
             });
@@ -108,6 +130,11 @@ pub(super) fn script(app: &mut EditorApp, words: &[&str]) -> Result<(), String> 
         [] | ["buildings"] => app.prefabs.workshop.tab = Tab::Buildings,
         ["teach"] => app.prefabs.workshop.tab = Tab::Teach,
         ["train"] => app.prefabs.workshop.tab = Tab::Train,
+        ["wfc"] => app.prefabs.workshop.tab = Tab::Wfc,
+        ["paths", rest @ ..] => {
+            app.prefabs.workshop.tab = Tab::Paths;
+            paths::script(app, rest)?;
+        }
         ["train", name, picks @ ..] => {
             app.prefabs.workshop.tab = Tab::Train;
             train::begin(app, name, picks)?;
@@ -115,4 +142,9 @@ pub(super) fn script(app: &mut EditorApp, words: &[&str]) -> Result<(), String> 
         other => return Err(format!("unknown workshop command {other:?}")),
     }
     Ok(())
+}
+
+/// Today as `YYYY-MM-DD` for the files the Workshop writes.
+pub(super) fn train_date() -> String {
+    train::today()
 }

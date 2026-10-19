@@ -49,7 +49,7 @@ impl Workspace {
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.page, Page::Library, "Library");
                     ui.selectable_value(&mut self.page, Page::Builder, "Builder");
-                    ui.selectable_value(&mut self.page, Page::Wfc, "WFC");
+                    ui.selectable_value(&mut self.page, Page::Wfc, "Floor patterns");
                 });
                 ui.separator();
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
@@ -73,6 +73,13 @@ impl Workspace {
                         },
                         Page::Wfc => {
                             viewer.prefabs.page = crate::app::prefab_runtime::Page::Library;
+                            ui.group(|ui| {
+                                ui.label("Want to know what the floor-pattern builder (WFC) makes of this building?");
+                                if ui.button("Show me what WFC sees").clicked() {
+                                    viewer.prefabs.studio_command = Some(super::SceneCommand::Workshop(crate::app::workshop::Tab::Wfc));
+                                }
+                                ui.weak("It runs WFC on this building in the Workshop and shows its tile kinds, what it ignores, and a test.");
+                            });
                             ui.label("Pattern seed");
                             ui.add(egui::DragValue::new(&mut self.seed));
                             self.catalog.show(ui, self.seed, viewer);
