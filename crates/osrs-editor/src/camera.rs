@@ -13,6 +13,8 @@ pub enum CameraMode {
     Fly,
     /// Around a pivot in front of the camera: drag orbits, Shift/right drag pans, scroll zooms.
     Orbit,
+    /// Following the player character: locked to the player's 3D position + height, click-to-walk, client orbit/zoom.
+    Game,
 }
 
 const MIN_ORBIT_DISTANCE: f32 = 100.0;

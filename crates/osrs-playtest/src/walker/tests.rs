@@ -111,7 +111,10 @@ fn an_enclosed_tile_is_approached_not_entered() {
 fn standing_still_and_teleporting() {
     let field = Field { blocked: vec![] };
     let mut walker = PlayerWalker::new(at(10, 10));
-    assert_eq!(walker.walk_to(&field, at(10, 10)), WalkOutcome::AlreadyThere);
+    assert_eq!(
+        walker.walk_to(&field, at(10, 10)),
+        WalkOutcome::AlreadyThere
+    );
     walker.walk_to(&field, at(20, 10));
     walker.tick(&field, 1);
     walker.teleport(at(30, 30));

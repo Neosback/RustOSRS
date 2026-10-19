@@ -25,8 +25,14 @@ impl EditorApp {
         match effect {
             interact::Effect::Cancel => {}
             interact::Effect::WalkHere((x, y)) => {
-                let plane = self.interaction.view_plane();
-                self.teleport_to(Destination::Tile { x, y, plane });
+                if self.interaction.camera().mode == crate::camera::CameraMode::Game
+                    || self.settings.prefs.player.stand.is_some()
+                {
+                    crate::app::player_panel::walk_to(self, (x, y));
+                } else {
+                    let plane = self.interaction.view_plane();
+                    self.teleport_to(Destination::Tile { x, y, plane });
+                }
             }
             interact::Effect::Examine(object) => {
                 if let Some((name, id)) = object_name(self, &object) {

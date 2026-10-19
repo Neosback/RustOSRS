@@ -324,13 +324,21 @@ impl EditorApp {
                             outcome.action = Some(MenuAction::ClearSelection);
                             outcome.close = true;
                         }
-                        if let Some(tile) = &pick.tile
-                            && ui
+                        if let Some(tile) = &pick.tile {
+                            if ui
+                                .button(format!("{}  Place player here", icons::PLAYER))
+                                .clicked()
+                            {
+                                outcome.action = Some(MenuAction::PlacePlayerHere(tile.tile));
+                                outcome.close = true;
+                            }
+                            if ui
                                 .button(format!("{}  Teleport here", icons::TELEPORT))
                                 .clicked()
-                        {
-                            outcome.action = Some(MenuAction::TeleportHere(tile.tile));
-                            outcome.close = true;
+                            {
+                                outcome.action = Some(MenuAction::TeleportHere(tile.tile));
+                                outcome.close = true;
+                            }
                         }
                         ui.menu_button(format!("{}  Copy", ph_copy()), |ui| {
                             outcome.close |= self.copy_menu(ui, pick);

@@ -73,5 +73,6 @@ fn the_player_round_trips_through_settings_json() {
     assert_eq!(back.ok(), Some(player));
     // Old or partial settings fill in defaults.
     let partial: Result<PlayerSandbox, _> = serde_json::from_str(r#"{"name":"A"}"#);
-    assert_eq!(partial.map(|p| p.run_energy).ok(), Some(100));
+    assert_eq!(partial.as_ref().map(|p| p.run_energy).ok(), Some(100));
+    assert_eq!(partial.map(|p| p.show_overlay).ok(), Some(true));
 }

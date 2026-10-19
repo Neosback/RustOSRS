@@ -28,6 +28,7 @@ use eframe::egui;
 enum MenuAction {
     Select(ObjectPick),
     Focus(ObjectPick),
+    PlacePlayerHere((i32, i32)),
     TeleportHere((i32, i32)),
     SetTool(crate::paint::Tool),
     Eyedrop((i32, i32)),
@@ -141,6 +142,12 @@ impl EditorApp {
                 }
             }
             MenuAction::ClearOverlay(tile) => self.clear_overlay_at(tile),
+            MenuAction::PlacePlayerHere((x, y)) => {
+                let plane = self.interaction.view_plane();
+                self.settings.prefs.player.stand = Some(crate::player::Stand { x, y, plane });
+                self.player_model.teleport((x, y, plane));
+                self.ui.notify(format!("Placed player at {x}, {y}"));
+            }
             MenuAction::TeleportHere((x, y)) => {
                 let plane = self.interaction.view_plane();
                 self.teleport_to(Destination::Tile { x, y, plane });

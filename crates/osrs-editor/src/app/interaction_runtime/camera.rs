@@ -13,6 +13,7 @@ pub(in crate::app) struct CameraInput {
     pub pinch: f32,
     pub hovered: bool,
     pub movement: [f32; 3],
+    pub arrow_look: [f32; 2],
     pub dt: f32,
 }
 
@@ -26,7 +27,8 @@ impl InteractionRuntime {
     pub(in crate::app) fn toggle_camera_mode(&mut self) {
         self.camera.mode = match self.camera.mode {
             CameraMode::Fly => CameraMode::Orbit,
-            CameraMode::Orbit => CameraMode::Fly,
+            CameraMode::Orbit => CameraMode::Game,
+            CameraMode::Game => CameraMode::Fly,
         };
     }
     pub(in crate::app) fn set_camera_settings(&mut self, fov: f32, speed: f32, mode: CameraMode) {
@@ -81,6 +83,11 @@ impl InteractionRuntime {
                     self.camera.orbit(dx, dy);
                 }
             }
+            CameraMode::Game => {
+                if input.pan || input.secondary_drag {
+                    self.camera.orbit(dx, dy);
+                }
+            }
         }
         match self.camera.mode {
             CameraMode::Fly if input.hovered && input.scroll != 0.0 => {
@@ -96,14 +103,36 @@ impl InteractionRuntime {
                     self.camera.z += f[2] * step;
                 }
             }
-            CameraMode::Orbit if input.hovered => {
-                self.camera.zoom(input.scroll + input.pinch * 500.0)
+            CameraMode::Orbit | CameraMode::Game if input.hovered => {
+                self.camera.zoom(input.scroll + input.pinch * 500.0);
             }
             _ => {}
         }
         let [forward, right, up] = input.movement;
         if input.movement != [0.0; 3] {
-            self.camera.translate(forward, right, up, input.dt);
+            if self.camera.mode == CameraMode::Game {
+                let pivot = self.camera.pivot();
+                let step = input.dt * 2.5;
+                self.camera.yaw -= right * step;
+                self.camera.pitch = (self.camera.pitch - forward * step).clamp(-1.4, 1.4);
+                self.camera.focus(pivot, self.camera.orbit_distance);
+            } else {
+                self.camera.translate(forward, right, up, input.dt);
+            }
+        }
+        let [arrow_yaw, arrow_pitch] = input.arrow_look;
+        if arrow_yaw != 0.0 || arrow_pitch != 0.0 {
+            let speed = 2.8;
+            let step = input.dt * speed;
+            if self.camera.mode == CameraMode::Game || self.camera.mode == CameraMode::Orbit {
+                let pivot = self.camera.pivot();
+                self.camera.yaw += arrow_yaw * step;
+                self.camera.pitch = (self.camera.pitch + arrow_pitch * step).clamp(-1.4, 1.4);
+                self.camera.focus(pivot, self.camera.orbit_distance);
+            } else {
+                self.camera.yaw += arrow_yaw * step;
+                self.camera.pitch = (self.camera.pitch + arrow_pitch * step).clamp(-1.4, 1.4);
+            }
         }
     }
 }
@@ -149,6 +178,7 @@ mod tests {
                         }
                         expected.zoom(30.0 + 0.1 * 500.0);
                     }
+                    _ => unreachable!(),
                 }
                 expected.translate(1.0, -1.0, 0.0, 0.02);
                 runtime.apply_camera_input(CameraInput {
@@ -160,6 +190,7 @@ mod tests {
                     pinch: 0.1,
                     hovered: true,
                     movement: [1.0, -1.0, 0.0],
+                    arrow_look: [0.0, 0.0],
                     dt: 0.02,
                 });
                 assert_eq!(pose(runtime.camera()), pose(&expected));
@@ -190,5 +221,35 @@ mod tests {
 
         assert_eq!(runtime.camera().speed, initial_speed);
         assert_ne!(runtime.camera().z, initial_z);
+    }
+    #[test]
+    fn game_mode_movement_rotates_around_pivot() {
+        let mut camera = FlyCamera::new(500.0, -900.0, -300.0);
+        camera.mode = CameraMode::Game;
+        let mut runtime = InteractionRuntime::new(camera);
+        let before_pivot = runtime.camera().pivot();
+        runtime.apply_camera_input(CameraInput {
+            movement: [1.0, 0.0, 0.0],
+            dt: 0.02,
+            ..Default::default()
+        });
+        let after_pivot = runtime.camera().pivot();
+        assert_eq!(runtime.camera().mode, CameraMode::Game);
+        for axis in 0..3 {
+            assert!((before_pivot[axis] - after_pivot[axis]).abs() < 0.5);
+        }
+    }
+    #[test]
+    fn arrow_keys_rotate_camera_in_game_mode() {
+        let mut camera = FlyCamera::new(500.0, -900.0, -300.0);
+        camera.mode = CameraMode::Game;
+        let mut runtime = InteractionRuntime::new(camera);
+        let before_yaw = runtime.camera().yaw;
+        runtime.apply_camera_input(CameraInput {
+            arrow_look: [1.0, 0.0],
+            dt: 0.1,
+            ..Default::default()
+        });
+        assert!(runtime.camera().yaw > before_yaw);
     }
 }

@@ -89,6 +89,9 @@ pub struct PlayerSandbox {
     pub stand: Option<Stand>,
     /// Draw the player's model on its tile (off: only the marker).
     pub show_model: bool,
+    /// Draw the 2D world-space tile outline and name label overlay for the player.
+    #[serde(default = "default_true")]
+    pub show_overlay: bool,
     /// Identity-kit id per [`KIT_SLOTS`] entry (`None` for none).
     pub kits: [Option<u16>; 7],
     pub colours: [u8; 5],
@@ -97,6 +100,10 @@ pub struct PlayerSandbox {
     pub varps: BTreeMap<u32, i32>,
     pub varbits: BTreeMap<u32, i32>,
     pub varcs: BTreeMap<u32, i32>,
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 impl Default for PlayerSandbox {
@@ -114,6 +121,7 @@ impl Default for PlayerSandbox {
             weight_kg: 0,
             stand: None,
             show_model: true,
+            show_overlay: true,
             kits: [None; 7],
             colours: [0; 5],
             equipment: BTreeMap::new(),

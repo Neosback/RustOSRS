@@ -47,6 +47,27 @@ impl EditorApp {
                 ]
             })
         };
+        let arrow_look = if self.keys_blocked(ctx) {
+            [0.0, 0.0]
+        } else {
+            ctx.input(|i| {
+                let yaw = if i.key_down(egui::Key::ArrowLeft) {
+                    1.0
+                } else if i.key_down(egui::Key::ArrowRight) {
+                    -1.0
+                } else {
+                    0.0
+                };
+                let pitch = if i.key_down(egui::Key::ArrowUp) {
+                    1.0
+                } else if i.key_down(egui::Key::ArrowDown) {
+                    -1.0
+                } else {
+                    0.0
+                };
+                [yaw, pitch]
+            })
+        };
         self.interaction
             .apply_camera_input(interaction_runtime::CameraInput {
                 delta: [delta.x, delta.y],
@@ -57,6 +78,7 @@ impl EditorApp {
                 pinch,
                 hovered: response.hovered(),
                 movement,
+                arrow_look,
                 dt,
             });
     }

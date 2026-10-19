@@ -17,7 +17,9 @@ use std::collections::VecDeque;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WalkOutcome {
     /// A route was found (to the tile, or as near as it can get).
-    Walking { exact: bool },
+    Walking {
+        exact: bool,
+    },
     AlreadyThere,
     /// Nothing reachable: collision is missing, or the tile is walled off.
     Unreachable,
