@@ -1,18 +1,28 @@
 //! Chronological undo and redo routing across semantic history entries.
 //!
-//! Semantic replay is checkpointed by `EditRuntime`. This router snapshots only the transitional
-//! worker values needed for projection, prepares the projection from the authoritative post-replay
-//! `MapDocument`, and mutates worker/UI mirrors only after gateway finalization succeeds.
+//! Semantic replay is checkpointed by `EditRuntime`. Active worker projection is derived from the
+//! exact authoritative `EditReplayDescriptor`; the parallel `EditStep` stack remains temporarily
+//! only for chronological labels/stack movement until CP2H removes it.
 
+#[cfg(test)]
 use super::super::path::project_semantic_path_values;
+#[cfg(test)]
 use super::super::plan::{project_height_values, project_paint_values};
-use super::{
-    EditStep, EditorApp, SemanticHeightHistory, SemanticPaintHistory, SemanticPathHistory, TileKey,
+use super::replay_projection::{
+    MapReplayInput, PreparedMapReplay, capture_map_replay_input, prepare_map_replay,
 };
+use super::{EditStep, EditorApp, SemanticHeightHistory, SemanticPaintHistory, SemanticPathHistory};
+#[cfg(test)]
+use super::TileKey;
 use crate::app::edit_runtime::{EditExecution, EditExecutionError, EditReplayDirection};
-use crate::app::object_tool::{ObjectHistoryRoute, build_object_history_projection};
+#[cfg(test)]
+use crate::app::object_tool::build_object_history_projection;
+use crate::app::object_tool::ObjectHistoryRoute;
+#[cfg(test)]
 use crate::paint::TileValues;
+use crate::session::EditReplayDescriptor;
 use osrs_edit::MapQuery;
+#[cfg(test)]
 use osrs_world::{LocEdit, LocSpec};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -43,7 +53,7 @@ impl Direction {
         }
     }
 
-    /// The semantic replay succeeded: move its history marker to the opposite stack.
+    /// The semantic replay succeeded: move its temporary chronology marker to the opposite stack.
     fn settle(self, history: &mut Vec<EditStep>, redo_stack: &mut Vec<EditStep>, step: EditStep) {
         match self {
             Self::Undo => redo_stack.push(step),
@@ -51,7 +61,7 @@ impl Direction {
         }
     }
 
-    /// The semantic replay did not complete: return its marker to the stack it came from.
+    /// The semantic replay did not complete: return its temporary marker to its source stack.
     fn restore(self, history: &mut Vec<EditStep>, redo_stack: &mut Vec<EditStep>, step: EditStep) {
         match self {
             Self::Undo => history.push(step),
@@ -60,7 +70,11 @@ impl Direction {
     }
 }
 
-/// The semantic transaction kind a history step routes to.
+/// The semantic transaction label carried by the temporary application chronology marker.
+///
+/// Payloads remain only for CP2H/CP2I compatibility and focused parity tests. Active projection no
+/// longer reads them.
+#[allow(dead_code)]
 enum Route {
     Appearance,
     Scenario,
@@ -72,15 +86,31 @@ enum Route {
     Composite(SemanticPathHistory, ObjectHistoryRoute),
 }
 
-/// Transitional worker values captured before semantic replay. Missing tiles are retained as
-/// `None` so the failure occurs inside the gateway projection boundary and triggers exact rollback.
+/// Disposable pre-replay worker values captured from the authoritative descriptor.
+enum DescriptorProjectionInput {
+    Map(MapReplayInput),
+    Scenario,
+    Appearance,
+}
+
+/// A fully validated replay projection prepared from the authoritative descriptor.
+enum DescriptorProjection {
+    Map(PreparedMapReplay),
+    Scenario,
+    Appearance,
+}
+
+/// Transitional route-specific replay input retained only as a parity oracle during CP2G.
+#[cfg(test)]
 enum ProjectionInput {
     Tiles(Vec<(TileKey, Option<TileValues>)>),
     Object,
     TilesAndObject(Vec<(TileKey, Option<TileValues>)>),
 }
 
-/// A fully validated replay projection. Applying this after gateway finalization is infallible.
+/// Transitional route-specific prepared projection retained only for focused migration tests.
+#[cfg(test)]
+#[allow(dead_code)]
 enum PreparedProjection {
     Appearance,
     Scenario,
@@ -121,6 +151,22 @@ impl Route {
         }
     }
 
+    fn matches_descriptor(&self, descriptor: &EditReplayDescriptor) -> bool {
+        matches!(
+            (self, descriptor),
+            (Self::Appearance, EditReplayDescriptor::Appearance)
+                | (Self::Scenario, EditReplayDescriptor::Scenario)
+                | (
+                    Self::Paint(_)
+                        | Self::Height(_)
+                        | Self::Path(_)
+                        | Self::Object(_)
+                        | Self::Composite(..),
+                    EditReplayDescriptor::Map(_)
+                )
+        )
+    }
+
     fn label(&self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
@@ -147,26 +193,7 @@ impl Route {
         format!("{count} {noun}{}", if count == 1 { "" } else { plural })
     }
 
-    fn capture_projection_input(&self, app: &EditorApp) -> ProjectionInput {
-        let keys = match self {
-            Self::Paint(paint) => Some(&paint.keys),
-            Self::Height(height) => Some(&height.keys),
-            Self::Path(path) => Some(&path.keys),
-            Self::Composite(path, _) => Some(&path.keys),
-            Self::Object(_) | Self::Scenario | Self::Appearance => None,
-        };
-        let tiles = |keys: &Vec<TileKey>| -> Vec<(TileKey, Option<TileValues>)> {
-            keys.iter()
-                .map(|key| (*key, app.current_tile(*key)))
-                .collect()
-        };
-        match (keys, self) {
-            (Some(keys), Self::Composite(..)) => ProjectionInput::TilesAndObject(tiles(keys)),
-            (Some(keys), _) => ProjectionInput::Tiles(tiles(keys)),
-            (None, _) => ProjectionInput::Object,
-        }
-    }
-
+    #[cfg(test)]
     fn prepare_projection(
         &self,
         query: &impl MapQuery,
@@ -271,6 +298,25 @@ impl Route {
     }
 }
 
+fn prepare_descriptor_projection(
+    query: &impl MapQuery,
+    descriptor: &EditReplayDescriptor,
+    input: DescriptorProjectionInput,
+) -> Result<DescriptorProjection, String> {
+    match (descriptor, input) {
+        (EditReplayDescriptor::Map(footprint), DescriptorProjectionInput::Map(input)) => {
+            prepare_map_replay(query, footprint, input).map(DescriptorProjection::Map)
+        }
+        (EditReplayDescriptor::Scenario, DescriptorProjectionInput::Scenario) => {
+            Ok(DescriptorProjection::Scenario)
+        }
+        (EditReplayDescriptor::Appearance, DescriptorProjectionInput::Appearance) => {
+            Ok(DescriptorProjection::Appearance)
+        }
+        _ => Err("semantic replay descriptor changed while projection was captured".to_owned()),
+    }
+}
+
 impl EditorApp {
     pub(in crate::app) fn undo(&mut self) {
         let Some(step) = self.terrain.history.pop() else {
@@ -300,23 +346,51 @@ impl EditorApp {
         self.route_semantic(Direction::Redo, step, &route);
     }
 
-    /// Replay one semantic step through `EditRuntime`, then apply its already-validated projection.
+    /// Replay one semantic step through `EditRuntime`, then apply a projection derived from the
+    /// exact authoritative replay descriptor. `EditStep` participates only in the temporary
+    /// chronology stack and success-label compatibility until CP2H removes that duplicate stack.
     fn route_semantic(&mut self, direction: Direction, step: EditStep, route: &Route) {
         let (label, word) = (route.label(), direction.word());
-        let input = route.capture_projection_input(self);
-        let footprint = route.footprint(direction);
-        let execution = self
-            .session
-            .replay(direction.gateway(), footprint, |document| {
-                route.prepare_projection(document, direction, input)
-            });
+        let Some(descriptor) = self.session.replay_descriptor(direction.gateway()) else {
+            direction.restore(
+                &mut self.terrain.history,
+                &mut self.terrain.redo_stack,
+                step,
+            );
+            self.ui
+                .notify(format!("{label} {word} history is out of sync with the semantic session"));
+            return;
+        };
+        if !route.matches_descriptor(&descriptor) {
+            direction.restore(
+                &mut self.terrain.history,
+                &mut self.terrain.redo_stack,
+                step,
+            );
+            self.ui.notify(format!(
+                "{label} {word} marker does not match the authoritative semantic history; no state was changed"
+            ));
+            return;
+        }
+        let input = match &descriptor {
+            EditReplayDescriptor::Map(footprint) => DescriptorProjectionInput::Map(
+                capture_map_replay_input(footprint, |key| self.current_tile(key)),
+            ),
+            EditReplayDescriptor::Scenario => DescriptorProjectionInput::Scenario,
+            EditReplayDescriptor::Appearance => DescriptorProjectionInput::Appearance,
+        };
+        let execution = self.session.replay(
+            direction.gateway(),
+            crate::app::edit_runtime::EditFootprint::default(),
+            |document| prepare_descriptor_projection(document, &descriptor, input),
+        );
 
         let notice = match execution {
             Ok(EditExecution::Committed {
                 receipt,
                 projection,
             }) => {
-                let count = self.apply_replay_projection(projection);
+                let count = self.apply_descriptor_projection(projection);
                 self.world.invalidate_semantic_edit(&receipt);
                 direction.settle(
                     &mut self.terrain.history,
@@ -377,66 +451,39 @@ impl EditorApp {
         self.ui.notify(notice);
     }
 
-    /// Apply an already-validated semantic replay projection mechanically. Projection invalidation
+    /// Apply an already-validated descriptor-driven projection mechanically. Projection invalidation
     /// is dispatched separately from the authoritative replay receipt after this returns.
-    fn apply_replay_projection(&mut self, projection: PreparedProjection) -> usize {
+    fn apply_descriptor_projection(&mut self, projection: DescriptorProjection) -> usize {
         match projection {
-            PreparedProjection::Scenario | PreparedProjection::Appearance => 1,
-            PreparedProjection::Tiles {
-                projected,
-                mark_height,
-            } => {
-                let count = projected.len();
-                let mut edits = Vec::new();
-                for (key, current, values) in projected {
-                    if mark_height {
-                        self.terrain.height_edited.insert(key);
-                    }
-                    if values != current {
-                        self.terrain.edited.insert(key, values);
-                        edits.push(self.edit_for(key, values));
-                    }
-                }
-                self.world.project_tile_edits(edits);
-                count
-            }
-            PreparedProjection::Object {
-                edits,
-                reselect,
-                count,
-            } => {
-                self.world.project_loc_edits(edits);
-                self.clear_selection();
-                self.interaction.set_pending_reselect(reselect);
-                count
-            }
-            PreparedProjection::Composite {
-                projected,
-                mark_height,
-                edits,
-                reselect,
-                count,
-            } => {
+            DescriptorProjection::Scenario | DescriptorProjection::Appearance => 1,
+            DescriptorProjection::Map(projection) => {
+                let count = projection.count();
+                let has_object_edits = !projection.object_edits.is_empty();
                 let mut tile_edits = Vec::new();
-                for (key, current, values) in projected {
-                    if mark_height {
-                        self.terrain.height_edited.insert(key);
+                for tile in projection.tiles {
+                    if tile.height_changed {
+                        self.terrain.height_edited.insert(tile.key);
                     }
-                    if values != current {
-                        self.terrain.edited.insert(key, values);
-                        tile_edits.push(self.edit_for(key, values));
+                    if tile.after != tile.before {
+                        self.terrain.edited.insert(tile.key, tile.after);
+                        tile_edits.push(self.edit_for(tile.key, tile.after));
                     }
                 }
                 self.world.project_tile_edits(tile_edits);
-                self.world.project_loc_edits(edits);
-                self.clear_selection();
-                self.interaction.set_pending_reselect(reselect);
+                if has_object_edits {
+                    self.world.project_loc_edits(projection.object_edits);
+                    self.clear_selection();
+                    self.interaction.set_pending_reselect(projection.reselect);
+                }
                 count
             }
         }
     }
 }
 
+#[cfg(test)]
+mod descriptor_tests;
+#[cfg(test)]
 mod footprint;
 #[cfg(test)]
 mod tests;
