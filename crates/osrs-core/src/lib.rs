@@ -34,3 +34,4 @@ pub mod scenario;
 pub mod sequence_replacement;
 pub mod static_entity;
 pub mod trig;
+pub mod var_names;
