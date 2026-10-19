@@ -383,6 +383,24 @@ struct DecisionFrame {
     remaining: PatternDomain,
 }
 
+/// What happened at one step of a solve, for showing how the solver decides.
+#[derive(Debug, Clone, Copy)]
+pub enum WfcEvent<'a> {
+    /// The grid after the constraints and a first round of narrowing.
+    Start { domains: &'a [PatternDomain] },
+    /// `cell` was fixed to `chosen` out of `options` patterns, and the narrowing that followed.
+    Collapse {
+        cell: WfcCoord,
+        chosen: WfcPatternId,
+        options: u32,
+        domains: &'a [PatternDomain],
+    },
+    /// Narrowing left `cell` with nothing allowed.
+    Contradiction { cell: WfcCoord },
+    /// The solver went back to an earlier choice and tried another.
+    Backtrack { domains: &'a [PatternDomain] },
+}
+
 pub fn solve_wfc(
     catalog: &WfcCatalog,
     width: u16,
@@ -390,6 +408,27 @@ pub fn solve_wfc(
     seed: u64,
     constraints: &[WfcConstraint],
     max_backtracks: u32,
+) -> Result<WfcSolution, WfcSolveError> {
+    solve_wfc_observed(
+        catalog,
+        width,
+        height,
+        seed,
+        constraints,
+        max_backtracks,
+        &mut |_| {},
+    )
+}
+
+/// [`solve_wfc`] that reports every step to `observe`. The result is the same as without it.
+pub fn solve_wfc_observed(
+    catalog: &WfcCatalog,
+    width: u16,
+    height: u16,
+    seed: u64,
+    constraints: &[WfcConstraint],
+    max_backtracks: u32,
+    observe: &mut dyn FnMut(WfcEvent<'_>),
 ) -> Result<WfcSolution, WfcSolveError> {
     if width == 0 || height == 0 {
         return Err(WfcSolveError::InvalidDimensions { width, height });
@@ -423,6 +462,7 @@ pub fn solve_wfc(
         });
     }
 
+    observe(WfcEvent::Start { domains: &domains });
     let mut rng = SplitMix64::new(seed);
     let mut decisions = Vec::<DecisionFrame>::new();
     let mut backtracks = 0_u32;
@@ -447,6 +487,7 @@ pub fn solve_wfc(
         };
 
         let before = domains.clone();
+        let options = domains[cell].len();
         let chosen = choose_weighted(catalog, domains[cell], &mut rng);
         let remaining = domains[cell].without(chosen);
         if !remaining.is_empty() {
@@ -458,9 +499,19 @@ pub fn solve_wfc(
         }
         domains[cell] = PatternDomain::singleton(chosen);
 
-        if let Err(contradiction) =
-            propagate(catalog, width, height, &mut domains, VecDeque::from([cell]))
-        {
+        let propagated = propagate(catalog, width, height, &mut domains, VecDeque::from([cell]));
+        match propagated {
+            Ok(()) => observe(WfcEvent::Collapse {
+                cell: coord_from_index(width, cell),
+                chosen,
+                options,
+                domains: &domains,
+            }),
+            Err(contradiction) => observe(WfcEvent::Contradiction {
+                cell: coord_from_index(width, contradiction),
+            }),
+        }
+        if let Err(contradiction) = propagated {
             restore_after_contradiction(
                 catalog,
                 width,
@@ -472,6 +523,7 @@ pub fn solve_wfc(
                 max_backtracks,
                 contradiction,
             )?;
+            observe(WfcEvent::Backtrack { domains: &domains });
         }
     }
 }

@@ -37,9 +37,16 @@ mod building_validation;
 mod building_vertical;
 mod building_walls;
 mod building_wfc;
+mod wfc_lens;
 pub use building_learning::{
     LearnedCatalog, LearnedPattern, LearnedRoleModel, LearningError, LearningGrid, learn_catalog,
     learn_catalog_with_rotations, plan_wfc_floors,
+};
+pub use wfc_lens::{
+    DIRECTIONS as WFC_DIRECTIONS, Lens as WfcLens, LensEdge as WfcLensEdge,
+    LensIgnored as WfcLensIgnored, LensKind as WfcLensKind, PieceClass as WfcPieceClass,
+    Sample as WfcSample, Step as WfcStep, Task as WfcTask, look as wfc_look,
+    refloor_task as wfc_refloor_task, sample as wfc_sample, trace as wfc_trace,
 };
 mod document;
 mod document_diff;
@@ -158,8 +165,8 @@ pub use building_vertical::{
 pub use building_walls::resolve_wall_slots;
 pub use building_wfc::{
     MAX_WFC_PATTERNS, PatternDomain, WfcCatalog, WfcCatalogError, WfcConstraint, WfcCoord,
-    WfcPattern, WfcPatternId, WfcPatternSpec, WfcSocket, WfcSolution, WfcSolveError, solve_wfc,
-    solve_wfc_with_repair,
+    WfcEvent, WfcPattern, WfcPatternId, WfcPatternSpec, WfcSocket, WfcSolution, WfcSolveError,
+    solve_wfc, solve_wfc_observed, solve_wfc_with_repair,
 };
 pub use document::{MapDocument, PatchApplyError};
 pub use history::{
