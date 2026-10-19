@@ -4,6 +4,46 @@ Last updated: 2026-10-18
 
 Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md` and `scripts/editor_features.json` locate feature ownership and tests. Live Git state is authoritative for branch/SHA facts; CI claims require actual run evidence.
 
+## Lighter CI and local gate — 2026-10-19
+
+Baseline `main` at `ff7a1be7` (the app's catch-all commits swept this work in) plus `3071a3ad`,
+`c4429d48`, `e6d05083` (format/lint fixes to other sessions' code). Authority: `scripts/verify.py`
+(one definition for local and CI), `.github/workflows/ci.yml`, `docs/LOCAL-VERIFICATION.md`.
+
+- **Test inventory**: `scripts/run_tests.py` now builds `--lib --bins --tests`; examples are only
+  type-checked by Clippy (`--examples` opts back in). Seven crates (`osrs-cache`, `-core`, `-hd`,
+  `-reference`, `-render`, `-scene`, `-world`) bundle their integration files into one
+  `tests/integration.rs` (`autotests = false`; **a new `tests/*.rs` must be added there**). Former
+  `--test themes` is `--test integration themes::`.
+- **Measured** (this Mac, 2026-10-18/19): test binaries 123 to 23. In the 2026-10-18 20:14 full gate
+  libtest reported about 121 s of real test time but per-binary wall times summed to 5,034 s: the cost
+  is the first launch of each freshly linked executable (dyld/Gatekeeper scan, 20-100 s under load),
+  not test work. Test step: 1,518 s (build 259 + run 1,260) before; 578 s (build 95 + run 484) after,
+  1,354 passed / 22 ignored / 0 failed.
+- **Gate**: `verify.py --stage quick` (Python guards + rustfmt) and `--stage build` (native Clippy,
+  one merged wasm Clippy over the editor and portable libs with `-D warnings`, tests). The separate
+  `cargo check` steps and the `wasm-check` command are dropped because Clippy compiles everything
+  they do; this is stricter, not weaker, for the library crates (checked: wasm Clippy over core, edit,
+  lab, cache, scene, hd, render, world passes).
+- **CI**: one Ubuntu job (was: two chained jobs, push and pull_request both triggered, no wasm, full
+  tests only by manual run/`[full-ci]`). Push to `main` + PRs, `paths-ignore` Markdown, cancel
+  superseded runs, 45 min cap, quick stage before the cache restore, only `main` saves the cache,
+  `CARGO_PROFILE_DEV_DEBUG=0`. Dropped mold (Rust 1.90+ links with rust-lld on Linux x86_64) and the
+  `[full-ci]` trigger. It now runs the whole test suite and wasm Clippy on every non-doc push, which
+  the old CI did not.
+- **Build**: `[profile.dev] debug = "line-tables-only"` and `debug = false` for dependencies
+  (the earlier note that `debug = 1` was line-tables-only was wrong; 1 is "limited"); `itertools` 0.15
+  in `osrs-filestore` removes a duplicate; `rust-toolchain.toml` lists the wasm32 target. Remaining
+  duplicates (`syn`, `objc2`, `miniz_oxide`, `rustc-hash`, `bitflags`) come from wgpu/winit/png/flate2.
+- **Not done / not measured**: the final end-to-end `verify.py --full` is not green on this tree because
+  of other work in progress, not these changes: `crates/osrs-world/examples/building_dataset/record.rs`
+  uses `osrs_lab` (not a dependency of `osrs-world`, and the architecture rules forbid it) and the wasm
+  build of `osrs-editor` has errors (`prefab_runtime/build.rs:362` type annotation, unused
+  `candidates.rs` import and `capture/analysis.rs` variables). The quick stage, native Clippy for
+  everything else, wasm Clippy for the libs and the full test inventory were each run green. GitHub
+  runtime and billable minutes are unmeasured (no GitHub access); the CI file has never run.
+  Possible follow-up: `run_tests.py --jobs` above 4, since the first-launch delay is latency, not CPU.
+
 ## Workshop, name book and trained building models — 2026-10-18
 
 Baseline is `main` at `f6e760d0d7d8bbcde68435b2076123996dfb1146` plus the checkpoint commits listed
