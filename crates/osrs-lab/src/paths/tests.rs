@@ -39,6 +39,7 @@ fn town(seed: u32, with_path: bool) -> PathLesson {
             (2, entry("door", Some(false))),
             (3, entry("tree", Some(true))),
         ]),
+        places: vec![],
         path_overlays: vec![ROAD],
     };
     let set = |lesson: &mut PathLesson, x: usize, y: usize, id: u16| lesson.overlay[y * w + x] = id;

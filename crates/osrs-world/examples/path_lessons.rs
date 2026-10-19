@@ -23,6 +23,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let installation = Installation::read(&root)?;
     let mut definitions =
         WorldDefinitions::open(CacheSource::Dir(installation.root.join(".data/cache/LIVE")))?;
+    // Named places from the world map (`map_labels.json`), when MAP_LABELS points at the file.
+    let labels: Vec<(String, i32, i32, u8)> = match std::env::var("MAP_LABELS") {
+        Ok(path) => serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(path)?)?
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|l| l["plane"].as_i64().unwrap_or(0) == 0)
+            .filter_map(|l| {
+                Some((
+                    l["name"].as_str()?.replace("<br>", " "),
+                    i32::try_from(l["worldX"].as_i64()?).ok()?,
+                    i32::try_from(l["worldY"].as_i64()?).ok()?,
+                    u8::try_from(l["textScale"].as_i64().unwrap_or(0))
+                        .unwrap_or(0)
+                        .min(2),
+                ))
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    };
     let mut names: BTreeMap<u32, serde_json::Value> = BTreeMap::new();
     let mut written = 0;
     for rx in min_x..=max_x {
@@ -100,6 +120,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "heights": heights,
                 "objects": objects,
                 "names": region_names,
+                "places": labels
+                    .iter()
+                    .filter(|(_, x, y, _)| *x > origin.0 - 200 && *x < origin.0 + 264 && *y > origin.1 - 200 && *y < origin.1 + 264)
+                    .map(|(name, x, y, size)| json!({"name": name, "x": x, "y": y, "size": size}))
+                    .collect::<Vec<_>>(),
             });
             std::fs::write(
                 out.join(format!("r{rx}_{ry}.lesson.json")),

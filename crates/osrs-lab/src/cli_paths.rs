@@ -22,7 +22,10 @@ pub fn train_paths_command(args: &[String]) -> Result<(), Box<dyn std::error::Er
     files.sort();
     let mut lessons = Vec::new();
     for file in files {
-        let lesson = PathLesson::from_json(&std::fs::read_to_string(&file)?)?;
+        let mut lesson = PathLesson::from_json(&std::fs::read_to_string(&file)?)?;
+        if std::env::var_os("PATHS_NO_PLACES").is_some() {
+            lesson.places.clear();
+        }
         let tiles = PathScene::of(&lesson).mask.iter().filter(|m| **m).count();
         if tiles >= min_tiles {
             lessons.push(lesson);

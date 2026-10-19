@@ -10,8 +10,8 @@ pub use model::{
 pub use paths::{
     Attempt as PathAttempt, Draft as PathDraft, FEATURE_INFO as PATH_FEATURES, LESSON_FORMAT,
     Mode as PathMode, ObjectEntry as PathObject, PATH_MODEL_FORMAT, PathLesson, PathMetrics,
-    PathModel, PathProgress, PathTrainRequest, Reason as PathReason, Scene as PathScene,
-    Score as PathScore, Tile as PathTile, Why as PathWhy, endpoints_of,
+    PathModel, PathProgress, PathTrainRequest, PlaceMark as PathPlaceMark, Reason as PathReason,
+    Scene as PathScene, Score as PathScore, Tile as PathTile, Why as PathWhy, endpoints_of,
     lay_actions as path_lay_actions, path_task, pieces as path_pieces, train_paths,
     waypoints as path_waypoints,
 };

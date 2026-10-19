@@ -26,6 +26,16 @@ pub struct ObjectEntry {
     pub blocks: Option<bool>,
 }
 
+/// A named place from the world map (a town, a mine, a dungeon level) near a lesson, in world
+/// tile coordinates. `size` is 0 for a small site, 1 for a town and 2 for a whole region.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlaceMark {
+    pub name: String,
+    pub x: i32,
+    pub y: i32,
+    pub size: u8,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PathLesson {
@@ -54,6 +64,10 @@ pub struct PathLesson {
     /// `[object id, kind, orientation, x, y]` on the ground plane.
     pub objects: Vec<[u32; 5]>,
     pub names: BTreeMap<u32, ObjectEntry>,
+    /// Named places near this area (within about 200 tiles). Empty when the place names are not
+    /// loaded; the learner then simply does not know where towns are.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub places: Vec<PlaceMark>,
     /// The floor overlays that are paths. Empty means "work it out" (see [`Self::guess_paths`]).
     #[serde(default)]
     pub path_overlays: Vec<u16>,
@@ -146,6 +160,7 @@ impl PathLesson {
             heights: vec![0; tiles],
             objects: Vec::new(),
             names,
+            places: Vec::new(),
             path_overlays: Vec::new(),
         };
         for tile in snapshot.tiles.iter().filter(|t| t.plane == 0) {
