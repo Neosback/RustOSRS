@@ -128,3 +128,26 @@ fn every_object_of_the_house_is_taken_and_nothing_else() {
     assert_eq!(taken.len(), all.len() - 1);
     assert!(taken.iter().all(|p| p.tile != (110, 105)));
 }
+
+#[test]
+fn a_click_on_the_outside_of_a_wall_points_at_the_nearest_floor_tile_of_that_building() {
+    // The outer face of the north wall: the tile beyond it (104, 109) is outside the rooms.
+    let found = find_at((104, 108), 0).unwrap_or_else(|| panic!("the wall belongs to the house"));
+    let seed = found
+        .seed_near((104, 109))
+        .unwrap_or_else(|| panic!("a floor tile"));
+    assert!(
+        found.footprint.contains(&seed),
+        "the seed is a floor tile of the building"
+    );
+    assert_eq!(
+        seed,
+        (104, 107),
+        "the nearest floor to the click, just inside that wall"
+    );
+    assert_eq!(
+        found.seed_near((104, 109)),
+        found.seed_near((104, 109)),
+        "deterministic"
+    );
+}

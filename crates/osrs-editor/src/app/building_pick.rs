@@ -30,6 +30,14 @@ pub(super) struct Found {
 }
 
 impl Found {
+    /// The floor tile of the building nearest to `tile` (where a click on its wall points to).
+    pub(super) fn seed_near(&self, tile: Tile) -> Option<Tile> {
+        self.footprint
+            .iter()
+            .min_by_key(|t| ((t.0 - tile.0).abs() + (t.1 - tile.1).abs(), **t))
+            .copied()
+    }
+
     /// Whether an object belongs to the building: anything on the floor, boundary pieces and
     /// wall decoration on the ring, and roof pieces on the plane above, over the floor or ring.
     #[cfg(test)]
@@ -182,6 +190,7 @@ pub(super) fn select_building(app: &mut EditorApp, tile: Tile, additive: bool) -
         app.interaction.clear_objects();
         app.interaction.clear_tiles();
     }
+    app.prefabs.pending_building = found.seed_near(tile);
     for &floor in &found.footprint {
         app.interaction.add_tile(floor);
     }
@@ -216,11 +225,61 @@ pub(super) fn select_building(app: &mut EditorApp, tile: Tile, additive: bool) -
         }
     }
     Some(format!(
-        "Selected a building: {} room{}, {} floor tiles, {taken} objects",
+        "Selected a building: {} room{}, {} floor tiles, {taken} objects. Enter reviews it for saving as a prefab, Esc lets go.",
         found.rooms,
         if found.rooms == 1 { "" } else { "s" },
         found.footprint.len()
     ))
+}
+
+/// A plain right-click on a wall (or a piece standing on one) picks the whole building. Shift
+/// right-click keeps its context menu and a right-drag still orbits.
+pub(super) fn right_click(app: &mut EditorApp) {
+    let Some(object) = app.interaction.hover().object.clone() else {
+        return;
+    };
+    let Some(loc) = app
+        .world
+        .infos()
+        .get(&object.region)
+        .and_then(|info| info.locs.get(object.index))
+    else {
+        return;
+    };
+    // Walls, corners and the decoration on them (loc kinds 0 to 8).
+    if loc.loc_type > 8 {
+        return;
+    }
+    let tile = loc.tile;
+    let message = select_building(app, tile, false)
+        .unwrap_or_else(|| "That wall does not close a building here.".to_owned());
+    app.ui.notify(message);
+}
+
+/// Enter opens the capture review on the picked building; Escape forgets it.
+pub(super) fn keys(app: &mut EditorApp, ctx: &eframe::egui::Context) {
+    if app.prefabs.pending_building.is_none() {
+        return;
+    }
+    if app.settings.prefs.tool != crate::paint::Tool::Select {
+        return;
+    }
+    if ctx.input(|i| i.key_pressed(eframe::egui::Key::Escape)) {
+        app.prefabs.pending_building = None;
+    } else if ctx.input(|i| i.key_pressed(eframe::egui::Key::Enter)) {
+        review(app);
+    }
+}
+
+/// Open the capture review on the picked building.
+pub(super) fn review(app: &mut EditorApp) {
+    if let Some((x, y)) = app.prefabs.pending_building.take() {
+        // The review lives in the Prefabs panel: bring it up.
+        app.settings.prefs.properties_panel = true;
+        app.settings.prefs.rail_tab = crate::settings::RailTab::Prefabs;
+        app.prefabs.page = super::prefab_runtime::Page::Library;
+        super::prefab_panel::capture::start(app, osrs_core::coords::MapTile::new(x, y));
+    }
 }
 
 #[cfg(test)]

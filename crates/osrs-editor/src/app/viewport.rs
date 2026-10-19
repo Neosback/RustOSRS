@@ -92,13 +92,17 @@ impl EditorApp {
                 height,
             );
         }
-        if response.secondary_clicked()
-            && (response.ctx.input(|i| i.modifiers.shift)
-                || self.interaction.camera().mode == CameraMode::Game)
-        {
-            self.interaction.capture_context_pick();
-            self.ui.context_menu = response.interact_pointer_pos();
+        if response.secondary_clicked() {
+            if response.ctx.input(|i| i.modifiers.shift)
+                || self.interaction.camera().mode == CameraMode::Game
+            {
+                self.interaction.capture_context_pick();
+                self.ui.context_menu = response.interact_pointer_pos();
+            } else if self.settings.prefs.tool == crate::paint::Tool::Select {
+                super::building_pick::right_click(self);
+            }
         }
+        super::building_pick::keys(self, &response.ctx);
         let wanted: Vec<ObjectPick> = [
             self.interaction.hover().object.clone(),
             self.interaction.selected().clone(),

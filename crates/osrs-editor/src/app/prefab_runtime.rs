@@ -89,6 +89,9 @@ pub(in crate::app) struct PrefabRuntime {
     pub(in crate::app) studio_request: Option<String>,
     pub(in crate::app) studio_command: Option<crate::app::prefab_studio::SceneCommand>,
     pub(in crate::app) trash: TrashState,
+    /// The building just picked with a right-click on its wall: a floor tile of it. Enter opens
+    /// the capture review on it, Escape forgets it.
+    pub(in crate::app) pending_building: Option<(i32, i32)>,
     notice: Option<String>,
     import_task: Option<OpenTask>,
     export_task: Option<SaveTask>,

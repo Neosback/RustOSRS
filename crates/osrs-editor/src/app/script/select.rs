@@ -38,6 +38,10 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
                 None => Step::Retry,
             })
         }
+        Some("review") => {
+            building_pick::review(app);
+            Ok(Step::Done)
+        }
         Some("pointer") => {
             use crate::app::interaction_runtime::ScriptedPointer;
             let pointer = match words.next() {
