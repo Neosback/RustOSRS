@@ -50,6 +50,28 @@ jobs:
       - name: Strict production Clippy
         run: cargo clippy --locked -p osrs-edit -p osrs-editor --lib --all-features -- -D warnings
       - name: Focused package tests
-        run: python3 scripts/run_tests.py -p osrs-edit -p osrs-editor --output target/verify/cp2-tests
+        shell: bash
+        run: |
+          set +e
+          python3 scripts/run_tests.py -p osrs-edit -p osrs-editor --output target/verify/cp2-tests
+          status=$?
+          if [ "$status" -ne 0 ] && [ -f target/verify/cp2-tests/build.jsonl ]; then
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          for line in Path("target/verify/cp2-tests/build.jsonl").read_text(encoding="utf-8").splitlines():
+              try:
+                  row = json.loads(line)
+              except json.JSONDecodeError:
+                  continue
+              if row.get("reason") != "compiler-message":
+                  continue
+              message = row.get("message", {})
+              if message.get("level") == "error":
+                  print(message.get("rendered") or message.get("message", "compiler error"))
+          PY
+          fi
+          exit "$status"
       - name: Focused wasm Clippy
         run: cargo clippy --locked --target wasm32-unknown-unknown -p osrs-edit -p osrs-editor -- -D warnings
