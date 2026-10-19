@@ -1,19 +1,19 @@
 """Regression tests for editor ownership and feature-navigation contracts."""
 from __future__ import annotations
 import copy
-import json
 from pathlib import Path
 import tempfile
 import unittest
 import check_architecture
 import editor_architecture as guard
+from feature_registry import load_registry
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class EditorArchitectureTests(unittest.TestCase):
     def test_workspace_features_keep_behavior_checks_without_hiding_tools(self):
-        features = json.loads((ROOT / "scripts/editor_features.json").read_text())
+        features = load_registry(ROOT / "scripts/editor_features.json")
         self.assertEqual(guard.check_features(ROOT, features), [])
         features["Paint"]["kind"] = "workspace"
         self.assertTrue(any("Tool variants" in error for error in guard.check_features(ROOT, features)))
@@ -75,19 +75,19 @@ impl eframe::App for EditorApp { fn ui(&mut self) {} }
             self.assertTrue(any("canonical ownership" in error for error in guard.check_app_surface(source, baseline)))
 
     def test_new_tool_requires_its_feature_contract(self):
-        features = json.loads((ROOT / "scripts/editor_features.json").read_text())
+        features = load_registry(ROOT / "scripts/editor_features.json")
         del features["Height"]
         self.assertTrue(any("Tool variants" in error for error in guard.check_features(ROOT, features)))
 
     def test_mutating_tool_requires_all_four_behavior_tests(self):
-        features = json.loads((ROOT / "scripts/editor_features.json").read_text())
+        features = load_registry(ROOT / "scripts/editor_features.json")
         for phase in ["planning_test", "cancellation_test", "commit_test", "undo_test"]:
             candidate = copy.deepcopy(features)
             del candidate["Paint"][phase]
             self.assertTrue(any(f"missing {phase}" in error for error in guard.check_features(ROOT, candidate)))
 
     def test_feature_references_must_resolve_to_actual_tests(self):
-        features = json.loads((ROOT / "scripts/editor_features.json").read_text())
+        features = load_registry(ROOT / "scripts/editor_features.json")
         features["Paint"]["undo_test"] = features["Paint"]["planner"]
         self.assertTrue(any("not a #[test]" in error for error in guard.check_features(ROOT, features)))
         features["Paint"]["undo_test"]["file"] = "../outside.rs"
