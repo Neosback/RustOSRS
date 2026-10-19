@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Report semantic-authority hotspots without compiling the workspace.
 
-The default mode is an inventory report. ``--check-gateway`` is deliberately narrower: it enforces
-one already-established invariant that semantic checkpoint lifecycle APIs stay inside
-``EditorSession`` internals or the application ``EditRuntime`` gateway.
+The default mode is an inventory report. Check modes enforce already-established ownership rules
+without compiling Rust:
+
+- ``--check-gateway`` keeps semantic checkpoint lifecycle APIs inside ``EditorSession`` internals or
+  the application ``EditRuntime`` gateway.
+- ``--check-legacy-history`` prevents the transitional ``EditStep`` before/after payload surface
+  from growing or escaping the two temporary test-scaffold files that still mention it.
 """
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -30,6 +35,7 @@ LEGACY_HISTORY_PATTERNS = (
     re.compile(r"\bstep\.(changes|removed|added)\b"),
     re.compile(r"\bstroke\.step\.(changes|removed|added)\b"),
     re.compile(r"\bEditStep\s*\{"),
+    re.compile(r"\bpub\(super\)\s+(changes|removed|added)\s*:"),
 )
 
 AUTHORITY_WRITE_TOKENS = (
@@ -41,6 +47,14 @@ AUTHORITY_WRITE_TOKENS = (
 
 GATEWAY_ALLOWED_FILE = "crates/osrs-editor/src/app/edit_runtime.rs"
 SESSION_PREFIX = "crates/osrs-editor/src/session/"
+
+# Temporary CP2 scaffold only. This is a ceiling, never a target: counts may fall without changing
+# the baseline, but any increase or any legacy-history hit in another file is a violation. Remove the
+# entries entirely when CP2C2 deletes the final test-only payload fields/assertions.
+LEGACY_HISTORY_BASELINE = {
+    "crates/osrs-editor/src/app/editing/history.rs": 4,
+    "crates/osrs-editor/src/app/editing/tests.rs": 9,
+}
 
 
 @dataclass(frozen=True, order=True)
@@ -84,6 +98,20 @@ def gateway_violations(hits: Iterable[Hit]) -> list[Hit]:
     ]
 
 
+def legacy_history_violations(hits: Iterable[Hit]) -> list[Hit]:
+    """Return legacy-history uses that escape or grow beyond the temporary CP2 baseline."""
+    legacy = [hit for hit in hits if hit.category == "legacy-history"]
+    violations = [hit for hit in legacy if hit.path not in LEGACY_HISTORY_BASELINE]
+    counts = Counter(hit.path for hit in legacy)
+    for path, ceiling in LEGACY_HISTORY_BASELINE.items():
+        excess = counts[path] - ceiling
+        if excess <= 0:
+            continue
+        path_hits = [hit for hit in legacy if hit.path == path]
+        violations.extend(path_hits[-excess:])
+    return sorted(violations)
+
+
 def print_report(hits: list[Hit], category: str | None = None) -> None:
     selected = [hit for hit in hits if category is None or hit.category == category]
     current: str | None = None
@@ -112,21 +140,38 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="fail if checkpoint lifecycle APIs are used outside EditorSession/EditRuntime",
     )
+    parser.add_argument(
+        "--check-legacy-history",
+        action="store_true",
+        help="fail if legacy EditStep payload usage escapes or grows beyond the CP2 baseline",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     hits = scan()
+    failed = False
     if args.check_gateway:
         violations = gateway_violations(hits)
         if violations:
             print("Semantic checkpoint lifecycle escaped the EditRuntime gateway:")
             for hit in violations:
                 print(f"{hit.path}:{hit.line}: {hit.text}")
-            return 1
-        print("semantic checkpoint gateway: OK")
-        return 0
+            failed = True
+        else:
+            print("semantic checkpoint gateway: OK")
+    if args.check_legacy_history:
+        violations = legacy_history_violations(hits)
+        if violations:
+            print("Legacy EditStep payload authority grew beyond the CP2 baseline:")
+            for hit in violations:
+                print(f"{hit.path}:{hit.line}: {hit.text}")
+            failed = True
+        else:
+            print("legacy history authority ratchet: OK")
+    if args.check_gateway or args.check_legacy_history:
+        return 1 if failed else 0
     print_report(hits, args.category)
     return 0
 
