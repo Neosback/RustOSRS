@@ -8,6 +8,8 @@ without compiling Rust:
   the application ``EditRuntime`` gateway.
 - ``--check-legacy-history`` rejects any reintroduction of legacy ``EditStep`` before/after payload
   fields or call-site usage now that CP2 removed that duplicate authority surface.
+- ``--check-application-history`` rejects a second application chronology or the retired
+  tool-specific history-routing types. ``EditorSession`` remains the only stored chronology.
 """
 from __future__ import annotations
 
@@ -37,6 +39,12 @@ LEGACY_HISTORY_PATTERNS = (
     re.compile(r"\bpub\(super\)\s+(changes|removed|added)\s*:"),
 )
 
+APPLICATION_HISTORY_TYPE_PATTERNS = (
+    re.compile(r"\bSemanticPaintHistory\b"),
+    re.compile(r"\bSemanticHeightHistory\b"),
+    re.compile(r"\bSemanticPathHistory\b"),
+)
+
 AUTHORITY_WRITE_TOKENS = (
     ".apply_untracked(",
     ".load_appearance(",
@@ -46,6 +54,8 @@ AUTHORITY_WRITE_TOKENS = (
 
 GATEWAY_ALLOWED_FILE = "crates/osrs-editor/src/app/edit_runtime.rs"
 SESSION_PREFIX = "crates/osrs-editor/src/session/"
+APP_PREFIX = "crates/osrs-editor/src/app/"
+TERRAIN_CONTROLLER_FILE = "crates/osrs-editor/src/app/editing.rs"
 
 
 @dataclass(frozen=True, order=True)
@@ -73,6 +83,13 @@ def scan(root: Path = ROOT) -> list[Hit]:
                 hits.append(Hit("checkpoint-lifecycle", relative, line_number, text))
             if any(pattern.search(raw) for pattern in LEGACY_HISTORY_PATTERNS):
                 hits.append(Hit("legacy-history", relative, line_number, text))
+            if relative.startswith(APP_PREFIX):
+                if any(pattern.search(raw) for pattern in APPLICATION_HISTORY_TYPE_PATTERNS):
+                    hits.append(Hit("application-history", relative, line_number, text))
+                if "redo_stack" in raw:
+                    hits.append(Hit("application-history", relative, line_number, text))
+                if relative == TERRAIN_CONTROLLER_FILE and re.search(r"\bhistory\s*:", raw):
+                    hits.append(Hit("application-history", relative, line_number, text))
             if any(token in raw for token in AUTHORITY_WRITE_TOKENS):
                 hits.append(Hit("lifecycle-write", relative, line_number, text))
     return sorted(hits)
@@ -92,6 +109,11 @@ def gateway_violations(hits: Iterable[Hit]) -> list[Hit]:
 def legacy_history_violations(hits: Iterable[Hit]) -> list[Hit]:
     """Return every legacy-history hit; CP2 permits no legacy payload authority anywhere."""
     return sorted(hit for hit in hits if hit.category == "legacy-history")
+
+
+def application_history_violations(hits: Iterable[Hit]) -> list[Hit]:
+    """Return application-level chronology/routing types that must never return."""
+    return sorted(hit for hit in hits if hit.category == "application-history")
 
 
 def print_report(hits: list[Hit], category: str | None = None) -> None:
@@ -114,7 +136,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--category",
-        choices=("checkpoint-lifecycle", "legacy-history", "lifecycle-write"),
+        choices=(
+            "checkpoint-lifecycle",
+            "legacy-history",
+            "application-history",
+            "lifecycle-write",
+        ),
         help="show only one hotspot category",
     )
     parser.add_argument(
@@ -126,6 +153,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--check-legacy-history",
         action="store_true",
         help="fail if any legacy EditStep payload authority is present",
+    )
+    parser.add_argument(
+        "--check-application-history",
+        action="store_true",
+        help="fail if application-level chronology or retired tool history-routing types return",
     )
     return parser
 
@@ -152,7 +184,16 @@ def main(argv: list[str] | None = None) -> int:
             failed = True
         else:
             print("legacy history authority: zero")
-    if args.check_gateway or args.check_legacy_history:
+    if args.check_application_history:
+        violations = application_history_violations(hits)
+        if violations:
+            print("Application-level chronology or retired history routing is forbidden:")
+            for hit in violations:
+                print(f"{hit.path}:{hit.line}: {hit.text}")
+            failed = True
+        else:
+            print("application history authority: zero")
+    if args.check_gateway or args.check_legacy_history or args.check_application_history:
         return 1 if failed else 0
     print_report(hits, args.category)
     return 0
