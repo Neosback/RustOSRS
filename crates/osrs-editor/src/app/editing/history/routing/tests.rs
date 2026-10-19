@@ -27,8 +27,7 @@ fn wall() -> ObjectPlacement {
         object_id: ObjectId::new(1500),
         position: position(),
         kind: LocKind::new(0).unwrap_or_else(|| unreachable!("valid loc kind")),
-        orientation: ObjectOrientation::new(1)
-            .unwrap_or_else(|| unreachable!("valid orientation")),
+        orientation: ObjectOrientation::new(1).unwrap_or_else(|| unreachable!("valid orientation")),
     }
 }
 
@@ -99,9 +98,9 @@ fn composite_undo_and_redo_replay_terrain_height_and_object_together() {
         ..Default::default()
     };
     let undo_input = match &undo_descriptor {
-        EditReplayDescriptor::Map(footprint) => DescriptorProjectionInput::Map(
-            capture_map_replay_input(footprint, |_| Some(built)),
-        ),
+        EditReplayDescriptor::Map(footprint) => {
+            DescriptorProjectionInput::Map(capture_map_replay_input(footprint, |_| Some(built)))
+        }
         other => unreachable!("expected map descriptor, got {other:?}"),
     };
 
@@ -135,9 +134,9 @@ fn composite_undo_and_redo_replay_terrain_height_and_object_together() {
         .unwrap_or_else(|| unreachable!("redo descriptor exists"));
     let undone = crate::paint::TileValues::default();
     let redo_input = match &redo_descriptor {
-        EditReplayDescriptor::Map(footprint) => DescriptorProjectionInput::Map(
-            capture_map_replay_input(footprint, |_| Some(undone)),
-        ),
+        EditReplayDescriptor::Map(footprint) => {
+            DescriptorProjectionInput::Map(capture_map_replay_input(footprint, |_| Some(undone)))
+        }
         other => unreachable!("expected map descriptor, got {other:?}"),
     };
 

@@ -31,10 +31,16 @@ pub(super) fn controls(
     let mut mode = None;
     let bindings = palettes(&panel.model).unwrap_or_default();
     egui::ComboBox::from_label("Policy style palette")
-        .selected_text(if panel.style.is_empty() {"Saved prefab assets"} else {&panel.style})
+        .selected_text(if panel.style.is_empty() {
+            "Saved prefab assets"
+        } else {
+            &panel.style
+        })
         .show_ui(ui, |ui| {
-            ui.selectable_value(&mut panel.style,String::new(),"Saved prefab assets");
-            for name in bindings.keys() { ui.selectable_value(&mut panel.style,name.clone(),name); }
+            ui.selectable_value(&mut panel.style, String::new(), "Saved prefab assets");
+            for name in bindings.keys() {
+                ui.selectable_value(&mut panel.style, name.clone(), name);
+            }
         });
     ui.add_enabled_ui(!busy, |ui| {
         ui.label("Test using the saved footprint and room program. Save scene edits first.");
@@ -70,13 +76,23 @@ pub(super) fn controls(
         })?;
         task.budget = 4000;
         if !panel.style.is_empty() {
-            let binding = bindings.get(&panel.style).ok_or("The chosen style is missing from this model")?;
-            let mut assets:Vec<osrs_lab::PaletteEntry> = serde_json::from_value(binding["palette"].clone()).map_err(|e| e.to_string())?;
+            let binding = bindings
+                .get(&panel.style)
+                .ok_or("The chosen style is missing from this model")?;
+            let mut assets: Vec<osrs_lab::PaletteEntry> =
+                serde_json::from_value(binding["palette"].clone()).map_err(|e| e.to_string())?;
             assets.extend(task.palette);
-            assets.sort_by_key(|p| (p.id,p.kind)); assets.dedup_by_key(|p| (p.id,p.kind));
-            task.palette=assets;
-            task.overlays.extend(serde_json::from_value::<Vec<u32>>(binding["overlays"].clone()).map_err(|e|e.to_string())?);
-            task.underlays.extend(serde_json::from_value::<Vec<u32>>(binding["underlays"].clone()).map_err(|e|e.to_string())?);
+            assets.sort_by_key(|p| (p.id, p.kind));
+            assets.dedup_by_key(|p| (p.id, p.kind));
+            task.palette = assets;
+            task.overlays.extend(
+                serde_json::from_value::<Vec<u32>>(binding["overlays"].clone())
+                    .map_err(|e| e.to_string())?,
+            );
+            task.underlays.extend(
+                serde_json::from_value::<Vec<u32>>(binding["underlays"].clone())
+                    .map_err(|e| e.to_string())?,
+            );
         }
         if mode != "build" {
             task.initial = task.target.clone();
@@ -122,7 +138,10 @@ pub(super) fn controls(
                     .collect::<Vec<_>>()
             )
         });
-        let rooms=building["semantics"].get("rooms").cloned().unwrap_or_else(||serde_json::json!([]));
+        let rooms = building["semantics"]
+            .get("rooms")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!([]));
         let goal = serde_json::json!({"width":prefab.width,"height":prefab.height,"planes":prefab.planes,"footprint":footprint,"rooms":rooms,"locks":task.locks,"style":panel.style});
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -175,14 +194,28 @@ pub(super) fn controls(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn palettes(model: &str) -> Result<std::collections::BTreeMap<String,serde_json::Value>,String> {
-    let mut root=std::path::PathBuf::from(model);
+fn palettes(model: &str) -> Result<std::collections::BTreeMap<String, serde_json::Value>, String> {
+    let mut root = std::path::PathBuf::from(model);
     if !root.join("bundle.json").is_file() {
-        let reference=if root.join("best.json").is_file() {"best.json"} else {"latest.json"};
-        let value:serde_json::Value=serde_json::from_str(&std::fs::read_to_string(root.join(reference)).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
-        let name=value["checkpoint"].as_str().ok_or("Missing checkpoint reference")?;
-        if std::path::Path::new(name).components().count()!=1 {return Err("Invalid checkpoint reference".into());}
-        root=root.join(name);
+        let reference = if root.join("best.json").is_file() {
+            "best.json"
+        } else {
+            "latest.json"
+        };
+        let value: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join(reference)).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        let name = value["checkpoint"]
+            .as_str()
+            .ok_or("Missing checkpoint reference")?;
+        if std::path::Path::new(name).components().count() != 1 {
+            return Err("Invalid checkpoint reference".into());
+        }
+        root = root.join(name);
     }
-    serde_json::from_str(&std::fs::read_to_string(root.join("palettes.json")).map_err(|e|e.to_string())?).map_err(|e|e.to_string())
+    serde_json::from_str(
+        &std::fs::read_to_string(root.join("palettes.json")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }

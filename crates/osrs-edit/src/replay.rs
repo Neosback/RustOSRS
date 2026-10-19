@@ -214,11 +214,7 @@ mod tests {
     #[test]
     fn overlay_identity_shape_and_rotation_are_one_channel() {
         let coord = position(3200, 3200);
-        for after in [
-            overlay(2, 0, 0),
-            overlay(1, 1, 0),
-            overlay(1, 0, 1),
-        ] {
+        for after in [overlay(2, 0, 0), overlay(1, 1, 0), overlay(1, 0, 1)] {
             let patch = MapPatch::new([MapOp::SetTerrain {
                 coord,
                 before: TerrainTile {

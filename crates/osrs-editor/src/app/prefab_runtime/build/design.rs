@@ -13,23 +13,35 @@ pub(in crate::app) enum GenerationMode {
 pub(super) fn includes(op: &MapOp, form: &BuildForm, kit: &BuildingKit) -> bool {
     use osrs_edit::BuildingStage::*;
     if let Some(sketch) = &form.sketch
-        && let MapOp::AddObject {placement} | MapOp::RemoveObject {placement} = op
+        && let MapOp::AddObject { placement } | MapOp::RemoveObject { placement } = op
     {
         let t = placement.position.tile;
-        let on_floor = |x:i32,y:i32| sketch.floors.iter().any(|c| c.plane==0 && sketch.origin.x+i32::from(c.x)==x && sketch.origin.y+i32::from(c.y)==y);
-        let nearby = match placement.kind.get() {
-            0..=8 | 12..=21 => (-1..=1).any(|dx| (-1..=1).any(|dy| on_floor(t.x+dx,t.y+dy))),
-            _ => on_floor(t.x,t.y),
+        let on_floor = |x: i32, y: i32| {
+            sketch.floors.iter().any(|c| {
+                c.plane == 0
+                    && sketch.origin.x + i32::from(c.x) == x
+                    && sketch.origin.y + i32::from(c.y) == y
+            })
         };
-        if !nearby { return false; }
+        let nearby = match placement.kind.get() {
+            0..=8 | 12..=21 => (-1..=1).any(|dx| (-1..=1).any(|dy| on_floor(t.x + dx, t.y + dy))),
+            _ => on_floor(t.x, t.y),
+        };
+        if !nearby {
+            return false;
+        }
     }
     if form.mode == GenerationMode::Repair {
         let tile = match op {
-            MapOp::SetHeight {coord,..} => coord.corner,
-            MapOp::SetTerrain {coord,..} => coord.tile,
-            MapOp::AddObject {placement} | MapOp::RemoveObject {placement} => placement.position.tile,
+            MapOp::SetHeight { coord, .. } => coord.corner,
+            MapOp::SetTerrain { coord, .. } => coord.tile,
+            MapOp::AddObject { placement } | MapOp::RemoveObject { placement } => {
+                placement.position.tile
+            }
         };
-        if !form.region.is_some_and(|r| r.contains(tile)) { return false; }
+        if !form.region.is_some_and(|r| r.contains(tile)) {
+            return false;
+        }
     }
     let stage = kit.stage_of(op);
     if form.stage.is_some_and(|s| s != stage) {

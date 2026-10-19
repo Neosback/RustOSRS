@@ -4,10 +4,10 @@
 //! that history, checkpoints the semantic transition, and restores it exactly if projection fails.
 //! The application keeps only disposable worker/UI projection state.
 
+use super::EditorApp;
 use super::replay_projection::{
     MapReplayInput, PreparedMapReplay, capture_map_replay_input, prepare_map_replay,
 };
-use super::EditorApp;
 use crate::app::edit_runtime::{EditExecution, EditExecutionError, EditReplayDirection};
 use crate::session::EditReplayDescriptor;
 use osrs_edit::MapQuery;
@@ -142,9 +142,11 @@ impl EditorApp {
         let label = descriptor_label(&descriptor);
         let word = direction.word();
         let input = match &descriptor {
-            EditReplayDescriptor::Map(footprint) => DescriptorProjectionInput::Map(
-                capture_map_replay_input(footprint, |key| self.current_tile(key)),
-            ),
+            EditReplayDescriptor::Map(footprint) => {
+                DescriptorProjectionInput::Map(capture_map_replay_input(footprint, |key| {
+                    self.current_tile(key)
+                }))
+            }
             EditReplayDescriptor::Scenario => DescriptorProjectionInput::Scenario,
             EditReplayDescriptor::Appearance => DescriptorProjectionInput::Appearance,
         };

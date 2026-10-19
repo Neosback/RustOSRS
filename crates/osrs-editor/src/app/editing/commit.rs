@@ -117,19 +117,16 @@ impl EditorApp {
             *after = values;
         }
         self.world.project_tile_edits(edits);
-        stroke
-            .changes
-            .retain(|(_, before, after)| before != after);
+        stroke.changes.retain(|(_, before, after)| before != after);
     }
 
     fn commit_paint_stroke(&mut self, stroke: &mut Stroke, brush: Brush) -> StrokeOutcome {
-        let patch = match build_paint_stroke_patch(self.session.document(), &brush, &stroke.changes) {
+        let patch = match build_paint_stroke_patch(self.session.document(), &brush, &stroke.changes)
+        {
             Ok(patch) => patch,
             Err(error) => {
-                return self.abandon_stroke(
-                    stroke,
-                    format!("Paint stroke was not committed: {error:?}"),
-                );
+                return self
+                    .abandon_stroke(stroke, format!("Paint stroke was not committed: {error:?}"));
             }
         };
         let projection_input: Vec<_> = stroke
@@ -199,9 +196,7 @@ impl EditorApp {
             *after = values;
         }
         self.world.project_tile_edits(edits);
-        stroke
-            .changes
-            .retain(|(_, before, after)| before != after);
+        stroke.changes.retain(|(_, before, after)| before != after);
     }
 
     fn commit_height_stroke(

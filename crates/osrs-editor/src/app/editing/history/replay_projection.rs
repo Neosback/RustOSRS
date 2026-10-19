@@ -53,13 +53,12 @@ pub(super) fn capture_map_replay_input(
             change.coord.tile.y,
         )
     }));
-    keys.extend(footprint.heights().iter().map(|coord| {
-        (
-            coord.plane.index().get(),
-            coord.corner.x,
-            coord.corner.y,
-        )
-    }));
+    keys.extend(
+        footprint
+            .heights()
+            .iter()
+            .map(|coord| (coord.plane.index().get(), coord.corner.x, coord.corner.y)),
+    );
     MapReplayInput {
         tiles: keys
             .into_iter()
@@ -95,13 +94,7 @@ pub(super) fn prepare_map_replay(
     let height_keys = footprint
         .heights()
         .iter()
-        .map(|coord| {
-            (
-                coord.plane.index().get(),
-                coord.corner.x,
-                coord.corner.y,
-            )
-        })
+        .map(|coord| (coord.plane.index().get(), coord.corner.x, coord.corner.y))
         .collect::<BTreeSet<_>>();
 
     let mut tiles = Vec::with_capacity(input.tiles.len());
@@ -132,7 +125,10 @@ pub(super) fn prepare_map_replay(
                 match terrain.overlay {
                     Some(overlay) => {
                         after.overlay = u16::try_from(overlay.id.get()).map_err(|_| {
-                            format!("overlay id {} does not fit the preview adapter", overlay.id.get())
+                            format!(
+                                "overlay id {} does not fit the preview adapter",
+                                overlay.id.get()
+                            )
                         })?;
                         after.shape = overlay.shape.get();
                         after.rotation = overlay.rotation.get();
@@ -201,7 +197,11 @@ pub(super) fn prepare_map_replay(
         .copied()
         .map(spec_from_placement)
         .collect::<Vec<_>>();
-    let mut object_edits = removed.iter().copied().map(LocEdit::Remove).collect::<Vec<_>>();
+    let mut object_edits = removed
+        .iter()
+        .copied()
+        .map(LocEdit::Remove)
+        .collect::<Vec<_>>();
     object_edits.extend(added.iter().copied().map(LocEdit::Add));
     let object_count = removed.len().max(added.len());
 
@@ -241,8 +241,7 @@ mod tests {
         TerrainOverlay {
             id: FloorOverlayId::new(id),
             shape: OverlayShape::new(2).unwrap_or_else(|| unreachable!("shape is valid")),
-            rotation: OverlayRotation::new(3)
-                .unwrap_or_else(|| unreachable!("rotation is valid")),
+            rotation: OverlayRotation::new(3).unwrap_or_else(|| unreachable!("rotation is valid")),
         }
     }
 
@@ -312,11 +311,8 @@ mod tests {
             },
         ]);
         let footprint = patch.replay_footprint();
-        let document = MapDocument::from_parts(
-            [(position(), terrain_after)],
-            [(vertex(), -64)],
-            [],
-        );
+        let document =
+            MapDocument::from_parts([(position(), terrain_after)], [(vertex(), -64)], []);
         let current = TileValues {
             underlay: 12,
             height: 0,
@@ -346,7 +342,10 @@ mod tests {
         let prepared = prepare_map_replay(&document, &footprint, input)
             .unwrap_or_else(|error| unreachable!("valid projection: {error}"));
         assert!(prepared.tiles.is_empty());
-        assert_eq!(prepared.object_edits, vec![LocEdit::Add(spec_from_placement(placement))]);
+        assert_eq!(
+            prepared.object_edits,
+            vec![LocEdit::Add(spec_from_placement(placement))]
+        );
         assert_eq!(prepared.reselect, vec![spec_from_placement(placement)]);
         assert_eq!(prepared.count(), 1);
     }
