@@ -47,6 +47,7 @@ name what is in them, train a small model on them and ask it for a new building 
   results on the map through `apply_terrain_path` (one undo). Numbers and limits are in
   `docs/plans/PROCGEN-LEARNING.md` ("Learning to lay paths"). `crates/osrs-lab/data/world-paths.model.json`
   is the shipped starter model.
+- **Full gate, 2026-10-18** (`python3 scripts/verify.py --full` on `b170bf34`, with another session's uncommitted game-mode edits in the tree): architecture and Python gates, `cargo fmt --check`, workspace clippy `-D warnings`, 1,330 workspace tests passed / 0 failed / 22 ignored, wasm `cargo check` (8 crates) passed. The wasm clippy for `osrs-editor` failed once on unused items in `workshop/paths/job.rs` (native-only code); fixed in the next commit and re-run clean on its own. Remote CI was not run.
 - **Not verified / open**: the window was screenshotted (Train tab) but the machine's display went
   idle, so the trained-state view and real-mouse behaviour were not seen. A model trained on one
   generated or captured building separates real from generated buildings easily (critic AUC about 1.0)

@@ -1,5 +1,9 @@
 //! Teaching a path model in the background so the window keeps drawing its progress bar.
 //! Native only (the browser build has no threads here).
+#![cfg_attr(
+    target_arch = "wasm32",
+    allow(dead_code, unused_imports, unused_variables)
+)]
 
 use osrs_lab::{PathLesson, PathModel, PathProgress, PathTrainRequest, train_paths};
 use std::sync::{
@@ -8,11 +12,13 @@ use std::sync::{
     mpsc::{Receiver, TryRecvError, channel},
 };
 
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 enum Event {
     Step(u8, String),
     Done(Result<Box<PathModel>, String>),
 }
 
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub(super) struct Inputs {
     pub(super) id: String,
     pub(super) name: String,
