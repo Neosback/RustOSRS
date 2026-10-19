@@ -1,77 +1,57 @@
-name: CP2 Build Validation
+name: CP2 Merge Prep
 
-# Temporary draft-PR harness for the CP2 semantic-history cleanup. The repository currently has
-# unrelated workspace-wide rustfmt and strict test-Clippy debt on main, so this gate validates CP2
-# production code strictly and executes the affected package tests without linting unrelated tests.
-# Remove this workflow after the checkpoint is proven.
+# One-shot merge-preparation harness. It fixes the final stale replay test caller and applies the
+# repository formatter, commits only those mechanical changes, and is deleted before merge.
 on:
   pull_request:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: cp2-build-${{ github.event.pull_request.number }}
+  group: cp2-merge-prep-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-env:
-  CARGO_INCREMENTAL: "0"
-  CARGO_TERM_COLOR: always
-  CARGO_NET_RETRY: "10"
-  RUST_BACKTRACE: short
-  CARGO_PROFILE_DEV_DEBUG: "0"
-  CARGO_PROFILE_TEST_DEBUG: "0"
-
 jobs:
-  verify-build:
+  format-and-fix:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
       - uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           cache: false
-          rustflags: ""
-      - name: Linux build dependencies
-        run: sudo apt-get update -qq && sudo apt-get install -qq -y --no-install-recommends pkg-config libasound2-dev
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: false
-      - name: CP2 rustfmt diagnostics
-        run: |
-          rustfmt --edition 2024 --check \
-            crates/osrs-edit/src/replay.rs \
-            crates/osrs-editor/src/app/editing/commit.rs \
-            crates/osrs-editor/src/app/editing/history/replay_projection.rs \
-            crates/osrs-editor/src/app/editing/history/routing.rs \
-            crates/osrs-editor/src/app/editing/history/routing/tests.rs \
-            crates/osrs-editor/src/app/editing/tests.rs || true
-      - name: Strict production Clippy
-        run: cargo clippy --locked -p osrs-edit -p osrs-editor --lib --all-features -- -D warnings
-      - name: Focused package tests
+      - name: Apply merge-prep fix and formatting
         shell: bash
         run: |
-          set +e
-          python3 scripts/run_tests.py -p osrs-edit -p osrs-editor --output target/verify/cp2-tests
-          status=$?
-          if [ "$status" -ne 0 ] && [ -f target/verify/cp2-tests/build.jsonl ]; then
-            python3 - <<'PY'
-          import json
+          python3 - <<'PY'
           from pathlib import Path
 
-          for line in Path("target/verify/cp2-tests/build.jsonl").read_text(encoding="utf-8").splitlines():
-              try:
-                  row = json.loads(line)
-              except json.JSONDecodeError:
-                  continue
-              if row.get("reason") != "compiler-message":
-                  continue
-              message = row.get("message", {})
-              if message.get("level") == "error":
-                  print(message.get("rendered") or message.get("message", "compiler error"))
+          path = Path("crates/osrs-editor/src/app/prefab_studio/catalog/tests.rs")
+          text = path.read_text(encoding="utf-8")
+          old = """        .replay(\n            crate::app::edit_runtime::EditReplayDirection::Redo,\n            crate::app::edit_runtime::EditFootprint::default(),\n            |_| Ok::<_, ()>(()),\n        )\n"""
+          new = """        .replay(\n            crate::app::edit_runtime::EditReplayDirection::Redo,\n            |_| Ok::<_, ()>(()),\n        )\n"""
+          count = text.count(old)
+          if count not in (0, 1):
+              raise SystemExit(f"expected zero or one stale replay caller, found {count}")
+          if count == 1:
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
           PY
+          cargo fmt --all
+          git diff --check
+      - name: Commit mechanical merge prep
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No merge-prep changes needed."
+            exit 0
           fi
-          exit "$status"
-      - name: Focused wasm Clippy
-        run: cargo clippy --locked --target wasm32-unknown-unknown -p osrs-edit -p osrs-editor -- -D warnings
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: format architecture merge checkpoint"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
