@@ -13,7 +13,9 @@ fn gesture_fixture() -> (TerrainController, TileKey, TileValues) {
 }
 
 #[test]
-fn cancelling_paint_preview_restores_channels_without_history_state() {
+fn cancelling_paint_preview_restores_channels_without_consuming_redo() {
+    // Redo is authoritative semantic-session state now. The preview controller has no chronology to
+    // consume; cancellation only restores its disposable tile projection.
     let (mut controller, key, before) = gesture_fixture();
     controller.begin_stroke();
     let mut stroke = controller.stroke.take().unwrap_or_else(|| unreachable!());
