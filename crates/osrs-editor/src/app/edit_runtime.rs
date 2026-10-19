@@ -10,7 +10,9 @@ mod footprint;
 pub(super) use footprint::{EditFootprint, EditTouches};
 
 use super::diagnostics::{DiagnosticSink, TraceEvent};
-use crate::session::{EditCheckpoint, EditCheckpointError, EditorSession, RegionSyncOutcome};
+use crate::session::{
+    EditCheckpoint, EditCheckpointError, EditReplayDescriptor, EditorSession, RegionSyncOutcome,
+};
 use osrs_core::coords::RegionCoord;
 use osrs_edit::{
     ChangeImpact, MapDocument, MapPatch, MapRegionSnapshot, PatchApplyError, ScenarioDocument,
@@ -153,9 +155,7 @@ impl EditRuntime {
     /// Test fixture convenience that still exercises the production replay gateway.
     #[cfg(test)]
     pub(super) fn undo(&mut self) -> Result<(), EditExecutionError<Infallible>> {
-        let _ = self.replay(EditReplayDirection::Undo, EditFootprint::default(), |_| {
-            Ok::<_, Infallible>(())
-        })?;
+        let _ = self.replay(EditReplayDirection::Undo, |_, _| Ok::<_, Infallible>(()))?;
         Ok(())
     }
 
@@ -270,23 +270,36 @@ impl EditRuntime {
 
     /// Replay one semantic Undo/Redo as an application transaction.
     ///
-    /// `footprint` comes from the lightweight application history route because `EditorSession`
-    /// intentionally keeps history patches opaque. The projection closure receives only the
-    /// authoritative post-replay document; worker/UI side effects belong after this method returns
-    /// `Committed`.
+    /// The exact replay descriptor comes from `EditorSession`'s authoritative history before the
+    /// history transition begins. The application receives only that immutable descriptor plus the
+    /// authoritative post-replay `MapDocument`; raw history patches never escape the session.
     pub(super) fn replay<T, E>(
         &mut self,
         direction: EditReplayDirection,
-        footprint: EditFootprint,
-        project: impl FnOnce(&MapDocument) -> Result<T, E>,
+        project: impl FnOnce(&MapDocument, &EditReplayDescriptor) -> Result<T, E>,
     ) -> Result<EditExecution<T>, EditExecutionError<E>> {
         let before = self.revision();
+        let descriptor = match direction {
+            EditReplayDirection::Undo => self.session.next_undo_replay_descriptor(),
+            EditReplayDirection::Redo => self.session.next_redo_replay_descriptor(),
+        };
+        let footprint = match descriptor.as_ref() {
+            Some(EditReplayDescriptor::Map(footprint)) => {
+                EditFootprint::from_replay_footprint(footprint)
+            }
+            Some(EditReplayDescriptor::Scenario | EditReplayDescriptor::Appearance) | None => {
+                EditFootprint::default()
+            }
+        };
         let observed = if self.diagnostics.is_enabled() {
             footprint.clone()
         } else {
             EditFootprint::default()
         };
         let result = (|| {
+            let Some(descriptor) = descriptor else {
+                return Ok(EditExecution::NoChange);
+            };
             let replay = match direction {
                 EditReplayDirection::Undo => self.session.undo_checkpointed(),
                 EditReplayDirection::Redo => self.session.redo_checkpointed(),
@@ -296,7 +309,7 @@ impl EditRuntime {
                 return Ok(EditExecution::NoChange);
             };
 
-            let projection = project(self.session.document());
+            let projection = project(self.session.document(), &descriptor);
             self.finish_execution(
                 commit.revision,
                 commit.impact,
