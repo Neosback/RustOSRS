@@ -66,7 +66,11 @@ impl PrefabSemantics {
                 || portal.approaches.iter().any(|c| {
                     c.x >= prefab.width || c.y >= prefab.height || c.plane >= prefab.planes
                 })
-                || portal.rooms.iter().zip(&portal.approaches).any(|(id,c)| id.is_some_and(|id| !self.rooms.iter().any(|r| r.id==id && r.cells.contains(c))))
+                || portal.rooms.iter().zip(&portal.approaches).any(|(id, c)| {
+                    id.is_some_and(|id| {
+                        !self.rooms.iter().any(|r| r.id == id && r.cells.contains(c))
+                    })
+                })
             {
                 return Err(BuildingPrefabError::InvalidRelation);
             }

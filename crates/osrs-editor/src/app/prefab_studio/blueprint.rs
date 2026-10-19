@@ -13,11 +13,30 @@ pub(super) fn controls(viewer: &mut EditorApp, original: &Prefab, ui: &mut egui:
                 viewer.prefabs.build.form.floors = 1;
                 viewer.prefabs.build.form.sketch = Some(sketch);
                 if let Some(building) = &original.building {
-                    let origin = MapTile::new(super::CENTRE.0-i32::from(original.width)/2,super::CENTRE.1-i32::from(original.height)/2);
-                    viewer.prefabs.build.form.locks = building.semantics.locked_parts.iter().filter_map(|i| {
-                        let p=original.objects.get(*i)?;
-                        Some(osrs_edit::ObjectPlacement {object_id:osrs_core::ids::ObjectId::new(p.id),kind:osrs_edit::LocKind::new(p.kind)?,orientation:osrs_edit::ObjectOrientation::new(p.orientation)?,position:osrs_edit::MapPosition::new(MapTile::new(origin.x+i32::from(p.x),origin.y+i32::from(p.y)),SourcePlane::new(p.plane)?)})
-                    }).collect();
+                    let origin = MapTile::new(
+                        super::CENTRE.0 - i32::from(original.width) / 2,
+                        super::CENTRE.1 - i32::from(original.height) / 2,
+                    );
+                    viewer.prefabs.build.form.locks = building
+                        .semantics
+                        .locked_parts
+                        .iter()
+                        .filter_map(|i| {
+                            let p = original.objects.get(*i)?;
+                            Some(osrs_edit::ObjectPlacement {
+                                object_id: osrs_core::ids::ObjectId::new(p.id),
+                                kind: osrs_edit::LocKind::new(p.kind)?,
+                                orientation: osrs_edit::ObjectOrientation::new(p.orientation)?,
+                                position: osrs_edit::MapPosition::new(
+                                    MapTile::new(
+                                        origin.x + i32::from(p.x),
+                                        origin.y + i32::from(p.y),
+                                    ),
+                                    SourcePlane::new(p.plane)?,
+                                ),
+                            })
+                        })
+                        .collect();
                 }
             }
             Err(e) => viewer.prefabs.say(e),
