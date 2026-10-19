@@ -136,6 +136,8 @@ fn run(request: Request, envs: &mut BTreeMap<u32, Running>) -> Result<Value, Str
     }
 }
 
+mod cli_paths;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|s| s == "task-copy") {
@@ -226,6 +228,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         println!("{}", serde_json::to_string(&verdict)?);
         return Ok(());
+    }
+    if args.first().is_some_and(|s| s == "paths-stats") {
+        return cli_paths::stats_command(&args[1..]);
+    }
+    if args.first().is_some_and(|s| s == "paths-show") {
+        return cli_paths::show_command(&args[1..]);
+    }
+    if args.first().is_some_and(|s| s == "paths-census") {
+        return cli_paths::census_command(&args[1..]);
+    }
+    if args.first().is_some_and(|s| s == "train-paths") {
+        return cli_paths::train_paths_command(&args[1..]);
     }
     if args.first().is_some_and(|s| s == "train-model") {
         return train_model_command(&args[1..]);

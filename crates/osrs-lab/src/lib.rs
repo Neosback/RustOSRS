@@ -2,9 +2,18 @@
 mod action;
 mod critic;
 mod model;
+mod paths;
 pub use model::{
     Built, Candidate, MODEL_FORMAT, MODEL_VERSION, Model, ModelMetrics, ModelName, Structure,
     StructureBucket, TrainedOn, build_with_model, features_of, fingerprint,
+};
+pub use paths::{
+    Attempt as PathAttempt, Draft as PathDraft, FEATURE_INFO as PATH_FEATURES, LESSON_FORMAT,
+    Mode as PathMode, ObjectEntry as PathObject, PATH_MODEL_FORMAT, PathLesson, PathMetrics,
+    PathModel, PathProgress, PathTrainRequest, Reason as PathReason, Scene as PathScene,
+    Score as PathScore, Tile as PathTile, Why as PathWhy, endpoints_of,
+    lay_actions as path_lay_actions, path_task, pieces as path_pieces, train_paths,
+    waypoints as path_waypoints,
 };
 mod train;
 pub use critic::{Critic, CriticMetrics, train_critic};
