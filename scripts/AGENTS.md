@@ -21,8 +21,9 @@
 
 1. Search this directory for an existing command/parser that can be extended.
 2. Reuse `feature_registry.py`, `editor_architecture.py`, `verify.py`, and other canonical helpers rather than copying logic.
-3. Keep output useful to both humans and coding agents.
-4. Add focused Python regression coverage for new parsing/guard behavior.
+3. For edit/history ownership work, run `python3 scripts/authority_audit.py` before turning an observed pattern into an enforced guard.
+4. Keep output useful to both humans and coding agents.
+5. Add focused Python regression coverage for new parsing/guard behavior.
 
 ## Verification
 
