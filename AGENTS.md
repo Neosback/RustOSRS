@@ -4,7 +4,7 @@
 
 1. Read `ARCHITECTURE.md` for ownership and dependency rules.
 2. Read `DEV_HANDOFF.md`, then verify `git status --short`, the live branch, and `git rev-parse HEAD`.
-3. Use `docs/architecture/FEATURE-MAP.md` and `scripts/editor_features.json` to find the existing controller, planner, gateway and tests. Inspect callers before adding another abstraction.
+3. Run `python3 scripts/features.py find "<concept>"` before creating an implementation, then use `docs/architecture/FEATURE-MAP.md` and `scripts/editor_features.json` to inspect the existing controller, planner, gateway and tests. Inspect callers before adding another abstraction.
 4. Read the owning OSRS specification in `docs/specs/` and relevant accepted ADRs in `docs/adr/`.
 
 `index.md` defines the documentation authority order. Chat history, research documents and archived handoffs cannot override current code or verified repository state. If status documents disagree with Git, reconcile the facts before implementation; never invent CI results or a remote PR state.
