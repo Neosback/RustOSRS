@@ -45,6 +45,38 @@ fn example() {
             )
             self.assertEqual(authority_audit.scan(root), [])
 
+    def test_gateway_allows_session_and_edit_runtime_only(self):
+        hits = [
+            authority_audit.Hit(
+                "checkpoint-lifecycle",
+                "crates/osrs-editor/src/session/edit_session.rs",
+                10,
+                "fn commit_checkpointed(",
+            ),
+            authority_audit.Hit(
+                "checkpoint-lifecycle",
+                "crates/osrs-editor/src/session/edit_session/tests.rs",
+                20,
+                "session.commit_checkpointed(patch);",
+            ),
+            authority_audit.Hit(
+                "checkpoint-lifecycle",
+                "crates/osrs-editor/src/app/edit_runtime.rs",
+                30,
+                "self.session.commit_checkpointed(patch);",
+            ),
+        ]
+        self.assertEqual(authority_audit.gateway_violations(hits), [])
+
+    def test_gateway_rejects_checkpoint_calls_from_feature_modules(self):
+        hit = authority_audit.Hit(
+            "checkpoint-lifecycle",
+            "crates/osrs-editor/src/app/object_tool.rs",
+            40,
+            "self.session.commit_checkpointed(patch);",
+        )
+        self.assertEqual(authority_audit.gateway_violations([hit]), [hit])
+
 
 if __name__ == "__main__":
     unittest.main()
