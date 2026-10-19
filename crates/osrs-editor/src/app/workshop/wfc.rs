@@ -31,6 +31,8 @@ pub(super) struct WfcState {
     steps: Vec<WfcStep>,
     step: usize,
     trace_error: Option<String>,
+    /// Run the test on the next frame (for scripts).
+    auto_run: bool,
 }
 
 impl Default for WfcState {
@@ -49,6 +51,7 @@ impl Default for WfcState {
             steps: Vec::new(),
             step: 0,
             trace_error: None,
+            auto_run: false,
         }
     }
 }
@@ -57,6 +60,11 @@ fn kind_color(kind: u16) -> Color32 {
     // Golden-angle hues keep neighbouring kinds apart.
     let hue = (f32::from(kind) * 0.381_966).fract();
     egui::ecolor::Hsva::new(hue, 0.5, 0.9, 1.0).into()
+}
+
+/// Ask for the test to run (for scripts).
+pub(super) fn request_run(app: &mut EditorApp) {
+    app.prefabs.workshop.wfc.auto_run = true;
 }
 
 pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
@@ -96,6 +104,7 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
             plane,
             lens: Some(lens),
             task: state.task.clone(),
+            auto_run: state.auto_run,
             ..WfcState::default()
         };
         state.test = Test::Refloor;
@@ -348,7 +357,7 @@ fn test(ui: &mut egui::Ui, state: &mut WfcState, lens: &WfcLens) {
         ui.weak("This building has no all-floor rectangle to try on.");
         return;
     };
-    if ui.button("Run it").clicked() {
+    if ui.button("Run it").clicked() || std::mem::take(&mut state.auto_run) {
         let seeds: Vec<u64> = (0..u64::from(state.tries))
             .map(|i| state.seed + i)
             .collect();

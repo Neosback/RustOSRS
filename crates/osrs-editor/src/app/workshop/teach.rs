@@ -108,7 +108,7 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     ui.separator();
     rows(app, ui);
     ui.add_space(8.0);
-    explainer(ui);
+    explainer(app, ui);
 }
 
 /// Rebuild the rows when the building or the names changed.
@@ -317,29 +317,14 @@ fn row(app: &mut EditorApp, ui: &mut egui::Ui, id: u32) {
     });
 }
 
-/// What the floor-pattern solver (WFC) can and cannot see, in plain words.
-fn explainer(ui: &mut egui::Ui) {
-    egui::CollapsingHeader::new("What can the editor's pattern builder see?")
-        .id_salt("workshop-wfc")
-        .show(ui, |ui| {
-            ui.label(
-                "When the editor lays out floors from patterns it learned, it works with tiles \
-                 that have four labelled edges (what is on the north, east, south and west side) \
-                 and a weight (how common that tile was). It only places two tiles side by side \
-                 when it saw that happen in your buildings.",
-            );
-            ui.add_space(4.0);
-            ui.strong("It cannot see");
-            ui.label(
-                "\u{2022} what objects are (a bed and a barrel are the same to it)\n\
-                 \u{2022} which room is a kitchen or a bank\n\
-                 \u{2022} the difference between a door and a window\n\
-                 \u{2022} the outline of the building it is filling",
-            );
-            ui.add_space(4.0);
-            ui.weak(
-                "That is why names matter: names and roles are how this knowledge reaches the \
-                 editor, and the Train tab uses them.",
-            );
-        });
+/// A pointer to the Floor patterns tab, which shows what the floor-pattern builder sees.
+fn explainer(app: &mut EditorApp, ui: &mut egui::Ui) {
+    ui.add_space(6.0);
+    ui.weak(
+        "Names are also how the floor-pattern builder (WFC) could tell a door from a window: \
+         today it sees only floor materials and wall edges.",
+    );
+    if ui.button("See what it sees (Floor patterns tab)").clicked() {
+        app.prefabs.workshop.tab = super::Tab::Wfc;
+    }
 }

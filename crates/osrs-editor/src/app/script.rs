@@ -296,6 +296,10 @@ impl EditorApp {
                 self.interaction.set_camera_pose(yaw, pitch, height);
             }
             "spline" => path::replace_points(self, path::points(words)?)?,
+            "airoute" => {
+                let message = crate::app::workshop::paths::live::route(self)?;
+                eprintln!("smoke: airoute: {message}");
+            }
 
             "width" => {
                 self.settings.prefs.spline.width = number::<f32>(words.next(), "width")?;

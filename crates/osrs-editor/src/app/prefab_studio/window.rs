@@ -8,7 +8,7 @@ pub(in crate::app) fn show(app: &mut EditorApp, ctx: &egui::Context) {
         return;
     }
     let builder = egui::ViewportBuilder::default()
-        .with_title("RustOSRS · Builder / AI Lab / WFC")
+        .with_title("RustOSRS · Workshop")
         .with_active(true)
         .with_inner_size([1440.0, 900.0])
         .with_min_inner_size([960.0, 640.0]);

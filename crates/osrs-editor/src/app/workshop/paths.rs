@@ -6,6 +6,8 @@ mod canvas;
 mod import;
 mod job;
 mod lay;
+pub(in crate::app) mod live;
+mod places_ui;
 mod store;
 mod teach;
 mod tryit;
@@ -20,18 +22,33 @@ use store::FileStore;
 const LESSON_SUFFIX: &str = ".lesson.json";
 const MODEL_SUFFIX: &str = ".pathmodel.json";
 
+/// "Take me to Lumbridge and import what is there": waiting for the map to load.
+struct Pending {
+    name: String,
+    x: i32,
+    y: i32,
+    waited: u32,
+}
+
 pub(super) struct PathsState {
     lessons: FileStore<PathLesson>,
     models: FileStore<PathModel>,
     starter: Option<Result<PathModel, String>>,
     scenes: BTreeMap<String, Arc<PathScene>>,
     selected: Option<String>,
+    /// The model the Path tool uses (its file name, or `starter`).
+    live_model: Option<String>,
     picked: BTreeSet<String>,
     size: usize,
     name: String,
     problem: Option<String>,
     /// A section to scroll to on the next frame (for scripts).
     scroll_to: Option<u8>,
+    /// A place names file being picked.
+    import_places: Option<crate::app::npc_runtime::OpenTask>,
+    place_query: String,
+    /// Importing the area around a place once the map there has loaded.
+    pending: Option<Pending>,
     teach: teach::TeachState,
     try_it: tryit::TryState,
 }
@@ -70,11 +87,15 @@ impl PathsState {
             starter: None,
             scenes: BTreeMap::new(),
             selected: None,
+            live_model: None,
             picked: BTreeSet::new(),
             size: 2,
             name: String::new(),
             problem: None,
             scroll_to: None,
+            import_places: None,
+            place_query: String::new(),
+            pending: None,
             teach: teach::TeachState::default(),
             try_it: tryit::TryState::default(),
         }
@@ -158,6 +179,7 @@ pub(super) fn script(app: &mut EditorApp, words: &[&str]) -> Result<(), String> 
 /// Once per frame: take what the trainer has said, and keep the model when it finishes.
 pub(super) fn poll(app: &mut EditorApp) {
     teach::poll(&mut app.prefabs.workshop.paths);
+    places_ui::poll(app);
 }
 
 pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
@@ -170,7 +192,7 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
             "Roads and trails are not random: they join doors, skirt buildings, avoid water and \
              steep ground. Here you show the editor real paths from the map, it learns what they \
              have in common, and then it draws paths on a blank copy of a place it has never seen, \
-             so you can check it against the real ones.",
+             so you can check it against the real ones. To use a model on the real map, pick the Path tool and press \"Let the AI route it\" in its AI helper.",
         );
             lessons_section(app, ui);
             teach::show(app, ui);
@@ -202,6 +224,7 @@ fn lessons_section(app: &mut EditorApp, ui: &mut egui::Ui) {
          editor saves a copy of the ground, the heights and the objects there, and notes which \
          floor types are paths.",
     );
+    places_ui::section(app, ui);
     ui.horizontal_wrapped(|ui| {
         let state = &mut app.prefabs.workshop.paths;
         ui.label("Take the area around the camera,");
@@ -324,19 +347,15 @@ fn lessons_section(app: &mut EditorApp, ui: &mut egui::Ui) {
     selected_detail(app, ui);
 }
 
-fn default_name(app: &EditorApp, typed: &str) -> String {
-    if typed.trim().is_empty() {
-        let (x, y) = app.camera_tile();
-        format!("Area near {x},{y}")
-    } else {
-        typed.trim().to_owned()
-    }
+fn default_name(app: &mut EditorApp, typed: &str) -> String {
+    places_ui::name_for(app, typed)
 }
 
 fn keep(app: &mut EditorApp, result: Result<PathLesson, String>) {
-    let state = &mut app.prefabs.workshop.paths;
     match result {
-        Ok(lesson) => {
+        Ok(mut lesson) => {
+            places_ui::attach(&app.prefabs.workshop.places, &mut lesson);
+            let state = &mut app.prefabs.workshop.paths;
             let id = state.lessons.free_id(&lesson.name, "area");
             match state.lessons.save(&id, &lesson) {
                 Ok(file) => {
@@ -349,7 +368,7 @@ fn keep(app: &mut EditorApp, result: Result<PathLesson, String>) {
                 Err(error) => state.problem = Some(error),
             }
         }
-        Err(error) => state.problem = Some(error),
+        Err(error) => app.prefabs.workshop.paths.problem = Some(error),
     }
 }
 

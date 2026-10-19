@@ -1,81 +1,74 @@
 //! The Buildings tab: the selected building, what it is, and what can be done with it.
 
-use crate::app::{EditorApp, prefab_panel, prefab_panel::preview};
+use crate::app::{EditorApp, prefab_panel};
 use eframe::egui;
 use osrs_core::object_names::NameSource;
 use osrs_edit::PrefabSource;
 use std::collections::BTreeSet;
 
+/// What is known about the selected building, and what can be done with it. Drawn under the
+/// list in the Scene tab's Library page.
 pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     let Some(file) = app.prefabs.selected.clone() else {
-        ui.weak("Pick a building on the left to see it here.");
+        ui.weak("Pick a building above to see its details.");
         return;
     };
     let Some(prefab) = app.prefabs.entry(&file).map(|e| e.prefab.clone()) else {
         ui.weak("That building is no longer in the library.");
         return;
     };
-    ui.horizontal(|ui| {
-        ui.heading(&prefab.name);
-        ui.weak(prefab.summary());
-    });
-    ui.horizontal_top(|ui| {
-        preview::show(ui, &prefab, 220.0);
-        ui.vertical(|ui| {
-            ui.set_width(ui.available_width());
-            ui.weak(source_sentence(&prefab.source));
-            ui.label("Name");
-            if let Some(name) = prefab_panel::text_field(ui, "ws-name", &prefab.name, false)
-                && let Err(error) = app.prefabs.edit(&file, |p| p.name = name.trim().to_owned())
-            {
-                app.prefabs.say(error);
-            }
-            ui.label("Tags (separated by commas)");
-            if let Some(tags) =
-                prefab_panel::text_field(ui, "ws-tags", &prefab.tags.join(", "), false)
-            {
-                let tags: Vec<String> = tags
-                    .split(',')
-                    .map(|t| t.trim().to_lowercase())
-                    .filter(|t| !t.is_empty())
-                    .collect();
-                if let Err(error) = app.prefabs.edit(&file, |p| p.tags = tags) {
-                    app.prefabs.say(error);
-                }
-            }
-            ui.label("Notes");
-            if let Some(notes) = prefab_panel::text_field(ui, "ws-notes", &prefab.notes, true)
-                && let Err(error) = app.prefabs.edit(&file, |p| p.notes = notes)
-            {
-                app.prefabs.say(error);
-            }
-        });
-    });
-    ui.add_space(6.0);
-    naming_meter(app, ui, &prefab);
-    ui.add_space(6.0);
+    ui.label(egui::RichText::new(&prefab.name).strong().size(16.0));
+    ui.weak(prefab.summary());
+    ui.weak(source_sentence(&prefab.source));
+    let editing = app.prefabs.workshop.editing.as_deref() == Some(file.as_str());
     ui.horizontal_wrapped(|ui| {
         if ui
-            .button("Look at it in 3D")
-            .on_hover_text("Opens a 3D preview window you can turn around")
-            .clicked()
-        {
-            app.prefabs.gallery.open = true;
-        }
-        if ui
-            .button("Change it in the scene editor")
-            .on_hover_text("Open the building as its own scene, edit it, and save it back")
+            .add_enabled(!editing, egui::Button::new("Edit it in the scene"))
+            .on_hover_text(if editing {
+                "This building is open in the scene now"
+            } else {
+                "Open the building as its own scene, change it, and save it back (or double-click it in the list)"
+            })
             .clicked()
         {
             app.prefabs.studio_request = Some(file.clone());
         }
         if ui
             .button("Place it on the map")
-            .on_hover_text("Then click the map. R turns it, Esc stops")
+            .on_hover_text("Then click the map in the main window. R turns it, Esc stops")
             .clicked()
         {
             prefab_panel::arm(app, &file);
         }
+    });
+    ui.add_space(4.0);
+    ui.label("Name");
+    if let Some(name) = prefab_panel::text_field(ui, "ws-name", &prefab.name, false)
+        && let Err(error) = app.prefabs.edit(&file, |p| p.name = name.trim().to_owned())
+    {
+        app.prefabs.say(error);
+    }
+    ui.label("Tags (separated by commas)");
+    if let Some(tags) = prefab_panel::text_field(ui, "ws-tags", &prefab.tags.join(", "), false) {
+        let tags: Vec<String> = tags
+            .split(',')
+            .map(|t| t.trim().to_lowercase())
+            .filter(|t| !t.is_empty())
+            .collect();
+        if let Err(error) = app.prefabs.edit(&file, |p| p.tags = tags) {
+            app.prefabs.say(error);
+        }
+    }
+    ui.label("Notes");
+    if let Some(notes) = prefab_panel::text_field(ui, "ws-notes", &prefab.notes, true)
+        && let Err(error) = app.prefabs.edit(&file, |p| p.notes = notes)
+    {
+        app.prefabs.say(error);
+    }
+    ui.add_space(4.0);
+    naming_meter(app, ui, &prefab);
+    ui.add_space(4.0);
+    ui.horizontal_wrapped(|ui| {
         if ui.button("Make a copy").clicked()
             && let Err(error) = app.prefabs.duplicate(&file)
         {
@@ -143,7 +136,7 @@ fn naming_meter(app: &mut EditorApp, ui: &mut egui::Ui, prefab: &osrs_edit::Pref
         );
         ui.weak("kinds of objects in this building have a name.");
         if named < ids.len() && ui.small_button("Name the rest").clicked() {
-            app.prefabs.workshop.tab = super::Tab::Teach;
+            app.prefabs.workshop.tab = super::Tab::Names;
         }
     });
 }

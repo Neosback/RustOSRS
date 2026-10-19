@@ -39,6 +39,13 @@ fn run(
             points,
             status,
             can_lay: points > 0,
+            ai: sections.ai.then(|| AiView {
+                models: vec![
+                    "Town roads".into(),
+                    "Paths of the game world (starter) (comes with the editor)".into(),
+                ],
+                selected: 0,
+            }),
         };
         let scope = ui.scope(|ui| {
             show(ui, sections, &mut settings, &view, |ui| {

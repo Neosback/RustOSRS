@@ -26,15 +26,25 @@ impl Default for Workspace {
     }
 }
 impl Workspace {
-    pub(super) fn show(&mut self, viewer: &mut EditorApp, current: &str, ui: &mut egui::Ui) {
+    pub(super) fn show_builder(&mut self) {
+        self.page = Page::Builder;
+    }
+
+    pub(super) fn show(
+        &mut self,
+        viewer: &mut EditorApp,
+        current: &str,
+        ui: &mut egui::Ui,
+        library: &mut dyn FnMut(&mut egui::Ui),
+    ) {
         if !self.open {
             return;
         }
         egui::Panel::left("prefab-workspace-tools")
             .default_size(300.0).size_range(240.0..=520.0).resizable(true)
             .show(ui, |ui| {
-                ui.strong("Virtual playground");
-                ui.weak("Edit objects, floors and heights using the scene tools. Changes stay in this prefab.");
+                ui.strong("This building in 3D");
+                ui.weak("Change objects, floors and heights with the scene tools. Nothing is kept until you press Save.");
                 ui.horizontal_wrapped(|ui| {
                     if ui.button("Frame scene").clicked() { frame_scene(viewer); }
                     if ui.button("Top view").clicked() {
@@ -48,15 +58,16 @@ impl Workspace {
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.page, Page::Library, "Library");
-                    ui.selectable_value(&mut self.page, Page::Builder, "Builder");
-                    ui.selectable_value(&mut self.page, Page::Wfc, "Floor patterns");
+                    ui.selectable_value(&mut self.page, Page::Builder, "Build new");
+                    ui.selectable_value(&mut self.page, Page::Wfc, "Floor patterns (advanced)");
                 });
                 ui.separator();
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     match self.page {
                         Page::Library => {
                             viewer.prefabs.page = crate::app::prefab_runtime::Page::Library;
-                            library(viewer, current, ui);
+                            let _ = current;
+                            library(ui);
                         },
                         Page::Builder => {
                             viewer.prefabs.page = crate::app::prefab_runtime::Page::Build;
@@ -75,7 +86,7 @@ impl Workspace {
                             viewer.prefabs.page = crate::app::prefab_runtime::Page::Library;
                             ui.group(|ui| {
                                 ui.label("Want to know what the floor-pattern builder (WFC) makes of this building?");
-                                if ui.button("Show me what WFC sees").clicked() {
+                                if ui.button("Show me what WFC sees (Floor patterns tab)").clicked() {
                                     viewer.prefabs.studio_command = Some(super::SceneCommand::Workshop(crate::app::workshop::Tab::Wfc));
                                 }
                                 ui.weak("It runs WFC on this building in the Workshop and shows its tile kinds, what it ignores, and a test.");
@@ -87,34 +98,6 @@ impl Workspace {
                     }
                 });
             });
-    }
-}
-fn library(viewer: &mut EditorApp, current: &str, ui: &mut egui::Ui) {
-    if ui.button("New blank scene").clicked() {
-        match viewer.prefabs.create_blank_scene() {
-            Ok(file) => super::request(viewer, file),
-            Err(e) => viewer.prefabs.say(e),
-        }
-    }
-    ui.add(egui::TextEdit::singleline(&mut viewer.prefabs.filter).hint_text("Find a prefab"));
-    ui.weak("Double-click to edit. Switching asks you to save unsaved work.");
-    let entries: Vec<_> = viewer
-        .prefabs
-        .visible()
-        .into_iter()
-        .map(|e| (e.file.clone(), e.prefab.clone()))
-        .collect();
-    for (file, prefab) in entries {
-        let response = ui.selectable_label(
-            file == current,
-            format!("{}\n{}", prefab.name, prefab.summary()),
-        );
-        if response.double_clicked() {
-            super::request(viewer, file);
-        }
-    }
-    if let Some(message) = viewer.prefabs.notice() {
-        ui.label(message);
     }
 }
 fn frame_scene(viewer: &mut EditorApp) {

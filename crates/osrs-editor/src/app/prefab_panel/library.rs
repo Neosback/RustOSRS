@@ -42,29 +42,17 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     });
     ui.horizontal_wrapped(|ui| {
         if ui
-            .button(format!("{} Open the Workshop", egui_phosphor::regular::GRADUATION_CAP))
+            .button(format!("{} Open the Workshop", egui_phosphor::regular::CUBE))
             .on_hover_text(
-                "Look after your saved buildings, name what is in them, and teach the editor to build new ones",
+                "One window to look at and change buildings in 3D, build new ones, name things, teach the AI, lay paths and see what the floor-pattern builder learns",
             )
             .clicked()
         {
-            app.prefabs.workshop.open = true;
-        }
-        if ui
-            .button(format!(
-                "{} Open Builder / Prefab Studio",
-                egui_phosphor::regular::CUBE
-            ))
-            .on_hover_text(
-                "Open the full 3D workspace: edit prefabs, build, and experiment with WFC or AI tasks",
-            )
-            .clicked()
-        {
-            crate::app::prefab_studio::open_library(app);
+            crate::app::workshop::open(app, crate::app::workshop::Tab::Scene);
         }
         if ui
             .button(format!("{} New scene", egui_phosphor::regular::PLUS))
-            .on_hover_text("Create a blank 12×12 scene prefab and open it in Prefab Studio")
+            .on_hover_text("Create a blank 12×12 scene prefab and open it in the Workshop")
             .clicked()
         {
             match app.prefabs.create_blank_scene() {

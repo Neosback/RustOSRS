@@ -20,6 +20,7 @@ fn lawn(seed: u32) -> PathLesson {
         heights: vec![0; w * h],
         objects: vec![],
         names: BTreeMap::new(),
+        places: vec![],
         path_overlays: vec![10],
     };
     for x in 0..w {

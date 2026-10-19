@@ -60,6 +60,12 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
         return;
     }
     models_list(app, ui);
+    ui.group(|ui| {
+        ui.label("To use a model on the map: open the Builder, pick the kit called \"... (trained model)\", choose a site on the map and apply. It is also in the main window: Prefabs panel, Build page, Kit.");
+        if ui.button("Open the Builder").clicked() {
+            crate::app::workshop::open_builder(app);
+        }
+    });
     let train = &mut app.prefabs.workshop.train;
     let Some(file) = train
         .try_it

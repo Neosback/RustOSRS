@@ -11,7 +11,7 @@ pub(in crate::app) use trash::TrashState;
 
 use crate::app::npc_runtime::{OpenTask, SaveTask, open_text, save_text};
 pub(in crate::app) use build::starter_kit;
-pub(in crate::app) use build::{ARCHETYPES, BuildState, MAX_SITE, STYLES};
+pub(in crate::app) use build::{ARCHETYPES, BuildForm, BuildState, MAX_SITE, STYLES};
 use osrs_edit::{CaptureSpec, Prefab, PrefabError, PrefabSource, capture_prefab};
 use std::path::PathBuf;
 use store::Store;

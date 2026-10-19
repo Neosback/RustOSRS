@@ -171,30 +171,30 @@ impl LabPanel {
                 Err(e) => self.problem = Some(e),
             }
         }
-        ui.heading("Copy a building");
+        ui.heading("Practice room");
         ui.label(format!(
-            "Saved target: {} · {}×{} · {} objects",
+            "Building to rebuild: {} · {}×{} · {} objects",
             original.name,
             original.width,
             original.height,
             original.objects.len()
         ));
-        ui.weak("Start empty, reconstruct with legal tools, then compare every placement, rotation, floor and height. Teacher demonstrations create training data; they do not fit an AI model.");
-        egui::CollapsingHeader::new("What training needs next").show(ui, |ui| {
-            ui.label("1. Verify the copy demonstration and its tool actions.");
-            ui.label("2. Train a policy on scene observations and the next tool action; measure reconstruction rewards.");
-            ui.label("3. Add varied reviewed buildings and wall/door/roof labels. Keep copies and rotations together when splitting training from evaluation.");
-            ui.label("One building tests memorization. New held-out buildings test whether the policy learned reusable rules.");
+        ui.weak("A robot starts with an empty scene and has to rebuild this building with the same tools you have: place, turn, paint floors and set heights. The room scores how close it gets (every piece, direction, floor and height). Watching it gives examples an AI can later learn from; it does not train anything by itself.");
+        egui::CollapsingHeader::new("Why one building is not enough").show(ui, |ui| {
+            ui.label("1. First, check that the robot really can rebuild it with the editor's own tools.");
+            ui.label("2. An AI can then learn what to do next from many such rebuilds (the Train tab learns building style a quicker way).");
+            ui.label("3. It needs many different buildings, with their walls, doors and roofs named, to learn rules that work on new ones.");
+            ui.label("One building only tests copying. Buildings it has never seen test whether it learned something general.");
         });
         if !self.hidden {
-            egui::CollapsingHeader::new("Target floor plan").show(ui, |ui| {
+            egui::CollapsingHeader::new("The building to copy").show(ui, |ui| {
                 crate::app::prefab_panel::preview::show(ui, original, 180.0);
             });
         }
         let demonstrate = ui
             .add_enabled(
                 !self.hidden && self.demonstration.is_none() && !cfg!(target_arch = "wasm32"),
-                egui::Button::new("Generate copy demonstration"),
+                egui::Button::new("Watch the robot rebuild it"),
             )
             .clicked();
         if demonstrate && let Err(e) = self.generate_demonstration(viewer, pad, original) {
@@ -205,12 +205,12 @@ impl LabPanel {
                 ui.spinner();
                 ui.label(job.phase);
             });
-            if ui.button("Cancel demonstration").clicked() {
+            if ui.button("Stop").clicked() {
                 self.demonstration = None;
             }
         }
         if let Some((score, actions, directory)) = &self.demonstration_result {
-            ui.label(format!("Verified teacher score {score:.3} · {actions} actions. Step or play the reconstruction below."));
+            ui.label(format!("The robot rebuilt it in {actions} moves and scored {:.0}%. Step through or play it below.", score * 100.0));
             ui.add(egui::Label::new(directory.display().to_string()).truncate())
                 .on_hover_text(directory.display().to_string());
         }
@@ -250,10 +250,13 @@ impl LabPanel {
             }
         }
         ui.horizontal_wrapped(|ui| {
-            ui.label("Task seed");
+            ui.label("Starting number");
             ui.add(egui::DragValue::new(&mut self.seed));
             if ui
-                .checkbox(&mut self.hidden, "Private target benchmark")
+                .checkbox(
+                    &mut self.hidden,
+                    "Hide the answer from the robot (a fair test)",
+                )
                 .changed()
             {
                 self.demonstration = None;
@@ -263,7 +266,7 @@ impl LabPanel {
                 self.playing = false;
                 task_to_load = self.task.clone();
             }
-            if ui.button("Generated tavern").clicked() {
+            if ui.button("Exercise: a made-up tavern").clicked() {
                 match super::super::prefab_runtime::starter_kit(0)
                     .and_then(|kit| osrs_lab::generated_tavern(&kit, self.seed))
                 {
@@ -274,7 +277,7 @@ impl LabPanel {
             if ui
                 .add_enabled(
                     original.building.is_some(),
-                    egui::Button::new("Terrain relocation"),
+                    egui::Button::new("Exercise: move the ground"),
                 )
                 .clicked()
             {
@@ -283,7 +286,7 @@ impl LabPanel {
                     Err(e) => self.problem = Some(e),
                 }
             }
-            if ui.button("This prefab").clicked() {
+            if ui.button("Exercise: rebuild this building").clicked() {
                 match osrs_lab::reconstruction_task(original, &|id, _| {
                     viewer
                         .placer
@@ -294,7 +297,7 @@ impl LabPanel {
                     Err(e) => self.problem = Some(e),
                 }
             }
-            if ui.button("Export task").clicked() {
+            if ui.button("Save this exercise").clicked() {
                 let result = self
                     .task
                     .clone()
@@ -317,7 +320,7 @@ impl LabPanel {
                     Err(e) => self.problem = Some(e),
                 }
             }
-            if ui.button("Import task").clicked() {
+            if ui.button("Load an exercise").clicked() {
                 self.import = Some((Import::Task, open_text("Load a Lab task", "json")));
             }
         });
@@ -331,50 +334,55 @@ impl LabPanel {
         if let Some(env) = &self.env {
             let score = env.score();
             ui.strong(format!(
-                "Score {:.3} · {} actions remaining{}",
-                score.total,
+                "Score {:.0}% · {} moves left{}",
+                score.total * 100.0,
                 env.legal_mask().remaining,
-                if score.exact { " · Complete" } else { "" }
+                if score.exact { " · Perfect copy" } else { "" }
             ));
             if !self.hidden {
                 ui.label(format!(
-                    "Terrain {:.3} · heights {:.3} · objects {:.3} · edges {:.3}",
-                    score.terrain, score.height, score.objects, score.edges
+                    "Floors {:.0}% · heights {:.0}% · objects {:.0}% · walls {:.0}%",
+                    score.terrain * 100.0,
+                    score.height * 100.0,
+                    score.objects * 100.0,
+                    score.edges * 100.0
                 ));
             }
-            ui.label(format!("{} replay actions remaining", self.replay.len()));
+            ui.label(format!("{} moves left in the recording", self.replay.len()));
             if let Some(next) = self.replay.front() {
-                egui::CollapsingHeader::new("Next tool action").show(ui, |ui| {
+                egui::CollapsingHeader::new("The robot's next move").show(ui, |ui| {
                     if let Ok(text) = serde_json::to_string_pretty(next) {
                         ui.monospace(text);
                     }
                 });
             }
             ui.horizontal_wrapped(|ui| {
-                if ui.button("Reset reconstruction").clicked() {
+                if ui.button("Start over").clicked() {
                     reset_replay = true;
                 }
                 if ui
-                    .add_enabled(env.legal_mask().can_undo, egui::Button::new("Undo action"))
+                    .add_enabled(env.legal_mask().can_undo, egui::Button::new("Undo a move"))
                     .clicked()
                 {
                     action = Some(Action::Undo)
                 }
-                if ui.button("Import replay").clicked() {
+                if ui.button("Load a recording").clicked() {
                     self.import = Some((Import::Replay, open_text("Load tool actions", "json")));
                 }
                 if ui
-                    .add_enabled(!self.replay.is_empty(), egui::Button::new("Step replay"))
+                    .add_enabled(!self.replay.is_empty(), egui::Button::new("Do one move"))
                     .clicked()
                 {
                     action = self.replay.pop_front();
                 }
-                ui.checkbox(&mut self.playing, "Play replay");
+                ui.checkbox(&mut self.playing, "Play the recording");
                 if self.replay_rate <= 0.0 {
                     self.replay_rate = 10.0;
                 }
-                ui.add(egui::Slider::new(&mut self.replay_rate, 1.0..=30.0).text("Actions / sec"));
-                if ui.button("Save action trace").clicked() {
+                ui.add(
+                    egui::Slider::new(&mut self.replay_rate, 1.0..=30.0).text("Moves per second"),
+                );
+                if ui.button("Save the moves").clicked() {
                     match serde_json::to_string_pretty(env.trace()) {
                         Ok(text) => {
                             self.save =
@@ -385,14 +393,14 @@ impl LabPanel {
                 }
             });
             ui.horizontal_wrapped(|ui| {
-                if ui.button("Accept as new prefab").clicked() {
+                if ui.button("Keep the result as a new building").clicked() {
                     self.feedback = Some(true);
                     self.accepted = Some(accept::prefab(viewer, original, env));
                 }
-                if ui.button("Reject result").clicked() {
+                if ui.button("Not good enough").clicked() {
                     self.feedback = Some(false);
                 }
-                if ui.button("Save feedback").clicked()
+                if ui.button("Save my verdict").clicked()
                     && let Some(task) = &self.task
                 {
                     let value = serde_json::json!({"format":"rustosrs-lab-feedback","version":1,"source":task.source,"group":task.group,"seed":env.seed(),"private_target":self.hidden,"accepted":self.feedback,"score":score,"actions":env.trace()});

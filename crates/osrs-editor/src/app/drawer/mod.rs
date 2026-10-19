@@ -240,6 +240,10 @@ impl EditorApp {
             points: self.interaction.spline_points().len(),
             status: self.interaction.spline_status(),
             can_lay: self.interaction.spline_can_lay(),
+            ai: sections.ai.then(|| sections::AiView {
+                models: crate::app::workshop::paths::live::labels(self),
+                selected: crate::app::workshop::paths::live::selected(self),
+            }),
         };
         let mut spline_settings = self.settings.prefs.spline.clone();
         let mut paint_companion = spline_settings.paint_companion_underlay;
@@ -309,6 +313,13 @@ impl EditorApp {
                     ctx.copy_text(self.spline_report());
                     self.ui.notify("Copied the path details".to_owned());
                 }
+                SplineAction::AiModel(index) => {
+                    crate::app::workshop::paths::live::choose(self, index)
+                }
+                SplineAction::AiRoute => match crate::app::workshop::paths::live::route(self) {
+                    Ok(message) => self.ui.notify(message),
+                    Err(message) => self.ui.notify(message),
+                },
             }
         }
     }

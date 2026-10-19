@@ -37,7 +37,7 @@ pub(super) fn around_selection(app: &EditorApp, name: &str) -> Result<PathLesson
     lesson_of(app, min_x, min_y, w as u16, h as u16, name)
 }
 
-fn lesson_of(
+pub(super) fn lesson_of(
     app: &EditorApp,
     x0: i32,
     y0: i32,
@@ -64,6 +64,7 @@ fn lesson_of(
         heights: vec![0; tiles],
         objects: Vec::new(),
         names: BTreeMap::new(),
+        places: Vec::new(),
         path_overlays: Vec::new(),
     };
     for y in 0..height {

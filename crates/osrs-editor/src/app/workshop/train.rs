@@ -2,6 +2,7 @@
 //! ones. Four numbered steps, in plain words; what the trainer does is in `osrs-lab`.
 
 mod job;
+pub(super) mod live;
 mod models;
 mod try_it;
 
@@ -32,6 +33,8 @@ pub(in crate::app) struct TrainState {
     finished: Option<Finished>,
     problem: Option<String>,
     models: models::ModelList,
+    /// Models whose style is already in the Build page's kit list.
+    offered: BTreeSet<String>,
     try_it: try_it::TryState,
 }
 
@@ -45,6 +48,7 @@ impl Default for TrainState {
             finished: None,
             problem: None,
             models: models::ModelList::beside_settings(),
+            offered: BTreeSet::new(),
             try_it: try_it::TryState::default(),
         }
     }
@@ -199,7 +203,7 @@ fn names(app: &mut EditorApp, ui: &mut egui::Ui) {
          room) when it knows what things are.",
     );
     if ui.button("Name them now").clicked() {
-        app.prefabs.workshop.tab = super::Tab::Teach;
+        app.prefabs.workshop.tab = super::Tab::Names;
     }
 }
 
@@ -363,6 +367,38 @@ fn bar(ui: &mut egui::Ui, label: &str, value: f32) {
 mod tests {
     use super::*;
     use osrs_lab::{Brief, generate, generated_prefab, kit_objects};
+
+    /// A model trained on one generated building, for tests of what uses models.
+    pub(super) fn quick_model() -> osrs_lab::Model {
+        let kit = starter_kit(0).unwrap_or_else(|e| panic!("{e}"));
+        let objects = kit_objects(&kit);
+        let brief = Brief {
+            kind: "tavern".to_owned(),
+            width: 16,
+            height: 12,
+            floors: 1,
+            seed: 3,
+            variation: 0,
+            rooms: None,
+        };
+        let made = generate(&kit, &brief).unwrap_or_else(|e| panic!("{e}"));
+        let prefab = generated_prefab(&made, "Tavern", "test", "");
+        let mut running = job::Job::start(job::Inputs {
+            id: "quick".to_owned(),
+            name: "Quick houses".to_owned(),
+            created: job::today(),
+            prefabs: vec![("Tavern".to_owned(), prefab)],
+            objects,
+            base_kit: kit,
+            seed: 1,
+        });
+        loop {
+            if let Some(result) = running.poll() {
+                return *result.unwrap_or_else(|e| panic!("training failed: {e}"));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
 
     /// The whole Train path without a window: a building goes in, the background trainer reports
     /// steps and finishes, the model is saved, listed, and builds a new building from a brief

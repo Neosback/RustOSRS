@@ -9,27 +9,17 @@ mod window;
 pub(super) use window::show as window;
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) use window::viewport_id;
+mod commands;
 pub(in crate::app) mod workspace;
 use super::{
     EditorApp,
     prefab_gallery::stage::{CENTRE, Stage},
 };
+pub(in crate::app) use commands::{SceneCommand, open_library, request};
 use eframe::egui;
 use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::{MapDocument, PlaceSpec, Prefab, plan_place_exact};
 use session::{Choice, Destination, StudioSession};
-
-pub(in crate::app) enum SceneCommand {
-    Save,
-    SaveAsNew,
-    Close,
-    Revert,
-    Report,
-    Demonstrate,
-    PlayReplay,
-    /// Open the Workshop (in the main window) on a tab, with this scene's building picked.
-    Workshop(crate::app::workshop::Tab),
-}
 
 pub(in crate::app) struct Studio {
     stage: Box<Stage>,
@@ -43,6 +33,8 @@ pub(in crate::app) struct Studio {
     problem: Option<String>,
     relations: bool,
     pub(super) auto_own_painted_floors: bool,
+    /// Smoke-test hook: save this window to a PNG (`RUSTOSRS_STUDIO_SCREENSHOT`).
+    shot: Option<crate::screenshot::ScreenshotHook>,
 }
 impl Studio {
     /// Whether the scene is open on this library file.
@@ -79,27 +71,9 @@ impl Studio {
             problem: None,
             relations: false,
             auto_own_painted_floors: true,
+            shot: crate::screenshot::ScreenshotHook::for_studio(),
         })
     }
-}
-
-/// The former gallery entry opens a real editing workspace, including for an empty library.
-pub(in crate::app) fn open_library(app: &mut EditorApp) {
-    let file = app
-        .prefabs
-        .selected
-        .clone()
-        .filter(|f| app.prefabs.entry(f).is_some())
-        .or_else(|| app.prefabs.entries().first().map(|e| e.file.clone()));
-    let result = file.map_or_else(|| app.prefabs.create_blank_scene(), Ok);
-    match result {
-        Ok(file) => request(app, file),
-        Err(error) => app.prefabs.say(error),
-    }
-}
-
-pub(in crate::app) fn request(app: &mut EditorApp, file: String) {
-    app.prefabs.studio_request = Some(file);
 }
 
 /// Draw only the child viewport. Parent-world processing continues in its own viewport.
@@ -194,73 +168,88 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
         ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
     }
     let mut revert = false;
-    let mut open_workshop: Option<crate::app::workshop::Tab> = None;
+    // Which tab: the practice room is the lab being on.
+    let mut tab = app.prefabs.workshop.tab;
+    if studio.lab.active {
+        tab = crate::app::workshop::Tab::Practice;
+    } else if tab == crate::app::workshop::Tab::Practice && ready {
+        studio.lab.active = true;
+    }
+    let mut picked: Option<crate::app::workshop::Tab> = None;
     egui::Panel::top("prefab-studio-header").show(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
             ui.strong(format!(
-                "Builder / Prefab Studio · {} ({}×{}×{}){}",
+                "Workshop · {} ({}×{}×{}){}",
                 studio.original.name,
                 studio.original.width,
                 studio.original.height,
                 studio.original.planes,
                 if dirty { " · Unsaved" } else { "" }
             ));
-            save = ui
-                .add_enabled(ready && !studio.lab.active, egui::Button::new("Save"))
-                .clicked();
-            save_as = ui
-                .add_enabled(
-                    ready && !studio.lab.active,
-                    egui::Button::new("Save as new"),
-                )
-                .clicked();
-            expand_bounds = ui
-                .add_enabled(
-                    ready && !studio.lab.active,
-                    egui::Button::new("Expand bounds"),
-                )
-                .on_hover_text(
-                    "Grow prefab dimensions to encompass all placed objects and painted terrain",
-                )
-                .clicked();
-            revert = ui
-                .add_enabled(ready && !studio.lab.active, egui::Button::new("Revert"))
-                .clicked();
-            leave |= ui.button("Close workspace").clicked();
-            ui.checkbox(&mut studio.relations, "What belongs to this building")
-                .on_hover_text(
-                    "Show which floor tiles and pieces are part of this building, and fix them",
-                );
-            if ui
-                .button("Open the Workshop")
-                .on_hover_text("The plain-language place to name things, teach the AI and see what the floor-pattern builder learned")
-                .clicked()
-            {
-                open_workshop = Some(crate::app::workshop::Tab::Buildings);
+            ui.separator();
+            for (t, label, hint) in crate::app::workshop::Tab::ALL {
+                if ui
+                    .selectable_label(tab == t, label)
+                    .on_hover_text(hint)
+                    .clicked()
+                {
+                    picked = Some(t);
+                }
             }
-            ui.checkbox(
-                &mut studio.stage.viewer().ui.prefab_workspace.open,
-                "Workspace tools",
-            );
-            if ui
-                .selectable_label(studio.lab.active, "AI practice room (advanced)")
-                .on_hover_text("Watch a robot rebuild this building step by step with the editor's own tools")
-                .clicked()
-            {
-                studio.lab.active = true;
-            }
-            if ui
-                .selectable_label(!studio.lab.active, "Edit scene")
-                .clicked()
-                && let Err(e) = studio.lab.leave(studio.stage.viewer())
-            {
-                studio.problem = Some(e);
-            }
+            ui.separator();
+            leave |= ui.button("Close window").clicked();
         });
+        if tab == crate::app::workshop::Tab::Scene {
+            ui.horizontal_wrapped(|ui| {
+                save = ui
+                    .add_enabled(ready, egui::Button::new("Save"))
+                    .clicked();
+                save_as = ui
+                    .add_enabled(ready, egui::Button::new("Save as new"))
+                    .clicked();
+                expand_bounds = ui
+                    .add_enabled(ready, egui::Button::new("Expand bounds"))
+                    .on_hover_text(
+                        "Grow prefab dimensions to encompass all placed objects and painted terrain",
+                    )
+                    .clicked();
+                revert = ui
+                    .add_enabled(ready, egui::Button::new("Revert"))
+                    .clicked();
+                ui.checkbox(&mut studio.relations, "What belongs to this building")
+                    .on_hover_text(
+                        "Show which floor tiles and pieces are part of this building, and fix them",
+                    );
+                ui.checkbox(
+                    &mut studio.stage.viewer().ui.prefab_workspace.open,
+                    "Workspace tools",
+                );
+            });
+        }
         if let Some(problem) = &studio.problem {
             ui.colored_label(ui.visuals().error_fg_color, problem);
         }
     });
+    if let Some(t) = picked {
+        if t == crate::app::workshop::Tab::Practice {
+            studio.lab.active = true;
+        } else if studio.lab.active
+            && let Err(e) = studio.lab.leave(studio.stage.viewer())
+        {
+            studio.problem = Some(e);
+        }
+        tab = if studio.lab.active {
+            crate::app::workshop::Tab::Practice
+        } else {
+            t
+        };
+    }
+    if let Some(hook) = &mut studio.shot {
+        hook.tick(ctx, app.diagnostics.frames());
+    }
+    app.prefabs.workshop.tab = tab;
+    app.prefabs.workshop.editing = Some(studio.file.clone());
+    crate::app::workshop::ask(app, ctx);
     if expand_bounds && let Err(e) = save::expand_bounds_to_fit(&mut studio) {
         studio.problem = Some(e);
     }
@@ -275,7 +264,10 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
         }
         if studio.session.pending.is_none() {
             let viewer = studio.stage.viewer();
-            if studio.lab.active {
+            if tab.is_page() {
+                // A tab drawn by the Workshop: the scene underneath is paused, not changed.
+                egui::CentralPanel::default().show(ui, |ui| crate::app::workshop::page(app, ui));
+            } else if studio.lab.active {
                 super::script::lab_controls(viewer, ctx);
                 viewer.settings.prefs.tool = crate::paint::Tool::Select;
                 viewer.prefabs.disarm();
@@ -295,7 +287,12 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
                 super::viewport::read_only(viewer, ui, ctx);
             } else {
                 let mut workspace = std::mem::take(&mut viewer.ui.prefab_workspace);
-                workspace.show(viewer, &studio.file, ui);
+                if std::mem::take(&mut app.prefabs.workshop.want_builder) {
+                    workspace.show_builder();
+                }
+                workspace.show(viewer, &studio.file, ui, &mut |ui| {
+                    crate::app::workshop::library_page(app, ui)
+                });
                 viewer.ui.prefab_workspace = workspace;
                 super::input::editor_actions(viewer, ctx, false);
                 viewer.tool_strip(ui);
@@ -308,7 +305,7 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
                 viewer.quick_tools_hud(ctx);
             }
         }
-        if studio.relations && !studio.lab.active {
+        if studio.relations && tab == crate::app::workshop::Tab::Scene {
             overlays::panel(&mut studio, ctx);
         }
         let viewer = studio.stage.viewer();
@@ -341,7 +338,7 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
                 }
             }
             Some(SceneCommand::PlayReplay) => studio.lab.play_replay(),
-            Some(SceneCommand::Workshop(tab)) => open_workshop = Some(tab),
+            Some(SceneCommand::Workshop(tab)) => app.prefabs.workshop.tab = tab,
             None => {}
         }
         if let Some(file) = viewer.prefabs.studio_request.take() {
@@ -395,13 +392,6 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
             Destination::Revert,
             studio.stage.viewer().session.edit_revision(),
         );
-    }
-    if let Some(tab) = open_workshop {
-        // The Workshop lives in the main window: show it there, on this building.
-        app.prefabs.workshop.open = true;
-        app.prefabs.workshop.tab = tab;
-        app.prefabs.selected = Some(studio.file.clone());
-        ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus);
     }
     if studio.session.pending.is_some() {
         let mut choice = None;

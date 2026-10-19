@@ -15,8 +15,20 @@ pub struct ScreenshotHook {
 
 impl ScreenshotHook {
     pub fn from_env() -> Option<Self> {
-        let path = PathBuf::from(std::env::var_os("RUSTOSRS_SCREENSHOT")?);
-        let at_frame = std::env::var("RUSTOSRS_SCREENSHOT_FRAME")
+        Self::from_vars("RUSTOSRS_SCREENSHOT", "RUSTOSRS_SCREENSHOT_FRAME")
+    }
+
+    /// The same hook for the building window (its own viewport): `RUSTOSRS_STUDIO_SCREENSHOT`.
+    pub fn for_studio() -> Option<Self> {
+        Self::from_vars(
+            "RUSTOSRS_STUDIO_SCREENSHOT",
+            "RUSTOSRS_STUDIO_SCREENSHOT_FRAME",
+        )
+    }
+
+    fn from_vars(path_var: &str, frame_var: &str) -> Option<Self> {
+        let path = PathBuf::from(std::env::var_os(path_var)?);
+        let at_frame = std::env::var(frame_var)
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(300);

@@ -183,6 +183,8 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
 }
 
 fn kit_picker(app: &mut EditorApp, ui: &mut egui::Ui) {
+    // Styles learned in the Workshop appear here as "... (trained model)".
+    crate::app::workshop::offer_kits(app);
     let build = &mut app.prefabs.build;
     let selected = build
         .kits()
@@ -198,6 +200,19 @@ fn kit_picker(app: &mut EditorApp, ui: &mut egui::Ui) {
         });
     for problem in build.kit_problems() {
         ui.colored_label(egui::Color32::LIGHT_RED, problem);
+    }
+    if crate::app::workshop::chosen_model(app).is_some() {
+        ui.weak("This style was learned from your own buildings in the Workshop.");
+        if ui
+            .button("Let the AI pick a good seed")
+            .on_hover_text("Tries 16 seeds for this kind and size and keeps the one the model's judge likes best")
+            .clicked()
+        {
+            match crate::app::workshop::best_seed(app) {
+                Ok(message) => app.ui.notify(message),
+                Err(message) => app.ui.notify(message),
+            }
+        }
     }
 }
 

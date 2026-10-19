@@ -144,3 +144,12 @@ then `target/release/osrs-lab train-paths out/lessons out/model.json 24 150 1500
 print a lesson as letters, the overlays the guesser takes for paths, and door and edge statistics.
 `crates/osrs-lab/data/world-paths.model.json` is the model that ships (the Workshop's "comes with the
 editor" model).
+
+### Place names (`map_labels.json`)
+
+The world-map labels (863 names: towns, regions, mines, dungeon mouths; `textScale` 0/1/2 for site,
+town, region) are kept with each path lesson (`places`, within about 200 tiles) and used to name
+imported areas and jump to a place in the Workshop. Tested as a learner input (distance to the
+nearest town and to any named site as two extra numbers): no change on unseen areas (tile ranking
+AUC 0.91 with and without, drawing 79% and 75% both ways), so they are not part of the model.
+`MAP_LABELS=<file>` makes the `path_lessons` example embed them.

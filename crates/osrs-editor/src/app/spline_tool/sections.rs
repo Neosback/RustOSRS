@@ -13,6 +13,8 @@ pub(in crate::app) struct SplineSections {
     pub shape: bool,
     pub help: bool,
     pub preview: bool,
+    /// The AI helper: join the points the way a trained model would.
+    pub ai: bool,
 }
 
 impl SplineSections {
@@ -21,6 +23,7 @@ impl SplineSections {
         shape: true,
         help: true,
         preview: true,
+        ai: true,
     };
     /// The quick HUD: everything needed to lay a path except the how-to.
     pub(in crate::app) const COMPACT: Self = Self {
@@ -28,6 +31,7 @@ impl SplineSections {
         shape: true,
         help: false,
         preview: true,
+        ai: false,
     };
 }
 
@@ -37,6 +41,13 @@ pub(in crate::app) struct SplineView {
     pub status: SplineStatus,
     /// There is a point and an overlay to lay it with.
     pub can_lay: bool,
+    /// The trained models the AI helper can use, and which one is chosen (none: hide it).
+    pub ai: Option<AiView>,
+}
+
+pub(in crate::app) struct AiView {
+    pub models: Vec<String>,
+    pub selected: usize,
 }
 
 #[derive(Debug, PartialEq)]
@@ -47,6 +58,9 @@ pub(in crate::app) enum SplineAction {
     CancelPlan,
     ResumePlan,
     CopyDetails,
+    /// Replace the points with the route the chosen model prefers.
+    AiRoute,
+    AiModel(usize),
 }
 
 /// Human-readable text of a status, shared by every surface and the tests.
@@ -119,6 +133,11 @@ fn preview_sections(
     status_row(ui, view, actions);
     crate::theme::section_heading(ui, "Actions");
     action_row(ui, view, actions);
+    if sections.ai
+        && let Some(ai) = &view.ai
+    {
+        ai_row(ui, view, ai, actions);
+    }
     if sections.help {
         egui::CollapsingHeader::new("How to draw the path")
             .id_salt("spline_how_to")
@@ -200,6 +219,32 @@ fn action_row(ui: &mut egui::Ui, view: &SplineView, actions: &mut Vec<SplineActi
             actions.push(SplineAction::CopyDetails);
         }
     });
+}
+
+/// The AI helper: pick a trained model and let it route between the points.
+fn ai_row(ui: &mut egui::Ui, view: &SplineView, ai: &AiView, actions: &mut Vec<SplineAction>) {
+    crate::theme::section_heading(ui, "AI helper");
+    ui.weak("Click where the path starts and ends (and any place it must pass). The AI draws the way a model trained on real paths would: round water, along streets, to doors. Then you can still move its points before laying.");
+    let selected = ai.models.get(ai.selected).cloned().unwrap_or_default();
+    egui::ComboBox::from_id_salt("spline_ai_model")
+        .selected_text(selected)
+        .width(ui.available_width().min(260.0))
+        .show_ui(ui, |ui| {
+            for (index, name) in ai.models.iter().enumerate() {
+                if ui.selectable_label(index == ai.selected, name).clicked() {
+                    actions.push(SplineAction::AiModel(index));
+                }
+            }
+        });
+    if ui
+        .add_enabled(view.points >= 2, egui::Button::new("Let the AI route it"))
+        .on_hover_text(
+            "Needs at least two points. Train your own model in the Workshop (Paths tab).",
+        )
+        .clicked()
+    {
+        actions.push(SplineAction::AiRoute);
+    }
 }
 
 #[cfg(test)]
