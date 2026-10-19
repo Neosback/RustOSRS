@@ -370,26 +370,37 @@ fn new_semantic_paint_commit_invalidates_semantic_redo() {
 #[test]
 fn semantic_paint_history_marker_carries_no_legacy_tile_authority() {
     let brush = Brush::default();
-    let step = EditStep::semantic_paint(brush, vec![(0, 3200, 3200)]);
+    let keys = vec![(0, 3200, 3200)];
+    let step = EditStep::semantic_paint(brush.clone(), keys.clone());
 
-    assert!(step.changes.is_empty());
-    assert!(step.removed.is_empty());
-    assert!(step.added.is_empty());
-    assert!(step.semantic_paint.is_some());
+    let route = step
+        .semantic_paint
+        .as_ref()
+        .unwrap_or_else(|| unreachable!("Paint marker should be present"));
+    assert_eq!(&route.brush, &brush);
+    assert_eq!(&route.keys, &keys);
     assert!(step.semantic_height.is_none());
     assert!(step.semantic_object.is_none());
+    assert!(step.semantic_path.is_none());
+    assert!(!step.semantic_scenario);
+    assert!(!step.semantic_appearance);
 }
 
 #[test]
 fn semantic_height_history_marker_carries_no_legacy_tile_authority() {
-    let step = EditStep::semantic_height(vec![(0, 3200, 3200)]);
+    let keys = vec![(0, 3200, 3200)];
+    let step = EditStep::semantic_height(keys.clone());
 
-    assert!(step.changes.is_empty());
-    assert!(step.removed.is_empty());
-    assert!(step.added.is_empty());
+    let route = step
+        .semantic_height
+        .as_ref()
+        .unwrap_or_else(|| unreachable!("Height marker should be present"));
+    assert_eq!(&route.keys, &keys);
     assert!(step.semantic_paint.is_none());
-    assert!(step.semantic_height.is_some());
     assert!(step.semantic_object.is_none());
+    assert!(step.semantic_path.is_none());
+    assert!(!step.semantic_scenario);
+    assert!(!step.semantic_appearance);
 }
 
 #[test]
@@ -407,11 +418,11 @@ fn semantic_object_history_marker_carries_no_legacy_object_authority() {
     };
     let step = EditStep::semantic_object(vec![removed], vec![added]);
 
-    assert!(step.changes.is_empty());
-    assert!(step.removed.is_empty());
-    assert!(step.added.is_empty());
     assert!(step.semantic_paint.is_none());
     assert!(step.semantic_height.is_none());
+    assert!(step.semantic_path.is_none());
+    assert!(!step.semantic_scenario);
+    assert!(!step.semantic_appearance);
     let object = step
         .semantic_object
         .as_ref()
