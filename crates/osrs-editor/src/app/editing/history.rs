@@ -8,6 +8,7 @@ mod replay_projection;
 mod routing;
 
 use super::{EditorApp, TileKey};
+use crate::app::edit_runtime::EditReplayDirection;
 use crate::app::object_tool::ObjectHistoryRoute;
 use crate::paint::Brush;
 use eframe::egui;
@@ -115,11 +116,15 @@ impl EditorApp {
     pub(in crate::app) fn push_step(&mut self, _step: EditStep) {}
 
     pub(in crate::app) fn can_undo(&self) -> bool {
-        self.session.can_undo()
+        self.session
+            .replay_descriptor(EditReplayDirection::Undo)
+            .is_some()
     }
 
     pub(in crate::app) fn can_redo(&self) -> bool {
-        self.session.can_redo()
+        self.session
+            .replay_descriptor(EditReplayDirection::Redo)
+            .is_some()
     }
 
     /// Hand object edits to the world worker and queue the regions they sit in for a rebuild.
