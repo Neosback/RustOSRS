@@ -24,7 +24,6 @@ use crate::heights::commit::{HeightStrokeSpec, build_terrain_height_patch};
 use crate::heights::{self, encode_height};
 use crate::paint::{Brush, TileValues, Tool};
 use eframe::egui;
-pub(super) use history::EditStep;
 use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_edit::HeightVertexCoord;
 use osrs_world::TileEdit;
@@ -150,6 +149,24 @@ impl TerrainController {
             .map(|(key, before, _)| self.edit_for(infos, key, before))
             .collect()
     }
+
+    /// Restore transient stroke tile values after a commit attempt fails.
+    ///
+    /// This restores visible tile values only. User cancellation remains the path that also clears
+    /// newly-explicit Height preview markers.
+    fn restore_stroke_preview(
+        &mut self,
+        infos: &crate::pick::Infos,
+        stroke: &Stroke,
+    ) -> Vec<TileEdit> {
+        let mut edits = Vec::with_capacity(stroke.changes.len());
+        for (key, before, _) in &stroke.changes {
+            self.edited.insert(*key, *before);
+            edits.push(self.edit_for(infos, *key, *before));
+        }
+        edits
+    }
+
     fn current_tile(&self, infos: &crate::pick::Infos, key: TileKey) -> Option<TileValues> {
         self.edited
             .get(&key)
@@ -251,19 +268,6 @@ impl EditorApp {
     }
     pub(in crate::app) fn cancel_stroke(&mut self) {
         let edits = self.terrain.cancel_stroke(self.world.infos());
-        self.send_edits(edits);
-    }
-
-    /// Restore transient stroke tile values after a commit attempt fails.
-    ///
-    /// This restores visible tile values only. User cancellation remains the path that also clears
-    /// newly-explicit Height preview markers.
-    fn revert_stroke_preview(&mut self, stroke: &Stroke) {
-        let mut edits = Vec::with_capacity(stroke.changes.len());
-        for (key, before, _) in &stroke.changes {
-            self.terrain.edited.insert(*key, *before);
-            edits.push(self.edit_for(*key, *before));
-        }
         self.send_edits(edits);
     }
 

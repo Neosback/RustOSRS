@@ -101,11 +101,9 @@
       "apply_paint_projection",
       "commit_height_stroke",
       "commit_paint_stroke",
-      "end_stroke",
-      "touched_keys"
+      "end_stroke"
     ],
     "app/editing/history/routing.rs": [
-      "apply_replay_projection",
       "redo",
       "route_semantic",
       "undo"
@@ -114,8 +112,6 @@
       "can_redo",
       "can_undo",
       "edit_actions",
-      "push_step",
-      "revert",
       "send_loc_edits"
     ],
     "app/editing/paste.rs": [

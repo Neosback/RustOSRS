@@ -93,7 +93,10 @@ impl EditorApp {
 
     /// Undo the preview and report `message`.
     fn abandon_stroke(&mut self, stroke: &Stroke, message: String) -> StrokeOutcome {
-        self.revert_stroke_preview(stroke);
+        let edits = self
+            .terrain
+            .restore_stroke_preview(self.world.infos(), stroke);
+        self.send_edits(edits);
         self.ui.notify(message);
         false
     }

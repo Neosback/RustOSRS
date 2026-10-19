@@ -55,6 +55,39 @@ enum DescriptorProjection {
     Appearance,
 }
 
+impl DescriptorProjection {
+    /// Apply one already-validated semantic replay projection mechanically.
+    ///
+    /// The runtime has finalized the authoritative replay before this runs, so this method only
+    /// updates disposable worker/UI mirrors.
+    fn apply(self, app: &mut EditorApp) -> usize {
+        match self {
+            Self::Scenario | Self::Appearance => 1,
+            Self::Map(projection) => {
+                let count = projection.count();
+                let has_object_edits = !projection.object_edits.is_empty();
+                let mut tile_edits = Vec::new();
+                for tile in projection.tiles {
+                    if tile.height_changed {
+                        app.terrain.height_edited.insert(tile.key);
+                    }
+                    if tile.after != tile.before {
+                        app.terrain.edited.insert(tile.key, tile.after);
+                        tile_edits.push(app.edit_for(tile.key, tile.after));
+                    }
+                }
+                app.world.project_tile_edits(tile_edits);
+                if has_object_edits {
+                    app.world.project_loc_edits(projection.object_edits);
+                    app.clear_selection();
+                    app.interaction.set_pending_reselect(projection.reselect);
+                }
+                count
+            }
+        }
+    }
+}
+
 fn descriptor_label(descriptor: &EditReplayDescriptor) -> &'static str {
     match descriptor {
         EditReplayDescriptor::Map(_) => "Map edit",
@@ -124,7 +157,7 @@ impl EditorApp {
                 receipt,
                 projection,
             }) => {
-                let count = self.apply_descriptor_projection(projection);
+                let count = projection.apply(self);
                 self.world.invalidate_semantic_edit(&receipt);
                 format!(
                     "{} {}",
@@ -158,36 +191,7 @@ impl EditorApp {
         };
         self.ui.notify(notice);
     }
-
-    /// Apply an already-validated descriptor-driven projection mechanically. Projection invalidation
-    /// is dispatched separately from the authoritative replay receipt after this returns.
-    fn apply_descriptor_projection(&mut self, projection: DescriptorProjection) -> usize {
-        match projection {
-            DescriptorProjection::Scenario | DescriptorProjection::Appearance => 1,
-            DescriptorProjection::Map(projection) => {
-                let count = projection.count();
-                let has_object_edits = !projection.object_edits.is_empty();
-                let mut tile_edits = Vec::new();
-                for tile in projection.tiles {
-                    if tile.height_changed {
-                        self.terrain.height_edited.insert(tile.key);
-                    }
-                    if tile.after != tile.before {
-                        self.terrain.edited.insert(tile.key, tile.after);
-                        tile_edits.push(self.edit_for(tile.key, tile.after));
-                    }
-                }
-                self.world.project_tile_edits(tile_edits);
-                if has_object_edits {
-                    self.world.project_loc_edits(projection.object_edits);
-                    self.clear_selection();
-                    self.interaction.set_pending_reselect(projection.reselect);
-                }
-                count
-            }
-        }
-    }
 }
 
 #[cfg(test)]
-mod descriptor_tests;
+mod tests;
