@@ -4,6 +4,7 @@
 //! state in `EditorSession::history`. This module owns only chronological application markers and
 //! the transitional worker/render projection needed after semantic undo/redo.
 
+mod replay_projection;
 mod routing;
 
 use super::{EditorApp, TileKey};
