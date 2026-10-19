@@ -69,7 +69,10 @@ fn direct() {
                 encoding="utf-8",
             )
             hits = [hit for hit in authority_audit.scan(root) if hit.category == "legacy-history"]
-            self.assertEqual([(hit.line, hit.text) for hit in hits], [(6, "let _ = EditStep { semantic: true };")])
+            self.assertEqual(
+                [(hit.line, hit.text) for hit in hits],
+                [(6, "let _ = EditStep { semantic: true };")],
+            )
 
     def test_scan_ignores_unrelated_history_words(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -114,37 +117,32 @@ fn direct() {
         )
         self.assertEqual(authority_audit.gateway_violations([hit]), [hit])
 
-    def test_legacy_history_ratchet_allows_zero_baseline(self):
-        hits = []
-        line = 1
-        for path, ceiling in authority_audit.LEGACY_HISTORY_BASELINE.items():
-            for _ in range(ceiling):
-                hits.append(authority_audit.Hit("legacy-history", path, line, "legacy"))
-                line += 1
-        self.assertEqual(authority_audit.legacy_history_violations(hits), [])
+    def test_legacy_history_allows_only_zero_hits(self):
+        self.assertEqual(authority_audit.legacy_history_violations([]), [])
 
-    def test_legacy_history_ratchet_rejects_reintroduction_in_former_scaffold_file(self):
-        path = "crates/osrs-editor/src/app/editing/tests.rs"
-        hit = authority_audit.Hit("legacy-history", path, 1, "legacy")
-        self.assertEqual(authority_audit.legacy_history_violations([hit]), [hit])
-
-    def test_legacy_history_ratchet_rejects_new_file(self):
-        hit = authority_audit.Hit(
+    def test_legacy_history_rejects_every_hit_regardless_of_file(self):
+        former_scaffold = authority_audit.Hit(
             "legacy-history",
-            "crates/osrs-editor/src/app/new_tool.rs",
+            "crates/osrs-editor/src/app/editing/tests.rs",
             1,
             "step.changes",
         )
-        self.assertEqual(authority_audit.legacy_history_violations([hit]), [hit])
-
-    def test_legacy_history_ratchet_rejects_growth_in_allowed_file(self):
-        path = "crates/osrs-editor/src/app/editing/tests.rs"
-        ceiling = authority_audit.LEGACY_HISTORY_BASELINE[path]
-        hits = [
-            authority_audit.Hit("legacy-history", path, line, "legacy")
-            for line in range(1, ceiling + 2)
-        ]
-        self.assertEqual(authority_audit.legacy_history_violations(hits), [hits[-1]])
+        new_file = authority_audit.Hit(
+            "legacy-history",
+            "crates/osrs-editor/src/app/new_tool.rs",
+            2,
+            "EditStep {",
+        )
+        unrelated = authority_audit.Hit(
+            "checkpoint-lifecycle",
+            "crates/osrs-editor/src/app/edit_runtime.rs",
+            3,
+            "commit_checkpointed(",
+        )
+        self.assertEqual(
+            authority_audit.legacy_history_violations([new_file, unrelated, former_scaffold]),
+            sorted([former_scaffold, new_file]),
+        )
 
 
 if __name__ == "__main__":
