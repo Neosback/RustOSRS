@@ -57,6 +57,22 @@ def _validate_feature(name: str, feature: dict[str, Any], seen_ids: set[str]) ->
         raise RegistryError(f"feature {name!r} status must be one of: {allowed}")
 
 
+def _register_lookup_terms(
+    name: str,
+    feature: dict[str, Any],
+    lookup_owners: dict[str, str],
+) -> None:
+    terms = [name, feature["id"], *feature["aliases"]]
+    for term in terms:
+        folded = term.casefold()
+        previous = lookup_owners.get(folded)
+        if previous is not None and previous != name:
+            raise RegistryError(
+                f"feature lookup term {term!r} is shared by {previous!r} and {name!r}"
+            )
+        lookup_owners[folded] = name
+
+
 def normalize_registry(payload: object) -> dict[str, dict[str, Any]]:
     """Return the canonical feature map from the current registry document."""
     if not isinstance(payload, dict):
@@ -74,12 +90,14 @@ def normalize_registry(payload: object) -> dict[str, dict[str, Any]]:
 
     result: dict[str, dict[str, Any]] = {}
     seen_ids: set[str] = set()
+    lookup_owners: dict[str, str] = {}
     for name, feature in features.items():
         if not isinstance(name, str) or not name.strip():
             raise RegistryError("feature names must be non-empty strings")
         if not isinstance(feature, dict):
             raise RegistryError(f"feature {name!r} must be an object")
         _validate_feature(name, feature, seen_ids)
+        _register_lookup_terms(name, feature, lookup_owners)
         result[name] = feature
     return result
 
