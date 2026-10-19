@@ -1,0 +1,439 @@
+package dev.openrune.tools
+
+import dev.openrune.OsrsCacheProvider
+import dev.openrune.cache.*
+import dev.openrune.cache.filestore.definition.ConfigDefinitionDecoder
+import dev.openrune.cache.CacheDelegate
+import dev.openrune.cache.tools.TaskPriority
+import dev.openrune.cache.tools.incremental.PackUnit
+import dev.openrune.cache.tools.tasks.CacheTask
+import dev.openrune.cache.util.getFiles
+import dev.openrune.codec.osrs.*
+import dev.openrune.codec.osrs.impl.*
+import dev.openrune.definition.Definition
+import dev.openrune.definition.opcode.OpcodeDefinitionCodec
+import dev.openrune.definition.type.HealthBarType
+import dev.openrune.definition.type.InventoryType
+import dev.openrune.definition.type.ItemType
+import dev.openrune.definition.type.NpcType
+import dev.openrune.definition.type.ObjectType
+import dev.openrune.definition.type.SequenceType
+import dev.openrune.definition.type.VarpType
+import dev.openrune.filesystem.Cache
+import dev.openrune.getCacheLocation
+import dev.openrune.server.impl.item.ItemRenderDataManager
+import dev.openrune.toml.TomlMapper
+import dev.openrune.toml.model.TomlValue
+import dev.openrune.toml.rsconfig.decodeRuneScape
+import dev.openrune.toml.rsconfig.decodeRuneScapeBlocks
+import dev.openrune.toml.rsconfig.rsconfig
+import dev.openrune.toml.tomlMapper
+import dev.openrune.toml.util.InternalAPI
+import dev.openrune.types.*
+import dev.openrune.types.InventoryServerType.Companion.pack
+import dev.openrune.types.varp.VarpServerType
+import java.io.File
+import java.nio.file.Path
+import kotlin.reflect.KType
+import kotlin.reflect.typeOf
+
+data class PackType(
+    /** Toml section key `[[table]]`, key in [parsedDefinitions], and [packTypes] map key. */
+    val table: String,
+    val tomlMapper: TomlMapper,
+    val kType: KType,
+    /** Config archive this type writes (and, for merged types, reads its base definitions from). */
+    val archive: Int,
+    val pack: PackServerConfig.(Cache, Map<String, List<Definition>>, String) -> Unit,
+)
+
+/**
+ * [extraDirectories] are the config directories owned by plugin packs; they are scanned for toml
+ * overlays alongside [directory]. The `slayer` sub-directory and the examine CSVs are still read
+ * from [directory] alone.
+ */
+class PackServerConfig(
+    private val rev : Int,
+    private val directory: File,
+    private val extraDirectories: List<File> = emptyList(),
+    private val tokenizedReplacements: Map<String, String> = emptyMap(),
+    private val tokenizedFile: Path? = null,
+) : CacheTask(serverTaskOnly = true) {
+
+    val mapper = tomlMapper {
+        rsconfig {
+            enableConstantProvider()
+            enabledTokenizedReplacement(tokenizedReplacements, tokenizedFile)
+        }
+    }
+
+    override val priority: TaskPriority
+        get() = TaskPriority.VERY_LAST
+
+    fun Map<String, Any?>.bool(key: String, default: Boolean = true): Boolean {
+        return (this[key] as? TomlValue.Bool)?.value ?: default
+    }
+
+    fun Map<String, Any?>.getTomlIntList(key: String): List<Int> {
+        val value = this[key] ?: return emptyList()
+        return when (value) {
+            is TomlValue.List ->
+                value.elements.mapNotNull { (it as? TomlValue.Integer)?.value?.toInt() }
+            is TomlValue.Integer -> listOf(value.value.toInt())
+            else -> emptyList()
+        }
+    }
+
+    init {
+
+        var examinesObject: Map<Int, String> =
+            File("../.data/raw-cache/examines/locs.csv")
+                .readText()
+                .lineSequence()
+                .filter { it.isNotBlank() }
+                .associate { line ->
+                    val (idStr, text) = line.split(",", limit = 2)
+                    idStr.trim().toInt() to text.trim().removeSurrounding("\"")
+                }
+
+        registerMergedBaseAndTomlPackType<ObjectServerType, ObjectType>(
+            table = "object",
+            decoder = ObjectDecoder(rev),
+            loadBaseInto = { c, dest -> OsrsCacheProvider.ObjectDecoder(dev.openrune.revision.first).load(c, dest) },
+            codec = { base, overlay -> ObjectServerCodec(rev,base, overlay, examinesObject) },
+            create = { ObjectServerType(it) },
+        )
+
+        var examinesNpc: Map<Int, String> =
+            File("../.data/raw-cache/examines/npcs.csv")
+                .readText()
+                .lineSequence()
+                .filter { it.isNotBlank() }
+                .associate { line ->
+                    val (idStr, text) = line.split(",", limit = 2)
+                    idStr.trim().toInt() to text.trim().removeSurrounding("\"")
+                }
+
+        val slayerDir = File(directory, "slayer")
+        val slayerTaskByNpcId = SlayerTargetMonsterLoader.loadNpcSlayerTaskIds(slayerDir, mapper)
+        val slayerTaskTipByNpcId = SlayerNpcTipLoader.loadNpcSlayerTaskTips(slayerDir, mapper)
+        val slayerSuperiorByNpcId = SlayerSuperiorMonsterLoader.loadNpcSuperiorParams(slayerDir, mapper)
+
+        registerMergedBaseAndTomlPackType<NpcServerType, NpcType>(
+            table = "npc",
+            decoder = NpcDecoder(rev),
+            loadBaseInto = { c, dest -> OsrsCacheProvider.NPCDecoder(dev.openrune.revision.first).load(c, dest) },
+            codec = { base, overlay ->
+                NpcServerCodec(
+                    rev,
+                    base,
+                    overlay,
+                    examinesNpc,
+                    slayerTaskByNpcId,
+                    slayerTaskTipByNpcId,
+                    slayerSuperiorByNpcId,
+                )
+            },
+            create = { NpcServerType(it) },
+        )
+
+        registerMergedBaseAndTomlPackType<ItemServerType, ItemType>(
+            table = "item",
+            decoder = ItemDecoder(rev),
+            loadBaseInto = { c, dest -> OsrsCacheProvider.ItemDecoder(dev.openrune.revision.first).load(c, dest) },
+            codec = { base, overlay -> ItemServerCodec(rev,base, overlay) },
+            create = { ItemServerType(it) },
+        )
+
+        registerMergedBaseAndTomlPackType<VarpServerType, VarpType>(
+            table = "varp",
+            decoder = VarpDecoder(),
+            loadBaseInto = { c, dest -> OsrsCacheProvider.VarDecoder().load(c, dest) },
+            codec = { base, overlay -> VarpServerTypeCodec(base, overlay) },
+            create = { VarpServerType(it) },
+        )
+
+        registerCacheBackedPackType<HealthBarServerType, HealthBarType>(
+            table = "health",
+            decoder = HealthBarDecoder(),
+            baseDefinitions = { CacheManager.getHealthBars() },
+            codec = { HealthBarServerCodec(it) },
+            create = { HealthBarServerType(it) },
+        )
+
+        registerCacheBackedPackType<SequenceServerType, SequenceType>(
+            table = "anims",
+            decoder = SequenceDecoder(),
+            baseDefinitions = { CacheManager.getAnims() },
+            codec = { SequenceServerCodec(it) },
+            create = { SequenceServerType(it) },
+        )
+
+        registerParsedOverlayPackType<MesAnimType>(
+            table = "mesanim",
+            decoder = MesAnimDecoder(),
+            codec = { MesAnimServerCodec(it) },
+            create = { MesAnimType(it) },
+        )
+
+        registerParsedOverlayPackType<WalkTriggerType>(
+            table = "walktrigger",
+            decoder = WalkTriggerDecoder(),
+            codec = { WalkTriggerTypeCodec(it) },
+            create = { WalkTriggerType(it) },
+        )
+
+        registerParsedOverlayPackType<VarnType>(
+            table = "varn",
+            decoder = VarnDecoder(),
+            codec = { VarnTypeCodec(it) },
+            create = { VarnType(it) },
+        )
+
+        registerParsedOverlayPackType<VarnBitType>(
+            table = "varnbit",
+            decoder = VarnBitDecoder(),
+            codec = { VarnBitTypeCodec(it) },
+            create = { VarnBitType(it) },
+        )
+
+        registerParsedOverlayPackType<VarConType>(
+            table = "varcon",
+            decoder = VarConDecoder(),
+            codec = { VarConCodec(it) },
+            create = { VarConType(it) },
+        )
+
+        registerParsedOverlayPackType<VarObjBitType>(
+            table = "varobj",
+            decoder = VarObjBitDecoder(),
+            codec = { VarObjCodec(it) },
+            create = { VarObjBitType(it) },
+        )
+
+        registerParsedOverlayPackType<VarConBitType>(
+            table = "varconbit",
+            decoder = VarConBitDecoder(),
+            codec = { VarConBitTypeCodec(it) },
+            create = { VarConBitType(it) },
+        )
+
+        registerParsedOverlayPackType<HuntModeType>(
+            table = "hunt",
+            decoder = HuntModeDecoder(),
+            codec = { HuntCodec(it) },
+            create = { HuntModeType(it) },
+        )
+
+        registerParsedOverlayPackType<StatType>(
+            table = "stat",
+            decoder = StatTypeDecoder(),
+            codec = { StatTypeServerCodec(it) },
+            create = { StatType(it) },
+        )
+
+        registerParsedOverlayPackType<ProjAnimType>(
+            table = "projectile",
+            decoder = ProjectileTypeDecoder(),
+            codec = { ProjectileTypeServerCodec(it) },
+            create = { ProjAnimType(it) },
+        )
+
+        registerParsedOverlayPackType<BasType>(
+            table = "bas",
+            decoder = BasTypeDecoder(),
+            codec = { BasCodec(it) },
+            create = { BasType(it) },
+        )
+
+        registerMergedBaseAndTomlPackType<InventoryServerType, InventoryType>(
+            table = "inventory",
+            decoder = InventoryDecoder(),
+            tomlMapper =
+                tomlMapper {
+                    addDecoder<InventoryServerType> { content, def: InventoryServerType ->
+                        def.apply {
+                            flags =
+                                pack(
+                                    protect = content.bool("protect", true),
+                                    allStock = content.bool("allStock", false),
+                                    restock = content.bool("restock", false),
+                                    runWeight = content.bool("runWeight", false),
+                                    dummyInv = content.bool("dummyInv", false),
+                                    placeholders = content.bool("placeholders", false),
+                                    uimBlocked = content.bool("uimBlocked", false),
+                                )
+                        }
+                    }
+                },
+            loadBaseInto = { c, dest -> OsrsCacheProvider.InventoryDecoder().load(c, dest) },
+            codec = { base, overlay -> InventoryServerCodec(base, overlay) },
+            create = { InventoryServerType(it) },
+        )
+    }
+
+    private fun <T : Definition> packDefs(
+        cache: Cache,
+        archive: Int,
+        ids: Iterable<Int>,
+        create: (Int) -> T,
+        codec: OpcodeDefinitionCodec<T>,
+    ) {
+        for (id in ids) {
+            cache.write(CONFIGS, archive, id, codec.encodeToBuffer(create(id)))
+        }
+    }
+
+    private inline fun <reified T : Definition> parsedById(
+        parsedDefinitions: Map<String, List<Definition>>,
+        key: String,
+    ): Map<Int, T> =
+        parsedDefinitions[key]?.filterIsInstance<T>()?.associateBy { it.id } ?: emptyMap()
+
+    /**
+     * The live cache decoders and item render data are only needed when a type actually repacks, so a
+     * build where nothing changed does not pay for loading the whole live cache.
+     */
+    private val managers by lazy {
+        CacheManager.init(OsrsCacheProvider(Cache.load(Path.of(getCacheLocation())), revision))
+        ItemRenderDataManager.init()
+    }
+
+    internal fun ensureManagers() = managers
+
+    @OptIn(InternalAPI::class)
+    override fun init(cache: Cache) {
+        val parsedDefinitions = mutableMapOf<String, MutableList<Definition>>()
+        // Which files feed which type: a type only repacks when one of its own files changed.
+        val filesByTable = mutableMapOf<String, MutableSet<File>>()
+
+        val files = (listOf(directory) + extraDirectories).flatMap { getFiles(it, "toml") }
+
+        for (file in files) {
+            val blocks = mapper.decodeRuneScapeBlocks(file.toPath())
+            for (block in blocks) {
+                val packType = packTypes[block.name] ?: continue
+                val def =
+                    packType.tomlMapper.decodeRuneScape(packType.kType, block.map.properties)
+                        as Definition
+                parsedDefinitions.getOrPut(packType.table) { mutableListOf() }.add(def)
+                filesByTable.getOrPut(packType.table) { linkedSetOf() }.add(file)
+            }
+        }
+
+        val parsed: Map<String, List<Definition>> = parsedDefinitions
+        val library = (cache as CacheDelegate).library
+        val sharedInputs = listOf(
+            File(directory, "slayer"),
+            File("../.data/raw-cache/examines/locs.csv"),
+            File("../.data/raw-cache/examines/npcs.csv"),
+        )
+
+        // One incremental unit per type. The engine draws the progress bar itself, so it only ever counts
+        // the types that are actually being repacked; an unchanged build shows nothing here.
+        for (packType in packTypes.values) {
+            // Merged types are rebuilt over the client archive they overlay, so its checksum is part of
+            // the fingerprint: repacking an npc on the live side changes the server npc rows too.
+            val baseArchive = library.index(CONFIGS).archives().firstOrNull { it.id == packType.archive }
+            incremental.run(
+                task = this,
+                scope = packType.table,
+                label = "Packing Server Configs",
+                cache = cache,
+                units = listOf(
+                    PackUnit(
+                        key = "all",
+                        sources = filesByTable[packType.table]?.toList().orEmpty(),
+                        label = packType.table,
+                    ),
+                ),
+                extraDeps = sharedInputs,
+                extraFingerprints = mapOf("base-archive" to "${baseArchive?.crc}:${baseArchive?.revision}"),
+            ) { packCache, _ ->
+                ensureManagers()
+                packType.pack(this, packCache, parsed, packType.table)
+            }
+        }
+    }
+
+    companion object {
+
+        private val tomlMapperDefault = tomlMapper {}
+        private val packTypes = LinkedHashMap<String, PackType>()
+
+        /**
+         * Pack every id from [baseDefinitions]; Toml section `[[table]]` (for any overlay files);
+         * archive from [decoder]. [B] is the client/base definition from cache (e.g. [NpcType]);
+         * [T] is the server pack row ([NpcServerType]).
+         */
+        private inline fun <reified T : Definition, B : Definition> registerCacheBackedPackType(
+            table: String,
+            decoder: ConfigDefinitionDecoder<*>,
+            tomlMapper: TomlMapper = tomlMapperDefault,
+            crossinline baseDefinitions: () -> Map<Int, B>,
+            crossinline codec: (Map<Int, B>) -> OpcodeDefinitionCodec<T>,
+            noinline create: (Int) -> T,
+        ) {
+            registerPackType<T>(table, decoder.getArchive(0), tomlMapper) { cache, _, _ ->
+                val defs = baseDefinitions()
+                packDefs(cache, decoder.getArchive(0), defs.keys.sorted(), create, codec(defs))
+            }
+        }
+
+        /**
+         * Client/base defs loaded via [loadBaseInto], Toml overlay under `[[table]]`, pack union of
+         * ids. Archive from [decoder] (config archive id for this definition group).
+         */
+        private inline fun <
+            reified T : Definition,
+            B : Definition,
+        > registerMergedBaseAndTomlPackType(
+            table: String,
+            decoder: ConfigDefinitionDecoder<*>,
+            tomlMapper: TomlMapper = tomlMapperDefault,
+            crossinline loadBaseInto: (Cache, MutableMap<Int, B>) -> Unit,
+            crossinline codec: (Map<Int, B>, Map<Int, T>) -> OpcodeDefinitionCodec<T>,
+            noinline create: (Int) -> T,
+        ) {
+            registerPackType<T>(table, decoder.getArchive(0), tomlMapper) { cache, parsed, _ ->
+                val base = mutableMapOf<Int, B>().apply { loadBaseInto(cache, this) }
+                val overlay = parsedById<T>(parsed, table)
+                val ids = (base.keys + overlay.keys).distinct().sorted()
+                packDefs(cache, decoder.getArchive(0), ids, create, codec(base, overlay))
+            }
+        }
+
+        /** Pack ids from Toml only under `[[table]]`; [codec] receives the parsed overlay map. */
+        private inline fun <reified T : Definition> registerParsedOverlayPackType(
+            table: String,
+            decoder: ConfigDefinitionDecoder<*>,
+            tomlMapper: TomlMapper = tomlMapperDefault,
+            crossinline codec: (Map<Int, T>) -> OpcodeDefinitionCodec<T>,
+            noinline create: (Int) -> T,
+        ) {
+            registerPackType<T>(table, decoder.getArchive(0), tomlMapper) { cache, parsed, _ ->
+                val overlay = parsedById<T>(parsed, table)
+                packDefs(
+                    cache,
+                    decoder.getArchive(0),
+                    overlay.keys.sorted(),
+                    create,
+                    codec(overlay),
+                )
+            }
+        }
+
+        /**
+         * [table] is the Toml section (`[[table]]`), parsed map key, and progress label. [T] is the
+         * list element type for Toml decode (`typeOf<List<T>>()`).
+         */
+        private inline fun <reified T : Definition> registerPackType(
+            table: String,
+            archive: Int,
+            tomlMapper: TomlMapper = tomlMapperDefault,
+            noinline pack: PackServerConfig.(Cache, Map<String, List<Definition>>, String) -> Unit,
+        ) {
+            packTypes[table] = PackType(table, tomlMapper, typeOf<List<T>>(), archive, pack)
+        }
+    }
+}

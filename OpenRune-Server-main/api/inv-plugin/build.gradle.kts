@@ -1,0 +1,27 @@
+plugins {
+    id("base-conventions")
+
+}
+
+kotlin {
+    explicitApi()
+}
+
+dependencies {
+    implementation(libs.guice)
+    implementation(projects.api.cache)
+    implementation(projects.api.generated)
+    implementation(projects.api.config)
+    implementation(projects.api.gameProcess)
+    implementation(projects.api.player)
+    implementation(projects.api.playerOutput)
+    implementation(projects.api.script)
+    implementation(projects.api.scriptAdvanced)
+    implementation(projects.api.specials)
+    implementation(projects.api.utils.utilsVars)
+    implementation(projects.engine.events)
+    implementation(projects.engine.game)
+    implementation(projects.engine.module)
+    implementation(projects.engine.objtx)
+    implementation(projects.engine.plugin)
+}

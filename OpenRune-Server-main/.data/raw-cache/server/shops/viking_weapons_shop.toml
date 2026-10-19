@@ -1,0 +1,75 @@
+[[inventory]]
+isServerOnly = true
+id = "inv.viking_weapons_shop"
+name = "Skulgrimen's Battle Gear"
+
+scope = "Shared"
+stack = "Always"
+
+sellMultiplier = 1300
+buyMultiplier = 700
+delta = 30
+
+size = 11
+
+protect = false
+runWeight = false
+restock = true
+allStock = false
+placeholders = false
+
+[[inventory.stock]]
+obj = "obj.bronze_warhammer"
+count = 5
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.iron_warhammer"
+count = 4
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.steel_warhammer"
+count = 3
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.black_warhammer"
+count = 3
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.mithril_warhammer"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.adamnt_warhammer"
+count = 1
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.rune_warhammer"
+count = 0
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.viking_helmet_range"
+count = 5
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.viking_helmet_crush"
+count = 5
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.viking_helmet_slash"
+count = 5
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.viking_helmet_magic"
+count = 5
+restockCycles = 100
+

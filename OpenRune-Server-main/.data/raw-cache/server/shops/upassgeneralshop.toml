@@ -1,0 +1,90 @@
+[[inventory]]
+isServerOnly = true
+id = "inv.upassgeneralshop"
+name = "West Ardougne General Store"
+
+scope = "Shared"
+stack = "Always"
+
+sellMultiplier = 1200
+buyMultiplier = 550
+delta = 20
+
+size = 14
+
+protect = false
+runWeight = false
+restock = true
+allStock = false
+placeholders = false
+
+[[inventory.stock]]
+obj = "obj.pot_empty"
+count = 3
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.rope"
+count = 3
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.bronze_pickaxe"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.bucket_empty"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.pack_bucket"
+count = 10
+restockCycles = 10
+
+[[inventory.stock]]
+obj = "obj.tinderbox"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.hammer"
+count = 3
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.leather_boots"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.longbow"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.bronze_arrow"
+count = 20
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.salmon"
+count = 10
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.meat_pie"
+count = 10
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.bread"
+count = 5
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.cooked_meat"
+count = 10
+restockCycles = 100
+

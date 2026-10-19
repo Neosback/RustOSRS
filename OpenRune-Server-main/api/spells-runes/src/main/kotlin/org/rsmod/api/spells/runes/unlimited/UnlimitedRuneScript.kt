@@ -1,0 +1,12 @@
+package org.rsmod.api.spells.runes.unlimited
+
+import jakarta.inject.Inject
+import org.rsmod.plugin.scripts.PluginScript
+import org.rsmod.plugin.scripts.ScriptContext
+
+public class UnlimitedRuneScript @Inject constructor(private val repo: UnlimitedRuneRepository) :
+    PluginScript() {
+    override fun ScriptContext.startup() {
+        repo.init()
+    }
+}

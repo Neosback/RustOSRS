@@ -1,0 +1,36 @@
+package org.rsmod.api.inv
+
+import dev.openrune.definition.type.widget.IfEvent
+import org.rsmod.api.player.ui.ifSetEvents
+import org.rsmod.api.script.onIfOpen
+import org.rsmod.game.entity.Player
+import org.rsmod.plugin.scripts.PluginScript
+import org.rsmod.plugin.scripts.ScriptContext
+
+public class InvOpenScript : PluginScript() {
+    override fun ScriptContext.startup() {
+        onIfOpen("interface.inventory") { player.onInvOpen() }
+    }
+
+    private fun Player.onInvOpen() {
+        ifSetEvents(
+            "component.inventory:items",
+            inv.indices,
+            IfEvent.Op2,
+            IfEvent.Op3,
+            IfEvent.Op4,
+            IfEvent.Op6,
+            IfEvent.Op7,
+            IfEvent.Op10,
+            IfEvent.TgtObj,
+            IfEvent.TgtNpc,
+            IfEvent.TgtLoc,
+            IfEvent.TgtPlayer,
+            IfEvent.TgtInv,
+            IfEvent.TgtCom,
+            IfEvent.Depth1,
+            IfEvent.DragTarget,
+            IfEvent.Target,
+        )
+    }
+}

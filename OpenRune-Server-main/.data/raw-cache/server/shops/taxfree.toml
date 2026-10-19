@@ -1,0 +1,60 @@
+[[inventory]]
+isServerOnly = true
+id = "inv.taxfree"
+name = "Bandit Duty Free"
+
+scope = "Shared"
+stack = "Always"
+
+sellMultiplier = 900
+buyMultiplier = 600
+delta = 30
+
+size = 8
+
+protect = false
+runWeight = false
+restock = true
+allStock = false
+placeholders = false
+
+[[inventory.stock]]
+obj = "obj.pot_empty"
+count = 5
+restockCycles = 50
+
+[[inventory.stock]]
+obj = "obj.jug_empty"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.pack_jug_empty"
+count = 5
+restockCycles = 15
+
+[[inventory.stock]]
+obj = "obj.tinderbox"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.chisel"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.hammer"
+count = 5
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.bronze_pickaxe"
+count = 5
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.bronze_axe"
+count = 10
+restockCycles = 100
+

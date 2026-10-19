@@ -1,0 +1,61 @@
+package org.rsmod.game.timer
+
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import it.unimi.dsi.fastutil.objects.ObjectIterator
+import it.unimi.dsi.fastutil.objects.ObjectIterators
+import it.unimi.dsi.fastutil.shorts.Short2LongLinkedOpenHashMap
+import it.unimi.dsi.fastutil.shorts.Short2LongMap
+import org.rsmod.annotations.InternalApi
+
+public class NpcTimerMap(private var timers: Short2LongLinkedOpenHashMap? = null) :
+    Iterable<Short2LongMap.Entry> {
+    public val isNotEmpty: Boolean
+        get() = timers?.isNotEmpty() == true
+
+    public fun remove(timer: String) {
+        timers?.remove(timer.asRSCM(RSCMType.TIMER).toShort())
+    }
+
+    @OptIn(InternalApi::class)
+    public fun schedule(timer: String, interval: Int) {
+        put(timer.asRSCM(RSCMType.TIMER).toShort(), clockCounter = 0, interval = interval)
+    }
+
+    @InternalApi
+    public fun put(timerType: Short, clockCounter: Int, interval: Int) {
+        val timers = getOrCreate()
+        timers[timerType] = packValues(clockCounter, interval)
+    }
+
+    @OptIn(InternalApi::class)
+    private fun getOrCreate(): Short2LongLinkedOpenHashMap {
+        val timers = timers ?: Short2LongLinkedOpenHashMap()
+        if (this.timers == null) {
+            this.timers = timers
+        }
+        return timers
+    }
+
+    @InternalApi public fun extractClockCounter(packed: Long): Int = (packed shr 32).toInt()
+
+    @InternalApi public fun extractInterval(packed: Long): Int = packed.toInt()
+
+    @InternalApi
+    public fun packValues(clockCounter: Int, interval: Int): Long {
+        return (clockCounter.toLong() shl 32) or interval.toLong()
+    }
+
+    @InternalApi
+    public operator fun get(timerType: Short): Long? {
+        val timers = this.timers ?: return null
+        val value = timers.get(timerType)
+        return value.takeIf { it != timers.defaultReturnValue() }
+    }
+
+    override fun iterator(): ObjectIterator<Short2LongMap.Entry> {
+        return timers?.short2LongEntrySet()?.fastIterator() ?: ObjectIterators.emptyIterator()
+    }
+
+    override fun toString(): String = timers?.toString() ?: "null"
+}

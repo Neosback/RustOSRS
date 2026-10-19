@@ -1,0 +1,156 @@
+package org.rsmod.api.npc.hit
+
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.HitmarkTypeGroup
+import dev.openrune.types.ItemServerType
+import dev.openrune.util.Wearpos
+import kotlin.math.max
+import org.rsmod.api.config.constants
+import org.rsmod.api.config.refs.done.hitmark_groups
+import org.rsmod.game.entity.Npc
+import org.rsmod.game.entity.Player
+import org.rsmod.game.hit.HitBuilder
+import org.rsmod.game.hit.HitType
+import org.rsmod.game.inv.InvObj
+
+internal object InternalNpcHits {
+    private val Player.righthand: InvObj?
+        get() = worn[Wearpos.RightHand.slot]
+
+    fun createBuilder(
+        source: Npc,
+        type: HitType,
+        damage: Int,
+        righthand: ItemServerType?,
+        secondaryObj: ItemServerType?,
+        hitmark: HitmarkTypeGroup,
+        clientDelay: Int,
+    ): HitBuilder {
+        val righthand = righthand?.id
+        val secondary = secondaryObj?.id
+        return createBuilder(
+            type = type,
+            hitmark = hitmark,
+            damage = damage,
+            righthandObj = righthand,
+            secondaryObj = secondary,
+            sourceMaxDamageThreshold = null,
+            sourceUid = source.uid.packed,
+            sourceNpcSlot = source.slotId,
+            sourcePlayerSlot = null,
+            clientDelay = clientDelay,
+            isPrivateHit = false,
+        )
+    }
+
+    fun createBuilder(
+        source: Player,
+        type: HitType,
+        damage: Int,
+        secondaryObj: ItemServerType?,
+        hitmark: HitmarkTypeGroup,
+        clientDelay: Int,
+        specific: Boolean,
+    ): HitBuilder {
+        val righthand = source.righthand?.id
+        val secondary = secondaryObj?.id
+        val sourceMaxHit = source.currentMaxHit()
+        val sourceMaxThreshold = source.maxDamageLitThreshold(sourceMaxHit)
+        return createBuilder(
+            type = type,
+            hitmark = hitmark,
+            damage = damage,
+            righthandObj = righthand,
+            secondaryObj = secondary,
+            sourceMaxDamageThreshold = sourceMaxThreshold,
+            sourceUid = source.uid.packed,
+            sourceNpcSlot = null,
+            sourcePlayerSlot = source.slotId,
+            clientDelay = clientDelay,
+            isPrivateHit = specific,
+        )
+    }
+
+    fun createBuilder(
+        type: HitType,
+        damage: Int,
+        righthand: ItemServerType?,
+        secondaryObj: ItemServerType?,
+        hitmark: HitmarkTypeGroup,
+        clientDelay: Int,
+    ): HitBuilder {
+        val righthand = righthand?.id
+        val secondary = secondaryObj?.id
+        return createBuilder(
+            type = type,
+            hitmark = hitmark,
+            damage = damage,
+            righthandObj = righthand,
+            secondaryObj = secondary,
+            sourceMaxDamageThreshold = null,
+            sourceUid = null,
+            sourceNpcSlot = null,
+            sourcePlayerSlot = null,
+            clientDelay = clientDelay,
+            isPrivateHit = false,
+        )
+    }
+
+    private fun createBuilder(
+        type: HitType,
+        hitmark: HitmarkTypeGroup,
+        damage: Int,
+        righthandObj: Int?,
+        secondaryObj: Int?,
+        sourceMaxDamageThreshold: Int?,
+        sourceUid: Int?,
+        sourceNpcSlot: Int?,
+        sourcePlayerSlot: Int?,
+        clientDelay: Int,
+        isPrivateHit: Boolean,
+    ): HitBuilder {
+        val publicHitmark =
+            when {
+                isPrivateHit -> null
+                hitmark.tint != null -> hitmark.tint?.asRSCM(RSCMType.HITMARK)
+                else -> hitmark.lit.asRSCM(RSCMType.HITMARK)
+            }
+        val zeroDamageHitmarks = if (hitmark.isRegularDamage()) hitmark_groups.zero_damage else null
+        return HitBuilder(
+            type = type,
+            damage = damage,
+            sourceUid = sourceUid,
+            sourceSlot = sourcePlayerSlot ?: sourceNpcSlot,
+            isFromNpc = sourceNpcSlot != null,
+            isFromPlayer = sourcePlayerSlot != null,
+            clientDelay = clientDelay,
+            righthandType = righthandObj,
+            secondaryType = secondaryObj,
+            targetHitmark = hitmark.lit.asRSCM(RSCMType.HITMARK),
+            sourceHitmark = hitmark.lit.asRSCM(RSCMType.HITMARK),
+            publicHitmark = publicHitmark,
+            zeroDamageHitmarkLit = zeroDamageHitmarks?.lit?.asRSCM(RSCMType.HITMARK),
+            zeroDamageHitmarkTint = zeroDamageHitmarks?.tint?.asRSCM(RSCMType.HITMARK),
+            maxDamageHitmarkLit = hitmark.max?.asRSCM(RSCMType.HITMARK),
+            targetMaxDamageThreshold = Int.MAX_VALUE,
+            sourceMaxDamageThreshold = sourceMaxDamageThreshold ?: Int.MAX_VALUE,
+        )
+    }
+
+    private fun HitmarkTypeGroup.isRegularDamage(): Boolean =
+        isAssociatedWith(hitmark_groups.regular_damage)
+
+    private fun Player.currentMaxHit(): Int = vars["varp.com_maxhit"]
+
+    private fun Player.maxDamageLitThreshold(sourceMaxHit: Int): Int? {
+        val varThreshold = vars["varbit.settings_hitsplat_threshold"]
+        val minThreshold = max(constants.setting_lit_maxhit_min_threshold, varThreshold)
+        val threshold = max(minThreshold, sourceMaxHit)
+        return if (threshold == 0) {
+            null
+        } else {
+            threshold
+        }
+    }
+}

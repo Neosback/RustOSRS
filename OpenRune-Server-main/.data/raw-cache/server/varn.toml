@@ -1,0 +1,62 @@
+[[varn]]
+id = "varn.lastcombat"
+
+[[varn]]
+id = "varn.aggressive_player"
+
+[[varn]]
+id = "varn.generic_state_2"
+
+[[varn]]
+id = "varn.attacking_player"
+
+[[varn]]
+id = "varn.lastattack"
+
+[[varn]]
+id = "varn.flat_armour"
+
+[[varn]]
+id = "varn.immune_melee"
+
+[[varn]]
+id = "varn.immune_ranged"
+
+[[varn]]
+id = "varn.immune_magic"
+
+[[varn]]
+id = "varn.gorilla_protect_damage"
+
+[[varn]]
+id = "varn.gorilla_protect_hits"
+
+[[varn]]
+id = "varn.gorilla_miss_streak"
+
+[[varn]]
+id = "varn.gorilla_protect_switching"
+
+[[varn]]
+id = "varn.td_shield_up"
+
+[[varn]]
+id = "varn.td_overhead_style"
+
+[[varn]]
+id = "varn.guaranteed_hit"
+
+[[varn]]
+id = "varn.venenatis_attacks"
+
+[[varn]]
+id = "varn.awakened_state"
+
+[[varn]]
+id = "varn.muspah_damage_since_switch"
+
+[[varn]]
+id = "varn.skip_killcount"
+
+[[varn]]
+id = "varn.muspah_melee_still_ticks"

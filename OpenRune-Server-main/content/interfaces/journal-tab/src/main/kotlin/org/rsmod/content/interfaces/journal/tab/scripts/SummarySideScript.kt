@@ -1,0 +1,120 @@
+package org.rsmod.content.interfaces.journal.tab.scripts
+
+import dev.openrune.definition.type.widget.IfEvent
+import dev.openrune.types.aconverted.interf.IfButtonOp
+import jakarta.inject.Inject
+import org.rsmod.api.player.output.mes
+import org.rsmod.api.player.protect.ProtectedAccess
+import org.rsmod.api.player.protect.ProtectedAccessLauncher
+import org.rsmod.api.player.ui.ifClose
+import org.rsmod.api.player.ui.ifOpenOverlay
+import org.rsmod.api.player.ui.ifSetEvents
+import org.rsmod.api.player.vars.boolVarBit
+import org.rsmod.api.script.onIfOpen
+import org.rsmod.api.script.onIfOverlayButton
+import org.rsmod.content.interfaces.collectionlog.applyCollectionCount
+import org.rsmod.content.interfaces.journal.tab.SideJournalTab
+import org.rsmod.content.interfaces.journal.tab.switchJournalTab
+import org.rsmod.content.interfaces.journal.tab.updateSummaryTimePlayed
+import org.rsmod.events.EventBus
+import org.rsmod.game.entity.Player
+import org.rsmod.plugin.scripts.PluginScript
+import org.rsmod.plugin.scripts.ScriptContext
+
+class SummarySideScript
+@Inject
+constructor(private val eventBus: EventBus, private val protectedAccess: ProtectedAccessLauncher) :
+    PluginScript() {
+    private var ProtectedAccess.displayPlaytime by boolVarBit("varbit.account_summary_display_playtime")
+    private var ProtectedAccess.displayPlaytimeReminderDisabled by
+        boolVarBit("varbit.account_summary_display_playtime_remind_disable")
+
+    override fun ScriptContext.startup() {
+        onIfOpen("interface.account_summary_sidepanel") { player.onSummarySideOpen() }
+        onIfOverlayButton("component.account_summary_sidepanel:summary_click_layer") {
+            player.clickSummaryLayer(it.comsub, it.op)
+        }
+    }
+
+    private fun Player.onSummarySideOpen() {
+        applyCollectionCount()
+        ifSetEvents(
+            "component.account_summary_sidepanel:summary_click_layer",
+            3..7,
+            IfEvent.Op1,
+            IfEvent.Op2,
+            IfEvent.Op3,
+            IfEvent.Op4,
+        )
+    }
+
+    private fun Player.clickSummaryLayer(comsub: Int, op: IfButtonOp) {
+        when (comsub) {
+            3 -> clickQuestList()
+            4 -> clickAchievementList()
+            5 -> clickCombatAchievements()
+            6 -> clickCollectionLog(op)
+            7 -> selectTimePlayedToggle()
+            else -> throw NotImplementedError("Unhandled summary click: comsub=$comsub")
+        }
+    }
+
+    private fun Player.clickQuestList() {
+        switchJournalTab(SideJournalTab.Quests, eventBus)
+    }
+
+    private fun Player.clickAchievementList() {
+        switchJournalTab(SideJournalTab.Tasks, eventBus)
+    }
+
+    private fun Player.clickCombatAchievements() {
+        ifClose(eventBus)
+        val opened = protectedAccess.launch(this) { ifOpenMainModal("interface.ca_overview") }
+        if (!opened) {
+            mes("Please finish what you're doing first.")
+        }
+    }
+
+    private fun Player.clickCollectionLog(op: IfButtonOp) {
+        val interf =
+            if (op == IfButtonOp.Op2) "interface.collection_overview" else "interface.collection"
+        ifOpenOverlay(interf, eventBus)
+    }
+
+    private fun Player.selectTimePlayedToggle() {
+        ifClose(eventBus)
+        val toggled = protectedAccess.launch(this) { toggleTimePlayed() }
+        if (!toggled) {
+            mes("Please finish what you're doing first.")
+        }
+    }
+
+    private suspend fun ProtectedAccess.toggleTimePlayed() {
+        if (displayPlaytimeReminderDisabled || displayPlaytime) {
+            displayPlaytime = !displayPlaytime
+            player.updateSummaryTimePlayed()
+            return
+        }
+
+        val option =
+            choice3(
+                "Yes",
+                1,
+                "Yes and don't ask me again",
+                2,
+                "No",
+                3,
+                title = "Are you sure you want to display your time played?",
+            )
+
+        if (option == 3) {
+            return
+        }
+
+        if (option == 2) {
+            displayPlaytimeReminderDisabled = true
+        }
+        displayPlaytime = !displayPlaytime
+        player.updateSummaryTimePlayed()
+    }
+}

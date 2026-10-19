@@ -1,0 +1,73 @@
+package org.rsmod.game.vars
+
+import dev.openrune.ServerCacheManager
+import dev.openrune.definition.type.VarBitType
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.varp.VarpServerType
+import dev.openrune.types.varp.baseVar
+import dev.openrune.types.varp.bits
+import it.unimi.dsi.fastutil.ints.Int2IntMap
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
+import org.rsmod.utils.bits.bitMask
+import org.rsmod.utils.bits.getBits
+
+/**
+ * A map for storing integer-based player variables (varps and varbits).
+ *
+ * This class **does not provide `set` operators** to prevent direct modifications. Player varps
+ * must be kept in sync with the client immediately when changed.
+ *
+ * Since the networking layer should **not** be mixed with the model layer, this map relies on
+ * separate systems to handle synchronization. These systems should ensure that any changes here are
+ * properly transmitted to the client as needed.
+ */
+@JvmInline
+public value class VarPlayerIntMap(public val backing: Int2IntMap = Int2IntOpenHashMap()) {
+
+    public operator fun get(key: String): Int {
+        if (key.startsWith("varp")) {
+            val varp = ServerCacheManager.getVarp(key.asRSCM(RSCMType.VARP))?: error("Unable to find varp: $key")
+            return get(varp)
+        } else {
+            val varbit = ServerCacheManager.getVarbit(key.asRSCM(RSCMType.VARBIT)) ?: error("Unable to find varbit: $key")
+            return get(varbit)
+        }
+    }
+
+    public operator fun get(key: VarpServerType): Int = backing.getOrDefault(key.id, 0)
+
+    public operator fun get(varp: VarBitType): Int {
+        val mappedValue = this[varp.baseVar]
+        val extracted = mappedValue.getBits(varp.bits)
+        return extracted
+    }
+
+    public operator fun contains(key: String): Boolean {
+        return if (key.startsWith("varp")) {
+            val varp = ServerCacheManager.getVarp(key.asRSCM(RSCMType.VARP))
+            varp != null && backing.containsKey(varp.id)
+        } else {
+            val varbit = ServerCacheManager.getVarbit(key.asRSCM(RSCMType.VARBIT))
+            varbit != null && backing.containsKey(varbit.baseVar.id)
+        }
+    }
+
+    public operator fun contains(key: VarpServerType): Boolean = backing.containsKey(key.id)
+
+    override fun toString(): String = backing.toString()
+
+    public operator fun iterator(): Iterator<Map.Entry<Int, Int>> = backing.iterator()
+
+    public companion object {
+        public fun assertVarBitBounds(varp: VarBitType, value: Int) {
+            val maxValue = varp.maxValue()
+            require(value in 0..maxValue) {
+                "Varbit overflow on varbit ${varp.id} " +
+                    "Value $value is outside the range 0-$maxValue (type=$varp)"
+            }
+        }
+
+        private fun VarBitType.maxValue(): Long = bits.bitMask
+    }
+}

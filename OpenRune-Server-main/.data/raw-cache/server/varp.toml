@@ -1,0 +1,835 @@
+[[varp]]
+isServerOnly = true
+id = "varp.music_playlist"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.music_temp_state_3"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.music_temp_state_2"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.music_temp_state_1"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.gameframe"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.pk_prey1"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.pk_prey2"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.pk_predator1"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.pk_predator2"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.pk_predator3"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.prayer_drain"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.playtime"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.generic_temp_state_65516"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.dinhs_passive_delay"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.com_maxhit"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.forinthry_surge_expiration"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.saved_autocast_state_staff"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.saved_autocast_state_bladed_staff"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.lastcombat"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.lastcombat_pvp"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.aggressive_npc"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.temp_restore_65527"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.generic_temp_coords_65529"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.inv_capacity_65530"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.generic_storage_65531"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.bank_serverside_vars"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.weapons_saved_attackstyle1"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.weapons_saved_attackstyle2"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.emote_counters"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.emote_clock_premier_shield"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.canoe_station_coords"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.prayer0"
+scope = "Temp"
+
+[[varp]]
+isServerOnly = true
+id = "varp.if1"
+scope = "Temp"
+
+[[varp]]
+isServerOnly = true
+id = "varp.if2"
+scope = "Temp"
+
+[[varp]]
+isServerOnly = true
+id = "varp.if3"
+scope = "Temp"
+
+[[varp]]
+isServerOnly = true
+id = "varp.date_vars"
+transmit = "OnSetDifferent"
+
+[[varp]]
+isServerOnly = true
+id = "varp.canoeing_menu"
+scope = "Temp"
+
+[[varp]]
+isServerOnly = true
+id = "varp.canoeing_river_lum"
+scope = "Temp"
+
+[[varp]]
+isServerOnly = true
+id = "varp.venom_strikes"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.disease_drain"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.poison_severity"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.canoeing_river_lum_2"
+scope = "Temp"
+
+[[varp]]
+isServerOnly = true
+id = "varp.fullscreen_worldmap"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.bonecrusher_activity"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.herblore_amulet_chemistry"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.ash_sanctifier_activity"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.ecto_grinder_recipe"
+scope = "Temp"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.ecto_tokens"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.slayer_player_state"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.slayer_last_target"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.slayer_last_master"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.slayer_last_area"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.slayer_last_count"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.slayer_dialogue_flags"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.slayer_mortimer_state"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.slayer_mortimer_offers"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.slayer_mortimer_last"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.rcu_pouch_essence_type_small"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.rcu_pouch_essence_type_med"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.rcu_pouch_essence_type_large"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.rcu_pouch_essence_type_giant"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.rcu_pouch_essence_type_colossal"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_crystal_chest"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_elven_crystal_chest"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_larrans_small_chest"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_larrans_big_chest"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_brimstone_chest"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_muddy_chest"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_grubby_chest"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_zombie_pirate_locker"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_moon_chest"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_abyssal_demon"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.instance_state"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_crawling_hand"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_cave_bug"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_cave_crawler"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_banshee"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_cave_slime"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_rockslug"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_desert_lizard"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_cockatrice"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_pyrefiend"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_pyrelord"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_mogre"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_harpie_bug_swarm"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_wall_beast"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_killerwatt"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_vyrewatch_sentinel"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_molanisk"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_basilisk"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_terror_dog"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_sea_snake_hatchling"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_fever_spider"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_sulphur_lizard"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_grimy_lizard"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_infernal_mage"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_brine_rat"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_sulphur_nagua"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_frost_nagua"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_amoxliatl"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_earthen_nagua"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_bloodveld"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_gryphon"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_jelly"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_juvenile_custodian_stalker"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_mature_custodian_stalker"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_elder_custodian_stalker"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_turoth"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_warped_terrorbird"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_warped_tortoise"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_mutated_zygomite"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_ancient_zygomite"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_cave_horror"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_aberrant_spectre"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_basilisk_knight"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_wyrm"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_wyrmling"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_lava_strykewyrm"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_spiritual_ranger"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_dust_devil"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_spitting_wyvern"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_taloned_wyvern"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_long_tailed_wyvern"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_spiritual_warrior"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_kurask"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_skeletal_wyvern"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_gargoyle"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_brutal_black_dragon"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_aquanite"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_nechryael"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_ancient_wyvern"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_spiritual_mage"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_drake"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_cave_kraken"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_dark_beast"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_araxyte"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_smoke_devil"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_hydra"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_thermonuclear_smoke_devil"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_superior_monster"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.kc_demonic_gorilla"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.drew_sandstone"
+scope = "Perm"
+transmit = "Never"
+
+[[varp]]
+isServerOnly = true
+id = "varp.overhead_lock_expiration"
+scope = "Temp"
+transmit = "Never"

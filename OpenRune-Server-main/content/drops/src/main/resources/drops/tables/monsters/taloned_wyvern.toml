@@ -1,0 +1,371 @@
+id = "Taloned Wyvern Drops"
+npcs = ["npc.wyvern_taloned"]
+brimstone_key_roll = true
+brimstone_key_roll_konar_bonus = true
+
+[main]
+total = 123
+name = "Taloned Wyvern Drops"
+
+[[main.entries]]
+weight = 4
+obj = "obj.air_battlestaff"
+count = 1
+
+[[main.entries]]
+weight = 3
+obj = "obj.cert_battlestaff"
+count = "3..5"
+
+[[main.entries]]
+weight = 2
+obj = "obj.adamant_battleaxe"
+count = 1
+
+[[main.entries]]
+weight = 2
+obj = "obj.adamant_full_helm"
+count = 1
+
+[[main.entries]]
+weight = 2
+obj = "obj.rune_pickaxe"
+count = 1
+
+[[main.entries]]
+weight = 2
+obj = "obj.adamant_platebody"
+count = 1
+
+[[main.entries]]
+weight = 6
+obj = "obj.adamant_arrow"
+count = "38..42"
+
+[[main.entries]]
+weight = 4
+obj = "obj.waterrune"
+count = 50
+
+[[main.entries]]
+weight = 4
+obj = "obj.chaosrune"
+count = 15
+
+[[main.entries]]
+weight = 4
+obj = "obj.lawrune"
+count = 15
+
+[[main.entries]]
+weight = 4
+obj = "obj.deathrune"
+count = 15
+
+[[main.entries]]
+weight = 4
+obj = "obj.bloodrune"
+count = 15
+
+[[main.entries]]
+weight = 1
+obj = "obj.soulrune"
+count = 10
+
+[[main.entries]]
+weight = 1
+obj = "obj.xbows_crossbow_bolts_runite"
+count = "12..30"
+
+[[main.entries]]
+weight = 2
+obj = "obj.unidentified_ranarr"
+count = 1
+
+[[main.entries]]
+weight = 2
+obj = "obj.unidentified_torstol"
+count = 1
+
+[[main.entries]]
+weight = 2
+obj = "obj.seaweed_seed"
+count = 12
+
+[[main.entries]]
+weight = 8
+obj = "obj.cert_blankrune_high"
+count = 150
+
+[[main.entries]]
+weight = 6
+obj = "obj.cert_adamantite_bar"
+count = "2..4"
+
+[[main.entries]]
+weight = 6
+obj = "obj.cert_teak_logs"
+count = 35
+
+[[main.entries]]
+weight = 3
+obj = "obj.cert_snape_grass"
+count = "10..15"
+
+[[main.entries]]
+weight = 3
+obj = "obj.cert_runite_ore"
+count = "1..2"
+
+[[main.entries]]
+weight = 8
+obj = "obj.lobster"
+count = 2
+
+[[main.entries]]
+weight = 11
+obj = "obj.coins"
+count = 3000
+
+[[main.entries]]
+weight = 7
+obj = "obj.4doseprayerrestore"
+count = 1
+
+[[main.entries]]
+weight = 2
+obj = "obj.xbows_crossbow_unstrung_adamantite"
+count = 1
+
+[[main.entries]]
+weight = 2
+obj = "obj.fossil_calcite"
+count = 2
+
+[[main.entries]]
+weight = 2
+obj = "obj.fossil_pyrophosphite"
+count = 2
+
+[[main.entries]]
+weight = 2
+obj = "obj.fossil_volcanic_ash"
+count = "20..60"
+
+[[main.entries]]
+weight = 14
+nothing = true
+
+[[main.separate_rolls]]
+numerator = 1
+denominator = 512
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.granite_longsword"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 1
+denominator = 2560
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.granite_boots"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 10
+denominator = 437
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.unidentified_kwuarm"
+count = 2
+
+[[main.separate_rolls]]
+numerator = 10
+denominator = 547
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.unidentified_cadantine"
+count = 2
+
+[[main.separate_rolls]]
+numerator = 10
+denominator = 547
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.unidentified_dwarf_weed"
+count = 2
+
+[[main.separate_rolls]]
+numerator = 10
+denominator = 729
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.unidentified_lantadyme"
+count = 2
+
+[[main.separate_rolls]]
+numerator = 1
+denominator = 58
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.ranarr_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 5
+denominator = 5491
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.snapdragon_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 10
+denominator = 13977
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.torstol_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 2
+denominator = 3075
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.watermelon_seed"
+count = 15
+
+[[main.separate_rolls]]
+numerator = 2
+denominator = 3075
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.willow_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 2
+denominator = 607
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.mahogany_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 10
+denominator = 17083
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.maple_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 2
+denominator = 333
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.teak_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 10
+denominator = 1147
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.yew_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 5
+denominator = 10982
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.papaya_tree_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 2
+denominator = 5125
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.magic_tree_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 1
+denominator = 3075
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.palm_tree_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 5
+denominator = 19219
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.spirit_tree_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 1
+denominator = 5125
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.dragonfruit_tree_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 2
+denominator = 15375
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.celastrus_tree_seed"
+count = 1
+
+[[main.separate_rolls]]
+numerator = 2
+denominator = 15375
+
+[[main.separate_rolls.entries]]
+weight = 1
+obj = "obj.redwood_tree_seed"
+count = 1
+
+[[tertiary]]
+numerator = 1
+denominator = 12000
+obj = "obj.wyvern_visage"
+count = 1
+
+[[tertiary]]
+numerator = 1
+denominator = 112
+obj = "obj.trail_clue_hard_map001"
+count = 1
+clue_scroll_box = true
+
+
+# Main table pool padding uses a nothing roll (F2P drops removed and/or subtable access missing from wiki parse) (14 weight)

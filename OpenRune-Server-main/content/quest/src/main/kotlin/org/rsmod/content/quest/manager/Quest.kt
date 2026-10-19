@@ -1,0 +1,213 @@
+package org.rsmod.content.quest.manager
+
+import com.github.michaelbull.logging.InlineLogger
+import dev.openrune.ServerCacheManager
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import net.rsprot.protocol.game.outgoing.sound.MidiJingle
+import org.rsmod.api.attr.AttributeKey
+import org.rsmod.api.player.musicClocks
+import org.rsmod.api.player.protect.ProtectedAccess
+import org.rsmod.api.player.vars.VarPlayerIntMapSetter
+import org.rsmod.api.player.vars.intVarBit
+import org.rsmod.api.player.vars.intVarp
+import org.rsmod.api.table.QuestRow
+import org.rsmod.game.entity.Player
+import org.rsmod.map.CoordGrid
+
+private const val QUEST_COMPLETE_JINGLE = 153
+
+val QUEST_STAGE_MAP_ATTR = AttributeKey<MutableMap<String, Int>>("quest_stages")
+
+data class ItemRewardDisplay(val item: String, val zoom: Int = 10)
+
+data class Quest(
+    val id: Int,
+    val key: String,
+    val rowID: Int,
+    val displayName: String,
+    val mapElement: Int?,
+    val startCoord: CoordGrid?,
+    val maxSteps: Int,
+    val questPoints: Int,
+    val questVarp: String,
+    val rewards: QuestReward,
+    val itemDisplay: ItemRewardDisplay,
+    val questVarbit: String? = null,
+) {
+
+    private var Player.questState: Int
+        get() = vars[questVarbit ?: questVarp]
+        set(value) { VarPlayerIntMapSetter.set(this, questVarbit ?: questVarp, value) }
+    private var Player.questPoints by intVarp("varp.qp")
+    private var Player.questsCompleted by intVarBit("varbit.quests_completed_count")
+
+    private val attributeRegistry = mutableMapOf<String, QuestAttribute<*>>()
+
+    companion object {
+        private val logger = InlineLogger()
+        private val questsByKey = mutableMapOf<String, Quest>()
+
+        fun get(key: String): Quest? = questsByKey[key.normalizedQuestKey()]
+
+        fun getById(id: Int): Quest? = questsByKey.values.find { it.id == id }
+
+        fun all(): Collection<Quest> = questsByKey.values
+
+        fun register(
+            rowKey: String,
+            varp: String,
+            itemDisplay: ItemRewardDisplay,
+            rewards: QuestReward,
+            varbit: String? = null,
+        ): Quest {
+
+            val rowKeyID = "dbrow.${rowKey}".asRSCM()
+            val questRow = QuestRow.getRow(rowKeyID)
+            val quest = Quest(
+                id = questRow.id,
+                rowID = rowKeyID,
+                key = rowKey,
+                displayName = questRow.displayname,
+                mapElement = questRow.mapelement,
+                startCoord = questRow.startcoord,
+                maxSteps = questRow.endstate,
+                questPoints = questRow.questpoints,
+                questVarp = varp,
+                questVarbit = varbit,
+                itemDisplay = itemDisplay,
+                rewards = rewards
+            )
+            questsByKey[rowKey.normalizedQuestKey()] = quest
+            return quest
+        }
+    }
+
+    fun getQuestStage(access: Player): Int {
+        if (questVarbit != null) return access.questState
+        val stages = access.attr.getOrPut(QUEST_STAGE_MAP_ATTR) { mutableMapOf() }
+        return stages[key] ?: 0
+    }
+
+    private fun storeQuestStage(access: ProtectedAccess, stage: Int) {
+        if (questVarbit != null) return
+        val clampedStage = stage.coerceIn(0, maxSteps)
+        val stages = access.player.attr.getOrPut(QUEST_STAGE_MAP_ATTR) { mutableMapOf() }
+        stages[key] = clampedStage
+    }
+
+    fun questState(player: Player): QuestProgressState =
+        QuestProgressState.fromStage(getQuestStage(player), maxSteps)
+
+    fun isQuestNotStarted(player: Player): Boolean = questState(player).isNotStarted
+
+    fun isQuestInProgress(player: Player): Boolean = questState(player).isInProgress
+
+    fun isQuestCompleted(player: Player): Boolean = questState(player).isCompleted
+
+    fun advanceQuestStage(access: ProtectedAccess, amount: Int = 1): Int {
+        val currentStage = getQuestStage(access.player)
+        val attemptedStage = currentStage + amount
+
+        if (attemptedStage > maxSteps) {
+            val playerName = access.player.displayName.ifEmpty { "unknown" }
+            logger.error {
+                "Attempted to advance quest '$key' for player '$playerName' " +
+                    "from stage $currentStage by $amount (max=$maxSteps)."
+            }
+            throw IllegalStateException("Quest '$key' cannot advance past stage $maxSteps.")
+        }
+
+        return setQuestStage(access, attemptedStage.coerceIn(0, maxSteps))
+    }
+
+    fun completeQuest(access: ProtectedAccess): Int = setQuestStage(access, maxSteps)
+
+    fun setQuestStage(access: ProtectedAccess, newStage: Int): Int {
+        require(newStage in 0..maxSteps) { "Quest '$key' stage must be within 0..$maxSteps." }
+        val wasCompleted = getQuestStage(access.player) >= maxSteps
+        storeQuestStage(access, newStage)
+
+        // Quest varps store the real stage (0..endstate). Multinpc / journal clients depend on
+        // endstate (e.g. runemysteries=6) rather than a collapsed 0/1/2 progress flag.
+        if (access.player.questState != newStage) {
+            access.player.questState = newStage
+        }
+
+        if (!wasCompleted && newStage >= maxSteps) {
+            completedQuest(access)
+        }
+
+        return newStage
+    }
+
+    fun <T> attribute(
+        name: String,
+        default: T,
+        resetOnDeath: Boolean = false,
+        temp: Boolean = false
+    ): QuestAttribute<T> = attribute(name, { default }, resetOnDeath, temp)
+
+    fun <T> attribute(
+        name: String,
+        default: () -> T,
+        resetOnDeath: Boolean = false,
+        temp: Boolean = false
+    ): QuestAttribute<T> {
+        @Suppress("UNCHECKED_CAST")
+        return attributeRegistry.getOrPut(name) {
+            QuestAttribute(
+                name = name,
+                attributeKey = AttributeKey(
+                    persistenceKey = "quest.$key.$name",
+                    resetOnDeath = resetOnDeath,
+                    temp = temp
+                ),
+                defaultProvider = default
+            )
+        } as QuestAttribute<T>
+    }
+
+    private fun completedQuest(access: ProtectedAccess) {
+
+        access.player.questPoints += questPoints
+        access.player.questsCompleted++
+
+        access.player.musicClocks = 0
+        access.player.client.write(MidiJingle(QUEST_COMPLETE_JINGLE))
+
+        access.ifOpenMain("interface.questscroll")
+        access.ifSetText("component.questscroll:quest_title", "You have completed ${displayName}!")
+        access.ifSetText("component.questscroll:quest_reward1", "$questPoints Quest Point")
+
+        access.ifSetObj("component.questscroll:quest_model", obj = itemDisplay.item, zoom = itemDisplay.zoom)
+
+        val rewardLines = mutableListOf<String>()
+
+        rewards.xp.forEach { (skill, amount) ->
+            val stat = ServerCacheManager.getStats(skill.asRSCM(RSCMType.STAT))
+                ?: error("No stat found for $skill")
+
+            access.statAdvance(skill, amount)
+            rewardLines.add("${amount.toInt()} ${stat.displayName} XP")
+        }
+
+        rewards.items.forEach { (item, amount) ->
+            access.invAdd(access.inv, item, amount)
+            val type = ServerCacheManager.getItem(item.asRSCM(RSCMType.OBJ)) ?: error("No item found for $item")
+            rewardLines.add(rewards.itemLabels[item] ?: "$amount x ${type.name}")
+        }
+
+        rewards.extraText?.let {
+            rewardLines.add(it)
+        }
+
+        val linesToShow = rewardLines.take(6)
+
+        for (i in 0 until 6) {
+            val componentId = "component.questscroll:quest_reward${i + 2}"
+            val text = linesToShow.getOrNull(i) ?: ""
+            access.ifSetText(componentId, text)
+        }
+    }
+}

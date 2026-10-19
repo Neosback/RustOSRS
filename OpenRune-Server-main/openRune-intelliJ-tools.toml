@@ -1,0 +1,12 @@
+[rscm]
+
+mappings_directories = [
+    ".data/gamevals",
+    ".data/gamevals-binary",
+    "content/",
+    "api/"
+]
+
+# Enable or disable providers
+enable_file_provider = true
+enable_alter_constant_provider = true

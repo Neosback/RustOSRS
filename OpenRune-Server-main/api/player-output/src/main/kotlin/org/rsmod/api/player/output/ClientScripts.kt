@@ -1,0 +1,274 @@
+package org.rsmod.api.player.output
+
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.InventoryServerType
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.ObjectServerType
+import dev.openrune.types.enums.EnumTypeMap
+import net.rsprot.protocol.game.outgoing.misc.player.RunClientScript
+import org.rsmod.game.entity.Player
+import org.rsmod.game.inv.Inventory
+import org.rsmod.game.loc.LocShape
+import org.rsmod.map.CoordGrid
+
+public fun Player.runClientScript(id: Int, vararg args: Any) {
+    runClientScript(id, args.toList())
+}
+
+public fun Player.runClientScript(id: Int, args: List<Any>) {
+    client.write(RunClientScript(id, args))
+}
+
+public object ClientScripts {
+    public fun settingsSetDrawDistance(player: Player): Unit = player.runClientScript("clientscript.[clientscript,settings_set_draw_distance]".asRSCM(RSCMType.CLIENTSCRIPT))
+
+    private const val LOOTTRACKER_ADD_LOOT_SCRIPT: Int = 7192
+    private const val NOTIFICATION_DISPLAY_INIT_SCRIPT: Int = 3343
+    private const val DEFAULT_NOTIFICATION_COLOUR: Int = 0xff981f
+
+    public fun notificationDisplay(
+        player: Player,
+        title: String,
+        text: String,
+        colour: Int = DEFAULT_NOTIFICATION_COLOUR,
+    ): Unit = player.runClientScript(NOTIFICATION_DISPLAY_INIT_SCRIPT, title, text, colour)
+
+    public fun lootTrackerAddLoot(
+        player: Player,
+        npcId: Int,
+        eventId: Int,
+        objId: Int,
+        count: Int,
+    ): Unit = player.runClientScript(LOOTTRACKER_ADD_LOOT_SCRIPT, npcId, eventId, objId, count)
+
+    public fun settingsInterfaceScaling(player: Player, scale: Int) {
+        player.runClientScript(2358, scale)
+    }
+
+    public fun buffBarLayoutRedraw(player: Player) {
+        player.runClientScript(5937)
+    }
+
+    public fun playerMember(player: Player, member: Boolean = player.members): Unit =
+        player.runClientScript(828, if (member) 1 else 0)
+
+    public fun ccDeleteAll(player: Player, component: String): Unit =
+        player.runClientScript(2249, component.asRSCM(RSCMType.COMPONENT))
+
+    public fun highlightingOff(player: Player): Unit = player.runClientScript(5485)
+
+    public fun highlightingOn(player: Player): Unit = player.runClientScript(5487)
+
+    public fun camForceAngle(player: Player, rate: Int, rate2: Int): Unit =
+        player.runClientScript(143, rate, rate2)
+
+    /** @param joinedChoices Menu list choices must be split by the `|` character. */
+    public fun menu(player: Player, title: String, joinedChoices: String, hotkeys: Boolean): Unit =
+        player.runClientScript(217, title, joinedChoices, if (hotkeys) 1 else 0)
+
+    /**
+     * Switches, or opens, the toplevel side tab. Values for [side] can be found in
+     * [org.rsmod.api.config.Constants] prefixed with `toplevel_`. (i.e., `toplevel_attack`)
+     */
+    public fun toplevelSidebuttonSwitch(player: Player, side: Int): Unit =
+        player.runClientScript(915, side)
+
+    /** @param joinedChoices Dialogue choices must be split by the `|` character. */
+    public fun chatboxMultiInit(player: Player, title: String, joinedChoices: String): Unit =
+        player.runClientScript(58, title, joinedChoices)
+
+    /**
+     * Values for [layerMode] can be found in [org.rsmod.api.config.Constants] prefixed with
+     * `meslayer_mode`. (i.e., `meslayer_mode_countdialog`)
+     */
+    public fun mesLayerClose(player: Player, layerMode: Int): Unit =
+        player.runClientScript(101, layerMode)
+
+    public fun mesLayerMode7(player: Player, title: String): Unit =
+        player.runClientScript(108, title)
+
+    public fun mesLayerMode9(player: Player, title: String, mode: Int = 0): Unit =
+        player.runClientScript(110, title, mode)
+
+    public fun mesLayerMode14(
+        player: Player,
+        title: String,
+        stockMarketRestriction: Boolean = true,
+        enumRestriction: EnumTypeMap<ItemServerType, Boolean>? = null,
+        showLastSearched: Boolean = false,
+    ): Unit =
+        player.runClientScript(
+            750,
+            title,
+            if (stockMarketRestriction) 1 else 0,
+            enumRestriction?.id ?: -1,
+            if (showLastSearched) 1 else 0,
+        )
+
+    public fun chatDefaultRestoreInput(player: Player): Unit = player.runClientScript(2158)
+
+    public fun topLevelMainModalOpen(
+        player: Player,
+        colour: Int = -1,
+        transparency: Int = -1,
+    ): Unit = player.runClientScript(2524, colour, transparency)
+
+    public fun topLevelMainModalBackground(
+        player: Player,
+        colour: Int = -1,
+        transparency: Int = -1,
+    ): Unit = player.runClientScript(917, colour, transparency)
+
+    public fun topLevelChatboxResetBackground(player: Player): Unit = player.runClientScript(2379)
+
+    public fun ifSetTextAlign(
+        player: Player,
+        target: String,
+        alignH: Int,
+        alignV: Int,
+        lineHeight: Int,
+    ): Unit = player.runClientScript(600, alignH, alignV, lineHeight, target.asRSCM(RSCMType.COMPONENT))
+
+    public fun objboxSetButtons(player: Player, text: String): Unit =
+        player.runClientScript(2868, text)
+
+    public fun interfaceInvInit(
+        player: Player,
+        inv: Inventory,
+        target: String,
+        objRowCount: Int,
+        objColCount: Int,
+        dragType: Int = 0,
+        dragComponent: String? = null,
+        op1: String? = null,
+        op2: String? = null,
+        op3: String? = null,
+        op4: String? = null,
+        op5: String? = null,
+    ): Unit =
+        player.runClientScript(
+            149,
+            target.asRSCM(RSCMType.COMPONENT),
+            inv.type.id,
+            objRowCount,
+            objColCount,
+            dragType,
+            dragComponent?.asRSCM(RSCMType.COMPONENT) ?: -1,
+            op1 ?: "",
+            op2 ?: "",
+            op3 ?: "",
+            op4 ?: "",
+            op5 ?: "",
+        )
+
+    public fun shopMainInit(
+        player: Player,
+        shopInv: InventoryServerType,
+        title: String,
+        enableBuy50: Boolean = true,
+        customBuyAmountObj: ItemServerType? = null,
+        customBuyAmount: Int? = null,
+    ) {
+        check(customBuyAmount == null || customBuyAmountObj != null) {
+            "`customBuyAmount` must be set if `customBuyAmountObj` is set."
+        }
+        check(customBuyAmountObj == null || customBuyAmount != null) {
+            "`customBuyAmountObj` must be set if `customBuyAmount` is set."
+        }
+        player.runClientScript(
+            1074,
+            shopInv.id,
+            title,
+            customBuyAmountObj?.id ?: -1,
+            customBuyAmount ?: 0,
+            if (enableBuy50) 1 else 0,
+        )
+    }
+
+    public fun examineItem(
+        player: Player,
+        obj: Int,
+        count: Int,
+        desc: String,
+        market: Boolean,
+        marketPrice: Int,
+        alchable: Boolean,
+        highAlch: Int,
+        lowAlch: Int,
+    ) {
+        player.runClientScript(
+            6003,
+            obj,
+            count,
+            desc,
+            if (market) 1 else 0,
+            marketPrice,
+            if (alchable) 1 else 0,
+            highAlch,
+            lowAlch,
+        )
+    }
+
+    /**
+     * @param timer the overlay timer type, see [org.rsmod.api.config.Constants] for known values.
+     *   (prefixed with `overlay_timer_`)
+     * @param isDespawnTimer `true` if the overlay represents a despawn timer as opposed to respawn
+     *   timer. (i.e., hunter trap despawn vs tree respawn)
+     */
+    public fun addOverlayTimerLoc(
+        player: Player,
+        coords: CoordGrid,
+        loc: ObjectServerType,
+        shape: LocShape,
+        timer: Int,
+        ticks: Int,
+        colour: Int,
+        isDespawnTimer: Boolean = false,
+    ) {
+        player.runClientScript(
+            5474,
+            coords.packed,
+            loc.id,
+            shape.id,
+            timer,
+            ticks,
+            colour,
+            if (isDespawnTimer) 1 else 0,
+        )
+    }
+
+    public fun confirmDestroyInit(
+        player: Player,
+        header: String,
+        text: String,
+        obj: Int,
+        count: Int,
+    ): Unit = player.runClientScript(814, obj, count, header, text)
+
+    public fun pvpIconsComLevelRange(player: Player, combatLevel: Int): Unit =
+        player.runClientScript(5224, combatLevel)
+
+    public fun statGroupTooltip(
+        player: Player,
+        tooltip: String,
+        container: String,
+        text: String,
+    ): Unit = player.runClientScript(7065, tooltip.asRSCM(RSCMType.COMPONENT), container.asRSCM(RSCMType.COMPONENT), text)
+
+    public fun tooltip(
+        player: Player,
+        text: String,
+        container: String,
+        tooltip: String,
+    ): Unit = player.runClientScript(1495, text, container.asRSCM(RSCMType.COMPONENT), tooltip.asRSCM(RSCMType.COMPONENT))
+
+    public fun confirmOverlayInit(
+        player: Player,
+        target: String,
+        title: String,
+        text: String,
+        cancel: String,
+        confirm: String,
+    ): Unit = player.runClientScript(4212, "$title|$text|$cancel|$confirm", target.asRSCM(RSCMType.COMPONENT))
+}

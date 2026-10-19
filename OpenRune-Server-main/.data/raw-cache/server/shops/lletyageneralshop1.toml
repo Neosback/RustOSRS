@@ -1,0 +1,75 @@
+[[inventory]]
+isServerOnly = true
+id = "inv.lletyageneralshop1"
+name = "Lletya General Store"
+
+scope = "Shared"
+stack = "Always"
+
+sellMultiplier = 1300
+buyMultiplier = 400
+delta = 30
+
+size = 11
+
+protect = false
+runWeight = false
+restock = true
+allStock = false
+placeholders = false
+
+[[inventory.stock]]
+obj = "obj.pot_empty"
+count = 3
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.jug_empty"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.pack_jug_empty"
+count = 5
+restockCycles = 15
+
+[[inventory.stock]]
+obj = "obj.shears"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.bucket_empty"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.pack_bucket"
+count = 10
+restockCycles = 10
+
+[[inventory.stock]]
+obj = "obj.tinderbox"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.chisel"
+count = 2
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.hammer"
+count = 5
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.spade"
+count = 5
+restockCycles = 100
+
+[[inventory.stock]]
+obj = "obj.knife"
+count = 4
+restockCycles = 100
+
