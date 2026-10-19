@@ -10,6 +10,8 @@ import json
 import re
 from pathlib import Path
 
+from feature_registry import RegistryError, load_registry
+
 
 _START = re.compile(r'//|/\*|(?:br|r)(?P<hashes>\#*)"|b?"|b?\'(?:\\(?:u\{[^}]*\}|x[0-9a-fA-F]{2}|.)|[^\'\\\n])\'')
 
@@ -161,9 +163,9 @@ def check_features(repo: Path, registry: dict) -> list[str]:
 def check_editor_contracts(repo: Path) -> list[str]:
     try:
         baseline = json.loads((repo / "scripts/editor_app_surface.json").read_text(encoding="utf-8"))
-        features = json.loads((repo / "scripts/editor_features.json").read_text(encoding="utf-8"))
-        if baseline.get("version") != 1 or not isinstance(baseline.get("methods"), dict) or not isinstance(features, dict):
-            return ["editor contracts: invalid surface baseline or feature map"]
+        features = load_registry(repo / "scripts/editor_features.json")
+        if baseline.get("version") != 1 or not isinstance(baseline.get("methods"), dict):
+            return ["editor contracts: invalid surface baseline"]
         return check_app_surface(repo / "crates/osrs-editor/src", baseline) + check_features(repo, features)
-    except (OSError, ValueError, TypeError) as error:
+    except (OSError, ValueError, TypeError, RegistryError) as error:
         return [f"editor contracts: {error}"]
