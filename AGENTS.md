@@ -1,50 +1,53 @@
 # RustOSRS contributor entry point
 
-## Read before editing
+Read the nearest `AGENTS.md` for subsystem-specific rules. This root file contains only repository-wide rules.
 
-1. Read `ARCHITECTURE.md` for ownership and dependency rules.
-2. Read `DEV_HANDOFF.md`, then verify `git status --short`, the live branch, and `git rev-parse HEAD`.
-3. Run `python3 scripts/features.py find "<concept>"` before creating an implementation, then use `docs/architecture/FEATURE-MAP.md` and `scripts/editor_features.json` to inspect the existing controller, planner, gateway and tests. Inspect callers before adding another abstraction.
-4. Read the owning OSRS specification in `docs/specs/` and relevant accepted ADRs in `docs/adr/`.
+## Before editing
 
-`index.md` defines the documentation authority order. Chat history, research documents and archived handoffs cannot override current code or verified repository state. If status documents disagree with Git, reconcile the facts before implementation; never invent CI results or a remote PR state.
+1. Read `ARCHITECTURE.md`.
+2. Read `DEV_HANDOFF.md`, then verify the live branch, working tree, and exact HEAD.
+3. Run `python3 scripts/features.py find "<concept>"` before creating an implementation.
+4. Inspect the existing owner, callers, feature-registry entry, relevant `docs/specs/`, and accepted ADRs.
 
-## Change boundaries
+`index.md` defines documentation authority. Current code and verified Git state outrank chat history, stale plans, archived handoffs, or assumptions.
 
-- `MapDocument` / `EditorSession` owns edited semantics. Commit, undo and redo go through `EditRuntime`; derived caches and worker mirrors never become editing authority.
-- Plan pure semantic changes in `osrs-edit` against `MapQuery`. Use canonical `osrs-core` coordinates and IDs at boundaries.
-- Put behavior on its owner with private state and narrow operations. `EditorApp` only composes owners and coordinates lifecycle/effects. Its explicit method/field surface is ratcheted by `scripts/editor_app_surface.json`.
-- Preserve FIFO worker assumptions, dependency proofs and conservative rebuild fallbacks. GPU resources stay in rendering; UI code emits actions for product changes.
-- Keep UI-local widget state in `UiRuntime`; preferences/key bindings in `SettingsRuntime`; diagnostics never decide whether an edit or worker result is valid.
-- Search before creating a type, planner, history, worker message or cache. Reuse existing concepts and names. Do not introduce catch-all helper modules or broad mutable accessors.
-- Stay on `main` unless the user explicitly asks for a branch. Work in focused, reviewable checkpoints and continue through an authorized sequence. Do not create worktrees or PRs by default. Publishing still requires authorization.
-- New tools must update the feature registry with real planning, cancellation, commit and undo tests. When removing `EditorApp` behavior, remove its obsolete baseline entries; never widen the baseline just to bypass a guard.
-- Temporary adapters must name their authoritative source, allowed callers, and removal condition. The terrain preview/history-routing adapter's condition is documented on `TerrainController` and in the feature map.
+## Universal architecture rules
 
-## Verification
+- `MapDocument` / `EditorSession` is semantic authority. GPU buffers, worker mirrors, previews, caches, indexes, and UI state are projections only.
+- Commit, undo, and redo flow through the existing edit gateway / `EditRuntime` path.
+- Pure semantic planning belongs in `osrs-edit`; canonical coordinates and IDs come from `osrs-core`.
+- Exact OSRS scene behavior belongs in `osrs-scene`; reusable 117HD rules/data belong in `osrs-hd`; GPU projection belongs in `osrs-render`; scheduling/streaming/projection orchestration belongs in `osrs-world`.
+- `osrs-editor` is the composition/product layer. Keep `EditorApp` thin and put feature behavior on dedicated owners.
+- Search before creating a type, planner, history system, worker message, cache, renderer pass, coordinate conversion, or helper module.
+- Reuse or extend the canonical implementation. Do not add a parallel implementation to avoid understanding the first one.
+- Temporary adapters must name their authoritative source, allowed callers, and removal condition.
+- Preserve OSRS/117HD quirks that are part of parity. Do not "simplify" source behavior without evidence and a regression fixture.
+- Prefer narrow private state and explicit operations over broad mutable access, service locators, or catch-all `utils` modules.
 
-Use the pinned Rust toolchain in `rust-toolchain.toml` and Python **3.11+**. On this Mac, `/opt/homebrew/bin/python3` satisfies that requirement; `/usr/bin/python3` does not provide `tomllib`.
+## Feature changes
 
-During implementation, use focused checks (`python3 scripts/verify.py -p <changed-crate>`) or the
-specific existing tests. Run the full gate once for a ready checkpoint, not after every small edit.
-Do not overlap focused/full Cargo runs or repeat green suites without changed inputs.
-`python3 scripts/verify.py --full` is the single definition of the gate; GitHub CI runs the same
-script (`--stage quick`, then `--stage build`). See `docs/LOCAL-VERIFICATION.md`. In order, it runs:
+The machine-readable navigation source is `scripts/editor_features.json` and its canonical loader is `scripts/feature_registry.py`.
 
-```sh
-# quick stage (no compilation)
-python3 scripts/check_architecture.py          # plus the other Python guards listed in verify.py
-cargo fmt --all --check
-# build stage
-cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-cargo clippy --locked --target wasm32-unknown-unknown -p osrs-editor -p osrs-core -p osrs-edit -p osrs-lab -p osrs-cache -p osrs-scene -p osrs-hd -p osrs-render -p osrs-world -- -D warnings
-python3 scripts/run_tests.py                   # cargo test --lib --bins --tests, all features, bounded concurrency
-```
+For an authored/mutating feature, keep the registered controller, planner, gateway, planning test, cancellation test, commit test, and undo test accurate. Lower architecture baselines when ownership shrinks; never widen a ratchet only to silence a guard.
 
-Clippy replaces the separate `cargo check` commands (it compiles everything they do). Examples are
-type-checked by Clippy but not launched as test binaries. Each crate's integration tests are bundled
-into one `tests/integration.rs` binary: a new `tests/*.rs` file must be added as a module there.
+## Working style
 
-The full workspace tests include the permanent M3–M9 parity suites (they run in CI's single `verify` job). External pinned-cache and independent visual-oracle tests retain their prerequisites; ignored tests are not proof of acceptance.
+- Stay on `main` unless the user explicitly authorizes another branch.
+- Use focused, reviewable checkpoints.
+- Do not create a PR/worktree or publish unless authorized.
+- Inspect before refactoring; preserve working semantics while moving ownership.
+- Update the handoff when ownership, public contracts, or verification facts materially change.
 
-Update the current handoff when ownership changes. Report checks actually run, their results, the exact baseline SHA, and whether changes remain uncommitted. A local check does not certify remote CI or a later commit.
+## Verification ladder
+
+Use the cheapest level that proves the checkpoint:
+
+1. Documentation-only: inspect changed files/links; no build.
+2. Python/architecture tooling: direct unit test or command, then architecture guard if relevant.
+3. Local Rust behavior: smallest affected test or `python3 scripts/verify.py -p <crate>`.
+4. Integration/parity: only the affected integration/parity suites.
+5. Full workspace: `python3 scripts/verify.py --full` only for a ready integration/merge checkpoint or when broad changes require it.
+
+Do not repeat unchanged green suites, overlap Cargo runs, or use the full build as the default inner loop. GitHub CI runs the same full verification definition; never claim CI state that was not observed.
+
+Use the pinned toolchain and Python 3.11+. See `docs/LOCAL-VERIFICATION.md` for the exact commands and platform notes.
