@@ -53,10 +53,16 @@ pub struct PathTile {
 /// `(plane, world x, world y)`.
 pub type TileKey = (u8, i32, i32);
 
+/// One transient before/after tile sample collected while a Paint or Height gesture is open.
+type StrokeChange = (TileKey, TileValues, TileValues);
+
 /// A stroke being painted.
+///
+/// This is preview/gesture state only. Completed chronological history is represented separately by
+/// `EditStep`, while authoritative before/after state is committed to `EditorSession`.
 #[derive(Debug)]
 pub struct Stroke {
-    step: EditStep,
+    changes: Vec<StrokeChange>,
     index: HashMap<TileKey, usize>,
     last_tile: Option<(i32, i32)>,
     last_applied: Instant,
@@ -75,14 +81,14 @@ pub struct Stroke {
 impl Stroke {
     /// Whether the stroke changed nothing at all.
     fn is_empty(&self) -> bool {
-        self.step.changes.is_empty() && self.step.added.is_empty() && self.step.removed.is_empty()
+        self.changes.is_empty()
     }
 }
 
 impl Default for Stroke {
     fn default() -> Self {
         Self {
-            step: EditStep::default(),
+            changes: Vec::new(),
             index: HashMap::new(),
             last_tile: None,
             last_applied: Instant::now(),
@@ -144,11 +150,10 @@ impl TerrainController {
         for key in &stroke.newly_explicit_heights {
             self.height_edited.remove(key);
         }
-        for (key, before, _) in &stroke.step.changes {
+        for (key, before, _) in &stroke.changes {
             self.edited.insert(*key, *before);
         }
         stroke
-            .step
             .changes
             .into_iter()
             .map(|(key, before, _)| self.edit_for(infos, key, before))
@@ -226,10 +231,10 @@ impl TerrainController {
             return false;
         }
         match stroke.index.get(&key) {
-            Some(&position) => stroke.step.changes[position].2 = after,
+            Some(&position) => stroke.changes[position].2 = after,
             None => {
-                stroke.index.insert(key, stroke.step.changes.len());
-                stroke.step.changes.push((key, current, after));
+                stroke.index.insert(key, stroke.changes.len());
+                stroke.changes.push((key, current, after));
             }
         }
         self.edited.insert(key, after);
@@ -257,12 +262,27 @@ impl EditorApp {
         let edits = self.terrain.cancel_stroke(self.world.infos());
         self.send_edits(edits);
     }
+
+    /// Restore transient stroke tile values after a commit attempt fails.
+    ///
+    /// This intentionally mirrors the old `revert(EditStep, false)` behavior: it restores visible
+    /// tile values only. User cancellation remains the path that also clears newly-explicit Height
+    /// preview markers.
+    fn revert_stroke_preview(&mut self, stroke: &Stroke) {
+        let mut edits = Vec::with_capacity(stroke.changes.len());
+        for (key, before, _) in &stroke.changes {
+            self.terrain.edited.insert(*key, *before);
+            edits.push(self.edit_for(*key, *before));
+        }
+        self.send_edits(edits);
+    }
+
     /// Reconcile the already-visible Paint preview with the authoritative semantic result. Most
     /// strokes are already identical; this mainly canonicalizes overlay shape/rotation when an
     /// overlay is created on a semantically empty tile.
     fn project_paint_stroke(&mut self, stroke: &mut Stroke, brush: &Brush) {
         let mut edits = Vec::new();
-        for (key, _, after) in &mut stroke.step.changes {
+        for (key, _, after) in &mut stroke.changes {
             let Some(projected) =
                 project_paint_values(self.session.document(), brush, *key, *after)
             else {
@@ -275,10 +295,7 @@ impl EditorApp {
             *after = projected;
         }
         self.send_edits(edits);
-        stroke
-            .step
-            .changes
-            .retain(|(_, before, after)| before != after);
+        stroke.changes.retain(|(_, before, after)| before != after);
     }
 
     /// Reconcile the already-visible Height preview with authoritative semantic heights.
@@ -286,8 +303,8 @@ impl EditorApp {
     /// Values are prepared before mutation so an adapter failure cannot leave a partially projected
     /// Height stroke.
     fn project_height_stroke(&mut self, stroke: &mut Stroke) -> Result<(), &'static str> {
-        let mut projected = Vec::with_capacity(stroke.step.changes.len());
-        for (index, (key, _, after)) in stroke.step.changes.iter().enumerate() {
+        let mut projected = Vec::with_capacity(stroke.changes.len());
+        for (index, (key, _, after)) in stroke.changes.iter().enumerate() {
             let values = project_height_values(self.session.document(), *key, *after)
                 .ok_or("a Height preview vertex is missing from semantic state")?;
             projected.push((index, *key, values));
@@ -295,7 +312,7 @@ impl EditorApp {
 
         let mut edits = Vec::new();
         for (index, key, values) in projected {
-            let after = &mut stroke.step.changes[index].2;
+            let after = &mut stroke.changes[index].2;
             self.terrain.height_edited.insert(key);
             if values != *after {
                 self.terrain.edited.insert(key, values);
@@ -304,10 +321,7 @@ impl EditorApp {
             *after = values;
         }
         self.send_edits(edits);
-        stroke
-            .step
-            .changes
-            .retain(|(_, before, after)| before != after);
+        stroke.changes.retain(|(_, before, after)| before != after);
         Ok(())
     }
 
