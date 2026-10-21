@@ -32,12 +32,18 @@ pub(super) fn record(
         .copied()
         .unwrap_or(min);
     let region = key.split_region().0;
-    let group = format!(
-        "geography:{}:{}",
-        region.x.div_euclid(8),
-        region.y.div_euclid(8)
-    );
-    let split = osrs_lab::LearningSplit::for_group(&group);
+    let group_x = region.x.div_euclid(8);
+    let group_y = region.y.div_euclid(8);
+    let group = format!("geography:{group_x}:{group_y}");
+    // This example cannot depend upward on osrs-lab. Keep the geography split equivalent to
+    // osrs_lab::LearningSplit::for_group for internally generated geography groups.
+    let split_slot = (i64::from(group_x).rem_euclid(5) * 31 + i64::from(group_y).rem_euclid(5))
+        .rem_euclid(5);
+    let split = match split_slot {
+        0 => "test",
+        1 => "validation",
+        _ => "train",
+    };
     let named: Vec<_> = areas
         .iter()
         .filter(|a| {
